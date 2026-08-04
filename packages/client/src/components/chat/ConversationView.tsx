@@ -435,9 +435,7 @@ export function ConversationView({
       item.status === "active" && item.manifest.kind.includes("conversation-calls") && item.manifest.entrypoints.client,
   );
   const callCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
-  const activeAgentIds = Array.isArray(chatMeta.activeAgentIds)
-    ? chatMeta.activeAgentIds.filter((id): id is string => typeof id === "string")
-    : [];
+  const activeAgentIds = chatMeta.activeAgentIds;
   const enabledConversationCapabilities = chatMeta.enableAgents === true
     ? installedCapabilities.filter((item) => {
         if (item.status !== "active" || !item.manifest.entrypoints.client) return false;

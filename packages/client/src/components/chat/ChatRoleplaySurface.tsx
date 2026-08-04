@@ -1315,9 +1315,7 @@ export function ChatRoleplaySurface({
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
-  const activeAgentIds = Array.isArray(chatMeta.activeAgentIds)
-    ? chatMeta.activeAgentIds.filter((id): id is string => typeof id === "string")
-    : [];
+  const activeAgentIds = chatMeta.activeAgentIds;
   const enabledConversationCapabilities = chatMeta.enableAgents === true
     ? installedCapabilities.filter((item) => {
         if (item.status !== "active" || !item.manifest.entrypoints.client) return false;

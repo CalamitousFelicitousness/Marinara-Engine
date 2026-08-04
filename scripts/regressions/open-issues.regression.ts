@@ -2797,7 +2797,7 @@ const localNotificationsSource = readFileSync(
 const notificationSettingsSource = readFileSync(
   new URL("../../packages/client/src/components/panels/settings/SettingControls.tsx", import.meta.url),
   "utf8",
-);
+).replace(/\r\n/gu, "\n");
 const chatGallerySource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatGallery.tsx", import.meta.url),
   "utf8",

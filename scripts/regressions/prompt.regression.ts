@@ -18,6 +18,7 @@ import {
   createDefaultImageStyleProfileSettings,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
+  generateChatSummaryEntryTitle,
   isAgentAvailableInChatMode,
   isPatternSafe,
   normalizeChatSummaryEntries,
@@ -282,6 +283,45 @@ import {
   applyStoryboardAgentSettings,
   shouldSuppressIllustratorForegroundForStoryboard,
 } from "../../packages/server/src/services/game/storyboard-agent-settings.js";
+import {
+  STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
+  compactStoryboardFallbackBeat,
+  compactStoryboardTextAtWordBoundary,
+  createStoryboardReviewPlanEnvelope,
+  formatStoryboardFallbackSectionText,
+  resolveStoryboardReviewPlanEnvelope,
+  storyboardPlanHasRenderableKeyframe,
+} from "../../packages/server/src/services/game/storyboard-planner-fallback.js";
+
+const fallbackBeatWords = Array.from({ length: 400 }, (_, index) => `storyboard-beat-${index}`);
+const compactedFallbackBeat = compactStoryboardFallbackBeat(fallbackBeatWords.join(" "));
+assert.ok(compactedFallbackBeat.length <= STORYBOARD_FALLBACK_BEAT_MAX_CHARS);
+assert.ok(compactedFallbackBeat.endsWith("..."));
+assert.ok(fallbackBeatWords.includes(compactedFallbackBeat.slice(0, -3).split(" ").at(-1) ?? ""));
+assert.equal(compactStoryboardTextAtWordBoundary("  silver   hair blue eyes  ", 18), "silver hair...");
+assert.equal(formatStoryboardFallbackSectionText("Morgana-: Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Morgana-: Morgana-: Hold the hatch.", "Morgana-"),
+  "Morgana-: Hold the hatch.",
+);
+assert.equal(formatStoryboardFallbackSectionText("Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Shellback Tollkeeper: Run, little coins!", "Shellback Tollkeeper"),
+  "Shellback Tollkeeper: Run, little coins!",
+);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ narrationBeat: "  " }] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ imagePrompt: "A usable frame" }] }), true);
+const fallbackReviewEnvelope = createStoryboardReviewPlanEnvelope({
+  plan: { keyframes: [{ narrationBeat: compactedFallbackBeat }] },
+  plannerError: "Planner response was malformed; used fallback storyboard planner and skipped video generation.",
+  usedFallbackPlanner: true,
+});
+assert.deepEqual(resolveStoryboardReviewPlanEnvelope(fallbackReviewEnvelope), {
+  plan: fallbackReviewEnvelope.plan,
+  plannerError: fallbackReviewEnvelope.plannerError,
+  usedFallbackPlanner: true,
+});
 
 const assistantCadenceMessages = [
   { id: "illustrator-anchor", role: "assistant" },
@@ -648,6 +688,7 @@ import {
   appendContinuationMessageContent,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,
   formatRoleplaySummaryChatLog,
+  parseChatSummaryResult,
   resolveChatSummaryCombinePrompt,
   resolveChatSummaryPrompt,
 } from "../../packages/server/src/services/generation/roleplay-summary-runtime.js";
@@ -3492,7 +3533,13 @@ const cases: RegressionCase[] = [
       );
       assert.match(storyboardHookSource, /previewOnly: true/);
       assert.match(gameRouteSource, /if \(input\.previewOnly\)/);
-      assert.match(gameRouteSource, /return \{ items, plannedStoryboard: plan \}/);
+      assert.match(gameRouteSource, /createStoryboardReviewPlanEnvelope\(\{/);
+      assert.match(gameRouteSource, /plannerWarning: illustratorErrorMessage/);
+      assert.match(
+        gameRouteSource,
+        /usedFallbackStoryboardPlanner = reviewedStoryboard\.usedFallbackPlanner \|\| !reviewedPlanHasRenderableKeyframe/u,
+      );
+      assert.match(gameSurfaceSource, /preview\.plannerWarning/);
       assert.match(gameRouteSource, /storyboardPromptOverrideById\.get\(`storyboard:\$\{frame\.index\}`\)/);
       assert.match(gameRouteSource, /\[debug\/game\/storyboard-image-preview\]/);
     },
@@ -3846,7 +3893,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "Game planner always receives card appearance while final attachment stays optional",
+    name: "Storyboard appearance is gated and injected once across planner and fallback paths",
     async run() {
       const appearance = "auburn hair, green eyes, leather jacket";
       const description = "A verbose roleplay card description that must not be sent as visual appearance.";
@@ -4074,6 +4121,27 @@ const cases: RegressionCase[] = [
         "SCENE Lyra standing in a moonlit forest\nSCOPE Final visibility rule: Only depict these named visible characters: Lyra.",
       );
 
+      const fallbackFirstFrameCompiled = await buildSceneIllustrationProviderPrompt({
+        chatId: "prompt-regression",
+        prompt: "Lyra standing in a moonlit forest",
+        characters: ["Lyra"],
+        characterDescriptions: [`Lyra's Appearance: ${appearance}`],
+        ensureCharacterAppearance: true,
+        storyboardImagePromptTemplateId: "storyboard-first-frame",
+        storyboardImagePromptTemplates: [
+          {
+            id: "storyboard-first-frame",
+            name: "Storyboard First Frame",
+            promptTemplate: "${scenePrompt}",
+          },
+        ],
+        imgModel: "unused",
+        imgBaseUrl: "",
+        imgApiKey: "",
+      });
+      assert.match(fallbackFirstFrameCompiled.prompt, /Character appearance notes:\s*Lyra's Appearance:/u);
+      assert.equal(fallbackFirstFrameCompiled.prompt.match(/Character appearance notes:/gu)?.length, 1);
+
       const compiledWithoutAttachedAppearance = await buildSceneIllustrationProviderPrompt({
         chatId: "prompt-regression",
         prompt: "Lyra standing in a moonlit forest",
@@ -4169,8 +4237,19 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(gameSurfaceSource, /useGamePromptTemplate/u);
       assert.match(gameRouteSource, /characterAppearanceContextBlock:\s*storyboardAppearanceContextBlock/u);
       assert.equal(gameRouteSource.match(/^\s+characterAppearanceContextBlock,\s*$/gmu)?.length, 2);
-      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length, 1);
+      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length ?? 0, 0);
       assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*includeCharacterAppearance,/gu)?.length, 5);
+      assert.equal(
+        gameRouteSource.match(
+          /includeCharacterDescriptions:\s*includeCharacterAppearanceAtRender && characterPrompts\.length === 0,/gu,
+        )?.length,
+        1,
+      );
+      assert.match(
+        gameRouteSource,
+        /const includeCharacterAppearanceAtRender = includeCharacterAppearance && usedFallbackStoryboardPlanner/u,
+      );
+      assert.match(gameRouteSource, /Marinara used narration-based fallback keyframes and skipped video generation/u);
       assert.equal(gameRouteSource.match(/meta\.storyboardAgentIncludeCharacterAppearance !== false/gu)?.length, 1);
       assert.equal(gameRouteSource.match(/meta\.storyboardAgentUseAvatarReferences !== false/gu)?.length, 1);
       assert.equal(gameRouteSource.match(/meta\.gameImageIncludeCharacterAppearance !== false/gu)?.length, 2);
@@ -6985,6 +7064,27 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         compiledLargeSummary,
         largeSummary.trim(),
         "Compiled chat metadata must preserve summaries larger than the former 64 KiB ceiling",
+      );
+
+      assert.deepEqual(
+        parseChatSummaryResult('```json\n{"name":"  Moonlit   promise  ","summary":"They promised to return."}\n```'),
+        { title: "Moonlit promise", summary: "They promised to return." },
+        "Summary JSON should preserve the summary and normalize its generated name",
+      );
+      assert.deepEqual(
+        parseChatSummaryResult('{"title":"Legacy title field","summary":"Old clients remain compatible."}'),
+        { title: "Legacy title field", summary: "Old clients remain compatible." },
+        "The parser should accept title as an alias for name",
+      );
+      assert.deepEqual(parseChatSummaryResult("Plain-text summary"), {
+        title: "",
+        summary: "Plain-text summary",
+      });
+      assert.match(DEFAULT_CHAT_SUMMARY_PROMPT, /"name": "short one-line title/u);
+      assert.equal(
+        generateChatSummaryEntryTitle({ origin: "manual" }),
+        "Manual summary",
+        "Fallback titles should not duplicate the message range shown in metadata",
       );
     },
   },

@@ -5872,6 +5872,12 @@ function GameSurfaceComponent({
 
         if (preview) {
           plannedStoryboard = preview.plannedStoryboard;
+          if (preview.plannerWarning) {
+            toast.warning(localizeUi("ui.game.gamesurfacecomponent.storyboardDegradedResult"), {
+              description: preview.plannerWarning,
+              duration: 12_000,
+            });
+          }
           if (preview.items.length > 0) {
             let overrides: GameImagePromptOverride[] | null | typeof IMAGE_PROMPT_REVIEW_TIMED_OUT | undefined;
             try {
@@ -5907,18 +5913,25 @@ function GameSurfaceComponent({
       if (!("storyboard" in result)) return;
       applyGeneratedStoryboardToCache(result.storyboard, { refetchTurnStoryboards: true });
       const frameCount = result.storyboard.keyframes.length;
-      toast.success(
-        isGameTurnStoryboardRendering(result.storyboard)
-          ? localizeUi("ui.game.gamesurfacecomponent.storyboardPlannedWithValue1KeyframesImagesAreRendering", {
-              value1: frameCount,
-            })
-          : result.storyboard.status === "partial"
-            ? localizeUi("ui.game.gamesurfacecomponent.storyboardSavedWithValue1KeyframesSomeMediaFailed", {
+      if (result.storyboard.error) {
+        toast.warning(localizeUi("ui.game.gamesurfacecomponent.storyboardDegradedResult"), {
+          description: result.storyboard.error,
+          duration: 12_000,
+        });
+      } else {
+        toast.success(
+          isGameTurnStoryboardRendering(result.storyboard)
+            ? localizeUi("ui.game.gamesurfacecomponent.storyboardPlannedWithValue1KeyframesImagesAreRendering", {
                 value1: frameCount,
               })
-            : localizeUi("ui.game.gamesurfacecomponent.storyboardSavedWithValue1Keyframes", { value1: frameCount }),
-        { duration: 2200 },
-      );
+            : result.storyboard.status === "partial"
+              ? localizeUi("ui.game.gamesurfacecomponent.storyboardSavedWithValue1KeyframesSomeMediaFailed", {
+                  value1: frameCount,
+                })
+              : localizeUi("ui.game.gamesurfacecomponent.storyboardSavedWithValue1Keyframes", { value1: frameCount }),
+          { duration: 2200 },
+        );
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : localizeUi("ui.game.gamesurfacecomponent.storyboardGenerationFailed"),
@@ -5985,7 +5998,14 @@ function GameSurfaceComponent({
         debugMode: useUIStore.getState().debugMode,
       })
       .then((result) => {
-        if ("storyboard" in result) applyGeneratedStoryboardToCache(result.storyboard);
+        if (!("storyboard" in result)) return;
+        applyGeneratedStoryboardToCache(result.storyboard);
+        if (result.storyboard.error) {
+          toast.warning(localizeUi("ui.game.gamesurfacecomponent.storyboardDegradedResult"), {
+            description: result.storyboard.error,
+            duration: 12_000,
+          });
+        }
       })
       .catch((error) => {
         console.warn("[game/storyboard] auto storyboard generation failed", error);
@@ -6004,6 +6024,7 @@ function GameSurfaceComponent({
     latestAssistantStoryboardSections,
     latestAssistantSwipeIndex,
     latestTurnStoryboardRendering,
+    localizeUi,
     manualStoryboardReviewActive,
     applyGeneratedStoryboardToCache,
     storyboardGenerating,

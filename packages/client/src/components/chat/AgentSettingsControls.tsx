@@ -6,6 +6,9 @@ import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 
+export const AGENT_SETTINGS_SURFACE_CLASS =
+  "border border-[var(--border)] bg-[var(--secondary)]/70";
+
 export function AgentCategorySection({
   label,
   icon,
@@ -190,7 +193,10 @@ export function AgentSettingsCard({
     <div
       id={id}
       tabIndex={id ? -1 : undefined}
-      className="scroll-mt-3 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/45"
+      className={cn(
+        "scroll-mt-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/45",
+        AGENT_SETTINGS_SURFACE_CLASS,
+      )}
       style={order == null ? undefined : { order }}
     >
       <div className="flex items-start p-3">

@@ -253,7 +253,15 @@ export function buildNoodlerPostMessages(input: {
 }
 
 function parseNoodlerPost(content: string) {
-  return noodleGeneratedNoodlerPostSchema.parse(parseGameJsonish(content));
+  const parsed = parseGameJsonish(content);
+  // Many LLMs (especially local models via Ollama/KoboldCPP) wrap the expected object
+  // in an array ([{"title":...}]) regardless of the prompt instructing "one JSON object".
+  // Unwrap all array cases: empty → {}, single → first element, multiple → first element.
+  if (Array.isArray(parsed)) {
+    const target = parsed.length > 0 ? parsed[0] : {};
+    return noodleGeneratedNoodlerPostSchema.parse(target);
+  }
+  return noodleGeneratedNoodlerPostSchema.parse(parsed);
 }
 
 export async function generateNoodlerPost(

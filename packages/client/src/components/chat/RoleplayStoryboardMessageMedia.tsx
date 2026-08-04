@@ -121,10 +121,9 @@ export function RoleplayStoryboardMessageMedia({
         <div className="flex min-h-20 items-center justify-center gap-2 px-4 py-5 text-xs text-white/55">
           {rendering ? <Loader2 size={14} className="animate-spin" /> : null}
           <span className="line-clamp-2 text-center">
-            {storyboard?.error ||
-              (rendering
-                ? localizeUi("ui.game.gamesurfacecomponent.creatingStoryboard")
-                : localizeUi("game.storyboard.status.failed"))}
+            {rendering
+              ? localizeUi("ui.game.gamesurfacecomponent.creatingStoryboard")
+              : localizeUi("game.storyboard.status.failed")}
           </span>
         </div>
       )}

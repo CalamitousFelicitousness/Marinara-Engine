@@ -134,6 +134,19 @@ export const noodleSettingsSchema = z.object({
 
 export const noodleSettingsUpdateSchema = noodleSettingsSchema.partial();
 
+export const noodlerSourceSnapshotSchema = z
+  .object({
+    publicDisplayName: z.string(),
+    publicHandle: z.string(),
+    name: z.string(),
+    description: z.string(),
+    personality: z.string(),
+    scenario: z.string(),
+    appearance: z.string(),
+    backstory: z.string(),
+  })
+  .strict();
+
 export const noodleAccountProfileSettingsSchema = z
   .object({
     avatarCrop: avatarCropSchema.nullable().optional(),
@@ -142,6 +155,7 @@ export const noodleAccountProfileSettingsSchema = z
     profileGenerated: z.boolean().optional(),
     profileManuallyEdited: z.boolean().optional(),
     noodlerWizardExecutionId: z.string().min(1).max(128).optional(),
+    noodlerSourceSnapshot: noodlerSourceSnapshotSchema.optional(),
   })
   .strict();
 
@@ -279,7 +293,9 @@ export const noodlerTargetedRefreshSchema = z
     executionId: z.string().min(1).max(128).optional(),
   })
   .strict();
-export const noodleStageProfileUpdateSchema = z.object(noodleStageProfileShape).strict();
+export const noodleStageProfileUpdateSchema = z
+  .object({ ...noodleStageProfileShape, acceptSourceChanges: z.boolean().optional() })
+  .strict();
 
 export const noodleStageProfileDraftRequestSchema = z
   .object({

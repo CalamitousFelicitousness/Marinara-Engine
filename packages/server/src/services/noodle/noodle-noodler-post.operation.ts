@@ -21,6 +21,7 @@ import {
   type NoodlerPostMediaUpload,
 } from "./noodle-noodler-media.js";
 import { tryNoodlerAccountOperation } from "./noodle-noodler-account-operation-lock.js";
+import { resolveNoodlerSourceSnapshot } from "./noodle-noodler-source.js";
 import { settleAgentJobsWithConcurrencyLimit } from "../agents/agent-concurrency.js";
 
 export type GenerateAndApplyNoodlerPostResult =
@@ -78,6 +79,10 @@ export async function generateAndApplyNoodlerPost(
   const locked = await tryNoodlerAccountOperation(request.targetAccountId, async () => {
     const account = await noodle.getNoodlerAccountById(request.targetAccountId);
     if (!account) {
+      return { status: "noodler_account_not_found" } as const;
+    }
+    const publicAccount = account.noodleAccountId ? await noodle.getAccountById(account.noodleAccountId) : null;
+    if (!publicAccount || !(await resolveNoodlerSourceSnapshot(db, publicAccount))) {
       return { status: "noodler_account_not_found" } as const;
     }
     if (request.executionId) {

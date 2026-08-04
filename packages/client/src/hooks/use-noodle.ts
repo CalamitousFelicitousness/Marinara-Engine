@@ -208,7 +208,7 @@ export function useBulkCreateNoodlerStageProfiles() {
 export function useUpdateNoodlerStageProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ accountId, ...input }: { accountId: string } & NoodleStageProfileInput) =>
+    mutationFn: ({ accountId, ...input }: { accountId: string; acceptSourceChanges?: boolean } & NoodleStageProfileInput) =>
       api.put<NoodlerStageProfile>(`/noodle/noodler/accounts/${encodeURIComponent(accountId)}/stage-profile`, input),
     onSuccess: () =>
       Promise.all([
@@ -216,6 +216,30 @@ export function useUpdateNoodlerStageProfile() {
         qc.invalidateQueries({ queryKey: noodleKeys.noodlerViewers() }),
       ]),
   });
+}
+
+function useNoodlerSourceAction(action: "dismiss" | "adopt-identity") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (accountId: string) =>
+      api.post<NoodlerManagedStageProfile>(
+        `/noodle/noodler/accounts/${encodeURIComponent(accountId)}/source/${action}`,
+        {},
+      ),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: noodleKeys.noodlerAccounts() }),
+        qc.invalidateQueries({ queryKey: noodleKeys.noodlerViewers() }),
+      ]),
+  });
+}
+
+export function useDismissNoodlerSourceChanges() {
+  return useNoodlerSourceAction("dismiss");
+}
+
+export function useAdoptNoodlerSourceIdentity() {
+  return useNoodlerSourceAction("adopt-identity");
 }
 
 export function useDeleteNoodlerStageProfile() {

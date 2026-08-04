@@ -61,17 +61,68 @@ function disclosureRules(mode: NoodleIdentityDisclosure, publicIdentity: { displ
   return "Create a separate persona. Treat the source only as confidential authoring inspiration. Do not use the public name, handle, canonical occupation, relationships, locations, signature phrases, or distinctive identifying details.";
 }
 
-function defaultDraft(
-  source: { displayName: string; handle: string; bio: string },
-  mode: NoodleIdentityDisclosure,
-): NoodleStageProfileInput {
-  return {
-    displayName: mode === "open" ? source.displayName : mode === "hinted" ? "After Hours" : "Separate Persona",
-    handle: mode === "open" ? source.handle : mode === "hinted" ? "afterhours" : "separate_persona",
-    bio: source.bio,
-    stagePersonality: "A distinct stage voice with clear boundaries and a point of view.",
-    disclosureMode: mode,
-  };
+export function buildNoodlerStageProfileDraftMessages(input: {
+  request: Pick<NoodleStageProfileDraftRequest, "disclosureMode" | "guidance" | "currentDraft">;
+  publicAccount: { displayName: string; handle: string; bio: string };
+  source: { data: string | ({ name?: unknown } & Record<string, unknown>) } | null;
+}): ChatMessage[] {
+  const identity = buildNoodlerPublicIdentity(input.publicAccount, input.source);
+  const protectedDraft = input.request.currentDraft
+    ? Object.fromEntries(
+        Object.entries(input.request.currentDraft).map(([key, value]) => [
+          key,
+          typeof value === "string"
+            ? (protectNoodlerGeneratedIdentity(value, input.request.disclosureMode, identity) ?? "")
+            : value,
+        ]),
+      )
+    : null;
+  const sourceDetails = input.source
+    ? noodlerSourceText(input.source.data)
+    : "General temperament and creative interests from the source profile.";
+  const rawSourceContext =
+    input.request.disclosureMode === "secret"
+      ? [
+          "# Non-identifying inspiration brief",
+          "Use only broad temperament, creative interests, and non-identifying aesthetic direction.",
+          "Do not infer canonical facts or recognizable story details.",
+          `Public bio themes, redacted: ${input.publicAccount.bio ? "A source bio exists; do not reproduce its wording." : "None."}`,
+        ].join("\n")
+      : [
+          "# Source character or persona",
+          `Public name: ${input.publicAccount.displayName}`,
+          `Public handle: @${input.publicAccount.handle}`,
+          `Public bio: ${input.publicAccount.bio || "No bio provided."}`,
+          sourceDetails,
+        ].join("\n");
+  const sourceContext =
+    input.request.disclosureMode === "open"
+      ? rawSourceContext
+      : rawSourceContext
+          .split("\n")
+          .map((line) => protectNoodlerGeneratedIdentity(line, input.request.disclosureMode, identity) ?? "")
+          .join("\n");
+  return [
+    {
+      role: "system",
+      content: [
+        "Create one editable NoodleR stage profile draft.",
+        "Return JSON only with displayName, handle, bio, stagePersonality, and disclosureMode.",
+        "Make the stage identity distinct, concise, and usable for future NoodleR post generation.",
+        disclosureRules(input.request.disclosureMode, identity),
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        sourceContext,
+        ...(protectedDraft ? ["", "# Current draft", JSON.stringify(protectedDraft)] : []),
+        "",
+        "# Creator guidance",
+        input.request.guidance || "Create a compelling stage identity with a clear voice.",
+      ].join("\n"),
+    },
+  ];
 }
 
 export async function generateNoodlerStageProfileDraft(
@@ -89,66 +140,27 @@ export async function generateNoodlerStageProfileDraft(
       : null;
   if (!publicAccount) throw new Error("Noodle source account not found.");
   const characters = createCharactersStorage(db);
-  const source = publicAccount.kind === "character" ? await characters.getById(publicAccount.entityId) : null;
+  const source =
+    publicAccount.kind === "character"
+      ? await characters.getById(publicAccount.entityId)
+      : publicAccount.kind === "persona"
+        ? await characters.getPersona(publicAccount.entityId).then((persona) =>
+            persona
+              ? {
+                  data: {
+                    name: persona.name,
+                    description: persona.description,
+                    personality: persona.personality,
+                    scenario: persona.scenario,
+                    appearance: persona.appearance,
+                    backstory: persona.backstory,
+                  },
+                }
+              : null,
+          )
+        : null;
   const identity = buildNoodlerPublicIdentity(publicAccount, source);
-  const seed = defaultDraft(publicAccount, input.request.disclosureMode);
-  const currentDraft = input.request.currentDraft ? { ...seed, ...input.request.currentDraft } : seed;
-  const protectedDraft = Object.fromEntries(
-    Object.entries(currentDraft).map(([key, value]) => [
-      key,
-      typeof value === "string"
-        ? (protectNoodlerGeneratedIdentity(value, input.request.disclosureMode, identity) ?? "")
-        : value,
-    ]),
-  );
-  const sourceDetails = source
-    ? noodlerSourceText(source.data)
-    : "General temperament and creative interests from the source profile.";
-  const rawSourceContext =
-    input.request.disclosureMode === "secret"
-      ? [
-          "# Non-identifying inspiration brief",
-          "Use only broad temperament, creative interests, and non-identifying aesthetic direction.",
-          "Do not infer canonical facts or recognizable story details.",
-          `Public bio themes, redacted: ${publicAccount.bio ? "A source bio exists; do not reproduce its wording." : "None."}`,
-        ].join("\n")
-      : [
-          "# Source character or persona",
-          `Public name: ${publicAccount.displayName}`,
-          `Public handle: @${publicAccount.handle}`,
-          `Public bio: ${publicAccount.bio || "No bio provided."}`,
-          sourceDetails,
-        ].join("\n");
-  const sourceContext =
-    input.request.disclosureMode === "open"
-      ? rawSourceContext
-      : rawSourceContext
-          .split("\n")
-          .map((line) => protectNoodlerGeneratedIdentity(line, input.request.disclosureMode, identity) ?? "")
-          .join("\n");
-  const messages: ChatMessage[] = [
-    {
-      role: "system",
-      content: [
-        "Create one editable NoodleR stage profile draft.",
-        "Return JSON only with displayName, handle, bio, stagePersonality, and disclosureMode.",
-        "Make the stage identity distinct, concise, and usable for future NoodleR post generation.",
-        disclosureRules(input.request.disclosureMode, identity),
-      ].join("\n"),
-    },
-    {
-      role: "user",
-      content: [
-        sourceContext,
-        "",
-        "# Current draft",
-        JSON.stringify(protectedDraft),
-        "",
-        "# Creator guidance",
-        input.request.guidance || "Create a compelling stage identity with a clear voice.",
-      ].join("\n"),
-    },
-  ];
+  const messages = buildNoodlerStageProfileDraftMessages({ request: input.request, publicAccount, source });
   const debugMode = isDebugAgentsEnabled();
   logDebugOverride(
     debugMode,

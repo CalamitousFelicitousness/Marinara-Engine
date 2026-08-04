@@ -44,6 +44,7 @@ import {
   type NoodleStageProfileInput,
   type NoodlerManagedPost,
   type NoodlerManagedStageProfile,
+  type NoodlerSourceSnapshot,
   type NoodleRefreshAttempt,
   type NoodleRefreshRun,
   type NoodleRemoveInteractionInput,
@@ -71,6 +72,7 @@ import {
   noodlerReserveState,
 } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
+import { compareNoodlerSourceSnapshots, resolveNoodlerSourceSnapshot } from "../noodle/noodle-noodler-source.js";
 import { createAppSettingsStorage } from "./app-settings.storage.js";
 import {
   clearNoodleRefreshFailure,
@@ -304,6 +306,8 @@ export function normalizeNoodleAccountSettings(value: unknown): NoodleAccountSet
   const rawLocation = nestedOrLegacy(rawProfile, raw, "location");
   const rawProfileGenerated = nestedOrLegacy(rawProfile, raw, "profileGenerated");
   const rawProfileManuallyEdited = nestedOrLegacy(rawProfile, raw, "profileManuallyEdited");
+  const rawNoodlerWizardExecutionId = rawProfile.noodlerWizardExecutionId;
+  const rawNoodlerSourceSnapshot = rawProfile.noodlerSourceSnapshot;
   const rawFollowingAccountIds = nestedOrLegacy(rawSocial, raw, "followingAccountIds");
   const rawFollowingAccountTimestamps = nestedOrLegacy(rawSocial, raw, "followingAccountTimestamps");
   const rawNotificationsReadAt = nestedOrLegacy(rawSocial, raw, "notificationsReadAt");
@@ -322,6 +326,10 @@ export function normalizeNoodleAccountSettings(value: unknown): NoodleAccountSet
       validProfileField("profileGenerated", normalizePersistedBoolean(rawProfileGenerated))),
     ...(rawProfileManuallyEdited !== undefined &&
       validProfileField("profileManuallyEdited", normalizePersistedBoolean(rawProfileManuallyEdited))),
+    ...(rawNoodlerWizardExecutionId !== undefined &&
+      validProfileField("noodlerWizardExecutionId", rawNoodlerWizardExecutionId)),
+    ...(rawNoodlerSourceSnapshot !== undefined &&
+      validProfileField("noodlerSourceSnapshot", rawNoodlerSourceSnapshot)),
   };
   const followingAccountTimestamps = Object.fromEntries(
     Object.entries(parseRecord(rawFollowingAccountTimestamps)).filter(
@@ -1259,10 +1267,19 @@ export function createNoodleStorage(db: DB) {
       return Promise.all(
         accounts.map(async (account) => {
           const disclosureMode = account.settings.privacy.identityDisclosure ?? null;
-          const publicAccount =
-            (disclosureMode === "open" || disclosureMode === "hinted") && account.noodleAccountId
-              ? await this.getAccountById(account.noodleAccountId)
-              : null;
+          const publicAccount = account.noodleAccountId ? await this.getAccountById(account.noodleAccountId) : null;
+          const currentSource = publicAccount ? await resolveNoodlerSourceSnapshot(db, publicAccount) : null;
+          let baseline = account.settings.profile.noodlerSourceSnapshot;
+          if (!baseline && currentSource) {
+            await this.updateNoodlerSourceSnapshot(account.id, currentSource);
+            baseline = currentSource;
+          }
+          if (!currentSource && account.settings.scheduler.autoPosting?.enabled) {
+            await this.patchAccountSettings(account.id, {
+              subtree: "scheduler",
+              patch: { autoPosting: { enabled: false } },
+            });
+          }
           return {
             id: account.id,
             noodleAccountId: account.noodleAccountId,
@@ -1274,8 +1291,13 @@ export function createNoodleStorage(db: DB) {
             disclosureMode,
             stagePersonality: account.settings.privacy.stagePersonality ?? "",
             access: account.settings.privacy.access,
-            autoPosting: account.settings.scheduler.autoPosting ?? defaultAutoPostingSettings(),
-            publicIdentity: publicAccount
+            autoPosting: currentSource
+              ? (account.settings.scheduler.autoPosting ?? defaultAutoPostingSettings())
+              : { ...(account.settings.scheduler.autoPosting ?? defaultAutoPostingSettings()), enabled: false },
+            sourceStatus: !currentSource
+              ? { state: "missing" as const }
+              : compareNoodlerSourceSnapshots(baseline ?? currentSource, currentSource),
+            publicIdentity: publicAccount && (disclosureMode === "open" || disclosureMode === "hinted")
               ? { displayName: publicAccount.displayName, handle: publicAccount.handle }
               : null,
             createdAt: account.createdAt,
@@ -1289,6 +1311,7 @@ export function createNoodleStorage(db: DB) {
       noodleAccountId: string,
       stageProfile: NoodleStageProfileInput,
       wizardExecutionId?: string,
+      sourceSnapshot?: NoodlerSourceSnapshot,
     ): Promise<NoodleAccount | null> {
       const publicAccount = await this.getAccountById(noodleAccountId);
       if (!publicAccount || (publicAccount.kind !== "persona" && publicAccount.kind !== "character")) return null;
@@ -1297,7 +1320,10 @@ export function createNoodleStorage(db: DB) {
       const base = emptyNoodleAccountSettings();
       const accountSettings: NoodleAccountSettings = {
         ...base,
-        profile: wizardExecutionId ? { noodlerWizardExecutionId: wizardExecutionId } : base.profile,
+        profile: {
+          ...(wizardExecutionId && { noodlerWizardExecutionId: wizardExecutionId }),
+          ...(sourceSnapshot && { noodlerSourceSnapshot: sourceSnapshot }),
+        },
         scheduler: { autoPosting: defaultAutoPostingSettings() },
         privacy: {
           identityDisclosure: stageProfile.disclosureMode,
@@ -1326,7 +1352,11 @@ export function createNoodleStorage(db: DB) {
       return this.getNoodlerAccountById(id);
     },
 
-    async updateNoodlerStageProfile(id: string, stageProfile: NoodleStageProfileInput): Promise<NoodleAccount | null> {
+    async updateNoodlerStageProfile(
+      id: string,
+      stageProfile: NoodleStageProfileInput,
+      sourceSnapshot?: NoodlerSourceSnapshot,
+    ): Promise<NoodleAccount | null> {
       return db.transaction(async (tx) => {
         const rows = await tx
           .select()
@@ -1343,6 +1373,10 @@ export function createNoodleStorage(db: DB) {
             bio: stageProfile.bio,
             settings: JSON.stringify({
               ...settings,
+              profile: {
+                ...settings.profile,
+                ...(sourceSnapshot && { noodlerSourceSnapshot: sourceSnapshot }),
+              },
               privacy: {
                 ...settings.privacy,
                 identityDisclosure: stageProfile.disclosureMode,
@@ -1354,6 +1388,60 @@ export function createNoodleStorage(db: DB) {
           .where(eq(noodleAccounts.id, id));
         const updatedRows = await tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, id));
         return updatedRows[0] ? mapAccount(updatedRows[0]) : null;
+      });
+    },
+
+    async updateNoodlerSourceSnapshot(id: string, sourceSnapshot: NoodlerSourceSnapshot): Promise<NoodleAccount | null> {
+      return db.transaction(async (tx) => {
+        const row = (await tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, id)))[0];
+        if (!row || row.platform !== "noodler") return null;
+        const settings = normalizeNoodleAccountSettings(row.settings);
+        await tx
+          .update(noodleAccounts)
+          .set({
+            settings: JSON.stringify({
+              ...settings,
+              profile: { ...settings.profile, noodlerSourceSnapshot: sourceSnapshot },
+            } satisfies NoodleAccountSettings),
+            updatedAt: now(),
+          })
+          .where(eq(noodleAccounts.id, id));
+        const updated = (await tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, id)))[0];
+        return updated ? mapAccount(updated) : null;
+      });
+    },
+
+    async adoptNoodlerPublicIdentity(
+      id: string,
+      currentSource: NoodlerSourceSnapshot,
+    ): Promise<NoodleAccount | null> {
+      return db.transaction(async (tx) => {
+        const row = (await tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, id)))[0];
+        if (!row || row.platform !== "noodler") return null;
+        const settings = normalizeNoodleAccountSettings(row.settings);
+        if (settings.privacy.identityDisclosure !== "open") return null;
+        const baseline = settings.profile.noodlerSourceSnapshot ?? currentSource;
+        await tx
+          .update(noodleAccounts)
+          .set({
+            displayName: currentSource.publicDisplayName,
+            handle: normalizeHandle(currentSource.publicHandle, row.entityId),
+            settings: JSON.stringify({
+              ...settings,
+              profile: {
+                ...settings.profile,
+                noodlerSourceSnapshot: {
+                  ...baseline,
+                  publicDisplayName: currentSource.publicDisplayName,
+                  publicHandle: currentSource.publicHandle,
+                },
+              },
+            } satisfies NoodleAccountSettings),
+            updatedAt: now(),
+          })
+          .where(eq(noodleAccounts.id, id));
+        const updated = (await tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, id)))[0];
+        return updated ? mapAccount(updated) : null;
       });
     },
 
@@ -1549,7 +1637,19 @@ export function createNoodleStorage(db: DB) {
     /** Every NoodleR creator account with automatic posting enabled, settings attached. */
     async listAutoPostEnabledAccounts(): Promise<NoodleAccount[]> {
       const rows = await db.select().from(noodleAccounts).where(eq(noodleAccounts.platform, "noodler"));
-      return rows.map(mapAccount).filter((account) => account.settings.scheduler.autoPosting?.enabled === true);
+      const enabled = rows.map(mapAccount).filter((account) => account.settings.scheduler.autoPosting?.enabled === true);
+      const checked = await Promise.all(
+        enabled.map(async (account) => {
+          const publicAccount = account.noodleAccountId ? await this.getAccountById(account.noodleAccountId) : null;
+          if (publicAccount && (await resolveNoodlerSourceSnapshot(db, publicAccount))) return account;
+          await this.patchAccountSettings(account.id, {
+            subtree: "scheduler",
+            patch: { autoPosting: { enabled: false } },
+          });
+          return null;
+        }),
+      );
+      return checked.filter((account): account is NoodleAccount => account !== null);
     },
 
     /**
@@ -1897,6 +1997,18 @@ export function createNoodleStorage(db: DB) {
       const accounts = new Map(
         [...(await this.listAccounts()), ...(await this.listNoodlerAccounts())].map((account) => [account.id, account]),
       );
+      const missingSourceAccountIds = new Set(
+        (
+          await Promise.all(
+            [...accounts.values()]
+              .filter((account) => account.platform === "noodler")
+              .map(async (account) => {
+                const source = account.noodleAccountId ? accounts.get(account.noodleAccountId) : null;
+                return !source || !(await resolveNoodlerSourceSnapshot(db, source)) ? account.id : null;
+              }),
+          )
+        ).filter((id): id is string => id !== null),
+      );
       const invalidIds = prepared
         .filter((item) => {
           const account = accounts.get(item.creatorAccountId);
@@ -1908,6 +2020,7 @@ export function createNoodleStorage(db: DB) {
             Number.isNaN(Date.parse(item.generatedAt)) ||
             !account ||
             !source ||
+            missingSourceAccountIds.has(item.creatorAccountId) ||
             !account.settings.scheduler.autoPosting?.enabled ||
             item.policyFingerprint !== noodlerReservePolicyFingerprint(account, settings, source.updatedAt)
           );

@@ -42,11 +42,11 @@ If the checkout itself cannot update, run `git pull` in the Marinara folder and 
 npm install -g pnpm@10.34.5
 ```
 
-### Launcher stops once after the pnpm 10.34.5 security update
+### Launcher update to pnpm 10.34.5
 
-If an update prints `Expected version: >=10.34.5` and `Got: 10.33.2`, close the launcher and run it again. This one-time stop is intentional: the old launcher has already downloaded the updated Marinara files, but the new engine requirement prevents the affected pnpm version from installing dependencies. On the second launch, the refreshed launcher selects pnpm 10.34.5 before continuing. Corepack verifies the release against the SHA-512 digest pinned in `package.json`; the npm fallback also requests exactly 10.34.5 rather than an unpinned latest version.
+Marinara v2.4.1 moves its pinned package manager to pnpm 10.34.5. An existing 10.33.2 launcher can finish that one-time handoff in the same run; the refreshed launcher then selects 10.34.5 for future starts. Corepack verifies the release against the SHA-512 digest pinned in `package.json`, and the npm fallback also requests exactly 10.34.5 rather than an unpinned latest version.
 
-Do not use the generic unpinned command suggested by pnpm's engine error. If the second launch cannot obtain the pinned release automatically, install the same exact version and rerun the launcher:
+If an earlier v2.4.1 staging build already stopped with `Expected version: >=10.34.5` and `Got: 10.33.2`, run the launcher once more; that build downloaded the refreshed launcher before stopping. If the launcher still cannot obtain the pinned release automatically, install the exact version and rerun it:
 
 ```bash
 npm install -g pnpm@10.34.5

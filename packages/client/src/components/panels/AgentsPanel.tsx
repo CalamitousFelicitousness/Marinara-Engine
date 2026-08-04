@@ -1218,11 +1218,25 @@ export function AgentsPanel() {
                   )}
                 </div>
                 {(agentSearchActive ? folderAgents.length : folder.itemIds.length) > 0 && (
-                  <span className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)]">
+                  <span
+                    data-folder-item-count="inline"
+                    className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)] max-md:hidden [@media(pointer:coarse)]:hidden"
+                  >
                     {agentSearchActive ? folderAgents.length : folder.itemIds.length}
                   </span>
                 )}
-                <div className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 group-hover:[&_button]:pointer-events-auto [@media(pointer:fine)]:group-focus-within:[&_button]:pointer-events-auto max-md:[&_button]:pointer-events-auto [@media(pointer:coarse)]:[&_button]:pointer-events-auto">
+                <div
+                  data-folder-actions
+                  className="pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 group-hover:[&_button]:pointer-events-auto [@media(pointer:fine)]:group-focus-within:[&_button]:pointer-events-auto max-md:[&_button]:pointer-events-auto [@media(pointer:coarse)]:[&_button]:pointer-events-auto"
+                >
+                  {(agentSearchActive ? folderAgents.length : folder.itemIds.length) > 0 && (
+                    <span
+                      data-folder-item-count="actions"
+                      className="hidden px-1 text-[0.5625rem] text-[var(--muted-foreground)] max-md:inline [@media(pointer:coarse)]:inline"
+                    >
+                      {agentSearchActive ? folderAgents.length : folder.itemIds.length}
+                    </span>
+                  )}
                   <button
                     onClick={(event) => {
                       event.stopPropagation();

@@ -345,6 +345,22 @@ function latestNewMessageByRole(
   );
 }
 
+function latestDurableSubmittedUserMessage(
+  messages: Message[],
+  submissionId: string,
+  submittedContent: string,
+): Message | null {
+  return latestMessage(
+    messages.filter(
+      (message) =>
+        message.role === "user" &&
+        !message.id.startsWith("__optimistic_") &&
+        message.content === submittedContent &&
+        parseMessageExtraRecord(message.extra).submissionId === submissionId,
+    ),
+  );
+}
+
 function latestChangedAssistantMessage(qc: QueryClient, chatId: string, snapshot: MessageSnapshot): Message | null {
   if (!snapshot.cacheWasLoaded) return null;
   return latestAssistantMessage(
@@ -540,6 +556,13 @@ function createPendingAgentWriteApproval(proposal: AgentWriteApprovalProposal): 
     id,
     timestamp: Date.now(),
   };
+}
+
+function createGenerationSubmissionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `submission-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
@@ -1167,7 +1190,21 @@ export function useGenerate() {
 
       // Create an AbortController so the stop button can cancel this generation.
       const abortController = new AbortController();
-      const submittedUserTurn = params.userMessage !== undefined;
+      const pendingAttachments = params.attachments ?? [];
+      const submittedUserTurn = hasVisibleUserMessagePayload(params.userMessage, pendingAttachments);
+      const submissionId = submittedUserTurn && !params.impersonate ? createGenerationSubmissionId() : null;
+      const confirmDurableSubmittedUserTurn = async () => {
+        if (!submittedUserTurn || !submissionId || params.impersonate) return false;
+        try {
+          const messages = await api.get<Message[]>(`/chats/${params.chatId}/messages?limit=20`);
+          upsertPersistedMessages(qc, params.chatId, messages);
+          qc.invalidateQueries({ queryKey: chatKeys.messageCount(params.chatId) });
+          qc.invalidateQueries({ queryKey: lorebookKeys.active(params.chatId) });
+          return !!latestDurableSubmittedUserMessage(messages, submissionId, params.userMessage ?? "");
+        } catch {
+          return false;
+        }
+      };
       try {
         useChatStore.getState().setAbortController(params.chatId, abortController);
         useChatStore.getState().setBackgroundIllustration(params.chatId, false);
@@ -1211,7 +1248,6 @@ export function useGenerate() {
         { queryKey: chatKeys.messages(params.chatId), exact: true },
         { silent: true, revert: false },
       );
-      const pendingAttachments = params.attachments ?? [];
 
       // Optimistically show the user message in the chat immediately
       if (hasVisibleUserMessagePayload(params.userMessage, pendingAttachments) && !params.impersonate) {
@@ -1272,6 +1308,7 @@ export function useGenerate() {
             tokenCount: null,
             generationInfo: null,
             personaSnapshot,
+            ...(submissionId ? { submissionId } : {}),
             ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
           },
           createdAt: new Date().toISOString(),
@@ -1591,6 +1628,7 @@ export function useGenerate() {
           "/generate",
           {
             ...params,
+            submissionId,
             ...(currentBackground !== undefined ? { currentBackground } : {}),
             userStatus,
             userActivity,
@@ -2807,7 +2845,7 @@ export function useGenerate() {
         const msg = error instanceof Error ? error.message : "Generation failed";
         showError(msg);
         window.dispatchEvent(new CustomEvent("marinara:generation-error", { detail: { chatId: params.chatId } }));
-        return false;
+        return await confirmDurableSubmittedUserTurn();
       } finally {
         // Stream has terminated (done, error, abort, or unexpected throw) —
         // guarantee the Mari indicator clears even if the end SSE never arrived.
@@ -3134,7 +3172,8 @@ export function useGenerate() {
           }
         }
       }
-      return receivedContent || passiveStreamRecovered || spatialTransitionCommitted;
+      if (receivedContent || passiveStreamRecovered || spatialTransitionCommitted) return true;
+      return await confirmDurableSubmittedUserTurn();
     },
     [
       qc,

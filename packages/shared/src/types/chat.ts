@@ -750,6 +750,8 @@ export interface MessageExtra {
   generationInfo: GenerationInfo | null;
   /** User-uploaded or generated attachments associated with this message. */
   attachments?: MessageAttachment[] | null;
+  /** Client-generated ID that correlates a submitted user turn with its durable row. */
+  submissionId?: string | null;
   /** Persisted translated text for this message, if the user generated one. */
   translation?: string | null;
   /** User hid the persisted translation from display without deleting it. */
@@ -859,6 +861,8 @@ export interface MessageSwipe {
 export interface GenerateRequest {
   chatId: string;
   userMessage: string | null;
+  /** Client-generated ID used to confirm that this exact user turn was persisted. */
+  submissionId?: string | null;
   /** If set, regenerate the message at this ID */
   regenerateMessageId: string | null;
   /** If set, append the generated continuation to this assistant message */

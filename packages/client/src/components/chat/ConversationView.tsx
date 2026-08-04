@@ -435,6 +435,24 @@ export function ConversationView({
       item.status === "active" && item.manifest.kind.includes("conversation-calls") && item.manifest.entrypoints.client,
   );
   const callCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
+  const activeAgentIds = Array.isArray(chatMeta.activeAgentIds)
+    ? chatMeta.activeAgentIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const enabledConversationCapabilities = chatMeta.enableAgents === true
+    ? installedCapabilities.filter((item) => {
+        if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
+        if (item.manifest.kind.includes("conversation-calls")) return false;
+        const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
+        return activeAgentIds.includes(item.id) || contributedAgentIds.some((id) => activeAgentIds.includes(id));
+      })
+    : [];
+  const conversationToolbarPackages = enabledConversationCapabilities.filter((item) =>
+    item.manifest.contributions?.slots?.includes("conversation-toolbar"),
+  );
+  const conversationSurfacePackages = enabledConversationCapabilities.filter((item) =>
+    item.manifest.contributions?.slots?.includes("conversation-surface"),
+  );
+  const conversationCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
   const renderToolbarActions = (compact = false) => (
     <>
       <ChatBranchSelector
@@ -483,6 +501,15 @@ export function ConversationView({
       />
 
       <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-2">
+        {conversationToolbarPackages.map((item) => (
+          <CapabilityElement
+            key={`${item.id}-toolbar`}
+            packageId={item.id}
+            view="toolbar"
+            capabilityProps={conversationCapabilityProps}
+            className="contents"
+          />
+        ))}
         {callsPackage && (
           <CapabilityElement
             packageId={callsPackage.id}
@@ -1438,6 +1465,15 @@ export function ConversationView({
           className="contents"
         />
       )}
+      {conversationSurfacePackages.map((item) => (
+        <CapabilityElement
+          key={`${item.id}-conversation-surface`}
+          packageId={item.id}
+          view="surface"
+          capabilityProps={conversationCapabilityProps}
+          className="contents"
+        />
+      ))}
       {/* Setup modals mounted once here (stable position) so they never double-render.
           Keyed by chatId so their internal selection state resets on a chat switch
           (matches ConversationInput below) — otherwise stale selected ids would

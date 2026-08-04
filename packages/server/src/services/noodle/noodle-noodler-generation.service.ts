@@ -257,7 +257,9 @@ function parseNoodlerPost(content: string) {
   // Many LLMs (especially local models via Ollama/KoboldCPP) wrap the expected object
   // in an array ([{"title":...}]) regardless of the prompt instructing "one JSON object".
   // Unwrap all array cases: empty → {}, single → first element, multiple → first element.
-  if (Array.isArray(parsed)) {
+  return noodleGeneratedNoodlerPostSchema.parse(
+    Array.isArray(parsed) && parsed.length === 1 ? parsed[0] : parsed,
+  );
     const target = parsed.length > 0 ? parsed[0] : {};
     return noodleGeneratedNoodlerPostSchema.parse(target);
   }

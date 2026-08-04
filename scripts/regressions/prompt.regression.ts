@@ -3210,10 +3210,14 @@ const cases: RegressionCase[] = [
         new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
         "utf8",
       );
+      const settingsOrderSource = readFileSync(
+        new URL("../../packages/client/src/lib/agent-settings-order.ts", import.meta.url),
+        "utf8",
+      ).replace(/\r\n/gu, "\n");
       const roleplaySurfaceSource = readFileSync(
         new URL("../../packages/client/src/components/chat/ChatRoleplaySurface.tsx", import.meta.url),
         "utf8",
-      );
+      ).replace(/\r\n/gu, "\n");
       const storyboardChatSettingsSource = readFileSync(
         new URL("../../packages/client/src/components/chat/StoryboardChatSettingsPanel.tsx", import.meta.url),
         "utf8",
@@ -3242,13 +3246,13 @@ const cases: RegressionCase[] = [
         new URL("../../packages/server/src/routes/chats.routes.ts", import.meta.url),
         "utf8",
       );
-      const storyboardOrderStart = drawerSource.indexOf("ROLEPLAY_AGENT_SETTINGS_ORDER.set(\n  STORYBOARD_AGENT_ID,");
-      const storyboardOrderEnd = drawerSource.indexOf("\n);", storyboardOrderStart);
+      const storyboardOrderStart = settingsOrderSource.indexOf("order.set(\n    STORYBOARD_AGENT_ID,");
+      const storyboardOrderEnd = settingsOrderSource.indexOf("\n  );", storyboardOrderStart);
       assert.notEqual(storyboardOrderStart, -1, "Storyboard should have an explicit Roleplay settings order");
       assert.notEqual(storyboardOrderEnd, -1, "Storyboard settings order registration should be complete");
-      const storyboardOrderSource = drawerSource.slice(storyboardOrderStart, storyboardOrderEnd + 3);
+      const storyboardOrderSource = settingsOrderSource.slice(storyboardOrderStart, storyboardOrderEnd + 5);
       const storyboardOrderOffset = storyboardOrderSource.match(
-        /ROLEPLAY_AGENT_SETTINGS_ORDER\.get\(STORYBOARD_AGENT_ID\)\s*\?\?\s*\(ROLEPLAY_AGENT_SETTINGS_ORDER\.get\("illustrator"\)\s*\?\?\s*ROLEPLAY_AGENT_SETTINGS_ORDER\.size\)\s*\+\s*(\d+(?:\.\d+)?)/u,
+        /order\.get\(STORYBOARD_AGENT_ID\)\s*\?\?\s*\(order\.get\("illustrator"\)\s*\?\?\s*order\.size\)\s*\+\s*(\d+(?:\.\d+)?)/u,
       )?.[1];
       assert.equal(Number(storyboardOrderOffset), 0.5, "Storyboard settings should sort directly after Illustrator");
 

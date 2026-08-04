@@ -40,6 +40,7 @@ import type {
   NoodlerManagedStageProfile,
   NoodlerManagedPost,
   NoodlerStageProfile,
+  NoodlerSourceSnapshot,
   Persona,
 } from "@marinara-engine/shared";
 import { countNoodlerPostsSince } from "@marinara-engine/shared";
@@ -476,6 +477,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const [previousDraft, setPreviousDraft] = useState<NoodleStageProfileInput | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [acceptSourceChangesForProfileId, setAcceptSourceChangesForProfileId] = useState<string | null>(null);
+  const [draftSourceSnapshot, setDraftSourceSnapshot] = useState<NoodlerSourceSnapshot | null>(null);
   // Back from a stage profile returns to wherever it was opened from (hub feed, sidebar,
   // profile list) instead of always dumping the user on the profile list. Hub is the fallback.
   const profileReturnView = useRef<"hub" | "profiles">("hub");
@@ -806,6 +808,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
         onSuccess: (draft) => {
           if (profileDraft) setPreviousDraft(profileDraft);
           if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
+          setDraftSourceSnapshot(draft.sourceSnapshot ?? null);
           setProfileDraft(draft);
           setCreationStep("draft");
         },
@@ -863,6 +866,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
           accountId: editingProfileId,
           ...input,
           acceptSourceChanges: acceptSourceChangesForProfileId === editingProfileId,
+          sourceSnapshot: draftSourceSnapshot ?? undefined,
         },
         { onSuccess, onError },
       );
@@ -1010,7 +1014,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
 
   // Reserve the same rail width as the feed view (see NoodleHome's "settings" rail) so
   // non-feed screens don't stretch the shell wider and look like a different layout.
-  const emptyRightRail = <aside className="hidden w-[22rem] shrink-0 px-4 py-3 @min-[1280px]:block" aria-hidden="true" />;
+  const emptyRightRail = (
+    <aside className="hidden w-[22rem] shrink-0 px-4 py-3 @min-[1280px]:block" aria-hidden="true" />
+  );
 
   // Shared review layer: Guide generation can be triggered from both the selected stage-profile
   // view and the hub, so the confirmation modal must render on every branch that owns that action.
@@ -2386,6 +2392,13 @@ function StageProfileView({
   const { t: localizeUi } = useUiTranslation();
   const [accessSettingsOpen, setAccessSettingsOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
+  const sourceMissing = profile.sourceStatus.state === "missing";
+  useEffect(() => {
+    if (sourceMissing) {
+      setAccessSettingsOpen(false);
+      setAutomationOpen(false);
+    }
+  }, [sourceMissing]);
   const updateAutoPosting = useUpdateNoodlerAutoPosting();
   const dismissSourceChanges = useDismissNoodlerSourceChanges();
   const adoptSourceIdentity = useAdoptNoodlerSourceIdentity();
@@ -2627,7 +2640,10 @@ function StageProfileView({
         }
         bioContent={profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
         preTabsContent={
-          <section className="border-t border-[var(--noodle-divider)] px-4 py-4" aria-labelledby="creator-management-title">
+          <section
+            className="border-t border-[var(--noodle-divider)] px-4 py-4"
+            aria-labelledby="creator-management-title"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 id="creator-management-title" className="text-sm font-bold">
@@ -2638,39 +2654,47 @@ function StageProfileView({
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onEdit}
-              className="h-9 rounded-md bg-[var(--noodle-accent)] px-4 text-xs font-bold text-zinc-950 transition-[opacity,scale] hover:opacity-90 active:scale-[0.96]"
-            >
-              {localizeUi("ui.noodle.stageprofileview.editProfile")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAccessSettingsOpen(true)}
-              className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
-            >
-              {localizeUi("ui.noodle.stageprofileview.access")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAutomationOpen(true)}
-              disabled={profile.sourceStatus.state === "missing"}
-              className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
-            >
-              {autoPosting.enabled
-                ? localizeUi("ui.noodle.stageprofileview.automationOn")
-                : localizeUi("ui.noodle.stageprofileview.automation")}
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={deletePending}
-              aria-label={localizeUi("ui.noodle.stageprofileview.deleteValue1Profile", { value1: profile.displayName })}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--destructive)]/45 text-[var(--destructive)] hover:bg-[var(--destructive)]/10 disabled:cursor-wait disabled:opacity-50"
-            >
-              {deletePending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            </button>
+                {!sourceMissing && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onEdit}
+                      className="h-9 rounded-md bg-[var(--noodle-accent)] px-4 text-xs font-bold text-zinc-950 transition-[opacity,scale] hover:opacity-90 active:scale-[0.96]"
+                    >
+                      {localizeUi("ui.noodle.stageprofileview.editProfile")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccessSettingsOpen(true)}
+                      className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
+                    >
+                      {localizeUi("ui.noodle.stageprofileview.access")}
+                    </button>
+                  </>
+                )}
+                {!sourceMissing && (
+                  <button
+                    type="button"
+                    onClick={() => setAutomationOpen(true)}
+                    disabled={profile.sourceStatus.state === "missing"}
+                    className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
+                  >
+                    {autoPosting.enabled
+                      ? localizeUi("ui.noodle.stageprofileview.automationOn")
+                      : localizeUi("ui.noodle.stageprofileview.automation")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  disabled={deletePending}
+                  aria-label={localizeUi("ui.noodle.stageprofileview.deleteValue1Profile", {
+                    value1: profile.displayName,
+                  })}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--destructive)]/45 text-[var(--destructive)] hover:bg-[var(--destructive)]/10 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {deletePending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                </button>
               </div>
             </div>
             {profile.sourceStatus.state === "missing" ? (
@@ -2687,13 +2711,22 @@ function StageProfileView({
                 <p className="text-sm font-bold">{localizeUi("ui.noodle.creatormanagement.sourceChanged")}</p>
                 <div className="mt-2 space-y-2">
                   {profile.sourceStatus.changes.map((change) => (
-                    <details key={change.field} className="rounded-md border border-[var(--noodle-divider)] bg-[var(--background)]">
+                    <details
+                      key={change.field}
+                      className="rounded-md border border-[var(--noodle-divider)] bg-[var(--background)]"
+                    >
                       <summary className="cursor-pointer px-3 py-2 text-xs font-bold">
                         {localizeUi(`ui.noodle.creatormanagement.field.${change.field}`)}
                       </summary>
                       <div className="grid gap-2 border-t border-[var(--noodle-divider)] p-3 @min-[640px]:grid-cols-2">
-                        <SourceDiffValue label={localizeUi("ui.noodle.creatormanagement.previous")} value={change.previous} />
-                        <SourceDiffValue label={localizeUi("ui.noodle.creatormanagement.current")} value={change.current} />
+                        <SourceDiffValue
+                          label={localizeUi("ui.noodle.creatormanagement.previous")}
+                          value={change.previous}
+                        />
+                        <SourceDiffValue
+                          label={localizeUi("ui.noodle.creatormanagement.current")}
+                          value={change.current}
+                        />
                       </div>
                     </details>
                   ))}
@@ -2706,7 +2739,14 @@ function StageProfileView({
                       <button
                         type="button"
                         disabled={adoptSourceIdentity.isPending}
-                        onClick={() => adoptSourceIdentity.mutate(profile.id)}
+                        onClick={() =>
+                          adoptSourceIdentity.mutate(profile.id, {
+                            onError: (error) =>
+                              toast.error(
+                                errorMessage(error, localizeUi("ui.noodle.creatormanagement.couldNotAdoptIdentity")),
+                              ),
+                          })
+                        }
                         className="h-9 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold disabled:opacity-50"
                       >
                         {localizeUi("ui.noodle.creatormanagement.adoptIdentity")}
@@ -2728,7 +2768,13 @@ function StageProfileView({
                         message: localizeUi("ui.noodle.creatormanagement.dismissDetail"),
                         confirmLabel: localizeUi("ui.noodle.creatormanagement.dismiss"),
                       });
-                      if (confirmed) dismissSourceChanges.mutate(profile.id);
+                      if (confirmed)
+                        dismissSourceChanges.mutate(profile.id, {
+                          onError: (error) =>
+                            toast.error(
+                              errorMessage(error, localizeUi("ui.noodle.creatormanagement.couldNotDismissChanges")),
+                            ),
+                        });
                     }}
                     className="h-9 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold disabled:opacity-50"
                   >
@@ -2773,7 +2819,7 @@ function StageProfileView({
         postList={cards}
       />
       <Modal
-        open={accessSettingsOpen}
+        open={accessSettingsOpen && !sourceMissing}
         onClose={() => setAccessSettingsOpen(false)}
         title={localizeUi("ui.noodle.stageprofileview.viewerAccess")}
         width="max-w-md"
@@ -2821,7 +2867,7 @@ function StageProfileView({
         </div>
       </Modal>
       <Modal
-        open={automationOpen}
+        open={automationOpen && !sourceMissing}
         onClose={() => setAutomationOpen(false)}
         title={localizeUi("ui.noodle.stageprofileview.automaticPosting")}
         width="max-w-md"
@@ -3009,8 +3055,7 @@ function ViewerHub({
   // while discovery search has replaced it. Declared above the early returns so hook order
   // stays stable across the empty and error states below.
   // A search-filtered list is not the feed either, so it does not count as having seen it.
-  const feedIsOnScreen =
-    tab === "all" && Boolean(scope) && !isLoading && !isError && !discoveryOpen && !search.trim();
+  const feedIsOnScreen = tab === "all" && Boolean(scope) && !isLoading && !isError && !discoveryOpen && !search.trim();
   useEffect(() => {
     if (feedIsOnScreen) onFeedShown();
   }, [feedIsOnScreen, onFeedShown]);

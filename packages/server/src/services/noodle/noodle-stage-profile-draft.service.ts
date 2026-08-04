@@ -24,6 +24,7 @@ import {
   protectNoodlerGeneratedIdentity,
   stageProfileContainsPublicIdentity,
 } from "./noodle-noodler-generation.service.js";
+import { resolveNoodlerSourceSnapshot } from "./noodle-noodler-source.js";
 
 type GenerationConnection = NonNullable<Awaited<ReturnType<ReturnType<typeof createConnectionsStorage>["getWithKey"]>>>;
 
@@ -80,6 +81,7 @@ export function buildNoodlerStageProfileDraftMessages(input: {
   const sourceDetails = input.source
     ? noodlerSourceText(input.source.data)
     : "General temperament and creative interests from the source profile.";
+  const initialHintedDraft = input.request.disclosureMode === "hinted" && !input.request.currentDraft;
   const rawSourceContext =
     input.request.disclosureMode === "secret"
       ? [
@@ -88,13 +90,22 @@ export function buildNoodlerStageProfileDraftMessages(input: {
           "Do not infer canonical facts or recognizable story details.",
           `Public bio themes, redacted: ${input.publicAccount.bio ? "A source bio exists; do not reproduce its wording." : "None."}`,
         ].join("\n")
-      : [
-          "# Source character or persona",
-          `Public name: ${input.publicAccount.displayName}`,
-          `Public handle: @${input.publicAccount.handle}`,
-          `Public bio: ${input.publicAccount.bio || "No bio provided."}`,
-          sourceDetails,
-        ].join("\n");
+      : initialHintedDraft
+        ? [
+            "# Non-identifying inspiration brief",
+            "Use only broad temperament, creative interests, and non-identifying aesthetic direction.",
+            sourceDetails
+              .split("\n")
+              .filter((line) => !line.startsWith("Name: ") && !line.startsWith("Description: "))
+              .join("\n"),
+          ].join("\n")
+        : [
+            "# Source character or persona",
+            `Public name: ${input.publicAccount.displayName}`,
+            `Public handle: @${input.publicAccount.handle}`,
+            `Public bio: ${input.publicAccount.bio || "No bio provided."}`,
+            sourceDetails,
+          ].join("\n");
   const sourceContext =
     input.request.disclosureMode === "open"
       ? rawSourceContext
@@ -128,7 +139,7 @@ export function buildNoodlerStageProfileDraftMessages(input: {
 export async function generateNoodlerStageProfileDraft(
   db: DB,
   input: { request: NoodleStageProfileDraftRequest; connection: GenerationConnection },
-): Promise<NoodleStageProfileInput> {
+): Promise<NoodleStageProfileInput & { sourceSnapshot?: Awaited<ReturnType<typeof resolveNoodlerSourceSnapshot>> }> {
   const noodle = createNoodleStorage(db);
   const noodlerAccount = input.request.noodlerAccountId
     ? await noodle.getNoodlerAccountById(input.request.noodlerAccountId)
@@ -196,11 +207,7 @@ export async function generateNoodlerStageProfileDraft(
     }),
     temperature: 0.7,
     topP: 0.9,
-    ...resolveStoredChatOptions(
-      input.connection.defaultParameters,
-      input.connection.provider,
-      input.connection.model,
-    ),
+    ...resolveStoredChatOptions(input.connection.defaultParameters, input.connection.provider, input.connection.model),
     stream: false,
     debugMode,
     responseFormat: noodleResponseFormat(input.connection.model, "noodler_profile"),
@@ -210,5 +217,5 @@ export async function generateNoodlerStageProfileDraft(
   if (stageProfileContainsPublicIdentity(draft, identity)) {
     throw new Error("Generated stage draft included the linked public identity. Try again with different guidance.");
   }
-  return draft;
+  return { ...draft, sourceSnapshot: await resolveNoodlerSourceSnapshot(db, publicAccount) };
 }

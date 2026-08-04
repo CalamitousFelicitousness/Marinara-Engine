@@ -280,9 +280,9 @@ export async function noodleRoutes(app: FastifyInstance) {
       publicAccount.kind === "character"
         ? await characters.getById(publicAccount.entityId)
         : publicAccount.kind === "persona"
-          ? await characters.getPersona(publicAccount.entityId).then((persona) =>
-              persona ? { data: { name: persona.name } } : null,
-            )
+          ? await characters
+              .getPersona(publicAccount.entityId)
+              .then((persona) => (persona ? { data: { name: persona.name } } : null))
           : null;
     return buildNoodlerPublicIdentity(publicAccount, source);
   }
@@ -860,7 +860,12 @@ export async function noodleRoutes(app: FastifyInstance) {
     }
     try {
       const sourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
-      const created = await noodle.createNoodlerAccount(id, parsed.data.stageProfile, undefined, sourceSnapshot ?? undefined);
+      const created = await noodle.createNoodlerAccount(
+        id,
+        parsed.data.stageProfile,
+        undefined,
+        sourceSnapshot ?? undefined,
+      );
       if (!created) return reply.code(404).send({ error: "Noodle account not found" });
       const profile = (await noodle.listNoodlerStageProfiles()).find((item) => item.id === created.id);
       if (!profile) throw new Error("Failed to load the created NoodleR stage profile.");
@@ -996,11 +1001,19 @@ export async function noodleRoutes(app: FastifyInstance) {
       ) {
         return { status: "identity_conflict" } as const;
       }
+      const currentSourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
       const sourceSnapshot =
-        parsed.data.acceptSourceChanges && publicAccount
-          ? await resolveNoodlerSourceSnapshot(app.db, publicAccount)
+        parsed.data.acceptSourceChanges &&
+        parsed.data.sourceSnapshot &&
+        currentSourceSnapshot &&
+        JSON.stringify(currentSourceSnapshot) === JSON.stringify(parsed.data.sourceSnapshot)
+          ? currentSourceSnapshot
           : undefined;
-      const { acceptSourceChanges: _acceptSourceChanges, ...stageProfile } = parsed.data;
+      const {
+        acceptSourceChanges: _acceptSourceChanges,
+        sourceSnapshot: _sourceSnapshot,
+        ...stageProfile
+      } = parsed.data;
       const updated = await noodle.updateNoodlerStageProfile(id, stageProfile, sourceSnapshot ?? undefined);
       if (!updated) return { status: "not_found" } as const;
       const profile = (await noodle.listNoodlerStageProfiles()).find((item) => item.id === updated.id);
@@ -1047,7 +1060,9 @@ export async function noodleRoutes(app: FastifyInstance) {
       const publicAccount = account?.noodleAccountId ? await noodle.getAccountById(account.noodleAccountId) : null;
       const sourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
       if (!account || !sourceSnapshot) return "missing" as const;
-      return (await noodle.adoptNoodlerPublicIdentity(id, sourceSnapshot)) ? ("updated" as const) : ("invalid" as const);
+      return (await noodle.adoptNoodlerPublicIdentity(id, sourceSnapshot))
+        ? ("updated" as const)
+        : ("invalid" as const);
     });
     if (!locked.acquired) return reply.code(409).send({ error: "Another Creator operation is already running." });
     if (locked.value === "missing") return reply.code(404).send({ error: "NoodleR source not found" });

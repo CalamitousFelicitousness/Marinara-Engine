@@ -503,6 +503,10 @@ const initialHintedDraftMessages = buildNoodlerStageProfileDraftMessages({
 const initialHintedDraftPrompt = initialHintedDraftMessages.map((message) => message.content).join("\n");
 assert.match(initialHintedDraftPrompt, /Patient and intensely curious\./u);
 assert.doesNotMatch(initialHintedDraftPrompt, /# Current draft|After Hours|afterhours/u);
+assert.doesNotMatch(
+  initialHintedDraftPrompt,
+  /A marine biologist who maps bioluminescent tide pools\.|a public persona/u,
+);
 const rewrittenHintedDraftPrompt = buildNoodlerStageProfileDraftMessages({
   request: {
     disclosureMode: "hinted",
@@ -905,9 +909,7 @@ assert.equal(normalizeNoodleImagePrompt('{"content":"do not send this JSON to an
 // shared block's framing is covered by this test and not only the Noodle-side template.
 const noodleImageReferences = await resolveIllustratorCharacterReferences({
   charactersStore: { list: async () => [] },
-  chatCharacters: [
-    { id: "dottore", name: "Dottore", avatarPath: null, appearance: "blue hair and a white mask" },
-  ],
+  chatCharacters: [{ id: "dottore", name: "Dottore", avatarPath: null, appearance: "blue hair and a white mask" }],
   persona: null,
   requestedNames: ["Dottore"],
   promptText: "Dottore",

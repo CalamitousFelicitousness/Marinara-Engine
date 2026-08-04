@@ -294,7 +294,11 @@ export const noodlerTargetedRefreshSchema = z
   })
   .strict();
 export const noodleStageProfileUpdateSchema = z
-  .object({ ...noodleStageProfileShape, acceptSourceChanges: z.boolean().optional() })
+  .object({
+    ...noodleStageProfileShape,
+    acceptSourceChanges: z.boolean().optional(),
+    sourceSnapshot: noodlerSourceSnapshotSchema.optional(),
+  })
   .strict();
 
 export const noodleStageProfileDraftRequestSchema = z
@@ -311,7 +315,9 @@ export const noodleStageProfileDraftRequestSchema = z
     message: "Choose a source account.",
   });
 
-export const noodleStageProfileDraftResponseSchema = noodleStageProfileSchema;
+export const noodleStageProfileDraftResponseSchema = noodleStageProfileSchema.extend({
+  sourceSnapshot: noodlerSourceSnapshotSchema.optional(),
+});
 
 export const noodleInviteSchema = z.object({
   characterId: z.string().min(1),

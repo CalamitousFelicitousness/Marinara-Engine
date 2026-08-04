@@ -12,6 +12,7 @@ import {
   updatePersonaGroupSchema,
   PROFESSOR_MARI_ID,
   CONVERSATION_CALL_CHARACTER_VIDEO_CLIP_KINDS,
+  findImageStyleProfile,
 } from "@marinara-engine/shared";
 import type { CharacterData, ConversationCallCharacterVideoClipKind, ExportEnvelope } from "@marinara-engine/shared";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -380,15 +381,14 @@ const avatarGenerationPromptId = (name: string) =>
       .slice(0, 120) || "character"
   }`;
 
-function buildAvatarGenerationPrompt(body: AvatarGenerationBody): string {
+const AVATAR_GENERATION_HARD_NEGATIVE_PROMPT =
+  "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, extra people, cropped-off heads";
+
+function buildAvatarGenerationPrompt(body: AvatarGenerationBody, profileSubjectTags: string): string {
   const name = body.name?.trim() || "Character";
   const appearance = body.appearance?.trim() || name;
-  return [
-    `Create a polished character avatar portrait for ${name}.`,
-    `Canonical appearance: ${appearance}.`,
-    `Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`,
-    `Avoid text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, extra people, and cropped-off heads.`,
-  ].join(" ");
+  if (profileSubjectTags.trim()) return `Canonical appearance for ${name}: ${appearance}.`;
+  return `Create a polished character avatar portrait for ${name}. Canonical appearance: ${appearance}. Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`;
 }
 
 async function resolveAvatarGenerationConnection(app: FastifyInstance, body: AvatarGenerationBody) {
@@ -674,12 +674,18 @@ export async function charactersRoutes(app: FastifyInstance) {
     const width = body.width ?? imageSettings.portrait.width;
     const height = body.height ?? imageSettings.portrait.height;
     const imageDefaults = resolveConnectionImageDefaults(resolved.conn);
+    const profileSubjectTags =
+      findImageStyleProfile(
+        imageSettings.styleProfiles,
+        body.styleProfileId || imageDefaults?.styleProfileId || imageSettings.styleProfiles.defaultProfileId,
+      ).subjectTags.avatar ?? "";
     const compiled = compileImagePrompt({
       kind: "avatar",
-      prompt: buildAvatarGenerationPrompt(body),
+      prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
       styleProfiles: imageSettings.styleProfiles,
       styleProfileId: body.styleProfileId,
       imageDefaults,
+      hardNegative: AVATAR_GENERATION_HARD_NEGATIVE_PROMPT,
     });
     const previewSize = resolveImagePromptReviewSize({
       connection: resolved.conn,
@@ -743,6 +749,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     const imgSource = conn.imageGenerationSource || imgModel;
     const imgServiceHint = conn.imageService || imgSource;
     const imageDefaults = resolveConnectionImageDefaults(conn);
+    const profileSubjectTags =
+      findImageStyleProfile(
+        imageSettings.styleProfiles,
+        body.styleProfileId || imageDefaults?.styleProfileId || imageSettings.styleProfiles.defaultProfileId,
+      ).subjectTags.avatar ?? "";
     const imageFallback = await resolveImageConnectionFallback(connections, conn.id);
     const compiled = promptOverride
       ? {
@@ -751,10 +762,11 @@ export async function charactersRoutes(app: FastifyInstance) {
         }
       : compileImagePrompt({
           kind: "avatar",
-          prompt: buildAvatarGenerationPrompt(body),
+          prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
           styleProfiles: imageSettings.styleProfiles,
           styleProfileId: body.styleProfileId,
           imageDefaults,
+          hardNegative: AVATAR_GENERATION_HARD_NEGATIVE_PROMPT,
         });
 
     try {

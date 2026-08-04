@@ -693,6 +693,7 @@ export function CharacterLibraryView() {
                   <Fragment key={card.id}>
                     <button
                       type="button"
+                      data-card-library-card={card.id}
                       onClick={() => setSelectedId(card.id)}
                       className={cn(
                         "group flex h-full items-stretch overflow-hidden rounded-[1.25rem] border bg-[var(--card)]/70 text-left shadow-[0_20px_50px_-32px_rgba(15,23,42,0.75)] transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--marinara-chat-chrome-accent)_35%,transparent)] sm:flex-col sm:rounded-[1.75rem] sm:hover:-translate-y-0.5",
@@ -702,8 +703,9 @@ export function CharacterLibraryView() {
                       )}
                     >
                       <div
+                        data-card-library-avatar
                         className={cn(
-                          "mari-avatar-placeholder relative h-24 w-24 shrink-0 overflow-hidden sm:h-auto sm:w-full sm:aspect-square",
+                          "mari-avatar-placeholder relative min-h-24 w-24 shrink-0 self-stretch overflow-hidden sm:h-auto sm:min-h-0 sm:w-full sm:self-auto sm:aspect-square",
                           placeholderClass,
                         )}
                       >

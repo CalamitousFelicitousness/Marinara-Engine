@@ -1776,7 +1776,10 @@ export function ChatRoleplaySurface({
                       key={`${item.id}-toolbar`}
                       packageId={item.id}
                       view="toolbar"
-                      capabilityProps={conversationCapabilityProps}
+                      capabilityProps={{
+                        ...conversationCapabilityProps,
+                        toolbarButtonClass: getChatToolbarButtonClass(),
+                      }}
                       className="contents"
                     />
                   ))}
@@ -1897,7 +1900,10 @@ export function ChatRoleplaySurface({
                           key={`${item.id}-compact-toolbar`}
                           packageId={item.id}
                           view="toolbar"
-                          capabilityProps={conversationCapabilityProps}
+                          capabilityProps={{
+                            ...conversationCapabilityProps,
+                            toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
+                          }}
                           className="contents"
                         />
                       ))}

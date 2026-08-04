@@ -21,7 +21,7 @@ import { ConversationGamesPicker } from "./ConversationGamesPicker";
 import { SceneBanner, EndSceneBar } from "./SceneBanner";
 import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
-import { ChatToolbarButton, ChatToolbarMenu } from "./ChatToolbarControls";
+import { ChatToolbarButton, ChatToolbarMenu, getChatToolbarButtonClass } from "./ChatToolbarControls";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { TranscriptWindowControls } from "./TranscriptWindowControls";
@@ -506,7 +506,10 @@ export function ConversationView({
             key={`${item.id}-toolbar`}
             packageId={item.id}
             view="toolbar"
-            capabilityProps={conversationCapabilityProps}
+            capabilityProps={{
+              ...conversationCapabilityProps,
+              toolbarButtonClass: getChatToolbarButtonClass(),
+            }}
             className="contents"
           />
         ))}

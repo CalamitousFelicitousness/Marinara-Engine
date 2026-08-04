@@ -144,13 +144,24 @@ export function forgetRecentMessageContentEdit(chatId: string, messageId: string
   return true;
 }
 
+export function normalizeHydratedMessage(message: Message): Message {
+  const activeSwipeIndex = (message as Message & { activeSwipeIndex?: unknown }).activeSwipeIndex;
+  if (typeof activeSwipeIndex === "number" && Number.isInteger(activeSwipeIndex) && activeSwipeIndex >= 0) {
+    return message;
+  }
+  return { ...message, activeSwipeIndex: 0 };
+}
+
 export function preserveRecentMessageContentEdit(chatId: string, message: Message): Message {
   pruneRecentMessageContentEdits();
-  const edit = recentMessageContentEdits.get(message.id);
-  if (!edit || edit.chatId !== chatId) return message;
-  if (edit.activeSwipeIndex !== null && edit.activeSwipeIndex !== (message.activeSwipeIndex ?? 0)) return message;
-  if (message.content === edit.content) return message;
-  return { ...message, content: edit.content };
+  const normalizedMessage = normalizeHydratedMessage(message);
+  const edit = recentMessageContentEdits.get(normalizedMessage.id);
+  if (!edit || edit.chatId !== chatId) return normalizedMessage;
+  if (edit.activeSwipeIndex !== null && edit.activeSwipeIndex !== normalizedMessage.activeSwipeIndex) {
+    return normalizedMessage;
+  }
+  if (normalizedMessage.content === edit.content) return normalizedMessage;
+  return { ...normalizedMessage, content: edit.content };
 }
 
 export function applyRecentMessageContentEditsToData(
@@ -273,7 +284,10 @@ export function useChatMessages(chatId: string | null, pageSize: number = 0, ena
 export function useChatMessagePeek(chatId: string | null, limit = 4, enabled = false) {
   return useQuery({
     queryKey: [...chatKeys.messagePeek(chatId ?? ""), limit],
-    queryFn: ({ signal }) => api.get<Message[]>(`/chats/${chatId}/messages?limit=${limit}`, { signal }),
+    queryFn: ({ signal }) =>
+      api
+        .get<Message[]>(`/chats/${chatId}/messages?limit=${limit}`, { signal })
+        .then((messages) => messages.map(normalizeHydratedMessage)),
     enabled: !!chatId && enabled,
     staleTime: 15_000,
   });
@@ -1418,8 +1432,9 @@ export function useSetActiveSwipe(chatId: string | null) {
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
         return;
       }
+      const normalizedUpdated = normalizeHydratedMessage(updated);
       qc.setQueryData<InfiniteData<Message[]>>(chatKeys.messages(chatId), (old) =>
-        replaceCachedMessage(old, messageId, (msg) => ({ ...msg, ...updated })),
+        replaceCachedMessage(old, messageId, (msg) => ({ ...msg, ...normalizedUpdated })),
       );
       qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
     },

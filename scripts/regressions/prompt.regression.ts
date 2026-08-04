@@ -754,6 +754,7 @@ import {
 import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
+  illustratorPromptTemplateOwnsComposition,
   mergeIllustratorNegativePrompt,
   normalizeIllustratorAppearance,
   readIllustratorAppearance,
@@ -3811,6 +3812,7 @@ const cases: RegressionCase[] = [
           source,
           /mergeIllustratorNegativePrompt\(\s*compiledPrompt\.prompt,\s*compiledPrompt\.negativePrompt/,
         );
+        assert.match(source, /omitProfileSubjectTags:\s*illustratorPromptTemplateOwnsComposition\(/);
         assert.doesNotMatch(source, /ILLUSTRATOR_TEXT_NEGATIVE_PROMPT/);
       }
 
@@ -3840,6 +3842,58 @@ const cases: RegressionCase[] = [
         false,
       );
       assert.equal(illustratorPromptRequestsRenderedText('shopfront sign reading "OPEN ALL NIGHT"'), true);
+    },
+  },
+  {
+    name: "Illustrator injects configured Illustration tags while dedicated comic templates retain composition",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const profile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(profile);
+      const illustrationTemplate =
+        "Generate a polished single-scene illustration with composition, lighting, mood, and environment.";
+      const comicTemplate =
+        "Build the prompt as a complete comic page with panel composition, speech bubbles, captions, and SFX lettering.";
+
+      assert.equal(illustratorPromptTemplateOwnsComposition(illustrationTemplate), false);
+      assert.equal(illustratorPromptTemplateOwnsComposition(comicTemplate), true);
+
+      const compiled = compileImagePrompt({
+        kind: "illustration",
+        prompt: "Mira vaults over a rain-soaked gate under cold moonlight.",
+        styleProfiles,
+        styleProfileId: profile.id,
+        omitProfileStyleText: true,
+        omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(illustrationTemplate),
+      });
+      const subjectTags = profile.subjectTags.illustration ?? "";
+      assert.match(compiled.prompt, /^masterpiece, best quality, absurdres, anime screencap, detailed eyes,/u);
+      assert.match(compiled.prompt, /visual novel CG, cinematic composition, dramatic lighting/u);
+      assert.ok(compiled.prompt.indexOf(profile.positiveTags) < compiled.prompt.indexOf(subjectTags));
+      assert.ok(compiled.prompt.indexOf(subjectTags) < compiled.prompt.indexOf("Mira vaults"));
+    },
+  },
+  {
+    name: "Avatar prompts keep configured positive and per-image tags as the leading prefix",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const profile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(profile);
+      const compiled = compileImagePrompt({
+        kind: "avatar",
+        prompt: "Canonical appearance for Mira: young woman, long brown hair, amber eyes, dark travel coat.",
+        styleProfiles,
+        styleProfileId: profile.id,
+        hardNegative:
+          "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, extra people, cropped-off heads",
+      });
+
+      assert.match(
+        compiled.prompt,
+        /^masterpiece, best quality, absurdres, anime screencap, detailed eyes, solo, portrait, upper body, centered composition,/u,
+      );
+      assert.doesNotMatch(compiled.prompt, /readable expression|clear silhouette|face-and-shoulders/iu);
+      assert.match(compiled.negativePrompt, /collage layouts/iu);
     },
   },
   {

@@ -23,7 +23,11 @@ const pinnedPnpmDescriptor = packageManifest.packageManager?.split("@")[1];
 const pinnedPnpmVersion = pinnedPnpmDescriptor?.split("+")[0];
 
 assert.equal(pinnedPnpmVersion, "10.34.5", "The workspace must pin the patched pnpm release");
-assert.equal(packageManifest.engines?.pnpm, ">=10.34.5", "Affected pnpm releases must fail before installation");
+assert.equal(
+  packageManifest.engines?.pnpm,
+  "10.33.2 || >=10.34.5",
+  "The previous launcher pin must be able to finish the handoff without permitting intermediate versions",
+);
 assert.equal(
   pinnedPnpmDescriptor,
   "10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e",
@@ -126,8 +130,8 @@ const troubleshootingSource = readFileSync(join(repositoryRoot, "docs/TROUBLESHO
 assert.match(troubleshootingSource, /npm install -g pnpm@10\.34\.5/u);
 assert.match(
   troubleshootingSource,
-  /Expected version: >=10\.34\.5[\s\S]*Got: 10\.33\.2/u,
-  "Troubleshooting must explain the intentional one-time fail-closed handoff",
+  /10\.33\.2 launcher can finish that one-time handoff in the same run/u,
+  "Troubleshooting must explain the no-restart launcher handoff",
 );
 
 assert.equal(getVersionFromReleaseUrl(releaseUrl), "2.3.4");

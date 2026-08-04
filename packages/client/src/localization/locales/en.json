@@ -5523,6 +5523,8 @@
   "ui.modals.whatsnewmodal.release240.paragraphs.storyboard": "The second one is the <strong>Storyboard</strong> Agent! It was previously a part of the Illustrator one, but we moved it to be a separate one. Prepare storyboards of your adventures that can later be turned into animated videos!",
   "ui.modals.whatsnewmodal.release240.paragraphs.thanks": "Thank you all for your continuous support, and we hope you'll enjoy what we prepared for you. Cheers.",
   "ui.modals.whatsnewmodal.release240.paragraphs.worldMaps": "The first one is the <strong>World Maps</strong> Agent (previously Hierarchical Maps); it vastly improves on the original concept, adding interactive locations to your Games and Roleplays!",
+  "ui.modals.whatsnewmodal.release241.headline": "A focused round of fixes.",
+  "ui.modals.whatsnewmodal.release241.intro": "v2.4.1 is mostly bug fixes and polish across Marinara's features and downloadable Agents. We also moved our pinned pnpm version to the patched release as routine maintenance; Marinara was not affected.",
   "ui.modals.whatsnewmodal.viewRelease": "View release",
   "ui.modals.whatsnewmodal.whatSNew": "What's New?",
   "ui.modes.conversationShort": "CONVO",

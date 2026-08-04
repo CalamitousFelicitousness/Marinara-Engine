@@ -286,8 +286,11 @@ import {
 import {
   STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
   compactStoryboardFallbackBeat,
+  compactStoryboardTextAtWordBoundary,
   createStoryboardReviewPlanEnvelope,
+  formatStoryboardFallbackSectionText,
   resolveStoryboardReviewPlanEnvelope,
+  storyboardPlanHasRenderableKeyframe,
 } from "../../packages/server/src/services/game/storyboard-planner-fallback.js";
 
 const fallbackBeatWords = Array.from({ length: 400 }, (_, index) => `storyboard-beat-${index}`);
@@ -295,6 +298,20 @@ const compactedFallbackBeat = compactStoryboardFallbackBeat(fallbackBeatWords.jo
 assert.ok(compactedFallbackBeat.length <= STORYBOARD_FALLBACK_BEAT_MAX_CHARS);
 assert.ok(compactedFallbackBeat.endsWith("..."));
 assert.ok(fallbackBeatWords.includes(compactedFallbackBeat.slice(0, -3).split(" ").at(-1) ?? ""));
+assert.equal(compactStoryboardTextAtWordBoundary("  silver   hair blue eyes  ", 18), "silver hair...");
+assert.equal(formatStoryboardFallbackSectionText("Morgana-: Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Morgana-: Morgana-: Hold the hatch.", "Morgana-"),
+  "Morgana-: Hold the hatch.",
+);
+assert.equal(formatStoryboardFallbackSectionText("Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Shellback Tollkeeper: Run, little coins!", "Shellback Tollkeeper"),
+  "Shellback Tollkeeper: Run, little coins!",
+);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ narrationBeat: "  " }] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ imagePrompt: "A usable frame" }] }), true);
 const fallbackReviewEnvelope = createStoryboardReviewPlanEnvelope({
   plan: { keyframes: [{ narrationBeat: compactedFallbackBeat }] },
   plannerError: "Planner response was malformed; used fallback storyboard planner and skipped video generation.",
@@ -3518,6 +3535,10 @@ const cases: RegressionCase[] = [
       assert.match(gameRouteSource, /if \(input\.previewOnly\)/);
       assert.match(gameRouteSource, /createStoryboardReviewPlanEnvelope\(\{/);
       assert.match(gameRouteSource, /plannerWarning: illustratorErrorMessage/);
+      assert.match(
+        gameRouteSource,
+        /usedFallbackStoryboardPlanner = reviewedStoryboard\.usedFallbackPlanner \|\| !reviewedPlanHasRenderableKeyframe/u,
+      );
       assert.match(gameSurfaceSource, /preview\.plannerWarning/);
       assert.match(gameRouteSource, /storyboardPromptOverrideById\.get\(`storyboard:\$\{frame\.index\}`\)/);
       assert.match(gameRouteSource, /\[debug\/game\/storyboard-image-preview\]/);
@@ -4099,6 +4120,27 @@ const cases: RegressionCase[] = [
         separatedVisibilityCompiled.prompt,
         "SCENE Lyra standing in a moonlit forest\nSCOPE Final visibility rule: Only depict these named visible characters: Lyra.",
       );
+
+      const fallbackFirstFrameCompiled = await buildSceneIllustrationProviderPrompt({
+        chatId: "prompt-regression",
+        prompt: "Lyra standing in a moonlit forest",
+        characters: ["Lyra"],
+        characterDescriptions: [`Lyra's Appearance: ${appearance}`],
+        ensureCharacterAppearance: true,
+        storyboardImagePromptTemplateId: "storyboard-first-frame",
+        storyboardImagePromptTemplates: [
+          {
+            id: "storyboard-first-frame",
+            name: "Storyboard First Frame",
+            promptTemplate: "${scenePrompt}",
+          },
+        ],
+        imgModel: "unused",
+        imgBaseUrl: "",
+        imgApiKey: "",
+      });
+      assert.match(fallbackFirstFrameCompiled.prompt, /Character appearance notes:\s*Lyra's Appearance:/u);
+      assert.equal(fallbackFirstFrameCompiled.prompt.match(/Character appearance notes:/gu)?.length, 1);
 
       const compiledWithoutAttachedAppearance = await buildSceneIllustrationProviderPrompt({
         chatId: "prompt-regression",

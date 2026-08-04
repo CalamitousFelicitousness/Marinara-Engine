@@ -246,8 +246,11 @@ import { applyStoryboardAgentSettings } from "../services/game/storyboard-agent-
 import {
   STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
   compactStoryboardFallbackBeat,
+  compactStoryboardTextAtWordBoundary,
   createStoryboardReviewPlanEnvelope,
+  formatStoryboardFallbackSectionText,
   resolveStoryboardReviewPlanEnvelope,
+  storyboardPlanHasRenderableKeyframe,
 } from "../services/game/storyboard-planner-fallback.js";
 import {
   selectPreviousSuccessfulStoryboard,
@@ -716,11 +719,7 @@ function collectIllustrationCharacterAssets(opts: {
 }
 
 function compactIllustratorAppearanceLine(value: string): string {
-  const clean = value.trim().replace(/\s+/g, " ");
-  if (clean.length <= 1500) return clean;
-  const clipped = clean.slice(0, 1497).trimEnd();
-  const wordBoundary = clipped.lastIndexOf(" ");
-  return `${(wordBoundary > 0 ? clipped.slice(0, wordBoundary) : clipped).trimEnd()}...`;
+  return compactStoryboardTextAtWordBoundary(value, 1500);
 }
 
 export function buildGameIllustratorAppearanceContextBlock(characterDescriptions: string[]): string {
@@ -4980,7 +4979,7 @@ function storyboardSectionsForRange(
 }
 
 function storyboardSectionText(section: StoryboardSourceSection): string {
-  return section.speaker ? `${section.speaker}: ${section.content}` : section.content;
+  return formatStoryboardFallbackSectionText(section.content, section.speaker);
 }
 
 function dominantStoryboardSectionKind(sections: StoryboardSourceSection[]): StoryboardAnchorKind | "" {
@@ -11107,7 +11106,12 @@ export async function gameRoutes(app: FastifyInstance) {
       if (input.plannedStoryboard !== undefined) {
         const reviewedStoryboard = resolveStoryboardReviewPlanEnvelope(input.plannedStoryboard);
         illustratorErrorMessage = reviewedStoryboard.plannerError;
-        usedFallbackStoryboardPlanner = reviewedStoryboard.usedFallbackPlanner;
+        const reviewedPlanHasRenderableKeyframe = storyboardPlanHasRenderableKeyframe(reviewedStoryboard.plan);
+        usedFallbackStoryboardPlanner = reviewedStoryboard.usedFallbackPlanner || !reviewedPlanHasRenderableKeyframe;
+        if (!reviewedPlanHasRenderableKeyframe && !illustratorErrorMessage) {
+          illustratorErrorMessage =
+            "Reviewed storyboard contained no usable keyframes. Marinara used narration-based fallback keyframes and skipped video generation.";
+        }
         plan = sanitizeStoryboardPlan(reviewedStoryboard.plan, {
           ...storyboardPlanSanitizerOptions,
           narrationBeatMaxChars: usedFallbackStoryboardPlanner ? STORYBOARD_FALLBACK_BEAT_MAX_CHARS : undefined,
@@ -11138,18 +11142,7 @@ export async function gameRoutes(app: FastifyInstance) {
           const rawPlan = extraction.content.trim();
           if (debugLogsEnabled) debugLog("[debug/game/storyboard-illustrator] raw response:\n%s", rawPlan);
           const parsedPlan = parseJSON(rawPlan);
-          const parsedKeyframes = asStoryboardRecord(parsedPlan).keyframes;
-          const hasRenderableKeyframe =
-            Array.isArray(parsedKeyframes) &&
-            parsedKeyframes.some((rawFrame) => {
-              const frame = asStoryboardRecord(rawFrame);
-              return Boolean(
-                compactStoryboardText(frame.narrationBeat, 1200) ||
-                compactStoryboardText(frame.imagePrompt, 6500) ||
-                compactStoryboardText(frame.mangaPanelPrompt, 5000),
-              );
-            });
-          if (!hasRenderableKeyframe) {
+          if (!storyboardPlanHasRenderableKeyframe(parsedPlan)) {
             throw new Error("Storyboard Illustrator returned no usable keyframes");
           }
           plan = sanitizeStoryboardPlan(parsedPlan, storyboardPlanSanitizerOptions);
@@ -11263,16 +11256,15 @@ export async function gameRoutes(app: FastifyInstance) {
             storyboardReferenceImageLimit,
           ),
         };
-        return { plannedFrame, characterPrompts, illustration, illustrationAssets };
+        const ensureCharacterAppearance = includeCharacterAppearanceAtRender && characterPrompts.length === 0;
+        return { plannedFrame, characterPrompts, illustration, illustrationAssets, ensureCharacterAppearance };
       };
 
       if (input.previewOnly) {
         const items = await Promise.all(
           plan.keyframes.map(async (_frame, frameIndex) => {
-            const { plannedFrame, illustration, illustrationAssets } = buildStoryboardFrameIllustration(
-              frameIndex,
-              "storyboard-preview",
-            );
+            const { plannedFrame, illustration, illustrationAssets, ensureCharacterAppearance } =
+              buildStoryboardFrameIllustration(frameIndex, "storyboard-preview");
             const compiled = await buildSceneIllustrationProviderPrompt({
               chatId: input.chatId,
               title: illustration.title,
@@ -11280,6 +11272,7 @@ export async function gameRoutes(app: FastifyInstance) {
               reason: illustration.reason,
               characters: illustration.characters,
               characterDescriptions: illustrationAssets.characterDescriptions,
+              ensureCharacterAppearance,
               slug: illustration.slug,
               genre,
               setting,
@@ -11419,10 +11412,8 @@ export async function gameRoutes(app: FastifyInstance) {
           return { generatedImage: false, generatedVideo: false, imageFailure: true, videoFailure: false };
         }
         await storyboards.updateKeyframe(frame.id, { status: "rendering_image", error: null });
-        const { plannedFrame, characterPrompts, illustration, illustrationAssets } = buildStoryboardFrameIllustration(
-          frame.index,
-          storyboardRow.id.slice(0, 8),
-        );
+        const { plannedFrame, characterPrompts, illustration, illustrationAssets, ensureCharacterAppearance } =
+          buildStoryboardFrameIllustration(frame.index, storyboardRow.id.slice(0, 8));
         await storyboards.updateKeyframe(frame.id, {
           imagePrompt: plannedFrame.imagePrompt,
           mangaPanelPrompt: plannedFrame.mangaPanelPrompt,
@@ -11457,6 +11448,7 @@ export async function gameRoutes(app: FastifyInstance) {
             reason: illustration.reason,
             characters: illustration.characters,
             characterDescriptions: illustrationAssets.characterDescriptions,
+            ensureCharacterAppearance,
             slug: illustration.slug,
             genre,
             setting,

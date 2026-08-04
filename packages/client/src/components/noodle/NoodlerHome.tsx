@@ -72,8 +72,6 @@ import {
   useUpdateNoodlerPost,
   useReplaceNoodlerPostImage,
   useUpdateNoodlerAccess,
-  useAdoptNoodlerSourceIdentity,
-  useDismissNoodlerSourceChanges,
   useUpdateNoodlerAutoPosting,
   useUpdateNoodlerStageProfile,
   type NoodlerPostDraftImage,
@@ -1236,9 +1234,6 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
             isError={postsQuery.isError}
             onRetry={() => void postsQuery.refetch()}
             onEdit={() => beginEdit(selectedProfile)}
-            onRedraft={() => {
-              beginEdit(selectedProfile);
-            }}
             onBack={() =>
               navigation.mode === "noodler" && navigation.view === "profile" && navigation.returnToSettings
                 ? onNavigate(navigation.returnToSettings)
@@ -2334,7 +2329,6 @@ function StageProfileView({
   isError,
   onRetry,
   onEdit,
-  onRedraft,
   onBack,
   onDelete,
   onManualPost,
@@ -2370,7 +2364,6 @@ function StageProfileView({
   isError: boolean;
   onRetry: () => void;
   onEdit: () => void;
-  onRedraft: () => void;
   onBack: () => void;
   onDelete: () => void;
   onManualPost: (input: NoodlerPostSubmission) => Promise<void>;
@@ -2392,16 +2385,7 @@ function StageProfileView({
   const { t: localizeUi } = useUiTranslation();
   const [accessSettingsOpen, setAccessSettingsOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
-  const sourceMissing = profile.sourceStatus.state === "missing";
-  useEffect(() => {
-    if (sourceMissing) {
-      setAccessSettingsOpen(false);
-      setAutomationOpen(false);
-    }
-  }, [sourceMissing]);
   const updateAutoPosting = useUpdateNoodlerAutoPosting();
-  const dismissSourceChanges = useDismissNoodlerSourceChanges();
-  const adoptSourceIdentity = useAdoptNoodlerSourceIdentity();
   const autoPosting = profile.autoPosting;
   const [activeTab, setActiveTab] = useState<NoodlerProfileTab>("posts");
   const [revealedManagedPostIds, setRevealedManagedPostIds] = useState<Set<string>>(() => new Set());
@@ -2639,167 +2623,41 @@ function StageProfileView({
           ) : undefined
         }
         bioContent={profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
-        preTabsContent={
-          <section
-            className="border-t border-[var(--noodle-divider)] px-4 py-4"
-            aria-labelledby="creator-management-title"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 id="creator-management-title" className="text-sm font-bold">
-                  {localizeUi("ui.noodle.creatormanagement.title")}
-                </h2>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {localizeUi("ui.noodle.creatormanagement.detail")}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {!sourceMissing && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={onEdit}
-                      className="h-9 rounded-md bg-[var(--noodle-accent)] px-4 text-xs font-bold text-zinc-950 transition-[opacity,scale] hover:opacity-90 active:scale-[0.96]"
-                    >
-                      {localizeUi("ui.noodle.stageprofileview.editProfile")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAccessSettingsOpen(true)}
-                      className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
-                    >
-                      {localizeUi("ui.noodle.stageprofileview.access")}
-                    </button>
-                  </>
-                )}
-                {!sourceMissing && (
-                  <button
-                    type="button"
-                    onClick={() => setAutomationOpen(true)}
-                    disabled={profile.sourceStatus.state === "missing"}
-                    className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
-                  >
-                    {autoPosting.enabled
-                      ? localizeUi("ui.noodle.stageprofileview.automationOn")
-                      : localizeUi("ui.noodle.stageprofileview.automation")}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  disabled={deletePending}
-                  aria-label={localizeUi("ui.noodle.stageprofileview.deleteValue1Profile", {
-                    value1: profile.displayName,
-                  })}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--destructive)]/45 text-[var(--destructive)] hover:bg-[var(--destructive)]/10 disabled:cursor-wait disabled:opacity-50"
-                >
-                  {deletePending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                </button>
-              </div>
-            </div>
-            {profile.sourceStatus.state === "missing" ? (
-              <div className="mt-4 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/5 p-3">
-                <p className="text-sm font-bold text-[var(--destructive)]">
-                  {localizeUi("ui.noodle.creatormanagement.sourceMissing")}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">
-                  {localizeUi("ui.noodle.creatormanagement.sourceMissingDetail")}
-                </p>
-              </div>
-            ) : profile.sourceStatus.state === "changed" ? (
-              <div className="mt-4 rounded-md border border-[var(--noodle-accent)]/35 bg-[var(--noodle-accent)]/5 p-3">
-                <p className="text-sm font-bold">{localizeUi("ui.noodle.creatormanagement.sourceChanged")}</p>
-                <div className="mt-2 space-y-2">
-                  {profile.sourceStatus.changes.map((change) => (
-                    <details
-                      key={change.field}
-                      className="rounded-md border border-[var(--noodle-divider)] bg-[var(--background)]"
-                    >
-                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold">
-                        {localizeUi(`ui.noodle.creatormanagement.field.${change.field}`)}
-                      </summary>
-                      <div className="grid gap-2 border-t border-[var(--noodle-divider)] p-3 @min-[640px]:grid-cols-2">
-                        <SourceDiffValue
-                          label={localizeUi("ui.noodle.creatormanagement.previous")}
-                          value={change.previous}
-                        />
-                        <SourceDiffValue
-                          label={localizeUi("ui.noodle.creatormanagement.current")}
-                          value={change.current}
-                        />
-                      </div>
-                    </details>
-                  ))}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {profile.disclosureMode === "open" &&
-                    profile.sourceStatus.changes.some(
-                      (change) => change.field === "publicDisplayName" || change.field === "publicHandle",
-                    ) && (
-                      <button
-                        type="button"
-                        disabled={adoptSourceIdentity.isPending}
-                        onClick={() =>
-                          adoptSourceIdentity.mutate(profile.id, {
-                            onError: (error) =>
-                              toast.error(
-                                errorMessage(error, localizeUi("ui.noodle.creatormanagement.couldNotAdoptIdentity")),
-                              ),
-                          })
-                        }
-                        className="h-9 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold disabled:opacity-50"
-                      >
-                        {localizeUi("ui.noodle.creatormanagement.adoptIdentity")}
-                      </button>
-                    )}
-                  <button
-                    type="button"
-                    onClick={onRedraft}
-                    className="h-9 rounded-md bg-[var(--noodle-accent)] px-3 text-xs font-bold text-zinc-950"
-                  >
-                    {localizeUi("ui.noodle.creatormanagement.redraft")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={dismissSourceChanges.isPending}
-                    onClick={async () => {
-                      const confirmed = await showConfirmDialog({
-                        title: localizeUi("ui.noodle.creatormanagement.dismissTitle"),
-                        message: localizeUi("ui.noodle.creatormanagement.dismissDetail"),
-                        confirmLabel: localizeUi("ui.noodle.creatormanagement.dismiss"),
-                      });
-                      if (confirmed)
-                        dismissSourceChanges.mutate(profile.id, {
-                          onError: (error) =>
-                            toast.error(
-                              errorMessage(error, localizeUi("ui.noodle.creatormanagement.couldNotDismissChanges")),
-                            ),
-                        });
-                    }}
-                    className="h-9 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold disabled:opacity-50"
-                  >
-                    {localizeUi("ui.noodle.creatormanagement.dismiss")}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {profile.sourceStatus.state !== "missing" && (
-              <div className="mt-4 border-t border-[var(--noodle-divider)] pt-4">
-                <NoodlerPostComposer
-                  key={profile.id}
-                  profile={profile}
-                  draft={draft}
-                  onDraftChange={onDraftChange}
-                  onClearDraft={onClearDraft}
-                  onDiscardDraft={onDiscardDraft}
-                  onManualPost={onManualPost}
-                  onGuidedPost={onGuidedPost}
-                  manualPending={manualPending}
-                  guidePending={guidePending}
-                />
-              </div>
-            )}
-          </section>
+        contentActions={
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="h-9 rounded-md bg-[var(--noodle-accent)] px-4 text-xs font-bold text-zinc-950 transition-[opacity,scale] hover:opacity-90 active:scale-[0.96]"
+            >
+              {localizeUi("ui.noodle.stageprofileview.editProfile")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAccessSettingsOpen(true)}
+              className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
+            >
+              {localizeUi("ui.noodle.stageprofileview.access")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutomationOpen(true)}
+              className="h-9 rounded-md border border-[var(--noodle-divider)] px-4 text-xs font-bold hover:bg-[var(--accent)]"
+            >
+              {autoPosting.enabled
+                ? localizeUi("ui.noodle.stageprofileview.automationOn")
+                : localizeUi("ui.noodle.stageprofileview.automation")}
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deletePending}
+              aria-label={localizeUi("ui.noodle.stageprofileview.deleteValue1Profile", { value1: profile.displayName })}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--destructive)]/45 text-[var(--destructive)] hover:bg-[var(--destructive)]/10 disabled:cursor-wait disabled:opacity-50"
+            >
+              {deletePending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            </button>
+          </div>
         }
         tabs={[
           { id: "posts", label: localizeUi("ui.noodle.profile.tabs.posts") },
@@ -2816,10 +2674,24 @@ function StageProfileView({
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        preTabsContent={
+          <NoodlerPostComposer
+            key={profile.id}
+            profile={profile}
+            draft={draft}
+            onDraftChange={onDraftChange}
+            onClearDraft={onClearDraft}
+            onDiscardDraft={onDiscardDraft}
+            onManualPost={onManualPost}
+            onGuidedPost={onGuidedPost}
+            manualPending={manualPending}
+            guidePending={guidePending}
+          />
+        }
         postList={cards}
       />
       <Modal
-        open={accessSettingsOpen && !sourceMissing}
+        open={accessSettingsOpen}
         onClose={() => setAccessSettingsOpen(false)}
         title={localizeUi("ui.noodle.stageprofileview.viewerAccess")}
         width="max-w-md"
@@ -2867,7 +2739,7 @@ function StageProfileView({
         </div>
       </Modal>
       <Modal
-        open={automationOpen && !sourceMissing}
+        open={automationOpen}
         onClose={() => setAutomationOpen(false)}
         title={localizeUi("ui.noodle.stageprofileview.automaticPosting")}
         width="max-w-md"
@@ -2950,17 +2822,6 @@ function StageProfileView({
         </div>
       </Modal>
     </>
-  );
-}
-
-function SourceDiffValue({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[0.68rem] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
-      <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded bg-[var(--muted)]/45 p-2 text-xs leading-5">
-        {value || "—"}
-      </div>
-    </div>
   );
 }
 

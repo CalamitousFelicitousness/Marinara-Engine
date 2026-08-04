@@ -133,6 +133,12 @@ function compileImagePromptPass(
   const positiveParts = compactPrompt
     ? [
         { value: promptPrefix, sourcePrompt: false, hardPrefix: true },
+        // Explicit profile configuration is a provider-facing prefix, even for
+        // compact avatar/portrait prompts. Protect it from priority sorting and
+        // the compact token budget so inferred source cues cannot move ahead of
+        // or silently replace the user's configured tags.
+        { value: profile.positiveTags, sourcePrompt: false, hardPrefix: true },
+        { value: profileSubjectTags, sourcePrompt: false, hardPrefix: true },
         { value: sourceCues.join(", "), sourcePrompt: false },
         {
           value: generatedStylePart,
@@ -145,8 +151,6 @@ function compileImagePromptPass(
           sourcePrompt: !protectUserPositive,
           hardPrefix: protectUserPositive,
         },
-        { value: profileSubjectTags, sourcePrompt: false },
-        { value: profile.positiveTags, sourcePrompt: false },
       ]
     : [
         { value: promptPrefix, sourcePrompt: false, hardPrefix: true },

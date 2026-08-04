@@ -1278,19 +1278,26 @@ function ConnectionFolderRow({
             {folder.name}
           </span>
         )}
-        {entries.length > 0 && (
-          <span className="text-[0.5625rem] text-[var(--muted-foreground)]">{entries.length}</span>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(folder);
-          }}
-          className="mari-chrome-control mari-chrome-control--small shrink-0 p-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100"
-          title={localizeUi("ui.panels.backgroundpicker.deleteFolder")}
+        <div
+          data-folder-actions
+          className="flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 ring-1 ring-transparent transition-[opacity,box-shadow] group-hover:ring-[var(--border)] max-md:ring-[var(--border)] [@media(pointer:coarse)]:ring-[var(--border)]"
         >
-          <Trash2 size="0.75rem" />
-        </button>
+          {entries.length > 0 && (
+            <span data-folder-item-count="actions" className="px-1 text-[0.5625rem] text-[var(--muted-foreground)]">
+              {entries.length}
+            </span>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(folder);
+            }}
+            className="mari-chrome-control mari-chrome-control--small pointer-events-none shrink-0 p-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [@media(pointer:fine)]:group-focus-within:pointer-events-auto [@media(pointer:fine)]:group-focus-within:opacity-100 max-md:pointer-events-auto max-md:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100"
+            title={localizeUi("ui.panels.backgroundpicker.deleteFolder")}
+          >
+            <Trash2 size="0.75rem" />
+          </button>
+        </div>
       </div>
       {/* Folder contents */}
       <SmoothFolderContent

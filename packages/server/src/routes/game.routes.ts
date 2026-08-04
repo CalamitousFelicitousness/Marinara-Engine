@@ -244,6 +244,15 @@ import {
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { applyStoryboardAgentSettings } from "../services/game/storyboard-agent-settings.js";
 import {
+  STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
+  compactStoryboardFallbackBeat,
+  compactStoryboardTextAtWordBoundary,
+  createStoryboardReviewPlanEnvelope,
+  formatStoryboardFallbackSectionText,
+  resolveStoryboardReviewPlanEnvelope,
+  storyboardPlanHasRenderableKeyframe,
+} from "../services/game/storyboard-planner-fallback.js";
+import {
   selectPreviousSuccessfulStoryboard,
   selectRoleplayStoryboardEpisode,
 } from "../services/roleplay/storyboard-episode.js";
@@ -710,11 +719,7 @@ function collectIllustrationCharacterAssets(opts: {
 }
 
 function compactIllustratorAppearanceLine(value: string): string {
-  const clean = value.trim().replace(/\s+/g, " ");
-  if (clean.length <= 1500) return clean;
-  const clipped = clean.slice(0, 1497).trimEnd();
-  const wordBoundary = clipped.lastIndexOf(" ");
-  return `${(wordBoundary > 0 ? clipped.slice(0, wordBoundary) : clipped).trimEnd()}...`;
+  return compactStoryboardTextAtWordBoundary(value, 1500);
 }
 
 export function buildGameIllustratorAppearanceContextBlock(characterDescriptions: string[]): string {
@@ -4974,7 +4979,7 @@ function storyboardSectionsForRange(
 }
 
 function storyboardSectionText(section: StoryboardSourceSection): string {
-  return section.speaker ? `${section.speaker}: ${section.content}` : section.content;
+  return formatStoryboardFallbackSectionText(section.content, section.speaker);
 }
 
 function dominantStoryboardSectionKind(sections: StoryboardSourceSection[]): StoryboardAnchorKind | "" {
@@ -5336,7 +5341,7 @@ function fallbackStoryboardPlan(args: {
     keyframes: chunks.map((chunk, index) => {
       const firstSection = chunk.sections[0] ?? null;
       const lastSection = chunk.sections[chunk.sections.length - 1] ?? null;
-      const beat = compactStoryboardText(chunk.text, 900);
+      const beat = compactStoryboardFallbackBeat(chunk.text);
       const title = `Keyframe ${index + 1}`;
       const imagePrompt = `Manga illustration keyframe, cinematic anime panel, expressive character acting, detailed environment, dramatic lighting. ${beat}`;
       const reconciledCharacters = reconcileStoryboardCharactersForFrame({
@@ -5383,6 +5388,7 @@ function sanitizeStoryboardPlan(
     aspectRatio: GameSceneVideoAspectRatio;
     allowedCharacterNames?: string[];
     maxVisibleCharacters?: number;
+    narrationBeatMaxChars?: number;
   },
 ): PlannedStoryboard {
   const root = asStoryboardRecord(raw);
@@ -5393,7 +5399,7 @@ function sanitizeStoryboardPlan(
     .map((rawFrame, index): PlannedStoryboardKeyframe | null => {
       const frame = asStoryboardRecord(rawFrame);
       const fallbackFrame = fallback.keyframes[index] ?? fallback.keyframes[0] ?? null;
-      const narrationBeat = compactStoryboardText(frame.narrationBeat, 1200);
+      const narrationBeat = compactStoryboardText(frame.narrationBeat, args.narrationBeatMaxChars ?? 1200);
       const mangaPanelPrompt = compactStoryboardText(frame.mangaPanelPrompt, 5000);
       const imagePrompt = compactStoryboardText(frame.imagePrompt, 6500) || mangaPanelPrompt || narrationBeat;
       if (!narrationBeat && !imagePrompt) return null;
@@ -11030,7 +11036,7 @@ export async function gameRoutes(app: FastifyInstance) {
         charAvatarByName: storyboardCharacterContext.charAvatarByName,
         charDescriptionByName: storyboardCharacterContext.charDescriptionByName,
         includeReferenceImages: false,
-        includeCharacterDescriptions: true,
+        includeCharacterDescriptions: includeCharacterAppearance,
         maxReferenceImages: 0,
       });
       const storyboardAppearanceContextBlock = buildGameIllustratorAppearanceContextBlock(
@@ -11098,7 +11104,18 @@ export async function gameRoutes(app: FastifyInstance) {
       } as const;
       let usedFallbackStoryboardPlanner = false;
       if (input.plannedStoryboard !== undefined) {
-        plan = sanitizeStoryboardPlan(input.plannedStoryboard, storyboardPlanSanitizerOptions);
+        const reviewedStoryboard = resolveStoryboardReviewPlanEnvelope(input.plannedStoryboard);
+        illustratorErrorMessage = reviewedStoryboard.plannerError;
+        const reviewedPlanHasRenderableKeyframe = storyboardPlanHasRenderableKeyframe(reviewedStoryboard.plan);
+        usedFallbackStoryboardPlanner = reviewedStoryboard.usedFallbackPlanner || !reviewedPlanHasRenderableKeyframe;
+        if (!reviewedPlanHasRenderableKeyframe && !illustratorErrorMessage) {
+          illustratorErrorMessage =
+            "Reviewed storyboard contained no usable keyframes. Marinara used narration-based fallback keyframes and skipped video generation.";
+        }
+        plan = sanitizeStoryboardPlan(reviewedStoryboard.plan, {
+          ...storyboardPlanSanitizerOptions,
+          narrationBeatMaxChars: usedFallbackStoryboardPlanner ? STORYBOARD_FALLBACK_BEAT_MAX_CHARS : undefined,
+        });
         if (debugLogsEnabled) {
           debugLog("[debug/game/storyboard-illustrator] using reviewed client storyboard plan");
         }
@@ -11125,18 +11142,7 @@ export async function gameRoutes(app: FastifyInstance) {
           const rawPlan = extraction.content.trim();
           if (debugLogsEnabled) debugLog("[debug/game/storyboard-illustrator] raw response:\n%s", rawPlan);
           const parsedPlan = parseJSON(rawPlan);
-          const parsedKeyframes = asStoryboardRecord(parsedPlan).keyframes;
-          const hasRenderableKeyframe =
-            Array.isArray(parsedKeyframes) &&
-            parsedKeyframes.some((rawFrame) => {
-              const frame = asStoryboardRecord(rawFrame);
-              return Boolean(
-                compactStoryboardText(frame.narrationBeat, 1200) ||
-                compactStoryboardText(frame.imagePrompt, 6500) ||
-                compactStoryboardText(frame.mangaPanelPrompt, 5000),
-              );
-            });
-          if (!hasRenderableKeyframe) {
+          if (!storyboardPlanHasRenderableKeyframe(parsedPlan)) {
             throw new Error("Storyboard Illustrator returned no usable keyframes");
           }
           plan = sanitizeStoryboardPlan(parsedPlan, storyboardPlanSanitizerOptions);
@@ -11145,10 +11151,11 @@ export async function gameRoutes(app: FastifyInstance) {
             throw abortReasonAsError(storyboardAbortSignal, "Game storyboard generation cancelled");
           }
           usedFallbackStoryboardPlanner = true;
-          illustratorErrorMessage =
-            err instanceof Error
-              ? `${err.message}; used fallback storyboard planner and skipped video generation.`
-              : "Used fallback storyboard planner and skipped video generation.";
+          const plannerFailureReason = compactStoryboardText(err instanceof Error ? err.message : "", 900);
+          illustratorErrorMessage = [
+            plannerFailureReason ? `Storyboard planner failed: ${plannerFailureReason}` : "Storyboard planner failed.",
+            "Marinara used narration-based fallback keyframes and skipped video generation.",
+          ].join(" ");
           logger.warn(
             err,
             "[game/storyboard] Storyboard Illustrator failed; using fallback images and skipping video generation",
@@ -11164,6 +11171,7 @@ export async function gameRoutes(app: FastifyInstance) {
           });
         }
       }
+      const includeCharacterAppearanceAtRender = includeCharacterAppearance && usedFallbackStoryboardPlanner;
 
       const imgModel = imgConn.model || "";
       const imgBaseUrl = imgConn.baseUrl || "https://image.pollinations.ai";
@@ -11217,7 +11225,7 @@ export async function gameRoutes(app: FastifyInstance) {
               prompts: plannedFrame.characterPrompts,
               characters: plannedFrame.characters,
               characterDescriptions: charDescriptionByName,
-              includeCharacterAppearance,
+              includeCharacterAppearance: includeCharacterAppearanceAtRender,
             })
           : [];
         const illustration: SceneIllustrationRequest = {
@@ -11237,7 +11245,7 @@ export async function gameRoutes(app: FastifyInstance) {
           charAvatarByName,
           charDescriptionByName,
           includeReferenceImages: useAvatarReferences,
-          includeCharacterDescriptions: includeCharacterAppearance,
+          includeCharacterDescriptions: includeCharacterAppearanceAtRender && characterPrompts.length === 0,
           maxReferenceImages: Math.max(0, storyboardReferenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
         });
         const illustrationAssets = {
@@ -11248,16 +11256,15 @@ export async function gameRoutes(app: FastifyInstance) {
             storyboardReferenceImageLimit,
           ),
         };
-        return { plannedFrame, characterPrompts, illustration, illustrationAssets };
+        const ensureCharacterAppearance = includeCharacterAppearanceAtRender && characterPrompts.length === 0;
+        return { plannedFrame, characterPrompts, illustration, illustrationAssets, ensureCharacterAppearance };
       };
 
       if (input.previewOnly) {
         const items = await Promise.all(
           plan.keyframes.map(async (_frame, frameIndex) => {
-            const { plannedFrame, illustration, illustrationAssets } = buildStoryboardFrameIllustration(
-              frameIndex,
-              "storyboard-preview",
-            );
+            const { plannedFrame, illustration, illustrationAssets, ensureCharacterAppearance } =
+              buildStoryboardFrameIllustration(frameIndex, "storyboard-preview");
             const compiled = await buildSceneIllustrationProviderPrompt({
               chatId: input.chatId,
               title: illustration.title,
@@ -11265,6 +11272,7 @@ export async function gameRoutes(app: FastifyInstance) {
               reason: illustration.reason,
               characters: illustration.characters,
               characterDescriptions: illustrationAssets.characterDescriptions,
+              ensureCharacterAppearance,
               slug: illustration.slug,
               genre,
               setting,
@@ -11316,7 +11324,15 @@ export async function gameRoutes(app: FastifyInstance) {
             };
           }),
         );
-        return { items, plannedStoryboard: plan };
+        return {
+          items,
+          plannedStoryboard: createStoryboardReviewPlanEnvelope({
+            plan,
+            plannerError: illustratorErrorMessage,
+            usedFallbackPlanner: usedFallbackStoryboardPlanner,
+          }),
+          plannerWarning: illustratorErrorMessage,
+        };
       }
 
       const snapshot =
@@ -11396,10 +11412,8 @@ export async function gameRoutes(app: FastifyInstance) {
           return { generatedImage: false, generatedVideo: false, imageFailure: true, videoFailure: false };
         }
         await storyboards.updateKeyframe(frame.id, { status: "rendering_image", error: null });
-        const { plannedFrame, characterPrompts, illustration, illustrationAssets } = buildStoryboardFrameIllustration(
-          frame.index,
-          storyboardRow.id.slice(0, 8),
-        );
+        const { plannedFrame, characterPrompts, illustration, illustrationAssets, ensureCharacterAppearance } =
+          buildStoryboardFrameIllustration(frame.index, storyboardRow.id.slice(0, 8));
         await storyboards.updateKeyframe(frame.id, {
           imagePrompt: plannedFrame.imagePrompt,
           mangaPanelPrompt: plannedFrame.mangaPanelPrompt,
@@ -11434,6 +11448,7 @@ export async function gameRoutes(app: FastifyInstance) {
             reason: illustration.reason,
             characters: illustration.characters,
             characterDescriptions: illustrationAssets.characterDescriptions,
+            ensureCharacterAppearance,
             slug: illustration.slug,
             genre,
             setting,

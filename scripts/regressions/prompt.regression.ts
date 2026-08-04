@@ -283,6 +283,45 @@ import {
   applyStoryboardAgentSettings,
   shouldSuppressIllustratorForegroundForStoryboard,
 } from "../../packages/server/src/services/game/storyboard-agent-settings.js";
+import {
+  STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
+  compactStoryboardFallbackBeat,
+  compactStoryboardTextAtWordBoundary,
+  createStoryboardReviewPlanEnvelope,
+  formatStoryboardFallbackSectionText,
+  resolveStoryboardReviewPlanEnvelope,
+  storyboardPlanHasRenderableKeyframe,
+} from "../../packages/server/src/services/game/storyboard-planner-fallback.js";
+
+const fallbackBeatWords = Array.from({ length: 400 }, (_, index) => `storyboard-beat-${index}`);
+const compactedFallbackBeat = compactStoryboardFallbackBeat(fallbackBeatWords.join(" "));
+assert.ok(compactedFallbackBeat.length <= STORYBOARD_FALLBACK_BEAT_MAX_CHARS);
+assert.ok(compactedFallbackBeat.endsWith("..."));
+assert.ok(fallbackBeatWords.includes(compactedFallbackBeat.slice(0, -3).split(" ").at(-1) ?? ""));
+assert.equal(compactStoryboardTextAtWordBoundary("  silver   hair blue eyes  ", 18), "silver hair...");
+assert.equal(formatStoryboardFallbackSectionText("Morgana-: Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Morgana-: Morgana-: Hold the hatch.", "Morgana-"),
+  "Morgana-: Hold the hatch.",
+);
+assert.equal(formatStoryboardFallbackSectionText("Hold the hatch.", "Morgana-"), "Morgana-: Hold the hatch.");
+assert.equal(
+  formatStoryboardFallbackSectionText("Shellback Tollkeeper: Run, little coins!", "Shellback Tollkeeper"),
+  "Shellback Tollkeeper: Run, little coins!",
+);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ narrationBeat: "  " }] }), false);
+assert.equal(storyboardPlanHasRenderableKeyframe({ keyframes: [{ imagePrompt: "A usable frame" }] }), true);
+const fallbackReviewEnvelope = createStoryboardReviewPlanEnvelope({
+  plan: { keyframes: [{ narrationBeat: compactedFallbackBeat }] },
+  plannerError: "Planner response was malformed; used fallback storyboard planner and skipped video generation.",
+  usedFallbackPlanner: true,
+});
+assert.deepEqual(resolveStoryboardReviewPlanEnvelope(fallbackReviewEnvelope), {
+  plan: fallbackReviewEnvelope.plan,
+  plannerError: fallbackReviewEnvelope.plannerError,
+  usedFallbackPlanner: true,
+});
 
 const assistantCadenceMessages = [
   { id: "illustrator-anchor", role: "assistant" },
@@ -715,6 +754,7 @@ import {
 import { resolveCharacterAdvancedPromptIds } from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   illustratorPromptRequestsRenderedText,
+  illustratorPromptTemplateOwnsComposition,
   mergeIllustratorNegativePrompt,
   normalizeIllustratorAppearance,
   readIllustratorAppearance,
@@ -3494,7 +3534,13 @@ const cases: RegressionCase[] = [
       );
       assert.match(storyboardHookSource, /previewOnly: true/);
       assert.match(gameRouteSource, /if \(input\.previewOnly\)/);
-      assert.match(gameRouteSource, /return \{ items, plannedStoryboard: plan \}/);
+      assert.match(gameRouteSource, /createStoryboardReviewPlanEnvelope\(\{/);
+      assert.match(gameRouteSource, /plannerWarning: illustratorErrorMessage/);
+      assert.match(
+        gameRouteSource,
+        /usedFallbackStoryboardPlanner = reviewedStoryboard\.usedFallbackPlanner \|\| !reviewedPlanHasRenderableKeyframe/u,
+      );
+      assert.match(gameSurfaceSource, /preview\.plannerWarning/);
       assert.match(gameRouteSource, /storyboardPromptOverrideById\.get\(`storyboard:\$\{frame\.index\}`\)/);
       assert.match(gameRouteSource, /\[debug\/game\/storyboard-image-preview\]/);
     },
@@ -3766,6 +3812,7 @@ const cases: RegressionCase[] = [
           source,
           /mergeIllustratorNegativePrompt\(\s*compiledPrompt\.prompt,\s*compiledPrompt\.negativePrompt/,
         );
+        assert.match(source, /omitProfileSubjectTags:\s*illustratorPromptTemplateOwnsComposition\(/);
         assert.doesNotMatch(source, /ILLUSTRATOR_TEXT_NEGATIVE_PROMPT/);
       }
 
@@ -3795,6 +3842,58 @@ const cases: RegressionCase[] = [
         false,
       );
       assert.equal(illustratorPromptRequestsRenderedText('shopfront sign reading "OPEN ALL NIGHT"'), true);
+    },
+  },
+  {
+    name: "Illustrator injects configured Illustration tags while dedicated comic templates retain composition",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const profile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(profile);
+      const illustrationTemplate =
+        "Generate a polished single-scene illustration with composition, lighting, mood, and environment.";
+      const comicTemplate =
+        "Build the prompt as a complete comic page with panel composition, speech bubbles, captions, and SFX lettering.";
+
+      assert.equal(illustratorPromptTemplateOwnsComposition(illustrationTemplate), false);
+      assert.equal(illustratorPromptTemplateOwnsComposition(comicTemplate), true);
+
+      const compiled = compileImagePrompt({
+        kind: "illustration",
+        prompt: "Mira vaults over a rain-soaked gate under cold moonlight.",
+        styleProfiles,
+        styleProfileId: profile.id,
+        omitProfileStyleText: true,
+        omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(illustrationTemplate),
+      });
+      const subjectTags = profile.subjectTags.illustration ?? "";
+      assert.match(compiled.prompt, /^masterpiece, best quality, absurdres, anime screencap, detailed eyes,/u);
+      assert.match(compiled.prompt, /visual novel CG, cinematic composition, dramatic lighting/u);
+      assert.ok(compiled.prompt.indexOf(profile.positiveTags) < compiled.prompt.indexOf(subjectTags));
+      assert.ok(compiled.prompt.indexOf(subjectTags) < compiled.prompt.indexOf("Mira vaults"));
+    },
+  },
+  {
+    name: "Avatar prompts keep configured positive and per-image tags as the leading prefix",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const profile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(profile);
+      const compiled = compileImagePrompt({
+        kind: "avatar",
+        prompt: "Canonical appearance for Mira: young woman, long brown hair, amber eyes, dark travel coat.",
+        styleProfiles,
+        styleProfileId: profile.id,
+        hardNegative:
+          "text, captions, logos, watermarks, borders, UI, collage layouts, duplicate faces, extra people, cropped-off heads",
+      });
+
+      assert.match(
+        compiled.prompt,
+        /^masterpiece, best quality, absurdres, anime screencap, detailed eyes, solo, portrait, upper body, centered composition,/u,
+      );
+      assert.doesNotMatch(compiled.prompt, /readable expression|clear silhouette|face-and-shoulders/iu);
+      assert.match(compiled.negativePrompt, /collage layouts/iu);
     },
   },
   {
@@ -3848,7 +3947,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "Game planner always receives card appearance while final attachment stays optional",
+    name: "Storyboard appearance is gated and injected once across planner and fallback paths",
     async run() {
       const appearance = "auburn hair, green eyes, leather jacket";
       const description = "A verbose roleplay card description that must not be sent as visual appearance.";
@@ -4076,6 +4175,27 @@ const cases: RegressionCase[] = [
         "SCENE Lyra standing in a moonlit forest\nSCOPE Final visibility rule: Only depict these named visible characters: Lyra.",
       );
 
+      const fallbackFirstFrameCompiled = await buildSceneIllustrationProviderPrompt({
+        chatId: "prompt-regression",
+        prompt: "Lyra standing in a moonlit forest",
+        characters: ["Lyra"],
+        characterDescriptions: [`Lyra's Appearance: ${appearance}`],
+        ensureCharacterAppearance: true,
+        storyboardImagePromptTemplateId: "storyboard-first-frame",
+        storyboardImagePromptTemplates: [
+          {
+            id: "storyboard-first-frame",
+            name: "Storyboard First Frame",
+            promptTemplate: "${scenePrompt}",
+          },
+        ],
+        imgModel: "unused",
+        imgBaseUrl: "",
+        imgApiKey: "",
+      });
+      assert.match(fallbackFirstFrameCompiled.prompt, /Character appearance notes:\s*Lyra's Appearance:/u);
+      assert.equal(fallbackFirstFrameCompiled.prompt.match(/Character appearance notes:/gu)?.length, 1);
+
       const compiledWithoutAttachedAppearance = await buildSceneIllustrationProviderPrompt({
         chatId: "prompt-regression",
         prompt: "Lyra standing in a moonlit forest",
@@ -4171,8 +4291,19 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(gameSurfaceSource, /useGamePromptTemplate/u);
       assert.match(gameRouteSource, /characterAppearanceContextBlock:\s*storyboardAppearanceContextBlock/u);
       assert.equal(gameRouteSource.match(/^\s+characterAppearanceContextBlock,\s*$/gmu)?.length, 2);
-      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length, 1);
+      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length ?? 0, 0);
       assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*includeCharacterAppearance,/gu)?.length, 5);
+      assert.equal(
+        gameRouteSource.match(
+          /includeCharacterDescriptions:\s*includeCharacterAppearanceAtRender && characterPrompts\.length === 0,/gu,
+        )?.length,
+        1,
+      );
+      assert.match(
+        gameRouteSource,
+        /const includeCharacterAppearanceAtRender = includeCharacterAppearance && usedFallbackStoryboardPlanner/u,
+      );
+      assert.match(gameRouteSource, /Marinara used narration-based fallback keyframes and skipped video generation/u);
       assert.equal(gameRouteSource.match(/meta\.storyboardAgentIncludeCharacterAppearance !== false/gu)?.length, 1);
       assert.equal(gameRouteSource.match(/meta\.storyboardAgentUseAvatarReferences !== false/gu)?.length, 1);
       assert.equal(gameRouteSource.match(/meta\.gameImageIncludeCharacterAppearance !== false/gu)?.length, 2);

@@ -1,8 +1,8 @@
 import type { PendingSpatialTransition } from "@marinara-engine/shared";
 
 interface CyoaChoiceImpersonationOptions {
-  presetId?: string;
-  connectionId?: string;
+  presetId?: string | null;
+  connectionId?: string | null;
   blockAgents?: boolean;
   promptTemplate?: string;
 }

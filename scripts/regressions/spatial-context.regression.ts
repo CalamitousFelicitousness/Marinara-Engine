@@ -46,6 +46,7 @@ import { resolveVisibleGameStateAnchor } from "../../packages/server/src/routes/
 import {
   resolveAlreadyAppliedSpatialTurn,
   resolveSpatialGenerationOrigin,
+  shouldSaveHiddenGenerationAnchor,
   shouldSuppressAssistantSpatialMutation,
   validateSpatialGenerationRequest,
 } from "../../packages/server/src/routes/generate/spatial-transition-request.js";
@@ -89,6 +90,36 @@ assert.equal(
   }),
   null,
   "Guided assistant generation does not submit the queued owner move",
+);
+assert.equal(
+  shouldSaveHiddenGenerationAnchor({
+    impersonate: true,
+    parsedCommandCount: 0,
+    parsedRawCommandCount: 0,
+    spatialDirectiveDetected: true,
+  }),
+  true,
+  "A suppressed impersonated spatial directive still saves a hidden anchor",
+);
+assert.equal(
+  shouldSaveHiddenGenerationAnchor({
+    impersonate: false,
+    parsedCommandCount: 0,
+    parsedRawCommandCount: 0,
+    spatialDirectiveDetected: true,
+  }),
+  true,
+  "A suppressed queued-owner spatial directive still saves a hidden anchor",
+);
+assert.equal(
+  shouldSaveHiddenGenerationAnchor({
+    impersonate: true,
+    parsedCommandCount: 1,
+    parsedRawCommandCount: 1,
+    spatialDirectiveDetected: false,
+  }),
+  false,
+  "Impersonated non-spatial command-only output keeps the existing empty-response behavior",
 );
 assert.deepEqual(
   validateSpatialGenerationRequest({

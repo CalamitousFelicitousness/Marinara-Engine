@@ -41,6 +41,18 @@ export function shouldSuppressAssistantSpatialMutation(input: {
   return Boolean(input.impersonate || input.pendingSpatialTransition);
 }
 
+export function shouldSaveHiddenGenerationAnchor(input: {
+  impersonate?: boolean;
+  parsedCommandCount: number;
+  parsedRawCommandCount: number;
+  spatialDirectiveDetected: boolean;
+}): boolean {
+  return Boolean(
+    input.spatialDirectiveDetected ||
+    (!input.impersonate && (input.parsedCommandCount > 0 || input.parsedRawCommandCount > 0)),
+  );
+}
+
 export function resolveSpatialGenerationOrigin(input: {
   autonomous?: boolean;
   turnGameBots?: boolean;

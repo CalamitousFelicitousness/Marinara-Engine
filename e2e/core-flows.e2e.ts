@@ -2688,10 +2688,14 @@ test("Convo About Me keeps manual editing and native expanded-editor keyboard be
 
     await expandedEditor.evaluate((textarea) => {
       textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      textarea.setSelectionRange(2, 2);
     });
-    await page.keyboard.type("!");
-    await expect(expandedEditor).toHaveValue("alpha\nbeta!");
+    await page.keyboard.type("X");
+    await page.waitForTimeout(40);
+    await expect.poll(() => expandedEditor.evaluate((textarea) => textarea.selectionStart)).toBe(3);
+    await page.keyboard.type("Y");
+    await expect(expandedEditor).toHaveValue("alXYpha\nbeta");
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
@@ -3108,7 +3112,11 @@ test("stopped and refused generations keep sent text cleared and accept the firs
           { times: 1 },
         );
       }
-      await message.getByLabel("Save edit", { exact: true }).click();
+      const saveButton = message.getByLabel("Save edit", { exact: true });
+      const saveButtonBox = await saveButton.boundingBox();
+      expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
+      expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
+      await saveButton.click();
       if (saveGate) {
         try {
           await expect(editor).toBeVisible();

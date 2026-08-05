@@ -675,6 +675,8 @@ interface UIState {
   imageBackgroundHeight: number;
   imageIllustrationWidth: number;
   imageIllustrationHeight: number;
+  imageNoodleWidth: number;
+  imageNoodleHeight: number;
   imageGameWidth: number;
   imageGameHeight: number;
   imagePortraitWidth: number;
@@ -995,6 +997,7 @@ interface UIState {
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
+  setImageNoodleDimensions: (width: number, height: number) => void;
   setImageGameDimensions: (width: number, height: number) => void;
   setImagePortraitDimensions: (width: number, height: number) => void;
   setImageSelfieDimensions: (width: number, height: number) => void;
@@ -1201,6 +1204,8 @@ export function pickSyncedSettings(state: UIState) {
     imageBackgroundHeight: state.imageBackgroundHeight,
     imageIllustrationWidth: state.imageIllustrationWidth,
     imageIllustrationHeight: state.imageIllustrationHeight,
+    imageNoodleWidth: state.imageNoodleWidth,
+    imageNoodleHeight: state.imageNoodleHeight,
     imageGameWidth: state.imageGameWidth,
     imageGameHeight: state.imageGameHeight,
     imagePortraitWidth: state.imagePortraitWidth,
@@ -1398,6 +1403,8 @@ export const useUIStore = create<UIState>()(
       imageBackgroundHeight: 720,
       imageIllustrationWidth: 896,
       imageIllustrationHeight: 1280,
+      imageNoodleWidth: 1024,
+      imageNoodleHeight: 1536,
       imageGameWidth: 1280,
       imageGameHeight: 720,
       imagePortraitWidth: 1024,
@@ -2140,6 +2147,11 @@ export const useUIStore = create<UIState>()(
           imageIllustrationWidth: clampImageDimension(width),
           imageIllustrationHeight: clampImageDimension(height),
         }),
+      setImageNoodleDimensions: (width, height) =>
+        set({
+          imageNoodleWidth: clampImageDimension(width),
+          imageNoodleHeight: clampImageDimension(height),
+        }),
       setImageGameDimensions: (width, height) =>
         set({
           imageGameWidth: clampImageDimension(width),
@@ -2417,7 +2429,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      version: 89,
+      version: 90,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -3013,6 +3025,11 @@ export const useUIStore = create<UIState>()(
         if (version <= 88 && persisted.reduceAmbientEffects === undefined) {
           persisted.reduceAmbientEffects = false;
         }
+        // v89 -> v90: give Noodle timeline images their own provider-compatible canvas.
+        if (version <= 89) {
+          if (persisted.imageNoodleWidth === undefined) persisted.imageNoodleWidth = 1024;
+          if (persisted.imageNoodleHeight === undefined) persisted.imageNoodleHeight = 1536;
+        }
         // v84 -> v85: keep the historical blank-line behavior for /continue by default.
         if (version <= 84 && persisted.continueAddsNewline === undefined) {
           persisted.continueAddsNewline = true;
@@ -3114,6 +3131,8 @@ export const useUIStore = create<UIState>()(
         imageBackgroundHeight: state.imageBackgroundHeight,
         imageIllustrationWidth: state.imageIllustrationWidth,
         imageIllustrationHeight: state.imageIllustrationHeight,
+        imageNoodleWidth: state.imageNoodleWidth,
+        imageNoodleHeight: state.imageNoodleHeight,
         imageGameWidth: state.imageGameWidth,
         imageGameHeight: state.imageGameHeight,
         imagePortraitWidth: state.imagePortraitWidth,

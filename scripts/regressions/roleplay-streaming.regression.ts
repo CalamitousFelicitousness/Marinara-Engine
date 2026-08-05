@@ -198,12 +198,17 @@ assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
 assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
 assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
 assert.match(reducedAmbientEffectsHookSource, /manualPreference \|\| systemPreference/u);
-assert.match(uiStoreSource, /version: 89/u);
+assert.match(uiStoreSource, /version: 90/u);
 assert.match(globalStylesSource, /data-marinara-reduced-effects/u);
 assert.match(
   chatRoleplaySurfaceSource,
-  /function RoleplayLiveStreamText[\s\S]*?textContent = next[\s\S]*?requestAnimationFrame\(apply\)/u,
-  "Roleplay live text should update one text node at animation-frame cadence",
+  /function RoleplayLiveStreamText[\s\S]*?document\.createTextNode\(""\)[\s\S]*?textNode\.appendData[\s\S]*?requestAnimationFrame\(apply\)/u,
+  "Roleplay live text should retain one text node and append to it at animation-frame cadence",
+);
+assert.doesNotMatch(
+  chatRoleplaySurfaceSource,
+  /textRef\.current\.textContent = next/u,
+  "Roleplay streaming must not replace its live Text node on every frame",
 );
 assert.doesNotMatch(
   chatRoleplaySurfaceSource,

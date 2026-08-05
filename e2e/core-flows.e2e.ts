@@ -1890,6 +1890,7 @@ test("Character row actions can add a resource to the active chat without draggi
     await page.locator('[data-tour="panel-characters"]').click();
 
     const characterRow = page.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
+    await characterRow.hover();
     const addAction = characterRow.locator('[data-chat-resource-action="character"]');
     await expect(addAction).toBeVisible();
     await addAction.click();

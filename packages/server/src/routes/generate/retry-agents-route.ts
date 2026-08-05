@@ -26,6 +26,7 @@ import {
   resolveAgentPromptTemplate,
   stripMacroComments,
   findKnownModel,
+  shouldSuppressUnknownModelParameters,
   type AgentCallDebugEvent,
   type AgentContext,
   type AgentResult,
@@ -33,6 +34,7 @@ import {
   type ChatMode,
   type GameMap,
   type WrapFormat,
+  type GenerationParameterSendMap,
 } from "@marinara-engine/shared";
 import { eq } from "../../db/file-query.js";
 import { listCharacterSprites } from "../../services/game/sprite.service.js";
@@ -1290,6 +1292,9 @@ async function resolveRetryAgents(args: {
       provider: any;
       model: string;
       customParameters: Record<string, unknown>;
+      temperature?: number;
+      enabledParameters?: GenerationParameterSendMap;
+      suppressModelParameters: boolean;
       maxOutputTokens: number | null;
       maxParallelJobs: number;
       enableCaching: boolean;
@@ -1319,6 +1324,7 @@ async function resolveRetryAgents(args: {
     }
 
     const knownModel = findKnownModel(storedConn.provider as APIProvider, model);
+    const storedParameters = parseStoredGenerationParameters(storedConn.defaultParameters);
     connForPromptDefaults ??= storedConn;
     const primaryProvider = createLLMProvider(
       storedConn.provider,
@@ -1336,7 +1342,10 @@ async function resolveRetryAgents(args: {
         connectionId,
         provider: wrapRetryAgentProvider(primaryProvider, connectionId ?? storedConn.id),
         model,
-        customParameters: parseStoredGenerationParameters(storedConn.defaultParameters)?.customParameters ?? {},
+        customParameters: storedParameters?.customParameters ?? {},
+        temperature: storedParameters?.temperature,
+        enabledParameters: storedParameters?.enabledParameters,
+        suppressModelParameters: shouldSuppressUnknownModelParameters(storedConn.provider, model),
         maxOutputTokens: knownModel?.maxOutput && knownModel.maxOutput > 0 ? Math.floor(knownModel.maxOutput) : null,
         maxParallelJobs: Number(storedConn.maxParallelJobs) || 1,
         enableCaching: storedConn.enableCaching === "true",
@@ -1423,8 +1432,11 @@ async function resolveRetryAgents(args: {
           provider: wrapRetryAgentProvider(primaryProvider, connectionId),
           model: LOCAL_SIDECAR_MODEL,
           customParameters: {},
+          temperature: sidecarModelService.getConfig().temperature,
+          enabledParameters: { temperature: true },
+          suppressModelParameters: false,
           maxOutputTokens: null,
-          maxParallelJobs: 1,
+          maxParallelJobs: sidecarModelService.getConfig().maxParallelJobs,
           enableCaching: false,
           anthropicExtendedCacheTtl: false,
           cachingAtDepth: 5,
@@ -1502,6 +1514,9 @@ async function resolveRetryAgents(args: {
         connectionId: effectiveConnectionId,
         settings,
         customParameters: agentConnection.entry.customParameters,
+        temperature: agentConnection.entry.temperature,
+        enabledParameters: agentConnection.entry.enabledParameters,
+        suppressModelParameters: agentConnection.entry.suppressModelParameters,
         maxOutputTokens: agentConnection.entry.maxOutputTokens,
         enableCaching: agentConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: agentConnection.entry.anthropicExtendedCacheTtl,
@@ -1576,6 +1591,9 @@ async function resolveRetryAgents(args: {
         connectionId: builtInConnection.entry.connectionId,
         settings,
         customParameters: builtInConnection.entry.customParameters,
+        temperature: builtInConnection.entry.temperature,
+        enabledParameters: builtInConnection.entry.enabledParameters,
+        suppressModelParameters: builtInConnection.entry.suppressModelParameters,
         maxOutputTokens: builtInConnection.entry.maxOutputTokens,
         enableCaching: builtInConnection.entry.enableCaching,
         anthropicExtendedCacheTtl: builtInConnection.entry.anthropicExtendedCacheTtl,
@@ -2463,13 +2481,27 @@ async function executeRetryBatches(
     jobGroups,
     AGENT_PHASE_MAX_CONCURRENT_GROUPS,
     async (group) => {
-      const toolAgents = group.agents.filter((agent) => agent.resolved.toolContext?.tools.length);
-      const batchAgents = group.agents.filter((agent) => !agent.resolved.toolContext?.tools.length);
+      const toolAgents = group.agents.filter(
+        (agent) => agent.resolved.type !== "spotify" && agent.resolved.toolContext?.tools.length,
+      );
+      const batchAgents = group.agents.filter(
+        (agent) => agent.resolved.type === "spotify" || !agent.resolved.toolContext?.tools.length,
+      );
       const groupResults: AgentResult[] = [];
 
       if (batchAgents.length > 0) {
         const configs = batchAgents.map((agent) => agent.resolved);
-        groupResults.push(...(await executeAgentBatch(configs, group.context, group.provider, group.model)));
+        const batchResults = await executeAgentBatch(configs, group.context, group.provider, group.model);
+        for (const result of batchResults) {
+          const entry = batchAgents.find(
+            (agent) => agent.resolved.id === result.agentId || agent.resolved.type === result.agentType,
+          );
+          groupResults.push(
+            entry?.resolved.type === "spotify"
+              ? await validateSpotifyRetryPlayback(entry, result, group.context)
+              : result,
+          );
+        }
       }
 
       for (const entry of toolAgents) {

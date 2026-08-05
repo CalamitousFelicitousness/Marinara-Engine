@@ -8,9 +8,11 @@ import { cn } from "../../lib/utils";
 export function ChatResourceActionButton({
   payload,
   className,
+  iconClassName,
 }: {
   payload: ChatResourceDragPayload;
   className?: string;
+  iconClassName?: string;
 }) {
   const { t } = useTranslation();
   const chat = useChatStore((state) => state.activeChat);
@@ -30,7 +32,7 @@ export function ChatResourceActionButton({
       title={label}
       aria-label={label}
     >
-      <MessageSquarePlus size="0.75rem" />
+      <MessageSquarePlus size="0.75rem" className={iconClassName} />
     </button>
   );
 }

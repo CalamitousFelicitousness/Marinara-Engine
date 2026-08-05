@@ -13,6 +13,7 @@ import type {
   PresentCharacter,
   TrackerHiddenFields,
   WrapFormat,
+  GenerationParameterSendMap,
 } from "@marinara-engine/shared";
 import {
   characterTrackerLockKey,
@@ -44,7 +45,7 @@ const EXPRESSION_AGENT_CONTEXT_CHAR_LIMIT = 1200;
 const EXPRESSION_AGENT_RESPONSE_CHAR_LIMIT = 6000;
 const CHARACTER_LORE_DESCRIPTION_LIMIT = 2000;
 const CHARACTER_LORE_FIELD_LIMIT = 1200;
-const DEFAULT_AGENT_TEMPERATURE = 0.3;
+const DEFAULT_AGENT_TEMPERATURE = 0.7;
 const ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS = 30 * 60_000;
 const AGENT_BATCH_FALLBACK_MAX_CONCURRENT = 4;
 
@@ -75,6 +76,10 @@ export interface AgentExecConfig {
   connectionId: string | null;
   settings: Record<string, unknown>;
   customParameters?: Record<string, unknown>;
+  /** Temperature inherited from the selected connection. */
+  temperature?: number;
+  enabledParameters?: GenerationParameterSendMap;
+  suppressModelParameters?: boolean;
   maxOutputTokens?: number | null;
   enableCaching?: boolean;
   anthropicExtendedCacheTtl?: boolean;
@@ -531,6 +536,11 @@ function normalizeAgentTemperature(value: unknown, fallback = DEFAULT_AGENT_TEMP
   return Math.max(0, Math.min(2, parsed));
 }
 
+function resolveAgentTemperature(config: AgentExecConfig): number | undefined {
+  if (config.suppressModelParameters || config.enabledParameters?.temperature === false) return undefined;
+  return normalizeAgentTemperature(config.temperature);
+}
+
 function agentCustomParameters(config: AgentExecConfig): Record<string, unknown> | undefined {
   return config.customParameters && Object.keys(config.customParameters).length > 0
     ? config.customParameters
@@ -627,7 +637,7 @@ function emitAgentDebug(context: AgentContext, event: AgentCallDebugEvent): void
 function agentDebugBase(
   config: AgentExecConfig,
   model: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
 ): Pick<AgentCallDebugEvent, "agentId" | "agentType" | "agentName" | "phase" | "model" | "temperature" | "maxTokens"> {
   return {
@@ -681,8 +691,7 @@ export async function executeAgent(
             ? buildSpotifyAgentMessages(config, template, context)
             : buildStandardAgentMessages(config, template, context);
 
-    // Agents use lower temperature for reliability
-    const temperature = normalizeAgentTemperature(config.settings.temperature);
+    const temperature = resolveAgentTemperature(config);
     const maxTokens = applyAgentMaxTokensCaps(
       provider,
       normalizeAgentMaxTokens(config.settings.maxTokens),
@@ -733,6 +742,8 @@ export async function executeAgent(
       anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
       cachingAtDepth: config.cachingAtDepth,
       customParameters,
+      enabledParameters: config.enabledParameters,
+      suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       onToken: streamResponses
         ? (chunk) => {
@@ -779,6 +790,8 @@ export async function executeAgent(
         anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
         cachingAtDepth: config.cachingAtDepth,
         customParameters,
+        enabledParameters: config.enabledParameters,
+        suppressModelParameters: config.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
           ? (chunk) => {
@@ -826,7 +839,7 @@ export async function executeAgent(
       ...agentDebugBase(
         config,
         model,
-        normalizeAgentTemperature(config.settings.temperature),
+        resolveAgentTemperature(config),
         normalizeAgentMaxTokens(config.settings.maxTokens),
       ),
       messageCount: 0,
@@ -846,7 +859,7 @@ async function executeAgentWithTools(
   initialMessages: ChatMessage[],
   provider: BaseLLMProvider,
   model: string,
-  temperature: number,
+  temperature: number | undefined,
   maxTokens: number,
   toolContext: AgentToolContext,
   streamResponses: boolean,
@@ -864,6 +877,7 @@ async function executeAgentWithTools(
     agentCallSignal(context.signal, config.type === "illustrator" ? "illustrator" : undefined);
 
   for (let round = 0; round < maxToolRounds; round++) {
+    const roundStartedAt = Date.now();
     emitAgentDebug(context, {
       stage: "request",
       ...agentDebugBase(config, model, temperature, maxTokens),
@@ -880,6 +894,8 @@ async function executeAgentWithTools(
       anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
       cachingAtDepth: config.cachingAtDepth,
       customParameters,
+      enabledParameters: config.enabledParameters,
+      suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       tools: toolContext.tools,
       signal: nextCallSignal(),
@@ -892,7 +908,8 @@ async function executeAgentWithTools(
       messageCount: loopMessages.length,
       tools: debugToolNames(toolContext.tools),
       round: round + 1,
-      durationMs: Date.now() - startTime,
+      durationMs: Date.now() - roundStartedAt,
+      elapsedMs: Date.now() - startTime,
       finishReason: result.finishReason,
       ...debugUsage(result.usage),
       ...responseDebugFields(result.content?.trim() ?? ""),
@@ -956,6 +973,7 @@ async function executeAgentWithTools(
     messages: debugMessages(loopMessages),
     round: maxToolRounds + 1,
   });
+  const finalRoundStartedAt = Date.now();
   const finalResult = await provider.chatComplete(loopMessages, {
     model,
     temperature,
@@ -964,6 +982,8 @@ async function executeAgentWithTools(
     anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
     cachingAtDepth: config.cachingAtDepth,
     customParameters,
+    enabledParameters: config.enabledParameters,
+    suppressModelParameters: config.suppressModelParameters,
     stream: streamResponses,
     signal: nextCallSignal(),
   });
@@ -974,7 +994,8 @@ async function executeAgentWithTools(
     ...agentDebugBase(config, model, temperature, maxTokens),
     messageCount: loopMessages.length,
     round: maxToolRounds + 1,
-    durationMs: Date.now() - startTime,
+    durationMs: Date.now() - finalRoundStartedAt,
+    elapsedMs: Date.now() - startTime,
     finishReason: finalResult.finishReason,
     ...debugUsage(finalResult.usage),
     ...responseDebugFields(responseText),
@@ -1074,7 +1095,7 @@ export async function executeAgentBatch(
 
   const startTime = Date.now();
   const perAgentTokens = configs.map((c) => normalizeAgentMaxTokens(c.settings.maxTokens));
-  const temperature = Math.min(...configs.map((c) => normalizeAgentTemperature(c.settings.temperature)));
+  const temperature = resolveAgentTemperature(configs[0]!);
   const customParameters = agentCustomParameters(configs[0]!);
   const enableCaching = configs[0]!.enableCaching;
   const anthropicExtendedCacheTtl = configs[0]!.anthropicExtendedCacheTtl;
@@ -1153,6 +1174,8 @@ export async function executeAgentBatch(
       anthropicExtendedCacheTtl,
       cachingAtDepth,
       customParameters,
+      enabledParameters: configs[0]!.enabledParameters,
+      suppressModelParameters: configs[0]!.suppressModelParameters,
       stream: streamResponses,
       onToken: streamResponses
         ? (chunk) => {

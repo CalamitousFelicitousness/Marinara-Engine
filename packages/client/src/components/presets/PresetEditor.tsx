@@ -2,7 +2,17 @@
 // Full-Page Preset Editor
 // Tabs: Overview · Sections · Prompts
 // ──────────────────────────────────────────────
-import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type FC, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ChangeEvent,
+  type FC,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { useUIStore } from "../../stores/ui.store";
@@ -25,6 +35,7 @@ import {
   useUpdateVariable,
   useDeleteVariable,
   useReorderVariables,
+  useUploadPresetImage,
 } from "../../hooks/use-presets";
 import {
   ArrowDown,
@@ -55,6 +66,7 @@ import {
   ListChecks,
   Shuffle,
   Copy,
+  Camera,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -63,7 +75,7 @@ import { MacroTextarea } from "../ui/MacroTextarea";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { api } from "../../lib/api-client";
 import { useAgentConfigs, type AgentConfigRow } from "../../hooks/use-agents";
-import { type MarkerType, type PromptSection, type WrapFormat } from "@marinara-engine/shared";
+import { type MarkerType, type PromptPreset, type PromptSection, type WrapFormat } from "@marinara-engine/shared";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useQuoteFormatter } from "../../hooks/use-quote-formatter";
 import { EditorTabRail } from "../ui/EditorTabRail";
@@ -71,6 +83,7 @@ import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import { handleTextareaTab } from "../../lib/textarea-editing";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { resolvePresetArtwork } from "../../lib/preset-artwork";
 
 // ── Input caret helpers ──
 type TextSelection = { start: number; end: number };
@@ -441,6 +454,8 @@ export function PresetEditor() {
     );
   }
 
+  const presetArtwork = resolvePresetArtwork(data.preset);
+
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
       {/* ── Header ── */}
@@ -448,8 +463,12 @@ export function PresetEditor() {
         <button onClick={handleClose} className="mari-editor-action inline-flex">
           <ArrowLeft size="1.125rem" />
         </button>
-        <div className="mari-editor-icon-tile mari-panel-gradient-surface mari-panel-gradient--presets">
-          <FileText size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+        <div className="mari-editor-icon-tile mari-panel-gradient-surface mari-panel-gradient--presets overflow-hidden">
+          {presetArtwork ? (
+            <img src={presetArtwork} alt="" className="h-full w-full object-cover" draggable={false} />
+          ) : (
+            <FileText size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+          )}
         </div>
         <input
           value={localName}
@@ -539,6 +558,7 @@ export function PresetEditor() {
             {/* ── Overview Tab ── */}
             {activeTab === "overview" && (
               <OverviewTab
+                preset={data.preset}
                 name={localName}
                 onNameChange={(v) => {
                   setLocalName(v);
@@ -710,6 +730,7 @@ export function QuickPresetSectionsEditor({
 // ═══════════════════════════════════════════════
 
 function OverviewTab({
+  preset,
   name,
   onNameChange,
   description,
@@ -721,6 +742,7 @@ function OverviewTab({
   sectionCount,
   groupCount,
 }: {
+  preset: PromptPreset;
   name: string;
   onNameChange: (v: string) => void;
   description: string;
@@ -735,6 +757,8 @@ function OverviewTab({
   const { t: localizeUi } = useUiTranslation();
   return (
     <>
+      <PresetPictureField preset={preset} />
+
       <FieldGroup label={localizeUi("ui.presets.overviewtab.name")} help={localizeUi("ui.presets.overviewtab.theDisplayNameForThisPresetUsedInThe")}>
         <input
           value={name}
@@ -808,6 +832,80 @@ function OverviewTab({
         <StatCard label={localizeUi("ui.presets.overviewtab.groups")} value={groupCount} />
       </div>
     </>
+  );
+}
+
+function PresetPictureField({ preset }: { preset: PromptPreset }) {
+  const { t: localizeUi } = useUiTranslation();
+  const uploadPresetImage = useUploadPresetImage();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const artwork = resolvePresetArtwork(preset);
+  const pictureLabel = artwork
+    ? localizeUi("ui.panels.presetspanel.replacePresetPicture")
+    : localizeUi("ui.panels.presetspanel.uploadPresetPicture");
+
+  const handleImageSelected = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        toast.error(localizeUi("ui.panels.presetspanel.chooseAnImageFileForThePresetPicture"));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const image = typeof reader.result === "string" ? reader.result : "";
+        if (!image) {
+          toast.error(localizeUi("ui.panels.agentspanel.couldNotReadThatImage"));
+          return;
+        }
+        try {
+          await uploadPresetImage.mutateAsync({ id: preset.id, image });
+          toast.success(localizeUi("ui.panels.presetspanel.presetPictureUpdated"));
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : localizeUi("ui.panels.presetspanel.failedToUploadPresetPicture"),
+          );
+        }
+      };
+      reader.onerror = () => toast.error(localizeUi("ui.panels.agentspanel.couldNotReadThatImage"));
+      reader.readAsDataURL(file);
+    },
+    [localizeUi, preset.id, uploadPresetImage],
+  );
+
+  return (
+    <FieldGroup
+      label={localizeUi("ui.presets.overviewtab.picture")}
+      help={localizeUi("ui.presets.overviewtab.pictureHelp")}
+    >
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelected} />
+      <button
+        type="button"
+        data-preset-overview-picture
+        onClick={() => {
+          if (!inputRef.current) return;
+          inputRef.current.value = "";
+          inputRef.current.click();
+        }}
+        disabled={uploadPresetImage.isPending}
+        className="mari-panel-gradient-surface mari-panel-gradient--presets group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl shadow-sm transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[var(--marinara-chat-chrome-focus-ring)] disabled:opacity-60"
+        title={pictureLabel}
+        aria-label={pictureLabel}
+      >
+        {artwork ? (
+          <img src={artwork} alt="" className="h-full w-full object-cover" draggable={false} />
+        ) : (
+          <FileText size="1.5rem" />
+        )}
+        <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+          <Camera size="1.125rem" />
+        </span>
+      </button>
+    </FieldGroup>
   );
 }
 

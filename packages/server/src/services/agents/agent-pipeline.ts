@@ -167,9 +167,8 @@ async function executeGroup(
   onResult?: AgentResultCallback,
 ): Promise<AgentResult[]> {
   const groupContext = buildAgentContext(group.agents[0]!, context);
-  // Separate tool-using agents (can't be batched) from regular agents.
-  // Spotify post-processing is intentionally batched as JSON intent first; playback
-  // is applied after parsing the grouped response so it cannot fire early mid-agent.
+  // Separate tool-using agents (can't be batched) from regular agents. Spotify always
+  // returns one JSON intent; deterministic host-side playback runs after parsing.
   const toolAgents = group.agents.filter((a) => shouldUseToolsDuringAgentExecution(a));
   const batchAgents = group.agents.filter((a) => !shouldUseToolsDuringAgentExecution(a));
 
@@ -237,9 +236,9 @@ async function executeGroup(
   return [...batchResults, ...toolResults];
 }
 
-function shouldUseToolsDuringAgentExecution(agent: ResolvedAgent): boolean {
+export function shouldUseToolsDuringAgentExecution(agent: ResolvedAgent): boolean {
   if (!agent.toolContext?.tools.length) return false;
-  return !(agent.phase === "post_processing" && agent.type === "spotify");
+  return agent.type !== "spotify";
 }
 
 /**

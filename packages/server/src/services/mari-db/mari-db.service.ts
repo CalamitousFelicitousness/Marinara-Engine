@@ -978,6 +978,10 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
     ...input,
     name: firstString(input, ["name"]) ?? (typeof existing?.name === "string" ? existing.name : ""),
     description: firstString(input, ["description"]) ?? (typeof existing?.description === "string" ? existing.description : ""),
+    imagePath:
+      input.imagePath === undefined && input.image_path === undefined
+        ? (existing?.imagePath ?? null)
+        : (input.imagePath ?? input.image_path ?? null),
     conversationPrompt:
       firstString(input, ["conversationPrompt", "conversation_prompt"]) ??
       (typeof existing?.conversationPrompt === "string" ? existing.conversationPrompt : ""),
@@ -996,6 +1000,7 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
   };
   delete row.conversation_prompt;
   delete row.game_prompt;
+  delete row.image_path;
   delete row.section_order;
   delete row.group_order;
   delete row.variable_groups;
@@ -1403,6 +1408,7 @@ function summarizePromptPresetRow(row: Row): Row {
     id: parsed.id,
     name: parsed.name,
     description: typeof parsed.description === "string" ? truncateStr(parsed.description, 120) : "",
+    imagePath: parsed.imagePath ?? null,
     isDefault: parsed.isDefault,
     author: parsed.author ?? "",
     sectionCount: Array.isArray(parsed.sectionOrder) ? parsed.sectionOrder.length : 0,
@@ -2880,6 +2886,7 @@ export class MariDbService {
         const payload = actionDataWithTopLevel(args, ["data", "preset", "promptPreset", "row"], [
           "name",
           "description",
+          "imagePath",
           "conversationPrompt",
           "gamePrompt",
           "sectionOrder",
@@ -2922,6 +2929,7 @@ export class MariDbService {
         const payload = actionDataWithTopLevel(args, ["patch", "data", "preset", "promptPreset"], [
           "name",
           "description",
+          "imagePath",
           "conversationPrompt",
           "gamePrompt",
           "sectionOrder",

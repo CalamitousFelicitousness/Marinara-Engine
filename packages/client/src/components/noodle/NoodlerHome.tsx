@@ -476,6 +476,19 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [acceptSourceChangesForProfileId, setAcceptSourceChangesForProfileId] = useState<string | null>(null);
   const [draftSourceSnapshot, setDraftSourceSnapshot] = useState<NoodlerSourceSnapshot | null>(null);
+  const profileDraftGenerationIdRef = useRef(0);
+  const invalidateProfileDraftGeneration = () => {
+    profileDraftGenerationIdRef.current += 1;
+  };
+  const profileDraftRouteKey =
+    navigation.view === "profile"
+      ? `profile:${navigation.accountId}`
+      : navigation.view === "create-profile"
+        ? `create-profile:${navigation.noodleAccountId}`
+        : navigation.view;
+  useEffect(() => {
+    profileDraftGenerationIdRef.current += 1;
+  }, [profileDraftRouteKey]);
   // Back from a stage profile returns to wherever it was opened from (hub feed, sidebar,
   // profile list) instead of always dumping the user on the profile list. Hub is the fallback.
   const profileReturnView = useRef<"hub" | "profiles">("hub");
@@ -532,6 +545,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   };
   const goToHub = async () => {
     if (!(await confirmDiscardProfileDraft())) return;
+    invalidateProfileDraftGeneration();
     setCreationStep(null);
     setProfileDraft(null);
     setEditingProfileId(null);
@@ -700,10 +714,12 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const sourcePickerLoading = eligibleAccountsQuery.isLoading || eligibleAccountsQuery.isFetching;
 
   const handleSourceSearch = (value: string) => {
+    invalidateProfileDraftGeneration();
     setSourceSearch(value);
     setDraftNoodleAccountId(null);
   };
   const handleSourceKind = (value: "all" | "character" | "persona") => {
+    invalidateProfileDraftGeneration();
     setSourceKind(value);
     setDraftNoodleAccountId(null);
   };
@@ -729,6 +745,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   }, [arrivedFromGate, data, enabled, onboardingMode, onNavigate]);
 
   const beginCreate = () => {
+    invalidateProfileDraftGeneration();
     setEditingProfileId(null);
     setDraftNoodleAccountId(null);
     setProfileDraft(null);
@@ -743,6 +760,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
 
   const cancelCreateProfile = async () => {
     if (!(await confirmDiscardProfileDraft())) return;
+    invalidateProfileDraftGeneration();
     const noodleAccountId =
       navigation.mode === "noodler" && navigation.view === "create-profile"
         ? navigation.noodleAccountId
@@ -757,6 +775,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   };
 
   const beginEdit = (profile: NoodlerStageProfile) => {
+    invalidateProfileDraftGeneration();
     setAcceptSourceChangesForProfileId(null);
     setEditingProfileId(profile.id);
     setDraftNoodleAccountId(profile.noodleAccountId);
@@ -776,6 +795,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
 
   const closeProfileEditor = async () => {
     if (!(await confirmDiscardProfileDraft())) return;
+    invalidateProfileDraftGeneration();
     setProfileDraft(null);
     setPreviousDraft(null);
     setEditingProfileId(null);
@@ -794,6 +814,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       toast.error(localizeUi("ui.noodle.stageprofileform.noConnectionsConfiguredAddOneInSettingsConnections"));
       return;
     }
+    const generationId = ++profileDraftGenerationIdRef.current;
     generateProfileDraft.mutate(
       {
         ...(editingProfileId ? { noodlerAccountId: editingProfileId } : { noodleAccountId: draftNoodleAccountId! }),
@@ -804,14 +825,17 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       },
       {
         onSuccess: (draft) => {
+          if (generationId !== profileDraftGenerationIdRef.current) return;
           if (profileDraft) setPreviousDraft(profileDraft);
           if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
           setDraftSourceSnapshot(draft.sourceSnapshot ?? null);
           setProfileDraft(draft);
           setCreationStep("draft");
         },
-        onError: (error) =>
-          toast.error(errorMessage(error, localizeUi("ui.noodle.noodlerhome.couldNotGenerateAStageProfileDraft"))),
+        onError: (error) => {
+          if (generationId !== profileDraftGenerationIdRef.current) return;
+          toast.error(errorMessage(error, localizeUi("ui.noodle.noodlerhome.couldNotGenerateAStageProfileDraft")));
+        },
       },
     );
   };
@@ -823,6 +847,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       handle: profileDraft.handle.replace(/^@+/u, ""),
     };
     const onSuccess = (profile: NoodlerStageProfile) => {
+      invalidateProfileDraftGeneration();
       setProfileDraft(null);
       setEditingProfileId(null);
       setDraftNoodleAccountId(null);
@@ -849,6 +874,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
         const refreshed = await accountsQuery.refetch();
         const existing = refreshed.data?.find((profile) => profile.noodleAccountId === draftNoodleAccountId);
         if (existing) {
+          invalidateProfileDraftGeneration();
           setProfileDraft(null);
           setCreationStep(null);
           onNavigate({ mode: "noodler", view: "profile", accountId: existing.id });
@@ -1069,7 +1095,10 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
             selectedId={draftNoodleAccountId}
             onSearch={handleSourceSearch}
             onKindChange={handleSourceKind}
-            onSelect={setDraftNoodleAccountId}
+            onSelect={(accountId) => {
+              invalidateProfileDraftGeneration();
+              setDraftNoodleAccountId(accountId);
+            }}
             hasMore={Boolean(eligibleAccountsQuery.hasNextPage)}
             isLoadingMore={eligibleAccountsQuery.isFetchingNextPage}
             isLoading={eligibleAccountsQuery.isLoading}
@@ -1190,6 +1219,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
             previousDraft={previousDraft}
             onUndoDraft={() => {
               if (!previousDraft) return;
+              invalidateProfileDraftGeneration();
               setProfileDraft(previousDraft);
               setPreviousDraft(null);
               setAcceptSourceChangesForProfileId(null);

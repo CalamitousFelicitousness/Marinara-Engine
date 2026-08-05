@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { executeAgent } from "../../packages/server/src/services/agents/agent-executor.js";
+import { executeAgent, executeAgentBatch } from "../../packages/server/src/services/agents/agent-executor.js";
 import { createAgentPipeline, type ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
 import { resolveAgentPipelineAgents } from "../../packages/server/src/services/generation/agent-resolution.js";
 import { buildLlamaArgs } from "../../packages/server/src/services/sidecar/sidecar-launch-plan.js";
@@ -90,6 +90,46 @@ await executeAgent(
   "agent-model",
 );
 assert.equal(disabledTemperatureProvider.options[0]?.temperature, undefined);
+
+const mixedParameterBatchProvider = new RecordingProvider();
+await executeAgentBatch(
+  [
+    {
+      ...makeAgent("batch-temperature-low"),
+      temperature: 0.2,
+      enabledParameters: { temperature: true },
+      suppressModelParameters: false,
+    },
+    {
+      ...makeAgent("batch-temperature-high"),
+      temperature: 0.8,
+      enabledParameters: { temperature: true },
+      suppressModelParameters: false,
+    },
+    {
+      ...makeAgent("batch-parameters-suppressed"),
+      temperature: 0.4,
+      enabledParameters: { temperature: true },
+      suppressModelParameters: true,
+    },
+  ],
+  context,
+  mixedParameterBatchProvider,
+  "agent-model",
+);
+assert.equal(mixedParameterBatchProvider.calls, 3, "agents with incompatible request options must not share a batch");
+assert.deepEqual(
+  mixedParameterBatchProvider.options.map((options) => ({
+    temperature: options.temperature,
+    suppressModelParameters: options.suppressModelParameters ?? false,
+  })),
+  [
+    { temperature: 0.2, suppressModelParameters: false },
+    { temperature: 0.8, suppressModelParameters: false },
+    { temperature: undefined, suppressModelParameters: true },
+  ],
+  "split agent requests should retain each agent's temperature and parameter policy",
+);
 
 const storedTemperatureResolution = await resolveAgentPipelineAgents({
   connections: {

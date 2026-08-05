@@ -547,6 +547,30 @@ function agentCustomParameters(config: AgentExecConfig): Record<string, unknown>
     : undefined;
 }
 
+function stableAgentBatchValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableAgentBatchValue).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableAgentBatchValue(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
+function agentBatchRequestSignature(config: AgentExecConfig): string {
+  return stableAgentBatchValue({
+    temperature: resolveAgentTemperature(config),
+    enabledParameters: config.enabledParameters ?? null,
+    suppressModelParameters: config.suppressModelParameters === true,
+    customParameters: agentCustomParameters(config) ?? null,
+    enableCaching: config.enableCaching === true,
+    anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl === true,
+    cachingAtDepth: config.cachingAtDepth ?? null,
+    maxOutputTokens: config.maxOutputTokens ?? null,
+  });
+}
+
 function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
   const activeSignals = signals.filter((signal) => !signal.aborted);
   const abortedSignal = signals.find((signal) => signal.aborted);
@@ -1089,6 +1113,26 @@ export async function executeAgentBatch(
   if (configs.length === 1) {
     logger.info(`[agent-batch] Only 1 agent (${configs[0]!.type}), running individually`);
     return [await executeAgent(configs[0]!, context, provider, model)];
+  }
+
+  const requestOptionGroups = new Map<string, AgentExecConfig[]>();
+  for (const config of configs) {
+    const signature = agentBatchRequestSignature(config);
+    const group = requestOptionGroups.get(signature);
+    if (group) group.push(config);
+    else requestOptionGroups.set(signature, [config]);
+  }
+  if (requestOptionGroups.size > 1) {
+    logger.info(
+      "[agent-batch] Splitting %d agents into %d request-option-compatible batch(es)",
+      configs.length,
+      requestOptionGroups.size,
+    );
+    const groupedResults: AgentResult[] = [];
+    for (const group of requestOptionGroups.values()) {
+      groupedResults.push(...(await executeAgentBatch(group, context, provider, model)));
+    }
+    return groupedResults;
   }
 
   logger.info(`[agent-batch] Batching ${configs.length} agents: [${configs.map((c) => c.type).join(", ")}]`);

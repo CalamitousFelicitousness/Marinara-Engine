@@ -21,9 +21,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Kept the first edit to a sent user message after canceling generation instead of discarding it when transient swipe cleanup changes the active index (#4608).
 - Matched the **Add character to active chat** action to neighboring controls in folders and standalone Character rows, including a visible consistently sized icon on desktop and mobile (#4611).
 - Made **Clear Trackers** use the configured accent hover treatment instead of a destructive red state (#4612).
-- Made agent calls inherit the selected connection's temperature and parameter-send policy, with 0.7 as the default when no temperature is configured (#4614).
+- Made agent calls inherit the selected connection's temperature and parameter-send policy, with 0.7 as the default when no temperature is configured, and kept incompatible per-agent settings isolated during batching (#4614).
 - Reduced Spotify Music DJ execution to one full-context planning request followed by deterministic playback, and clarified per-round versus cumulative timing in agent debug output (#4615).
-- Added preset picture upload and replacement controls to the Presets panel and preset Overview editor, matching the existing lorebook picture workflow (#4624).
+- Added preset picture upload and replacement controls to the Presets panel and preset Overview editor, matching the existing lorebook picture workflow while cleaning up replaced and deleted artwork (#4624).
+- Prevented completed NoodleR profile-draft generations from restoring an editor after the user canceled, changed sources, or moved to another draft flow.
 
 ## [2.4.1]
 

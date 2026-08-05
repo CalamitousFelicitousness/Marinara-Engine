@@ -2423,8 +2423,8 @@ assert.equal(
 );
 assert.match(
   chatMessageSource,
-  /const cycleMergedNarratorAvatars = !isRoleplay \|\| roleplayNarratorAvatarCycling;/u,
-  "Narrator avatar cycling must remain unchanged outside Roleplay and follow the Roleplay preference",
+  /const cycleMergedNarratorAvatars = \(!isRoleplay \|\| roleplayNarratorAvatarCycling\) && !reduceAmbientEffects;/u,
+  "Narrator avatar cycling must follow the Roleplay preference and stop with reduced ambient effects",
 );
 assert.match(
   chatMessageSource,

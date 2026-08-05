@@ -78,6 +78,7 @@ import { tryNoodlerAccountOperation } from "../services/noodle/noodle-noodler-ac
 import { generateAndApplyNoodlerCreatorReply } from "../services/noodle/noodle-noodler-creator-reply.operation.js";
 import { admissionModeForRequest, isConnectionAdmissionFailure } from "../services/generation/connection-admission.js";
 import { generateNoodlerStageProfileDraft } from "../services/noodle/noodle-stage-profile-draft.service.js";
+import { resolveNoodlerSourceSnapshot } from "../services/noodle/noodle-noodler-source.js";
 import { canViewNoodlerPost, isNoodlerHiddenFromViewer } from "../services/noodle/noodler-access.js";
 import { createNoodlerNoodleImagesService } from "../services/noodle/noodle-noodler-images.service.js";
 import { claimNoodleOperation } from "../services/noodle/noodle-operation-lock.js";
@@ -275,9 +276,15 @@ export async function noodleRoutes(app: FastifyInstance) {
   const noodlerImages = createNoodlerNoodleImagesService(app.db);
 
   async function resolveNoodlerPublicIdentity(publicAccount: NoodleAccount) {
-    const sourceCharacter =
-      publicAccount.kind === "character" ? await characters.getById(publicAccount.entityId) : null;
-    return buildNoodlerPublicIdentity(publicAccount, sourceCharacter);
+    const source =
+      publicAccount.kind === "character"
+        ? await characters.getById(publicAccount.entityId)
+        : publicAccount.kind === "persona"
+          ? await characters
+              .getPersona(publicAccount.entityId)
+              .then((persona) => (persona ? { data: { name: persona.name } } : null))
+          : null;
+    return buildNoodlerPublicIdentity(publicAccount, source);
   }
 
   app.get("/", async () => {
@@ -352,7 +359,7 @@ export async function noodleRoutes(app: FastifyInstance) {
     const followedIds = new Set(viewer.settings.social.followingAccountIds ?? []);
     const unlockedIds = new Set(unlocks.map((item) => item.postId));
     const profileById = new Map(
-      profiles.map(({ access: _access, ...profile }) => [
+      profiles.map(({ access: _access, sourceStatus: _sourceStatus, ...profile }) => [
         profile.id,
         {
           ...profile,
@@ -852,7 +859,13 @@ export async function noodleRoutes(app: FastifyInstance) {
       });
     }
     try {
-      const created = await noodle.createNoodlerAccount(id, parsed.data.stageProfile);
+      const sourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
+      const created = await noodle.createNoodlerAccount(
+        id,
+        parsed.data.stageProfile,
+        undefined,
+        sourceSnapshot ?? undefined,
+      );
       if (!created) return reply.code(404).send({ error: "Noodle account not found" });
       const profile = (await noodle.listNoodlerStageProfiles()).find((item) => item.id === created.id);
       if (!profile) throw new Error("Failed to load the created NoodleR stage profile.");
@@ -922,7 +935,13 @@ export async function noodleRoutes(app: FastifyInstance) {
           skipped.push(noodleAccountId);
           continue;
         }
-        const account = await noodle.createNoodlerAccount(noodleAccountId, stageProfile, executionId);
+        const sourceSnapshot = await resolveNoodlerSourceSnapshot(app.db, publicAccount);
+        const account = await noodle.createNoodlerAccount(
+          noodleAccountId,
+          stageProfile,
+          executionId,
+          sourceSnapshot ?? undefined,
+        );
         if (!account) {
           skipped.push(noodleAccountId);
           continue;
@@ -982,7 +1001,20 @@ export async function noodleRoutes(app: FastifyInstance) {
       ) {
         return { status: "identity_conflict" } as const;
       }
-      const updated = await noodle.updateNoodlerStageProfile(id, parsed.data);
+      const currentSourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
+      const sourceSnapshot =
+        parsed.data.acceptSourceChanges &&
+        parsed.data.sourceSnapshot &&
+        currentSourceSnapshot &&
+        JSON.stringify(currentSourceSnapshot) === JSON.stringify(parsed.data.sourceSnapshot)
+          ? currentSourceSnapshot
+          : undefined;
+      const {
+        acceptSourceChanges: _acceptSourceChanges,
+        sourceSnapshot: _sourceSnapshot,
+        ...stageProfile
+      } = parsed.data;
+      const updated = await noodle.updateNoodlerStageProfile(id, stageProfile, sourceSnapshot ?? undefined);
       if (!updated) return { status: "not_found" } as const;
       const profile = (await noodle.listNoodlerStageProfiles()).find((item) => item.id === updated.id);
       if (!profile) throw new Error("Failed to load the updated NoodleR stage profile.");
@@ -1000,6 +1032,44 @@ export async function noodleRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: "NoodleR stage profile not found" });
     }
     return locked.value.profile;
+  });
+
+  app.post("/noodler/accounts/:id/source/dismiss", async (req, reply) => {
+    const settings = await noodle.getSettings();
+    if (!settings.enableNoodler) return reply.code(404).send({ error: "Not Found" });
+    const { id } = req.params as { id: string };
+    const locked = await tryNoodlerAccountOperation(id, async () => {
+      const account = await noodle.getNoodlerAccountById(id);
+      const publicAccount = account?.noodleAccountId ? await noodle.getAccountById(account.noodleAccountId) : null;
+      const sourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
+      if (!account || !sourceSnapshot) return false;
+      await noodle.updateNoodlerSourceSnapshot(id, sourceSnapshot);
+      return true;
+    });
+    if (!locked.acquired) return reply.code(409).send({ error: "Another Creator operation is already running." });
+    if (!locked.value) return reply.code(404).send({ error: "NoodleR source not found" });
+    return (await noodle.listNoodlerStageProfiles()).find((profile) => profile.id === id);
+  });
+
+  app.post("/noodler/accounts/:id/source/adopt-identity", async (req, reply) => {
+    const settings = await noodle.getSettings();
+    if (!settings.enableNoodler) return reply.code(404).send({ error: "Not Found" });
+    const { id } = req.params as { id: string };
+    const locked = await tryNoodlerAccountOperation(id, async () => {
+      const account = await noodle.getNoodlerAccountById(id);
+      const publicAccount = account?.noodleAccountId ? await noodle.getAccountById(account.noodleAccountId) : null;
+      const sourceSnapshot = publicAccount ? await resolveNoodlerSourceSnapshot(app.db, publicAccount) : null;
+      if (!account || !sourceSnapshot) return "missing" as const;
+      return (await noodle.adoptNoodlerPublicIdentity(id, sourceSnapshot))
+        ? ("updated" as const)
+        : ("invalid" as const);
+    });
+    if (!locked.acquired) return reply.code(409).send({ error: "Another Creator operation is already running." });
+    if (locked.value === "missing") return reply.code(404).send({ error: "NoodleR source not found" });
+    if (locked.value === "invalid") {
+      return reply.code(400).send({ error: "Only open Creator profiles can adopt the public identity." });
+    }
+    return (await noodle.listNoodlerStageProfiles()).find((profile) => profile.id === id);
   });
 
   app.delete("/noodler/accounts/:id", async (req, reply) => {

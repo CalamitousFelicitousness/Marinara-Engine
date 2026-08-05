@@ -73,6 +73,10 @@ export const DEFAULT_NOODLE_SETTINGS = {
   noodlerOnboardingComplete: false,
   noodlerOnboardingState: "incomplete",
   noodlerNightQuiet: true,
+  fanActivityEnabled: false,
+  fanLikesPerRefresh: 6,
+  fanRepliesPerRefresh: 2,
+  fanRepostsPerRefresh: 1,
 } as const;
 
 export const noodleSettingsSchema = z.object({
@@ -130,6 +134,10 @@ export const noodleSettingsSchema = z.object({
   noodlerOnboardingComplete: z.boolean().default(DEFAULT_NOODLE_SETTINGS.noodlerOnboardingComplete),
   noodlerOnboardingState: noodlerOnboardingStateSchema.default(DEFAULT_NOODLE_SETTINGS.noodlerOnboardingState),
   noodlerNightQuiet: z.boolean().default(DEFAULT_NOODLE_SETTINGS.noodlerNightQuiet),
+  fanActivityEnabled: z.boolean().default(DEFAULT_NOODLE_SETTINGS.fanActivityEnabled),
+  fanLikesPerRefresh: z.number().int().min(0).max(24).default(DEFAULT_NOODLE_SETTINGS.fanLikesPerRefresh),
+  fanRepliesPerRefresh: z.number().int().min(0).max(12).default(DEFAULT_NOODLE_SETTINGS.fanRepliesPerRefresh),
+  fanRepostsPerRefresh: z.number().int().min(0).max(12).default(DEFAULT_NOODLE_SETTINGS.fanRepostsPerRefresh),
 });
 
 export const noodleSettingsUpdateSchema = noodleSettingsSchema.partial();
@@ -690,6 +698,15 @@ export const noodleGeneratedInteractionSchema = z
     }
   });
 
+export const noodleGeneratedFanActivitySchema = z
+  .object({
+    actorHandle: z.string().min(1),
+    targetPostId: z.string().min(1),
+    type: z.enum(["like", "reply", "repost"]),
+    content: z.string().trim().max(2000).nullable().optional(),
+  })
+  .strict();
+
 export const noodleGeneratedFollowSchema = z.object({
   actorHandle: z.string().min(1),
   targetHandle: z.string().min(1),
@@ -726,6 +743,12 @@ export const noodleGeneratedRefreshSchema = z.object({
   follows: z.array(noodleGeneratedFollowSchema).default([]),
   digests: z.array(noodleGeneratedDigestSchema).default([]),
 });
+
+export const noodleGeneratedFanRefreshSchema = z
+  .object({ activities: z.array(noodleGeneratedFanActivitySchema).default([]) })
+  .strict();
+
+export type NoodleGeneratedFanRefresh = z.infer<typeof noodleGeneratedFanRefreshSchema>;
 
 export const noodleGeneratedProfilesSchema = z.object({
   profiles: z.array(noodleGeneratedProfileSchema).default([]),

@@ -179,6 +179,11 @@ export interface NoodleSettings {
   noodlerOnboardingState: NoodlerOnboardingState;
   /** Avoid overnight automatic posts for creators without a character schedule. */
   noodlerNightQuiet: boolean;
+  /** Optional synthetic audience activity. Kept separate from creator auto-post scheduling. */
+  fanActivityEnabled: boolean;
+  fanLikesPerRefresh: number;
+  fanRepliesPerRefresh: number;
+  fanRepostsPerRefresh: number;
 }
 
 export interface NoodlerReserveCreatorStatus {

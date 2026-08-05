@@ -76,6 +76,7 @@ import {
 } from "../services/noodle/noodle-noodler-post.operation.js";
 import { tryNoodlerAccountOperation } from "../services/noodle/noodle-noodler-account-operation-lock.js";
 import { generateAndApplyNoodlerCreatorReply } from "../services/noodle/noodle-noodler-creator-reply.operation.js";
+import { generateAndApplyNoodlerFanActivity } from "../services/noodle/noodle-noodler-fan-activity.service.js";
 import { admissionModeForRequest, isConnectionAdmissionFailure } from "../services/generation/connection-admission.js";
 import { generateNoodlerStageProfileDraft } from "../services/noodle/noodle-stage-profile-draft.service.js";
 import { resolveNoodlerSourceSnapshot } from "../services/noodle/noodle-noodler-source.js";
@@ -1235,6 +1236,31 @@ export async function noodleRoutes(app: FastifyInstance) {
     const result = await refreshAllNoodlerCreatorsNow(app.db);
     if (result.status === "disabled") return reply.code(404).send({ error: "Not Found" });
     return { outcomes: result.outcomes };
+  });
+
+  app.post("/noodler/fan-activity/refresh-now", async (req, reply) => {
+    const releaseOperation = claimNoodleOperation("noodler-fan-activity");
+    if (!releaseOperation) return reply.code(409).send({ error: "NoodleR fan activity is already running." });
+    try {
+      const result = await generateAndApplyNoodlerFanActivity({
+        db: app.db,
+        debugMode: (req.body as { debugMode?: unknown } | undefined)?.debugMode === true,
+      });
+      if (result.status === "disabled") return reply.code(404).send({ error: "Not Found" });
+      if (result.status === "connection_required") {
+        return reply.code(400).send({ error: "Select a Noodle generation connection first." });
+      }
+      if (result.status === "connection_not_found") {
+        return reply.code(404).send({ error: "Noodle generation connection not found" });
+      }
+      return result;
+    } catch (error) {
+      if (isConnectionAdmissionFailure(error)) return reply.code(409).send({ error: getErrorMessage(error) });
+      logger.error(error, "[noodler] Fan activity generation failed");
+      return reply.code(500).send({ error: getErrorMessage(error) });
+    } finally {
+      releaseOperation();
+    }
   });
 
   app.post("/noodler/auto-post/refresh-targeted", async (req, reply) => {

@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -6,6 +6,7 @@ import {
   useNoodlerAccounts,
   useNoodlerReserveStatus,
   useRefreshAllNoodlerCreatorsNow,
+  useRefreshNoodlerFanActivityNow,
   useUpdateNoodleSettings,
   useUpdateNoodlerAutoPosting,
 } from "../../hooks/use-noodle";
@@ -32,6 +33,7 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
   const updateSettings = useUpdateNoodleSettings();
   const updateAuto = useUpdateNoodlerAutoPosting();
   const refreshAll = useRefreshAllNoodlerCreatorsNow();
+  const refreshFans = useRefreshNoodlerFanActivityNow();
   // Toggles roll back on rejection, which is silent on its own: say so, or the user reads the
   // reverted switch as the server having accepted a different value.
   const toastToggleFailure = (error: unknown) =>
@@ -40,6 +42,63 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
 
   return (
     <div className="space-y-4">
+      <section className="space-y-3 border-b border-[var(--border)] pb-4">
+        <label className="flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">{t("ui.noodle.noodlerfanactivity.enabled")}</span>
+            <span className="block text-xs text-[var(--muted-foreground)]">
+              {t("ui.noodle.noodlerfanactivity.help")}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings?.fanActivityEnabled ?? false}
+            disabled={updateSettings.isPending || !settings}
+            onChange={(event) =>
+              updateSettings.mutate({ fanActivityEnabled: event.target.checked }, { onError: toastToggleFailure })
+            }
+            className="h-5 w-5 accent-[var(--noodle-accent)]"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {(
+            [
+              ["fanLikesPerRefresh", "likes", 0, 24],
+              ["fanRepliesPerRefresh", "replies", 0, 12],
+              ["fanRepostsPerRefresh", "reposts", 0, 12],
+            ] as const
+          ).map(([key, label, min, max]) => (
+            <label key={key} className="space-y-1 text-xs font-semibold">
+              <span className="block text-[var(--muted-foreground)]">{t(`ui.noodle.noodlerfanactivity.${label}`)}</span>
+              <input
+                type="number"
+                min={min}
+                max={max}
+                value={settings?.[key] ?? 0}
+                disabled={updateSettings.isPending || !settings}
+                onChange={(event) => updateSettings.mutate({ [key]: Number(event.target.value) })}
+                className="h-9 w-full rounded-md border border-[var(--border)] bg-transparent px-2 text-sm"
+              />
+            </label>
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={refreshFans.isPending || !settings?.fanActivityEnabled}
+          onClick={() =>
+            refreshFans.mutate(undefined, {
+              onSuccess: (result) => toast.success(t("ui.noodle.noodlerfanactivity.created", result)),
+              onError: (error) => toast.error(errorMessage(error, t("ui.noodle.noodlerfanactivity.failed"))),
+            })
+          }
+          className="inline-flex min-h-9 items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-semibold transition-[background-color,scale] hover:bg-[var(--accent)] active:scale-[0.96] disabled:opacity-40"
+        >
+          <UsersRound size={13} className={refreshFans.isPending ? "animate-pulse" : undefined} />
+          {refreshFans.isPending
+            ? t("ui.noodle.noodlerfanactivity.running")
+            : t("ui.noodle.noodlerfanactivity.refreshNow")}
+        </button>
+      </section>
       <section className="space-y-4 border-b border-[var(--border)] pb-4">
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
@@ -83,43 +142,43 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
             {t("ui.noodle.noodlerschedulemanagermodal.loadingStatus")}
           </p>
         ) : (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-          <div>
-            <dt className="text-[var(--muted-foreground)]">
-              {t("ui.noodle.noodlerschedulemanagermodal.textAttemptsLabel")}
-            </dt>
-            <dd className="mt-0.5 font-semibold tabular-nums">
-              {t("ui.noodle.noodlerschedulemanagermodal.textAttempts", {
-                used: status?.textAttemptsUsed ?? 0,
-                limit: status?.postsPerDay ?? settings?.postsPerDay ?? 4,
-              })}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[var(--muted-foreground)]">
-              {t("ui.noodle.noodlerschedulemanagermodal.imageAttemptsLabel")}
-            </dt>
-            <dd className="mt-0.5 font-semibold tabular-nums">
-              {t("ui.noodle.noodlerschedulemanagermodal.imageAttempts", {
-                used: status?.imageAttemptsUsed ?? 0,
-                limit: status?.postsPerDay ?? settings?.postsPerDay ?? 4,
-              })}
-            </dd>
-          </div>
-          <div className="col-span-2 sm:col-span-1">
-            <dt className="text-[var(--muted-foreground)]">
-              {t("ui.noodle.noodlerschedulemanagermodal.preparedPostsLabel")}
-            </dt>
-            <dd className="mt-0.5 font-semibold tabular-nums">
-              {status?.preparedThrough
-                ? t("ui.noodle.noodlerschedulemanagermodal.reserveThrough", {
-                    count: status.preparedCount,
-                    time: new Date(status.preparedThrough).toLocaleString(),
-                  })
-                : t("ui.noodle.noodlerschedulemanagermodal.reserveEmpty")}
-            </dd>
-          </div>
-        </dl>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+            <div>
+              <dt className="text-[var(--muted-foreground)]">
+                {t("ui.noodle.noodlerschedulemanagermodal.textAttemptsLabel")}
+              </dt>
+              <dd className="mt-0.5 font-semibold tabular-nums">
+                {t("ui.noodle.noodlerschedulemanagermodal.textAttempts", {
+                  used: status?.textAttemptsUsed ?? 0,
+                  limit: status?.postsPerDay ?? settings?.postsPerDay ?? 4,
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted-foreground)]">
+                {t("ui.noodle.noodlerschedulemanagermodal.imageAttemptsLabel")}
+              </dt>
+              <dd className="mt-0.5 font-semibold tabular-nums">
+                {t("ui.noodle.noodlerschedulemanagermodal.imageAttempts", {
+                  used: status?.imageAttemptsUsed ?? 0,
+                  limit: status?.postsPerDay ?? settings?.postsPerDay ?? 4,
+                })}
+              </dd>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <dt className="text-[var(--muted-foreground)]">
+                {t("ui.noodle.noodlerschedulemanagermodal.preparedPostsLabel")}
+              </dt>
+              <dd className="mt-0.5 font-semibold tabular-nums">
+                {status?.preparedThrough
+                  ? t("ui.noodle.noodlerschedulemanagermodal.reserveThrough", {
+                      count: status.preparedCount,
+                      time: new Date(status.preparedThrough).toLocaleString(),
+                    })
+                  : t("ui.noodle.noodlerschedulemanagermodal.reserveEmpty")}
+              </dd>
+            </div>
+          </dl>
         )}
         <button
           type="button"

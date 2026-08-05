@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { and, desc, eq, gt, inArray, isNull, lt, or } from "../../db/file-query.js";
 import {
   createNoodlePoll,
+  AMBIENT_NOODLE_ENTITY_IDS,
   DEFAULT_NOODLER_CREATOR_REPLIES_PER_24_HOURS,
   DEFAULT_NOODLE_SETTINGS,
   DEFAULT_NOODLE_WALLET_COINS,
@@ -88,6 +89,7 @@ import {
 
 const NOODLE_SETTINGS_KEY = "noodle.settings";
 const NOODLE_REFRESH_SCHEDULE_KEY = "noodle.refresh-schedule";
+const AMBIENT_NOODLE_ENTITY_ID_SET = new Set<string>(AMBIENT_NOODLE_ENTITY_IDS);
 const NOODLE_CARRYOVER_TARGETS: NoodleCarryoverTarget[] = ["conversation", "roleplay", "game"];
 export const NOODLER_UNLOCK_COST = 1;
 export const NOODLER_SUBSCRIPTION_COST = 5;
@@ -3169,6 +3171,61 @@ export function createNoodleStorage(db: DB) {
         type: input.type,
         content: input.content,
         parentInteractionId,
+      });
+    },
+
+    async createNoodlerFanInteraction(
+      postId: string,
+      input: { actorAccountId: string; type: "like" | "reply" | "repost"; content: string | null },
+    ): Promise<{ interaction: NoodleInteraction; created: boolean } | null> {
+      return db.transaction(async (tx) => {
+        const [postRows, actorRows] = await Promise.all([
+          tx.select().from(noodlePosts).where(eq(noodlePosts.id, postId)),
+          tx.select().from(noodleAccounts).where(eq(noodleAccounts.id, input.actorAccountId)),
+        ]);
+        const postRow = postRows[0];
+        const actorRow = actorRows[0];
+        if (!postRow || postRow.access !== "public" || !actorRow || actorRow.platform !== "noodle") return null;
+        const actor = mapAccount(actorRow);
+        if (actor.kind !== "random_user" || !AMBIENT_NOODLE_ENTITY_ID_SET.has(actor.entityId)) return null;
+        const creatorRows = await tx
+          .select({ id: noodleAccounts.id })
+          .from(noodleAccounts)
+          .where(and(eq(noodleAccounts.id, postRow.authorAccountId), eq(noodleAccounts.platform, "noodler")));
+        if (!creatorRows[0]) return null;
+
+        const existingRows = await tx
+          .select()
+          .from(noodleInteractions)
+          .where(
+            and(
+              eq(noodleInteractions.postId, postId),
+              eq(noodleInteractions.actorAccountId, input.actorAccountId),
+              eq(noodleInteractions.type, input.type),
+              isNull(noodleInteractions.parentInteractionId),
+            ),
+          );
+        const content = input.type === "reply" ? input.content?.trim() || null : null;
+        const duplicate = existingRows.find(
+          (row) => input.type !== "reply" || (row.content?.trim() || null) === content,
+        );
+        if (duplicate) return { interaction: mapInteraction(duplicate), created: false };
+        if (input.type === "reply" && !content) return null;
+
+        const id = newId();
+        await tx.insert(noodleInteractions).values({
+          id,
+          postId,
+          parentInteractionId: null,
+          actorAccountId: actor.id,
+          type: input.type,
+          content,
+          imageUrl: null,
+          actorSnapshot: JSON.stringify(snapshotForAccount(actor)),
+          createdAt: now(),
+        });
+        const rows = await tx.select().from(noodleInteractions).where(eq(noodleInteractions.id, id));
+        return rows[0] ? { interaction: mapInteraction(rows[0]), created: true } : null;
       });
     },
 

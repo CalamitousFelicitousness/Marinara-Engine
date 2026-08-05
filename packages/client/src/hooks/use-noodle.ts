@@ -677,6 +677,18 @@ export function useRefreshTargetedNoodlerCreatorsNow() {
   });
 }
 
+export function useRefreshNoodlerFanActivityNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ status: string; created: number }>("/noodle/noodler/fan-activity/refresh-now"),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: [...noodleKeys.noodlerRoot(), "posts"] }),
+        qc.invalidateQueries({ queryKey: noodleKeys.noodlerViewers() }),
+      ]),
+  });
+}
+
 export function useUpdateNoodleSettings() {
   const qc = useQueryClient();
   return useMutation({

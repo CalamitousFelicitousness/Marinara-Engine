@@ -8,6 +8,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Matched the **Add character to active chat** button to the neighboring Character row actions in folders and standalone rows on desktop and mobile.
 
+### Added
+
+- Added optional, quota-limited synthetic audience activity for public NoodleR posts, with separate likes, replies, reposts, and a manual refresh action.
+
 ## [2.4.2]
 
 ### Added

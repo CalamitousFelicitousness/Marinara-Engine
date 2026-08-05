@@ -161,6 +161,7 @@ import {
   stepCadenceValue,
 } from "../../lib/agent-cadence";
 import { characterMatchesSearch, getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
+import { buildRoleplayAgentSettingsOrder } from "../../lib/agent-settings-order";
 import { extractCreatorNotesCss } from "../../lib/creator-notes-css";
 import { isLorebookScopeActiveForChat } from "../../lib/lorebook-scope";
 import { addSilentGreetingSwipes } from "../../lib/message-swipes";
@@ -206,7 +207,6 @@ import { useAgentConfigs, useCreateAgent, useUpdateAgent, type AgentConfigRow } 
 import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import {
-  BUILT_IN_AGENTS,
   BUILT_IN_TOOLS,
   DEFAULT_AGENT_CONTEXT_SIZE,
   DEFAULT_AGENT_TOOLS,
@@ -344,33 +344,6 @@ const DEFAULT_PROSE_GUARDIAN_BANNED_WORDS = "ozone";
 const DEFAULT_PROSE_GUARDIAN_AVOID =
   "no repetition of any phrases or sentence structure from the last messages, if the last output started with dialogue line, this one needs to start with narration, no purple prose";
 
-const AGENTS_TAB_CATEGORY_ORDER: Record<string, number> = {
-  writer: 0,
-  tracker: 1,
-  misc: 2,
-};
-
-const ROLEPLAY_AGENT_SETTINGS_ORDER = new Map<string, number>(
-  BUILT_IN_AGENTS.map((agent, manifestIndex) => ({ agent, manifestIndex }))
-    .filter(({ agent }) => !agent.libraryHidden)
-    .sort((a, b) => {
-      const categoryDiff =
-        (AGENTS_TAB_CATEGORY_ORDER[a.agent.category] ?? 99) - (AGENTS_TAB_CATEGORY_ORDER[b.agent.category] ?? 99);
-      return categoryDiff || a.manifestIndex - b.manifestIndex;
-    })
-    .map(({ agent }, index) => [agent.id, index]),
-);
-ROLEPLAY_AGENT_SETTINGS_ORDER.set(
-  STORYBOARD_AGENT_ID,
-  ROLEPLAY_AGENT_SETTINGS_ORDER.get(STORYBOARD_AGENT_ID) ??
-    (ROLEPLAY_AGENT_SETTINGS_ORDER.get("illustrator") ?? ROLEPLAY_AGENT_SETTINGS_ORDER.size) + 0.5,
-);
-const CUSTOM_AGENT_SETTINGS_ORDER = ROLEPLAY_AGENT_SETTINGS_ORDER.size + 100;
-
-function getRoleplayAgentSettingsOrder(agentId: string): number {
-  return ROLEPLAY_AGENT_SETTINGS_ORDER.get(agentId) ?? CUSTOM_AGENT_SETTINGS_ORDER;
-}
-
 function getAgentSettingsMenuId(chatId: string, agentId: string): string {
   return `chat-settings-agent-menu-${chatId}-${agentId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
@@ -456,6 +429,8 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
       return <Music2 size={size} className={className} />;
     case "haptic":
       return <Vibrate size={size} className={className} />;
+    case "long-term-memory":
+      return <Brain size={size} className={className} />;
     case "hierarchical-maps":
       return <MapIcon size={size} className={className} />;
     case "custom-agents":
@@ -844,6 +819,15 @@ export function ChatSettingsDrawer({
   const { data: presets } = usePresets();
   const { data: defaultPromptPreset } = useDefaultPreset();
   const { data: installedAgentManifests = [] } = useCapabilityAgentRegistry();
+  const roleplayAgentSettingsOrder = useMemo(
+    () => buildRoleplayAgentSettingsOrder(installedAgentManifests),
+    [installedAgentManifests],
+  );
+  const customAgentSettingsOrder = roleplayAgentSettingsOrder.size + 100;
+  const getRoleplayAgentSettingsOrder = useCallback(
+    (agentId: string) => roleplayAgentSettingsOrder.get(agentId) ?? customAgentSettingsOrder,
+    [customAgentSettingsOrder, roleplayAgentSettingsOrder],
+  );
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(open);
   const persistedChatMode = (chat as unknown as { mode?: unknown }).mode;
   const chatMode: ChatMode =
@@ -2011,6 +1995,7 @@ export function ChatSettingsDrawer({
     [activeAgentIds, customAgents],
   );
   const mapsAgent = availableAgents.find((agent) => agent.id === mapsPackage?.id);
+  const ltmAgent = availableAgents.find((agent) => agent.id === ltmPackage?.id);
   const storyboardAgent = availableAgents.find((agent) => agent.id === STORYBOARD_AGENT_ID);
   const [pendingAgentMenuTargetId, setPendingAgentMenuTargetId] = useState<string | null>(null);
   const roleplayAgentMenuLinks = useMemo(() => {
@@ -2044,6 +2029,9 @@ export function ChatSettingsDrawer({
     addLink("illustrator", illustratorActive, illustratorAgentMeta.name);
     addLink("spotify", spotifyActive, musicDjAgentMeta.name);
     addLink("haptic", hapticActive, hapticAgentMeta.name);
+    if (ltmAgent && ltmPackage) {
+      addLink(ltmPackage.id, metadata.enableAgents === true && activeAgentIds.includes(ltmPackage.id), ltmAgent.name);
+    }
     if (storyboardAgent) {
       addLink(STORYBOARD_AGENT_ID, activeAgentIds.includes(STORYBOARD_AGENT_ID), storyboardAgent.name);
     }
@@ -2053,7 +2041,7 @@ export function ChatSettingsDrawer({
         id: "custom-agents",
         label: activeCustomAgents.length === 1 ? activeCustomAgents[0]!.name : "Custom Agents",
         targetId: getAgentSettingsMenuId(chat.id, "custom-agents"),
-        order: CUSTOM_AGENT_SETTINGS_ORDER,
+        order: customAgentSettingsOrder,
         count: activeCustomAgents.length > 1 ? activeCustomAgents.length : undefined,
       });
     }
@@ -2066,6 +2054,7 @@ export function ChatSettingsDrawer({
     chat.id,
     continuityActive,
     continuityAgentMeta.name,
+    customAgentSettingsOrder,
     directorActive,
     directorAgentMeta.name,
     echoChamberActive,
@@ -2080,10 +2069,13 @@ export function ChatSettingsDrawer({
     illustratorAgentMeta.name,
     isGame,
     isRoleplayMode,
+    getRoleplayAgentSettingsOrder,
     knowledgeRetrievalActive,
     knowledgeRetrievalAgentMeta.name,
     knowledgeRouterActive,
     knowledgeRouterAgentMeta.name,
+    ltmAgent,
+    ltmPackage,
     lorebookKeeperActive,
     lorebookKeeperAgentMeta.name,
     mapsAgent,
@@ -3902,7 +3894,7 @@ export function ChatSettingsDrawer({
         icon={renderRoleplayAgentMenuIcon("custom-agents")}
         title={localizeUi("ui.panels.agentspanel.customAgents")}
         description={localizeUi("ui.chat.chatsettingsdrawer.configureCustomAgentsCurrentlyAttachedToThisChat")}
-        order={CUSTOM_AGENT_SETTINGS_ORDER}
+        order={customAgentSettingsOrder}
       >
         <div className="space-y-1.5">
           {activeCustomAgents.map((agent) => {
@@ -8331,7 +8323,11 @@ export function ChatSettingsDrawer({
                             ] as const
                           ).map((cat) => {
                             const catAgents = availableAgents.filter((a) => a.category === cat.key);
-                            const activeInCat = catAgents.filter((a) => activeAgentIds.includes(a.id));
+                            const activeInCat = catAgents
+                              .filter((a) => activeAgentIds.includes(a.id))
+                              .sort(
+                                (a, b) => getRoleplayAgentSettingsOrder(a.id) - getRoleplayAgentSettingsOrder(b.id),
+                              );
                             const inactiveInCat = catAgents.filter((a) => !activeAgentIds.includes(a.id));
                             if (catAgents.length === 0) return null;
                             return (
@@ -8354,12 +8350,16 @@ export function ChatSettingsDrawer({
                                         <div
                                           key={agent.id}
                                           id={
-                                            agent.id === "hierarchical-maps" || agent.id === STORYBOARD_AGENT_ID
+                                            agent.id === "hierarchical-maps" ||
+                                            agent.id === "long-term-memory" ||
+                                            agent.id === STORYBOARD_AGENT_ID
                                               ? getAgentSettingsMenuId(chat.id, agent.id)
                                               : undefined
                                           }
                                           tabIndex={
-                                            agent.id === "hierarchical-maps" || agent.id === STORYBOARD_AGENT_ID
+                                            agent.id === "hierarchical-maps" ||
+                                            agent.id === "long-term-memory" ||
+                                            agent.id === STORYBOARD_AGENT_ID
                                               ? -1
                                               : undefined
                                           }

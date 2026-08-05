@@ -1761,7 +1761,7 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleSaveEdit = useCallback(
     (content: string) => {
-      if (editSwipeIndexRef.current !== null && editSwipeIndexRef.current !== message.activeSwipeIndex) {
+      if (!isUser && editSwipeIndexRef.current !== null && editSwipeIndexRef.current !== message.activeSwipeIndex) {
         editSwipeIndexRef.current = null;
         setEditing(false);
         return;
@@ -1773,7 +1773,7 @@ export const ChatMessage = memo(function ChatMessage({
       editSwipeIndexRef.current = null;
       setEditing(false);
     },
-    [message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
+    [isUser, message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
   );
 
   const handleCancelEdit = useCallback(() => {
@@ -1793,12 +1793,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   useEffect(() => {
     if (!editing) return;
-    if (editSwipeIndexRef.current === null) return;
+    if (isUser || editSwipeIndexRef.current === null) return;
     if (editSwipeIndexRef.current !== message.activeSwipeIndex) {
       editSwipeIndexRef.current = null;
       setEditing(false);
     }
-  }, [editing, message.activeSwipeIndex]);
+  }, [editing, isUser, message.activeSwipeIndex]);
 
   // Apply regex scripts to AI output (assistant/narrator roles)
   const { applyToAIOutput } = useApplyRegex();

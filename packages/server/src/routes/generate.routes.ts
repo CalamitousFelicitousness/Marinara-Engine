@@ -402,7 +402,7 @@ import {
 } from "../services/generation/roleplay-summary-runtime.js";
 import { getChatGenerationTimeoutMs, getMaxToolRounds } from "../config/runtime-config.js";
 import {
-  REVIEWABLE_WRITER_AGENT_TYPES,
+  isReviewableWriterAgentType,
   buildRuntimeAgentSectionEligibleTypes,
   clearUnusedRuntimeAgentSections,
   formatAgentInjections,
@@ -2804,6 +2804,9 @@ export async function generateRoutes(app: FastifyInstance) {
           chatConnectionId: connId ?? "",
           chatModel: conn.model,
           chatCustomParameters: connectionParams?.customParameters ?? {},
+          chatTemperature: temperature,
+          chatEnabledParameters: enabledParameters,
+          chatSuppressModelParameters: suppressModelParameters,
           chatMaxOutputTokens: chatConnectionMaxOutputTokens,
           chatMaxParallelJobs: chatConnectionMaxParallelJobs,
           chatEnableCaching: conn.enableCaching === "true",
@@ -4587,7 +4590,7 @@ export async function generateRoutes(app: FastifyInstance) {
             reviewedAgentInjections.length === 0 &&
             !input.regenerateMessageId;
           const reviewableWriterInjections = contextInjections.filter((entry) =>
-            REVIEWABLE_WRITER_AGENT_TYPES.has(entry.agentType),
+            isReviewableWriterAgentType(entry.agentType),
           );
           if (shouldReviewWriterAgentOutputs && reviewableWriterInjections.length > 0) {
             const agentNames = new Map(resolvedAgents.map((agent) => [agent.type, agent.name] as const));

@@ -1866,7 +1866,8 @@ test("Characters can be dragged from the right panel into the active chat", asyn
   }
 });
 
-test("Character row actions can add a resource to the active chat without dragging", async ({ page, request }) => {
+test("Character row actions can add a resource to the active chat without dragging", async ({ page, request }, testInfo) => {
+  const mobile = testInfo.project.name.includes("mobile");
   const suffix = Date.now().toString(36);
   const characterName = `Chat Action Character ${suffix}`;
   const characterResponse = await request.post("/api/characters", {
@@ -1879,6 +1880,11 @@ test("Character row actions can add a resource to the active chat without draggi
   });
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
+  const groupResponse = await request.post("/api/characters/groups", {
+    data: { name: `Chat Action Folder ${suffix}`, characterIds: [character.id] },
+  });
+  expect(groupResponse.ok()).toBeTruthy();
+  const group = (await groupResponse.json()) as { id: string };
 
   try {
     await page.goto("/");
@@ -1889,9 +1895,36 @@ test("Character row actions can add a resource to the active chat without draggi
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
     await page.locator('[data-tour="panel-characters"]').click();
 
-    const characterRow = page.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
+    const folderRow = page.locator(`[data-character-folder-id="${group.id}"]`);
+    const folderHeader = folderRow.locator(':scope > [role="button"]');
+    await folderHeader.click();
+    await expect(folderHeader).toHaveAttribute("aria-expanded", "true");
+
+    const characterRow = folderRow.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
+    if (!mobile) await characterRow.hover();
     const addAction = characterRow.locator('[data-chat-resource-action="character"]');
+    const duplicateAction = characterRow.getByRole("button", { name: "Duplicate", exact: true });
+    const deleteAction = characterRow.getByRole("button", { name: "Delete", exact: true });
     await expect(addAction).toBeVisible();
+    const [addBox, duplicateBox, deleteBox] = await Promise.all([
+      addAction.boundingBox(),
+      duplicateAction.boundingBox(),
+      deleteAction.boundingBox(),
+    ]);
+    expect(addBox).not.toBeNull();
+    expect(duplicateBox).not.toBeNull();
+    expect(deleteBox).not.toBeNull();
+    expect(addBox!.width).toBeCloseTo(duplicateBox!.width, 1);
+    expect(addBox!.height).toBeCloseTo(duplicateBox!.height, 1);
+    expect(addBox!.width).toBeCloseTo(deleteBox!.width, 1);
+    expect(addBox!.height).toBeCloseTo(deleteBox!.height, 1);
+    const [addRadius, duplicateRadius, deleteRadius] = await Promise.all(
+      [addAction, duplicateAction, deleteAction].map((button) =>
+        button.evaluate((element) => getComputedStyle(element).borderRadius),
+      ),
+    );
+    expect(addRadius).toBe(duplicateRadius);
+    expect(addRadius).toBe(deleteRadius);
     await addAction.click();
 
     await expect.poll(() => getChatCharacterIds(request, chat.id)).toContain(character.id);
@@ -1899,6 +1932,7 @@ test("Character row actions can add a resource to the active chat without draggi
   } finally {
     await Promise.all([
       request.delete(`/api/chats/${chat.id}`).catch(() => undefined),
+      request.delete(`/api/characters/groups/${group.id}`).catch(() => undefined),
       request.delete(`/api/characters/${character.id}`).catch(() => undefined),
     ]);
   }
@@ -4899,6 +4933,74 @@ test("chat toolbar panels close when their trigger is clicked again across modes
       request.delete(`/api/chats/${conversationChat.id}`),
       request.delete(`/api/chats/${gameChat.id}`),
     ]);
+  }
+});
+
+test("preset pictures can be uploaded from the panel and replaced in the Overview editor", async ({
+  page,
+  request,
+}, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now().toString(36)}`;
+  const presetName = `Picture Preset ${suffix}`;
+  const presetResponse = await request.post("/api/prompts", {
+    data: { name: presetName, description: "Preset picture upload fixture." },
+  });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  const imageFile = {
+    name: "preset-picture.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(TRANSPARENT_GIF_BASE64, "base64"),
+  };
+  const uploadedImagePaths: string[] = [];
+  let duplicatePresetId: string | null = null;
+
+  try {
+    await page.goto("/");
+    await page.locator('[data-tour="panel-presets"]').click();
+
+    const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
+    await expect(presetRow).toBeVisible();
+
+    const panelUpload = presetRow.getByRole("button", { name: "Upload preset picture" });
+    const panelFileChooserPromise = page.waitForEvent("filechooser");
+    await panelUpload.click();
+    await (await panelFileChooserPromise).setFiles(imageFile);
+
+    const panelPicture = presetRow.getByRole("button", { name: "Replace preset picture" });
+    await expect(panelPicture).toBeVisible();
+    await expect(panelPicture.locator("img")).toHaveAttribute("src", /\/api\/prompts\/images\/file\//u);
+
+    await presetRow.locator("[data-preset-open-action]").click({ position: { x: 8, y: 8 } });
+    const overviewPicture = page.locator("[data-preset-overview-picture]");
+    await expect(overviewPicture).toBeVisible();
+    await expect(overviewPicture).toHaveAttribute("aria-label", "Replace preset picture");
+    const firstImagePath = await overviewPicture.locator("img").getAttribute("src");
+    expect(firstImagePath).toMatch(/\/api\/prompts\/images\/file\//u);
+    uploadedImagePaths.push(firstImagePath!);
+    const duplicateResponse = await request.post(`/api/prompts/${preset.id}/duplicate`);
+    expect(duplicateResponse.ok()).toBeTruthy();
+    duplicatePresetId = ((await duplicateResponse.json()) as { id: string }).id;
+
+    const editorFileChooserPromise = page.waitForEvent("filechooser");
+    await overviewPicture.click();
+    await (await editorFileChooserPromise).setFiles(imageFile);
+    await expect
+      .poll(() => overviewPicture.locator("img").getAttribute("src"))
+      .not.toBe(firstImagePath);
+    const replacementImagePath = await overviewPicture.locator("img").getAttribute("src");
+    expect(replacementImagePath).toMatch(/\/api\/prompts\/images\/file\//u);
+    uploadedImagePaths.push(replacementImagePath!);
+    expect((await request.get(firstImagePath!)).status()).toBe(200);
+    await request.delete(`/api/prompts/${duplicatePresetId}`);
+    duplicatePresetId = null;
+    await expect.poll(async () => (await request.get(firstImagePath!)).status()).toBe(404);
+  } finally {
+    if (duplicatePresetId) await request.delete(`/api/prompts/${duplicatePresetId}`);
+    await request.delete(`/api/prompts/${preset.id}`);
+    for (const imagePath of uploadedImagePaths) {
+      await expect.poll(async () => (await request.get(imagePath)).status()).toBe(404);
+    }
   }
 });
 

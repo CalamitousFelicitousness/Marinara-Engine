@@ -3210,10 +3210,14 @@ const cases: RegressionCase[] = [
         new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
         "utf8",
       );
+      const settingsOrderSource = readFileSync(
+        new URL("../../packages/client/src/lib/agent-settings-order.ts", import.meta.url),
+        "utf8",
+      ).replace(/\r\n/gu, "\n");
       const roleplaySurfaceSource = readFileSync(
         new URL("../../packages/client/src/components/chat/ChatRoleplaySurface.tsx", import.meta.url),
         "utf8",
-      );
+      ).replace(/\r\n/gu, "\n");
       const storyboardChatSettingsSource = readFileSync(
         new URL("../../packages/client/src/components/chat/StoryboardChatSettingsPanel.tsx", import.meta.url),
         "utf8",
@@ -3242,13 +3246,8 @@ const cases: RegressionCase[] = [
         new URL("../../packages/server/src/routes/chats.routes.ts", import.meta.url),
         "utf8",
       );
-      const storyboardOrderStart = drawerSource.indexOf("ROLEPLAY_AGENT_SETTINGS_ORDER.set(\n  STORYBOARD_AGENT_ID,");
-      const storyboardOrderEnd = drawerSource.indexOf("\n);", storyboardOrderStart);
-      assert.notEqual(storyboardOrderStart, -1, "Storyboard should have an explicit Roleplay settings order");
-      assert.notEqual(storyboardOrderEnd, -1, "Storyboard settings order registration should be complete");
-      const storyboardOrderSource = drawerSource.slice(storyboardOrderStart, storyboardOrderEnd + 3);
-      const storyboardOrderOffset = storyboardOrderSource.match(
-        /ROLEPLAY_AGENT_SETTINGS_ORDER\.get\(STORYBOARD_AGENT_ID\)\s*\?\?\s*\(ROLEPLAY_AGENT_SETTINGS_ORDER\.get\("illustrator"\)\s*\?\?\s*ROLEPLAY_AGENT_SETTINGS_ORDER\.size\)\s*\+\s*(\d+(?:\.\d+)?)/u,
+      const storyboardOrderOffset = settingsOrderSource.match(
+        /order\.set\(STORYBOARD_AGENT_ID,\s*\(order\.get\("illustrator"\)\s*\?\?\s*order\.size\)\s*\+\s*(\d+(?:\.\d+)?)\);/u,
       )?.[1];
       assert.equal(Number(storyboardOrderOffset), 0.5, "Storyboard settings should sort directly after Illustrator");
 
@@ -3257,12 +3256,30 @@ const cases: RegressionCase[] = [
       assert.notEqual(roleplayMenuLinksStart, -1, "Roleplay agent quick links should be defined");
       assert.notEqual(roleplayMenuLinksEnd, -1, "Roleplay agent quick links should have a bounded source block");
       const roleplayMenuLinksSource = drawerSource.slice(roleplayMenuLinksStart, roleplayMenuLinksEnd);
+      assert.match(
+        roleplayMenuLinksSource,
+        /addLink\(ltmPackage\.id, metadata\.enableAgents === true && activeAgentIds\.includes\(ltmPackage\.id\), ltmAgent\.name\)/u,
+        "Active Long-Term Memory should have a Roleplay agent menu link",
+      );
 
+      const activeAgentOrderStart = drawerSource.indexOf("const activeInCat = catAgents");
       const activeAgentMenuStart = drawerSource.indexOf("activeInCat.map((agent) => {");
       const activeAgentMenuEnd = drawerSource.indexOf("{/* Available agents to add */}", activeAgentMenuStart);
+      assert.notEqual(activeAgentOrderStart, -1, "Active Roleplay agents should have an explicit order");
       assert.notEqual(activeAgentMenuStart, -1, "Active Roleplay agent menu items should be rendered");
       assert.notEqual(activeAgentMenuEnd, -1, "Active Roleplay agent menu source should be bounded");
+      const activeAgentOrderSource = drawerSource.slice(activeAgentOrderStart, activeAgentMenuStart);
+      assert.match(
+        activeAgentOrderSource,
+        /\.sort\([\s\S]*getRoleplayAgentSettingsOrder\(a\.id\)\s*-\s*getRoleplayAgentSettingsOrder\(b\.id\)/u,
+        "Active Roleplay agent settings should use the same order as their quick links",
+      );
       const activeAgentMenuSource = drawerSource.slice(activeAgentMenuStart, activeAgentMenuEnd);
+      assert.match(
+        activeAgentMenuSource,
+        /agent\.id === "long-term-memory"[\s\S]*getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
+        "Active Long-Term Memory should expose the menu link target",
+      );
       const storyboardMenuBranchStart = activeAgentMenuSource.indexOf("{agent.id === STORYBOARD_AGENT_ID && (");
       const storyboardMenuBranchEnd = activeAgentMenuSource.indexOf(
         "\n                                          )}",
@@ -3323,7 +3340,7 @@ const cases: RegressionCase[] = [
       );
       assert.match(
         activeAgentMenuSource,
-        /id=\{\s*agent\.id === "hierarchical-maps" \|\| agent\.id === STORYBOARD_AGENT_ID\s*\? getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
+        /id=\{\s*agent\.id === "hierarchical-maps"[\s\S]*agent\.id === STORYBOARD_AGENT_ID[\s\S]*\? getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
       );
       assert.match(storyboardMenuBranchSource, /<StoryboardChatSettingsPanel/u);
       assert.match(storyboardMenuBranchSource, /ownerMode="roleplay"/u);

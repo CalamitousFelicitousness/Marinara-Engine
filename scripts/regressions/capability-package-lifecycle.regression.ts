@@ -955,6 +955,7 @@ try {
   const configuredDataDir = process.env.DATA_DIR;
   process.env.DATA_DIR = "./data";
   prepareCapabilityRuntimeEnvironment(dataDir);
+  process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
   assert.equal(
     process.env.DATA_DIR,
     dataDir,

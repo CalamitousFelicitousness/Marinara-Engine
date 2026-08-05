@@ -236,7 +236,7 @@ async function executeGroup(
   return [...batchResults, ...toolResults];
 }
 
-function shouldUseToolsDuringAgentExecution(agent: ResolvedAgent): boolean {
+export function shouldUseToolsDuringAgentExecution(agent: ResolvedAgent): boolean {
   if (!agent.toolContext?.tools.length) return false;
   return agent.type !== "spotify";
 }

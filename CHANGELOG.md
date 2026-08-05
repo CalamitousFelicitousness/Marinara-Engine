@@ -23,6 +23,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Made **Clear Trackers** use the configured accent hover treatment instead of a destructive red state (#4612).
 - Made agent calls inherit the selected connection's temperature and parameter-send policy, with 0.7 as the default when no temperature is configured (#4614).
 - Reduced Spotify Music DJ execution to one full-context planning request followed by deterministic playback, and clarified per-round versus cumulative timing in agent debug output (#4615).
+- Added preset picture upload and replacement controls to the Presets panel and preset Overview editor, matching the existing lorebook picture workflow (#4624).
 
 ## [2.4.1]
 

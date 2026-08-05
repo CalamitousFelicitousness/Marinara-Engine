@@ -44,6 +44,7 @@ import {
   getAgentBatchLane,
   normalizeAgentMaxParallelJobs,
   settleAgentJobsWithConcurrencyLimit,
+  shouldUseToolsDuringAgentExecution,
   type ResolvedAgent,
 } from "../../services/agents/agent-pipeline.js";
 import { executeAgent, executeAgentBatch, normalizeAgentContextSize } from "../../services/agents/agent-executor.js";
@@ -2481,12 +2482,8 @@ async function executeRetryBatches(
     jobGroups,
     AGENT_PHASE_MAX_CONCURRENT_GROUPS,
     async (group) => {
-      const toolAgents = group.agents.filter(
-        (agent) => agent.resolved.type !== "spotify" && agent.resolved.toolContext?.tools.length,
-      );
-      const batchAgents = group.agents.filter(
-        (agent) => agent.resolved.type === "spotify" || !agent.resolved.toolContext?.tools.length,
-      );
+      const toolAgents = group.agents.filter((agent) => shouldUseToolsDuringAgentExecution(agent.resolved));
+      const batchAgents = group.agents.filter((agent) => !shouldUseToolsDuringAgentExecution(agent.resolved));
       const groupResults: AgentResult[] = [];
 
       if (batchAgents.length > 0) {

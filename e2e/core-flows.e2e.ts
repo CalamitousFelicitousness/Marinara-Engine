@@ -1890,6 +1890,7 @@ test("Character row actions can add a resource to the active chat without draggi
     await page.locator('[data-tour="panel-characters"]').click();
 
     const characterRow = page.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
+    await characterRow.hover();
     const addAction = characterRow.locator('[data-chat-resource-action="character"]');
     await expect(addAction).toBeVisible();
     await addAction.click();
@@ -4899,6 +4900,74 @@ test("chat toolbar panels close when their trigger is clicked again across modes
       request.delete(`/api/chats/${conversationChat.id}`),
       request.delete(`/api/chats/${gameChat.id}`),
     ]);
+  }
+});
+
+test("preset pictures can be uploaded from the panel and replaced in the Overview editor", async ({
+  page,
+  request,
+}, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now().toString(36)}`;
+  const presetName = `Picture Preset ${suffix}`;
+  const presetResponse = await request.post("/api/prompts", {
+    data: { name: presetName, description: "Preset picture upload fixture." },
+  });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  const imageFile = {
+    name: "preset-picture.gif",
+    mimeType: "image/gif",
+    buffer: Buffer.from(TRANSPARENT_GIF_BASE64, "base64"),
+  };
+  const uploadedImagePaths: string[] = [];
+  let duplicatePresetId: string | null = null;
+
+  try {
+    await page.goto("/");
+    await page.locator('[data-tour="panel-presets"]').click();
+
+    const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
+    await expect(presetRow).toBeVisible();
+
+    const panelUpload = presetRow.getByRole("button", { name: "Upload preset picture" });
+    const panelFileChooserPromise = page.waitForEvent("filechooser");
+    await panelUpload.click();
+    await (await panelFileChooserPromise).setFiles(imageFile);
+
+    const panelPicture = presetRow.getByRole("button", { name: "Replace preset picture" });
+    await expect(panelPicture).toBeVisible();
+    await expect(panelPicture.locator("img")).toHaveAttribute("src", /\/api\/prompts\/images\/file\//u);
+
+    await presetRow.locator("[data-preset-open-action]").click({ position: { x: 8, y: 8 } });
+    const overviewPicture = page.locator("[data-preset-overview-picture]");
+    await expect(overviewPicture).toBeVisible();
+    await expect(overviewPicture).toHaveAttribute("aria-label", "Replace preset picture");
+    const firstImagePath = await overviewPicture.locator("img").getAttribute("src");
+    expect(firstImagePath).toMatch(/\/api\/prompts\/images\/file\//u);
+    uploadedImagePaths.push(firstImagePath!);
+    const duplicateResponse = await request.post(`/api/prompts/${preset.id}/duplicate`);
+    expect(duplicateResponse.ok()).toBeTruthy();
+    duplicatePresetId = ((await duplicateResponse.json()) as { id: string }).id;
+
+    const editorFileChooserPromise = page.waitForEvent("filechooser");
+    await overviewPicture.click();
+    await (await editorFileChooserPromise).setFiles(imageFile);
+    await expect
+      .poll(() => overviewPicture.locator("img").getAttribute("src"))
+      .not.toBe(firstImagePath);
+    const replacementImagePath = await overviewPicture.locator("img").getAttribute("src");
+    expect(replacementImagePath).toMatch(/\/api\/prompts\/images\/file\//u);
+    uploadedImagePaths.push(replacementImagePath!);
+    expect((await request.get(firstImagePath!)).status()).toBe(200);
+    await request.delete(`/api/prompts/${duplicatePresetId}`);
+    duplicatePresetId = null;
+    await expect.poll(async () => (await request.get(firstImagePath!)).status()).toBe(404);
+  } finally {
+    if (duplicatePresetId) await request.delete(`/api/prompts/${duplicatePresetId}`);
+    await request.delete(`/api/prompts/${preset.id}`);
+    for (const imagePath of uploadedImagePaths) {
+      await expect.poll(async () => (await request.get(imagePath)).status()).toBe(404);
+    }
   }
 });
 

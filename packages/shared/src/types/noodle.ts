@@ -21,6 +21,27 @@ export type NoodleParticipantSelectionMode = "all" | "random_range" | "exact";
 export type NoodleIdentityDisclosure = "open" | "hinted" | "secret";
 export type NoodlerOnboardingState = "incomplete" | "zero" | "completed";
 
+export interface NoodlerSourceSnapshot {
+  publicDisplayName: string;
+  publicHandle: string;
+  name: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  appearance: string;
+  backstory: string;
+}
+
+export type NoodlerSourceField = keyof NoodlerSourceSnapshot;
+
+export type NoodlerSourceStatus =
+  | { state: "current" }
+  | { state: "missing" }
+  | {
+      state: "changed";
+      changes: Array<{ field: NoodlerSourceField; previous: string; current: string }>;
+    };
+
 export interface NoodleAccountAccessSettings {
   hiddenFromAccountIds: string[];
 }
@@ -36,6 +57,8 @@ export interface NoodleAccountProfileSettings {
   profileGenerated?: boolean;
   profileManuallyEdited?: boolean;
   noodlerWizardExecutionId?: string;
+  /** Server-owned source state used to detect changes after a Creator profile is drafted. */
+  noodlerSourceSnapshot?: NoodlerSourceSnapshot;
 }
 
 export interface NoodleAccountSocialSettings {
@@ -208,6 +231,7 @@ export interface NoodlerStageProfile {
 export interface NoodlerManagedStageProfile extends NoodlerStageProfile {
   access: NoodleAccountAccessSettings;
   autoPosting: NoodleAutoPostingSettings;
+  sourceStatus: NoodlerSourceStatus;
 }
 
 export interface NoodlerProfileSource {

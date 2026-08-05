@@ -2685,22 +2685,10 @@ export async function backupRoutes(app: FastifyInstance) {
           for (const p of data.personas) {
             try {
               emitLegacyProgress("personas", "Importing personas");
-              // Restore persona avatar from base64 if provided
-              let personaAvatarPath: string | undefined;
-              if (p.avatarBase64) {
-                const dataDir = getDataDir();
-                const avatarDir = join(dataDir, "avatars");
-                await mkdir(avatarDir, { recursive: true });
-                const ext = ".png";
-                const avatarName = `persona-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-                personaAvatarPath = `avatars/${avatarName}`;
-                const { writeFile } = await import("fs/promises");
-                await writeFile(join(dataDir, personaAvatarPath), Buffer.from(p.avatarBase64, "base64"));
-              }
-              await chars.createPersona(
+              const created = await chars.createPersona(
                 p.name,
                 p.description ?? "",
-                personaAvatarPath,
+                undefined,
                 {
                   comment: p.comment,
                   creator: p.creator,
@@ -2732,6 +2720,30 @@ export async function backupRoutes(app: FastifyInstance) {
                 normalizeTimestampOverrides({ createdAt: p.createdAt, updatedAt: p.updatedAt }),
               );
               stats.personas++;
+
+              if (created && p.avatarBase64) {
+                let avatarFile: string | null = null;
+                try {
+                  const dataDir = getDataDir();
+                  const avatarDir = join(dataDir, "avatars");
+                  await mkdir(avatarDir, { recursive: true });
+                  const avatarName = `persona-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+                  const avatarPath = `avatars/${avatarName}`;
+                  avatarFile = assertInsideDir(avatarDir, join(avatarDir, avatarName));
+                  await writeFile(avatarFile, Buffer.from(p.avatarBase64, "base64"));
+                  const updated = await chars.updatePersona(created.id, { avatarPath }, { skipVersionSnapshot: true });
+                  if (!updated) throw new Error("Imported Persona disappeared before its avatar could be attached");
+                } catch (err) {
+                  if (avatarFile) {
+                    try {
+                      await rm(avatarFile, { force: true });
+                    } catch (cleanupErr) {
+                      logger.warn(cleanupErr, "[backup] Failed to remove unattached legacy Persona avatar");
+                    }
+                  }
+                  logger.warn(err, "[backup] Skipped optional avatar restoration for imported Persona %s", created.id);
+                }
+              }
             } catch {
               /* skip */
             }

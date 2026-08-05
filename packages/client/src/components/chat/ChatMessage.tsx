@@ -603,13 +603,13 @@ const EditTextarea = memo(function EditTextarea({
         className="w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50"
         style={{ fontSize, lineHeight: 1.5, maxHeight: "min(60dvh, 32rem)" }}
       />
-      <div className="flex items-center gap-1.5 justify-end">
+      <div className="relative z-10 flex items-center justify-end gap-1.5">
         <button
           type="button"
           onClick={onCancel}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.cancelEdit")}
-          className="rounded-md p-1 text-white/40 hover:bg-white/10 hover:text-white/70"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.cancelEsc")}
         >
           <X size="0.8125rem" />
@@ -619,7 +619,7 @@ const EditTextarea = memo(function EditTextarea({
           onClick={handleSave}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.saveEdit")}
-          className="rounded-md p-1 text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.saveCmdEnter")}
         >
           <Check size="0.8125rem" />

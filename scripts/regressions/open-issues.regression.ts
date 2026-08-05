@@ -135,7 +135,10 @@ import {
   searchStandardEmojiShortcodes,
 } from "../../packages/client/src/lib/emoji-shortcodes.js";
 import { persistGeneratedImageToEntityGalleries } from "../../packages/server/src/services/image/generated-image-entity-gallery.js";
-import { resolveIllustratorImageSize } from "../../packages/server/src/services/image/image-generation-settings.js";
+import {
+  parseImageGenerationUserSettings,
+  resolveIllustratorImageSize,
+} from "../../packages/server/src/services/image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../../packages/server/src/services/image/illustrator-image-variants.js";
 import { fetchBotBrowserJson } from "../../packages/server/src/services/bot-browser/fetch-json.js";
 import { isAllowedResponseContentType, validateOutboundUrl } from "../../packages/server/src/utils/security.js";
@@ -584,6 +587,11 @@ assert.deepEqual(resolveIllustratorImageSize({ width: 960, height: 540 }, "portr
   width: 540,
   height: 960,
 });
+assert.deepEqual(parseImageGenerationUserSettings(null).noodle, { width: 1024, height: 1536 });
+assert.deepEqual(
+  parseImageGenerationUserSettings('{"imageNoodleWidth":1536,"imageNoodleHeight":1024}').noodle,
+  { width: 1536, height: 1024 },
+);
 
 const minimalProfessorMariPersona = buildPersonaCreateRow(
   { name: "Minimal helper persona" },
@@ -2427,6 +2435,10 @@ const chatMessageSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
   "utf8",
 );
+const macroTextareaSource = readFileSync(
+  new URL("../../packages/client/src/components/ui/MacroTextarea.tsx", import.meta.url),
+  "utf8",
+);
 const roleplayHudSource = readFileSync(
   new URL("../../packages/client/src/components/chat/RoleplayHUD.tsx", import.meta.url),
   "utf8",
@@ -2449,6 +2461,16 @@ assert.match(
   chatMessageSource,
   /const cycleMergedNarratorAvatars = \(!isRoleplay \|\| roleplayNarratorAvatarCycling\) && !reduceAmbientEffects;/u,
   "Narrator avatar cycling must follow the Roleplay preference and stop with reduced ambient effects",
+);
+assert.match(
+  macroTextareaSource,
+  /const valueRef = useRef\(value\);[\s\S]{0,500}\}, \[open\]\);/u,
+  "Expanded macro editors must only initialize and focus when opened, not after every parent value update",
+);
+assert.match(
+  chatMessageSource,
+  /aria-label=\{localizeUi\("ui\.chat\.edittextarea\.saveEdit"\)\}[\s\S]{0,180}h-11 w-11/u,
+  "The Roleplay edit Save control must keep a full touch-sized hit target",
 );
 assert.equal(
   roleplayHudSource.match(/!reduceAmbientEffects && "animate-\[inventory-cycle_0\.4s_ease-out\]"/gu)?.length,

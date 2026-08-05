@@ -643,6 +643,8 @@
   "settings.controls.musicPlayer.label": "Music Player",
   "settings.controls.narratorCyclingAvatars.help": "Cycle Narrator avatars through active characters. Turn this off to show active character avatars together.",
   "settings.controls.narratorCyclingAvatars.label": "Narrator's Cycling Avatars",
+  "settings.controls.noodleGeneration.help": "Used for generated images in public Noodle and private NoodleR timelines.",
+  "settings.controls.noodleGeneration.label": "Noodle timelines",
   "settings.controls.panelBackground.label": "Panel background",
   "settings.controls.portraits.help": "Used for generated character and NPC portraits.",
   "settings.controls.portraits.label": "Portraits",

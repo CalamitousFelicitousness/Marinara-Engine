@@ -301,6 +301,8 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
   const emptyRef = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
+    const textNode = document.createTextNode("");
+    textRef.current?.replaceChildren(textNode);
     let frame: number | null = null;
     const readBuffer = () => {
       const state = useChatStore.getState();
@@ -309,7 +311,10 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
     const apply = () => {
       frame = null;
       const next = readBuffer();
-      if (textRef.current && textRef.current.textContent !== next) textRef.current.textContent = next;
+      if (textNode.data !== next) {
+        if (next.startsWith(textNode.data)) textNode.appendData(next.slice(textNode.data.length));
+        else textNode.data = next;
+      }
       if (emptyRef.current) emptyRef.current.hidden = next.length > 0;
     };
     const schedule = () => {

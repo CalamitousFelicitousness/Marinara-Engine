@@ -2391,6 +2391,16 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
+  /options\.shouldApply\?\.\(\) === false[\s\S]{0,160}setMessages/u,
+  "Professor Mari message loads must recheck an operation guard before applying a response",
+);
+assert.match(
+  professorMariHomeSource,
+  /loadMessages\(completedChatId, \{[\s\S]{0,160}workspaceRunIdRef\.current === runId[\s\S]{0,100}activeChatIdRef\.current === completedChatId/u,
+  "Professor Mari background refreshes must not overwrite state after a newer operation starts",
+);
+assert.match(
+  professorMariHomeSource,
   /message\.role === "user"[\s\S]{0,180}<TranscriptRow[\s\S]{0,100}border-y border-\[var\(--border\)\]\/60/u,
   "Professor Mari user messages must retain their theme-aware horizontal separators",
 );

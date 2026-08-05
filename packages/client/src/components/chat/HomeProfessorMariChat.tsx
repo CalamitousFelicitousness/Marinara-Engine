@@ -2466,7 +2466,10 @@ export function HomeProfessorMariChat({
   }, [floatingMode]);
 
   const loadMessages = useCallback(
-    async (id: string, options: { clearSuggestions?: boolean } = {}) => {
+    async (
+      id: string,
+      options: { clearSuggestions?: boolean; shouldApply?: () => boolean } = {},
+    ) => {
       messageLoadAbortRef.current?.abort();
       const controller = new AbortController();
       messageLoadAbortRef.current = controller;
@@ -2477,7 +2480,8 @@ export function HomeProfessorMariChat({
         if (
           controller.signal.aborted ||
           messageLoadAbortRef.current !== controller ||
-          activeChatIdRef.current !== id
+          activeChatIdRef.current !== id ||
+          options.shouldApply?.() === false
         ) {
           return;
         }
@@ -3522,7 +3526,10 @@ export function HomeProfessorMariChat({
       let messagesReloaded = false;
       try {
         if (workspaceRunIdRef.current !== runId || activeChatIdRef.current !== completedChatId) return;
-        await loadMessages(completedChatId);
+        await loadMessages(completedChatId, {
+          shouldApply: () =>
+            workspaceRunIdRef.current === runId && activeChatIdRef.current === completedChatId,
+        });
         messagesReloaded = true;
       } catch (error) {
         console.error("[Professor Mari] Failed to reload messages after completed workspace run", error);
@@ -3547,6 +3554,7 @@ export function HomeProfessorMariChat({
       tone: "destructive",
     });
     if (!confirmed || messageMutationBusyRef.current) return;
+    messageLoadAbortRef.current?.abort();
     // Optimistic update from local state
     setMessages((current) => current.filter((m) => m.id !== messageId));
     try {
@@ -3559,6 +3567,7 @@ export function HomeProfessorMariChat({
 
   const handleEditMessage = useCallback(async (messageId: string, content: string) => {
     if (!chatId || isBusy || messageMutationBusyRef.current) return;
+    messageLoadAbortRef.current?.abort();
     setMessages((current) =>
       current.map((m) => m.id === messageId ? { ...m, content } : m)
     );
@@ -3604,6 +3613,7 @@ export function HomeProfessorMariChat({
       const userMessage = currentMessages[index - 1];
       if (userMessage.role !== "user") return;
 
+      messageLoadAbortRef.current?.abort();
       setMessages((current) => current.filter((message) => message.id !== messageId));
       await api.delete(`/chats/${chatId}/messages/${messageId}`);
       const { received, runId } = await sendWorkspaceMessage(
@@ -3647,6 +3657,7 @@ export function HomeProfessorMariChat({
       const currentAttachments = getProfessorMariAttachments(message);
       const updated = currentAttachments.filter((_, index) => index !== attachmentIndex);
       if (updated.length === currentAttachments.length) return;
+      messageLoadAbortRef.current?.abort();
       setMessages((current) =>
         current.map((item) => {
           if (item.id !== messageId) return item;

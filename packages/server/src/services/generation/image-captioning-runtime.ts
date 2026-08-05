@@ -184,11 +184,16 @@ export async function resolveImageCaptioningRuntime(args: {
       fallbackConnection,
       fallbackBaseUrl: fallbackConnection ? resolveBaseUrl(fallbackConnection) : "",
       category: "agents",
-      // Captioning is a step inside the caller's own attempt, not a separate one. Booking it as
-      // foreground during a background run stamps the connection foreground-active and then the
-      // caller's real generation — on that same connection — is refused for the whole idle
-      // window. The caller's admission already gates the attempt, so this step stays unaccounted.
-      admissionMode: args.admissionMode?.kind === "background" ? { kind: "none" } : args.admissionMode,
+      // On the caller's own connection, captioning is a step inside the caller's attempt, not a
+      // separate one. Booking it as foreground during a background run stamps the connection
+      // foreground-active and the caller's real generation is then refused for the whole idle
+      // window — the run blocks itself. That attempt is already admitted, so the step is not
+      // accounted twice. A captioning connection the caller did not admit gets no such exemption
+      // and stays under background admission.
+      admissionMode:
+        args.admissionMode?.kind === "background" && captionConnectionId === args.fallbackConnectionId
+          ? { kind: "none" }
+          : args.admissionMode,
     });
 
     return {

@@ -1553,9 +1553,17 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
       model: "caption-model",
       baseUrl: `http://127.0.0.1:${address.port}/v1`,
     };
+    // A captioning connection the caller never admitted is separate background work and must
+    // stay accounted; only the caller's own connection is exempt.
+    const separateCaptionConnection = { ...captionConnection, id: "separate-caption-connection" };
     const connectionsStub = {
       listRandomPool: async () => [],
-      getWithKey: async (id: string) => (id === captionConnection.id ? captionConnection : null),
+      getWithKey: async (id: string) =>
+        id === captionConnection.id
+          ? captionConnection
+          : id === separateCaptionConnection.id
+            ? separateCaptionConnection
+            : null,
       getFallbackForAgents: async () => null,
     };
 
@@ -1578,6 +1586,29 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
         `captioning under ${mode.kind} admission must ${expectedAdmission ? "leave" : "block"} the connection's background slot`,
       );
     }
+
+    resetConnectionAdmissionForTests();
+    const separateRuntime = await resolveImageCaptioningRuntime({
+      chatMeta: { imageCaptioningEnabled: true, imageCaptioningConnectionId: separateCaptionConnection.id },
+      fallbackConnectionId: captionConnection.id,
+      connections: connectionsStub,
+      admissionMode: { kind: "background" },
+    });
+    assert.ok(separateRuntime.provider, "captioning runtime must resolve a provider");
+    const separateCaption = separateRuntime.provider.chatComplete([{ role: "user", content: "describe" }], {
+      model: "caption-model",
+    });
+    assert.equal(
+      tryBackgroundConnection(separateCaptionConnection.id, new Date()).acquired,
+      false,
+      "captioning on a connection the caller never admitted must still hold its own background slot",
+    );
+    await separateCaption;
+    assert.equal(
+      tryBackgroundConnection(captionConnection.id, new Date()).acquired,
+      true,
+      "captioning elsewhere must not consume the caller's generation connection",
+    );
   } finally {
     resetConnectionAdmissionForTests();
     await new Promise<void>((resolve, reject) =>

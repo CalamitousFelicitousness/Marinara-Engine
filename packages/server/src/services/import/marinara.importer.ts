@@ -438,6 +438,7 @@ async function importPersona(data: unknown, db: DB) {
       creator: firstStringField(d.creator),
       personaVersion: firstStringField(d.personaVersion, d.persona_version, d.character_version),
       creatorNotes: firstStringField(d.creatorNotes, d.creator_notes),
+      phoneticName: firstStringField(d.phoneticName),
       personality: String(d.personality ?? ""),
       scenario: String(d.scenario ?? ""),
       backstory: String(d.backstory ?? ""),

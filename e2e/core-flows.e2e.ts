@@ -3660,7 +3660,7 @@ test("generation fallbacks identify the replacement connection in a toast", asyn
 });
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} exposes reasoning on its first live chunk and retains saved reasoning`, async ({ page }, testInfo) => {
+  test(`${mode} exposes reasoning and explains unavailable saved summaries`, async ({ page }, testInfo) => {
     const characters: Array<{ id: string; name: string }> = [];
     if (mode === "conversation") {
       for (const name of ["Reasoning One", "Reasoning Two"]) {
@@ -3700,6 +3700,37 @@ for (const mode of ["roleplay", "conversation"] as const) {
       });
       expect(savedMessageResponse.ok()).toBeTruthy();
       const savedMessage = (await savedMessageResponse.json()) as { id: string };
+      const unavailableMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+        data: {
+          role: "assistant",
+          content:
+            mode === "conversation"
+              ? `${characters[0]!.name}: A response whose provider omitted its reasoning summary.`
+              : "A response whose provider omitted its reasoning summary.",
+        },
+      });
+      expect(unavailableMessageResponse.ok()).toBeTruthy();
+      const unavailableMessage = (await unavailableMessageResponse.json()) as { id: string };
+      const unavailableMessageExtraResponse = await page.request.patch(
+        `/api/chats/${chat.id}/messages/${unavailableMessage.id}/extra`,
+        {
+          data: {
+            generationInfo: {
+              model: "gpt-5.6-sol",
+              provider: "openai",
+              temperature: null,
+              tokensPrompt: 512,
+              tokensCompletion: 120,
+              tokensReasoning: 1034,
+              tokensCachedPrompt: null,
+              tokensCacheWritePrompt: null,
+              durationMs: 1200,
+              finishReason: "stop",
+            },
+          },
+        },
+      );
+      expect(unavailableMessageExtraResponse.ok()).toBeTruthy();
 
       await page.addInitScript((chatId) => {
         localStorage.setItem("marinara-active-chat-id", chatId);
@@ -3766,8 +3797,26 @@ for (const mode of ["roleplay", "conversation"] as const) {
         : savedRow.locator('button[title="View model thoughts"]');
       await expect(savedThoughtsButton).toBeVisible();
       await savedThoughtsButton.click();
-      await expect(page.getByRole("dialog", { name: "Model Thoughts" })).toContainText(
-        "Saved reasoning remains available.",
+      const savedThoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+      await expect(savedThoughtsDialog).toContainText("Saved reasoning remains available.");
+      await page.keyboard.press("Escape");
+      await expect(savedThoughtsDialog).toBeHidden();
+
+      const unavailableRow = page.locator(`[data-message-id="${unavailableMessage.id}"]`);
+      if (testInfo.project.name.includes("mobile")) {
+        await unavailableRow.click();
+      } else {
+        await unavailableRow.hover();
+      }
+      const unavailableThoughtsButton = testInfo.project.name.includes("mobile")
+        ? unavailableRow.getByRole("button", { name: "Reasoning summary unavailable" })
+        : unavailableRow.locator('button[title="Reasoning summary unavailable"]');
+      await expect(unavailableThoughtsButton).toBeVisible();
+      await unavailableThoughtsButton.click();
+      const unavailableDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+      await expect(unavailableDialog).toContainText("Reasoning summary unavailable");
+      await expect(unavailableDialog).toContainText(
+        "The model used reasoning, but the provider did not return a displayable summary for this response.",
       );
     } finally {
       await updateLiveReasoningState(page, chat.id, "stop").catch(() => undefined);

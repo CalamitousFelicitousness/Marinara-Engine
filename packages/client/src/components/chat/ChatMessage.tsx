@@ -58,6 +58,7 @@ import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCa
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
+import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
 import DOMPurify from "dompurify";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
@@ -1603,9 +1604,9 @@ export const ChatMessage = memo(function ChatMessage({
       )
     : [];
   const isHiddenFromAI = isHiddenFromAllAI || hiddenFromAICharacterIds.length > 0;
-  const thinking =
-    typeof extra.thinking === "string" && extra.thinking.trim().length > 0 ? (extra.thinking as string) : null;
-  const showStreamingThinkingAction = !!isStreaming && !!thinking && !isUser;
+  const { summary: thinking, summaryUnavailable: reasoningSummaryUnavailable, hasReasoning } =
+    resolveMessageReasoningDisplay(extra);
+  const showStreamingThinkingAction = !!isStreaming && hasReasoning && !isUser;
   const generationReplay = hasGenerationReplayDetails(extra.generationReplay) ? extra.generationReplay : null;
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
@@ -2928,11 +2929,11 @@ export const ChatMessage = memo(function ChatMessage({
                   dark
                 />
               )}
-              {thinking && !isUser && (
+              {hasReasoning && !isUser && (
                 <ActionBtn
                   icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowThinking(true)}
-                  title={t("chat.message.thoughts.view")}
+                  title={t(reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view")}
                   thinkingAction
                   buttonRef={thinkingButtonRef}
                   dark
@@ -3016,9 +3017,10 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
 
         {/* Thinking modal */}
-        {showThinking && thinking && (
+        {showThinking && hasReasoning && (
           <MessageThinkingModal
             thinking={thinking}
+            summaryUnavailable={reasoningSummaryUnavailable}
             onClose={() => setShowThinking(false)}
             restoreFocusRef={thinkingButtonRef}
           />
@@ -3382,11 +3384,11 @@ export const ChatMessage = memo(function ChatMessage({
                 title={localizeUi("ui.chat.chatmessage.storedGuidance")}
               />
             )}
-            {thinking && !isUser && (
+            {hasReasoning && !isUser && (
               <ActionBtn
                 icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => setShowThinking(true)}
-                title={t("chat.message.thoughts.view")}
+                title={t(reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view")}
                 thinkingAction
                 buttonRef={thinkingButtonRef}
               />
@@ -3474,9 +3476,10 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
 
       {/* Thinking modal */}
-      {showThinking && thinking && (
+      {showThinking && hasReasoning && (
         <MessageThinkingModal
           thinking={thinking}
+          summaryUnavailable={reasoningSummaryUnavailable}
           onClose={() => setShowThinking(false)}
           restoreFocusRef={thinkingButtonRef}
         />

@@ -546,12 +546,14 @@ const EditTextarea = memo(function EditTextarea({
   initialContent,
   fontSize,
   quoteFormat,
+  saving,
   onSave,
   onCancel,
 }: {
   initialContent: string;
   fontSize: string | number | undefined;
   quoteFormat: QuoteFormat;
+  saving: boolean;
   onSave: (content: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
@@ -586,12 +588,15 @@ const EditTextarea = memo(function EditTextarea({
       <textarea
         ref={ref}
         defaultValue={formatTextQuotes(initialContent, quoteFormat)}
+        readOnly={saving}
+        aria-busy={saving}
         rows={1}
         onInput={(event) => {
           applyTextareaQuoteFormat(event.currentTarget, quoteFormat, event.nativeEvent as InputEvent);
           autoResize();
         }}
         onKeyDown={(e) => {
+          if (saving) return;
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
@@ -602,6 +607,7 @@ const EditTextarea = memo(function EditTextarea({
         <button
           type="button"
           onClick={onCancel}
+          disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.cancelEdit")}
           className="rounded-md p-1 text-white/40 hover:bg-white/10 hover:text-white/70"
           title={localizeUi("ui.chat.edittextarea.cancelEsc")}
@@ -611,6 +617,7 @@ const EditTextarea = memo(function EditTextarea({
         <button
           type="button"
           onClick={handleSave}
+          disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.saveEdit")}
           className="rounded-md p-1 text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400"
           title={localizeUi("ui.chat.edittextarea.saveCmdEnter")}
@@ -1327,6 +1334,7 @@ export const ChatMessage = memo(function ChatMessage({
 
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editSavePending, setEditSavePending] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [showGenerationReplay, setShowGenerationReplay] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -1773,6 +1781,7 @@ export const ChatMessage = memo(function ChatMessage({
       const formattedSource = formatTextQuotes(message.content, quoteFormat);
       if (content.trim().length > 0 && content !== formattedSource) {
         editSavePendingRef.current = true;
+        setEditSavePending(true);
         try {
           await onEdit?.(message.id, content);
         } catch {
@@ -1780,6 +1789,7 @@ export const ChatMessage = memo(function ChatMessage({
           return;
         } finally {
           editSavePendingRef.current = false;
+          setEditSavePending(false);
         }
       }
       editSwipeIndexRef.current = null;
@@ -1789,12 +1799,14 @@ export const ChatMessage = memo(function ChatMessage({
   );
 
   const handleCancelEdit = useCallback(() => {
+    if (editSavePendingRef.current) return;
     editSwipeIndexRef.current = null;
     setEditing(false);
   }, []);
 
   const handleSetActiveSwipe = useCallback(
     (index: number) => {
+      if (editSavePendingRef.current) return;
       if (index === message.activeSwipeIndex) return;
       editSwipeIndexRef.current = null;
       setEditing(false);
@@ -1805,12 +1817,13 @@ export const ChatMessage = memo(function ChatMessage({
 
   useEffect(() => {
     if (!editing) return;
+    if (editSavePending) return;
     if (isUser || editSwipeIndexRef.current === null) return;
     if (editSwipeIndexRef.current !== message.activeSwipeIndex) {
       editSwipeIndexRef.current = null;
       setEditing(false);
     }
-  }, [editing, isUser, message.activeSwipeIndex]);
+  }, [editSavePending, editing, isUser, message.activeSwipeIndex]);
 
   // Apply regex scripts to AI output (assistant/narrator roles)
   const { applyToAIOutput } = useApplyRegex();
@@ -2274,6 +2287,7 @@ export const ChatMessage = memo(function ChatMessage({
       initialContent={message.content}
       fontSize={chatFontSize}
       quoteFormat={quoteFormat}
+      saving={editSavePending}
       onSave={handleSaveEdit}
       onCancel={handleCancelEdit}
     />
@@ -3201,6 +3215,7 @@ export const ChatMessage = memo(function ChatMessage({
                 initialContent={message.content}
                 fontSize={chatFontSize}
                 quoteFormat={quoteFormat}
+                saving={editSavePending}
                 onSave={handleSaveEdit}
                 onCancel={handleCancelEdit}
               />

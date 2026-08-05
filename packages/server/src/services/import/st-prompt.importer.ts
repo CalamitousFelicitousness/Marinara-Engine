@@ -64,6 +64,7 @@ export async function importSTPreset(
       description: "Imported from SillyTavern",
       variableGroups,
       variableValues: {},
+      parameters: {},
     },
     options?.timestampOverrides,
   );

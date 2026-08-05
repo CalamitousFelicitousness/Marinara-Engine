@@ -3113,6 +3113,10 @@ test("stopped and refused generations keep sent text cleared and accept the firs
         try {
           await expect(editor).toBeVisible();
           await expect(editor).toHaveValue(nextContent);
+          await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
+          await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
+          await editor.press("Escape");
+          await expect(editor).toBeVisible();
         } finally {
           saveGate.resolve();
         }
@@ -5104,9 +5108,9 @@ test("prompt preset transfers discard deprecated generation parameters", async (
     const nativeParameters = JSON.parse(nativeStored.parameters) as Record<string, unknown>;
     expect(nativeStored.conversationPrompt).toBe("Conversation prompt survives transfer.");
     expect(nativeStored.wrapFormat).toBe("markdown");
-    expect(nativeParameters.temperature).not.toBe(0.13);
-    expect(nativeParameters.maxTokens).not.toBe(313);
-    expect(nativeParameters.reasoningEffort).not.toBe("low");
+    expect(nativeParameters).not.toHaveProperty("temperature");
+    expect(nativeParameters).not.toHaveProperty("maxTokens");
+    expect(nativeParameters).not.toHaveProperty("reasoningEffort");
     const nativeSectionsResponse = await request.get(`/api/prompts/${nativeImport.id}/sections`);
     expect(await nativeSectionsResponse.json()).toContainEqual(
       expect.objectContaining({ content: "Supported section content survives transfer." }),
@@ -5134,9 +5138,9 @@ test("prompt preset transfers discard deprecated generation parameters", async (
     const compatibleStoredResponse = await request.get(`/api/prompts/${compatibleImport.presetId}`);
     const compatibleStored = (await compatibleStoredResponse.json()) as { parameters: string };
     const compatibleParameters = JSON.parse(compatibleStored.parameters) as Record<string, unknown>;
-    expect(compatibleParameters.temperature).not.toBe(0.19);
-    expect(compatibleParameters.maxTokens).not.toBe(919);
-    expect(compatibleParameters.reasoningEffort).not.toBe("low");
+    expect(compatibleParameters).not.toHaveProperty("temperature");
+    expect(compatibleParameters).not.toHaveProperty("maxTokens");
+    expect(compatibleParameters).not.toHaveProperty("reasoningEffort");
     const compatibleSectionsResponse = await request.get(`/api/prompts/${compatibleImport.presetId}/sections`);
     expect(await compatibleSectionsResponse.json()).toContainEqual(
       expect.objectContaining({ content: "Compatible prompt content survives import." }),

@@ -13,8 +13,10 @@ import {
 import {
   resolveSpatialBreadcrumb,
   resolveSpatialDestinations,
+  resolveSpatialRoute,
   spatialContextDefinitionSchema,
   spatialContextSnapshotSchema,
+  pendingSpatialTransitionSchema,
   validateSpatialArchive,
   validateSpatialContextDefinition,
   validateSpatialTransition,
@@ -277,6 +279,17 @@ const snapshotInput = {
 };
 assert.equal(spatialContextSnapshotSchema.safeParse(snapshotInput).success, true);
 assert.equal(spatialContextSnapshotSchema.safeParse({ ...snapshotInput, messageId: "" }).success, false);
+assert.equal(
+  pendingSpatialTransitionSchema.safeParse({
+    destinationId: "market",
+    travelMode: "step_by_step",
+    expectedDefinitionRevision: 4,
+    expectedCurrentLocationId: "tower_library",
+    commandId: "route-schema-1",
+  }).success,
+  true,
+  "Travel mode is accepted as an optional pending-transition field",
+);
 assert.deepEqual(
   resolveAlreadyAppliedSpatialTurn({
     code: "spatial_transition_already_applied",
@@ -365,11 +378,11 @@ const spatialSanitizationStart = generateRouteSource.indexOf(
   "const parsedSpatial = extractAssistantSpatialDirective(fullResponse);",
   inlineThinkingEnd,
 );
-const consolidatedReplacementStart = generateRouteSource.indexOf(
-  "if (contentReplaced) {",
-  spatialSanitizationStart,
+const consolidatedReplacementStart = generateRouteSource.indexOf("if (contentReplaced) {", spatialSanitizationStart);
+assert.ok(
+  inlineThinkingStart >= 0 && inlineThinkingEnd > inlineThinkingStart,
+  "Inline-thinking route block is present",
 );
-assert.ok(inlineThinkingStart >= 0 && inlineThinkingEnd > inlineThinkingStart, "Inline-thinking route block is present");
 assert.doesNotMatch(
   generateRouteSource.slice(inlineThinkingStart, inlineThinkingEnd),
   /type:\s*"content_replace"/u,
@@ -380,10 +393,7 @@ assert.ok(
   "The consolidated content replacement must run after spatial sanitization",
 );
 const textRewriteStart = generateRouteSource.indexOf("// ── Text rewrite/editing agents:");
-const textRewriteEnd = generateRouteSource.indexOf(
-  "if (holdForTextRewrite && !textRewriteApplied",
-  textRewriteStart,
-);
+const textRewriteEnd = generateRouteSource.indexOf("if (holdForTextRewrite && !textRewriteApplied", textRewriteStart);
 assert.ok(textRewriteStart >= 0 && textRewriteEnd > textRewriteStart, "Text-rewrite route block is present");
 const textRewriteSource = generateRouteSource.slice(textRewriteStart, textRewriteEnd);
 assert.match(
@@ -400,6 +410,16 @@ assert.match(
   textRewriteSource,
   /type: "text_rewrite",[\s\S]*?editedText: sanitizedEditedText/u,
   "Text-rewrite events must emit sanitized content",
+);
+assert.match(
+  generateRouteSource,
+  /assistantSpatialDirective = input\.impersonate \|\| input\.pendingSpatialTransition \? null : parsedSpatial\.directive/u,
+  "Queued owner travel suppresses model spatial directives after stripping them from visible output",
+);
+assert.match(
+  generateRouteSource,
+  /!input\.pendingSpatialTransition\s*\n\s*\) \{/u,
+  "Queued owner travel does not materialize a competing assistant spatial snapshot",
 );
 
 const validDefinition = definition(
@@ -560,6 +580,59 @@ const acceptedTransition = validateSpatialTransition(validDefinition, "tower_lib
 assert.equal(acceptedTransition.ok, true);
 if (acceptedTransition.ok) {
   assert.equal(acceptedTransition.destination.relation, "link");
+}
+
+assert.deepEqual(
+  resolveSpatialRoute(validDefinition, "tower_library", "market"),
+  ["tower", "capital", "market"],
+  "Routed movement follows the deterministic shortest path over active outgoing edges",
+);
+assert.equal(
+  resolveSpatialRoute(validDefinition, "tower_library", "missing"),
+  null,
+  "Routed movement rejects missing targets without inventing an edge",
+);
+const stepwiseTransition = validateSpatialTransition(validDefinition, "tower_library", {
+  destinationId: "market",
+  travelMode: "step_by_step",
+  expectedDefinitionRevision: 4,
+  expectedCurrentLocationId: "tower_library",
+  commandId: "route-step-1",
+});
+assert.deepEqual(
+  stepwiseTransition,
+  {
+    ok: true,
+    destination: libraryDestinations.find((entry) => entry.id === "tower")!,
+    travel: {
+      mode: "step_by_step",
+      fromLocationId: "tower_library",
+      targetLocationId: "market",
+      routeLocationIds: ["tower", "capital", "market"],
+      remainingLocationIds: ["capital", "market"],
+      complete: false,
+    },
+  },
+  "Stepwise travel commits only the first edge and returns the authoritative remainder",
+);
+const travelNowTransition = validateSpatialTransition(validDefinition, "tower_library", {
+  destinationId: "market",
+  travelMode: "travel_now",
+  expectedDefinitionRevision: 4,
+  expectedCurrentLocationId: "tower_library",
+  commandId: "route-now-1",
+});
+assert.equal(travelNowTransition.ok, true);
+if (travelNowTransition.ok) {
+  assert.equal(travelNowTransition.destination.id, "market");
+  assert.deepEqual(travelNowTransition.travel, {
+    mode: "travel_now",
+    fromLocationId: "tower_library",
+    targetLocationId: "market",
+    routeLocationIds: ["tower", "capital", "market"],
+    remainingLocationIds: [],
+    complete: true,
+  });
 }
 
 assert.deepEqual(

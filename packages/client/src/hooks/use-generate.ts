@@ -50,6 +50,7 @@ import {
   type MariGuidedPlanStep,
   type MariSuggestionChip,
   type PendingSpatialTransition,
+  type ResolvedSpatialTravel,
   type SpatialContextResponse,
   type ThinkingTagPair,
 } from "@marinara-engine/shared";
@@ -1649,12 +1650,22 @@ export function useGenerate() {
           switch (event.type) {
             case "spatial_transition_committed": {
               const transitionData = event.data as
-                | { chatId?: string; commandId?: string; currentLocationId?: string; definitionRevision?: number }
+                | {
+                    chatId?: string;
+                    commandId?: string;
+                    currentLocationId?: string;
+                    definitionRevision?: number;
+                    travel?: ResolvedSpatialTravel;
+                  }
                 | undefined;
               if (transitionData?.chatId === params.chatId && transitionData.commandId) {
                 spatialTransitionCommitted = true;
                 spatialCapabilityRefreshDispatched = true;
-                useChatStore.getState().clearPendingSpatialTransition(params.chatId, transitionData.commandId);
+                const stepwiseRouteRemainsQueued =
+                  transitionData.travel?.mode === "step_by_step" && transitionData.travel.complete === false;
+                if (!stepwiseRouteRemainsQueued) {
+                  useChatStore.getState().clearPendingSpatialTransition(params.chatId, transitionData.commandId);
+                }
                 dispatchCapabilityClientEvent({
                   packageId: "hierarchical-maps",
                   type: event.type,

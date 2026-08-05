@@ -57,6 +57,7 @@ import type {
   LorebookEntryTimingState,
   ChatSummaryEntry,
   ChatMode,
+  ResolvedSpatialTravel,
   ThinkingTagPair,
 } from "@marinara-engine/shared";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -830,6 +831,7 @@ export async function generateRoutes(app: FastifyInstance) {
               commandId: input.pendingSpatialTransition.commandId,
               currentLocationId: applied.snapshot.currentLocationId,
               definitionRevision: applied.snapshot.definitionRevision,
+              ...(applied.travel ? { travel: applied.travel } : {}),
             },
           });
           sendSseEvent(reply, { type: "message_saved", data: recoveredMessage });
@@ -901,6 +903,7 @@ export async function generateRoutes(app: FastifyInstance) {
       commandId: string;
       currentLocationId: string | null;
       definitionRevision: number;
+      travel?: ResolvedSpatialTravel;
     } | null = null;
 
     // Save user message — skip for impersonate (no real user message to save)
@@ -940,6 +943,7 @@ export async function generateRoutes(app: FastifyInstance) {
             commandId: input.pendingSpatialTransition.commandId,
             currentLocationId: committed.snapshot.currentLocationId,
             definitionRevision: committed.snapshot.definitionRevision,
+            ...(committed.travel ? { travel: committed.travel } : {}),
           };
         } catch (error) {
           releaseActiveGeneration();
@@ -1313,13 +1317,14 @@ export async function generateRoutes(app: FastifyInstance) {
         fallbackMessageIds: resolveRegenerationGameStateFallbackMessageIds(scopedMessages, input.regenerateMessageId),
       };
       const hierarchicalMapsEnabledForChat = isHierarchicalMapsEnabledForChat(chatMeta);
+      const acceptedSpatialTravel = committedSpatialTransition?.travel ?? null;
       const ownerSpatialProjectionPromise = resolveOwnerSpatialProjection(
         input.chatId,
         input.regenerateMessageId
-          ? { beforeMessageId: input.regenerateMessageId }
+          ? { beforeMessageId: input.regenerateMessageId, acceptedTravel: acceptedSpatialTravel }
           : input.continueMessageId
-            ? { throughMessageId: input.continueMessageId }
-            : {},
+            ? { throughMessageId: input.continueMessageId, acceptedTravel: acceptedSpatialTravel }
+            : { acceptedTravel: acceptedSpatialTravel },
         chatMeta,
       );
       const rawSelectedGameStateSnapshotPromise = gameStateStore.getForGeneration(
@@ -1795,10 +1800,7 @@ export async function generateRoutes(app: FastifyInstance) {
           idleDuration: promptIdleDuration,
           timeZone: promptTimeZone,
         });
-        const conversationMacroFieldsByCharacterId = new Map<
-          string,
-          NonNullable<MacroContext["convoFields"]>
-        >();
+        const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();
         const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
         const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
           messages: T[],
@@ -2847,10 +2849,7 @@ export async function generateRoutes(app: FastifyInstance) {
               countUpcomingAssistantMessage: agent.phase === "post_processing" && createsAssistantMessage,
             })
           ) {
-            logger.debug(
-              "[agents] Skipping custom agent %s until its message cadence threshold",
-              agent.type,
-            );
+            logger.debug("[agents] Skipping custom agent %s until its message cadence threshold", agent.type);
             resolvedAgents.splice(index, 1);
           }
         }
@@ -3267,9 +3266,7 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         const roleplayDmCommandsEnabled =
-          chatMode === "roleplay" &&
-          chatMeta.roleplayDmCommandsEnabled === true &&
-          !input.impersonate;
+          chatMode === "roleplay" && chatMeta.roleplayDmCommandsEnabled === true && !input.impersonate;
         if (roleplayDmCommandsEnabled) {
           const dmTargetHint =
             charInfo
@@ -5349,8 +5346,7 @@ export async function generateRoutes(app: FastifyInstance) {
           const responderMacroContext = targetCharId
             ? {
                 ...promptMacroContext,
-                convoFields:
-                  conversationMacroFieldsByCharacterId.get(targetCharId) ?? promptMacroContext.convoFields,
+                convoFields: conversationMacroFieldsByCharacterId.get(targetCharId) ?? promptMacroContext.convoFields,
               }
             : promptMacroContext;
           const macroScopedMessagesForGen = spatiallyScopedMessagesForGen.map((message) => ({
@@ -6340,7 +6336,11 @@ export async function generateRoutes(app: FastifyInstance) {
 
           if (hierarchicalMapsEnabledForChat && (requestChatMode === "roleplay" || requestChatMode === "game")) {
             const parsedSpatial = extractAssistantSpatialDirective(fullResponse);
-            assistantSpatialDirective = input.impersonate ? null : parsedSpatial.directive;
+            // A queued owner movement is the sole spatial mutation for this turn.
+            // Still strip any package directive from the visible response, but do
+            // not let model output compete with the already accepted route.
+            assistantSpatialDirective =
+              input.impersonate || input.pendingSpatialTransition ? null : parsedSpatial.directive;
             if (parsedSpatial.matched) {
               fullResponse = parsedSpatial.cleanContent;
               contentReplaced = true;
@@ -6413,7 +6413,8 @@ export async function generateRoutes(app: FastifyInstance) {
               if (
                 anchoredMsg?.id &&
                 hierarchicalMapsEnabledForChat &&
-                (requestChatMode === "roleplay" || requestChatMode === "game")
+                (requestChatMode === "roleplay" || requestChatMode === "game") &&
+                !input.pendingSpatialTransition
               ) {
                 const assistantSpatialSnapshot = await materializeAssistantSpatialState(
                   {
@@ -6517,6 +6518,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   commandId: input.pendingSpatialTransition.commandId,
                   currentLocationId: committed.snapshot.currentLocationId,
                   definitionRevision: committed.snapshot.definitionRevision,
+                  ...(committed.travel ? { travel: committed.travel } : {}),
                 },
               });
             } catch (error) {
@@ -6540,6 +6542,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       commandId: input.pendingSpatialTransition.commandId,
                       currentLocationId: recovered.currentLocationId,
                       definitionRevision: recovered.definitionRevision,
+                      ...(recovered.travel ? { travel: recovered.travel } : {}),
                     },
                   });
                 } else {
@@ -6572,6 +6575,7 @@ export async function generateRoutes(app: FastifyInstance) {
             savedMsg?.id &&
             savedSwipeIndex !== null &&
             !input.impersonate &&
+            !input.pendingSpatialTransition &&
             hierarchicalMapsEnabledForChat &&
             (requestChatMode === "roleplay" || requestChatMode === "game")
           ) {
@@ -7727,7 +7731,11 @@ export async function generateRoutes(app: FastifyInstance) {
                 let effectiveSpatialProjection = ownerSpatialProjection;
                 if (hierarchicalMapsEnabledForChat && messageId) {
                   effectiveSpatialProjection = await resolveOwnerSpatialProjection(input.chatId, {}, chatMeta);
-                  if (trackerLocationGuidance && effectiveSpatialProjection?.ownerMode === "game") {
+                  if (
+                    trackerLocationGuidance &&
+                    effectiveSpatialProjection?.ownerMode === "game" &&
+                    !input.pendingSpatialTransition
+                  ) {
                     const previousSpatialLocationId = effectiveSpatialProjection?.currentLocationId ?? null;
                     const previousSpatialRevision = effectiveSpatialProjection?.definitionRevision ?? 0;
                     const guidedSpatialSnapshot = await materializeAssistantSpatialState(
@@ -8634,8 +8642,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       db: app.db,
                       chatId: input.chatId,
                       chatName: chat.name,
-                      chatMode:
-                        chatMode === "game" ? "game" : "roleplay",
+                      chatMode: chatMode === "game" ? "game" : "roleplay",
                       chatMetadata: freshMeta,
                       currentBackground: backgroundBeforeGeneration ?? currentBackground,
                       illustratorAgent: illustratorBackgroundAgent,
@@ -9165,7 +9172,6 @@ export async function generateRoutes(app: FastifyInstance) {
                 // Non-critical — don't fail generation if a rewrite agent errors.
               }
             }
-
           }
 
           if (holdForTextRewrite && !textRewriteApplied && !abortController.signal.aborted) {

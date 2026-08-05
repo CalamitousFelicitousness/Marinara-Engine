@@ -5,6 +5,7 @@ import type {
   Message,
   MessageAttachment,
   PendingSpatialTransition,
+  ResolvedSpatialTravel,
   SpatialContextResponse,
   SpatialDefinitionIssue,
 } from "@marinara-engine/shared";
@@ -32,6 +33,7 @@ export interface CommitSpatialOwnerTurnInput {
 interface CommitSpatialOwnerTurnResponse {
   message: Message;
   spatial: SpatialContextResponse;
+  travel?: ResolvedSpatialTravel;
 }
 
 export interface SpatialContextProblem {
@@ -118,7 +120,10 @@ export function useCommitSpatialOwnerTurn() {
       api.post<CommitSpatialOwnerTurnResponse>(`/chats/${chatId}/spatial-context/turn`, request),
     onSuccess: (response, variables) => {
       queryClient.setQueryData(spatialContextKeys.detail(variables.chatId), response.spatial);
-      useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
+      const stepwiseRouteRemainsQueued = response.travel?.mode === "step_by_step" && response.travel.complete === false;
+      if (!stepwiseRouteRemainsQueued) {
+        useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
+      }
       dispatchCapabilityClientEvent({
         packageId: "hierarchical-maps",
         type: "spatial_transition_committed",
@@ -128,6 +133,7 @@ export function useCommitSpatialOwnerTurn() {
           commandId: variables.transition.commandId,
           currentLocationId: response.spatial.currentLocationId,
           definitionRevision: response.spatial.definition?.revision,
+          ...(response.travel ? { travel: response.travel } : {}),
         },
       });
       void queryClient.invalidateQueries({ queryKey: chatKeys.messages(variables.chatId) });

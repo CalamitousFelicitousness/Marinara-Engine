@@ -7,6 +7,7 @@ import type {
   SpatialDestination,
   SpatialDestinationRelation,
   SpatialLocation,
+  ResolvedSpatialTravel,
   SpatialTransitionValidationResult,
 } from "../types/spatial-context.js";
 
@@ -23,6 +24,8 @@ export const SPATIAL_CONTEXT_LIMITS = {
   maxCommandIdLength: 200,
   maxPromptDestinations: 50,
   maxLorebookEntryIdsPerLocation: 50,
+  /** Maximum number of destination IDs returned for one routed transition. */
+  maxRouteLocations: 64,
 } as const;
 
 export function buildSpatialLocationIndex(
@@ -224,7 +227,6 @@ export function validateSpatialContextDefinition(
       seenLorebookEntryIds.add(entryId);
     });
 
-
     const seenLinkTargets = new Set<string>();
     location.links.forEach((link, linkIndex) => {
       if (link.targetId === location.id) {
@@ -410,6 +412,39 @@ export function resolveSpatialDestinations(
   return Array.from(destinations.values()).sort(compareDestinations);
 }
 
+/**
+ * Resolve the shortest directed route using the same one-hop authority as
+ * ordinary movement. The returned IDs exclude the current location and are
+ * bounded so a malformed or very large graph cannot expand request data.
+ */
+export function resolveSpatialRoute(
+  definition: Pick<SpatialContextDefinition, "enabled" | "locations">,
+  currentLocationId: string | null,
+  targetLocationId: string,
+): string[] | null {
+  if (!definition.enabled || currentLocationId === null || currentLocationId === targetLocationId) return null;
+  const byId = buildSpatialLocationIndex(definition);
+  const current = byId.get(currentLocationId);
+  const target = byId.get(targetLocationId);
+  if (!current || current.status !== "active" || !target || target.status !== "active") return null;
+
+  const queue: Array<{ locationId: string; path: string[] }> = [{ locationId: currentLocationId, path: [] }];
+  const visited = new Set([currentLocationId]);
+  while (queue.length > 0) {
+    const entry = queue.shift()!;
+    for (const destination of resolveSpatialDestinations(definition, entry.locationId)) {
+      if (visited.has(destination.id)) continue;
+      const path = [...entry.path, destination.id];
+      if (destination.id === targetLocationId) return path;
+      visited.add(destination.id);
+      if (path.length < SPATIAL_CONTEXT_LIMITS.maxRouteLocations) {
+        queue.push({ locationId: destination.id, path });
+      }
+    }
+  }
+  return null;
+}
+
 function validReplacement(
   byId: ReadonlyMap<string, SpatialLocation>,
   locationId: string,
@@ -512,9 +547,49 @@ export function validateSpatialTransition(
     };
   }
 
-  const destination = resolveSpatialDestinations(definition, currentLocationId).find(
-    (candidate) => candidate.id === request.destinationId,
-  );
+  const destinations = resolveSpatialDestinations(definition, currentLocationId);
+  if (request.travelMode) {
+    const routeLocationIds = resolveSpatialRoute(definition, currentLocationId, request.destinationId);
+    if (!routeLocationIds) {
+      return {
+        ok: false,
+        code: "spatial_destination_unreachable",
+        message: "The selected destination is not reachable from the current location.",
+      };
+    }
+    const acceptedDestinationId =
+      request.travelMode === "step_by_step" ? routeLocationIds[0] : routeLocationIds[routeLocationIds.length - 1];
+    if (!acceptedDestinationId) {
+      return {
+        ok: false,
+        code: "spatial_destination_unreachable",
+        message: "The selected destination is not reachable from the current location.",
+      };
+    }
+    const destination =
+      request.travelMode === "step_by_step"
+        ? destinations.find((candidate) => candidate.id === acceptedDestinationId)
+        : destinationFromLocation(byId.get(acceptedDestinationId)!, "link");
+    if (!destination) {
+      return {
+        ok: false,
+        code: "spatial_destination_unreachable",
+        message: "The selected destination is not reachable from the current location.",
+      };
+    }
+    const remainingLocationIds = request.travelMode === "step_by_step" ? routeLocationIds.slice(1) : [];
+    const travel: ResolvedSpatialTravel = {
+      mode: request.travelMode,
+      fromLocationId: currentLocationId,
+      targetLocationId: request.destinationId,
+      routeLocationIds,
+      remainingLocationIds,
+      complete: remainingLocationIds.length === 0,
+    };
+    return { ok: true, destination, travel };
+  }
+
+  const destination = destinations.find((candidate) => candidate.id === request.destinationId);
   if (!destination) {
     return {
       ok: false,

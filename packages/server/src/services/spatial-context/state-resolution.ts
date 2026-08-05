@@ -1,4 +1,4 @@
-import type { SpatialContextDefinition, SpatialContextSnapshot } from "@marinara-engine/shared";
+import type { ResolvedSpatialTravel, SpatialContextDefinition, SpatialContextSnapshot } from "@marinara-engine/shared";
 import { getCapabilityService } from "../capability-packages/capability-service-registry.service.js";
 import { isHierarchicalMapsEnabledForChat } from "./activation.js";
 
@@ -141,6 +141,8 @@ export interface ResolveSpatialStateOptions {
   exactAnchor?: SpatialMessageAnchor;
   throughMessageId?: string;
   beforeMessageId?: string;
+  /** Accepted owner-turn travel facts to include in the next prompt projection. */
+  acceptedTravel?: ResolvedSpatialTravel | null;
 }
 
 interface StateResolutionService {

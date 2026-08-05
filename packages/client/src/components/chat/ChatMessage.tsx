@@ -58,6 +58,7 @@ import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCa
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
+import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
 import DOMPurify from "dompurify";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
@@ -545,13 +546,15 @@ const EditTextarea = memo(function EditTextarea({
   initialContent,
   fontSize,
   quoteFormat,
+  saving,
   onSave,
   onCancel,
 }: {
   initialContent: string;
   fontSize: string | number | undefined;
   quoteFormat: QuoteFormat;
-  onSave: (content: string) => void;
+  saving: boolean;
+  onSave: (content: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -577,7 +580,7 @@ const EditTextarea = memo(function EditTextarea({
   }, [autoResize]);
 
   const handleSave = useCallback(() => {
-    if (ref.current) onSave(formatTextQuotes(ref.current.value, quoteFormat));
+    if (ref.current) void onSave(formatTextQuotes(ref.current.value, quoteFormat));
   }, [onSave, quoteFormat]);
 
   return (
@@ -585,12 +588,15 @@ const EditTextarea = memo(function EditTextarea({
       <textarea
         ref={ref}
         defaultValue={formatTextQuotes(initialContent, quoteFormat)}
+        readOnly={saving}
+        aria-busy={saving}
         rows={1}
         onInput={(event) => {
           applyTextareaQuoteFormat(event.currentTarget, quoteFormat, event.nativeEvent as InputEvent);
           autoResize();
         }}
         onKeyDown={(e) => {
+          if (saving) return;
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
@@ -601,6 +607,7 @@ const EditTextarea = memo(function EditTextarea({
         <button
           type="button"
           onClick={onCancel}
+          disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.cancelEdit")}
           className="rounded-md p-1 text-white/40 hover:bg-white/10 hover:text-white/70"
           title={localizeUi("ui.chat.edittextarea.cancelEsc")}
@@ -610,6 +617,7 @@ const EditTextarea = memo(function EditTextarea({
         <button
           type="button"
           onClick={handleSave}
+          disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.saveEdit")}
           className="rounded-md p-1 text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400"
           title={localizeUi("ui.chat.edittextarea.saveCmdEnter")}
@@ -629,7 +637,7 @@ interface ChatMessageProps {
   streamingContent?: ReactNode;
   onDelete?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
-  onEdit?: (messageId: string, content: string) => void;
+  onEdit?: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleConversationStart?: (messageId: string, current: boolean) => void;
   onToggleHiddenFromAI?: ToggleHiddenFromAI;
@@ -1326,6 +1334,7 @@ export const ChatMessage = memo(function ChatMessage({
 
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editSavePending, setEditSavePending] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [showGenerationReplay, setShowGenerationReplay] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -1337,6 +1346,7 @@ export const ChatMessage = memo(function ChatMessage({
   const msgRef = useRef<HTMLDivElement>(null);
   const thinkingButtonRef = useRef<HTMLButtonElement>(null);
   const editSwipeIndexRef = useRef<number | null>(null);
+  const editSavePendingRef = useRef(false);
   const lastQuickTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const openImageLightbox = useCallback(
     (url: string, prompt?: unknown) => {
@@ -1603,9 +1613,9 @@ export const ChatMessage = memo(function ChatMessage({
       )
     : [];
   const isHiddenFromAI = isHiddenFromAllAI || hiddenFromAICharacterIds.length > 0;
-  const thinking =
-    typeof extra.thinking === "string" && extra.thinking.trim().length > 0 ? (extra.thinking as string) : null;
-  const showStreamingThinkingAction = !!isStreaming && !!thinking && !isUser;
+  const { summary: thinking, summaryUnavailable: reasoningSummaryUnavailable, hasReasoning } =
+    resolveMessageReasoningDisplay(extra);
+  const showStreamingThinkingAction = !!isStreaming && hasReasoning && !isUser;
   const generationReplay = hasGenerationReplayDetails(extra.generationReplay) ? extra.generationReplay : null;
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
@@ -1761,7 +1771,8 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.id, onEdit, startEditing]);
 
   const handleSaveEdit = useCallback(
-    (content: string) => {
+    async (content: string) => {
+      if (editSavePendingRef.current) return;
       if (!isUser && editSwipeIndexRef.current !== null && editSwipeIndexRef.current !== message.activeSwipeIndex) {
         editSwipeIndexRef.current = null;
         setEditing(false);
@@ -1769,21 +1780,33 @@ export const ChatMessage = memo(function ChatMessage({
       }
       const formattedSource = formatTextQuotes(message.content, quoteFormat);
       if (content.trim().length > 0 && content !== formattedSource) {
-        onEdit?.(message.id, content);
+        editSavePendingRef.current = true;
+        setEditSavePending(true);
+        try {
+          await onEdit?.(message.id, content);
+        } catch {
+          toast.error(localizeUi("ui.chat.chatmessage.couldNotSaveThatEdit"));
+          return;
+        } finally {
+          editSavePendingRef.current = false;
+          setEditSavePending(false);
+        }
       }
       editSwipeIndexRef.current = null;
       setEditing(false);
     },
-    [isUser, message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
+    [isUser, localizeUi, message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
   );
 
   const handleCancelEdit = useCallback(() => {
+    if (editSavePendingRef.current) return;
     editSwipeIndexRef.current = null;
     setEditing(false);
   }, []);
 
   const handleSetActiveSwipe = useCallback(
     (index: number) => {
+      if (editSavePendingRef.current) return;
       if (index === message.activeSwipeIndex) return;
       editSwipeIndexRef.current = null;
       setEditing(false);
@@ -1794,12 +1817,13 @@ export const ChatMessage = memo(function ChatMessage({
 
   useEffect(() => {
     if (!editing) return;
+    if (editSavePending) return;
     if (isUser || editSwipeIndexRef.current === null) return;
     if (editSwipeIndexRef.current !== message.activeSwipeIndex) {
       editSwipeIndexRef.current = null;
       setEditing(false);
     }
-  }, [editing, isUser, message.activeSwipeIndex]);
+  }, [editSavePending, editing, isUser, message.activeSwipeIndex]);
 
   // Apply regex scripts to AI output (assistant/narrator roles)
   const { applyToAIOutput } = useApplyRegex();
@@ -2263,6 +2287,7 @@ export const ChatMessage = memo(function ChatMessage({
       initialContent={message.content}
       fontSize={chatFontSize}
       quoteFormat={quoteFormat}
+      saving={editSavePending}
       onSave={handleSaveEdit}
       onCancel={handleCancelEdit}
     />
@@ -2928,11 +2953,11 @@ export const ChatMessage = memo(function ChatMessage({
                   dark
                 />
               )}
-              {thinking && !isUser && (
+              {hasReasoning && !isUser && (
                 <ActionBtn
                   icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowThinking(true)}
-                  title={t("chat.message.thoughts.view")}
+                  title={t(reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view")}
                   thinkingAction
                   buttonRef={thinkingButtonRef}
                   dark
@@ -3016,9 +3041,10 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
 
         {/* Thinking modal */}
-        {showThinking && thinking && (
+        {showThinking && hasReasoning && (
           <MessageThinkingModal
             thinking={thinking}
+            summaryUnavailable={reasoningSummaryUnavailable}
             onClose={() => setShowThinking(false)}
             restoreFocusRef={thinkingButtonRef}
           />
@@ -3189,6 +3215,7 @@ export const ChatMessage = memo(function ChatMessage({
                 initialContent={message.content}
                 fontSize={chatFontSize}
                 quoteFormat={quoteFormat}
+                saving={editSavePending}
                 onSave={handleSaveEdit}
                 onCancel={handleCancelEdit}
               />
@@ -3382,11 +3409,11 @@ export const ChatMessage = memo(function ChatMessage({
                 title={localizeUi("ui.chat.chatmessage.storedGuidance")}
               />
             )}
-            {thinking && !isUser && (
+            {hasReasoning && !isUser && (
               <ActionBtn
                 icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => setShowThinking(true)}
-                title={t("chat.message.thoughts.view")}
+                title={t(reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view")}
                 thinkingAction
                 buttonRef={thinkingButtonRef}
               />
@@ -3474,9 +3501,10 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
 
       {/* Thinking modal */}
-      {showThinking && thinking && (
+      {showThinking && hasReasoning && (
         <MessageThinkingModal
           thinking={thinking}
+          summaryUnavailable={reasoningSummaryUnavailable}
           onClose={() => setShowThinking(false)}
           restoreFocusRef={thinkingButtonRef}
         />

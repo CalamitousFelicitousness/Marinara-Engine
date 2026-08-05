@@ -101,6 +101,7 @@ assert.equal(nextNoodleSchedulerPollDelayMs(disabled, nextDay), 15 * 60_000);
 
 assert.equal(noodlerReservePollIsIdle({ enableNoodler: false, autoPostingScheduleEnabled: false }), true);
 assert.equal(noodlerReservePollIsIdle({ enableNoodler: true, autoPostingScheduleEnabled: false }), true);
+assert.equal(noodlerReservePollIsIdle({ enableNoodler: false, autoPostingScheduleEnabled: true }), true);
 assert.equal(noodlerReservePollIsIdle({ enableNoodler: true, autoPostingScheduleEnabled: true }), false);
 
 assert.equal(noodleRefreshRetryDelayMs(409, 0), 60_000);

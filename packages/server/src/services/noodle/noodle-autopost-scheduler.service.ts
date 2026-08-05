@@ -60,12 +60,7 @@ export function startNoodleAutoPostScheduler(app: FastifyInstance) {
       // rather than materializing both tables once a minute for the server's lifetime.
       const noodle = createNoodleStorage(app.db);
       const settings = await noodle.getSettings();
-      if (
-        noodlerReservePollIsIdle(settings) &&
-        (await noodle.listNoodlerPreparedPosts()).length === 0
-      ) {
-        return;
-      }
+      if (noodlerReservePollIsIdle(settings) && !(await noodle.hasNoodlerPreparedPosts())) return;
       await reconcileNoodlerReserve(app.db);
       const outcome = await prepareNextNoodlerReservePost(app.db);
       if (outcome === "prepared") logger.info("[noodle-autopost] Prepared one future NoodleR post");

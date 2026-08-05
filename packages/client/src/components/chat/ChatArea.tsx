@@ -2142,6 +2142,13 @@ export function ChatArea() {
     [updateMessage],
   );
 
+  const handleRoleplayEdit = useCallback(
+    async (messageId: string, content: string) => {
+      await updateMessage.mutateAsync({ messageId, content });
+    },
+    [updateMessage],
+  );
+
   const handleToggleConversationStart = useCallback(
     (messageId: string, current: boolean) => {
       updateMessageExtra.mutate({ messageId, extra: { isConversationStart: !current } });
@@ -3407,7 +3414,7 @@ export function ChatArea() {
           onLoadMore={handleLoadMore}
           onDelete={handleDelete}
           onRegenerate={handleRegenerate}
-          onEdit={handleEdit}
+          onEdit={handleRoleplayEdit}
           onSetActiveSwipe={handleSetActiveSwipe}
           onToggleConversationStart={handleToggleConversationStart}
           onToggleHiddenFromAI={handleToggleHiddenFromAI}

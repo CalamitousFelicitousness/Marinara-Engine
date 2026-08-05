@@ -29,6 +29,7 @@ import { useAgentStore, EMPTY_AGENT_TYPES, EMPTY_AGENT_FAILURES } from "../../st
 import { useAgentConfigs, useCustomAgentRuns, type AgentConfigRow } from "../../hooks/use-agents";
 import { discardPendingGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { useUIStore } from "../../stores/ui.store";
+import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import {
   classifyWorldWeather,
   getLocationPinColor,
@@ -1042,6 +1043,7 @@ function CustomTrackerWidget({
   isTrackerRetryBusy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const reduceAmbientEffects = useReducedAmbientEffects();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [cycleIdx, setCycleIdx] = useState(0);
@@ -1049,13 +1051,13 @@ function CustomTrackerWidget({
 
   // Cycle through fields every 3 seconds
   useEffect(() => {
-    if (fields.length <= 1) return;
+    if (reduceAmbientEffects || fields.length <= 1) return;
     const timer = setInterval(() => {
       setCycleIdx((prev) => (prev + 1) % fields.length);
       setAnimKey((k) => k + 1);
     }, 3000);
     return () => clearInterval(timer);
-  }, [fields.length]);
+  }, [fields.length, reduceAmbientEffects]);
 
   useEffect(() => {
     if (cycleIdx >= fields.length) setCycleIdx(0);
@@ -1117,6 +1119,7 @@ function InventoryWidget({
   onRemoveItem?: (index: number) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const reduceAmbientEffects = useReducedAmbientEffects();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [cycleIdx, setCycleIdx] = useState(0);
@@ -1124,13 +1127,13 @@ function InventoryWidget({
 
   // Cycle through items every 3 seconds
   useEffect(() => {
-    if (items.length <= 1) return;
+    if (reduceAmbientEffects || items.length <= 1) return;
     const timer = setInterval(() => {
       setCycleIdx((prev) => (prev + 1) % items.length);
       setAnimKey((k) => k + 1);
     }, 3000);
     return () => clearInterval(timer);
-  }, [items.length]);
+  }, [items.length, reduceAmbientEffects]);
 
   // Reset index if items shrink
   useEffect(() => {

@@ -138,9 +138,18 @@ export async function noodlerPublicIdentityFor(
   publicAccount: NoodleAccount | null,
 ): Promise<PublicIdentity | null> {
   if (!publicAccount) return null;
+  const characters = createCharactersStorage(db);
+  const source =
+    publicAccount.kind === "character"
+      ? await characters.getById(publicAccount.entityId)
+      : publicAccount.kind === "persona"
+        ? await characters.getPersona(publicAccount.entityId).then((persona) =>
+            persona ? { data: { name: persona.name } } : null,
+          )
+        : null;
   return buildNoodlerPublicIdentity(
     publicAccount,
-    publicAccount.kind === "character" ? await createCharactersStorage(db).getById(publicAccount.entityId) : null,
+    source,
   );
 }
 

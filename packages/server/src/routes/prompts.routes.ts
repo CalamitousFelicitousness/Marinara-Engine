@@ -2,7 +2,6 @@
 // Routes: Prompts (Presets, Groups, Sections, Choices)
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
-import { existsSync } from "fs";
 import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import {
@@ -129,9 +128,17 @@ export async function promptsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { filename: string } }>("/images/file/:filename", async (req, reply) => {
     const filepath = getSafePromptImagePath(req.params.filename);
-    if (!filepath || !existsSync(filepath)) return reply.status(404).send({ error: "Image not found" });
+    if (!filepath) return reply.status(404).send({ error: "Image not found" });
 
-    const buffer = await readFile(filepath);
+    let buffer: Buffer;
+    try {
+      buffer = await readFile(filepath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return reply.status(404).send({ error: "Image not found" });
+      }
+      throw error;
+    }
     const imageInfo = isAllowedImageBuffer(buffer, extname(req.params.filename));
     if (!imageInfo) return reply.status(404).send({ error: "Image not found" });
 

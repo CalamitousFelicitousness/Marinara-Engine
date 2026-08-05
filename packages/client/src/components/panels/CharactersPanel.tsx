@@ -1262,7 +1262,8 @@ export function CharactersPanel() {
                         >
                           <ChatResourceActionButton
                             payload={{ version: 1, kind: "character", ids: [memberId], label: memberName }}
-                            className="flex !h-5 !min-h-5 !w-5 items-center justify-center !rounded-md !p-0"
+                            size="row"
+                            className="flex h-5 min-h-5 w-5 items-center justify-center rounded-md p-0 active:scale-90"
                             iconClassName="h-2.5 w-2.5 shrink-0"
                           />
                           <button
@@ -1599,6 +1600,7 @@ export function CharactersPanel() {
                 >
                   <ChatResourceActionButton
                     payload={{ version: 1, kind: "character", ids: [char.id], label: charName }}
+                    size="row"
                     className="mari-character-row-action flex w-7 items-center justify-center max-md:w-6"
                     iconClassName="h-4 w-4 shrink-0 max-md:h-3.5 max-md:w-3.5"
                   />

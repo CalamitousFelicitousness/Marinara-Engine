@@ -32,6 +32,10 @@ import { buildLorebookDuplicateInput } from "../../packages/client/src/lib/loreb
 import { appendLorebookActivationKeys } from "../../packages/client/src/lib/lorebook-keys.js";
 import { arePresetChoiceSelectionsComplete } from "../../packages/client/src/lib/preset-choice-selection.js";
 import {
+  MARINARA_UNIVERSAL_PRESET_ARTWORK,
+  resolvePresetArtwork,
+} from "../../packages/client/src/lib/preset-artwork.js";
+import {
   getSlashCompletions,
   matchSlashCommand,
   shouldExecuteQuickPostAsCommand,
@@ -2934,7 +2938,7 @@ assert.match(
   gameRoutesSource,
   /if \(!selectedTemplate\?\.promptTemplate\.trim\(\)\) \{[\s\S]*The Storyboard Agent has no/u,
 );
-assert.match(presetsPanelSource, /\{!selectionMode && isSelected && \(/u);
+assert.match(presetsPanelSource, /\{isSelected && \(/u);
 assert.match(
   presetsPanelSource,
   /PanelSection title=\{localizeUi\("ui\.panels\.presetspanel\.prompts"\)\}/u,
@@ -2990,11 +2994,20 @@ assert.match(
   /className="grid min-w-0 grid-cols-2 gap-2"/u,
   "LinkAPI actions must share the available banner width instead of overflowing it",
 );
-assert.match(presetsPanelSource, /MARINARA_UNIVERSAL_PRESET_ARTWORK/u);
-assert.match(
-  presetsPanelSource,
-  /preset\.name === MARINARA_UNIVERSAL_PRESET_NAME && preset\.author === MARINARA_UNIVERSAL_PRESET_AUTHOR/u,
+assert.equal(
+  resolvePresetArtwork({ name: "Marinara's Universal Preset", author: "Marinara" }),
+  MARINARA_UNIVERSAL_PRESET_ARTWORK,
 );
+assert.equal(
+  resolvePresetArtwork({
+    name: "Marinara's Universal Preset",
+    author: "Marinara",
+    imagePath: "/api/prompts/images/file/custom.png",
+  }),
+  "/api/prompts/images/file/custom.png",
+);
+assert.match(presetsPanelSource, /data-preset-image-action/u);
+assert.match(presetsPanelSource, /data-preset-open-action/u);
 assert.equal(
   existsSync(join(REPOSITORY_ROOT, "packages/client/public/illustrations/marinara-universal-preset.webp")),
   true,

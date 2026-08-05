@@ -75,6 +75,7 @@ const BACKUP_DIRS = [
   "custom-stickers",
   "notification-sounds",
   "lorebooks/images",
+  "prompts/images",
   "agents/images",
   "connections/images",
   "long-term-memory",

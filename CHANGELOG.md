@@ -10,6 +10,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made NoodleR stage-profile drafts tolerate single-item array responses, extra model fields, and decorated handles from local models while ignoring model-provided disclosure modes, discarding invalid values, and applying the requested valid mode (#4626).
 - Removed deprecated generation parameters from single and bulk prompt-preset exports and ignored them when importing older Marinara or SillyTavern preset files (#4650).
 - Kept the selected prompt checkmark above the Presets avatar frame instead of clipping it into the rounded image border (#4651).
 - Kept Roleplay message editors open until the save is confirmed, so a delayed mobile save after stopping generation cannot briefly restore stale text or discard the first edit (#4649).

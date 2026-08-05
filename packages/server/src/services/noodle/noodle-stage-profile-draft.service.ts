@@ -136,6 +136,23 @@ export function buildNoodlerStageProfileDraftMessages(input: {
   ];
 }
 
+const noodlerStageProfileDraftSchema = noodleStageProfileDraftResponseSchema
+  .omit({ disclosureMode: true })
+  .strip();
+
+export function parseNoodlerStageProfileDraft(content: string) {
+  const parsed = parseGameJsonish(content);
+  const candidate = Array.isArray(parsed) && parsed.length === 1 ? parsed[0] : parsed;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return noodlerStageProfileDraftSchema.parse(candidate);
+  }
+  const normalized = { ...(candidate as Record<string, unknown>) };
+  if (typeof normalized.handle === "string") {
+    normalized.handle = normalized.handle.replace(/^@+/, "");
+  }
+  return noodlerStageProfileDraftSchema.parse(normalized);
+}
+
 export async function generateNoodlerStageProfileDraft(
   db: DB,
   input: { request: NoodleStageProfileDraftRequest; connection: GenerationConnection },
@@ -212,8 +229,10 @@ export async function generateNoodlerStageProfileDraft(
     debugMode,
     responseFormat: noodleResponseFormat(input.connection.model, "noodler_profile"),
   });
-  const parsed = noodleStageProfileDraftResponseSchema.parse(parseGameJsonish(response.content ?? ""));
-  const draft = { ...parsed, disclosureMode: input.request.disclosureMode };
+  const draft = {
+    ...parseNoodlerStageProfileDraft(response.content ?? ""),
+    disclosureMode: input.request.disclosureMode,
+  };
   if (stageProfileContainsPublicIdentity(draft, identity)) {
     throw new Error("Generated stage draft included the linked public identity. Try again with different guidance.");
   }

@@ -42,6 +42,9 @@ export function CyoaChoices({ messages }: Props) {
   const { generate, retryAgents } = useGenerate();
   const activeChatId = useChatStore((s) => s.activeChatId);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const pendingSpatialTransition = useChatStore((s) =>
+    activeChatId ? (s.pendingSpatialTransitions.get(activeChatId) ?? null) : null,
+  );
   const impersonateCyoaChoices = useUIStore((s) => s.impersonateCyoaChoices);
   const setImpersonateCyoaChoices = useUIStore((s) => s.setImpersonateCyoaChoices);
   const updateMessageExtra = useUpdateMessageExtra(activeChatId);
@@ -149,6 +152,8 @@ export function CyoaChoices({ messages }: Props) {
     async (text: string) => {
       if (!activeChatId || isStreaming || isEditing) return;
       clearChoicesForActiveChat();
+      const queuedSpatialTransition =
+        pendingSpatialTransition?.status === "ready" ? pendingSpatialTransition.transition : null;
       if (impersonateCyoaChoices) {
         const { impersonatePresetId, impersonateConnectionId, impersonateBlockAgents, impersonatePromptTemplate } =
           useUIStore.getState();
@@ -158,6 +163,7 @@ export function CyoaChoices({ messages }: Props) {
           connectionId: null,
           impersonate: true,
           userMessage: text,
+          ...(queuedSpatialTransition ? { pendingSpatialTransition: queuedSpatialTransition } : {}),
           ...(impersonatePresetId ? { impersonatePresetId } : {}),
           ...(impersonateConnectionId ? { impersonateConnectionId } : {}),
           ...(impersonateBlockAgents ? { impersonateBlockAgents: true } : {}),
@@ -170,9 +176,18 @@ export function CyoaChoices({ messages }: Props) {
         chatId: activeChatId,
         connectionId: null,
         userMessage: text,
+        ...(queuedSpatialTransition ? { pendingSpatialTransition: queuedSpatialTransition } : {}),
       });
     },
-    [activeChatId, isStreaming, isEditing, impersonateCyoaChoices, clearChoicesForActiveChat, generate],
+    [
+      activeChatId,
+      isStreaming,
+      isEditing,
+      pendingSpatialTransition,
+      impersonateCyoaChoices,
+      clearChoicesForActiveChat,
+      generate,
+    ],
   );
 
   const handleReroll = useCallback(async () => {

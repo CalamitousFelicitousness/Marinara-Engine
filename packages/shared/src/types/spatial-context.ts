@@ -103,6 +103,15 @@ export interface ResolvedSpatialTravel {
   complete: boolean;
 }
 
+export interface SpatialTravelPromptSummary {
+  mode: SpatialTravelMode;
+  fromLocationName: string;
+  acceptedLocationName: string;
+  targetLocationName: string;
+  routeLocationNames: string[];
+  remainingLocationNames: string[];
+}
+
 export type SpatialDestinationRelation = "enter" | "leave" | "link";
 
 export interface SpatialDestination {
@@ -130,6 +139,8 @@ export interface ResolvedOwnerSpatialProjection {
   omittedDestinationCount: number;
   /** Accepted route facts for the owner turn currently being generated. */
   travel?: ResolvedSpatialTravel;
+  /** Bounded public names for the accepted route; IDs remain authoritative. */
+  travelSummary?: SpatialTravelPromptSummary;
   /** Active map locations exposed as name-only breadcrumb paths for narrated travel. */
   knownLocations?: Array<{ id: string; path: string }>;
 }

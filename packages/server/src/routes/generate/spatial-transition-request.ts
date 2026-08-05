@@ -1,4 +1,4 @@
-import type { PendingSpatialTransition, SpatialContextSnapshot } from "@marinara-engine/shared";
+import type { PendingSpatialTransition, ResolvedSpatialTravel, SpatialContextSnapshot } from "@marinara-engine/shared";
 
 type SpatialGenerationMode = "conversation" | "roleplay" | "game";
 export type SpatialGenerationOrigin = "owner" | "guided" | "autonomous" | "turn_game";
@@ -14,6 +14,7 @@ export type AlreadyAppliedSpatialTurn = {
   swipeIndex: number;
   currentLocationId: string | null;
   definitionRevision: number;
+  travel?: ResolvedSpatialTravel;
 };
 
 export function resolveAlreadyAppliedSpatialTurn(error: {

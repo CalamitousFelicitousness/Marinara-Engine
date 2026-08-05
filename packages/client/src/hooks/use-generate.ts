@@ -51,7 +51,6 @@ import {
   type MariSuggestionChip,
   type PendingSpatialTransition,
   type ResolvedSpatialTravel,
-  type SpatialContextResponse,
   type ThinkingTagPair,
 } from "@marinara-engine/shared";
 
@@ -1382,6 +1381,38 @@ export function useGenerate() {
       let heldTextRewriteMessage: Message | null = null;
       let holdingTextRewrite = false;
       let gameStatePatchAnchor: { messageId: string; swipeIndex: number } | null = null;
+      const recoverSpatialTransitionByCommand = async (): Promise<boolean> => {
+        const transition = params.pendingSpatialTransition;
+        if (!transition) return false;
+        try {
+          const recovered = await api.get<{
+            applied: true;
+            messageId: string;
+            currentLocationId: string | null;
+            definitionRevision: number;
+          }>(
+            `/chats/${encodeURIComponent(params.chatId)}/spatial-context/turn/${encodeURIComponent(transition.commandId)}`,
+          );
+          spatialTransitionCommitted = recovered.applied;
+          spatialCapabilityRefreshDispatched = true;
+          dispatchCapabilityClientEvent({
+            packageId: "hierarchical-maps",
+            type: "spatial_transition_committed",
+            chatId: params.chatId,
+            data: {
+              chatId: params.chatId,
+              commandId: transition.commandId,
+              currentLocationId: recovered.currentLocationId,
+              definitionRevision: recovered.definitionRevision,
+            },
+          });
+          void qc.invalidateQueries({ queryKey: spatialContextKeys.detail(params.chatId) });
+          void qc.invalidateQueries({ queryKey: chatKeys.detail(params.chatId) });
+          return true;
+        } catch {
+          return false;
+        }
+      };
       const normalizeLineBreakSpacing = (text: string) =>
         chatModeForGeneration === "roleplay" ? text.replace(/[ \t]+(\r?\n)/g, "$1") : text;
       const rememberContinuedMessageContent = (message: Message) => {
@@ -2792,7 +2823,10 @@ export function useGenerate() {
         flushLeadingSpeakerPrefix();
         flushTypewriterBuffer();
         // Abort is intentional — don't log or toast
-        if (isAbortError(error)) return submittedUserTurn || receivedContent || spatialTransitionCommitted;
+        if (isAbortError(error)) {
+          await recoverSpatialTransitionByCommand();
+          return submittedUserTurn || receivedContent || spatialTransitionCommitted;
+        }
         if (isPassiveStreamDisconnect(error, pageWasHiddenDuringStream, abortController.signal)) {
           passiveStreamRecovered = true;
           if (isActiveChat()) useChatStore.getState().setGenerationPhase("Finishing in background...");
@@ -2832,20 +2866,16 @@ export function useGenerate() {
               : null;
           const spatialErrorCode = typeof payload?.code === "string" ? payload.code : null;
           if (spatialErrorCode === "spatial_transition_already_applied") {
-            spatialTransitionCommitted = true;
+            await recoverSpatialTransitionByCommand();
           } else if (!spatialErrorCode?.startsWith("spatial_")) {
-            try {
-              const current = await api.get<SpatialContextResponse>(`/chats/${params.chatId}/spatial-context`);
-              qc.setQueryData(spatialContextKeys.detail(params.chatId), current);
-              spatialTransitionCommitted = current.currentLocationId === params.pendingSpatialTransition.destinationId;
-            } catch {
-              /* Preserve the pending command when current state cannot be confirmed. */
-            }
+            await recoverSpatialTransitionByCommand();
           }
           if (spatialTransitionCommitted) {
-            useChatStore
-              .getState()
-              .clearPendingSpatialTransition(params.chatId, params.pendingSpatialTransition.commandId);
+            if (params.pendingSpatialTransition.travelMode !== "step_by_step") {
+              useChatStore
+                .getState()
+                .clearPendingSpatialTransition(params.chatId, params.pendingSpatialTransition.commandId);
+            }
             void qc.invalidateQueries({ queryKey: chatKeys.detail(params.chatId) });
             return true;
           }

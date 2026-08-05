@@ -331,6 +331,26 @@ assert.deepEqual(
     matched: true,
   },
 );
+assert.deepEqual(
+  extractAssistantSpatialDirective(
+    '[spatial_discover: name="A one-way bridge" relation="link" direction="outgoing" description="A bridge leading onward."]',
+  ).directive,
+  {
+    type: "discover",
+    name: "A one-way bridge",
+    relation: "link",
+    direction: "outgoing",
+    description: "A bridge leading onward.",
+  },
+  "Direct-link discovery carries explicit direction relative to the current location",
+);
+assert.equal(
+  extractAssistantSpatialDirective(
+    '[spatial_discover: name="An unspecified link" relation="link" description="Direction is required."]',
+  ).directive,
+  null,
+  "Direct-link discovery without direction is rejected",
+);
 const ordinaryImpersonatedContent = "\n[Stage direction]\n\n\nContinue through the door.\n";
 assert.deepEqual(
   extractAssistantSpatialDirective(ordinaryImpersonatedContent),
@@ -413,13 +433,49 @@ assert.match(
 );
 assert.match(
   generateRouteSource,
-  /assistantSpatialDirective = input\.impersonate \|\| input\.pendingSpatialTransition \? null : parsedSpatial\.directive/u,
+  /assistantSpatialDirective\s*=\s*\n\s*input\.impersonate \|\| input\.pendingSpatialTransition \? null : parsedSpatial\.directive/u,
   "Queued owner travel suppresses model spatial directives after stripping them from visible output",
 );
 assert.match(
   generateRouteSource,
   /!input\.pendingSpatialTransition\s*\n\s*\) \{/u,
   "Queued owner travel does not materialize a competing assistant spatial snapshot",
+);
+const generateClientSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  generateClientSource,
+  /spatial-context\/turn\/\$\{encodeURIComponent\(transition\.commandId\)\}/u,
+  "Ambiguous generation failures query the applied transition by command ID",
+);
+assert.doesNotMatch(
+  generateClientSource,
+  /currentLocationId === params\.pendingSpatialTransition\.destinationId/u,
+  "Stepwise recovery must not compare the accepted hop only with the final route target",
+);
+const gameSurfaceSource = readFileSync(
+  new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
+  "utf8",
+);
+const gameChoiceHandler = gameSurfaceSource.slice(
+  gameSurfaceSource.indexOf("const handleChoiceSelect"),
+  gameSurfaceSource.indexOf("const handleDismissChoices"),
+);
+assert.match(
+  gameChoiceHandler,
+  /pendingSpatialTransitions\.get\(activeChatId\)[\s\S]*?sendMessage\([\s\S]*?pendingSpatialTransition\.transition/u,
+  "Game CYOA choices must submit the ready pending spatial transition",
+);
+const roleplayCyoaSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/CyoaChoices.tsx", import.meta.url),
+  "utf8",
+);
+assert.equal(
+  roleplayCyoaSource.match(/pendingSpatialTransition: queuedSpatialTransition/gu)?.length,
+  2,
+  "Normal and impersonated Roleplay CYOA choices must submit the same queued spatial transition",
 );
 
 const validDefinition = definition(
@@ -592,6 +648,55 @@ assert.equal(
   null,
   "Routed movement rejects missing targets without inventing an edge",
 );
+const directedRouteDefinition = definition(
+  [
+    location("route_a", "Route A", {
+      links: [
+        { targetId: "route_b", bidirectional: false, state: "available" },
+        { targetId: "route_hidden", bidirectional: false, state: "hidden" },
+        { targetId: "route_blocked", bidirectional: false, state: "blocked" },
+        { targetId: "route_archived", bidirectional: false, state: "available" },
+      ],
+    }),
+    location("route_b", "Route B"),
+    location("route_hidden", "Hidden Route"),
+    location("route_blocked", "Blocked Route"),
+    location("route_archived", "Archived Route", { status: "archived" }),
+    location("route_isolated", "Isolated Route"),
+  ],
+  { startingLocationId: "route_a" },
+);
+assert.deepEqual(resolveSpatialRoute(directedRouteDefinition, "route_a", "route_b"), ["route_b"]);
+assert.equal(
+  resolveSpatialRoute(directedRouteDefinition, "route_b", "route_a"),
+  null,
+  "A one-way direct link must reject travel in the reverse direction",
+);
+for (const unreachableId of ["route_hidden", "route_blocked", "route_archived", "route_isolated"]) {
+  assert.equal(
+    resolveSpatialRoute(directedRouteDefinition, "route_a", unreachableId),
+    null,
+    `${unreachableId} must not be routable`,
+  );
+}
+const adjacentStepTransition = validateSpatialTransition(directedRouteDefinition, "route_a", {
+  destinationId: "route_b",
+  travelMode: "step_by_step",
+  expectedDefinitionRevision: directedRouteDefinition.revision,
+  expectedCurrentLocationId: "route_a",
+  commandId: "route-adjacent-step",
+});
+assert.equal(adjacentStepTransition.ok, true);
+if (adjacentStepTransition.ok) {
+  assert.deepEqual(adjacentStepTransition.travel, {
+    mode: "step_by_step",
+    fromLocationId: "route_a",
+    targetLocationId: "route_b",
+    routeLocationIds: ["route_b"],
+    remainingLocationIds: [],
+    complete: true,
+  });
+}
 const stepwiseTransition = validateSpatialTransition(validDefinition, "tower_library", {
   destinationId: "market",
   travelMode: "step_by_step",

@@ -532,22 +532,19 @@ const rewrittenHintedDraftPrompt = buildNoodlerStageProfileDraftMessages({
   .map((message) => message.content)
   .join("\n");
 assert.match(rewrittenHintedDraftPrompt, /# Current draft[\s\S]*Tidewatch[\s\S]*tidewatch/u);
-const sloppyDraftResponse = parseNoodlerStageProfileDraft(
-  JSON.stringify([
-    {
-      displayName: "Taro",
-      handle: "@Taro_One",
-      bio: "Night walks and luminous water.",
-      stagePersonality: "Warm and observant.",
-      disclosureMode: "Always",
-      reasoning: "extra model output",
-    },
-  ]),
-);
+const sloppyStageProfileDraft = {
+  displayName: "Taro",
+  handle: "@Taro_One",
+  bio: "Night walks and luminous water.",
+  stagePersonality: "Warm and observant.",
+  disclosureMode: "Always",
+  reasoning: "extra model output",
+};
+const sloppyDraftResponse = parseNoodlerStageProfileDraft(JSON.stringify([sloppyStageProfileDraft]));
 assert.equal(sloppyDraftResponse.handle, "Taro_One");
 assert.deepEqual(Object.keys(sloppyDraftResponse).sort(), ["bio", "displayName", "handle", "stagePersonality"]);
-assert.throws(() => parseNoodlerStageProfileDraft(JSON.stringify([{ displayName: "Taro" }, { displayName: "Other" }])));
-assert.throws(() => parseNoodlerStageProfileDraft(JSON.stringify({ displayName: "Taro", handle: "@" })));
+assert.throws(() => parseNoodlerStageProfileDraft(JSON.stringify([sloppyStageProfileDraft, sloppyStageProfileDraft])));
+assert.throws(() => parseNoodlerStageProfileDraft(JSON.stringify({ ...sloppyStageProfileDraft, handle: "@" })));
 const sourceBaseline = {
   publicDisplayName: "Known Public Name",
   publicHandle: "known_public",

@@ -9,10 +9,12 @@ export function ChatResourceActionButton({
   payload,
   className,
   iconClassName,
+  size = "small",
 }: {
   payload: ChatResourceDragPayload;
   className?: string;
   iconClassName?: string;
+  size?: "small" | "row";
 }) {
   const { t } = useTranslation();
   const chat = useChatStore((state) => state.activeChat);
@@ -28,7 +30,11 @@ export function ChatResourceActionButton({
         event.stopPropagation();
         requestChatResourceAssignment(payload);
       }}
-      className={cn("mari-chrome-control mari-chrome-control--small p-1.5", className)}
+      className={cn(
+        "mari-chrome-control",
+        size === "small" && "mari-chrome-control--small p-1.5",
+        className,
+      )}
       title={label}
       aria-label={label}
     >

@@ -2540,11 +2540,12 @@ export function HomeProfessorMariChat({
     [qc, setActiveChatId],
   );
 
-  const refreshWorkspaceStatus = useCallback(async () => {
+  const refreshWorkspaceStatus = useCallback(async (shouldApply?: () => boolean) => {
     const params = new URLSearchParams();
     if (effectiveConnectionId) params.set("connectionId", effectiveConnectionId);
     const query = params.toString();
     const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
+    if (shouldApply?.() === false) return status;
     setWorkspaceStatus(status);
     workspaceStatusErrorToastShownRef.current = false;
     return status;
@@ -3540,7 +3541,12 @@ export function HomeProfessorMariChat({
         useChatStore.getState().clearThinkingBuffer(completedChatId);
         setWorkspaceTimeline([]);
       }
-      await Promise.allSettled([refreshWorkspaceStatus(), invalidateWorkspaceData()]);
+      await Promise.allSettled([
+        refreshWorkspaceStatus(
+          () => workspaceRunIdRef.current === runId && activeChatIdRef.current === completedChatId,
+        ),
+        invalidateWorkspaceData(),
+      ]);
     },
     [invalidateWorkspaceData, loadMessages, refreshWorkspaceStatus],
   );

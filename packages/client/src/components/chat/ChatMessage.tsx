@@ -552,7 +552,7 @@ const EditTextarea = memo(function EditTextarea({
   initialContent: string;
   fontSize: string | number | undefined;
   quoteFormat: QuoteFormat;
-  onSave: (content: string) => void;
+  onSave: (content: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -578,7 +578,7 @@ const EditTextarea = memo(function EditTextarea({
   }, [autoResize]);
 
   const handleSave = useCallback(() => {
-    if (ref.current) onSave(formatTextQuotes(ref.current.value, quoteFormat));
+    if (ref.current) void onSave(formatTextQuotes(ref.current.value, quoteFormat));
   }, [onSave, quoteFormat]);
 
   return (
@@ -630,7 +630,7 @@ interface ChatMessageProps {
   streamingContent?: ReactNode;
   onDelete?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
-  onEdit?: (messageId: string, content: string) => void;
+  onEdit?: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleConversationStart?: (messageId: string, current: boolean) => void;
   onToggleHiddenFromAI?: ToggleHiddenFromAI;
@@ -1338,6 +1338,7 @@ export const ChatMessage = memo(function ChatMessage({
   const msgRef = useRef<HTMLDivElement>(null);
   const thinkingButtonRef = useRef<HTMLButtonElement>(null);
   const editSwipeIndexRef = useRef<number | null>(null);
+  const editSavePendingRef = useRef(false);
   const lastQuickTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const openImageLightbox = useCallback(
     (url: string, prompt?: unknown) => {
@@ -1762,7 +1763,8 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.id, onEdit, startEditing]);
 
   const handleSaveEdit = useCallback(
-    (content: string) => {
+    async (content: string) => {
+      if (editSavePendingRef.current) return;
       if (!isUser && editSwipeIndexRef.current !== null && editSwipeIndexRef.current !== message.activeSwipeIndex) {
         editSwipeIndexRef.current = null;
         setEditing(false);
@@ -1770,12 +1772,20 @@ export const ChatMessage = memo(function ChatMessage({
       }
       const formattedSource = formatTextQuotes(message.content, quoteFormat);
       if (content.trim().length > 0 && content !== formattedSource) {
-        onEdit?.(message.id, content);
+        editSavePendingRef.current = true;
+        try {
+          await onEdit?.(message.id, content);
+        } catch {
+          toast.error(localizeUi("ui.chat.chatmessage.couldNotSaveThatEdit"));
+          return;
+        } finally {
+          editSavePendingRef.current = false;
+        }
       }
       editSwipeIndexRef.current = null;
       setEditing(false);
     },
-    [isUser, message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
+    [isUser, localizeUi, message.activeSwipeIndex, message.content, message.id, onEdit, quoteFormat],
   );
 
   const handleCancelEdit = useCallback(() => {

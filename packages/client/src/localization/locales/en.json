@@ -2353,6 +2353,7 @@
   "ui.chat.chatinput.value1ThePartialMessageMayNeedToBeRemoved": "{{value1}}; the partial message may need to be removed before retrying.",
   "ui.chat.chatmessage.branchFromHere": "Branch from here",
   "ui.chat.chatmessage.cloneFromHere": "Clone from here",
+  "ui.chat.chatmessage.couldNotSaveThatEdit": "Could not save that edit. Your changes are still here so you can try again.",
   "ui.chat.chatmessage.couldNotSwitchMessageVersions": "Could not switch message versions.",
   "ui.chat.chatmessage.deselectMessage": "Deselect message",
   "ui.chat.chatmessage.hideTranslation": "Hide translation",

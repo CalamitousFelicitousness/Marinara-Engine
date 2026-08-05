@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -2984,6 +2985,7 @@ test("provider concurrency errors appear in generation toasts", async ({ page },
 });
 
 test("stopped and refused generations keep sent text cleared and accept the first edit", async ({
+  context,
   page,
   request,
 }, testInfo) => {
@@ -3087,14 +3089,34 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       const response = await request.get(`/api/chats/${chatId}/messages`);
       return (await response.json()) as Array<{ id: string; role: string; content: string }>;
     };
-    const editMessageOnce = async (messageId: string, nextContent: string) => {
+    const editMessageOnce = async (messageId: string, nextContent: string, delaySave = false) => {
       const message = page.locator(`[data-message-id="${messageId}"]`);
       if (mobile) await message.click();
       else await message.hover();
       await message.getByTitle("Edit", { exact: true }).click();
       const editor = message.locator("textarea");
       await editor.fill(nextContent);
+      const saveGate = delaySave ? createDeferred() : null;
+      if (saveGate) {
+        const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
+        await page.route(
+          (url) => url.pathname === messagePath,
+          async (route) => {
+            await saveGate.promise;
+            await route.continue();
+          },
+          { times: 1 },
+        );
+      }
       await message.getByLabel("Save edit", { exact: true }).click();
+      if (saveGate) {
+        try {
+          await expect(editor).toBeVisible();
+          await expect(editor).toHaveValue(nextContent);
+        } finally {
+          saveGate.resolve();
+        }
+      }
       await expect(message).toContainText(nextContent);
       await expect
         .poll(async () => (await readMessages()).find((candidate) => candidate.id === messageId)?.content)
@@ -3110,7 +3132,11 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       (message) => message.role === "user" && message.content === "Original message with retained draft",
     );
     expect(firstMessage).toBeTruthy();
-    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft");
+    const backgroundTab = await context.newPage();
+    await backgroundTab.goto("about:blank");
+    await page.bringToFront();
+    await backgroundTab.close();
+    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft", true);
     await expect(input).toHaveValue("Unsent composer text");
 
     await input.fill("Original message with cleared draft");
@@ -4982,6 +5008,195 @@ test("chat toolbar panels close when their trigger is clicked again across modes
       request.delete(`/api/chats/${conversationChat.id}`),
       request.delete(`/api/chats/${gameChat.id}`),
     ]);
+  }
+});
+
+test("prompt preset transfers discard deprecated generation parameters", async ({ request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Prompt preset transfer contracts are covered once.");
+
+  const suffix = Date.now().toString(36);
+  const createdPresetIds = new Set<string>();
+  const presetResponse = await request.post("/api/prompts", {
+    data: {
+      name: `Transfer Preset ${suffix}`,
+      description: "Current prompt-preset transfer fixture.",
+      conversationPrompt: "Conversation prompt survives transfer.",
+      gamePrompt: "Game prompt survives transfer.",
+      variableGroups: [{ name: "tone", label: "Tone", options: [{ label: "Warm", value: "warm" }] }],
+      variableValues: { tone: "warm" },
+      wrapFormat: "markdown",
+      author: "Transfer Test",
+      parameters: {
+        temperature: 0.37,
+        maxTokens: 777,
+        reasoningEffort: "maximum",
+        verbosity: "high",
+      },
+    },
+  });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  createdPresetIds.add(preset.id);
+
+  const sectionResponse = await request.post(`/api/prompts/${preset.id}/sections`, {
+    data: {
+      identifier: `transfer-section-${suffix}`,
+      name: "Transfer Section",
+      content: "Supported section content survives transfer.",
+      role: "system",
+    },
+  });
+  expect(sectionResponse.ok()).toBeTruthy();
+
+  try {
+    const exportResponse = await request.get(`/api/prompts/${preset.id}/export`);
+    expect(exportResponse.ok()).toBeTruthy();
+    const envelope = (await exportResponse.json()) as {
+      type: string;
+      data: {
+        preset: Record<string, unknown>;
+        sections: Array<Record<string, unknown>>;
+      };
+    };
+    expect(envelope.type).toBe("marinara_preset");
+    expect(envelope.data.preset.parameters).toBeUndefined();
+    expect(envelope.data.preset.conversationPrompt).toBe("Conversation prompt survives transfer.");
+    expect(envelope.data.sections).toContainEqual(
+      expect.objectContaining({ content: "Supported section content survives transfer." }),
+    );
+
+    const bulkResponse = await request.post("/api/prompts/export-bulk", { data: { ids: [preset.id] } });
+    expect(bulkResponse.ok()).toBeTruthy();
+    const zip = new AdmZip(await bulkResponse.body());
+    const manifestEntry = zip.getEntries().find((entry) => entry.entryName.endsWith("/manifest.json"));
+    expect(manifestEntry).toBeTruthy();
+    const manifest = JSON.parse(manifestEntry!.getData().toString("utf8")) as {
+      config: { data: { preset: Record<string, unknown> } };
+    };
+    expect(manifest.config.data.preset.parameters).toBeUndefined();
+
+    const nativeImportResponse = await request.post("/api/import/marinara", {
+      data: {
+        ...envelope,
+        data: {
+          ...envelope.data,
+          preset: {
+            ...envelope.data.preset,
+            name: `Native Legacy Import ${suffix}`,
+            parameters: {
+              temperature: 0.13,
+              maxTokens: 313,
+              reasoningEffort: "low",
+            },
+          },
+        },
+      },
+    });
+    expect(nativeImportResponse.ok()).toBeTruthy();
+    const nativeImport = (await nativeImportResponse.json()) as { id: string };
+    createdPresetIds.add(nativeImport.id);
+    const nativeStoredResponse = await request.get(`/api/prompts/${nativeImport.id}`);
+    const nativeStored = (await nativeStoredResponse.json()) as {
+      conversationPrompt: string;
+      wrapFormat: string;
+      parameters: string;
+    };
+    const nativeParameters = JSON.parse(nativeStored.parameters) as Record<string, unknown>;
+    expect(nativeStored.conversationPrompt).toBe("Conversation prompt survives transfer.");
+    expect(nativeStored.wrapFormat).toBe("markdown");
+    expect(nativeParameters.temperature).not.toBe(0.13);
+    expect(nativeParameters.maxTokens).not.toBe(313);
+    expect(nativeParameters.reasoningEffort).not.toBe("low");
+    const nativeSectionsResponse = await request.get(`/api/prompts/${nativeImport.id}/sections`);
+    expect(await nativeSectionsResponse.json()).toContainEqual(
+      expect.objectContaining({ content: "Supported section content survives transfer." }),
+    );
+
+    const compatibleImportResponse = await request.post("/api/import/st-preset", {
+      data: {
+        name: `Compatible Legacy Import ${suffix}`,
+        temperature: 0.19,
+        openai_max_tokens: 919,
+        reasoning_effort: "low",
+        prompts: [
+          {
+            identifier: `compatible-section-${suffix}`,
+            name: "Compatible Section",
+            content: "Compatible prompt content survives import.",
+            role: "system",
+          },
+        ],
+      },
+    });
+    expect(compatibleImportResponse.ok()).toBeTruthy();
+    const compatibleImport = (await compatibleImportResponse.json()) as { presetId: string };
+    createdPresetIds.add(compatibleImport.presetId);
+    const compatibleStoredResponse = await request.get(`/api/prompts/${compatibleImport.presetId}`);
+    const compatibleStored = (await compatibleStoredResponse.json()) as { parameters: string };
+    const compatibleParameters = JSON.parse(compatibleStored.parameters) as Record<string, unknown>;
+    expect(compatibleParameters.temperature).not.toBe(0.19);
+    expect(compatibleParameters.maxTokens).not.toBe(919);
+    expect(compatibleParameters.reasoningEffort).not.toBe("low");
+    const compatibleSectionsResponse = await request.get(`/api/prompts/${compatibleImport.presetId}/sections`);
+    expect(await compatibleSectionsResponse.json()).toContainEqual(
+      expect.objectContaining({ content: "Compatible prompt content survives import." }),
+    );
+  } finally {
+    await Promise.all([...createdPresetIds].map((id) => request.delete(`/api/prompts/${id}`)));
+  }
+});
+
+test("selected prompt indicators escape the avatar clipping frame", async ({ page, request }, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now().toString(36)}`;
+  const presetName = `Selected Preset ${suffix}`;
+  const presetResponse = await request.post("/api/prompts", { data: { name: presetName } });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  const chatResponse = await request.post("/api/chats", {
+    data: {
+      name: `Selected Preset Chat ${suffix}`,
+      mode: "roleplay",
+      characterIds: [],
+      promptPresetId: preset.id,
+    },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+
+  try {
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.goto("/");
+    await page.locator('[data-tour="panel-presets"]').click();
+    const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
+    const pictureButton = presetRow.getByRole("button", { name: "Upload preset picture" });
+    const indicator = presetRow.locator("[data-preset-selected-indicator]");
+    await expect(pictureButton).toBeVisible();
+    await expect(indicator).toBeVisible();
+    const placement = await indicator.evaluate((element) => {
+      const indicatorRect = element.getBoundingClientRect();
+      const picture = element.closest("button");
+      const row = element.closest('[data-touch-drag-card="preset"]');
+      if (!picture || !row) return null;
+      const pictureRect = picture.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      return {
+        pictureOverflow: getComputedStyle(picture).overflow,
+        escapesPictureTop: indicatorRect.top < pictureRect.top,
+        escapesPictureRight: indicatorRect.right > pictureRect.right,
+        containedByRow:
+          indicatorRect.top >= rowRect.top &&
+          indicatorRect.right <= rowRect.right &&
+          indicatorRect.bottom <= rowRect.bottom,
+      };
+    });
+    expect(placement).toEqual({
+      pictureOverflow: "visible",
+      escapesPictureTop: true,
+      escapesPictureRight: true,
+      containedByRow: true,
+    });
+  } finally {
+    await Promise.all([request.delete(`/api/chats/${chat.id}`), request.delete(`/api/prompts/${preset.id}`)]);
   }
 });
 

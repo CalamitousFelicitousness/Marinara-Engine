@@ -881,7 +881,7 @@ export function PresetsPanel() {
         <FileText size="1rem" />
       );
       const imageClasses =
-        "mari-panel-gradient-surface mari-panel-gradient--presets relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm";
+        "mari-panel-gradient-surface mari-panel-gradient--presets relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm";
 
       return (
         <div
@@ -946,7 +946,7 @@ export function PresetsPanel() {
               </div>
             )}
             {selectionMode ? (
-              <div className={imageClasses}>{imageContent}</div>
+              <div className={cn(imageClasses, "overflow-hidden")}>{imageContent}</div>
             ) : (
               <button
                 type="button"
@@ -962,12 +962,17 @@ export function PresetsPanel() {
                 title={pictureLabel}
                 aria-label={pictureLabel}
               >
-                {imageContent}
-                <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover/preset-picture:opacity-100 group-focus-visible/preset-picture:opacity-100 [@media(pointer:coarse)]:opacity-100">
-                  <Camera size="0.875rem" />
+                <span className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-xl">
+                  {imageContent}
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover/preset-picture:opacity-100 group-focus-visible/preset-picture:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                    <Camera size="0.875rem" />
+                  </span>
                 </span>
                 {isSelected && (
-                  <span className="mari-panel-gradient-surface mari-panel-gradient--presets absolute right-0 top-0 z-10 flex h-4 w-4 items-center justify-center rounded-md shadow-sm">
+                  <span
+                    data-preset-selected-indicator
+                    className="mari-panel-gradient-surface mari-panel-gradient--presets absolute -right-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-md shadow-sm"
+                  >
                     <Check size="0.625rem" />
                   </span>
                 )}

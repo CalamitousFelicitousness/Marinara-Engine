@@ -97,6 +97,8 @@ function safeAsciiDownloadName(value: string): string {
 async function buildPresetExportEnvelope(storage: ReturnType<typeof createPromptsStorage>, id: string) {
   const preset = await storage.getById(id);
   if (!preset) return null;
+  const exportedPreset = { ...preset } as Record<string, unknown>;
+  delete exportedPreset.parameters;
   const [sections, groups, choiceBlocks] = await Promise.all([
     storage.listSections(id),
     storage.listGroups(id),
@@ -106,7 +108,7 @@ async function buildPresetExportEnvelope(storage: ReturnType<typeof createPrompt
     type: "marinara_preset",
     version: 1,
     exportedAt: new Date().toISOString(),
-    data: { preset, sections, groups, choiceBlocks },
+    data: { preset: exportedPreset, sections, groups, choiceBlocks },
   };
   return { preset, envelope };
 }

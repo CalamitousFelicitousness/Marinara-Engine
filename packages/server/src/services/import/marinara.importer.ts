@@ -716,7 +716,6 @@ async function importPreset(data: unknown, db: DB) {
       gamePrompt: String(p.gamePrompt ?? p.game_prompt ?? ""),
       variableGroups: safeParseJson(p.variableGroups, []),
       variableValues: safeParseJson(p.variableValues, {}),
-      parameters: safeParseJson(p.parameters, {}),
       wrapFormat: (p.wrapFormat as any) ?? "xml",
       author: String(p.author ?? ""),
     },

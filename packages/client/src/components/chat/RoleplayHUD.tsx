@@ -1078,7 +1078,10 @@ function CustomTrackerWidget({
         {fields.length > 0 && currentField ? (
           <span
             key={animKey}
-            className="w-full px-0.5 text-center font-semibold leading-[1.2] animate-[inventory-cycle_0.4s_ease-out]"
+            className={cn(
+              "w-full px-0.5 text-center font-semibold leading-[1.2]",
+              !reduceAmbientEffects && "animate-[inventory-cycle_0.4s_ease-out]",
+            )}
             style={{ fontSize: `${previewFontSize}px` }}
           >
             {previewLabel}
@@ -1158,7 +1161,10 @@ function InventoryWidget({
         {items.length > 0 && currentItem ? (
           <span
             key={animKey}
-            className="w-full px-0.5 text-center font-semibold leading-[1.2] animate-[inventory-cycle_0.4s_ease-out]"
+            className={cn(
+              "w-full px-0.5 text-center font-semibold leading-[1.2]",
+              !reduceAmbientEffects && "animate-[inventory-cycle_0.4s_ease-out]",
+            )}
             style={{ fontSize: `${itemFontSize}px` }}
           >
             {itemLabel}

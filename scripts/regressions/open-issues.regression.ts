@@ -2417,6 +2417,10 @@ const chatMessageSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
   "utf8",
 );
+const roleplayHudSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/RoleplayHUD.tsx", import.meta.url),
+  "utf8",
+);
 const narratorUiStoreSource = readFileSync(
   new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url),
   "utf8",
@@ -2435,6 +2439,11 @@ assert.match(
   chatMessageSource,
   /const cycleMergedNarratorAvatars = \(!isRoleplay \|\| roleplayNarratorAvatarCycling\) && !reduceAmbientEffects;/u,
   "Narrator avatar cycling must follow the Roleplay preference and stop with reduced ambient effects",
+);
+assert.equal(
+  roleplayHudSource.match(/!reduceAmbientEffects && "animate-\[inventory-cycle_0\.4s_ease-out\]"/gu)?.length,
+  2,
+  "Roleplay tracker and inventory widgets must suppress mount animations with reduced ambient effects",
 );
 assert.match(
   chatMessageSource,

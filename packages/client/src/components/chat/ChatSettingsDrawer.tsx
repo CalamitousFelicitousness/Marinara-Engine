@@ -8209,6 +8209,19 @@ export function ChatSettingsDrawer({
                                         }
                                       />
                                     )}
+                                    {active && agent.id !== "illustrator" && (
+                                      <AgentPromptTemplateSelect
+                                        options={getPromptOptionsForAgent(agent.id)}
+                                        selectedId={
+                                          agentPromptTemplateSelections[agent.id] ??
+                                          getDefaultPromptTemplateIdForAgent(agent.id)
+                                        }
+                                        overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
+                                        onChange={(promptTemplateId) =>
+                                          updateAgentPromptTemplateSelection(agent.id, promptTemplateId)
+                                        }
+                                      />
+                                    )}
                                     {active && agent.id === "illustrator" && (
                                       <AgentSettingsCard
                                         icon={<Paintbrush size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}

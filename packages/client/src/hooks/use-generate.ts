@@ -33,6 +33,11 @@ import { waitForPendingChatMetadataSaves } from "../lib/chat-metadata-save-barri
 import { agentKeys } from "./use-agents";
 import { discardPendingGameStatePatch } from "./use-game-state-patcher";
 import { spatialContextKeys } from "./use-spatial-context";
+import {
+  shouldKeepPendingSpatialTransition,
+  spatialOwnerTurnRecoveryPath,
+  type RecoveredSpatialOwnerTurnResponse,
+} from "./spatial-owner-turn-recovery";
 import type { PendingAgentWriteApproval, PendingCardUpdate } from "../stores/agent.store";
 import type { DelayedCharacterInfo } from "../stores/chat.store";
 import {
@@ -1366,6 +1371,7 @@ export function useGenerate() {
       let illustrationSettled = false;
       let passiveStreamRecovered = false;
       let spatialTransitionCommitted = false;
+      let committedSpatialTravel: ResolvedSpatialTravel | undefined;
       let spatialCapabilityRefreshDispatched = false;
       let passiveStreamSettled = false;
       let passiveRecoveryDurableMessage: Message | null = null;
@@ -1381,19 +1387,15 @@ export function useGenerate() {
       let heldTextRewriteMessage: Message | null = null;
       let holdingTextRewrite = false;
       let gameStatePatchAnchor: { messageId: string; swipeIndex: number } | null = null;
-      const recoverSpatialTransitionByCommand = async (): Promise<boolean> => {
+      const recoverSpatialTransitionByCommand = async (): Promise<RecoveredSpatialOwnerTurnResponse | null> => {
         const transition = params.pendingSpatialTransition;
-        if (!transition) return false;
+        if (!transition) return null;
         try {
-          const recovered = await api.get<{
-            applied: true;
-            messageId: string;
-            currentLocationId: string | null;
-            definitionRevision: number;
-          }>(
-            `/chats/${encodeURIComponent(params.chatId)}/spatial-context/turn/${encodeURIComponent(transition.commandId)}`,
+          const recovered = await api.get<RecoveredSpatialOwnerTurnResponse>(
+            spatialOwnerTurnRecoveryPath(params.chatId, transition),
           );
           spatialTransitionCommitted = recovered.applied;
+          committedSpatialTravel = recovered.travel;
           spatialCapabilityRefreshDispatched = true;
           dispatchCapabilityClientEvent({
             packageId: "hierarchical-maps",
@@ -1404,13 +1406,14 @@ export function useGenerate() {
               commandId: transition.commandId,
               currentLocationId: recovered.currentLocationId,
               definitionRevision: recovered.definitionRevision,
+              ...(recovered.travel ? { travel: recovered.travel } : {}),
             },
           });
           void qc.invalidateQueries({ queryKey: spatialContextKeys.detail(params.chatId) });
           void qc.invalidateQueries({ queryKey: chatKeys.detail(params.chatId) });
-          return true;
+          return recovered;
         } catch {
-          return false;
+          return null;
         }
       };
       const normalizeLineBreakSpacing = (text: string) =>
@@ -1691,9 +1694,9 @@ export function useGenerate() {
                 | undefined;
               if (transitionData?.chatId === params.chatId && transitionData.commandId) {
                 spatialTransitionCommitted = true;
+                committedSpatialTravel = transitionData.travel;
                 spatialCapabilityRefreshDispatched = true;
-                const stepwiseRouteRemainsQueued =
-                  transitionData.travel?.mode === "step_by_step" && transitionData.travel.complete === false;
+                const stepwiseRouteRemainsQueued = shouldKeepPendingSpatialTransition(transitionData.travel);
                 if (!stepwiseRouteRemainsQueued) {
                   useChatStore.getState().clearPendingSpatialTransition(params.chatId, transitionData.commandId);
                 }
@@ -2824,7 +2827,15 @@ export function useGenerate() {
         flushTypewriterBuffer();
         // Abort is intentional — don't log or toast
         if (isAbortError(error)) {
-          await recoverSpatialTransitionByCommand();
+          const recovered = await recoverSpatialTransitionByCommand();
+          if (recovered) {
+            const stepwiseRouteRemainsQueued = shouldKeepPendingSpatialTransition(recovered.travel);
+            if (!stepwiseRouteRemainsQueued && params.pendingSpatialTransition) {
+              useChatStore
+                .getState()
+                .clearPendingSpatialTransition(params.chatId, params.pendingSpatialTransition.commandId);
+            }
+          }
           return submittedUserTurn || receivedContent || spatialTransitionCommitted;
         }
         if (isPassiveStreamDisconnect(error, pageWasHiddenDuringStream, abortController.signal)) {
@@ -2871,7 +2882,8 @@ export function useGenerate() {
             await recoverSpatialTransitionByCommand();
           }
           if (spatialTransitionCommitted) {
-            if (params.pendingSpatialTransition.travelMode !== "step_by_step") {
+            const stepwiseRouteRemainsQueued = shouldKeepPendingSpatialTransition(committedSpatialTravel);
+            if (!stepwiseRouteRemainsQueued) {
               useChatStore
                 .getState()
                 .clearPendingSpatialTransition(params.chatId, params.pendingSpatialTransition.commandId);

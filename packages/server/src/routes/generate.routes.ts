@@ -329,6 +329,7 @@ import { sendSseEvent, startSseKeepalive, startSseReply, trySendSseEvent } from 
 import {
   resolveAlreadyAppliedSpatialTurn,
   resolveSpatialGenerationOrigin,
+  shouldSuppressAssistantSpatialMutation,
   validateSpatialGenerationRequest,
 } from "./generate/spatial-transition-request.js";
 import { runTurnGameBotTurns } from "../services/turn-games/turn-game-bot-runner.service.js";
@@ -6342,8 +6343,7 @@ export async function generateRoutes(app: FastifyInstance) {
             // A queued owner movement is the sole spatial mutation for this turn.
             // Still strip any package directive from the visible response, but do
             // not let model output compete with the already accepted route.
-            assistantSpatialDirective =
-              input.impersonate || input.pendingSpatialTransition ? null : parsedSpatial.directive;
+            assistantSpatialDirective = shouldSuppressAssistantSpatialMutation(input) ? null : parsedSpatial.directive;
             if (parsedSpatial.matched) {
               fullResponse = parsedSpatial.cleanContent;
               contentReplaced = true;
@@ -6354,9 +6354,11 @@ export async function generateRoutes(app: FastifyInstance) {
                 assistantSpatialDirective.type,
                 input.chatId,
               );
-            } else if (input.impersonate && parsedSpatial.directive) {
+            } else if (parsedSpatial.directive && shouldSuppressAssistantSpatialMutation(input)) {
               logger.debug(
-                "[generate/spatial] Stripped impersonated %s directive for chat %s",
+                input.impersonate
+                  ? "[generate/spatial] Stripped impersonated %s directive for chat %s"
+                  : "[generate/spatial] Stripped queued owner travel %s directive for chat %s",
                 parsedSpatial.directive.type,
                 input.chatId,
               );
@@ -6417,7 +6419,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 anchoredMsg?.id &&
                 hierarchicalMapsEnabledForChat &&
                 (requestChatMode === "roleplay" || requestChatMode === "game") &&
-                !input.pendingSpatialTransition
+                !shouldSuppressAssistantSpatialMutation(input)
               ) {
                 const assistantSpatialSnapshot = await materializeAssistantSpatialState(
                   {
@@ -6577,8 +6579,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (
             savedMsg?.id &&
             savedSwipeIndex !== null &&
-            !input.impersonate &&
-            !input.pendingSpatialTransition &&
+            !shouldSuppressAssistantSpatialMutation(input) &&
             hierarchicalMapsEnabledForChat &&
             (requestChatMode === "roleplay" || requestChatMode === "game")
           ) {
@@ -7737,7 +7738,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   if (
                     trackerLocationGuidance &&
                     effectiveSpatialProjection?.ownerMode === "game" &&
-                    !input.pendingSpatialTransition
+                    !shouldSuppressAssistantSpatialMutation(input)
                   ) {
                     const previousSpatialLocationId = effectiveSpatialProjection?.currentLocationId ?? null;
                     const previousSpatialRevision = effectiveSpatialProjection?.definitionRevision ?? 0;

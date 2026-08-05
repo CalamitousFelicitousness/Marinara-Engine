@@ -19,7 +19,7 @@ export type AlreadyAppliedSpatialTurn = {
 
 export function resolveAlreadyAppliedSpatialTurn(error: {
   code: string;
-  details?: { messageId?: string; snapshot?: SpatialContextSnapshot };
+  details?: { messageId?: string; snapshot?: SpatialContextSnapshot; travel?: ResolvedSpatialTravel };
 }): AlreadyAppliedSpatialTurn | null {
   if (error.code !== "spatial_transition_already_applied") return null;
   const snapshot = error.details?.snapshot;
@@ -30,7 +30,15 @@ export function resolveAlreadyAppliedSpatialTurn(error: {
     swipeIndex: snapshot.swipeIndex,
     currentLocationId: snapshot.currentLocationId,
     definitionRevision: snapshot.definitionRevision,
+    ...(error.details?.travel ? { travel: error.details.travel } : {}),
   };
+}
+
+export function shouldSuppressAssistantSpatialMutation(input: {
+  impersonate?: boolean;
+  pendingSpatialTransition?: PendingSpatialTransition | null;
+}): boolean {
+  return Boolean(input.impersonate || input.pendingSpatialTransition);
 }
 
 export function resolveSpatialGenerationOrigin(input: {

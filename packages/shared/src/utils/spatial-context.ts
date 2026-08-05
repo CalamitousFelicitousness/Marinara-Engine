@@ -428,17 +428,61 @@ export function resolveSpatialRoute(
   const target = byId.get(targetLocationId);
   if (!current || current.status !== "active" || !target || target.status !== "active") return null;
 
+  const adjacency = new Map<string, Map<string, SpatialDestination>>();
+  const addEdge = (
+    fromId: string,
+    destination: SpatialLocation | undefined,
+    relation: SpatialDestinationRelation,
+    label?: string,
+  ) => {
+    if (byId.get(fromId)?.status !== "active" || !destination || destination.status !== "active") return;
+    const outgoing = adjacency.get(fromId) ?? new Map<string, SpatialDestination>();
+    if (!outgoing.has(destination.id)) {
+      outgoing.set(destination.id, destinationFromLocation(destination, relation, label));
+      adjacency.set(fromId, outgoing);
+    }
+  };
+
+  for (const location of definition.locations) {
+    if (location.status !== "active" || location.parentId === null) continue;
+    addEdge(location.id, byId.get(location.parentId), "leave");
+    addEdge(location.parentId, location, "enter");
+  }
+  for (const location of definition.locations) {
+    if (location.status !== "active") continue;
+    for (const link of location.links) {
+      if (link.state === "available") addEdge(location.id, byId.get(link.targetId), "link", link.label);
+    }
+  }
+  for (const location of definition.locations) {
+    if (location.status !== "active") continue;
+    for (const link of location.links) {
+      if (link.bidirectional && link.state === "available") {
+        addEdge(link.targetId, location, "link", link.label);
+      }
+    }
+  }
+
+  const outgoingIds = new Map(
+    Array.from(adjacency, ([locationId, destinations]) => [
+      locationId,
+      Array.from(destinations.values())
+        .sort(compareDestinations)
+        .map((destination) => destination.id),
+    ]),
+  );
+
   const queue: Array<{ locationId: string; path: string[] }> = [{ locationId: currentLocationId, path: [] }];
   const visited = new Set([currentLocationId]);
   while (queue.length > 0) {
     const entry = queue.shift()!;
-    for (const destination of resolveSpatialDestinations(definition, entry.locationId)) {
-      if (visited.has(destination.id)) continue;
-      const path = [...entry.path, destination.id];
-      if (destination.id === targetLocationId) return path;
-      visited.add(destination.id);
+    for (const destinationId of outgoingIds.get(entry.locationId) ?? []) {
+      if (visited.has(destinationId)) continue;
+      const path = [...entry.path, destinationId];
+      if (destinationId === targetLocationId) return path;
+      visited.add(destinationId);
       if (path.length < SPATIAL_CONTEXT_LIMITS.maxRouteLocations) {
-        queue.push({ locationId: destination.id, path });
+        queue.push({ locationId: destinationId, path });
       }
     }
   }

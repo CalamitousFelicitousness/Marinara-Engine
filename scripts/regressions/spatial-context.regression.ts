@@ -46,8 +46,14 @@ import { resolveVisibleGameStateAnchor } from "../../packages/server/src/routes/
 import {
   resolveAlreadyAppliedSpatialTurn,
   resolveSpatialGenerationOrigin,
+  shouldSuppressAssistantSpatialMutation,
   validateSpatialGenerationRequest,
 } from "../../packages/server/src/routes/generate/spatial-transition-request.js";
+import { buildCyoaChoiceSubmissionPayload } from "../../packages/client/src/components/chat/cyoa-choice-submission.js";
+import {
+  shouldKeepPendingSpatialTransition,
+  spatialOwnerTurnRecoveryPath,
+} from "../../packages/client/src/hooks/spatial-owner-turn-recovery.js";
 import { mergeSpatialLocationReferenceImages } from "../../packages/server/src/services/image/spatial-location-reference.js";
 import {
   buildInitialGameMapPatch,
@@ -129,6 +135,28 @@ assert.equal(resolveSpatialGenerationOrigin({ generationGuide: "Continue as the 
 assert.equal(resolveSpatialGenerationOrigin({ generationGuideSource: "narrator" }), "guided");
 assert.equal(resolveSpatialGenerationOrigin({ turnGameBots: true }), "turn_game");
 assert.equal(resolveSpatialGenerationOrigin({ autonomous: true }), "autonomous");
+assert.equal(shouldSuppressAssistantSpatialMutation({}), false);
+assert.equal(shouldSuppressAssistantSpatialMutation({ impersonate: true }), true);
+assert.equal(
+  shouldSuppressAssistantSpatialMutation({ pendingSpatialTransition: impersonatedMove }),
+  true,
+  "Queued owner travel suppresses competing assistant spatial mutations",
+);
+const standardChoiceSubmission = buildCyoaChoiceSubmissionPayload({
+  chatId: "chat-choice",
+  text: "Take the bridge",
+  pendingSpatialTransition: impersonatedMove,
+});
+const impersonatedChoiceSubmission = buildCyoaChoiceSubmissionPayload({
+  chatId: "chat-choice",
+  text: "Take the bridge",
+  pendingSpatialTransition: impersonatedMove,
+  impersonation: { presetId: "preset-1", promptTemplate: "  Stay in character.  " },
+});
+assert.equal(standardChoiceSubmission.pendingSpatialTransition, impersonatedMove);
+assert.equal(impersonatedChoiceSubmission.pendingSpatialTransition, impersonatedMove);
+assert.equal(impersonatedChoiceSubmission.impersonate, true);
+assert.equal(impersonatedChoiceSubmission.impersonatePromptTemplate, "Stay in character.");
 assert.deepEqual(
   resolveVisibleGameStateAnchor([
     { id: "assistant-anchor", role: "assistant", activeSwipeIndex: 2 },
@@ -293,13 +321,32 @@ assert.equal(
 assert.deepEqual(
   resolveAlreadyAppliedSpatialTurn({
     code: "spatial_transition_already_applied",
-    details: { messageId: snapshotInput.messageId, snapshot: snapshotInput },
+    details: {
+      messageId: snapshotInput.messageId,
+      snapshot: snapshotInput,
+      travel: {
+        mode: "step_by_step",
+        fromLocationId: "tower_library",
+        targetLocationId: "market",
+        routeLocationIds: ["tower", "capital", "market"],
+        remainingLocationIds: ["capital", "market"],
+        complete: false,
+      },
+    },
   }),
   {
     messageId: "message-1",
     swipeIndex: 0,
     currentLocationId: null,
     definitionRevision: 0,
+    travel: {
+      mode: "step_by_step",
+      fromLocationId: "tower_library",
+      targetLocationId: "market",
+      routeLocationIds: ["tower", "capital", "market"],
+      remainingLocationIds: ["capital", "market"],
+      complete: false,
+    },
   },
   "Already-applied generated owner turns recover the original persisted message and snapshot",
 );
@@ -307,6 +354,39 @@ assert.equal(
   resolveAlreadyAppliedSpatialTurn({ code: "spatial_transition_stale_location" }),
   null,
   "Rejected spatial transitions must not enter the idempotent success path",
+);
+const recoveryPath = spatialOwnerTurnRecoveryPath("chat/recovery", {
+  ...impersonatedMove,
+  travelMode: "step_by_step",
+});
+const recoveryUrl = new URL(recoveryPath, "http://localhost");
+assert.equal(recoveryUrl.pathname, "/chats/chat%2Frecovery/spatial-context/turn/impersonated-owner-move");
+assert.equal(recoveryUrl.searchParams.get("destinationId"), "harbor");
+assert.equal(recoveryUrl.searchParams.get("travelMode"), "step_by_step");
+assert.equal(recoveryUrl.searchParams.get("expectedDefinitionRevision"), "4");
+assert.equal(recoveryUrl.searchParams.get("expectedCurrentLocationId"), "world");
+assert.equal(
+  shouldKeepPendingSpatialTransition({
+    mode: "step_by_step",
+    fromLocationId: "world",
+    targetLocationId: "harbor",
+    routeLocationIds: ["road", "harbor"],
+    remainingLocationIds: ["harbor"],
+    complete: false,
+  }),
+  true,
+);
+assert.equal(
+  shouldKeepPendingSpatialTransition({
+    mode: "step_by_step",
+    fromLocationId: "road",
+    targetLocationId: "harbor",
+    routeLocationIds: ["harbor"],
+    remainingLocationIds: [],
+    complete: true,
+  }),
+  false,
+  "Completed stepwise recovery clears the pending transition",
 );
 assert.deepEqual(
   extractAssistantSpatialDirective('The lift opens onto Level 1.\n[spatial_move: destination_id="tower_level_1"]'),
@@ -431,51 +511,21 @@ assert.match(
   /type: "text_rewrite",[\s\S]*?editedText: sanitizedEditedText/u,
   "Text-rewrite events must emit sanitized content",
 );
-assert.match(
-  generateRouteSource,
-  /assistantSpatialDirective\s*=\s*\n\s*input\.impersonate \|\| input\.pendingSpatialTransition \? null : parsedSpatial\.directive/u,
-  "Queued owner travel suppresses model spatial directives after stripping them from visible output",
-);
-assert.match(
-  generateRouteSource,
-  /!input\.pendingSpatialTransition\s*\n\s*\) \{/u,
-  "Queued owner travel does not materialize a competing assistant spatial snapshot",
-);
-const generateClientSource = readFileSync(
-  new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
-  "utf8",
-);
-assert.match(
-  generateClientSource,
-  /spatial-context\/turn\/\$\{encodeURIComponent\(transition\.commandId\)\}/u,
-  "Ambiguous generation failures query the applied transition by command ID",
-);
-assert.doesNotMatch(
-  generateClientSource,
-  /currentLocationId === params\.pendingSpatialTransition\.destinationId/u,
-  "Stepwise recovery must not compare the accepted hop only with the final route target",
-);
 const gameSurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
 );
-const gameChoiceHandler = gameSurfaceSource.slice(
-  gameSurfaceSource.indexOf("const handleChoiceSelect"),
-  gameSurfaceSource.indexOf("const handleDismissChoices"),
+const gameChoiceHandlerStart = gameSurfaceSource.indexOf("const handleChoiceSelect");
+const gameChoiceHandlerEnd = gameSurfaceSource.indexOf("const handleDismissChoices");
+assert.ok(
+  gameChoiceHandlerStart >= 0 && gameChoiceHandlerEnd > gameChoiceHandlerStart,
+  "Game choice handler markers were not found in GameSurface.tsx; update the markers or the assertion",
 );
+const gameChoiceHandler = gameSurfaceSource.slice(gameChoiceHandlerStart, gameChoiceHandlerEnd);
 assert.match(
   gameChoiceHandler,
   /pendingSpatialTransitions\.get\(activeChatId\)[\s\S]*?sendMessage\([\s\S]*?pendingSpatialTransition\.transition/u,
   "Game CYOA choices must submit the ready pending spatial transition",
-);
-const roleplayCyoaSource = readFileSync(
-  new URL("../../packages/client/src/components/chat/CyoaChoices.tsx", import.meta.url),
-  "utf8",
-);
-assert.equal(
-  roleplayCyoaSource.match(/pendingSpatialTransition: queuedSpatialTransition/gu)?.length,
-  2,
-  "Normal and impersonated Roleplay CYOA choices must submit the same queued spatial transition",
 );
 
 const validDefinition = definition(
@@ -679,6 +729,19 @@ for (const unreachableId of ["route_hidden", "route_blocked", "route_archived", 
     `${unreachableId} must not be routable`,
   );
 }
+const archivedParentRouteDefinition = definition(
+  [
+    location("archived_parent", "Archived Parent", { status: "archived" }),
+    location("active_child_a", "Active Child A", { parentId: "archived_parent" }),
+    location("active_child_b", "Active Child B", { parentId: "archived_parent" }),
+  ],
+  { startingLocationId: "active_child_a" },
+);
+assert.equal(
+  resolveSpatialRoute(archivedParentRouteDefinition, "active_child_a", "active_child_b"),
+  null,
+  "Active children cannot route through an archived parent",
+);
 const adjacentStepTransition = validateSpatialTransition(directedRouteDefinition, "route_a", {
   destinationId: "route_b",
   travelMode: "step_by_step",

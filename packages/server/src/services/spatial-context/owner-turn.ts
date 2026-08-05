@@ -24,6 +24,7 @@ interface SpatialErrorShape {
   details?: {
     snapshot?: SpatialContextSnapshot;
     messageId?: string;
+    travel?: ResolvedSpatialTravel;
     currentRevision?: number;
     currentLocationId?: string | null;
     currentBreadcrumb?: Array<{ id: string; name: string }>;

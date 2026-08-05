@@ -40,6 +40,7 @@ import type {
   NoodlerManagedStageProfile,
   NoodlerManagedPost,
   NoodlerStageProfile,
+  NoodlerSourceSnapshot,
   Persona,
 } from "@marinara-engine/shared";
 import { countNoodlerPostsSince } from "@marinara-engine/shared";
@@ -473,6 +474,8 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const [draftConnectionId, setDraftConnectionId] = useState("");
   const [previousDraft, setPreviousDraft] = useState<NoodleStageProfileInput | null>(null);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [acceptSourceChangesForProfileId, setAcceptSourceChangesForProfileId] = useState<string | null>(null);
+  const [draftSourceSnapshot, setDraftSourceSnapshot] = useState<NoodlerSourceSnapshot | null>(null);
   // Back from a stage profile returns to wherever it was opened from (hub feed, sidebar,
   // profile list) instead of always dumping the user on the profile list. Hub is the fallback.
   const profileReturnView = useRef<"hub" | "profiles">("hub");
@@ -754,6 +757,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   };
 
   const beginEdit = (profile: NoodlerStageProfile) => {
+    setAcceptSourceChangesForProfileId(null);
     setEditingProfileId(profile.id);
     setDraftNoodleAccountId(profile.noodleAccountId);
     setCreationDisclosure(profile.disclosureMode ?? "hinted");
@@ -776,6 +780,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     setPreviousDraft(null);
     setEditingProfileId(null);
     setCreationStep(null);
+    setAcceptSourceChangesForProfileId(null);
   };
 
   const changeDisclosure = (value: NoodleIdentityDisclosure) => {
@@ -800,6 +805,8 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       {
         onSuccess: (draft) => {
           if (profileDraft) setPreviousDraft(profileDraft);
+          if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
+          setDraftSourceSnapshot(draft.sourceSnapshot ?? null);
           setProfileDraft(draft);
           setCreationStep("draft");
         },
@@ -820,6 +827,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       setEditingProfileId(null);
       setDraftNoodleAccountId(null);
       setPreviousDraft(null);
+      setAcceptSourceChangesForProfileId(null);
       setCreationStep(null);
       setAutoPostSetupId(null);
       onNavigate({
@@ -851,7 +859,15 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       toast.error(errorMessage(error, localizeUi("ui.noodle.noodlerhome.couldNotSaveTheStageProfile")));
     };
     if (editingProfileId) {
-      updateProfile.mutate({ accountId: editingProfileId, ...input }, { onSuccess, onError });
+      updateProfile.mutate(
+        {
+          accountId: editingProfileId,
+          ...input,
+          acceptSourceChanges: acceptSourceChangesForProfileId === editingProfileId,
+          sourceSnapshot: draftSourceSnapshot ?? undefined,
+        },
+        { onSuccess, onError },
+      );
     } else if (draftNoodleAccountId) {
       createProfile.mutate({ noodleAccountId: draftNoodleAccountId, stageProfile: input }, { onSuccess, onError });
     }
@@ -996,7 +1012,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
 
   // Reserve the same rail width as the feed view (see NoodleHome's "settings" rail) so
   // non-feed screens don't stretch the shell wider and look like a different layout.
-  const emptyRightRail = <aside className="hidden w-[22rem] shrink-0 px-4 py-3 @min-[1280px]:block" aria-hidden="true" />;
+  const emptyRightRail = (
+    <aside className="hidden w-[22rem] shrink-0 px-4 py-3 @min-[1280px]:block" aria-hidden="true" />
+  );
 
   // Shared review layer: Guide generation can be triggered from both the selected stage-profile
   // view and the hub, so the confirmation modal must render on every branch that owns that action.
@@ -1174,6 +1192,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
               if (!previousDraft) return;
               setProfileDraft(previousDraft);
               setPreviousDraft(null);
+              setAcceptSourceChangesForProfileId(null);
             }}
             onChange={(patch) =>
               setProfileDraft((current) => ({
@@ -2897,8 +2916,7 @@ function ViewerHub({
   // while discovery search has replaced it. Declared above the early returns so hook order
   // stays stable across the empty and error states below.
   // A search-filtered list is not the feed either, so it does not count as having seen it.
-  const feedIsOnScreen =
-    tab === "all" && Boolean(scope) && !isLoading && !isError && !discoveryOpen && !search.trim();
+  const feedIsOnScreen = tab === "all" && Boolean(scope) && !isLoading && !isError && !discoveryOpen && !search.trim();
   useEffect(() => {
     if (feedIsOnScreen) onFeedShown();
   }, [feedIsOnScreen, onFeedShown]);

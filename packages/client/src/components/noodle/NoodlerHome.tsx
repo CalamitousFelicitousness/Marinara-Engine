@@ -815,6 +815,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     noodlerAccountId?: string;
     disclosureMode?: NoodleIdentityDisclosure;
     guidance?: string;
+    currentDraft?: NoodleStageProfileInput;
   }) => {
     const noodlerAccountId = options?.noodlerAccountId ?? editingProfileId;
     if (!draftNoodleAccountId && !noodlerAccountId) return;
@@ -823,18 +824,19 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       return;
     }
     const generationId = ++profileDraftGenerationIdRef.current;
+    const draftForGeneration = options?.currentDraft ?? profileDraft;
     generateProfileDraft.mutate(
       {
         ...(noodlerAccountId ? { noodlerAccountId } : { noodleAccountId: draftNoodleAccountId! }),
         disclosureMode: options?.disclosureMode ?? creationDisclosure,
         guidance: options?.guidance ?? draftGuidance,
-        currentDraft: profileDraft ?? undefined,
+        currentDraft: draftForGeneration ?? undefined,
         connectionId: draftConnectionId || undefined,
       },
       {
         onSuccess: (draft) => {
           if (generationId !== profileDraftGenerationIdRef.current) return;
-          if (profileDraft) setPreviousDraft(profileDraft);
+          if (draftForGeneration) setPreviousDraft(draftForGeneration);
           if (noodlerAccountId) setAcceptSourceChangesForProfileId(noodlerAccountId);
           const { sourceSnapshot, ...stageProfile } = draft;
           setDraftSourceSnapshot(sourceSnapshot ?? null);
@@ -855,6 +857,13 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
       noodlerAccountId: profile.id,
       disclosureMode: profile.disclosureMode ?? "hinted",
       guidance: localizeUi("ui.noodle.noodlerhome.redraftGuidance"),
+      currentDraft: {
+        displayName: profile.displayName,
+        handle: profile.handle,
+        bio: profile.bio,
+        stagePersonality: profile.stagePersonality,
+        disclosureMode: profile.disclosureMode ?? "hinted",
+      },
     });
   };
 

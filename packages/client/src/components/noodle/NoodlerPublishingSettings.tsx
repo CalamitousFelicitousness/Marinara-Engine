@@ -101,6 +101,27 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
             className="h-5 w-5 accent-[var(--noodle-accent)]"
           />
         </label>
+        <label className="block space-y-1 text-xs font-semibold">
+          <span className="block text-[var(--muted-foreground)]">
+            {t("ui.noodle.noodlerfanactivity.runsPerDay")}
+          </span>
+          <BoundedNumberInput
+            value={settings?.fanActivityRunsPerDay ?? 4}
+            min={1}
+            max={24}
+            onCommit={(value, revert) =>
+              updateSettings.mutate(
+                { fanActivityRunsPerDay: value },
+                {
+                  onError: (error) => {
+                    toastToggleFailure(error);
+                    revert();
+                  },
+                },
+              )
+            }
+          />
+        </label>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {(
             [
@@ -177,11 +198,7 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
         )}
         <button
           type="button"
-          disabled={
-            refreshFans.isPending ||
-            !settings?.fanActivityEnabled ||
-            Boolean(fanStatusQuery.data && fanStatusQuery.data.usedRuns >= fanStatusQuery.data.runLimit)
-          }
+          disabled={refreshFans.isPending || !settings?.fanActivityEnabled}
           onClick={() =>
             refreshFans.mutate(undefined, {
               onSuccess: (result) =>

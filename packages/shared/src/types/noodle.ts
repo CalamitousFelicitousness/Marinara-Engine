@@ -196,6 +196,7 @@ export interface NoodleSettings {
   noodlerNightQuiet: boolean;
   /** Optional synthetic audience activity. Kept separate from creator auto-post scheduling. */
   fanActivityEnabled: boolean;
+  fanActivityRunsPerDay: number;
   fanLikesPerRefresh: number;
   fanRepliesPerRefresh: number;
   fanRepostsPerRefresh: number;

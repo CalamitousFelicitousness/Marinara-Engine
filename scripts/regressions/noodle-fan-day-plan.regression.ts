@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  claimManualNoodleFanActivityRun,
   claimNoodleFanActivityRun,
   dueNoodleFanActivityRun,
   finishNoodleFanActivityRun,
@@ -18,6 +19,21 @@ assert.deepEqual(plan.runs[0]!.creatorIds, creators.slice(0, 12));
 assert.deepEqual(plan.runs[1]!.creatorIds, [creators[12], ...creators.slice(0, 11)]);
 assert.deepEqual(plan.runs[2]!.creatorIds, creators.slice(11, 13).concat(creators.slice(0, 10)));
 assert.equal(plan.nextCreatorOffset, 9);
+
+const twoRunPlan = reconcileNoodleFanActivityDayPlan(null, creators, morning, 2);
+assert.equal(twoRunPlan.runs.length, 2);
+const resizedPlan = reconcileNoodleFanActivityDayPlan(twoRunPlan, creators, new Date(2026, 6, 10, 0, 0, 0, 0), 3);
+assert.equal(resizedPlan.runs.length, 3);
+assert.equal(Date.parse(resizedPlan.runs[1]!.scheduledAt) - Date.parse(resizedPlan.runs[0]!.scheduledAt), 8 * 60 * 60 * 1000);
+const exhaustedPlan = {
+  ...twoRunPlan,
+  runs: twoRunPlan.runs.map((run) => ({ ...run, status: "completed" as const, finishedAt: morning.toISOString() })),
+};
+const manual = claimManualNoodleFanActivityRun(exhaustedPlan, morning);
+assert.equal(manual.run.manual, true);
+assert.equal(manual.run.status, "generating");
+assert.equal(manual.plan.runs.filter((run) => !run.manual).length, 2);
+assert.equal(manual.plan.runs.filter((run) => run.manual).length, 1);
 
 const reconciled = reconcileNoodleFanActivityDayPlan(plan, creators, morning);
 assert.equal(reconciled.runs[0]!.status, "skipped");

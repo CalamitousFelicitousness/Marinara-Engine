@@ -13,6 +13,7 @@ import {
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
 import {
+  parseGeneratedFanActivityResponse,
   resolveNoodlerFanActivityPolicy,
   selectNoodlerFanActivities,
   type NoodlerFanCreatorCandidate,
@@ -33,6 +34,26 @@ assert.equal(override.archetypeWeights.ordinary, 7);
 assert.equal(override.archetypeWeights.eccentric, settings.fanArchetypeWeights.eccentric);
 
 const identities = syntheticNoodlerFanIdentityProvider.resolve(settings.fanArchetypeWeights);
+const normalizedResponse = parseGeneratedFanActivityResponse({
+  activities: [
+    {
+      actorHandle: identities[0]!.snapshot.handle,
+      creatorId: "creator-1",
+      postId: "public-1",
+      type: "like",
+      content: null,
+    },
+    { actorHandle: identities[1]!.snapshot.handle, type: "reply", content: "Missing IDs" },
+  ],
+});
+assert.equal(normalizedResponse.rejected, 1);
+assert.deepEqual(normalizedResponse.value.activities[0], {
+  actorHandle: identities[0]!.snapshot.handle,
+  creatorAccountId: "creator-1",
+  targetPostId: "public-1",
+  type: "like",
+  content: null,
+});
 const candidate: NoodlerFanCreatorCandidate = {
   creator: { ...creator, id: "creator-1" },
   policy: { enabled: true, archetypeWeights: settings.fanArchetypeWeights },
@@ -209,6 +230,8 @@ try {
   assert.equal(rows.length, 2);
   assert.equal(JSON.parse(rows[0]!.actorSnapshot).displayName, identity.snapshot.displayName);
 
+  await db.update(noodlePosts).set({ access: "public" }).where(eq(noodlePosts.id, post!.id));
+  const recoveryAt = new Date("2026-01-01T12:00:00.000Z");
   const expiredApplyingPlan = {
     version: 1,
     localDate: "2025-01-01",
@@ -218,11 +241,22 @@ try {
       {
         id: "expired-applying",
         scheduledAt: "2025-01-01T00:00:00.000Z",
-        creatorIds: [],
+        creatorIds: [storedCreator!.id],
         status: "applying",
         claimedAt: "2025-01-01T00:00:00.000Z",
         finishedAt: null,
-        acceptedActivities: [],
+        acceptedActivities: [
+          {
+            id: `expired-applying-${storedCreator!.id}-${post!.id}-reply-${identities[2]!.id}`,
+            creatorId: storedCreator!.id,
+            actorId: identities[2]!.id,
+            type: "reply",
+            targetPostId: post!.id,
+            content: "Recovered reply",
+            snapshot: identities[2]!.snapshot,
+            applied: false,
+          },
+        ],
       },
       ...Array.from({ length: 3 }, (_, index) => ({
         id: `expired-scheduled-${index}`,
@@ -237,20 +271,26 @@ try {
   };
   await db.insert(noodlerFanActivityState).values({
     id: "fan-day:2025-01-01:UTC",
-    updatedAt: new Date().toISOString(),
+    updatedAt: "2025-01-01T00:00:00.000Z",
     plan: JSON.stringify(expiredApplyingPlan),
   });
   const expiredRecovery = await runNoodlerFanActivity({
     db,
     mode: "automatic",
-    at: new Date("2026-01-01T12:00:00.000Z"),
+    at: recoveryAt,
   });
   assert.equal(expiredRecovery.status, "resumed");
+  assert.equal(expiredRecovery.created, 1);
   const preservedExpiredPlan = await db
     .select()
     .from(noodlerFanActivityState)
     .where(eq(noodlerFanActivityState.id, "fan-day:2025-01-01:UTC"));
   assert.equal(preservedExpiredPlan.length, 1);
+  const recoveredExpiredPlan = JSON.parse(preservedExpiredPlan[0]!.plan);
+  const recoveredExpiredRun = recoveredExpiredPlan.runs.find((run: { id: string }) => run.id === "expired-applying");
+  assert.equal(recoveredExpiredRun.status, "completed");
+  assert.equal(recoveredExpiredRun.finishedAt, recoveryAt.toISOString());
+  assert.ok(recoveredExpiredRun.acceptedActivities.every((activity: { applied: boolean }) => activity.applied));
 } finally {
   rmSync(storageDir, { recursive: true, force: true });
 }

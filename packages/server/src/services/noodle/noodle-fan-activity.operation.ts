@@ -121,7 +121,12 @@ async function reconcilePlan(db: DB, settings: NoodleSettings, at: Date) {
         .filter((creator) => resolveNoodlerFanActivityPolicy(settings, creator).enabled)
         .map((creator) => creator.id)
     : [];
-  const plan = reconcileNoodleFanActivityDayPlan(await readCurrentPlan(db, at), eligibleIds, at);
+  const plan = reconcileNoodleFanActivityDayPlan(
+    await readCurrentPlan(db, at),
+    eligibleIds,
+    at,
+    settings.fanActivityRunsPerDay,
+  );
   await writePlan(db, plan);
   return plan;
 }
@@ -131,6 +136,7 @@ async function applyAcceptedActivities(
   plan: PersistedNoodleFanActivityDayPlan,
   run: NoodleFanActivityDayPlanRun,
   settings: NoodleSettings,
+  finishedAt: Date,
 ) {
   const noodle = createNoodleStorage(db);
   let current = plan;
@@ -156,7 +162,7 @@ async function applyAcceptedActivities(
     if (result?.created) created += 1;
     current = markNoodleFanActivityApplied(current, run.id, activity.id);
   }
-  current = finishNoodleFanActivityRun(current, run.id, "completed", new Date());
+  current = finishNoodleFanActivityRun(current, run.id, "completed", finishedAt);
   await writePlan(db, current);
   return created;
 }
@@ -180,7 +186,7 @@ export async function runNoodlerFanActivity(input: {
     } else if (recoverable) {
       return {
         status: "resumed",
-        created: await applyAcceptedActivities(input.db, recoverable.plan, recoverable.run, settings),
+        created: await applyAcceptedActivities(input.db, recoverable.plan, recoverable.run, settings, at),
         runId: recoverable.run.id,
       };
     }
@@ -198,7 +204,6 @@ export async function runNoodlerFanActivity(input: {
       let run: NoodleFanActivityDayPlanRun | null;
       if (input.mode === "manual") {
         const claimed = claimManualNoodleFanActivityRun(plan, at);
-        if (!claimed) return { status: "limit_reached", created: 0 };
         plan = claimed.plan;
         run = claimed.run;
       } else {
@@ -215,7 +220,7 @@ export async function runNoodlerFanActivity(input: {
         creatorIds: run.creatorIds,
       });
       if (creators.length === 0) {
-        plan = finishNoodleFanActivityRun(plan, run.id, "skipped", new Date());
+        plan = finishNoodleFanActivityRun(plan, run.id, "skipped", at);
         await writePlan(input.db, plan);
         return { status: "no_eligible_posts", created: 0, runId: run.id };
       }
@@ -231,10 +236,10 @@ export async function runNoodlerFanActivity(input: {
         plan = storeNoodleFanAcceptedActivities(plan, run.id, accepted);
         await writePlan(input.db, plan);
         const storedRun = plan.runs.find((candidate) => candidate.id === run!.id)!;
-        const created = await applyAcceptedActivities(input.db, plan, storedRun, settings);
+        const created = await applyAcceptedActivities(input.db, plan, storedRun, settings, at);
         return { status: "generated", created, runId: run.id };
       } catch (error) {
-        plan = finishNoodleFanActivityRun(plan, run.id, "abandoned", new Date());
+        plan = finishNoodleFanActivityRun(plan, run.id, "abandoned", at);
         await writePlan(input.db, plan);
         throw error;
       }
@@ -248,10 +253,12 @@ export async function runNoodlerFanActivity(input: {
 
 export async function getNoodlerFanActivityStatus(db: DB, at = new Date()) {
   const plan = await readCurrentPlan(db, at);
+  const settings = await createNoodleStorage(db).getSettings();
+  const automaticRuns = plan?.runs.filter((run) => !run.manual) ?? [];
   return {
     localDate: plan?.localDate ?? localPlanDate(at),
-    usedRuns: plan?.runs.filter((run) => run.status !== "scheduled").length ?? 0,
-    runLimit: plan?.runs.length ?? NOODLE_FAN_ACTIVITY_RUNS_PER_DAY,
+    usedRuns: automaticRuns.filter((run) => run.status !== "scheduled").length,
+    runLimit: settings.fanActivityRunsPerDay ?? NOODLE_FAN_ACTIVITY_RUNS_PER_DAY,
     lastRun: plan ? ([...plan.runs].reverse().find((run) => run.status !== "scheduled") ?? null) : null,
   };
 }

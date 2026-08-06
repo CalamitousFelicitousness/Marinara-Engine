@@ -1,5 +1,5 @@
 import {
-  noodleGeneratedFanRefreshSchema,
+  noodleGeneratedFanActivitySchema,
   type NoodleAccount,
   type NoodleGeneratedFanRefresh,
   type NoodleInteraction,
@@ -7,7 +7,7 @@ import {
   type NoodleSettings,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
-import { logDebugOverride } from "../../lib/logger.js";
+import { logger, logDebugOverride } from "../../lib/logger.js";
 import { resolveBaseUrl } from "../generation/connection-base-url.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../generation/generation-parameters.js";
 import { clampGenerationMaxOutputTokens } from "../generation/output-token-limits.js";
@@ -187,7 +187,33 @@ async function generateFanActivity(input: {
   });
   const content = response.content ?? "";
   logDebugOverride(input.debugMode, "[debug/noodler-fan] Raw model response:\n%s", content);
-  return noodleGeneratedFanRefreshSchema.parse(parseGameJsonish(content));
+  const parsed = parseGeneratedFanActivityResponse(parseGameJsonish(content));
+  if (parsed.rejected > 0) {
+    logger.warn("Ignored %d malformed generated NoodleR fan activities", parsed.rejected);
+  }
+  return parsed.value;
+}
+
+export function parseGeneratedFanActivityResponse(value: unknown): {
+  value: NoodleGeneratedFanRefresh;
+  rejected: number;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { value: { activities: [] }, rejected: 0 };
+  }
+  const activities = (value as { activities?: unknown }).activities;
+  if (!Array.isArray(activities)) return { value: { activities: [] }, rejected: 0 };
+  const accepted = activities.flatMap((activity) => {
+    if (!activity || typeof activity !== "object" || Array.isArray(activity)) return [];
+    const row = activity as Record<string, unknown>;
+    const parsed = noodleGeneratedFanActivitySchema.safeParse({
+      ...row,
+      creatorAccountId: row.creatorAccountId ?? row.creatorId,
+      targetPostId: row.targetPostId ?? row.postId,
+    });
+    return parsed.success ? [parsed.data] : [];
+  });
+  return { value: { activities: accepted }, rejected: activities.length - accepted.length };
 }
 
 export async function prepareNoodlerFanCreatorCandidates(input: {

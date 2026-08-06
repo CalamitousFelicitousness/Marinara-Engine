@@ -12,7 +12,7 @@ activity to NoodleR. The activity consists only of likes, replies, and reposts
 on eligible existing NoodleR posts. It is ambient activity, not a second
 posting system, a named-fan system, or an economy.
 
-The scheduler runs at most **four platform runs per local day**, one run for
+The scheduler runs at most a configurable number of platform runs per local day, one run for
 each platform per local day. A run is platform-wide: it considers all eligible
 creators on that platform, selects at most **12 creators per run**, and makes
 at most **one platform-wide LLM invocation for the run**. The model may propose
@@ -45,14 +45,14 @@ the global default does not rewrite existing creator overrides.
 The settings contract includes:
 
 - fan activity enabled/disabled globally;
-- the four-runs-per-local-day schedule ceiling;
+- the configurable automatic-runs-per-local-day schedule ceiling;
 - the maximum 12 creators selected per run and maximum four accepted public
   posts per creator per run;
 - the audience-archetype weights defined below.
 
-The fixed defaults are enabled when NoodleR automation is enabled, four runs
-per local day, and the limits above. There is no user-facing control that can
-raise the Slice 9a hard ceilings. A global disable prevents new background
+The fixed default is four automatic runs per local day when NoodleR automation
+is enabled, and the limits above. The user-facing control may adjust that
+automatic schedule within the validated platform limit. A global disable prevents new background
 admission and new fan runs; it does not delete accepted activity.
 
 ## Audience Archetypes
@@ -138,7 +138,7 @@ and retries later with normal backoff.
 The hard limits are enforced server-side, transactionally, and are not trusted
 to the model or client:
 
-- at most four platform runs per platform-local calendar day;
+- at most the configured number of automatic platform runs per platform-local calendar day;
 - at most 12 selected creators in a run;
 - at most four accepted public-post activities per creator in a run;
 - at most one accepted activity of a given kind from the same synthetic
@@ -163,10 +163,9 @@ contract, creator and public-post limits, transactional checks, stable IDs,
 and anti-spam rules as background work. It does not bypass the global disable,
 creator override, access policy, or connection admission.
 
-A manual run consumes the next available platform-day run budget. If the
-platform has already used all four runs for the local day, it is refused with
-an ordinary bounded-limit state and makes no provider call. It does not create
-an extra fifth run or move the next scheduled run. If admission is temporarily
+A manual run does not consume the automatic platform-day run budget and remains
+available after that budget is exhausted. It creates a separate ad hoc run. If
+admission is temporarily
 blocked by foreground work, the action reports that it was not admitted; it
 does not queue an unbounded provider job. Manual work is never a catch-up
 mechanism.
@@ -174,7 +173,7 @@ mechanism.
 ## UI Surfaces
 
 Global fan controls live in NoodleR Settings beside the existing automation
-controls. They show the enabled state, the fixed daily-run limit, the current
+controls. They show the enabled state, the configurable automatic daily-run limit, the current
 local-day usage, and the six archetype weights. The hard ceilings are presented
 as limits, not editable settings. The screen includes a compact run status,
 last-run result, and **Run fan activity now** action with disabled, busy,
@@ -219,7 +218,7 @@ Implementation validation must prove the contract at operation and UI levels:
 
 - one background run makes no more than one platform-wide LLM request and
   never one request per creator or activity;
-- local-day scheduling admits no more than four runs, including manual runs;
+- local-day scheduling admits no more than the configured automatic runs;
 - creator selection caps at 12 and accepted activity caps at four public posts
   per creator per run;
 - all six archetypes persist and validate integer weights, including zero and
@@ -234,8 +233,8 @@ Implementation validation must prove the contract at operation and UI levels:
   30-second idle gate;
 - provider failure, rejected candidates, and empty eligibility consume no
   extra run or catch-up budget;
-- manual execution follows the same limits, refuses after the fourth run, and
-  does not queue unbounded work;
+- manual execution follows the same activity limits, remains outside the
+  automatic run budget, and does not queue unbounded work;
 - no synthetic account rows, durable anonymous fan identities, locked-content
   projections, or out-of-scope 9b/9c/9d/9e data are created;
 - desktop and mobile settings, creator-page, feed, and profile surfaces cover

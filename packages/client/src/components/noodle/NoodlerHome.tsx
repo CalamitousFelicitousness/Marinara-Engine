@@ -829,8 +829,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
           if (generationId !== profileDraftGenerationIdRef.current) return;
           if (profileDraft) setPreviousDraft(profileDraft);
           if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
-          setDraftSourceSnapshot(draft.sourceSnapshot ?? null);
-          setProfileDraft(draft);
+          const { sourceSnapshot, ...stageProfile } = draft;
+          setDraftSourceSnapshot(sourceSnapshot ?? null);
+          setProfileDraft(stageProfile);
           setCreationStep("draft");
         },
         onError: (error) => {

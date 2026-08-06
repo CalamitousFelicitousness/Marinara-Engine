@@ -145,6 +145,7 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
                   };
                   if (!Object.values(fanArchetypeWeights).some((weight) => weight > 0)) {
                     revert();
+                    toast.error(t("ui.noodle.noodlerfanactivity.allWeightsZero"));
                     return;
                   }
                   updateSettings.mutate(

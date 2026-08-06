@@ -5970,6 +5970,7 @@
   "ui.noodle.noodleprofilesurface.uploading_de27240": "Uploading",
   "ui.noodle.noodlerbulkcreatepanel.createdValue1SkippedValue2": "Created {{value1}} · skipped {{value2}}",
   "ui.noodle.noodlerbulkcreatepanel.createdValue1SkippedValue2FailedValue3": "Created {{value1}} · skipped {{value2}} · failed {{value3}}",
+  "ui.noodle.noodlerfanactivity.allWeightsZero": "At least one archetype weight must be greater than zero.",
   "ui.noodle.noodlerfanactivity.archetype.crossFandom": "Cross-fandom",
   "ui.noodle.noodlerfanactivity.archetype.eccentric": "Eccentric",
   "ui.noodle.noodlerfanactivity.archetype.freeResource": "Free-feed",

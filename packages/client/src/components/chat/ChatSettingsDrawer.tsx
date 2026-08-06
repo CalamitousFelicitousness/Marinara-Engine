@@ -25,6 +25,7 @@ import {
   MessageCircle,
   Bot,
   CalendarClock,
+  Camera,
   RefreshCw,
   Settings2,
   Info,
@@ -200,8 +201,10 @@ import type {
 } from "@marinara-engine/shared";
 import {
   MAX_ILLUSTRATOR_IMAGES_PER_GENERATION,
+  customAgentHasCapability,
   normalizeIllustratorImagesPerGeneration,
   normalizeSpotifySourceType,
+  parseAgentSettingsRecord,
 } from "@marinara-engine/shared";
 import { useAgentConfigs, useCreateAgent, useUpdateAgent, type AgentConfigRow } from "../../hooks/use-agents";
 import { useAgentStore } from "../../stores/agent.store";
@@ -2786,6 +2789,15 @@ export function ChatSettingsDrawer({
             return next;
           })()
         : null;
+    const latestImageSettings = readLatestCustomAgentImageSettings();
+    const nextImageSettings =
+      isRemoving && latestImageSettings[agentId]
+        ? (() => {
+            const next = { ...latestImageSettings };
+            delete next[agentId];
+            return next;
+          })()
+        : null;
     let metadataSaved = false;
     try {
       await updateMeta.mutateAsync(
@@ -2793,6 +2805,7 @@ export function ChatSettingsDrawer({
           id: chat.id,
           activeAgentIds: current,
           ...(nextPromptTemplateSelections ? { agentPromptTemplateIds: nextPromptTemplateSelections } : {}),
+          ...(nextImageSettings ? { customAgentImageSettings: nextImageSettings } : {}),
         },
         {
           onSuccess: async () => {
@@ -2855,6 +2868,49 @@ export function ChatSettingsDrawer({
   const handleRerunCustomAgent = useCallback(
     async (agentId: string) => {
       await retryAgents(chat.id, [agentId]);
+    },
+    [chat.id, retryAgents],
+  );
+
+  const customAgentImageSelections = useMemo(() => {
+    const raw = metadata.customAgentImageSettings;
+    return raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Partial<Record<string, { imageConnectionId?: string | null }>>)
+      : {};
+  }, [metadata.customAgentImageSettings]);
+  const readLatestCustomAgentImageSettings = useCallback(() => {
+    const latestChat = qc.getQueryData<Chat>(chatKeys.detail(chat.id));
+    const latestMetadata =
+      latestChat && typeof latestChat.metadata === "string"
+        ? JSON.parse(latestChat.metadata)
+        : (latestChat?.metadata ?? metadata);
+    const raw =
+      latestMetadata && typeof latestMetadata === "object"
+        ? (latestMetadata as { customAgentImageSettings?: unknown }).customAgentImageSettings
+        : undefined;
+    return raw && typeof raw === "object" && !Array.isArray(raw)
+      ? { ...(raw as Record<string, { imageConnectionId?: string | null }>) }
+      : {};
+  }, [chat.id, metadata, qc]);
+  const updateCustomAgentImageConnection = useCallback(
+    (agentId: string, connectionId: string) => {
+      const next = readLatestCustomAgentImageSettings();
+      if (connectionId) next[agentId] = { imageConnectionId: connectionId };
+      else delete next[agentId];
+      updateMeta.mutate({ id: chat.id, customAgentImageSettings: next });
+    },
+    [chat.id, readLatestCustomAgentImageSettings, updateMeta],
+  );
+  const isImageCapableCustomAgent = useCallback(
+    (agentId: string) => {
+      const cfg = agentConfigsByType.get(agentId);
+      return !!cfg && customAgentHasCapability(parseAgentSettingsRecord(cfg.settings), "trigger_image_generation");
+    },
+    [agentConfigsByType],
+  );
+  const handleSnapshotCustomAgent = useCallback(
+    async (agentId: string) => {
+      await retryAgents(chat.id, [agentId], { forceImageGeneration: true });
     },
     [chat.id, retryAgents],
   );
@@ -3900,6 +3956,11 @@ export function ChatSettingsDrawer({
           {activeCustomAgents.map((agent) => {
             const tokenEst = agentLoadCost.tokensByType.get(agent.id);
             const promptOptions = getPromptOptionsForAgent(agent.id);
+            const imageCapable = isImageCapableCustomAgent(agent.id);
+            const agentImageConnectionId = customAgentImageSelections[agent.id]?.imageConnectionId ?? "";
+            const agentImageConnectionMissing =
+              agentImageConnectionId.length > 0 &&
+              !imageConnectionsList.some((connection) => connection.id === agentImageConnectionId);
             return (
               <div
                 key={agent.id}
@@ -3940,6 +4001,25 @@ export function ChatSettingsDrawer({
                   >
                     <RefreshCw size="0.6875rem" className={cn(agentProcessing && "animate-spin")} />
                   </button>
+                  {imageCapable && (
+                    <button
+                      onClick={() => {
+                        void handleSnapshotCustomAgent(agent.id);
+                      }}
+                      disabled={agentProcessing}
+                      className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors",
+                        agentProcessing
+                          ? "cursor-not-allowed opacity-40"
+                          : "hover:bg-[var(--primary)]/15 hover:text-[var(--primary)]",
+                      )}
+                      title={localizeUi("ui.chat.chatsettingsdrawer.generateAnImageWithValue1Now", {
+                        value1: agent.name,
+                      })}
+                    >
+                      <Camera size="0.6875rem" />
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       void toggleAgent(agent.id);
@@ -3956,6 +4036,37 @@ export function ChatSettingsDrawer({
                   overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
                   onChange={(promptTemplateId) => updateAgentPromptTemplateSelection(agent.id, promptTemplateId)}
                 />
+                {imageCapable && (
+                  <div className="mt-1.5 flex flex-col gap-1">
+                    <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                      {localizeUi("ui.chat.chatsettingsdrawer.imageConnection")}
+                    </span>
+                    <select
+                      value={agentImageConnectionId}
+                      onChange={(event) => updateCustomAgentImageConnection(agent.id, event.target.value)}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                    >
+                      <option value="">{localizeUi("ui.chat.chatsettingsdrawer.agentDefault")}</option>
+                      {agentImageConnectionMissing && (
+                        <option value={agentImageConnectionId}>
+                          {localizeUi("ui.chat.chatsettingsdrawer.missingConnection")}
+                        </option>
+                      )}
+                      {imageConnectionsList.map((connection) => (
+                        <option key={connection.id} value={connection.id}>
+                          {connection.name}
+                          {connection.model
+                            ? localizeUi("ui.chat.datablock.value1", { value1: connection.model })
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <AgentDefaultStatus
+                      overridden={agentImageConnectionId.length > 0}
+                      onReset={() => updateCustomAgentImageConnection(agent.id, "")}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

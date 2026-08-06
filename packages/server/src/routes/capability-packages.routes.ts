@@ -39,7 +39,7 @@ export function buildCapabilityAgentCleanupPatch(
   const filteredActiveAgentIds = activeAgentIds.filter((agentId) => !agentIds.has(agentId));
   if (filteredActiveAgentIds.length !== activeAgentIds.length) patch.activeAgentIds = filteredActiveAgentIds;
 
-  for (const key of ["agentOverrides", "agentPromptTemplateIds", "knowledgeAgentSources"] as const) {
+  for (const key of ["agentOverrides", "agentPromptTemplateIds", "knowledgeAgentSources", "customAgentImageSettings"] as const) {
     const filtered = removeAgentMapEntries(metadata[key], agentIds);
     if (filtered) patch[key] = filtered;
   }

@@ -2411,6 +2411,8 @@ test("Character and Persona avatar actions stay separated and visually balanced"
 
     expect(generateBox.width).toBeGreaterThanOrEqual(7.5);
     expect(generateBox.width).toBeLessThanOrEqual(9);
+    expect(generateBox.height).toBeGreaterThanOrEqual(7.5);
+    expect(generateBox.height).toBeLessThanOrEqual(9);
     expect(generateBox.x + generateBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width + 1);
     expect(generateBox.y).toBeGreaterThanOrEqual(tileBox.y - 1);
     expect(Math.abs(cameraBox.x + cameraBox.width / 2 - (tileBox.x + tileBox.width / 2))).toBeLessThanOrEqual(1);

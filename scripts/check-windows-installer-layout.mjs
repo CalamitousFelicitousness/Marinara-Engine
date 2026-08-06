@@ -49,6 +49,16 @@ try {
       message: "The Windows installer must provision its pinned pnpm through npm when existing runners fail.",
     });
   }
+  if (!code.includes("npm config get prefix") || !code.includes('t "$NPM_PREFIX;$1"')) {
+    failures.push({
+      message: "The Windows installer must add npm's configured global prefix to PATH before verifying pnpm.",
+    });
+  }
+  if (code.includes('t "$APPDATA\\npm;$1"')) {
+    failures.push({
+      message: "The Windows installer must not assume the default npm prefix; custom global prefixes must work.",
+    });
+  }
 
   const uninstallStart = code.indexOf('Section "Uninstall"');
   const packageRemoval = code.indexOf('RMDir /r "$INSTDIR\\packages"', uninstallStart);

@@ -208,6 +208,49 @@ try {
   const rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post!.id));
   assert.equal(rows.length, 2);
   assert.equal(JSON.parse(rows[0]!.actorSnapshot).displayName, identity.snapshot.displayName);
+
+  const expiredApplyingPlan = {
+    version: 1,
+    localDate: "2025-01-01",
+    timezone: "UTC",
+    nextCreatorOffset: 0,
+    runs: [
+      {
+        id: "expired-applying",
+        scheduledAt: "2025-01-01T00:00:00.000Z",
+        creatorIds: [],
+        status: "applying",
+        claimedAt: "2025-01-01T00:00:00.000Z",
+        finishedAt: null,
+        acceptedActivities: [],
+      },
+      ...Array.from({ length: 3 }, (_, index) => ({
+        id: `expired-scheduled-${index}`,
+        scheduledAt: "2025-01-01T01:00:00.000Z",
+        creatorIds: [],
+        status: "scheduled",
+        claimedAt: null,
+        finishedAt: null,
+        acceptedActivities: [],
+      })),
+    ],
+  };
+  await db.insert(noodlerFanActivityState).values({
+    id: "fan-day:2025-01-01:UTC",
+    updatedAt: new Date().toISOString(),
+    plan: JSON.stringify(expiredApplyingPlan),
+  });
+  const expiredRecovery = await runNoodlerFanActivity({
+    db,
+    mode: "automatic",
+    at: new Date("2026-01-01T12:00:00.000Z"),
+  });
+  assert.equal(expiredRecovery.status, "resumed");
+  const preservedExpiredPlan = await db
+    .select()
+    .from(noodlerFanActivityState)
+    .where(eq(noodlerFanActivityState.id, "fan-day:2025-01-01:UTC"));
+  assert.equal(preservedExpiredPlan.length, 1);
 } finally {
   rmSync(storageDir, { recursive: true, force: true });
 }

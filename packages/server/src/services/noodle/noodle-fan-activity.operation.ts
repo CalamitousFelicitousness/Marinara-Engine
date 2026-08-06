@@ -65,7 +65,8 @@ async function readPlans(db: DB, at = new Date(), prune = true) {
   for (const plan of plans) {
     const [year, month, day] = plan.localDate.split("-").map(Number);
     const planTime = new Date(year!, month! - 1, day!).getTime();
-    if (planTime < cutoff) {
+    const hasRecoverableRun = plan.runs.some((run) => run.status === "applying" || run.status === "generating");
+    if (planTime < cutoff && !hasRecoverableRun) {
       await db.delete(noodlerFanActivityState).where(eq(noodlerFanActivityState.id, planRowId(plan)));
     } else {
       retained.push(plan);

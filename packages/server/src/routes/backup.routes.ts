@@ -501,6 +501,7 @@ for (const candidate of Object.values(schema)) {
 }
 
 export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<string, unknown>>) {
+  if (tableName === "noodler_fan_activity_state") return [];
   if (tableName === "chats") {
     return rows.map((row) => {
       if (typeof row.metadata !== "string") return row;
@@ -1208,9 +1209,7 @@ async function writeNativeProfileZip(app: FastifyInstance, outputPath: string) {
   const workingDir = await mkdtemp(join(tmpdir(), "marinara-profile-tables-"));
   try {
     // Same row/asset consistency requirement as the JSON snapshot above.
-    const sources = await withNoodleAutoPostPaused(() =>
-      buildProfileArchiveSources(app, "", workingDir, true),
-    );
+    const sources = await withNoodleAutoPostPaused(() => buildProfileArchiveSources(app, "", workingDir, true));
     await writeStoredZipArchive(outputPath, sources);
   } finally {
     await rm(workingDir, { recursive: true, force: true }).catch(() => {});
@@ -2209,9 +2208,7 @@ async function writeFullBackupArchive(
   workingDir: string,
 ) {
   const dataDir = getDataDir();
-  const sources = await withNoodleAutoPostPaused(() =>
-    buildProfileArchiveSources(app, backupName, workingDir, false),
-  );
+  const sources = await withNoodleAutoPostPaused(() => buildProfileArchiveSources(app, backupName, workingDir, false));
   sources.push({
     entryName: `${backupName}/RESTORE.txt`,
     data: Buffer.from(buildBackupRestoreNotes(), "utf8"),

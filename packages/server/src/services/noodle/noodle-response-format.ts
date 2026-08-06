@@ -145,11 +145,12 @@ const noodlerFanActivitySchema = {
   type: "object",
   properties: {
     actorHandle: { type: "string" },
+    creatorAccountId: { type: "string" },
     targetPostId: { type: "string" },
     type: { type: "string", enum: ["like", "reply", "repost"] },
     content: nullableString,
   },
-  required: ["actorHandle", "targetPostId", "type", "content"],
+  required: ["actorHandle", "creatorAccountId", "targetPostId", "type", "content"],
   additionalProperties: false,
 } as const;
 

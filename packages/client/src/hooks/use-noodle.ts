@@ -43,6 +43,7 @@ import type {
   NoodlerCreateInteractionInput,
   NoodlerCreatorReplyResult,
   NoodlerReserveStatus,
+  NoodlerFanActivitySettings,
   NoodlerRemoveInteractionInput,
 } from "@marinara-engine/shared";
 import {
@@ -70,6 +71,7 @@ export const noodleKeys = {
   noodlerViewers: () => [...noodleKeys.noodlerRoot(), "viewers"] as const,
   viewer: (personaId: string) => [...noodleKeys.noodlerViewers(), personaId] as const,
   noodlerReserveStatus: () => [...noodleKeys.noodlerRoot(), "reserve-status"] as const,
+  noodlerFanStatus: () => [...noodleKeys.noodlerRoot(), "fan-status"] as const,
 };
 
 function preservePollVotes(current: NoodleBootstrap | undefined, next: NoodleBootstrap): NoodleBootstrap {
@@ -624,6 +626,18 @@ export function useUpdateNoodlerAutoPosting() {
   });
 }
 
+export function useUpdateNoodlerFanActivity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ accountId, fanActivity }: { accountId: string; fanActivity: NoodlerFanActivitySettings | null }) =>
+      api.patch<NoodleAccount>(`/noodle/accounts/${encodeURIComponent(accountId)}/settings`, {
+        subtree: "scheduler",
+        patch: { fanActivity },
+      } satisfies NoodleAccountSettingsPatchInput),
+    onSuccess: () => qc.invalidateQueries({ queryKey: noodleKeys.noodlerAccounts() }),
+  });
+}
+
 export function useNoodlerReserveStatus(enabled = true) {
   return useQuery({
     queryKey: noodleKeys.noodlerReserveStatus(),
@@ -680,12 +694,31 @@ export function useRefreshTargetedNoodlerCreatorsNow() {
 export function useRefreshNoodlerFanActivityNow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ status: string; created: number }>("/noodle/noodler/fan-activity/refresh-now"),
+    mutationFn: () =>
+      api.post<{ status: string; created: number }>("/noodle/noodler/fan-activity/refresh-now", {
+        debugMode: useUIStore.getState().debugMode,
+      }),
     onSuccess: () =>
       Promise.all([
         qc.invalidateQueries({ queryKey: [...noodleKeys.noodlerRoot(), "posts"] }),
         qc.invalidateQueries({ queryKey: noodleKeys.noodlerViewers() }),
+        qc.invalidateQueries({ queryKey: noodleKeys.noodlerFanStatus() }),
       ]),
+  });
+}
+
+export function useNoodlerFanActivityStatus(enabled = true) {
+  return useQuery({
+    queryKey: noodleKeys.noodlerFanStatus(),
+    queryFn: () =>
+      api.get<{
+        localDate: string;
+        usedRuns: number;
+        runLimit: number;
+        lastRun: { status: string; finishedAt: string | null } | null;
+      }>("/noodle/noodler/fan-activity/status"),
+    enabled,
+    refetchInterval: 30_000,
   });
 }
 

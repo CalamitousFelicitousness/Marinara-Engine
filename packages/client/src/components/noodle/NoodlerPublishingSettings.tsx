@@ -1,10 +1,12 @@
 import { RefreshCw, UsersRound } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   useNoodle,
   useNoodlerAccounts,
   useNoodlerReserveStatus,
+  useNoodlerFanActivityStatus,
   useRefreshAllNoodlerCreatorsNow,
   useRefreshNoodlerFanActivityNow,
   useUpdateNoodleSettings,
@@ -12,9 +14,47 @@ import {
 } from "../../hooks/use-noodle";
 import { Avatar } from "./NoodleShell";
 import { summarizeRefreshOutcomes } from "./noodle-auto-post";
+import type { NoodleSettingsUpdateInput, NoodlerFanArchetypeWeights } from "@marinara-engine/shared";
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+const FAN_ARCHETYPES = ["ordinary", "eccentric", "crossFandom", "raider", "organicDiscovery", "freeResource"] as const;
+
+function BoundedNumberInput({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const parsed = Number(draft);
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+      setDraft(String(value));
+      return;
+    }
+    onCommit(parsed);
+  };
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+      className="h-9 w-full rounded-md border border-[var(--border)] bg-transparent px-2 text-sm"
+    />
+  );
 }
 
 interface NoodlerPublishingSettingsProps {
@@ -29,6 +69,7 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
   const accountsQuery = useNoodlerAccounts(settings?.enableNoodler === true);
   const accounts = accountsQuery.data ?? [];
   const statusQuery = useNoodlerReserveStatus(active && settings?.enableNoodler === true);
+  const fanStatusQuery = useNoodlerFanActivityStatus(active && settings?.enableNoodler === true);
   const status = statusQuery.data;
   const updateSettings = useUpdateNoodleSettings();
   const updateAuto = useUpdateNoodlerAutoPosting();
@@ -70,24 +111,64 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
           ).map(([key, label, min, max]) => (
             <label key={key} className="space-y-1 text-xs font-semibold">
               <span className="block text-[var(--muted-foreground)]">{t(`ui.noodle.noodlerfanactivity.${label}`)}</span>
-              <input
-                type="number"
+              <BoundedNumberInput
+                value={settings?.[key] ?? 0}
                 min={min}
                 max={max}
-                value={settings?.[key] ?? 0}
-                disabled={updateSettings.isPending || !settings}
-                onChange={(event) => updateSettings.mutate({ [key]: Number(event.target.value) })}
-                className="h-9 w-full rounded-md border border-[var(--border)] bg-transparent px-2 text-sm"
+                onCommit={(value) => updateSettings.mutate({ [key]: value } as NoodleSettingsUpdateInput)}
               />
             </label>
           ))}
         </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {FAN_ARCHETYPES.map((archetype) => (
+            <label key={archetype} className="space-y-1 text-xs font-semibold">
+              <span className="block text-[var(--muted-foreground)]">
+                {t(`ui.noodle.noodlerfanactivity.archetype.${archetype}`)}
+              </span>
+              <BoundedNumberInput
+                value={settings?.fanArchetypeWeights[archetype] ?? 0}
+                min={0}
+                max={100}
+                onCommit={(value) => {
+                  if (!settings) return;
+                  const fanArchetypeWeights: NoodlerFanArchetypeWeights = {
+                    ...settings.fanArchetypeWeights,
+                    [archetype]: value,
+                  };
+                  if (!Object.values(fanArchetypeWeights).some((weight) => weight > 0)) return;
+                  updateSettings.mutate({ fanArchetypeWeights });
+                }}
+              />
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {fanStatusQuery.data
+            ? t("ui.noodle.noodlerfanactivity.dailyUsage", {
+                used: fanStatusQuery.data.usedRuns,
+                limit: fanStatusQuery.data.runLimit,
+              })
+            : t("ui.noodle.noodlerfanactivity.dailyLimit")}
+        </p>
+        {fanStatusQuery.data?.lastRun && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            {t("ui.noodle.noodlerfanactivity.lastRun", { status: fanStatusQuery.data.lastRun.status })}
+          </p>
+        )}
         <button
           type="button"
-          disabled={refreshFans.isPending || !settings?.fanActivityEnabled}
+          disabled={
+            refreshFans.isPending ||
+            !settings?.fanActivityEnabled ||
+            Boolean(fanStatusQuery.data && fanStatusQuery.data.usedRuns >= fanStatusQuery.data.runLimit)
+          }
           onClick={() =>
             refreshFans.mutate(undefined, {
-              onSuccess: (result) => toast.success(t("ui.noodle.noodlerfanactivity.created", result)),
+              onSuccess: (result) =>
+                result.status === "no_eligible_posts" || result.created === 0
+                  ? toast.info(t("ui.noodle.noodlerfanactivity.noEligiblePosts"))
+                  : toast.success(t("ui.noodle.noodlerfanactivity.created", result)),
               onError: (error) => toast.error(errorMessage(error, t("ui.noodle.noodlerfanactivity.failed"))),
             })
           }

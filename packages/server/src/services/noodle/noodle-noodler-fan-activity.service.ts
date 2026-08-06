@@ -3,7 +3,7 @@ import {
   type NoodleAccount,
   type NoodleGeneratedFanRefresh,
   type NoodleInteraction,
-  type NoodlePost,
+  type NoodlerFanArchetypeWeights,
   type NoodleSettings,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
@@ -12,106 +12,151 @@ import { resolveBaseUrl } from "../generation/connection-base-url.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../generation/generation-parameters.js";
 import { clampGenerationMaxOutputTokens } from "../generation/output-token-limits.js";
 import { parseGameJsonish } from "../game/jsonish.js";
-import { withConnectionFallbackProvider } from "../llm/connection-fallback-provider.js";
 import type { ChatMessage } from "../llm/base-provider.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createNoodleStorage } from "../storage/noodle.storage.js";
-import { ensureAmbientNoodleAccounts, isAmbientNoodleAccount } from "./noodle-ambient-profiles.js";
+import type { NoodleFanActivityToStore } from "./noodle-fan-activity-day-plan.js";
+import {
+  syntheticNoodlerFanIdentityProvider,
+  type NoodlerFanIdentity,
+  type NoodlerFanIdentityProvider,
+} from "./noodle-fan-identity-provider.js";
 import { formatNoodleMessagesForLog } from "./noodle-generation-log.js";
 import { noodleResponseFormat } from "./noodle-response-format.js";
 
 type GenerationConnection = NonNullable<Awaited<ReturnType<ReturnType<typeof createConnectionsStorage>["getWithKey"]>>>;
 
-const MAX_FAN_POSTS = 80;
+export const MAX_FAN_CREATORS_PER_RUN = 12;
+export const MAX_FAN_POSTS_PER_CREATOR = 4;
+export const MAX_FAN_ACTIVITIES_PER_CREATOR = 4;
+
+export interface ResolvedNoodlerFanActivityPolicy {
+  enabled: boolean;
+  archetypeWeights: NoodlerFanArchetypeWeights;
+}
+
+export function resolveNoodlerFanActivityPolicy(
+  settings: NoodleSettings,
+  creator: NoodleAccount,
+): ResolvedNoodlerFanActivityPolicy {
+  const override = creator.settings.scheduler.fanActivity;
+  const archetypeWeights = { ...settings.fanArchetypeWeights, ...override?.archetypeWeights };
+  return {
+    enabled: override?.enabled ?? settings.fanActivityEnabled,
+    archetypeWeights,
+  };
+}
+
+export interface NoodlerFanCreatorCandidate {
+  creator: NoodleAccount;
+  policy: ResolvedNoodlerFanActivityPolicy;
+  posts: Array<{ id: string; creatorAccountId: string; title: string | null; content: string; access: "public" }>;
+  identities: NoodlerFanIdentity[];
+}
+
+function weightedIdentitySequence(identities: NoodlerFanIdentity[], weights: NoodlerFanArchetypeWeights) {
+  return identities.flatMap((identity) =>
+    Array.from({ length: Math.max(0, weights[identity.archetype]) }, () => identity),
+  );
+}
 
 export function selectNoodlerFanActivities(input: {
   activities: NoodleGeneratedFanRefresh["activities"];
-  actors: readonly NoodleAccount[];
-  posts: readonly Pick<NoodlePost, "id" | "access">[];
+  creators: readonly NoodlerFanCreatorCandidate[];
   existingInteractions: readonly Pick<NoodleInteraction, "postId" | "actorAccountId" | "type" | "content">[];
   quotas: { like: number; reply: number; repost: number };
-}) {
-  const actorByHandle = new Map(input.actors.map((actor) => [actor.handle.toLowerCase(), actor]));
-  const publicPostIds = new Set(input.posts.filter((post) => post.access === "public").map((post) => post.id));
+}): NoodleFanActivityToStore[] {
+  const creatorById = new Map(input.creators.map((candidate) => [candidate.creator.id, candidate]));
+  const postOwnerById = new Map(
+    input.creators.flatMap((candidate) => candidate.posts.map((post) => [post.id, candidate.creator.id])),
+  );
+  const identityByHandle = new Map(
+    input.creators.flatMap((candidate) =>
+      candidate.identities.map((identity) => [identity.snapshot.handle.toLowerCase(), identity]),
+    ),
+  );
   const seen = new Set(
     input.existingInteractions.map(
-      (interaction) =>
-        `${interaction.postId}:${interaction.actorAccountId}:${interaction.type}:${interaction.content ?? ""}`,
+      (interaction) => `${interaction.postId}:${interaction.actorAccountId}:${interaction.type}`,
     ),
   );
   const quotas = { ...input.quotas };
-  const selected: Array<{
-    actor: NoodleAccount;
-    postId: string;
-    type: "like" | "reply" | "repost";
-    content: string | null;
-  }> = [];
+  const creatorCounts = new Map<string, number>();
+  const selected: NoodleFanActivityToStore[] = [];
   for (const activity of input.activities) {
-    if (quotas[activity.type] <= 0 || !publicPostIds.has(activity.targetPostId)) continue;
-    const actor = actorByHandle.get(activity.actorHandle.toLowerCase());
-    if (!actor) continue;
+    if (quotas[activity.type] <= 0) continue;
+    const creator = creatorById.get(activity.creatorAccountId);
+    if (!creator || postOwnerById.get(activity.targetPostId) !== creator.creator.id) continue;
+    if ((creatorCounts.get(creator.creator.id) ?? 0) >= MAX_FAN_ACTIVITIES_PER_CREATOR) continue;
+    const identity = identityByHandle.get(activity.actorHandle.toLowerCase());
+    if (!identity || !creator.identities.some((candidate) => candidate.id === identity.id)) continue;
     const content = activity.type === "reply" ? activity.content?.trim() || null : null;
     if (activity.type === "reply" && !content) continue;
-    const key = `${activity.targetPostId}:${actor.id}:${activity.type}:${content ?? ""}`;
+    const key = `${activity.targetPostId}:${identity.id}:${activity.type}`;
     if (seen.has(key)) continue;
     seen.add(key);
     quotas[activity.type] -= 1;
-    selected.push({ actor, postId: activity.targetPostId, type: activity.type, content });
+    creatorCounts.set(creator.creator.id, (creatorCounts.get(creator.creator.id) ?? 0) + 1);
+    selected.push({
+      creatorId: creator.creator.id,
+      actorId: identity.id,
+      type: activity.type,
+      targetPostId: activity.targetPostId,
+      content,
+      snapshot: identity.snapshot,
+    });
   }
   return selected;
 }
 
 function buildFanActivityMessages(input: {
-  actors: NoodleAccount[];
-  posts: Array<{ id: string; title: string | null; content: string }>;
+  creators: NoodlerFanCreatorCandidate[];
   settings: NoodleSettings;
 }): ChatMessage[] {
   const system = [
-    "You propose a small amount of synthetic audience activity for public NoodleR posts.",
-    "Use only the supplied random audience accounts and post IDs.",
-    "Likes and reposts have no content. Replies are short, natural, and relevant to the post.",
-    "Do not mention hidden information, locked posts, private data, or that the audience is synthetic.",
-    "Return JSON only with an activities array. Never invent an actor handle or post ID.",
-    `At most ${input.settings.fanLikesPerRefresh} likes, ${input.settings.fanRepliesPerRefresh} replies, and ${input.settings.fanRepostsPerRefresh} reposts may be proposed.`,
+    "Propose quiet synthetic audience activity for the supplied public NoodleR posts.",
+    "Use only supplied creator IDs, actor handles, and post IDs. Never invent identifiers.",
+    "Likes and reposts have null content. Replies are brief, natural, relevant, and not repetitive.",
+    "Return JSON only with an activities array.",
+    `At most ${input.settings.fanLikesPerRefresh} likes, ${input.settings.fanRepliesPerRefresh} replies, and ${input.settings.fanRepostsPerRefresh} reposts total.`,
+    `At most ${MAX_FAN_ACTIVITIES_PER_CREATOR} activities for any creator.`,
   ].join("\n");
-  const data = {
-    actors: input.actors.map((actor) => ({ handle: actor.handle, displayName: actor.displayName, bio: actor.bio })),
-    posts: input.posts,
-  };
+  const creators = input.creators.map((candidate) => ({
+    creatorAccountId: candidate.creator.id,
+    creator: {
+      displayName: candidate.creator.displayName,
+      handle: candidate.creator.handle,
+      bio: candidate.creator.bio,
+    },
+    actorHandles: weightedIdentitySequence(candidate.identities, candidate.policy.archetypeWeights).map(
+      (identity) => identity.snapshot.handle,
+    ),
+    posts: candidate.posts.map(({ id, title, content }) => ({ id, title, content })),
+  }));
   return [
     { role: "system", content: system },
-    { role: "user", content: `# NoodleR audience data\n${JSON.stringify(data, null, 2)}` },
+    { role: "user", content: `# Public NoodleR audience data\n${JSON.stringify({ creators }, null, 2)}` },
   ];
 }
 
 async function generateFanActivity(input: {
-  db: DB;
   connection: GenerationConnection;
   settings: NoodleSettings;
-  actors: NoodleAccount[];
-  posts: Array<{ id: string; title: string | null; content: string }>;
+  creators: NoodlerFanCreatorCandidate[];
   debugMode: boolean;
 }): Promise<NoodleGeneratedFanRefresh> {
-  const connections = createConnectionsStorage(input.db);
-  const fallbackConnection = await connections.getFallbackForMain();
-  const provider = withConnectionFallbackProvider({
-    primary: createLLMProvider(
-      input.connection.provider,
-      resolveBaseUrl(input.connection),
-      input.connection.apiKey,
-      input.connection.maxContext,
-      input.connection.openrouterProvider,
-      input.connection.maxTokensOverride,
-      input.connection.claudeFastMode === "true",
-      input.connection.treatAsLocalEndpoint === "true",
-      input.connection.defaultParameters,
-    ),
-    primaryConnectionId: input.connection.id,
-    fallbackConnection,
-    fallbackBaseUrl: fallbackConnection ? resolveBaseUrl(fallbackConnection) : "",
-    category: "main",
-  });
+  const provider = createLLMProvider(
+    input.connection.provider,
+    resolveBaseUrl(input.connection),
+    input.connection.apiKey,
+    input.connection.maxContext,
+    input.connection.openrouterProvider,
+    input.connection.maxTokensOverride,
+    input.connection.claudeFastMode === "true",
+    input.connection.treatAsLocalEndpoint === "true",
+    input.connection.defaultParameters,
+  );
   const messages = buildFanActivityMessages(input);
   logDebugOverride(
     input.debugMode,
@@ -138,61 +183,69 @@ async function generateFanActivity(input: {
   return noodleGeneratedFanRefreshSchema.parse(parseGameJsonish(content));
 }
 
-export async function generateAndApplyNoodlerFanActivity(input: { db: DB; debugMode?: boolean }): Promise<{
-  status: "generated" | "disabled" | "connection_required" | "connection_not_found" | "no_actors" | "no_posts";
-  created: number;
-}> {
+export async function prepareNoodlerFanCreatorCandidates(input: {
+  db: DB;
+  settings: NoodleSettings;
+  creatorIds: string[];
+  identityProvider?: NoodlerFanIdentityProvider;
+}): Promise<NoodlerFanCreatorCandidate[]> {
   const noodle = createNoodleStorage(input.db);
-  const settings = await noodle.getSettings();
-  if (!settings.enableNoodler || !settings.fanActivityEnabled) return { status: "disabled", created: 0 };
-  if (!settings.generationConnectionId) return { status: "connection_required", created: 0 };
-  const connection = await createConnectionsStorage(input.db).getWithKey(settings.generationConnectionId);
-  if (!connection) return { status: "connection_not_found", created: 0 };
-
-  await ensureAmbientNoodleAccounts(noodle, false);
-  const actors = (await noodle.listAccounts()).filter(isAmbientNoodleAccount);
-  if (actors.length === 0) return { status: "no_actors", created: 0 };
-  const creators = await noodle.listNoodlerAccounts();
-  const grouped = await noodle.listNoodlerPostsByAccounts(
+  const creators = (
+    await Promise.all(input.creatorIds.slice(0, MAX_FAN_CREATORS_PER_RUN).map((id) => noodle.getNoodlerAccountById(id)))
+  ).filter((creator): creator is NoodleAccount => creator !== null);
+  const postsByCreator = await noodle.listNoodlerPostsByAccounts(
     creators.map((creator) => creator.id),
-    MAX_FAN_POSTS,
+    MAX_FAN_POSTS_PER_CREATOR,
   );
-  const posts = [...grouped.values()]
-    .flat()
-    .filter((post) => post.access === "public")
-    .slice(0, MAX_FAN_POSTS)
-    .map((post) => ({ id: post.id, title: post.title, content: post.content }));
-  if (posts.length === 0) return { status: "no_posts", created: 0 };
-
-  const generated = await generateFanActivity({
-    db: input.db,
-    connection,
-    settings,
-    actors,
-    posts,
-    debugMode: input.debugMode === true,
+  const provider = input.identityProvider ?? syntheticNoodlerFanIdentityProvider;
+  return creators.flatMap((creator) => {
+    const policy = resolveNoodlerFanActivityPolicy(input.settings, creator);
+    if (!policy.enabled) return [];
+    const posts = (postsByCreator.get(creator.id) ?? [])
+      .filter((post) => post.access === "public")
+      .slice(0, MAX_FAN_POSTS_PER_CREATOR)
+      .map((post) => ({
+        id: post.id,
+        creatorAccountId: creator.id,
+        title: post.title,
+        content: post.content,
+        access: "public" as const,
+      }));
+    const identities = provider.resolve(policy.archetypeWeights);
+    return posts.length > 0 && identities.length > 0 ? [{ creator, policy, posts, identities }] : [];
   });
-  const interactions = await noodle.listNoodlerInteractions(posts.map((post) => post.id));
-  const selected = selectNoodlerFanActivities({
+}
+
+export async function generateNoodlerFanActivityBatch(input: {
+  db: DB;
+  settings: NoodleSettings;
+  connection: GenerationConnection;
+  creators: NoodlerFanCreatorCandidate[];
+  debugMode?: boolean;
+}): Promise<NoodleFanActivityToStore[]> {
+  if (input.creators.length === 0) return [];
+  if (
+    input.settings.fanLikesPerRefresh + input.settings.fanRepliesPerRefresh + input.settings.fanRepostsPerRefresh ===
+    0
+  ) {
+    return [];
+  }
+  const generated = await generateFanActivity({ ...input, debugMode: input.debugMode === true });
+  const postIds = input.creators.flatMap((creator) => creator.posts.map((post) => post.id));
+  const existing = await createNoodleStorage(input.db).listNoodlerInteractions(postIds);
+  return selectNoodlerFanActivities({
     activities: generated.activities,
-    actors,
-    posts: posts.map((post) => ({ id: post.id, access: "public" as const })),
-    existingInteractions: interactions,
+    creators: input.creators,
+    existingInteractions: existing,
     quotas: {
-      like: settings.fanLikesPerRefresh,
-      reply: settings.fanRepliesPerRefresh,
-      repost: settings.fanRepostsPerRefresh,
+      like: input.settings.fanLikesPerRefresh,
+      reply: input.settings.fanRepliesPerRefresh,
+      repost: input.settings.fanRepostsPerRefresh,
     },
   });
-  let created = 0;
-  for (const activity of selected) {
-    const result = await noodle.createNoodlerFanInteraction(activity.postId, {
-      actorAccountId: activity.actor.id,
-      type: activity.type,
-      content: activity.content,
-    });
-    if (!result?.created) continue;
-    created += 1;
-  }
-  return { status: "generated", created };
+}
+
+export async function resolveNoodlerFanConnection(db: DB, settings: NoodleSettings) {
+  if (!settings.generationConnectionId) return null;
+  return createConnectionsStorage(db).getWithKey(settings.generationConnectionId);
 }

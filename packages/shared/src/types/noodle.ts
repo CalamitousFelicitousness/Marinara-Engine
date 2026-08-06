@@ -20,6 +20,13 @@ export type NoodleCarryoverTarget = "conversation" | "roleplay" | "game";
 export type NoodleParticipantSelectionMode = "all" | "random_range" | "exact";
 export type NoodleIdentityDisclosure = "open" | "hinted" | "secret";
 export type NoodlerOnboardingState = "incomplete" | "zero" | "completed";
+export type NoodlerFanArchetype =
+  | "ordinary"
+  | "eccentric"
+  | "crossFandom"
+  | "raider"
+  | "organicDiscovery"
+  | "freeResource";
 
 export interface NoodlerSourceSnapshot {
   publicDisplayName: string;
@@ -83,8 +90,16 @@ export interface NoodleAutoPostingSettings {
   imagesEnabled: boolean;
 }
 
+export type NoodlerFanArchetypeWeights = Record<NoodlerFanArchetype, number>;
+
+export interface NoodlerFanActivitySettings {
+  enabled?: boolean;
+  archetypeWeights?: Partial<NoodlerFanArchetypeWeights>;
+}
+
 export interface NoodleAccountSchedulerSettings {
   autoPosting?: NoodleAutoPostingSettings;
+  fanActivity?: NoodlerFanActivitySettings;
 }
 
 /** Per-creator outcome of the global "Refresh NoodleR now" action; one creator never rolls back another. */
@@ -184,6 +199,7 @@ export interface NoodleSettings {
   fanLikesPerRefresh: number;
   fanRepliesPerRefresh: number;
   fanRepostsPerRefresh: number;
+  fanArchetypeWeights: NoodlerFanArchetypeWeights;
 }
 
 export interface NoodlerReserveCreatorStatus {
@@ -237,6 +253,7 @@ export interface NoodlerManagedStageProfile extends NoodlerStageProfile {
   access: NoodleAccountAccessSettings;
   autoPosting: NoodleAutoPostingSettings;
   sourceStatus: NoodlerSourceStatus;
+  fanActivity: NoodlerFanActivitySettings | null;
 }
 
 export interface NoodlerProfileSource {

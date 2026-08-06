@@ -73,6 +73,7 @@ import {
   useReplaceNoodlerPostImage,
   useUpdateNoodlerAccess,
   useUpdateNoodlerAutoPosting,
+  useUpdateNoodlerFanActivity,
   useUpdateNoodlerStageProfile,
   type NoodlerPostDraftImage,
 } from "../../hooks/use-noodle";
@@ -2416,6 +2417,8 @@ function StageProfileView({
   const [accessSettingsOpen, setAccessSettingsOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const updateAutoPosting = useUpdateNoodlerAutoPosting();
+  const updateFanActivity = useUpdateNoodlerFanActivity();
+  const globalSettings = useNoodle().data?.settings;
   const autoPosting = profile.autoPosting;
   const [activeTab, setActiveTab] = useState<NoodlerProfileTab>("posts");
   const [revealedManagedPostIds, setRevealedManagedPostIds] = useState<Set<string>>(() => new Set());
@@ -2833,6 +2836,83 @@ function StageProfileView({
                 className="h-5 w-5 accent-[var(--noodle-accent)]"
               />
             </label>
+          </fieldset>
+          <fieldset disabled={updateFanActivity.isPending} className="space-y-3 disabled:opacity-50">
+            <legend className="text-xs font-bold">{localizeUi("ui.noodle.noodlerfanactivity.creatorTitle")}</legend>
+            <label className="block space-y-1 text-xs font-semibold">
+              <span className="text-[var(--muted-foreground)]">
+                {localizeUi("ui.noodle.noodlerfanactivity.creatorMode")}
+              </span>
+              <select
+                value={profile.fanActivity ? (profile.fanActivity.enabled === false ? "off" : "on") : "inherit"}
+                onChange={(event) => {
+                  const mode = event.target.value;
+                  updateFanActivity.mutate(
+                    {
+                      accountId: profile.id,
+                      fanActivity: mode === "inherit" ? null : { ...profile.fanActivity, enabled: mode === "on" },
+                    },
+                    {
+                      onError: (error) =>
+                        toast.error(
+                          errorMessage(error, localizeUi("ui.noodle.noodlerfanactivity.couldNotUpdateCreator")),
+                        ),
+                    },
+                  );
+                }}
+                className="h-9 w-full rounded-md border border-[var(--noodle-divider)] bg-[var(--background)] px-2"
+              >
+                <option value="inherit">{localizeUi("ui.noodle.noodlerfanactivity.inherit")}</option>
+                <option value="on">{localizeUi("ui.noodle.noodlerfanactivity.on")}</option>
+                <option value="off">{localizeUi("ui.noodle.noodlerfanactivity.off")}</option>
+              </select>
+            </label>
+            {profile.fanActivity && globalSettings && (
+              <div className="grid grid-cols-2 gap-2">
+                {(["ordinary", "eccentric", "crossFandom", "raider", "organicDiscovery", "freeResource"] as const).map(
+                  (archetype) => {
+                    const current =
+                      profile.fanActivity?.archetypeWeights?.[archetype] ??
+                      globalSettings.fanArchetypeWeights[archetype];
+                    return (
+                      <label key={archetype} className="space-y-1 text-[0.68rem] font-semibold">
+                        <span className="block text-[var(--muted-foreground)]">
+                          {localizeUi(`ui.noodle.noodlerfanactivity.archetype.${archetype}`)}
+                        </span>
+                        <input
+                          key={`${profile.id}-${archetype}-${current}`}
+                          type="number"
+                          min={0}
+                          max={100}
+                          defaultValue={current}
+                          onBlur={(event) => {
+                            const value = Number(event.target.value);
+                            if (!Number.isInteger(value) || value < 0 || value > 100) {
+                              event.target.value = String(current);
+                              return;
+                            }
+                            const archetypeWeights = {
+                              ...globalSettings.fanArchetypeWeights,
+                              ...profile.fanActivity?.archetypeWeights,
+                              [archetype]: value,
+                            };
+                            if (!Object.values(archetypeWeights).some((weight) => weight > 0)) {
+                              event.target.value = String(current);
+                              return;
+                            }
+                            updateFanActivity.mutate({
+                              accountId: profile.id,
+                              fanActivity: { ...profile.fanActivity, archetypeWeights },
+                            });
+                          }}
+                          className="h-9 w-full rounded-md border border-[var(--noodle-divider)] bg-transparent px-2 text-sm"
+                        />
+                      </label>
+                    );
+                  },
+                )}
+              </div>
+            )}
           </fieldset>
           <div className="space-y-1">
             <button

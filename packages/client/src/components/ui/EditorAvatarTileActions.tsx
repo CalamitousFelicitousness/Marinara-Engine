@@ -21,7 +21,7 @@ export function EditorAvatarTileActions({ generationAvailable, onGenerate }: Edi
             event.stopPropagation();
             onGenerate();
           }}
-          className="absolute right-0 top-0 inline-flex h-2 w-2 items-center justify-center rounded-full bg-[var(--card)]/95 text-[var(--primary)] shadow-md ring-1 ring-[var(--border)] transition-colors before:absolute before:-inset-2 hover:bg-[var(--accent)]"
+          className="absolute right-0.5 top-0.5 inline-flex h-2 w-2 items-center justify-center rounded-full bg-[var(--card)]/95 text-[var(--primary)] shadow-md ring-1 ring-[var(--border)] transition-colors before:absolute before:-inset-2 hover:bg-[var(--accent)] max-md:right-px max-md:top-px"
           title={t("editor.avatar.generate.label")}
           aria-label={t("editor.avatar.generate.label")}
         >

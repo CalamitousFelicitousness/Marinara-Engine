@@ -45,12 +45,14 @@ import type {
 } from "@marinara-engine/shared";
 import { countNoodlerPostsSince } from "@marinara-engine/shared";
 import {
+  useAdoptNoodlerSourceIdentity,
   useCreateNoodlerPost,
   useCreateNoodlerInteraction,
   useTriggerNoodlerCreatorReply,
   useCreateNoodlerStageProfile,
   useDeleteNoodlerPost,
   useDeleteNoodlerStageProfile,
+  useDismissNoodlerSourceChanges,
   useGenerateNoodlerNoodlePost,
   useConfirmNoodlerImagePrompts,
   useRunNoodlerAutoPostNow,
@@ -2419,6 +2421,8 @@ function StageProfileView({
   const [automationOpen, setAutomationOpen] = useState(false);
   const updateAutoPosting = useUpdateNoodlerAutoPosting();
   const updateFanActivity = useUpdateNoodlerFanActivity();
+  const dismissSourceChanges = useDismissNoodlerSourceChanges();
+  const adoptSourceIdentity = useAdoptNoodlerSourceIdentity();
   const globalSettings = useNoodle().data?.settings;
   const autoPosting = profile.autoPosting;
   const [activeTab, setActiveTab] = useState<NoodlerProfileTab>("posts");
@@ -2656,7 +2660,54 @@ function StageProfileView({
             </span>
           ) : undefined
         }
-        bioContent={profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
+        bioContent={
+          <>
+            {viewingOwnCreator && profile.sourceStatus.state === "missing" && (
+              <div className="mt-3 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/5 p-3 text-sm">
+                <p className="font-bold text-[var(--destructive)]">
+                  {localizeUi("ui.noodle.stageprofileview.sourceMissingTitle")}
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {localizeUi("ui.noodle.stageprofileview.sourceMissingDetail")}
+                </p>
+              </div>
+            )}
+            {viewingOwnCreator && profile.sourceStatus.state === "changed" && (
+              <div className="mt-3 rounded-md border border-[var(--noodle-divider)] bg-[var(--accent)]/40 p-3 text-sm">
+                <p className="font-bold">{localizeUi("ui.noodle.stageprofileview.sourceChangedTitle")}</p>
+                <ul className="mt-1 space-y-0.5 text-xs text-[var(--muted-foreground)]">
+                  {profile.sourceStatus.changes.map((change) => (
+                    <li key={change.field}>
+                      <span className="font-semibold">{change.field}</span>: {change.previous || "—"} →{" "}
+                      {change.current || "—"}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {profile.disclosureMode === "open" && (
+                    <button
+                      type="button"
+                      disabled={adoptSourceIdentity.isPending}
+                      onClick={() => adoptSourceIdentity.mutate(profile.id)}
+                      className="h-8 rounded-md bg-[var(--noodle-accent)] px-3 text-xs font-bold text-zinc-950 hover:opacity-90 disabled:opacity-50"
+                    >
+                      {localizeUi("ui.noodle.stageprofileview.sourceAdoptIdentity")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={dismissSourceChanges.isPending}
+                    onClick={() => dismissSourceChanges.mutate(profile.id)}
+                    className="h-8 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold hover:bg-[var(--accent)] disabled:opacity-50"
+                  >
+                    {localizeUi("ui.noodle.stageprofileview.sourceDismiss")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
+          </>
+        }
         contentActions={
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <button

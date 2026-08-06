@@ -22,9 +22,14 @@ assert.equal(plan.nextCreatorOffset, 9);
 
 const twoRunPlan = reconcileNoodleFanActivityDayPlan(null, creators, morning, 2);
 assert.equal(twoRunPlan.runs.length, 2);
+const existingScheduled = twoRunPlan.runs.map((run) => ({ id: run.id, creatorIds: run.creatorIds }));
 const resizedPlan = reconcileNoodleFanActivityDayPlan(twoRunPlan, creators, new Date(2026, 6, 10, 0, 0, 0, 0), 3);
 assert.equal(resizedPlan.runs.length, 3);
-assert.equal(Date.parse(resizedPlan.runs[1]!.scheduledAt) - Date.parse(resizedPlan.runs[0]!.scheduledAt), 8 * 60 * 60 * 1000);
+assert.deepEqual(
+  resizedPlan.runs.slice(0, 2).map((run) => ({ id: run.id, creatorIds: run.creatorIds })),
+  existingScheduled,
+);
+assert.deepEqual(resizedPlan.runs[2]!.creatorIds, creators.slice(11, 13).concat(creators.slice(0, 10)));
 const exhaustedPlan = {
   ...twoRunPlan,
   runs: twoRunPlan.runs.map((run) => ({ ...run, status: "completed" as const, finishedAt: morning.toISOString() })),
@@ -71,5 +76,20 @@ assert.equal(completed.runs[1]!.acceptedActivities[0]!.applied, true);
 assert.equal(completed.runs[1]!.status, "completed");
 assert.deepEqual(parsePersistedNoodleFanActivityDayPlan(JSON.parse(JSON.stringify(completed))), completed);
 assert.equal(parsePersistedNoodleFanActivityDayPlan({ ...completed, version: 2 }), null);
+const runTemplate = completed.runs[0]!;
+assert.equal(
+  parsePersistedNoodleFanActivityDayPlan({
+    ...completed,
+    runs: Array.from({ length: 25 }, (_, index) => ({ ...runTemplate, id: `automatic-${index}`, manual: false })),
+  }),
+  null,
+);
+assert.equal(
+  parsePersistedNoodleFanActivityDayPlan({
+    ...completed,
+    runs: Array.from({ length: 25 }, (_, index) => ({ ...runTemplate, id: `manual-${index}`, manual: true })),
+  }),
+  null,
+);
 
 process.stdout.write("Noodle fan day-plan regression passed.\n");

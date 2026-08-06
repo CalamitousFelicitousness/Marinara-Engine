@@ -27,11 +27,13 @@ function BoundedNumberInput({
   min,
   max,
   onCommit,
+  onInvalid,
 }: {
   value: number;
   min: number;
   max: number;
   onCommit: (value: number, revert: () => void) => void;
+  onInvalid?: () => void;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
@@ -39,6 +41,7 @@ function BoundedNumberInput({
     const parsed = Number(draft);
     if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
       setDraft(String(value));
+      onInvalid?.();
       return;
     }
     onCommit(parsed, () => setDraft(String(value)));
@@ -109,6 +112,7 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
             value={settings?.fanActivityRunsPerDay ?? 4}
             min={1}
             max={24}
+            onInvalid={() => toast.error(t("ui.noodle.noodlerfanactivity.runsPerDayInvalid"))}
             onCommit={(value, revert) =>
               updateSettings.mutate(
                 { fanActivityRunsPerDay: value },

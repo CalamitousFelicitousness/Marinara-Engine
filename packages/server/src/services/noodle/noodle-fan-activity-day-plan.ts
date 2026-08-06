@@ -118,10 +118,16 @@ export function parsePersistedNoodleFanActivityDayPlan(value: unknown): Persiste
   if (row.version !== NOODLE_FAN_ACTIVITY_DAY_PLAN_VERSION) return null;
   if (typeof row.localDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(row.localDate)) return null;
   if (typeof row.timezone !== "string" || !row.timezone || !Array.isArray(row.runs)) return null;
+  const validRuns = row.runs.every(validRun);
+  const manualRunCount = validRuns
+    ? row.runs.filter((run) => (run as NoodleFanActivityDayPlanRun).manual === true).length
+    : 0;
+  const automaticRunCount = validRuns ? row.runs.length - manualRunCount : 0;
   if (
     row.runs.length < 1 ||
-    row.runs.length > NOODLE_FAN_ACTIVITY_MAX_RUNS_PER_DAY + NOODLE_FAN_ACTIVITY_MAX_MANUAL_RUNS ||
-    !row.runs.every(validRun)
+    !validRuns ||
+    automaticRunCount > NOODLE_FAN_ACTIVITY_MAX_RUNS_PER_DAY ||
+    manualRunCount > NOODLE_FAN_ACTIVITY_MAX_MANUAL_RUNS
   ) {
     return null;
   }
@@ -168,16 +174,27 @@ export function reconcileNoodleFanActivityDayPlan(
     const manualRuns = current.runs.filter((run) => run.manual);
     const automaticRuns = current.runs.filter((run) => !run.manual);
     const usedRuns = automaticRuns.filter((run) => run.status !== "scheduled");
-    const usedIds = new Set(usedRuns.map((run) => run.id));
+    const scheduledRunsById = new Map(
+      automaticRuns.filter((run) => run.status === "scheduled").map((run) => [run.id, run]),
+    );
+    const retainedScheduledRuns = [...scheduledRunsById.values()].slice(0, Math.max(0, targetRuns - usedRuns.length));
+    const retainedIds = new Set([...usedRuns, ...retainedScheduledRuns].map((run) => run.id));
     const addedRuns = scheduledRuns(at, targetRuns)
-      .filter((run) => !usedIds.has(run.id))
-      .slice(0, Math.max(0, targetRuns - usedRuns.length));
+      .filter((run) => !retainedIds.has(run.id))
+      .slice(0, Math.max(0, targetRuns - usedRuns.length - retainedScheduledRuns.length));
     const creators = creatorList(creatorIds);
+    let offset = creators.length === 0 ? 0 : current.nextCreatorOffset % creators.length;
     for (const run of addedRuns) {
-      run.creatorIds = creators.slice(0, NOODLE_FAN_ACTIVITY_MAX_CREATORS_PER_RUN);
+      const count = Math.min(NOODLE_FAN_ACTIVITY_MAX_CREATORS_PER_RUN, creators.length);
+      run.creatorIds = Array.from({ length: count }, (_, index) => creators[(offset + index) % creators.length]!);
+      offset = creators.length === 0 ? 0 : (offset + count) % creators.length;
     }
     return reconcileOverdueNoodleFanActivityRuns(
-      { ...current, runs: [...usedRuns, ...addedRuns, ...manualRuns] },
+      {
+        ...current,
+        runs: [...usedRuns, ...retainedScheduledRuns, ...addedRuns, ...manualRuns],
+        nextCreatorOffset: offset,
+      },
       at,
     );
   }

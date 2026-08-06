@@ -12,9 +12,9 @@ activity to NoodleR. The activity consists only of likes, replies, and reposts
 on eligible existing NoodleR posts. It is ambient activity, not a second
 posting system, a named-fan system, or an economy.
 
-The scheduler runs at most a configurable number of platform runs per local day, one run for
-each platform per local day. A run is platform-wide: it considers all eligible
-creators on that platform, selects at most **12 creators per run**, and makes
+The scheduler runs a configurable number of platform runs per local day. Each
+configured run is platform-wide: it considers all eligible creators on that
+platform, selects at most **12 creators per run**, and makes
 at most **one platform-wide LLM invocation for the run**. The model may propose
 multiple candidate activities in that single response. Deterministic server
 validation, quotas, access checks, deduplication, and anti-spam decide what is

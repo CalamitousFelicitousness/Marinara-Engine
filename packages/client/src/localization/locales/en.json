@@ -5997,6 +5997,7 @@
   "ui.noodle.noodlerfanactivity.reposts": "Reposts per refresh",
   "ui.noodle.noodlerfanactivity.running": "Running audience activity…",
   "ui.noodle.noodlerfanactivity.runsPerDay": "Automatic audience runs per day",
+  "ui.noodle.noodlerfanactivity.runsPerDayInvalid": "Automatic audience runs must be a whole number from 1 to 24.",
   "ui.noodle.noodlerframe.back": "Back",
   "ui.noodle.noodlerframe.noodler": "NoodleR",
   "ui.noodle.noodlerhome.accessSettingsUpdated": "Access settings updated.",

@@ -2988,8 +2988,8 @@ function StageProfileView({
                               [archetype]: value,
                             };
                             if (!Object.values(archetypeWeights).some((weight) => weight > 0)) {
-                              event.target.value = String(current);
                               toast.error(localizeUi("ui.noodle.noodlerfanactivity.allWeightsZero"));
+                              event.target.value = String(current);
                               return;
                             }
                             updateFanActivity.mutate(

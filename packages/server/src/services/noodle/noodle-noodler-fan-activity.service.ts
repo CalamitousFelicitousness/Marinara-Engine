@@ -16,7 +16,11 @@ import type { ChatMessage } from "../llm/base-provider.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createNoodleStorage } from "../storage/noodle.storage.js";
-import type { NoodleFanActivityToStore } from "./noodle-fan-activity-day-plan.js";
+import {
+  NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR,
+  NOODLE_FAN_ACTIVITY_MAX_CREATORS_PER_RUN,
+  type NoodleFanActivityToStore,
+} from "./noodle-fan-activity-day-plan.js";
 import {
   syntheticNoodlerFanIdentityProvider,
   type NoodlerFanIdentity,
@@ -27,9 +31,7 @@ import { noodleResponseFormat } from "./noodle-response-format.js";
 
 type GenerationConnection = NonNullable<Awaited<ReturnType<ReturnType<typeof createConnectionsStorage>["getWithKey"]>>>;
 
-export const MAX_FAN_CREATORS_PER_RUN = 12;
 export const MAX_FAN_POSTS_PER_CREATOR = 4;
-export const MAX_FAN_ACTIVITIES_PER_CREATOR = 4;
 
 export interface ResolvedNoodlerFanActivityPolicy {
   enabled: boolean;
@@ -56,9 +58,9 @@ export interface NoodlerFanCreatorCandidate {
 }
 
 function weightedIdentitySequence(identities: NoodlerFanIdentity[], weights: NoodlerFanArchetypeWeights) {
-  return identities.flatMap((identity) =>
-    Array.from({ length: Math.max(0, weights[identity.archetype]) }, () => identity),
-  );
+  return identities
+    .map((identity) => ({ identity, weight: Math.max(0, weights[identity.archetype]) }))
+    .filter(({ weight }) => weight > 0);
 }
 
 export function selectNoodlerFanActivities(input: {
@@ -88,7 +90,7 @@ export function selectNoodlerFanActivities(input: {
     if (quotas[activity.type] <= 0) continue;
     const creator = creatorById.get(activity.creatorAccountId);
     if (!creator || postOwnerById.get(activity.targetPostId) !== creator.creator.id) continue;
-    if ((creatorCounts.get(creator.creator.id) ?? 0) >= MAX_FAN_ACTIVITIES_PER_CREATOR) continue;
+    if ((creatorCounts.get(creator.creator.id) ?? 0) >= NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR) continue;
     const identity = identityByHandle.get(activity.actorHandle.toLowerCase());
     if (!identity || !creator.identities.some((candidate) => candidate.id === identity.id)) continue;
     const content = activity.type === "reply" ? activity.content?.trim() || null : null;
@@ -119,8 +121,9 @@ function buildFanActivityMessages(input: {
     "Use only supplied creator IDs, actor handles, and post IDs. Never invent identifiers.",
     "Likes and reposts have null content. Replies are brief, natural, relevant, and not repetitive.",
     "Return JSON only with an activities array.",
+    "Each actor handle has a weight; prefer higher-weight actors more often, proportionally.",
     `At most ${input.settings.fanLikesPerRefresh} likes, ${input.settings.fanRepliesPerRefresh} replies, and ${input.settings.fanRepostsPerRefresh} reposts total.`,
-    `At most ${MAX_FAN_ACTIVITIES_PER_CREATOR} activities for any creator.`,
+    `At most ${NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR} activities for any creator.`,
   ].join("\n");
   const creators = input.creators.map((candidate) => ({
     creatorAccountId: candidate.creator.id,
@@ -130,7 +133,7 @@ function buildFanActivityMessages(input: {
       bio: candidate.creator.bio,
     },
     actorHandles: weightedIdentitySequence(candidate.identities, candidate.policy.archetypeWeights).map(
-      (identity) => identity.snapshot.handle,
+      ({ identity, weight }) => ({ handle: identity.snapshot.handle, weight }),
     ),
     posts: candidate.posts.map(({ id, title, content }) => ({ id, title, content })),
   }));
@@ -191,7 +194,9 @@ export async function prepareNoodlerFanCreatorCandidates(input: {
 }): Promise<NoodlerFanCreatorCandidate[]> {
   const noodle = createNoodleStorage(input.db);
   const creators = (
-    await Promise.all(input.creatorIds.slice(0, MAX_FAN_CREATORS_PER_RUN).map((id) => noodle.getNoodlerAccountById(id)))
+    await Promise.all(
+      input.creatorIds.slice(0, NOODLE_FAN_ACTIVITY_MAX_CREATORS_PER_RUN).map((id) => noodle.getNoodlerAccountById(id)),
+    )
   ).filter((creator): creator is NoodleAccount => creator !== null);
   const postsByCreator = await noodle.listNoodlerPostsByAccounts(
     creators.map((creator) => creator.id),

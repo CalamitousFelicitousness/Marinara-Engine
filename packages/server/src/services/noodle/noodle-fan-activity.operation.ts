@@ -11,6 +11,7 @@ import {
   dueNoodleFanActivityRun,
   finishNoodleFanActivityRun,
   markNoodleFanActivityApplied,
+  NOODLE_FAN_ACTIVITY_RUNS_PER_DAY,
   parsePersistedNoodleFanActivityDayPlan,
   reconcileNoodleFanActivityDayPlan,
   storeNoodleFanAcceptedActivities,
@@ -115,12 +116,13 @@ async function applyAcceptedActivities(
   const noodle = createNoodleStorage(db);
   let current = plan;
   let created = 0;
+  // ponytail: interaction creation is idempotent by activity.id (see createNoodlerFanInteraction),
+  // so a crash mid-loop just redoes a no-op create on resume — one write after the loop is enough.
   for (const activity of run.acceptedActivities) {
     if (activity.applied) continue;
     const creator = await noodle.getNoodlerAccountById(activity.creatorId);
     if (!creator || !resolveNoodlerFanActivityPolicy(settings, creator).enabled) {
       current = markNoodleFanActivityApplied(current, run.id, activity.id);
-      await writePlan(db, current);
       continue;
     }
     const result = await noodle.createNoodlerFanInteraction(activity.targetPostId, {
@@ -134,7 +136,6 @@ async function applyAcceptedActivities(
     });
     if (result?.created) created += 1;
     current = markNoodleFanActivityApplied(current, run.id, activity.id);
-    await writePlan(db, current);
   }
   current = finishNoodleFanActivityRun(current, run.id, "completed", new Date());
   await writePlan(db, current);
@@ -231,7 +232,7 @@ export async function getNoodlerFanActivityStatus(db: DB, at = new Date()) {
   return {
     localDate: plan?.localDate ?? localPlanDate(at),
     usedRuns: plan?.runs.filter((run) => run.status !== "scheduled").length ?? 0,
-    runLimit: plan?.runs.length ?? 4,
+    runLimit: plan?.runs.length ?? NOODLE_FAN_ACTIVITY_RUNS_PER_DAY,
     lastRun: plan ? ([...plan.runs].reverse().find((run) => run.status !== "scheduled") ?? null) : null,
   };
 }

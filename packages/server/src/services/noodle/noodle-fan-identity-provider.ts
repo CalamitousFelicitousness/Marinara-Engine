@@ -1,5 +1,7 @@
 import type { NoodleAuthorSnapshot, NoodlerFanArchetype, NoodlerFanArchetypeWeights } from "@marinara-engine/shared";
 
+export const NOODLER_FAN_IDENTITY_PREFIX = "noodler-fan:";
+
 export interface NoodlerFanIdentity {
   id: string;
   archetype: NoodlerFanArchetype;
@@ -22,7 +24,7 @@ const IDENTITIES: Array<[NoodlerFanArchetype, string, string]> = [
 export const syntheticNoodlerFanIdentityProvider: NoodlerFanIdentityProvider = {
   resolve(weights) {
     return IDENTITIES.filter(([archetype]) => weights[archetype] > 0).map(([archetype, displayName, handle]) => {
-      const id = `noodler-fan:${archetype}`;
+      const id = `${NOODLER_FAN_IDENTITY_PREFIX}${archetype}`;
       return {
         id,
         archetype,

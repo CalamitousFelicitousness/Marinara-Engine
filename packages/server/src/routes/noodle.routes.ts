@@ -62,6 +62,7 @@ import { isAllowedImageBuffer, safeFetch } from "../utils/security.js";
 import { createPublicNoodleGenerationService } from "../services/noodle/noodle-public-generation.service.js";
 import { rerollAmbientNoodleProfiles } from "../services/noodle/noodle-ambient-profile-generation.service.js";
 import { ensureAmbientNoodleAccounts, isAmbientNoodleAccount } from "../services/noodle/noodle-ambient-profiles.js";
+import { NOODLER_FAN_IDENTITY_PREFIX } from "../services/noodle/noodle-fan-identity-provider.js";
 import { createPublicNoodleImagesService } from "../services/noodle/noodle-public-images.service.js";
 import {
   buildNoodlerPublicIdentity,
@@ -414,7 +415,7 @@ export async function noodleRoutes(app: FastifyInstance) {
         posts: posts.map((post): NoodlerPostView => {
           const locked = !viewablePostIds.has(post.id);
           const interactions = (interactionsByPostId.get(post.id) ?? []).filter(
-            (interaction) => !locked || !interaction.actorAccountId.startsWith("noodler-fan:"),
+            (interaction) => !locked || !interaction.actorAccountId.startsWith(NOODLER_FAN_IDENTITY_PREFIX),
           );
           return {
             id: post.id,

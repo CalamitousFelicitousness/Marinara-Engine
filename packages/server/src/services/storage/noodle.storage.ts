@@ -57,6 +57,11 @@ import {
 import type { DB } from "../../db/connection.js";
 import { isFileUniqueConstraintError } from "../../db/file-schema.js";
 import { logger } from "../../lib/logger.js";
+import {
+  NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR,
+  parsePersistedNoodleFanActivityDayPlan,
+} from "../noodle/noodle-fan-activity-day-plan.js";
+import { NOODLER_FAN_IDENTITY_PREFIX } from "../noodle/noodle-fan-identity-provider.js";
 import { canViewNoodlerPost, isNoodlerHiddenFromViewer } from "../noodle/noodler-access.js";
 import {
   noodlerPostMediaUrl,
@@ -2807,7 +2812,7 @@ export function createNoodleStorage(db: DB) {
       ]);
       if (
         deletedRows.some(
-          (row) => !knownAccountIds.has(row.actorAccountId) && !row.actorAccountId.startsWith("noodler-fan:"),
+          (row) => !knownAccountIds.has(row.actorAccountId) && !row.actorAccountId.startsWith(NOODLER_FAN_IDENTITY_PREFIX),
         )
       ) {
         return [];
@@ -3238,31 +3243,19 @@ export function createNoodleStorage(db: DB) {
         const plan = stateRows
           .flatMap((row) => {
             try {
-              const parsed = JSON.parse(row.plan) as {
-                runs?: Array<{
-                  id?: unknown;
-                  status?: unknown;
-                  acceptedActivities?: Array<{
-                    id?: unknown;
-                    creatorId?: unknown;
-                    targetPostId?: unknown;
-                    actorId?: unknown;
-                    type?: unknown;
-                  }>;
-                }>;
-              };
-              return [parsed];
+              const parsed = parsePersistedNoodleFanActivityDayPlan(JSON.parse(row.plan));
+              return parsed ? [parsed] : [];
             } catch {
               return [];
             }
           })
-          .find((candidate) => candidate.runs?.some((run) => run.id === input.runId));
-        const run = plan?.runs?.find((candidate) => candidate.id === input.runId);
+          .find((candidate) => candidate.runs.some((run) => run.id === input.runId));
+        const run = plan?.runs.find((candidate) => candidate.id === input.runId);
         const creatorActivities =
-          run?.acceptedActivities?.filter((activity) => activity.creatorId === input.creatorAccountId) ?? [];
+          run?.acceptedActivities.filter((activity) => activity.creatorId === input.creatorAccountId) ?? [];
         if (
           run?.status !== "applying" ||
-          creatorActivities.length > 4 ||
+          creatorActivities.length > NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR ||
           !creatorActivities.some(
             (activity) =>
               activity.id === input.id &&

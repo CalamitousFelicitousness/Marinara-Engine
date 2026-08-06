@@ -754,8 +754,7 @@ export const noodleGeneratedFanActivitySchema = z
     targetPostId: z.string().min(1),
     type: z.enum(["like", "reply", "repost"]),
     content: z.string().trim().max(2000).nullable().optional(),
-  })
-  .strict();
+  });
 
 export const noodleGeneratedFollowSchema = z.object({
   actorHandle: z.string().min(1),
@@ -794,9 +793,9 @@ export const noodleGeneratedRefreshSchema = z.object({
   digests: z.array(noodleGeneratedDigestSchema).default([]),
 });
 
-export const noodleGeneratedFanRefreshSchema = z
-  .object({ activities: z.array(noodleGeneratedFanActivitySchema).default([]) })
-  .strict();
+export const noodleGeneratedFanRefreshSchema = z.object({
+  activities: z.array(noodleGeneratedFanActivitySchema).default([]),
+});
 
 export type NoodleGeneratedFanRefresh = z.infer<typeof noodleGeneratedFanRefreshSchema>;
 

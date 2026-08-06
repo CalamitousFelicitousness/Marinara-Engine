@@ -2901,10 +2901,20 @@ function StageProfileView({
                               event.target.value = String(current);
                               return;
                             }
-                            updateFanActivity.mutate({
-                              accountId: profile.id,
-                              fanActivity: { ...profile.fanActivity, archetypeWeights },
-                            });
+                            updateFanActivity.mutate(
+                              {
+                                accountId: profile.id,
+                                fanActivity: { ...profile.fanActivity, archetypeWeights },
+                              },
+                              {
+                                onError: (error) => {
+                                  toast.error(
+                                    errorMessage(error, localizeUi("ui.noodle.noodlehome.couldNotUpdateNoodleProfile")),
+                                  );
+                                  event.target.value = String(current);
+                                },
+                              },
+                            );
                           }}
                           className="h-9 w-full rounded-md border border-[var(--noodle-divider)] bg-transparent px-2 text-sm"
                         />

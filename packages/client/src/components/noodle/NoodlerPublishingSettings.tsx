@@ -31,7 +31,7 @@ function BoundedNumberInput({
   value: number;
   min: number;
   max: number;
-  onCommit: (value: number) => void;
+  onCommit: (value: number, revert: () => void) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
@@ -41,7 +41,7 @@ function BoundedNumberInput({
       setDraft(String(value));
       return;
     }
-    onCommit(parsed);
+    onCommit(parsed, () => setDraft(String(value)));
   };
   return (
     <input
@@ -115,7 +115,14 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
                 value={settings?.[key] ?? 0}
                 min={min}
                 max={max}
-                onCommit={(value) => updateSettings.mutate({ [key]: value } as NoodleSettingsUpdateInput)}
+                onCommit={(value, revert) =>
+                  updateSettings.mutate({ [key]: value } as NoodleSettingsUpdateInput, {
+                    onError: (error) => {
+                      toastToggleFailure(error);
+                      revert();
+                    },
+                  })
+                }
               />
             </label>
           ))}
@@ -130,14 +137,25 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
                 value={settings?.fanArchetypeWeights[archetype] ?? 0}
                 min={0}
                 max={100}
-                onCommit={(value) => {
+                onCommit={(value, revert) => {
                   if (!settings) return;
                   const fanArchetypeWeights: NoodlerFanArchetypeWeights = {
                     ...settings.fanArchetypeWeights,
                     [archetype]: value,
                   };
-                  if (!Object.values(fanArchetypeWeights).some((weight) => weight > 0)) return;
-                  updateSettings.mutate({ fanArchetypeWeights });
+                  if (!Object.values(fanArchetypeWeights).some((weight) => weight > 0)) {
+                    revert();
+                    return;
+                  }
+                  updateSettings.mutate(
+                    { fanArchetypeWeights },
+                    {
+                      onError: (error) => {
+                        toastToggleFailure(error);
+                        revert();
+                      },
+                    },
+                  );
                 }}
               />
             </label>

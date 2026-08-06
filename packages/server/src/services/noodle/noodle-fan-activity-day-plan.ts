@@ -1,6 +1,7 @@
 export const NOODLE_FAN_ACTIVITY_DAY_PLAN_VERSION = 1 as const;
 export const NOODLE_FAN_ACTIVITY_RUNS_PER_DAY = 4 as const;
 export const NOODLE_FAN_ACTIVITY_MAX_CREATORS_PER_RUN = 12 as const;
+export const NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR = 4 as const;
 
 export type NoodleFanActivityRunStatus =
   | "scheduled"
@@ -223,8 +224,8 @@ export function storeNoodleFanAcceptedActivities(
         : {
             ...run,
             status: "applying",
-            acceptedActivities: activities.map((activity, index) => ({
-              id: `${runId}-activity-${index + 1}`,
+            acceptedActivities: activities.map((activity) => ({
+              id: `${runId}-${activity.creatorId}-${activity.targetPostId}-${activity.type}-${activity.actorId}`,
               creatorId: activity.creatorId,
               type: activity.type,
               targetPostId: activity.targetPostId,

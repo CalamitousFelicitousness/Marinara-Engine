@@ -1143,14 +1143,16 @@ async function collectProfileAssetZipSources(files: ProfileFileAsset[], basePath
 async function writeProfileTableJsonLines(outputPath: string, tableName: string, rows: Array<Record<string, unknown>>) {
   const stream = createWriteStream(outputPath);
   let size = 0;
+  let count = 0;
   try {
     for (const row of sanitizeProfileTableRows(tableName, rows)) {
       const line = Buffer.from(`${JSON.stringify(row)}\n`, "utf8");
       await writeZipBuffer(stream, line);
       size += line.length;
+      count += 1;
     }
     await finishZipStream(stream);
-    return size;
+    return { size, count };
   } catch (error) {
     stream.destroy();
     throw error;
@@ -1174,8 +1176,8 @@ async function buildProfileArchiveSources(
     const rows = (await app.db.select().from(table as any)) as Array<Record<string, unknown>>;
     const relativePath = `profile-tables/${tableName}.jsonl`;
     const outputPath = join(tablesDir, `${tableName}.jsonl`);
-    const size = await writeProfileTableJsonLines(outputPath, tableName, rows);
-    tables[tableName] = { path: relativePath, count: rows.length, size };
+    const { size, count } = await writeProfileTableJsonLines(outputPath, tableName, rows);
+    tables[tableName] = { path: relativePath, count, size };
     tableSources.push({
       entryName: profileArchiveEntryPath(basePath, relativePath),
       filePath: outputPath,

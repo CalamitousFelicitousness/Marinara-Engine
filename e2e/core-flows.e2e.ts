@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from "@playwright/test";
 import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -3108,46 +3108,68 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       const response = await request.get(`/api/chats/${chatId}/messages`);
       return (await response.json()) as Array<{ id: string; role: string; content: string }>;
     };
-    const editMessageOnce = async (messageId: string, nextContent: string, delaySave = false) => {
+    const editMessageOnce = async (
+      messageId: string,
+      nextContent: string,
+      options: { delaySave?: boolean; failFirstSave?: boolean } = {},
+    ) => {
       const message = page.locator(`[data-message-id="${messageId}"]`);
       if (mobile) await message.click();
       else await message.hover();
       await message.getByTitle("Edit", { exact: true }).click();
       const editor = message.locator("textarea");
       await editor.fill(nextContent);
-      const saveGate = delaySave ? createDeferred() : null;
-      if (saveGate) {
-        const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
-        await page.route(
-          (url) => url.pathname === messagePath,
-          async (route) => {
-            await saveGate.promise;
+      const saveGate = options.delaySave ? createDeferred() : null;
+      let saveAttempts = 0;
+      const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
+      const messageRoute = `**${messagePath}`;
+      let saveRouteHandler: ((route: Route) => Promise<void>) | null = null;
+      if (saveGate || options.failFirstSave) {
+        saveRouteHandler = async (route) => {
+          if (route.request().method() !== "PATCH") {
             await route.continue();
-          },
-          { times: 1 },
-        );
+            return;
+          }
+          saveAttempts += 1;
+          if (saveAttempts === 1 && saveGate) await saveGate.promise;
+          if (saveAttempts === 1 && options.failFirstSave) {
+            await route.fulfill({
+              status: 503,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "Temporary message save failure" }),
+            });
+            return;
+          }
+          await route.continue();
+        };
+        await page.route(messageRoute, saveRouteHandler);
       }
-      const saveButton = message.getByLabel("Save edit", { exact: true });
-      const saveButtonBox = await saveButton.boundingBox();
-      expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
-      expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
-      await saveButton.click();
-      if (saveGate) {
-        try {
-          await expect(editor).toBeVisible();
-          await expect(editor).toHaveValue(nextContent);
-          await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
-          await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
-          await editor.press("Escape");
-          await expect(editor).toBeVisible();
-        } finally {
-          saveGate.resolve();
+      try {
+        const saveButton = message.getByLabel("Save edit", { exact: true });
+        const saveButtonBox = await saveButton.boundingBox();
+        expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
+        expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
+        await saveButton.click();
+        if (saveGate) {
+          try {
+            await expect(editor).toBeVisible();
+            await expect(editor).toHaveValue(nextContent);
+            await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
+            await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
+            await editor.press("Escape");
+            await expect(editor).toBeVisible();
+          } finally {
+            saveGate.resolve();
+          }
         }
+        if (options.failFirstSave) await expect.poll(() => saveAttempts).toBe(2);
+        await expect(message).toContainText(nextContent);
+        await expect
+          .poll(async () => (await readMessages()).find((candidate) => candidate.id === messageId)?.content)
+          .toBe(nextContent);
+      } finally {
+        if (saveRouteHandler) await page.unroute(messageRoute, saveRouteHandler);
       }
-      await expect(message).toContainText(nextContent);
-      await expect
-        .poll(async () => (await readMessages()).find((candidate) => candidate.id === messageId)?.content)
-        .toBe(nextContent);
     };
 
     await input.fill("Original message with retained draft");
@@ -3163,7 +3185,11 @@ test("stopped and refused generations keep sent text cleared and accept the firs
     await backgroundTab.goto("about:blank");
     await page.bringToFront();
     await backgroundTab.close();
-    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft", true);
+    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft", {
+      delaySave: true,
+      failFirstSave: true,
+    });
+    await editMessageOnce(firstMessage!.id, "Second edit to the same message stays newest");
     await expect(input).toHaveValue("Unsent composer text");
 
     await input.fill("Original message with cleared draft");
@@ -3218,7 +3244,7 @@ test("stopped and refused generations keep sent text cleared and accept the firs
 
     await page.reload();
     await expect(page.locator(`[data-message-id="${firstMessage!.id}"]`)).toContainText(
-      "Edited on the first save with retained draft",
+      "Second edit to the same message stays newest",
     );
     await expect(page.locator(`[data-message-id="${secondMessage!.id}"]`)).toContainText(
       "Edited on the first save with cleared draft",

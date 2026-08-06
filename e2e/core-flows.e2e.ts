@@ -2409,10 +2409,14 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     expect(cameraBox).not.toBeNull();
     if (!tileBox || !generateBox || !cameraBox) return;
 
-    expect(generateBox.width).toBeGreaterThanOrEqual(11.5);
-    expect(generateBox.width).toBeLessThanOrEqual(14);
+    expect(generateBox.width).toBeGreaterThanOrEqual(7.5);
+    expect(generateBox.width).toBeLessThanOrEqual(9);
+    expect(generateBox.height).toBeGreaterThanOrEqual(7.5);
+    expect(generateBox.height).toBeLessThanOrEqual(9);
     expect(generateBox.x + generateBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width + 1);
     expect(generateBox.y).toBeGreaterThanOrEqual(tileBox.y - 1);
+    expect(Math.abs(cameraBox.x + cameraBox.width / 2 - (tileBox.x + tileBox.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(cameraBox.y + cameraBox.height / 2 - (tileBox.y + tileBox.height / 2))).toBeLessThanOrEqual(1);
     const overlapsCamera =
       generateBox.x < cameraBox.x + cameraBox.width &&
       generateBox.x + generateBox.width > cameraBox.x &&
@@ -6760,7 +6764,7 @@ test("Game history above the dialogue box opens a historical Peek Prompt", async
   }
 });
 
-test("home shell and primary topbar panels open without client errors", async ({ page }) => {
+test("home shell and primary topbar panels open without client errors", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   await page.goto("/");
 
@@ -6785,6 +6789,23 @@ test("home shell and primary topbar panels open without client errors", async ({
     "panel-agents",
     "panel-settings",
   ]);
+
+  if (testInfo.project.name.includes("mobile")) {
+    const iconCenters = await page
+      .locator('[data-component="TopBar"] .mari-topbar-action')
+      .evaluateAll((buttons) =>
+        buttons
+          .map((button) => {
+            const icon = button.querySelector("svg");
+            const box = icon?.getBoundingClientRect();
+            return box ? box.x + box.width / 2 : null;
+          })
+          .filter((center): center is number => center !== null),
+      );
+    const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]);
+    expect(iconCenters.length).toBeGreaterThan(2);
+    expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
+  }
 
   for (const selector of [
     '[data-tour="sidebar-toggle"]',

@@ -11,6 +11,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Installed the pinned pnpm automatically when the Windows installer cannot use Corepack, an existing pnpm, or its temporary runner (#4662).
+- Exposed saved prompt choices for active Roleplay tracker agents in Chat Settings, matching the existing Game-mode selector (#4663).
+- Centered the avatar-upload camera over the mini preview in Character and Persona editors (#4665).
+- Distributed mobile topbar icons evenly across the available screen width without changing the desktop layout (#4666).
 - Kept the caret at the chosen insertion point while typing in expanded Character and Preset editors instead of repeatedly focusing the field and jumping to the end (#4656).
 - Restored a full, unobstructed hit target for Roleplay message edit controls so Save no longer reacts only near one corner (#4658).
 - Kept one stable live text node while Roleplay responses stream, avoiding Firefox DOM replacement and accessibility-tree churn on every animation frame (#4659).

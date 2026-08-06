@@ -7,9 +7,11 @@
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "StrFunc.nsh"
 !include "WinMessages.nsh"
 
 !insertmacro GetParent
+${StrTrimNewLines}
 
 ; ── App metadata ──
 !define APP_NAME "Marinara Engine"
@@ -110,6 +112,7 @@ Var GIT_OK
 Var NODE_OK
 Var PNPM_OK
 Var PNPM_RUNNER
+Var NPM_PREFIX
 Var CLONE_DIR
 Var CLONE_DIR_CREATED
 Var STAGE_DIR
@@ -376,7 +379,31 @@ Please restart your computer and run this installer again."
     ${EndIf}
   ${EndIf}
   ${If} $PNPM_RUNNER == ""
-    MessageBox MB_OK|MB_ICONSTOP "pnpm ${PNPM_VERSION} could not be started.$\r$\n$\r$\nPlease enable Corepack or install pnpm manually, then run the installer again."
+    DetailPrint "Temporary pnpm unavailable; installing pnpm ${PNPM_VERSION} via npm..."
+    nsExec::ExecToLog 'cmd /c npm install --global pnpm@${PNPM_VERSION}'
+    Pop $0
+    ${If} $0 == 0
+      StrCpy $NPM_PREFIX ""
+      nsExec::ExecToStack 'cmd /d /c npm config get prefix 2>nul'
+      Pop $0
+      Pop $NPM_PREFIX
+      ${If} $0 == 0
+        ${StrTrimNewLines} $NPM_PREFIX "$NPM_PREFIX"
+      ${EndIf}
+      ${If} $NPM_PREFIX != ""
+        ReadEnvStr $1 "PATH"
+        System::Call 'Kernel32::SetEnvironmentVariable(t "PATH", t "$NPM_PREFIX;$1")i'
+        nsExec::ExecToStack 'cmd /c pnpm --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+        Pop $PNPM_OK
+        Pop $1
+        ${If} $PNPM_OK == 0
+          StrCpy $PNPM_RUNNER "pnpm"
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  ${If} $PNPM_RUNNER == ""
+    MessageBox MB_OK|MB_ICONSTOP "pnpm ${PNPM_VERSION} could not be installed automatically.$\r$\n$\r$\nPlease check your internet connection or run npm install --global pnpm@${PNPM_VERSION}, then run this installer again."
     Abort
   ${EndIf}
   DetailPrint "pnpm ready."

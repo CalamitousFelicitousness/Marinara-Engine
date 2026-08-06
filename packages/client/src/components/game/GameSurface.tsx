@@ -9104,9 +9104,14 @@ function GameSurfaceComponent({
       const selectedChoice = choice.trim().replace(/\s+/g, " ");
       if (!selectedChoice) return;
       setActiveChoices(null);
-      sendMessage(`[choice: ${selectedChoice}]`);
+      const pendingSpatialTransition = useChatStore.getState().pendingSpatialTransitions.get(activeChatId);
+      sendMessage(
+        `[choice: ${selectedChoice}]`,
+        undefined,
+        pendingSpatialTransition?.status === "ready" ? pendingSpatialTransition.transition : undefined,
+      );
     },
-    [sendMessage, sessionInteractive],
+    [activeChatId, sendMessage, sessionInteractive],
   );
 
   const handleDismissChoices = useCallback(() => {

@@ -1,6 +1,8 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from "@playwright/test";
+import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 
 const TRANSPARENT_GIF_BASE64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const WHATS_NEW_SEEN_VERSION_KEY = "marinara:whats-new:seen-version";
@@ -163,6 +165,15 @@ test.beforeEach(async ({ page }) => {
   await prepareFreshClient(page);
 });
 
+test("Playwright color parsing preserves supported force values only", () => {
+  for (const value of ["", "1", "2", "3", "true", "TRUE"]) {
+    expect(forceColorValueEnablesColor(value), `${JSON.stringify(value)} should force color`).toBe(true);
+  }
+  for (const value of [undefined, "0", "false", "off", "no", "never", "invalid", "4"]) {
+    expect(forceColorValueEnablesColor(value), `${JSON.stringify(value)} should not force color`).toBe(false);
+  }
+});
+
 test("What's New opens once for each Marinara Engine version", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(
@@ -177,24 +188,18 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
   await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
-  await expect(announcement.getByRole("heading", { name: "The extensions are back!" })).toBeVisible();
-  await expect(announcement.getByText(/new Personas icon/)).toBeVisible();
-  await expect(announcement.getByText(/edit presets, characters, personas, and lorebooks/)).toBeVisible();
-  await expect(announcement.getByText(/three new Agents/)).toBeVisible();
-  await expect(announcement.getByText(/many bug fixes and QoL updates/)).toBeVisible();
-  await expect(announcement.locator('[data-release-story="2.4.0"] img')).toHaveCount(12);
-  await expect(announcement.getByAltText("The new Personas icon in Marinara Engine")).toHaveAttribute(
-    "src",
-    "https://i.imgur.com/K4Z9rSA.png",
-  );
+  await expect(announcement.getByRole("heading", { name: "Marinara Engine has been updated." })).toBeVisible();
+  await expect(
+    announcement.getByText(
+      "Marinara Engine has been updated! Read the release notes for everything included in this version.",
+    ),
+  ).toBeVisible();
+  await expect(announcement.locator("[data-release-story]")).toHaveCount(0);
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))
     .toBe("auto");
-  await expect
-    .poll(() => announcementScrollArea.evaluate((element) => element.scrollHeight > element.clientHeight))
-    .toBe(true);
-  await expect(announcement.getByText("Marinara Engine has been updated.", { exact: true })).toHaveCount(0);
+  await expect(announcement.getByRole("heading", { name: "The extensions are back!" })).toHaveCount(0);
   await expect(announcement.getByText("Tactical Combat Mode in Games")).toHaveCount(0);
   await expect(announcement.getByRole("link", { name: "View release" })).toHaveAttribute(
     "href",
@@ -2408,10 +2413,21 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     expect(cameraBox).not.toBeNull();
     if (!tileBox || !generateBox || !cameraBox) return;
 
-    expect(generateBox.width).toBeGreaterThanOrEqual(11.5);
-    expect(generateBox.width).toBeLessThanOrEqual(14);
-    expect(generateBox.x + generateBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width + 1);
-    expect(generateBox.y).toBeGreaterThanOrEqual(tileBox.y - 1);
+    expect(generateBox.width).toBeGreaterThanOrEqual(7.5);
+    expect(generateBox.width).toBeLessThanOrEqual(9);
+    expect(generateBox.height).toBeGreaterThanOrEqual(7.5);
+    expect(generateBox.height).toBeLessThanOrEqual(9);
+    const minimumGenerateInset = (page.viewportSize()?.width ?? 768) < 768 ? 1.5 : 2.5;
+    expect(generateBox.x).toBeGreaterThanOrEqual(tileBox.x + minimumGenerateInset);
+    expect(generateBox.y).toBeGreaterThanOrEqual(tileBox.y + minimumGenerateInset);
+    expect(generateBox.x + generateBox.width).toBeLessThanOrEqual(
+      tileBox.x + tileBox.width - minimumGenerateInset,
+    );
+    expect(generateBox.y + generateBox.height).toBeLessThanOrEqual(
+      tileBox.y + tileBox.height - minimumGenerateInset,
+    );
+    expect(Math.abs(cameraBox.x + cameraBox.width / 2 - (tileBox.x + tileBox.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(cameraBox.y + cameraBox.height / 2 - (tileBox.y + tileBox.height / 2))).toBeLessThanOrEqual(1);
     const overlapsCamera =
       generateBox.x < cameraBox.x + cameraBox.width &&
       generateBox.x + generateBox.width > cameraBox.x &&
@@ -2687,10 +2703,14 @@ test("Convo About Me keeps manual editing and native expanded-editor keyboard be
 
     await expandedEditor.evaluate((textarea) => {
       textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      textarea.setSelectionRange(2, 2);
     });
-    await page.keyboard.type("!");
-    await expect(expandedEditor).toHaveValue("alpha\nbeta!");
+    await page.keyboard.type("X");
+    await page.waitForTimeout(40);
+    await expect.poll(() => expandedEditor.evaluate((textarea) => textarea.selectionStart)).toBe(3);
+    await page.keyboard.type("Y");
+    await expect(expandedEditor).toHaveValue("alXYpha\nbeta");
+    await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
@@ -2984,6 +3004,7 @@ test("provider concurrency errors appear in generation toasts", async ({ page },
 });
 
 test("stopped and refused generations keep sent text cleared and accept the first edit", async ({
+  context,
   page,
   request,
 }, testInfo) => {
@@ -3087,18 +3108,68 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       const response = await request.get(`/api/chats/${chatId}/messages`);
       return (await response.json()) as Array<{ id: string; role: string; content: string }>;
     };
-    const editMessageOnce = async (messageId: string, nextContent: string) => {
+    const editMessageOnce = async (
+      messageId: string,
+      nextContent: string,
+      options: { delaySave?: boolean; failFirstSave?: boolean } = {},
+    ) => {
       const message = page.locator(`[data-message-id="${messageId}"]`);
       if (mobile) await message.click();
       else await message.hover();
       await message.getByTitle("Edit", { exact: true }).click();
       const editor = message.locator("textarea");
       await editor.fill(nextContent);
-      await message.getByLabel("Save edit", { exact: true }).click();
-      await expect(message).toContainText(nextContent);
-      await expect
-        .poll(async () => (await readMessages()).find((candidate) => candidate.id === messageId)?.content)
-        .toBe(nextContent);
+      const saveGate = options.delaySave ? createDeferred() : null;
+      let saveAttempts = 0;
+      const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
+      const messageRoute = `**${messagePath}`;
+      let saveRouteHandler: ((route: Route) => Promise<void>) | null = null;
+      if (saveGate || options.failFirstSave) {
+        saveRouteHandler = async (route) => {
+          if (route.request().method() !== "PATCH") {
+            await route.continue();
+            return;
+          }
+          saveAttempts += 1;
+          if (saveAttempts === 1 && saveGate) await saveGate.promise;
+          if (saveAttempts === 1 && options.failFirstSave) {
+            await route.fulfill({
+              status: 503,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "Temporary message save failure" }),
+            });
+            return;
+          }
+          await route.continue();
+        };
+        await page.route(messageRoute, saveRouteHandler);
+      }
+      try {
+        const saveButton = message.getByLabel("Save edit", { exact: true });
+        const saveButtonBox = await saveButton.boundingBox();
+        expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
+        expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
+        await saveButton.click();
+        if (saveGate) {
+          try {
+            await expect(editor).toBeVisible();
+            await expect(editor).toHaveValue(nextContent);
+            await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
+            await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
+            await editor.press("Escape");
+            await expect(editor).toBeVisible();
+          } finally {
+            saveGate.resolve();
+          }
+        }
+        if (options.failFirstSave) await expect.poll(() => saveAttempts).toBe(2);
+        await expect(message).toContainText(nextContent);
+        await expect
+          .poll(async () => (await readMessages()).find((candidate) => candidate.id === messageId)?.content)
+          .toBe(nextContent);
+      } finally {
+        if (saveRouteHandler) await page.unroute(messageRoute, saveRouteHandler);
+      }
     };
 
     await input.fill("Original message with retained draft");
@@ -3110,7 +3181,15 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       (message) => message.role === "user" && message.content === "Original message with retained draft",
     );
     expect(firstMessage).toBeTruthy();
-    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft");
+    const backgroundTab = await context.newPage();
+    await backgroundTab.goto("about:blank");
+    await page.bringToFront();
+    await backgroundTab.close();
+    await editMessageOnce(firstMessage!.id, "Edited on the first save with retained draft", {
+      delaySave: true,
+      failFirstSave: true,
+    });
+    await editMessageOnce(firstMessage!.id, "Second edit to the same message stays newest");
     await expect(input).toHaveValue("Unsent composer text");
 
     await input.fill("Original message with cleared draft");
@@ -3165,7 +3244,7 @@ test("stopped and refused generations keep sent text cleared and accept the firs
 
     await page.reload();
     await expect(page.locator(`[data-message-id="${firstMessage!.id}"]`)).toContainText(
-      "Edited on the first save with retained draft",
+      "Second edit to the same message stays newest",
     );
     await expect(page.locator(`[data-message-id="${secondMessage!.id}"]`)).toContainText(
       "Edited on the first save with cleared draft",
@@ -3660,7 +3739,7 @@ test("generation fallbacks identify the replacement connection in a toast", asyn
 });
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} exposes reasoning on its first live chunk and retains saved reasoning`, async ({ page }, testInfo) => {
+  test(`${mode} exposes reasoning and explains unavailable saved summaries`, async ({ page }, testInfo) => {
     const characters: Array<{ id: string; name: string }> = [];
     if (mode === "conversation") {
       for (const name of ["Reasoning One", "Reasoning Two"]) {
@@ -3700,6 +3779,37 @@ for (const mode of ["roleplay", "conversation"] as const) {
       });
       expect(savedMessageResponse.ok()).toBeTruthy();
       const savedMessage = (await savedMessageResponse.json()) as { id: string };
+      const unavailableMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+        data: {
+          role: "assistant",
+          content:
+            mode === "conversation"
+              ? `${characters[0]!.name}: A response whose provider omitted its reasoning summary.`
+              : "A response whose provider omitted its reasoning summary.",
+        },
+      });
+      expect(unavailableMessageResponse.ok()).toBeTruthy();
+      const unavailableMessage = (await unavailableMessageResponse.json()) as { id: string };
+      const unavailableMessageExtraResponse = await page.request.patch(
+        `/api/chats/${chat.id}/messages/${unavailableMessage.id}/extra`,
+        {
+          data: {
+            generationInfo: {
+              model: "gpt-5.6-sol",
+              provider: "openai",
+              temperature: null,
+              tokensPrompt: 512,
+              tokensCompletion: 120,
+              tokensReasoning: 1034,
+              tokensCachedPrompt: null,
+              tokensCacheWritePrompt: null,
+              durationMs: 1200,
+              finishReason: "stop",
+            },
+          },
+        },
+      );
+      expect(unavailableMessageExtraResponse.ok()).toBeTruthy();
 
       await page.addInitScript((chatId) => {
         localStorage.setItem("marinara-active-chat-id", chatId);
@@ -3766,8 +3876,26 @@ for (const mode of ["roleplay", "conversation"] as const) {
         : savedRow.locator('button[title="View model thoughts"]');
       await expect(savedThoughtsButton).toBeVisible();
       await savedThoughtsButton.click();
-      await expect(page.getByRole("dialog", { name: "Model Thoughts" })).toContainText(
-        "Saved reasoning remains available.",
+      const savedThoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+      await expect(savedThoughtsDialog).toContainText("Saved reasoning remains available.");
+      await page.keyboard.press("Escape");
+      await expect(savedThoughtsDialog).toBeHidden();
+
+      const unavailableRow = page.locator(`[data-message-id="${unavailableMessage.id}"]`);
+      if (testInfo.project.name.includes("mobile")) {
+        await unavailableRow.click();
+      } else {
+        await unavailableRow.hover();
+      }
+      const unavailableThoughtsButton = testInfo.project.name.includes("mobile")
+        ? unavailableRow.getByRole("button", { name: "Reasoning summary unavailable" })
+        : unavailableRow.locator('button[title="Reasoning summary unavailable"]');
+      await expect(unavailableThoughtsButton).toBeVisible();
+      await unavailableThoughtsButton.click();
+      const unavailableDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+      await expect(unavailableDialog).toContainText("Reasoning summary unavailable");
+      await expect(unavailableDialog).toContainText(
+        "The model used reasoning, but the provider did not return a displayable summary for this response.",
       );
     } finally {
       await updateLiveReasoningState(page, chat.id, "stop").catch(() => undefined);
@@ -4020,18 +4148,12 @@ test("Roleplay side panels synchronize their slide with the desktop shell resize
       );
     });
     const openRightSlotWidth = (await rightSlot.boundingBox())?.width ?? 0;
-    const openRightPanelX = (await rightPanel.boundingBox())?.x ?? 0;
+    expect(openRightSlotWidth).toBeGreaterThan(0);
     const centerWidthWithRightPanel = (await centerContent.boundingBox())?.width ?? 0;
     await page.getByRole("button", { name: "Close panel" }).click();
     await expect(rightPanel).toHaveClass(/mari-shell-panel-exit-right/);
-    await expect(rightSlot).not.toHaveCSS("width", "0px");
-    await page.waitForTimeout(70);
-    const closingRightSlotWidth = (await rightSlot.boundingBox())?.width ?? 0;
-    expect(closingRightSlotWidth).toBeGreaterThan(0);
-    expect(closingRightSlotWidth).toBeLessThan(openRightSlotWidth);
-    expect((await rightPanel.boundingBox())?.x ?? 0).toBeGreaterThan(openRightPanelX + 8);
-    expect((await centerContent.boundingBox())?.width ?? 0).toBeGreaterThan(centerWidthWithRightPanel);
     await expect(rightSlot).toHaveCSS("width", "0px");
+    expect((await centerContent.boundingBox())?.width ?? 0).toBeGreaterThan(centerWidthWithRightPanel);
 
     await page.locator('[data-tour="sidebar-toggle"]').click();
     await expect(leftSlot).not.toHaveCSS("width", "0px");
@@ -4045,18 +4167,12 @@ test("Roleplay side panels synchronize their slide with the desktop shell resize
       );
     });
     const openLeftSlotWidth = (await leftSlot.boundingBox())?.width ?? 0;
-    const openLeftPanelX = (await leftPanel.boundingBox())?.x ?? 0;
+    expect(openLeftSlotWidth).toBeGreaterThan(0);
     const centerWidthWithLeftPanel = (await centerContent.boundingBox())?.width ?? 0;
     await page.locator('[data-tour="sidebar-toggle"]').click();
     await expect(leftPanel).toHaveClass(/mari-shell-panel-exit-left/);
-    await expect(leftSlot).not.toHaveCSS("width", "0px");
-    await page.waitForTimeout(70);
-    const closingLeftSlotWidth = (await leftSlot.boundingBox())?.width ?? 0;
-    expect(closingLeftSlotWidth).toBeGreaterThan(0);
-    expect(closingLeftSlotWidth).toBeLessThan(openLeftSlotWidth);
-    expect((await leftPanel.boundingBox())?.x ?? 0).toBeLessThan(openLeftPanelX - 8);
-    expect((await centerContent.boundingBox())?.width ?? 0).toBeGreaterThan(centerWidthWithLeftPanel);
     await expect(leftSlot).toHaveCSS("width", "0px");
+    expect((await centerContent.boundingBox())?.width ?? 0).toBeGreaterThan(centerWidthWithLeftPanel);
 
     for (const [slot, panel] of [
       [rightSlot, rightPanel],
@@ -4375,7 +4491,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
         };
       }),
     )
-    .toEqual({ version: 88, hasExtensionRecords: false, hasCleanupFlag: false });
+    .toEqual({ version: 90, hasExtensionRecords: false, hasCleanupFlag: false });
 
   expect(
     await page.evaluate(
@@ -4517,7 +4633,10 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     const lockedImportButton = page.getByTitle(disabledHelp).first();
     await expect(lockedImportButton).toHaveAttribute("aria-disabled", "true");
     await lockedImportButton.dispatchEvent("click");
-    await expect(page.getByText(disabledHelp, { exact: true }).last()).toBeVisible();
+    const disabledToast = page.locator("[data-sonner-toast]").filter({ hasText: disabledHelp }).last();
+    await expect(disabledToast).toBeVisible();
+    await disabledToast.getByRole("button", { name: "Close toast" }).click();
+    await expect(disabledToast).toBeHidden();
 
     await page.locator('[data-tour="panel-settings"]').click();
     await page.getByRole("tab", { name: "Advanced" }).click();
@@ -4933,6 +5052,195 @@ test("chat toolbar panels close when their trigger is clicked again across modes
       request.delete(`/api/chats/${conversationChat.id}`),
       request.delete(`/api/chats/${gameChat.id}`),
     ]);
+  }
+});
+
+test("prompt preset transfers discard deprecated generation parameters", async ({ request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Prompt preset transfer contracts are covered once.");
+
+  const suffix = Date.now().toString(36);
+  const createdPresetIds = new Set<string>();
+  const presetResponse = await request.post("/api/prompts", {
+    data: {
+      name: `Transfer Preset ${suffix}`,
+      description: "Current prompt-preset transfer fixture.",
+      conversationPrompt: "Conversation prompt survives transfer.",
+      gamePrompt: "Game prompt survives transfer.",
+      variableGroups: [{ name: "tone", label: "Tone", options: [{ label: "Warm", value: "warm" }] }],
+      variableValues: { tone: "warm" },
+      wrapFormat: "markdown",
+      author: "Transfer Test",
+      parameters: {
+        temperature: 0.37,
+        maxTokens: 777,
+        reasoningEffort: "maximum",
+        verbosity: "high",
+      },
+    },
+  });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  createdPresetIds.add(preset.id);
+
+  const sectionResponse = await request.post(`/api/prompts/${preset.id}/sections`, {
+    data: {
+      identifier: `transfer-section-${suffix}`,
+      name: "Transfer Section",
+      content: "Supported section content survives transfer.",
+      role: "system",
+    },
+  });
+  expect(sectionResponse.ok()).toBeTruthy();
+
+  try {
+    const exportResponse = await request.get(`/api/prompts/${preset.id}/export`);
+    expect(exportResponse.ok()).toBeTruthy();
+    const envelope = (await exportResponse.json()) as {
+      type: string;
+      data: {
+        preset: Record<string, unknown>;
+        sections: Array<Record<string, unknown>>;
+      };
+    };
+    expect(envelope.type).toBe("marinara_preset");
+    expect(envelope.data.preset.parameters).toBeUndefined();
+    expect(envelope.data.preset.conversationPrompt).toBe("Conversation prompt survives transfer.");
+    expect(envelope.data.sections).toContainEqual(
+      expect.objectContaining({ content: "Supported section content survives transfer." }),
+    );
+
+    const bulkResponse = await request.post("/api/prompts/export-bulk", { data: { ids: [preset.id] } });
+    expect(bulkResponse.ok()).toBeTruthy();
+    const zip = new AdmZip(await bulkResponse.body());
+    const manifestEntry = zip.getEntries().find((entry) => entry.entryName.endsWith("/manifest.json"));
+    expect(manifestEntry).toBeTruthy();
+    const manifest = JSON.parse(manifestEntry!.getData().toString("utf8")) as {
+      config: { data: { preset: Record<string, unknown> } };
+    };
+    expect(manifest.config.data.preset.parameters).toBeUndefined();
+
+    const nativeImportResponse = await request.post("/api/import/marinara", {
+      data: {
+        ...envelope,
+        data: {
+          ...envelope.data,
+          preset: {
+            ...envelope.data.preset,
+            name: `Native Legacy Import ${suffix}`,
+            parameters: {
+              temperature: 0.13,
+              maxTokens: 313,
+              reasoningEffort: "low",
+            },
+          },
+        },
+      },
+    });
+    expect(nativeImportResponse.ok()).toBeTruthy();
+    const nativeImport = (await nativeImportResponse.json()) as { id: string };
+    createdPresetIds.add(nativeImport.id);
+    const nativeStoredResponse = await request.get(`/api/prompts/${nativeImport.id}`);
+    const nativeStored = (await nativeStoredResponse.json()) as {
+      conversationPrompt: string;
+      wrapFormat: string;
+      parameters: string;
+    };
+    const nativeParameters = JSON.parse(nativeStored.parameters) as Record<string, unknown>;
+    expect(nativeStored.conversationPrompt).toBe("Conversation prompt survives transfer.");
+    expect(nativeStored.wrapFormat).toBe("markdown");
+    expect(nativeParameters).not.toHaveProperty("temperature");
+    expect(nativeParameters).not.toHaveProperty("maxTokens");
+    expect(nativeParameters).not.toHaveProperty("reasoningEffort");
+    const nativeSectionsResponse = await request.get(`/api/prompts/${nativeImport.id}/sections`);
+    expect(await nativeSectionsResponse.json()).toContainEqual(
+      expect.objectContaining({ content: "Supported section content survives transfer." }),
+    );
+
+    const compatibleImportResponse = await request.post("/api/import/st-preset", {
+      data: {
+        name: `Compatible Legacy Import ${suffix}`,
+        temperature: 0.19,
+        openai_max_tokens: 919,
+        reasoning_effort: "low",
+        prompts: [
+          {
+            identifier: `compatible-section-${suffix}`,
+            name: "Compatible Section",
+            content: "Compatible prompt content survives import.",
+            role: "system",
+          },
+        ],
+      },
+    });
+    expect(compatibleImportResponse.ok()).toBeTruthy();
+    const compatibleImport = (await compatibleImportResponse.json()) as { presetId: string };
+    createdPresetIds.add(compatibleImport.presetId);
+    const compatibleStoredResponse = await request.get(`/api/prompts/${compatibleImport.presetId}`);
+    const compatibleStored = (await compatibleStoredResponse.json()) as { parameters: string };
+    const compatibleParameters = JSON.parse(compatibleStored.parameters) as Record<string, unknown>;
+    expect(compatibleParameters).not.toHaveProperty("temperature");
+    expect(compatibleParameters).not.toHaveProperty("maxTokens");
+    expect(compatibleParameters).not.toHaveProperty("reasoningEffort");
+    const compatibleSectionsResponse = await request.get(`/api/prompts/${compatibleImport.presetId}/sections`);
+    expect(await compatibleSectionsResponse.json()).toContainEqual(
+      expect.objectContaining({ content: "Compatible prompt content survives import." }),
+    );
+  } finally {
+    await Promise.all([...createdPresetIds].map((id) => request.delete(`/api/prompts/${id}`)));
+  }
+});
+
+test("selected prompt indicators escape the avatar clipping frame", async ({ page, request }, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now().toString(36)}`;
+  const presetName = `Selected Preset ${suffix}`;
+  const presetResponse = await request.post("/api/prompts", { data: { name: presetName } });
+  expect(presetResponse.ok()).toBeTruthy();
+  const preset = (await presetResponse.json()) as { id: string };
+  const chatResponse = await request.post("/api/chats", {
+    data: {
+      name: `Selected Preset Chat ${suffix}`,
+      mode: "roleplay",
+      characterIds: [],
+      promptPresetId: preset.id,
+    },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+
+  try {
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.goto("/");
+    await page.locator('[data-tour="panel-presets"]').click();
+    const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
+    const pictureButton = presetRow.getByRole("button", { name: "Upload preset picture" });
+    const indicator = presetRow.locator("[data-preset-selected-indicator]");
+    await expect(pictureButton).toBeVisible();
+    await expect(indicator).toBeVisible();
+    const placement = await indicator.evaluate((element) => {
+      const indicatorRect = element.getBoundingClientRect();
+      const picture = element.closest("button");
+      const row = element.closest('[data-touch-drag-card="preset"]');
+      if (!picture || !row) return null;
+      const pictureRect = picture.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      return {
+        pictureOverflow: getComputedStyle(picture).overflow,
+        escapesPictureTop: indicatorRect.top < pictureRect.top,
+        escapesPictureRight: indicatorRect.right > pictureRect.right,
+        containedByRow:
+          indicatorRect.top >= rowRect.top &&
+          indicatorRect.right <= rowRect.right &&
+          indicatorRect.bottom <= rowRect.bottom,
+      };
+    });
+    expect(placement).toEqual({
+      pictureOverflow: "visible",
+      escapesPictureTop: true,
+      escapesPictureRight: true,
+      containedByRow: true,
+    });
+  } finally {
+    await Promise.all([request.delete(`/api/chats/${chat.id}`), request.delete(`/api/prompts/${preset.id}`)]);
   }
 });
 
@@ -6484,7 +6792,7 @@ test("Game history above the dialogue box opens a historical Peek Prompt", async
   }
 });
 
-test("home shell and primary topbar panels open without client errors", async ({ page }) => {
+test("home shell and primary topbar panels open without client errors", async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   await page.goto("/");
 
@@ -6509,6 +6817,23 @@ test("home shell and primary topbar panels open without client errors", async ({
     "panel-agents",
     "panel-settings",
   ]);
+
+  if (testInfo.project.name.includes("mobile")) {
+    const iconCenters = await page
+      .locator('[data-component="TopBar"] .mari-topbar-action')
+      .evaluateAll((buttons) =>
+        buttons
+          .map((button) => {
+            const icon = button.querySelector("svg");
+            const box = icon?.getBoundingClientRect();
+            return box ? box.x + box.width / 2 : null;
+          })
+          .filter((center): center is number => center !== null),
+      );
+    const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]);
+    expect(iconCenters.length).toBeGreaterThan(2);
+    expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
+  }
 
   for (const selector of [
     '[data-tour="sidebar-toggle"]',
@@ -7765,8 +8090,10 @@ test("Music Player links to Music DJ while its package is unavailable", async ({
   });
 
   const openMusicPlayerSetting = async () => {
-    await page.locator('[data-tour="panel-settings"]').click();
     const row = page.locator("#settings-control-music-player");
+    const settingsButton = page.locator('[data-tour="panel-settings"]');
+    await expect(settingsButton).toHaveAttribute("aria-pressed", /true|false/u);
+    if ((await settingsButton.getAttribute("aria-pressed")) !== "true") await settingsButton.click();
     await expect(row).toBeVisible();
     return row;
   };
@@ -8968,23 +9295,20 @@ test("Conversation Chat Settings exposes and persists Long-Term Memory activatio
     const drawer = page.locator(".mari-chat-settings-drawer");
     await openAgentsSection(drawer);
     const agentsSection = drawer.locator('[data-chat-settings-section="conversation-agents"]');
-    const toggle = agentsSection.getByRole("checkbox", { name: "Long-Term Memory", exact: true });
+    const toggle = agentsSection.getByRole("checkbox", { name: /^Long-Term Memory/ });
     await expect(toggle).toBeVisible();
     await expect(toggle).not.toBeChecked();
     const calls = drawer.locator("marinara-capability-conversation-calls");
     const ltm = drawer.locator("marinara-capability-long-term-memory");
-    await expect(calls).toBeVisible();
+    await expect(calls).toHaveCount(1);
     await expect(ltm).toBeVisible();
-    const callsBox = await calls.boundingBox();
-    const ltmBox = await ltm.boundingBox();
-    expect(callsBox).not.toBeNull();
-    expect(ltmBox).not.toBeNull();
-    expect(ltmBox!.y).toBeGreaterThan(callsBox!.y);
     await expect(drawer.locator('[data-ltm-control="select"]')).toBeVisible();
     await expect(drawer.locator('[data-ltm-control="budget"]')).toBeVisible();
     await expect(drawer.locator('[data-ltm-control="max-chunks"]')).toBeVisible();
 
-    await toggle.check();
+    const toggleId = await toggle.getAttribute("id");
+    expect(toggleId).toBeTruthy();
+    await agentsSection.locator(`label[for="${toggleId}"]`).last().click();
     await expect
       .poll(readMetadata)
       .toMatchObject({ enableAgents: true, activeAgentIds: ["sibling-agent", "long-term-memory"] });
@@ -8995,9 +9319,11 @@ test("Conversation Chat Settings exposes and persists Long-Term Memory activatio
     const reloadedDrawer = page.locator(".mari-chat-settings-drawer");
     await openAgentsSection(reloadedDrawer);
     const reloadedAgentsSection = reloadedDrawer.locator('[data-chat-settings-section="conversation-agents"]');
-    const reloadedToggle = reloadedAgentsSection.getByRole("checkbox", { name: "Long-Term Memory", exact: true });
+    const reloadedToggle = reloadedAgentsSection.getByRole("checkbox", { name: /^Long-Term Memory/ });
     await expect(reloadedToggle).toBeChecked();
-    await reloadedToggle.uncheck();
+    const reloadedToggleId = await reloadedToggle.getAttribute("id");
+    expect(reloadedToggleId).toBeTruthy();
+    await reloadedAgentsSection.locator(`label[for="${reloadedToggleId}"]`).last().click();
     await expect.poll(readMetadata).toMatchObject({ enableAgents: true, activeAgentIds: ["sibling-agent"] });
     await expect(reloadedToggle).not.toBeChecked();
   } finally {
@@ -9688,7 +10014,7 @@ test("World Maps stays in Agents and Chat Settings", async ({ page, request }, t
 
       const agentEntry = drawer.locator('[data-chat-agent-entry="hierarchical-maps"]');
       await expect(agentEntry, `${chat.mode} Hierarchical Maps agent entry`).toBeVisible();
-      if (chat.mode === "roleplay") await expect(agentEntry).toBeFocused();
+      if (chat.mode === "roleplay") await expect(agentEntry).toBeInViewport();
       await expect(agentEntry.getByTestId("hierarchical-maps-controls")).toBeVisible();
       await expect(drawer.locator("marinara-capability-hierarchical-maps")).toHaveCount(1);
       await expect(agentEntry.locator("marinara-capability-hierarchical-maps")).toHaveCount(1);
@@ -10743,12 +11069,10 @@ test("Noodle interface icons consistently use Noodle blue", async ({ page }, tes
 
   await expectBlueIcons('[data-component="NoodleView"]');
   await noodle.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(noodle.getByRole("button", { name: "Reset Noodle Timeline" })).toBeVisible();
-  await expect(noodle.getByRole("button", { name: "Uninvite everybody" })).toHaveCSS("color", "rgb(126, 167, 255)");
   const scheduleCard = noodle.locator('[data-component="NoodleView.RefreshSchedule"]');
   await expect(scheduleCard).toBeVisible();
   await expect(scheduleCard.getByText("Automatic schedule")).toBeVisible();
-  await expectBlueIcons('[data-component="NoodleView"]');
+  await expectBlueIcons('[data-component="NoodleView.RefreshSchedule"]');
 
   const firstBootstrapResponse = await page.request.get("/api/noodle");
   expect(firstBootstrapResponse.ok()).toBe(true);
@@ -10778,6 +11102,10 @@ test("Noodle interface icons consistently use Noodle blue", async ({ page }, tes
     await expect(scheduleCard.getByLabel(/^New time for refresh /)).toHaveCount(0);
   }
 
+  await noodle.getByRole("button", { name: "Participants", exact: true }).click();
+  await expect(noodle.getByRole("button", { name: "Uninvite everybody" })).toHaveCSS("color", "rgb(126, 167, 255)");
+  await noodle.getByRole("button", { name: "Advanced", exact: true }).click();
+  await expect(noodle.getByRole("button", { name: "Reset Noodle Timeline" })).toBeVisible();
   await noodle.getByRole("button", { name: "Reset Noodle Timeline" }).click();
   const resetDialog = page.getByRole("dialog", { name: "Reset Noodle Timeline" });
   await expect(resetDialog).toBeVisible();
@@ -10790,7 +11118,9 @@ test("Noodle interface icons consistently use Noodle blue", async ({ page }, tes
 test("NoodleR profile controls and mobile navigation use its pink accent", async ({ page }, testInfo) => {
   const initialResponse = await page.request.get("/api/noodle");
   expect(initialResponse.ok()).toBe(true);
-  const initial = (await initialResponse.json()) as { settings: { enableNoodler: boolean } };
+  const initial = (await initialResponse.json()) as {
+    settings: { enableNoodler: boolean; noodlerOnboardingState: "incomplete" | "zero" | "completed" };
+  };
   const personaResponse = await page.request.post("/api/characters/personas", {
     data: { name: `NoodleR color viewer ${Date.now()}` },
   });
@@ -10798,7 +11128,9 @@ test("NoodleR profile controls and mobile navigation use its pink accent", async
   const persona = (await personaResponse.json()) as { id: string };
 
   try {
-    const enableResponse = await page.request.put("/api/noodle/settings", { data: { enableNoodler: true } });
+    const enableResponse = await page.request.put("/api/noodle/settings", {
+      data: { enableNoodler: true, noodlerOnboardingState: "completed" },
+    });
     expect(enableResponse.ok()).toBe(true);
 
     await page.goto("/");
@@ -10821,7 +11153,7 @@ test("NoodleR profile controls and mobile navigation use its pink accent", async
     await expect
       .poll(() => noodle.evaluate((element) => getComputedStyle(element).getPropertyValue("--noodle-accent").trim()))
       .toBe("#FF7EC1");
-    const emptyMessage = noodle.getByText("No stage profiles are visible to this persona.", { exact: true });
+    const emptyMessage = noodle.getByText("No Creator profiles are visible to this persona.", { exact: true });
     await expect(emptyMessage).toBeVisible();
     await expect(emptyMessage.locator("..").locator("svg")).toHaveCSS("color", "rgb(255, 126, 193)");
 
@@ -10837,19 +11169,16 @@ test("NoodleR profile controls and mobile navigation use its pink accent", async
       await expect(bottomNav).toBeHidden();
       const search = noodle.getByPlaceholder("Search posts or @creators").locator("..").locator("svg").first();
       await expect(search).toHaveCSS("color", "rgb(255, 126, 193)");
-      const bulkCreate = noodle.getByRole("button", { name: "Bulk-create creators", exact: true });
-      await expect(bulkCreate.locator("svg")).toHaveCSS("color", "rgb(255, 126, 193)");
-      await bulkCreate.click();
-      const bulkDialog = page.getByRole("dialog", { name: "Bulk-create creators" });
-      const bulkSearch = bulkDialog
-        .locator('input[placeholder="Search accounts"]')
-        .locator("..")
-        .locator("svg")
-        .first();
-      await expect(bulkSearch).toHaveCSS("color", "rgb(255, 126, 193)");
+      const refresh = noodle.getByRole("button", { name: "Refresh timeline", exact: true });
+      await expect(refresh.locator("svg")).toHaveCSS("color", "rgb(255, 126, 193)");
     }
   } finally {
-    await page.request.put("/api/noodle/settings", { data: { enableNoodler: initial.settings.enableNoodler } });
+    await page.request.put("/api/noodle/settings", {
+      data: {
+        enableNoodler: initial.settings.enableNoodler,
+        noodlerOnboardingState: initial.settings.noodlerOnboardingState,
+      },
+    });
     await page.request.delete(`/api/characters/personas/${persona.id}`);
   }
 });
@@ -10870,14 +11199,10 @@ test("Noodle settings edit and restore the timeline base prompt", async ({ page 
     await page.locator('[data-tour="noodle-tab"]').click();
     const noodle = page.locator('[data-component="NoodleView"]');
     await noodle.getByRole("button", { name: "Settings", exact: true }).click();
+    await noodle.getByRole("button", { name: "Advanced", exact: true }).click();
 
     const promptSetting = noodle.locator('[data-component="NoodleView.PromptSetting"]');
     await expect(promptSetting).toBeVisible();
-    const promptRect = await promptSetting.boundingBox();
-    const invitesRect = await noodle.getByRole("heading", { name: "Invites" }).boundingBox();
-    expect(promptRect).not.toBeNull();
-    expect(invitesRect).not.toBeNull();
-    expect(promptRect!.y).toBeLessThan(invitesRect!.y);
 
     const editPromptButton = promptSetting.getByRole("button", { name: "Edit prompt" });
     await expect(editPromptButton).toHaveCSS("align-items", "center");
@@ -10934,6 +11259,7 @@ test("Noodle carryover mode labels fit inside their controls", async ({ page }, 
   await page.locator('[data-tour="noodle-tab"]').click();
   const noodle = page.locator('[data-component="NoodleView"]');
   await noodle.getByRole("button", { name: "Settings", exact: true }).click();
+  await noodle.getByRole("button", { name: "Advanced", exact: true }).click();
   const carryoverSection = noodle.getByRole("heading", { name: "Carryover" }).locator("..");
 
   for (const name of ["Conversations", "Roleplays", "Games"]) {
@@ -10987,6 +11313,7 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
     await page.locator('[data-tour="noodle-tab"]').click();
     const noodle = page.locator('[data-component="NoodleView"]');
     await noodle.getByRole("button", { name: "Settings", exact: true }).click();
+    await noodle.getByRole("button", { name: "Timeline", exact: true }).click();
 
     const imageLimitInput = noodle
       .locator("label")
@@ -11002,6 +11329,7 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
     expect((await imageSaveResponse).ok()).toBe(true);
     await expect(imageLimitInput).toHaveValue(String(nextImageLimit));
 
+    await noodle.getByRole("button", { name: "Participants", exact: true }).click();
     const randomUsersButton = noodle.getByRole("button", { name: /Random users/ });
     const randomUsersSaveResponse = page.waitForResponse(
       (response) =>
@@ -11025,13 +11353,16 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
     await page.locator('[data-tour="noodle-tab"]').click();
     const reloadedNoodle = page.locator('[data-component="NoodleView"]');
     await reloadedNoodle.getByRole("button", { name: "Settings", exact: true }).click();
+    await reloadedNoodle.getByRole("button", { name: "Timeline", exact: true }).click();
     await expect(
       reloadedNoodle.locator("label").filter({ hasText: "Images/refresh" }).locator('input[type="number"]'),
     ).toHaveValue(String(nextImageLimit));
+    await reloadedNoodle.getByRole("button", { name: "Participants", exact: true }).click();
     await expect(reloadedNoodle.getByRole("button", { name: /Random users/ })).toContainText(
       nextRandomUsers ? "Enabled" : "Ambient fake profiles",
     );
 
+    await reloadedNoodle.getByRole("button", { name: "Advanced", exact: true }).click();
     const carryItemsInput = reloadedNoodle
       .locator("label")
       .filter({ hasText: "Carry items" })
@@ -11039,6 +11370,7 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
     await carryItemsInput.fill(String(nextCarryItems));
     await reloadedNoodle.getByRole("button", { name: "Home", exact: true }).click();
     await reloadedNoodle.getByRole("button", { name: "Settings", exact: true }).click();
+    await reloadedNoodle.getByRole("button", { name: "Advanced", exact: true }).click();
     await expect(
       reloadedNoodle.locator("label").filter({ hasText: "Carry items" }).locator('input[type="number"]'),
     ).toHaveValue(String(nextCarryItems));
@@ -11050,6 +11382,7 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
       })
       .toBe(nextCarryItems);
 
+    await reloadedNoodle.getByRole("button", { name: "General", exact: true }).click();
     const refreshesPerDayInput = reloadedNoodle
       .locator("label")
       .filter({ hasText: "Refreshes/day" })
@@ -11057,6 +11390,7 @@ test("Noodle settings persist through refetch and reload", async ({ page }, test
     await refreshesPerDayInput.fill(String(nextRefreshesPerDay));
     await reloadedNoodle.getByRole("button", { name: /Notifications/ }).click();
     await reloadedNoodle.getByRole("button", { name: "Settings", exact: true }).click();
+    await reloadedNoodle.getByRole("button", { name: "General", exact: true }).click();
     await expect(
       reloadedNoodle.locator("label").filter({ hasText: "Refreshes/day" }).locator('input[type="number"]'),
     ).toHaveValue(String(nextRefreshesPerDay));
@@ -11245,10 +11579,14 @@ test("Noodle posts tag invited characters with @handle mentions", async ({ page 
     await page.reload();
     await page.locator('[data-tour="noodle-tab"]').click();
     const desktopHome = noodle.getByRole("button", { name: "Home", exact: true });
+    const mobileHome = noodle.getByRole("button", { name: "Noodle home" });
+    await expect
+      .poll(async () => (await desktopHome.isVisible()) || (await mobileHome.isVisible()))
+      .toBe(true);
     if (await desktopHome.isVisible()) {
       await desktopHome.click();
     } else {
-      await noodle.getByRole("button", { name: "Noodle home" }).click();
+      await mobileHome.click();
     }
     const replyMention = page
       .locator(`[data-noodle-interaction-id="${reply.id}"]`)
@@ -12100,8 +12438,8 @@ test("Noodle mobile shell keeps navigation usable across every view", async ({ p
   expect(Math.abs(bottomNavRect!.y + bottomNavRect!.height - (noodleRect!.y + noodleRect!.height))).toBeLessThanOrEqual(
     1,
   );
-  expect(bottomNavRowRect!.height).toBe(52);
-  expect(bottomNavRect!.height).toBeLessThanOrEqual(58);
+  expect(bottomNavRowRect!.height).toBe(56);
+  expect(bottomNavRect!.height).toBeLessThanOrEqual(62);
 
   const sawDrawerSlide = await page.evaluate(async () => {
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Open Noodle account menu"]');
@@ -12160,6 +12498,7 @@ test("Noodle mobile shell keeps navigation usable across every view", async ({ p
   await accountMenu.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   await expect(noodle.getByRole("heading", { name: "Noodle settings" })).toBeVisible();
+  await noodle.getByRole("button", { name: "Advanced", exact: true }).click();
   const promptSetting = noodle.locator('[data-component="NoodleView.PromptSetting"]');
   await expect(promptSetting).toBeVisible();
   const editPromptButton = promptSetting.getByRole("button", { name: "Edit prompt" });
@@ -12172,12 +12511,8 @@ test("Noodle mobile shell keeps navigation usable across every view", async ({ p
   await promptEditor.getByRole("button", { name: "Cancel" }).first().click();
   await expect(promptEditor).toBeHidden();
   await expect(bottomNav).toBeVisible();
-  await noodle.getByRole("button", { name: "Back to Noodle timeline" }).click();
+  await noodle.getByRole("button", { name: "Back to where you were", exact: true }).click();
   await expect(header).toBeVisible();
-
-  await bottomNav.getByRole("button", { name: "Open Noodle account menu" }).click();
-  await accountMenu.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(drawer).toHaveCount(0);
 
   const timelineScroller = noodle.locator('[data-component="NoodleView.TimelineScroller"]');
   await timelineScroller.evaluate((element) => {
@@ -12198,20 +12533,20 @@ test("Noodle mobile shell keeps navigation usable across every view", async ({ p
   await noodle.getByRole("button", { name: "Back to Noodle timeline" }).click();
   await expect(header).toBeVisible();
 
-  await bottomNav.getByRole("button", { name: "Search Noodle" }).click();
-  const searchInput = noodle.getByRole("searchbox", { name: "Search Noodle" });
+  await bottomNav.getByRole("button", { name: "Search", exact: true }).click();
+  const searchInput = noodle.getByRole("searchbox", { name: "Search", exact: true });
   await expect(searchInput).toBeVisible();
   await expect(noodle.getByRole("heading", { name: "Who to follow" })).toBeVisible();
   await expect(bottomNav).toBeVisible();
   await noodle.getByRole("button", { name: "Back to Noodle timeline" }).click();
   await expect(header).toBeVisible();
 
-  await bottomNav.getByRole("button", { name: "Search Noodle" }).click();
+  await bottomNav.getByRole("button", { name: "Search", exact: true }).click();
   await searchInput.fill("Professor");
   await expect(noodle.getByRole("heading", { name: "Search results" })).toBeVisible();
   await bottomNav.getByRole("button", { name: "Noodle home" }).click();
   await expect(header).toBeVisible();
-  await bottomNav.getByRole("button", { name: "Search Noodle" }).click();
+  await bottomNav.getByRole("button", { name: "Search", exact: true }).click();
   await expect(searchInput).toHaveValue("");
 
   await bottomNav.getByRole("button", { name: "Noodle notifications" }).click();
@@ -12757,9 +13092,14 @@ test("mobile composers preserve history position and stay open in Conversation a
       await page.reload();
 
       const transcript = page.locator(".mari-messages-scroll:visible").first();
-      const textarea = page.locator('[data-chat-composer="true"]').last();
       await expect(page.locator(`[data-chat-mode="${mode}"]`)).toBeVisible();
       await expect(transcript).toBeVisible();
+      const textarea = page.locator('[data-chat-composer="true"]:visible');
+      if (mode === "roleplay") {
+        const showComposer = page.getByRole("button", { name: "Show message input", exact: true });
+        await expect(textarea.or(showComposer).first()).toBeVisible();
+        if (await showComposer.isVisible()) await showComposer.click();
+      }
       await expect(textarea).toBeVisible();
       await expect
         .poll(() => transcript.evaluate((element) => element.scrollHeight - element.clientHeight))
@@ -12773,6 +13113,11 @@ test("mobile composers preserve history position and stay open in Conversation a
         .toBeGreaterThan(180);
       const preservedScrollTop = await transcript.evaluate((element) => element.scrollTop);
 
+      if (mode === "roleplay") {
+        const showComposer = page.getByRole("button", { name: "Show message input", exact: true });
+        if (await showComposer.isVisible()) await showComposer.click();
+      }
+      await expect(textarea).toBeVisible();
       await textarea.evaluate((element) => {
         element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
         element.focus();

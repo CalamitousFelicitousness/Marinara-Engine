@@ -4,9 +4,43 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Added
+
+- Guided package onboarding can open the active Roleplay chat's Summary popover and assigned prompt preset Sections editor directly.
+- Added explicit step-by-step and immediate World Maps travel modes, with one committed movement per accepted Roleplay or Game turn and recoverable queued routes (#4618).
+- Added a single setting that reduces ambient animations and effects throughout the interface, including automatic support for the operating system's reduced-motion preference (#4631).
+
 ### Fixed
 
+- Retried one transient Roleplay message-edit save failure so remote sessions persist the edit without requiring another manual Save action (#4678).
+- Included the active Conversation cast's avatar references and appearance descriptions in guided group selfies (#4676).
+- Added native Arli.ai image generation with authenticated text-to-image and image-to-image requests (#4672).
+- Let Professor Mari read complete lorebook entry bodies through her structured app-data tools instead of receiving only truncated entry previews (#4673).
+- Removed conflicting color-environment and unused React Compiler/Babel warnings from test and lint runs, refreshed smoke coverage for the current release, schema, agent, and Noodle settings surfaces, and preserved a reader's exact mobile chat position when the keyboard opens (#4670).
+- Kept source Chat Summary entries as inactive history after combining summaries in Roleplay mode instead of deleting them, and revealed that history immediately after each combine.
+- Removed local Character and Persona avatar files when their cards are deleted individually or through Danger Zone, including avatars retained only by deleted card-version history (#4668).
+- Installed the pinned pnpm automatically when the Windows installer cannot use Corepack, an existing pnpm, or its temporary runner (#4662).
+- Exposed saved prompt choices for active Roleplay tracker agents in Chat Settings, matching the existing Game-mode selector (#4663).
+- Centered the avatar-upload camera and inset the AI-generation action so both controls remain fully visible over the mini preview in Character and Persona editors (#4665).
+- Simplified proactive Conversation intent hints so check-ins follow the selected moment without extra tone instructions.
+- Distributed mobile topbar icons evenly across the available screen width without changing the desktop layout (#4666).
+- Kept the caret at the chosen insertion point while typing in expanded Character and Preset editors instead of repeatedly focusing the field and jumping to the end (#4656).
+- Restored a full, unobstructed hit target for Roleplay message edit controls so Save no longer reacts only near one corner (#4658).
+- Kept one stable live text node while Roleplay responses stream, avoiding Firefox DOM replacement and accessibility-tree churn on every animation frame (#4659).
+- Added an independent Noodle timeline image-size setting, defaulting to the GPT-Image-compatible 1024x1536 portrait canvas instead of reusing the Illustrator dimensions (#4660).
+- Made NoodleR stage-profile drafts tolerate single-item array responses, extra model fields, and decorated handles from local models while ignoring model-provided disclosure modes, discarding invalid values, and applying the requested valid mode (#4626).
+- Removed deprecated generation parameters from single and bulk prompt-preset exports and ignored them when importing older Marinara or SillyTavern preset files (#4650).
+- Kept the selected prompt checkmark above the Presets avatar frame instead of clipping it into the rounded image border (#4651).
+- Kept Roleplay message editors open until the save is confirmed, so a delayed mobile save after stopping generation cannot briefly restore stale text or discard the first edit (#4649).
+- Kept the reasoning action visible when a provider reports hidden reasoning-token usage but omits the displayable summary, and explained the missing summary in the Model Thoughts panel.
+- Coalesced Professor Mari's streaming transcript work to animation frames and released her input lock before best-effort refreshes, preventing long replies and stalled cleanup requests from leaving the assistant unresponsive (#4628, #4637).
+- Stopped personal extensions and their policy from polling on every screen and in background tabs; existing query invalidation now refreshes them after changes (#4629).
+- Added each active Game tracker agent's available prompt templates to Chat Settings for quick per-chat selection (#4640).
+- Rebuilt incomplete Android/Termux output when a dist directory exists without its required entry file, preventing the server from starting into a browser and app 404 loop (#4639).
+- Raised profile ZIP import capacity from the former 1 GiB ceiling to the ZIP32 format limit while retaining per-entry and expanded-size safety limits (#4641).
+- Moved full Docker images to Debian Trixie so ARM64 sidecars can load the required glibc and libstdc++ symbols (#4638).
 - Matched the **Add character to active chat** button to the neighboring Character row actions in folders and standalone rows on desktop and mobile.
+- Stopped the NoodleR reserve poll from scanning the prepared-post and Noodle post tables every minute when automatic posting is off and no reserve posts exist, and backed the automatic timeline-refresh poll off to 15 minutes while refreshes are disabled, cutting idle CPU wake-ups on phone and Termux installs (#4630).
 
 ### Added
 

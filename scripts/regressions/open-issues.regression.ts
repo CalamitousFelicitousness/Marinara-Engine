@@ -4,8 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
-import type { Chat, ChatMode, Message } from "../../packages/shared/src/types/chat.js";
+import type { Chat, ChatMode, ChatSummaryEntry, Message } from "../../packages/shared/src/types/chat.js";
 import { chatModeSchema } from "../../packages/shared/src/schemas/chat.schema.js";
+import {
+  combineChatSummaryEntryHistory,
+  compileChatSummaryEntries,
+  createChatSummaryEntry,
+} from "../../packages/shared/src/utils/chat-summary-entries.js";
 import playwrightConfig from "../../playwright.config.js";
 import { resolveDevSharedBuildScript } from "../dev-shared-build.mjs";
 import { validatePullRequestTriage } from "../validate-pr-triage.mjs";
@@ -135,7 +140,10 @@ import {
   searchStandardEmojiShortcodes,
 } from "../../packages/client/src/lib/emoji-shortcodes.js";
 import { persistGeneratedImageToEntityGalleries } from "../../packages/server/src/services/image/generated-image-entity-gallery.js";
-import { resolveIllustratorImageSize } from "../../packages/server/src/services/image/image-generation-settings.js";
+import {
+  parseImageGenerationUserSettings,
+  resolveIllustratorImageSize,
+} from "../../packages/server/src/services/image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../../packages/server/src/services/image/illustrator-image-variants.js";
 import { fetchBotBrowserJson } from "../../packages/server/src/services/bot-browser/fetch-json.js";
 import { isAllowedResponseContentType, validateOutboundUrl } from "../../packages/server/src/utils/security.js";
@@ -176,6 +184,7 @@ import {
   buildComfyUiLoraWorkflowReplacements,
   COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
   DEFAULT_NOVELAI_DEFAULTS,
+  imageSourceToDefaultsService,
   normalizeComfyUiLoraSettings,
 } from "../../packages/shared/src/constants/image-generation-defaults.js";
 import type { ImageGenerationDefaultsProfile } from "../../packages/shared/src/types/image-generation-defaults.js";
@@ -260,6 +269,7 @@ import {
   MariDbService,
   normalizeCharacterActionData,
 } from "../../packages/server/src/services/mari-db/mari-db.service.js";
+import { PROFESSOR_MARI_APP_DATA_ACTIONS } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
 import {
   checkAutonomousMessaging,
   clearChatActivity,
@@ -584,6 +594,11 @@ assert.deepEqual(resolveIllustratorImageSize({ width: 960, height: 540 }, "portr
   width: 540,
   height: 960,
 });
+assert.deepEqual(parseImageGenerationUserSettings(null).noodle, { width: 1024, height: 1536 });
+assert.deepEqual(
+  parseImageGenerationUserSettings('{"imageNoodleWidth":1536,"imageNoodleHeight":1024}').noodle,
+  { width: 1536, height: 1024 },
+);
 
 const minimalProfessorMariPersona = buildPersonaCreateRow(
   { name: "Minimal helper persona" },
@@ -1227,19 +1242,43 @@ try {
 
   const mariDb = new MariDbService(db);
   const professorMariLorebookId = "professor-mari-lorebook-create-regression";
+  const professorMariFullEntryContent = `The entry starts here. ${"Full lorebook body segment. ".repeat(20)}The entry ends here.`;
   const professorMariLorebookResult = await mariDb.executeAction({
     action: "lorebook.create",
     lorebookId: professorMariLorebookId,
     data: {
       name: "Professor Mari lorebook regression",
-      entries: [{ name: "Verified entry", content: "Saved with the lorebook.", keys: ["verified"] }],
+      entries: [{ name: "Verified entry", content: professorMariFullEntryContent, keys: ["verified"] }],
     },
     apply: true,
   });
   assert.equal(professorMariLorebookResult.ok, true, "Professor Mari must create lorebooks after visibility was added");
   const professorMariLorebook = await lorebookStorage.getById(professorMariLorebookId);
   assert.equal(professorMariLorebook?.hiddenFromLibrary, false);
-  assert.equal((await lorebookStorage.listEntries(professorMariLorebookId)).length, 1);
+  const professorMariEntries = await lorebookStorage.listEntries(professorMariLorebookId);
+  assert.equal(professorMariEntries.length, 1);
+  const professorMariEntryId = professorMariEntries[0]?.id;
+  assert.ok(professorMariEntryId);
+  assert.ok(PROFESSOR_MARI_APP_DATA_ACTIONS.includes("lorebook.getEntry"));
+  const professorMariEntryIndex = await mariDb.executeAction({
+    action: "lorebook.entries",
+    lorebookId: professorMariLorebookId,
+  });
+  assert.equal(
+    (professorMariEntryIndex.output as Array<{ content: string }>)[0]?.content.endsWith("…"),
+    true,
+    "the lorebook entry index should remain compact",
+  );
+  const professorMariFullEntry = await mariDb.executeAction({
+    action: "lorebook.getEntry",
+    entryId: professorMariEntryId,
+  });
+  assert.equal(professorMariFullEntry.ok, true);
+  assert.equal(
+    (professorMariFullEntry.output as { content?: string }).content,
+    professorMariFullEntryContent,
+    "Professor Mari's full-entry reader must preserve the complete lorebook body",
+  );
   await lorebookStorage.remove(professorMariLorebookId);
   assert.equal(await lorebookStorage.getById(professorMariLorebookId), null);
   assert.equal((await lorebookStorage.listEntries(professorMariLorebookId)).length, 0);
@@ -1940,6 +1979,9 @@ assert.deepEqual(buildZaiImageRequest({ model: "glm-image", prompt: "canal", wid
 assert.equal(parseZaiImageUrl({ data: [{ url: "https://cdn.example/zai.png" }] }), "https://cdn.example/zai.png");
 assert.equal(inferImageSource("", "https://api.z.ai/api/paas/v4"), "zai");
 assert.ok(IMAGE_GENERATION_SOURCES.some((source) => source.id === "zai"));
+assert.equal(inferImageSource("flux-model", "https://api.arliai.com/v1"), "arli");
+assert.ok(IMAGE_GENERATION_SOURCES.some((source) => source.id === "arli"));
+assert.equal(imageSourceToDefaultsService("arli"), "automatic1111");
 assert.deepEqual(
   ZAI_IMAGE_MODELS.map((model) => model.id),
   ["glm-image", "cogview-4-250304"],
@@ -2266,6 +2308,13 @@ const termuxLauncher = readFileSync(new URL("../../start-termux.sh", import.meta
 assert.doesNotMatch(termuxLauncher, /run_pnpm install --force/u);
 assert.match(termuxLauncher, /run_pnpm store prune/u);
 assert.match(termuxLauncher, /TERMUX_REBUILD_REQUIRED/u);
+for (const buildEntry of [
+  "packages/shared/dist/constants/defaults.js",
+  "packages/server/dist/index.js",
+  "packages/client/dist/index.html",
+]) {
+  assert.ok(termuxLauncher.includes(`if [ ! -f "${buildEntry}" ]; then`), `Termux must rebuild when ${buildEntry} is missing`);
+}
 
 const sharedPackageJson = JSON.parse(
   readFileSync(new URL("../../packages/shared/package.json", import.meta.url), "utf8"),
@@ -2384,6 +2433,26 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
+  /options\.shouldApply\?\.\(\) === false[\s\S]{0,160}setMessages/u,
+  "Professor Mari message loads must recheck an operation guard before applying a response",
+);
+assert.match(
+  professorMariHomeSource,
+  /loadMessages\(completedChatId, \{[\s\S]{0,160}workspaceRunIdRef\.current === runId[\s\S]{0,100}activeChatIdRef\.current === completedChatId/u,
+  "Professor Mari background refreshes must not overwrite state after a newer operation starts",
+);
+assert.match(
+  professorMariHomeSource,
+  /const refreshWorkspaceStatus = useCallback\(async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,500}if \(shouldApply\?\.\(\) === false\) return status;[\s\S]{0,80}setWorkspaceStatus\(status\)/u,
+  "Professor Mari workspace status loads must recheck an operation guard before applying a response",
+);
+assert.match(
+  professorMariHomeSource,
+  /refreshWorkspaceStatus\([\s\S]{0,140}workspaceRunIdRef\.current === runId[\s\S]{0,100}activeChatIdRef\.current === completedChatId/u,
+  "Professor Mari post-run status refreshes must not overwrite state after a newer operation starts",
+);
+assert.match(
+  professorMariHomeSource,
   /message\.role === "user"[\s\S]{0,180}<TranscriptRow[\s\S]{0,100}border-y border-\[var\(--border\)\]\/60/u,
   "Professor Mari user messages must retain their theme-aware horizontal separators",
 );
@@ -2396,13 +2465,86 @@ const roleplaySurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatRoleplaySurface.tsx", import.meta.url),
   "utf8",
 );
+const chatToolbarControlsSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatToolbarControls.tsx", import.meta.url),
+  "utf8",
+);
+const chatFloatingUiEventsSource = readFileSync(
+  new URL("../../packages/client/src/lib/chat-floating-ui-events.ts", import.meta.url),
+  "utf8",
+);
+const appShellSource = readFileSync(
+  new URL("../../packages/client/src/components/layout/AppShell.tsx", import.meta.url),
+  "utf8",
+);
+const guidedPresetEditorSource = readFileSync(
+  new URL("../../packages/client/src/components/presets/PresetEditor.tsx", import.meta.url),
+  "utf8",
+);
+const presetPanelSource = readFileSync(
+  new URL("../../packages/client/src/components/panels/PresetsPanel.tsx", import.meta.url),
+  "utf8",
+);
 const chatMessageSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
+  "utf8",
+);
+const macroTextareaSource = readFileSync(
+  new URL("../../packages/client/src/components/ui/MacroTextarea.tsx", import.meta.url),
+  "utf8",
+);
+const roleplayHudSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/RoleplayHUD.tsx", import.meta.url),
   "utf8",
 );
 const narratorUiStoreSource = readFileSync(
   new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url),
   "utf8",
+);
+assert.match(
+  appShellSource,
+  /onOpenChatSummarySettings:[\s\S]{0,180}onOpenActivePromptPresetEditor:/u,
+  "Feature detail capability props must expose both guided onboarding navigation callbacks",
+);
+assert.match(
+  chatFloatingUiEventsSource,
+  /CHAT_SUMMARY_OPEN_REQUEST_EVENT[\s\S]{0,240}detail:\s*\{\s*chatId\s*\}/u,
+  "Summary requests must carry the target chat ID",
+);
+assert.match(
+  roleplaySurfaceSource,
+  /requestedChatId !== chatId/u,
+  "SummaryButton must filter requests by chat and only open visible instances",
+);
+assert.match(
+  roleplaySurfaceSource,
+  /rect\.width <= 0 \|\| rect\.height <= 0[\s\S]{0,180}setOpen\(true\)/u,
+  "SummaryButton must only open a measurable visible instance",
+);
+assert.match(
+  chatToolbarControlsSource,
+  /pendingSummaryChatIdRef\.current = chatId[\s\S]{0,80}setOpen\(true\)/u,
+  "Compact and mobile Summary requests must queue the target chat and open the overflow menu",
+);
+assert.match(
+  chatToolbarControlsSource,
+  /if \(!open \|\| !chatId\) return;[\s\S]{0,140}requestAnimationFrame\(\(\) => requestChatSummaryOpen\(chatId\)\)/u,
+  "Compact and mobile Summary requests must forward only after the overflow menu mounts",
+);
+assert.match(
+  narratorUiStoreSource,
+  /openPresetDetail: \(id, options\)[\s\S]{0,180}presetDetailInitialTab: options\?\.initialTab \?\? null/u,
+  "Preset navigation must retain an optional initial tab request",
+);
+assert.match(
+  guidedPresetEditorSource,
+  /presetDetailInitialTab[\s\S]{0,260}setActiveTab\(presetDetailInitialTab \?\? "overview"\)/u,
+  "PresetEditor must consume the requested initial tab and retain Overview by default",
+);
+assert.match(
+  presetPanelSource,
+  /openPresetDetail\(preset\.id\)/u,
+  "Ordinary preset-panel navigation must continue using the default Overview tab",
 );
 assert.match(
   roleplaySurfaceSource,
@@ -2416,8 +2558,23 @@ assert.equal(
 );
 assert.match(
   chatMessageSource,
-  /const cycleMergedNarratorAvatars = !isRoleplay \|\| roleplayNarratorAvatarCycling;/u,
-  "Narrator avatar cycling must remain unchanged outside Roleplay and follow the Roleplay preference",
+  /const cycleMergedNarratorAvatars = \(!isRoleplay \|\| roleplayNarratorAvatarCycling\) && !reduceAmbientEffects;/u,
+  "Narrator avatar cycling must follow the Roleplay preference and stop with reduced ambient effects",
+);
+assert.match(
+  macroTextareaSource,
+  /const valueRef = useRef\(value\);[\s\S]{0,500}\}, \[open\]\);/u,
+  "Expanded macro editors must only initialize and focus when opened, not after every parent value update",
+);
+assert.match(
+  chatMessageSource,
+  /aria-label=\{localizeUi\("ui\.chat\.edittextarea\.saveEdit"\)\}[\s\S]{0,180}h-11 w-11/u,
+  "The Roleplay edit Save control must keep a full touch-sized hit target",
+);
+assert.equal(
+  roleplayHudSource.match(/!reduceAmbientEffects && "animate-\[inventory-cycle_0\.4s_ease-out\]"/gu)?.length,
+  2,
+  "Roleplay tracker and inventory widgets must suppress mount animations with reduced ambient effects",
 );
 assert.match(
   chatMessageSource,
@@ -2752,6 +2909,7 @@ const backupRoutesSource = readFileSync(
   new URL("../../packages/server/src/routes/backup.routes.ts", import.meta.url),
   "utf8",
 );
+const serverAppSource = readFileSync(new URL("../../packages/server/src/app.ts", import.meta.url), "utf8");
 const gameTypesSource = readFileSync(new URL("../../packages/shared/src/types/game.ts", import.meta.url), "utf8");
 const backupGuideSource = readFileSync(new URL("../../docs/data/backup-and-restore.md", import.meta.url), "utf8");
 const gameAssetBrowserSource = readFileSync(
@@ -2886,7 +3044,17 @@ for (const [name, source] of [
   assert.match(source, /text-foreground\/45/u, `${name} search icon must match GIF search`);
   assert.match(source, /placeholder:text-foreground\/35/u, `${name} search placeholder must match GIF search`);
 }
-assert.match(visualViewportChatBottomSource, /detail\?\.keyboardOpen[\s\S]{0,500}scrollToBottom\("auto"\)/u);
+assert.match(visualViewportChatBottomSource, /const anchor = pendingAnchor \?\? captureAnchor\(\);/u);
+assert.match(
+  visualViewportChatBottomSource,
+  /if \(anchor\.pinnedToBottom\) \{\s*scrollToBottom\("auto"\);/u,
+  "Keyboard opening should keep a composer that was already pinned at the latest message pinned",
+);
+assert.match(
+  visualViewportChatBottomSource,
+  /scrollElement\.scrollTo\(\{ top: Math\.min\(anchor\.scrollTop, maxScrollTop\), behavior: "auto" \}\);/u,
+  "Keyboard opening should restore an intentionally scrolled transcript to its captured position",
+);
 assert.match(characterEditorSource, /if \(uploading \|\| !expression\) return;/u);
 assert.match(personaEditorSource, /if \(uploading \|\| !expression\) return;/u);
 assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
@@ -2960,6 +3128,10 @@ assert.equal(
 assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
+assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
+assert.match(serverAppSource, /const clientIndex = resolve\(clientDist, "index\.html"\)/u);
+assert.match(serverAppSource, /if \(existsSync\(clientIndex\)\)/u);
 assert.match(
   backupRoutesSource,
   /if \(automaticBackupRunning\) return;\s*automaticBackupRunning = true;\s*try \{\s*const settings = await loadAutomaticBackupSettings\(\);/u,
@@ -3032,7 +3204,12 @@ assert.match(
 );
 assert.match(
   conversationSelfieRuntimeSource,
-  /resolveIllustratorCharacterReferences\(\{[\s\S]{0,800}persona: null,[\s\S]{0,800}maxReferences: 6/u,
+  /resolveConversationSelfieRequestedNames\(\{[\s\S]{0,400}generationGuide: args\.generationGuide/u,
+  "Conversation group selfies must carry the guided request into reference selection",
+);
+assert.match(
+  conversationSelfieRuntimeSource,
+  /resolveIllustratorCharacterReferences\(\{[\s\S]{0,800}persona: null,[\s\S]{0,200}requestedNames,[\s\S]{0,300}maxReferences: 6/u,
   "Conversation group selfies must keep all depicted character references without attaching the photographer persona",
 );
 assert.match(
@@ -4345,6 +4522,109 @@ assert.match(
   "The summary UI must submit every selected entry to the combine endpoint",
 );
 assert.match(
+  chatRoutesSource,
+  /combineChatSummaryEntryHistory\(entries, requestedIds, combinedEntry, now\)/u,
+  "The Chat Summary combine route must retain source history through the tested helper",
+);
+const summaryCombineNow = "2026-08-06T09:00:00.000Z";
+const summaryCombineEntries: ChatSummaryEntry[] = [
+  createChatSummaryEntry({
+    id: "source-a",
+    content: "Source A",
+    title: "Source A",
+    enabled: true,
+    rangeStartIndex: 1,
+    rangeEndIndex: 2,
+    createdAt: "2026-08-01T09:00:00.000Z",
+    updatedAt: "2026-08-01T09:00:00.000Z",
+  }),
+  createChatSummaryEntry({
+    id: "source-b",
+    content: "Source B",
+    title: "Source B",
+    enabled: true,
+    rangeStartIndex: 3,
+    rangeEndIndex: 4,
+    createdAt: "2026-08-02T09:00:00.000Z",
+    updatedAt: "2026-08-02T09:00:00.000Z",
+  }),
+  createChatSummaryEntry({
+    id: "untouched",
+    content: "Untouched",
+    title: "Untouched",
+    enabled: true,
+    rangeStartIndex: 5,
+    rangeEndIndex: 6,
+    createdAt: "2026-08-03T09:00:00.000Z",
+    updatedAt: "2026-08-03T09:00:00.000Z",
+  }),
+];
+const combinedSummaryEntry = createChatSummaryEntry({
+  id: "combined",
+  content: "Combined A and B",
+  title: "Combined",
+  enabled: true,
+  rangeStartIndex: 1,
+  rangeEndIndex: 4,
+  createdAt: summaryCombineEntries[0]!.createdAt,
+  updatedAt: summaryCombineNow,
+});
+const retainedSummaryEntries = combineChatSummaryEntryHistory(
+  summaryCombineEntries,
+  new Set(["source-a", "source-b"]),
+  combinedSummaryEntry,
+  summaryCombineNow,
+);
+assert.deepEqual(
+  retainedSummaryEntries.map((entry) => entry.id),
+  ["combined", "source-a", "source-b", "untouched"],
+  "The combined entry must be inserted at the first selected chronological position",
+);
+for (const sourceId of ["source-a", "source-b"]) {
+  const retainedSource = retainedSummaryEntries.find((entry) => entry.id === sourceId);
+  assert.equal(retainedSource?.enabled, false, `${sourceId} must remain as inactive history`);
+  assert.equal(retainedSource?.updatedAt, summaryCombineNow, `${sourceId} must record when it was combined`);
+}
+assert.equal(retainedSummaryEntries.find((entry) => entry.id === "untouched")?.enabled, true);
+assert.equal(
+  compileChatSummaryEntries(retainedSummaryEntries),
+  "Combined A and B\n\nUntouched",
+  "Compiled Chat Summary output must exclude deactivated source entries",
+);
+const secondCombinedSummaryEntry = createChatSummaryEntry({
+  id: "combined-again",
+  content: "Combined summary of summaries",
+  title: "Combined again",
+  enabled: true,
+  rangeStartIndex: 1,
+  rangeEndIndex: 6,
+  createdAt: summaryCombineEntries[0]!.createdAt,
+  updatedAt: "2026-08-06T10:00:00.000Z",
+});
+const retainedSecondGenerationEntries = combineChatSummaryEntryHistory(
+  retainedSummaryEntries,
+  new Set(["combined", "untouched"]),
+  secondCombinedSummaryEntry,
+  secondCombinedSummaryEntry.updatedAt,
+);
+assert.deepEqual(
+  retainedSecondGenerationEntries.map((entry) => entry.id),
+  ["combined-again", "combined", "source-a", "source-b", "untouched"],
+  "A summary of summaries must retain both generations of source history",
+);
+for (const sourceId of ["combined", "source-a", "source-b", "untouched"]) {
+  assert.equal(
+    retainedSecondGenerationEntries.find((entry) => entry.id === sourceId)?.enabled,
+    false,
+    `${sourceId} must remain as inactive history after combining summaries again`,
+  );
+}
+assert.match(
+  summaryPopoverSource,
+  /onSuccess: \(data\) => \{\s*setSelectedEntryIds\(new Set\(\)\);\s*setShowInactiveSummaries\(true\)/u,
+  "The Chat Summary popover must reveal retained inactive sources after combining",
+);
+assert.match(
   summaryPopoverSource,
   /role="tablist"[\s\S]{0,900}summaryPromptView === "summary"[\s\S]{0,900}summaryPromptView === "combine"/u,
   "The Summary Prompt card must switch between Chat Summary and Combine prompt views",
@@ -4475,7 +4755,7 @@ assert.match(
 );
 assert.match(
   chatRoutesSource,
-  /requestedSummaryEntryIds[\s\S]{0,6500}nextEntries\.splice\(Math\.max\(0, firstIndex\), 0, combinedEntry\)/u,
+  /requestedSummaryEntryIds[\s\S]{0,6500}combineChatSummaryEntryHistory\(entries, requestedIds, combinedEntry, now\)/u,
   "Combined summaries must replace their selected entries at the first selected chronological position",
 );
 assert.match(

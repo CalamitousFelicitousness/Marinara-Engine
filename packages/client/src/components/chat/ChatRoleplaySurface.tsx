@@ -45,7 +45,11 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
-import { CHAT_FLOATING_UI_DISMISS_EVENT, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
+import {
+  CHAT_FLOATING_UI_DISMISS_EVENT,
+  CHAT_SUMMARY_OPEN_REQUEST_EVENT,
+  isDesktopShellNavigationTarget,
+} from "../../lib/chat-floating-ui-events";
 import { getConnectedChatDisplayName } from "../../lib/chat-display";
 import { playConfiguredNotificationPing } from "../../lib/notification-sound";
 import { messageHasPendingPostProcessing } from "../../lib/chat-message-extra";
@@ -301,6 +305,8 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
   const emptyRef = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
+    const textNode = document.createTextNode("");
+    textRef.current?.replaceChildren(textNode);
     let frame: number | null = null;
     const readBuffer = () => {
       const state = useChatStore.getState();
@@ -309,7 +315,10 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
     const apply = () => {
       frame = null;
       const next = readBuffer();
-      if (textRef.current && textRef.current.textContent !== next) textRef.current.textContent = next;
+      if (textNode.data !== next) {
+        if (next.startsWith(textNode.data)) textNode.appendData(next.slice(textNode.data.length));
+        else textNode.data = next;
+      }
       if (emptyRef.current) emptyRef.current.hidden = next.length > 0;
     };
     const schedule = () => {
@@ -835,6 +844,23 @@ function SummaryButton({
     return () => window.removeEventListener(CHAT_FLOATING_UI_DISMISS_EVENT, handleDismiss);
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (!chatId) return;
+    const handleOpenRequest = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const requestedChatId = (event.detail as { chatId?: unknown } | null)?.chatId;
+      if (requestedChatId !== chatId) return;
+      const button = buttonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      setAnchor(readSummaryAnchor());
+      setOpen(true);
+    };
+    window.addEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, handleOpenRequest);
+    return () => window.removeEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, handleOpenRequest);
+  }, [chatId, readSummaryAnchor]);
+
   if (!chatId) return null;
 
   return (
@@ -1149,7 +1175,7 @@ type RoleplaySurfaceProps = {
   onLoadMore: () => void;
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
-  onEdit: (messageId: string, content: string) => void;
+  onEdit: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleConversationStart: (messageId: string, current: boolean) => void;
   onToggleHiddenFromAI: (messageId: string, hiddenFromAll: boolean, hiddenFromAICharacterIds?: string[]) => void;
@@ -1787,7 +1813,7 @@ export function ChatRoleplaySurface({
                     groupId={chat?.groupId ?? null}
                     variant="roleplay"
                   />
-                  <ChatToolbarMenu>
+                  <ChatToolbarMenu openSummaryOnRequest>
                     <SummaryButton
                       chatId={chat?.id ?? null}
                       summary={chatMeta.summary ?? null}
@@ -1905,7 +1931,7 @@ export function ChatRoleplaySurface({
                           className="contents"
                         />
                       ))}
-                      <ChatToolbarMenu>
+                      <ChatToolbarMenu openSummaryOnRequest>
                         <ChatBranchSelector
                           activeChatId={activeChatId}
                           activeChatName={chat?.name}
@@ -1989,7 +2015,7 @@ export function ChatRoleplaySurface({
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
-                    <ChatToolbarMenu>
+                    <ChatToolbarMenu openSummaryOnRequest>
                       <ChatBranchSelector
                         activeChatId={activeChatId}
                         activeChatName={chat?.name}

@@ -12,6 +12,7 @@ import {
   takeTypewriterCharacters,
 } from "../../packages/client/src/lib/generation-stream-policy.js";
 import { resolveMessageRewriteVersions } from "../../packages/client/src/lib/message-rewrite-versions.js";
+import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/message-reasoning.js";
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
 import {
   findLatestTTSAutoplayMessage,
@@ -62,6 +63,22 @@ function extractCssBlock(source: string, prelude: string): string {
 
   assert.fail(`Unclosed CSS block for: ${prelude}`);
 }
+
+assert.deepEqual(resolveMessageReasoningDisplay({ thinking: "Visible summary" }), {
+  summary: "Visible summary",
+  summaryUnavailable: false,
+  hasReasoning: true,
+});
+assert.deepEqual(resolveMessageReasoningDisplay({ generationInfo: { tokensReasoning: 1034 } }), {
+  summary: null,
+  summaryUnavailable: true,
+  hasReasoning: true,
+});
+assert.deepEqual(resolveMessageReasoningDisplay({ generationInfo: { tokensReasoning: 0 } }), {
+  summary: null,
+  summaryUnavailable: false,
+  hasReasoning: false,
+});
 
 const retryAgentRouteSource = readFileSync(
   new URL("../../packages/server/src/routes/generate/retry-agents-route.ts", import.meta.url),
@@ -156,10 +173,49 @@ const summaryPopoverSource = readFileSync(
   new URL("../../packages/client/src/components/chat/SummaryPopover.tsx", import.meta.url),
   "utf8",
 );
+const professorMariHomeSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
+  "utf8",
+);
+const personalExtensionsHookSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-personal-extensions.ts", import.meta.url),
+  "utf8",
+);
+const chatSettingsDrawerSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
+  "utf8",
+);
+const reducedAmbientEffectsHookSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-reduced-ambient-effects.ts", import.meta.url),
+  "utf8",
+);
+const professorMariTokenBranch =
+  professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
+const roleplayTrackerSettingsBranch =
+  chatSettingsDrawerSource.match(/activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u)?.[0] ?? "";
+assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
+assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
+assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
+assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
+assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
+assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
+assert.match(
+  roleplayTrackerSettingsBranch,
+  /cat\.key === "tracker"[\s\S]*?<AgentPromptTemplateSelect/u,
+  "active Roleplay tracker agents should expose their saved prompt templates",
+);
+assert.match(reducedAmbientEffectsHookSource, /manualPreference \|\| systemPreference/u);
+assert.match(uiStoreSource, /version: 90/u);
+assert.match(globalStylesSource, /data-marinara-reduced-effects/u);
 assert.match(
   chatRoleplaySurfaceSource,
-  /function RoleplayLiveStreamText[\s\S]*?textContent = next[\s\S]*?requestAnimationFrame\(apply\)/u,
-  "Roleplay live text should update one text node at animation-frame cadence",
+  /function RoleplayLiveStreamText[\s\S]*?document\.createTextNode\(""\)[\s\S]*?textNode\.appendData[\s\S]*?requestAnimationFrame\(apply\)/u,
+  "Roleplay live text should retain one text node and append to it at animation-frame cadence",
+);
+assert.doesNotMatch(
+  chatRoleplaySurfaceSource,
+  /textRef\.current\.textContent = next/u,
+  "Roleplay streaming must not replace its live Text node on every frame",
 );
 assert.doesNotMatch(
   chatRoleplaySurfaceSource,
@@ -477,8 +533,6 @@ try {
     value: { type: "token", data: "Before hiding" },
   });
   const stalledRead = stalledEvents.next();
-  visibilityDocument.setVisibility("hidden");
-  visibilityDocument.setVisibility("visible");
   await assert.rejects(stalledRead, StreamResumeDisconnectError);
 } finally {
   globalThis.fetch = originalFetch;

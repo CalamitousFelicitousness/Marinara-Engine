@@ -56,6 +56,7 @@ import {
 import { resolveStoredChatOptions } from "../../packages/server/src/services/generation/generation-parameters.js";
 import { resolveMainGenerationToolChoice } from "../../packages/server/src/services/generation/tool-resolution-runtime.js";
 import { generateImage, imageAdmissionKey } from "../../packages/server/src/services/image/image-generation.js";
+import { resolveImageCaptioningRuntime } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import {
   BACKGROUND_CONNECTION_IDLE_MS,
   ConnectionAttemptRejectedError,
@@ -1067,6 +1068,62 @@ assert.equal(
 // must be recorded completed rather than leaving the primary's failure as the attempt's result.
 const onePixelPng =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+let arliRequest:
+  | { url: string; authorization: string | undefined; contentType: string | undefined; body: Record<string, unknown> }
+  | undefined;
+const arliImageServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  arliRequest = {
+    url: request.url ?? "",
+    authorization: request.headers.authorization,
+    contentType: request.headers["content-type"],
+    body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+  };
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ images: [onePixelPng] }));
+});
+await new Promise<void>((resolve) => arliImageServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = arliImageServer.address();
+  assert.ok(address && typeof address === "object");
+  const imageResult = await generateImage("arli", `http://127.0.0.1:${address.port}/v1`, "arli-secret", "arli", {
+    prompt: "a red laboratory",
+    negativePrompt: "blurry",
+    model: "Arli/FluxModel",
+    width: 768,
+    height: 512,
+    allowLocalUrls: true,
+  });
+  assert.equal(imageResult.base64, onePixelPng);
+  assert.equal(arliRequest?.url, "/v1/txt2img");
+  assert.equal(arliRequest?.authorization, "Bearer arli-secret");
+  assert.equal(arliRequest?.contentType, "application/json");
+  assert.equal(arliRequest?.body.sd_model_checkpoint, "Arli/FluxModel");
+  assert.equal(arliRequest?.body.prompt, "a red laboratory");
+  assert.equal(arliRequest?.body.negative_prompt, "blurry");
+  assert.equal(arliRequest?.body.width, 768);
+  assert.equal(arliRequest?.body.height, 512);
+
+  const imageEditResult = await generateImage(
+    "arli",
+    `http://127.0.0.1:${address.port}/v1`,
+    "arli-secret",
+    "arli",
+    {
+      prompt: "add blue light",
+      model: "Arli/FluxModel",
+      referenceImage: `data:image/png;base64,${onePixelPng}`,
+      allowLocalUrls: true,
+    },
+  );
+  assert.equal(imageEditResult.base64, onePixelPng);
+  assert.equal(arliRequest?.url, "/v1/img2img");
+  assert.deepEqual(arliRequest?.body.init_images, [onePixelPng]);
+} finally {
+  await new Promise<void>((resolve, reject) => arliImageServer.close((error) => (error ? reject(error) : resolve())));
+}
+
 const failingImageServer = createServer((_request, response) => {
   response.writeHead(500, { "content-type": "application/json" });
   response.end(JSON.stringify({ error: "primary image backend down" }));
@@ -1528,6 +1585,90 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
   } finally {
     await new Promise<void>((resolve, reject) =>
       responsesReasoningServer.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+}
+
+// A background refresh captions its prompt images on the same connection it then generates with.
+// Booking that captioning call as foreground stamps the connection foreground-active, and the
+// refresh's own generation is refused for the whole idle window — every scheduled run, forever,
+// while manual (foreground) refreshes keep working. Issue #4642.
+{
+  const captionServer = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "a caption" }, finish_reason: "stop" }] }));
+  });
+  await new Promise<void>((resolve) => captionServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = captionServer.address();
+    assert.ok(address && typeof address === "object");
+    const captionConnection = {
+      id: "noodle-generation-connection",
+      provider: "custom",
+      apiKey: "test",
+      model: "caption-model",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    };
+    // A captioning connection the caller never admitted is separate background work and must
+    // stay accounted; only the caller's own connection is exempt.
+    const separateCaptionConnection = { ...captionConnection, id: "separate-caption-connection" };
+    const connectionsStub = {
+      listRandomPool: async () => [],
+      getWithKey: async (id: string) =>
+        id === captionConnection.id
+          ? captionConnection
+          : id === separateCaptionConnection.id
+            ? separateCaptionConnection
+            : null,
+      getFallbackForAgents: async () => null,
+    };
+
+    for (const [mode, expectedAdmission] of [
+      [{ kind: "background" } as ConnectionAdmissionMode, true],
+      [{ kind: "foreground" } as ConnectionAdmissionMode, false],
+    ] as const) {
+      resetConnectionAdmissionForTests();
+      const runtime = await resolveImageCaptioningRuntime({
+        chatMeta: { imageCaptioningEnabled: true, imageCaptioningConnectionId: captionConnection.id },
+        fallbackConnectionId: captionConnection.id,
+        connections: connectionsStub,
+        admissionMode: mode,
+      });
+      assert.ok(runtime.provider, "captioning runtime must resolve a provider");
+      await runtime.provider.chatComplete([{ role: "user", content: "describe" }], { model: "caption-model" });
+      assert.equal(
+        tryBackgroundConnection(captionConnection.id, new Date()).acquired,
+        expectedAdmission,
+        `captioning under ${mode.kind} admission must ${expectedAdmission ? "leave" : "block"} the connection's background slot`,
+      );
+    }
+
+    resetConnectionAdmissionForTests();
+    const separateRuntime = await resolveImageCaptioningRuntime({
+      chatMeta: { imageCaptioningEnabled: true, imageCaptioningConnectionId: separateCaptionConnection.id },
+      fallbackConnectionId: captionConnection.id,
+      connections: connectionsStub,
+      admissionMode: { kind: "background" },
+    });
+    assert.ok(separateRuntime.provider, "captioning runtime must resolve a provider");
+    const separateCaption = separateRuntime.provider.chatComplete([{ role: "user", content: "describe" }], {
+      model: "caption-model",
+    });
+    assert.equal(
+      tryBackgroundConnection(separateCaptionConnection.id, new Date()).acquired,
+      false,
+      "captioning on a connection the caller never admitted must still hold its own background slot",
+    );
+    await separateCaption;
+    assert.equal(
+      tryBackgroundConnection(captionConnection.id, new Date()).acquired,
+      true,
+      "captioning elsewhere must not consume the caller's generation connection",
+    );
+  } finally {
+    resetConnectionAdmissionForTests();
+    await new Promise<void>((resolve, reject) =>
+      captionServer.close((error) => (error ? reject(error) : resolve())),
     );
   }
 }

@@ -69,6 +69,7 @@ import {
   buildGmFormatReminder,
   buildPartyRecruitCardPrompt,
 } from "../../packages/server/src/services/game/gm-prompts.js";
+import { resolveConversationSelfieRequestedNames } from "../../packages/server/src/services/generation/conversation-selfie-command-runtime.js";
 import {
   normalizeCyoaChoiceOutput,
   normalizeCyoaDialogueQuotes,
@@ -3256,6 +3257,11 @@ const cases: RegressionCase[] = [
       assert.notEqual(roleplayMenuLinksStart, -1, "Roleplay agent quick links should be defined");
       assert.notEqual(roleplayMenuLinksEnd, -1, "Roleplay agent quick links should have a bounded source block");
       const roleplayMenuLinksSource = drawerSource.slice(roleplayMenuLinksStart, roleplayMenuLinksEnd);
+      assert.match(
+        roleplayMenuLinksSource,
+        /addLink\(ltmPackage\.id, metadata\.enableAgents === true && activeAgentIds\.includes\(ltmPackage\.id\), ltmAgent\.name\)/u,
+        "Active Long-Term Memory should have a Roleplay agent menu link",
+      );
 
       const activeAgentOrderStart = drawerSource.indexOf("const activeInCat = catAgents");
       const activeAgentMenuStart = drawerSource.indexOf("activeInCat.map((agent) => {");
@@ -3270,6 +3276,11 @@ const cases: RegressionCase[] = [
         "Active Roleplay agent settings should use the same order as their quick links",
       );
       const activeAgentMenuSource = drawerSource.slice(activeAgentMenuStart, activeAgentMenuEnd);
+      assert.match(
+        activeAgentMenuSource,
+        /agent\.id === "long-term-memory"[\s\S]*getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
+        "Active Long-Term Memory should expose the menu link target",
+      );
       const storyboardMenuBranchStart = activeAgentMenuSource.indexOf("{agent.id === STORYBOARD_AGENT_ID && (");
       const storyboardMenuBranchEnd = activeAgentMenuSource.indexOf(
         "\n                                          )}",
@@ -3330,7 +3341,7 @@ const cases: RegressionCase[] = [
       );
       assert.match(
         activeAgentMenuSource,
-        /id=\{\s*agent\.id === "hierarchical-maps" \|\| agent\.id === STORYBOARD_AGENT_ID\s*\? getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
+        /id=\{\s*agent\.id === "hierarchical-maps"[\s\S]*agent\.id === STORYBOARD_AGENT_ID[\s\S]*\? getAgentSettingsMenuId\(chat\.id, agent\.id\)/u,
       );
       assert.match(storyboardMenuBranchSource, /<StoryboardChatSettingsPanel/u);
       assert.match(storyboardMenuBranchSource, /ownerMode="roleplay"/u);
@@ -3951,6 +3962,23 @@ const cases: RegressionCase[] = [
       });
       assert.deepEqual(groupSelfieResolution.characterIds, ["character-maukie", "character-dottore"]);
       assert.equal(groupSelfieResolution.personaId, null);
+      assert.deepEqual(
+        resolveConversationSelfieRequestedNames({
+          speakerName: "Maukie",
+          chatCharacters: [{ name: "Maukie" }, { name: "Dottore" }],
+          generationGuide: buildNarratorInstructionMessage("group selfie"),
+          imagePrompt: "Two friends crowd into the frame.",
+        }),
+        ["Maukie", "Dottore"],
+      );
+      assert.deepEqual(
+        resolveConversationSelfieRequestedNames({
+          speakerName: "Maukie",
+          chatCharacters: [{ name: "Maukie" }, { name: "Dottore" }],
+          imagePrompt: "Maukie takes a casual selfie at home.",
+        }),
+        ["Maukie"],
+      );
     },
   },
   {

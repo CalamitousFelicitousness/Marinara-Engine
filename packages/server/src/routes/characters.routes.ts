@@ -68,6 +68,11 @@ import {
   resolveStoredGalleryFile,
   unlinkGalleryFileIfUnreferenced,
 } from "../services/image/gallery-file-lifecycle.js";
+import {
+  collectCharacterAvatarPaths,
+  collectPersonaAvatarPaths,
+  mutateAvatarReferencesAndCleanup,
+} from "../services/image/avatar-file-lifecycle.js";
 
 const CHARACTER_GALLERY_ROOT = join(DATA_DIR, "gallery", "characters");
 const PERSONA_GALLERY_ROOT = join(DATA_DIR, "gallery", "personas");
@@ -468,8 +473,10 @@ async function removeCopiedAvatarFile(avatarPath: string) {
   if (!filename) return;
   try {
     await unlink(assertInsideDir(AVATAR_ROOT, join(AVATAR_ROOT, filename)));
-  } catch {
-    // The copy may not exist if the failure happened before the write.
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.warn(error, "Failed to remove copied avatar file %s", filename);
+    }
   }
 }
 
@@ -915,7 +922,11 @@ export async function charactersRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: "Professor Mari is a built-in character and cannot be deleted" });
     }
     const galleryImages = await characterGallery.listByCharacterId(req.params.id);
-    await storage.remove(req.params.id);
+    await mutateAvatarReferencesAndCleanup({
+      db: app.db,
+      collectAvatarPaths: () => collectCharacterAvatarPaths(app.db, [req.params.id]),
+      mutateReferences: () => storage.remove(req.params.id),
+    });
     // Cascade the character's Noodle presence, otherwise its account and posts stay
     // in the timeline forever as a ghost (issue #4295).
     try {
@@ -1725,7 +1736,12 @@ export async function charactersRoutes(app: FastifyInstance) {
     await writeFile(filepath, imageBuffer);
 
     const avatarPath = `/api/avatars/file/${filename}`;
-    return storage.updateAvatar(id, avatarPath);
+    const updated = await storage.updateAvatar(id, avatarPath);
+    if (!updated) {
+      await removeCopiedAvatarFile(avatarPath);
+      return reply.status(404).send({ error: "Character not found" });
+    }
+    return updated;
   });
 
   app.delete<{ Params: { id: string } }>("/:id/avatar", async (req, reply) => {
@@ -1958,7 +1974,12 @@ export async function charactersRoutes(app: FastifyInstance) {
     const filepath = assertInsideDir(avatarsDir, join(avatarsDir, filename));
     await writeFile(filepath, imageBuffer);
     const avatarPath = `/api/avatars/file/${filename}`;
-    return storage.updatePersona(req.params.id, { avatarPath }, { versionReason: "Avatar update" });
+    const updated = await storage.updatePersona(req.params.id, { avatarPath }, { versionReason: "Avatar update" });
+    if (!updated) {
+      await removeCopiedAvatarFile(avatarPath);
+      return reply.status(404).send({ error: "Persona not found" });
+    }
+    return updated;
   });
 
   app.put<{ Params: { id: string } }>("/personas/:id/activate", async (req, reply) => {
@@ -1980,7 +2001,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!persona) return reply.status(404).send({ error: "Persona not found" });
 
     const galleryImages = await personaGallery.listByPersonaId(id);
-    await storage.removePersona(id);
+    await mutateAvatarReferencesAndCleanup({
+      db: app.db,
+      collectAvatarPaths: () => collectPersonaAvatarPaths(app.db, [id]),
+      mutateReferences: () => storage.removePersona(id),
+    });
     for (const image of galleryImages) {
       await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     }

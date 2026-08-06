@@ -376,7 +376,22 @@ Please restart your computer and run this installer again."
     ${EndIf}
   ${EndIf}
   ${If} $PNPM_RUNNER == ""
-    MessageBox MB_OK|MB_ICONSTOP "pnpm ${PNPM_VERSION} could not be started.$\r$\n$\r$\nPlease enable Corepack or install pnpm manually, then run the installer again."
+    DetailPrint "Temporary pnpm unavailable; installing pnpm ${PNPM_VERSION} via npm..."
+    nsExec::ExecToLog 'cmd /c npm install --global pnpm@${PNPM_VERSION}'
+    Pop $0
+    ${If} $0 == 0
+      ReadEnvStr $1 "PATH"
+      System::Call 'Kernel32::SetEnvironmentVariable(t "PATH", t "$APPDATA\npm;$1")i'
+      nsExec::ExecToStack 'cmd /c pnpm --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+      Pop $PNPM_OK
+      Pop $1
+      ${If} $PNPM_OK == 0
+        StrCpy $PNPM_RUNNER "pnpm"
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  ${If} $PNPM_RUNNER == ""
+    MessageBox MB_OK|MB_ICONSTOP "pnpm ${PNPM_VERSION} could not be installed automatically.$\r$\n$\r$\nPlease check your internet connection or run npm install --global pnpm@${PNPM_VERSION}, then run this installer again."
     Abort
   ${EndIf}
   DetailPrint "pnpm ready."

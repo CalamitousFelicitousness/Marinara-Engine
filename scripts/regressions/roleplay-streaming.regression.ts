@@ -191,12 +191,19 @@ const reducedAmbientEffectsHookSource = readFileSync(
 );
 const professorMariTokenBranch =
   professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
+const roleplayTrackerSettingsBranch =
+  chatSettingsDrawerSource.match(/activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u)?.[0] ?? "";
 assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
 assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
 assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
 assert.match(professorMariHomeSource, /WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS/u);
 assert.doesNotMatch(personalExtensionsHookSource, /refetchInterval/u);
 assert.match(chatSettingsDrawerSource, /active && agent\.id !== "illustrator"[\s\S]*?<AgentPromptTemplateSelect/u);
+assert.match(
+  roleplayTrackerSettingsBranch,
+  /cat\.key === "tracker"[\s\S]*?<AgentPromptTemplateSelect/u,
+  "active Roleplay tracker agents should expose their saved prompt templates",
+);
 assert.match(reducedAmbientEffectsHookSource, /manualPreference \|\| systemPreference/u);
 assert.match(uiStoreSource, /version: 90/u);
 assert.match(globalStylesSource, /data-marinara-reduced-effects/u);

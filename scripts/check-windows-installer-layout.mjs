@@ -44,6 +44,11 @@ try {
         "The shared workspace build must not invoke nested pnpm; Windows Corepack-only launchers do not put a global pnpm executable on PATH.",
     });
   }
+  if (!code.includes("npm install --global pnpm@${PNPM_VERSION}")) {
+    failures.push({
+      message: "The Windows installer must provision its pinned pnpm through npm when existing runners fail.",
+    });
+  }
 
   const uninstallStart = code.indexOf('Section "Uninstall"');
   const packageRemoval = code.indexOf('RMDir /r "$INSTDIR\\packages"', uninstallStart);

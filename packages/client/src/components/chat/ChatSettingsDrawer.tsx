@@ -8415,6 +8415,21 @@ export function ChatSettingsDrawer({
                                               <Trash2 size="0.6875rem" />
                                             </button>
                                           </div>
+                                          {cat.key === "tracker" && (
+                                            <AgentPromptTemplateSelect
+                                              options={getPromptOptionsForAgent(agent.id)}
+                                              selectedId={
+                                                agentPromptTemplateSelections[agent.id] ??
+                                                getDefaultPromptTemplateIdForAgent(agent.id)
+                                              }
+                                              overridden={
+                                                typeof agentPromptTemplateSelections[agent.id] === "string"
+                                              }
+                                              onChange={(promptTemplateId) =>
+                                                updateAgentPromptTemplateSelection(agent.id, promptTemplateId)
+                                              }
+                                            />
+                                          )}
                                           {agent.id === "hierarchical-maps" && mapsPackage && (
                                             <CapabilityElement
                                               packageId={mapsPackage.id}

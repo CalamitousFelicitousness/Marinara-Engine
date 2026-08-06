@@ -5056,24 +5056,19 @@ strong {
     padding-right: max(4px, env(safe-area-inset-right)) !important;
   }
 
-  .mari-topbar-left {
-    flex: 1 1 auto;
-    gap: clamp(2px, 1vw, 8px) !important;
-  }
-
+  .mari-topbar-left,
   .mari-topbar-left-controls {
-    gap: clamp(1px, 0.75vw, 4px) !important;
+    display: contents;
   }
 
   .mari-topbar-panel-nav {
-    flex: 1 1 auto !important;
-    min-width: 0;
-    gap: clamp(0px, 0.5vw, 2px) !important;
-    padding: 2px !important;
+    display: contents;
   }
 
   .mari-topbar-action {
+    flex: 1 1 0;
     min-width: 0;
+    width: auto !important;
     padding: clamp(3px, 1.35vw, 7px) !important;
   }
 

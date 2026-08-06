@@ -811,8 +811,13 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     setProfileDraft((current) => (current ? { ...current, disclosureMode: value } : current));
   };
 
-  const generateDraft = () => {
-    if (!draftNoodleAccountId && !editingProfileId) return;
+  const generateDraft = (options?: {
+    noodlerAccountId?: string;
+    disclosureMode?: NoodleIdentityDisclosure;
+    guidance?: string;
+  }) => {
+    const noodlerAccountId = options?.noodlerAccountId ?? editingProfileId;
+    if (!draftNoodleAccountId && !noodlerAccountId) return;
     if (connections.length === 0) {
       toast.error(localizeUi("ui.noodle.stageprofileform.noConnectionsConfiguredAddOneInSettingsConnections"));
       return;
@@ -820,9 +825,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     const generationId = ++profileDraftGenerationIdRef.current;
     generateProfileDraft.mutate(
       {
-        ...(editingProfileId ? { noodlerAccountId: editingProfileId } : { noodleAccountId: draftNoodleAccountId! }),
-        disclosureMode: creationDisclosure,
-        guidance: draftGuidance,
+        ...(noodlerAccountId ? { noodlerAccountId } : { noodleAccountId: draftNoodleAccountId! }),
+        disclosureMode: options?.disclosureMode ?? creationDisclosure,
+        guidance: options?.guidance ?? draftGuidance,
         currentDraft: profileDraft ?? undefined,
         connectionId: draftConnectionId || undefined,
       },
@@ -830,7 +835,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
         onSuccess: (draft) => {
           if (generationId !== profileDraftGenerationIdRef.current) return;
           if (profileDraft) setPreviousDraft(profileDraft);
-          if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
+          if (noodlerAccountId) setAcceptSourceChangesForProfileId(noodlerAccountId);
           const { sourceSnapshot, ...stageProfile } = draft;
           setDraftSourceSnapshot(sourceSnapshot ?? null);
           setProfileDraft(stageProfile);
@@ -842,6 +847,15 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
         },
       },
     );
+  };
+
+  const redraftFromSource = (profile: NoodlerStageProfile) => {
+    beginEdit(profile);
+    generateDraft({
+      noodlerAccountId: profile.id,
+      disclosureMode: profile.disclosureMode ?? "hinted",
+      guidance: localizeUi("ui.noodle.noodlerhome.redraftGuidance"),
+    });
   };
 
   const saveProfile = () => {
@@ -1268,6 +1282,8 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
             isError={postsQuery.isError}
             onRetry={() => void postsQuery.refetch()}
             onEdit={() => beginEdit(selectedProfile)}
+            onRedraft={() => redraftFromSource(selectedProfile)}
+            redraftPending={generateProfileDraft.isPending}
             onBack={() =>
               navigation.mode === "noodler" && navigation.view === "profile" && navigation.returnToSettings
                 ? onNavigate(navigation.returnToSettings)
@@ -2363,6 +2379,8 @@ function StageProfileView({
   isError,
   onRetry,
   onEdit,
+  onRedraft,
+  redraftPending,
   onBack,
   onDelete,
   onManualPost,
@@ -2398,6 +2416,8 @@ function StageProfileView({
   isError: boolean;
   onRetry: () => void;
   onEdit: () => void;
+  onRedraft: () => void;
+  redraftPending: boolean;
   onBack: () => void;
   onDelete: () => void;
   onManualPost: (input: NoodlerPostSubmission) => Promise<void>;
@@ -2694,6 +2714,16 @@ function StageProfileView({
                       {localizeUi("ui.noodle.stageprofileview.sourceAdoptIdentity")}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={redraftPending}
+                    onClick={onRedraft}
+                    className="h-8 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold hover:bg-[var(--accent)] disabled:opacity-50"
+                  >
+                    {redraftPending
+                      ? localizeUi("ui.noodle.stageprofileview.sourceRedrafting")
+                      : localizeUi("ui.noodle.stageprofileview.sourceRedraft")}
+                  </button>
                   <button
                     type="button"
                     disabled={dismissSourceChanges.isPending}

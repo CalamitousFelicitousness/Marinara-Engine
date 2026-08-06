@@ -104,7 +104,8 @@ type CharacterListRow = {
   name: string;
   favorite: boolean;
 };
-type PersonaRow = typeof personas.$inferSelect;
+/** Serialized row shape used by the file-table persistence layer. */
+export type PersonaStorageRow = typeof personas.$inferSelect;
 type CharacterListPageOptions = {
   includeBuiltIn?: boolean;
   limit: number;
@@ -203,7 +204,7 @@ function getCharacterSummaryFromRow(row: typeof characters.$inferSelect) {
   }
 }
 
-function buildPersonaSnapshot(persona: PersonaRow): PersonaCardSnapshot {
+function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
   return {
     name: persona.name ?? "",
     creator: persona.creator ?? "",
@@ -285,7 +286,7 @@ async function insertCharacterVersionSnapshot(database: DB, existing: CharacterR
   return id;
 }
 
-async function insertPersonaVersionSnapshot(database: DB, existing: PersonaRow, options?: VersionSnapshotOptions) {
+async function insertPersonaVersionSnapshot(database: DB, existing: PersonaStorageRow, options?: VersionSnapshotOptions) {
   const currentData = buildPersonaSnapshot(existing);
   const id = newId();
   await database.insert(personaCardVersions).values({
@@ -806,7 +807,7 @@ export function createCharactersStorage(db: DB) {
       },
       timestampOverrides?: TimestampOverrides | null,
       _avatarLifecycleLocked = false,
-    ): Promise<PersonaRow | null> {
+    ): Promise<PersonaStorageRow | null> {
       if (avatarPath && !_avatarLifecycleLocked) {
         return withAvatarFileLifecycleLock(() =>
           this.createPersona(name, description, avatarPath, extra, timestampOverrides, true),
@@ -949,7 +950,7 @@ export function createCharactersStorage(db: DB) {
         /** Internal recursion guard for avatar-reference lifecycle serialization. */
         _avatarLifecycleLocked?: boolean;
       },
-    ): Promise<PersonaRow | null> {
+    ): Promise<PersonaStorageRow | null> {
       if (updates.avatarPath !== undefined && !options?._avatarLifecycleLocked) {
         return withAvatarFileLifecycleLock(() =>
           this.updatePersona(id, updates, { ...options, _avatarLifecycleLocked: true }),

@@ -112,7 +112,9 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
             value={settings?.fanActivityRunsPerDay ?? 4}
             min={1}
             max={24}
-            onInvalid={() => toast.error(t("ui.noodle.noodlerfanactivity.runsPerDayInvalid"))}
+            onInvalid={() =>
+              toast.error(t("ui.noodle.noodlerfanactivity.boundedValueInvalid", { min: 1, max: 24 }))
+            }
             onCommit={(value, revert) =>
               updateSettings.mutate(
                 { fanActivityRunsPerDay: value },
@@ -140,6 +142,9 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
                 value={settings?.[key] ?? 0}
                 min={min}
                 max={max}
+                onInvalid={() =>
+                  toast.error(t("ui.noodle.noodlerfanactivity.boundedValueInvalid", { min, max }))
+                }
                 onCommit={(value, revert) =>
                   updateSettings.mutate({ [key]: value } as NoodleSettingsUpdateInput, {
                     onError: (error) => {
@@ -162,6 +167,9 @@ export function NoodlerPublishingSettings({ active, onOpenCreator }: NoodlerPubl
                 value={settings?.fanArchetypeWeights[archetype] ?? 0}
                 min={0}
                 max={100}
+                onInvalid={() =>
+                  toast.error(t("ui.noodle.noodlerfanactivity.boundedValueInvalid", { min: 0, max: 100 }))
+                }
                 onCommit={(value, revert) => {
                   if (!settings) return;
                   const fanArchetypeWeights: NoodlerFanArchetypeWeights = {

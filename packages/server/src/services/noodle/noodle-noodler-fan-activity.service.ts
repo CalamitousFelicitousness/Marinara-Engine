@@ -85,6 +85,7 @@ export function selectNoodlerFanActivities(input: {
   );
   const quotas = { ...input.quotas };
   const creatorCounts = new Map<string, number>();
+  const creatorSlotSeen = new Set<string>();
   const selected: NoodleFanActivityToStore[] = [];
   for (const activity of input.activities) {
     if (quotas[activity.type] <= 0) continue;
@@ -97,7 +98,10 @@ export function selectNoodlerFanActivities(input: {
     if (activity.type === "reply" && !content) continue;
     const key = `${activity.targetPostId}:${identity.id}:${activity.type}`;
     if (seen.has(key)) continue;
+    const creatorSlotKey = `${creator.creator.id}:${identity.id}:${activity.type}`;
+    if (activity.type !== "like" && creatorSlotSeen.has(creatorSlotKey)) continue;
     seen.add(key);
+    if (activity.type !== "like") creatorSlotSeen.add(creatorSlotKey);
     quotas[activity.type] -= 1;
     creatorCounts.set(creator.creator.id, (creatorCounts.get(creator.creator.id) ?? 0) + 1);
     selected.push({

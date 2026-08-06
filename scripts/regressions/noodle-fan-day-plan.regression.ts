@@ -43,7 +43,10 @@ const stored = storeNoodleFanAcceptedActivities(claimed, claimed.runs[1]!.id, [
   },
 ]);
 assert.equal(stored.runs[1]!.status, "applying");
-assert.equal(stored.runs[1]!.acceptedActivities[0]!.id, `${stored.runs[1]!.id}-activity-1`);
+assert.equal(
+  stored.runs[1]!.acceptedActivities[0]!.id,
+  `${stored.runs[1]!.id}-creator-1-post-1-like-fan-1`,
+);
 assert.equal(stored.runs[1]!.acceptedActivities[0]!.applied, false);
 
 const applied = markNoodleFanActivityApplied(stored, stored.runs[1]!.id, stored.runs[1]!.acceptedActivities[0]!.id);

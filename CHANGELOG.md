@@ -49,6 +49,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Added optional, quota-limited synthetic audience activity for public NoodleR posts, with separate likes, replies, reposts, and a manual refresh action.
 - Added a persisted local-day NoodleR fan activity plan with four deterministic platform runs and resumable activity application state.
+- Preserved creator-level fan audience inheritance when editing individual archetype weights, and surfaced source-action failures in NoodleR profile controls.
 
 ## [2.4.2]
 

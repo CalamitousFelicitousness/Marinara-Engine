@@ -492,6 +492,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   useEffect(() => {
     profileDraftGenerationIdRef.current += 1;
   }, [profileDraftRouteKey]);
+  useEffect(() => {
+    setDraftSourceSnapshot(null);
+  }, [editingProfileId]);
   // Back from a stage profile returns to wherever it was opened from (hub feed, sidebar,
   // profile list) instead of always dumping the user on the profile list. Hub is the fallback.
   const profileReturnView = useRef<"hub" | "profiles">("hub");
@@ -780,6 +783,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const beginEdit = (profile: NoodlerStageProfile) => {
     invalidateProfileDraftGeneration();
     setAcceptSourceChangesForProfileId(null);
+    setDraftSourceSnapshot(null);
     setEditingProfileId(profile.id);
     setDraftNoodleAccountId(profile.noodleAccountId);
     setCreationDisclosure(profile.disclosureMode ?? "hinted");
@@ -804,6 +808,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     setEditingProfileId(null);
     setCreationStep(null);
     setAcceptSourceChangesForProfileId(null);
+    setDraftSourceSnapshot(null);
   };
 
   const changeDisclosure = (value: NoodleIdentityDisclosure) => {
@@ -917,7 +922,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
           accountId: editingProfileId,
           ...input,
           acceptSourceChanges: acceptSourceChangesForProfileId === editingProfileId,
-          sourceSnapshot: draftSourceSnapshot ?? undefined,
+           ...(acceptSourceChangesForProfileId === editingProfileId && draftSourceSnapshot
+             ? { sourceSnapshot: draftSourceSnapshot }
+             : {}),
         },
         { onSuccess, onError },
       );
@@ -2717,7 +2724,14 @@ function StageProfileView({
                     <button
                       type="button"
                       disabled={adoptSourceIdentity.isPending}
-                      onClick={() => adoptSourceIdentity.mutate(profile.id)}
+                      onClick={() =>
+                        adoptSourceIdentity.mutate(profile.id, {
+                          onError: (error) =>
+                            toast.error(
+                              errorMessage(error, localizeUi("ui.noodle.stageprofileview.couldNotUpdateSourceIdentity")),
+                            ),
+                        })
+                      }
                       className="h-8 rounded-md bg-[var(--noodle-accent)] px-3 text-xs font-bold text-zinc-950 hover:opacity-90 disabled:opacity-50"
                     >
                       {localizeUi("ui.noodle.stageprofileview.sourceAdoptIdentity")}
@@ -2736,7 +2750,14 @@ function StageProfileView({
                   <button
                     type="button"
                     disabled={dismissSourceChanges.isPending}
-                    onClick={() => dismissSourceChanges.mutate(profile.id)}
+                    onClick={() =>
+                      dismissSourceChanges.mutate(profile.id, {
+                        onError: (error) =>
+                          toast.error(
+                            errorMessage(error, localizeUi("ui.noodle.stageprofileview.couldNotDismissSourceChanges")),
+                          ),
+                      })
+                    }
                     className="h-8 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold hover:bg-[var(--accent)] disabled:opacity-50"
                   >
                     {localizeUi("ui.noodle.stageprofileview.sourceDismiss")}
@@ -2992,10 +3013,14 @@ function StageProfileView({
                               event.target.value = String(current);
                               return;
                             }
+                            const archetypeOverrides = {
+                              ...profile.fanActivity?.archetypeWeights,
+                              [archetype]: value,
+                            };
                             updateFanActivity.mutate(
                               {
                                 accountId: profile.id,
-                                fanActivity: { ...profile.fanActivity, archetypeWeights },
+                                fanActivity: { ...profile.fanActivity, archetypeWeights: archetypeOverrides },
                               },
                               {
                                 onError: (error) => {

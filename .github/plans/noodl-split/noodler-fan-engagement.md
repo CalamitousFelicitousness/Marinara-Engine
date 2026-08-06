@@ -73,9 +73,9 @@ Weights are non-negative integers. Zero disables an archetype for that
 default or creator override; the weighted selection is deterministic for a
 given run seed and does not require an LLM call. At least one weight must be
 positive. The six-key shape is validated at the settings boundary and stored
-as a normalized typed value. A creator's override replaces the global weight
-map, rather than partially merging arbitrary keys; its omitted values resolve
-to the fixed defaults only through the explicit settings normalizer.
+ as a normalized typed value. A creator override may be sparse: its explicit
+ values, including zeroes, merge over the current global map and omitted values
+ inherit the global configuration.
 
 Archetypes influence the proposed audience flavor and deterministic selection
 policy. They do not create durable fan identities, accounts, follower graphs,

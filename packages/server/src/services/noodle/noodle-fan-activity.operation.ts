@@ -27,6 +27,7 @@ import {
 import { claimNoodleOperation } from "./noodle-operation-lock.js";
 
 const FAN_PLAN_ROW_PREFIX = "fan-day:";
+const FAN_PLAN_RETENTION_DAYS = 7;
 
 export type NoodlerFanRunResult = {
   status:
@@ -44,9 +45,13 @@ export type NoodlerFanRunResult = {
   runId?: string;
 };
 
-async function readPlans(db: DB) {
+function localTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+}
+
+async function readPlans(db: DB, at = new Date(), prune = true) {
   const rows = await db.select().from(noodlerFanActivityState);
-  return rows.flatMap((row) => {
+  const plans = rows.flatMap((row) => {
     try {
       const plan = parsePersistedNoodleFanActivityDayPlan(JSON.parse(row.plan));
       return plan ? [plan] : [];
@@ -54,11 +59,24 @@ async function readPlans(db: DB) {
       return [];
     }
   });
+  if (!prune) return plans;
+  const cutoff = new Date(at.getFullYear(), at.getMonth(), at.getDate() - FAN_PLAN_RETENTION_DAYS).getTime();
+  const retained = [];
+  for (const plan of plans) {
+    const [year, month, day] = plan.localDate.split("-").map(Number);
+    const planTime = new Date(year!, month! - 1, day!).getTime();
+    if (planTime < cutoff) {
+      await db.delete(noodlerFanActivityState).where(eq(noodlerFanActivityState.id, planRowId(plan)));
+    } else {
+      retained.push(plan);
+    }
+  }
+  return retained;
 }
 
 async function readCurrentPlan(db: DB, at: Date) {
-  const plans = await readPlans(db);
-  return plans.find((plan) => plan.localDate === localPlanDate(at)) ?? null;
+  const plans = await readPlans(db, at);
+  return plans.find((plan) => plan.localDate === localPlanDate(at) && plan.timezone === localTimezone()) ?? null;
 }
 
 function localPlanDate(at: Date) {
@@ -85,7 +103,7 @@ async function writePlan(db: DB, plan: PersistedNoodleFanActivityDayPlan) {
 }
 
 async function findRecoverablePlan(db: DB) {
-  for (const plan of await readPlans(db)) {
+  for (const plan of await readPlans(db, new Date(), false)) {
     const applying = plan.runs.find((run) => run.status === "applying");
     if (applying) return { plan, run: applying, interrupted: false };
     const generating = plan.runs.find((run) => run.status === "generating");

@@ -742,6 +742,10 @@ async function refreshMessagesAuthoritatively(
   // Also refresh the total message count used for absolute numbering
   qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
   qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
+  // Peek windows (sidebar hover, secret-plot panel) cache the same rows under
+  // their own limit-keyed queries; a mounted panel must not keep serving a
+  // pre-generation snapshot (#4721).
+  qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
 
   // Forced refreshes run in their own coalescing lane so a rare recovery
   // caller is never folded into a routine run that would skip the fetch.

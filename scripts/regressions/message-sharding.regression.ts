@@ -378,6 +378,64 @@ assert.equal(
   }
 }
 
+// ── A misplaced physical shard file is rewritten canonically, not kept forever ──
+// Logical-key dirtying alone never touches a file whose rows belong to OTHER
+// shards (hand-edits, stray re-home copies): the flush writes the rows' real
+// shards and skips the physical file, reintroducing its stray rows on every
+// startup.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  // chat-x.json holds ONLY a chat-y row: the file must be deleted and the row
+  // must land in chat-y.json.
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify([messageRow("m-y1", "chat-y", "misplaced")]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    const yRows = JSON.parse(
+      readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-y")}.json`), "utf8"),
+    ) as Array<{ id: string }>;
+    assert.deepEqual(yRows.map((row) => row.id), ["m-y1"], "the misplaced row lands in its real shard");
+    assert.equal(
+      existsSync(join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`)),
+      false,
+      "the physical file that held only foreign rows is deleted, not reloaded forever",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  // chat-x.json holds a real chat-x row PLUS a stray copy of chat-y's row:
+  // the file must be rewritten without the stray, while chat-y.json keeps its
+  // own copy — the stray must not reappear on the next load.
+  const yRow = messageRow("m-y1", "chat-y", "resident");
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify([messageRow("m-x1", "chat-x", "real"), { ...yRow, content: "stray copy" }]),
+  );
+  writeFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-y")}.json`), JSON.stringify([yRow]));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 2, "the stray duplicate never reaches memory");
+    const xRows = JSON.parse(
+      readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`), "utf8"),
+    ) as Array<{ id: string }>;
+    assert.deepEqual(xRows.map((row) => row.id), ["m-x1"], "the mixed file is rewritten canonically without the stray copy");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── A stale manifest version is rewritten on the next boot ──
 // Crash window: migration completed but the first flush never ran, leaving
 // sharded data under a version-2 manifest. The downgrade guard (#4708 PR 2)

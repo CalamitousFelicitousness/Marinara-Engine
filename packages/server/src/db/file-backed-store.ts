@@ -1041,6 +1041,14 @@ class FileTableStore {
   private messageShardIndex = new Map<string, string>();
   /** ENCODED shard filenames known on disk, so the flush never stats clean shards. */
   private knownShardFiles = new Map<string, Set<string>>();
+  /**
+   * ENCODED filenames of physical shard files found at load holding rows that
+   * belong to OTHER shards. Logical-key dirtying alone never touches such a
+   * file (the flush writes the rows' real shards and skips this one), so it
+   * would reintroduce its stray rows on every startup. The next flush
+   * rewrites each canonically or deletes it; cleared per table afterwards.
+   */
+  private staleShardFiles = new Map<string, Set<string>>();
   private shardDirsCreated = new Set<string>();
   /** Monotonic per-table write counters (#4705); bumped in markDirty, never rolled back. */
   private tableWriteGenerations = new Map<string, number>();
@@ -1974,20 +1982,40 @@ class FileTableStore {
           }
         }
         if (!quarantinedAway) known.add(encoded);
-        if ((recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0) && normalized.length > 0) {
-          // Self-heal: rewrite this shard from memory on the next flush. The
-          // raw keys come from the rows (filenames may be hash forms), and
-          // EVERY row's key is dirtied — a recovered file can hold rows for
-          // several shards, and dirtying only the first row's key would leave
-          // the other destinations stale. Swipes resolve through the message
-          // index, which exists because messages load before swipes in
-          // SHARDED_TABLES order.
-          this.backupRecoveredPaths.add(path);
-          this.dirty = true;
-          this.dirtyTables.add(table);
-          const set = this.dirtyShards.get(table) ?? new Set<string>();
-          for (const rawKey of this.shardKeysForRows(table, normalized)) set.add(rawKey);
-          this.dirtyShards.set(table, set);
+        if (normalized.length > 0) {
+          const needsRepair = recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0;
+          const rowKeys = this.shardKeysForRows(table, normalized);
+          // A file holding any row whose key does not encode back to the
+          // file's own name (hand-edits, stray re-home copies) can never be
+          // healed by logical-key dirtying alone: the flush writes the row's
+          // REAL shard and skips this physical file, reintroducing the stray
+          // rows on every startup. Mark the FILE stale so the flush rewrites
+          // it canonically or deletes it.
+          const holdsForeignRows = [...rowKeys].some((rawKey) => encodeShardKey(rawKey) !== encoded);
+          if (needsRepair) this.backupRecoveredPaths.add(path);
+          if (needsRepair || holdsForeignRows) {
+            // Self-heal: rewrite from memory on the next flush. The raw keys
+            // come from the rows (filenames may be hash forms), and EVERY
+            // row's key is dirtied — a recovered file can hold rows for
+            // several shards, and dirtying only the first row's key would
+            // leave the other destinations stale. Swipes resolve through the
+            // message index, which exists because messages load before swipes
+            // in SHARDED_TABLES order.
+            this.dirty = true;
+            this.dirtyTables.add(table);
+            const set = this.dirtyShards.get(table) ?? new Set<string>();
+            for (const rawKey of rowKeys) set.add(rawKey);
+            this.dirtyShards.set(table, set);
+          }
+          if (holdsForeignRows) {
+            const stale = this.staleShardFiles.get(table) ?? new Set<string>();
+            stale.add(encoded);
+            this.staleShardFiles.set(table, stale);
+            logger.warn(
+              { table, shard: encoded },
+              "[file-storage] Shard file holds rows belonging to other shards; it will be rewritten canonically on the next flush.",
+            );
+          }
         }
       }
       // Belt-and-braces: the monolith preserved one global insertion order;
@@ -2070,16 +2098,42 @@ class FileTableStore {
       mkdirSync(shardDirPath(this.rootDir, table), { recursive: true });
       this.shardDirsCreated.add(table);
     }
+    // Stale physical files (foreign-row holders found at load): force a
+    // canonical rewrite when an in-memory shard still maps to the name; the
+    // rest are deleted AFTER the write loop, so a crash mid-flush leaves
+    // duplicates (healed by the next load) rather than rows that exist only
+    // in memory. Cleared per table once the flush lands; a failed flush keeps
+    // the marks and retries.
+    const stale = this.staleShardFiles.get(table);
+    let effectiveDirty = dirtyKeys;
+    const encodedToKey = new Map<string, string>();
+    if (stale && stale.size > 0) {
+      effectiveDirty = new Set(dirtyKeys);
+      for (const key of rowsByShard.keys()) encodedToKey.set(encodeShardKey(key), key);
+      for (const encoded of stale) {
+        const key = encodedToKey.get(encoded);
+        if (key !== undefined) effectiveDirty.add(key);
+      }
+    }
     for (const [key, shardRows] of rowsByShard) {
       const encoded = encodeShardKey(key);
-      if (!dirtyKeys.has(key) && known.has(encoded)) continue;
+      if (!effectiveDirty.has(key) && known.has(encoded)) continue;
       const serializedRows = JSON.stringify(shardRows);
       await this.testHooks?.beforeTableWrite?.(`${table}/${encoded}`, serializedRows);
       const path = shardFilePath(this.rootDir, table, encoded);
       await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
       known.add(encoded);
     }
-    for (const key of dirtyKeys) {
+    if (stale && stale.size > 0) {
+      for (const encoded of stale) {
+        if (encodedToKey.has(encoded)) continue; // rewritten canonically above
+        const path = shardFilePath(this.rootDir, table, encoded);
+        await unlink(path).catch(() => undefined);
+        await unlink(`${path}.bak`).catch(() => undefined);
+        known.delete(encoded);
+      }
+    }
+    for (const key of effectiveDirty) {
       if (rowsByShard.has(key)) continue;
       const encoded = encodeShardKey(key);
       if (!known.has(encoded)) continue;
@@ -2088,6 +2142,7 @@ class FileTableStore {
       await unlink(`${path}.bak`).catch(() => undefined);
       known.delete(encoded);
     }
+    this.staleShardFiles.delete(table);
     return known.size;
   }
 

@@ -1074,6 +1074,11 @@ class FileTableStore {
   async initialize() {
     mkdirSync(this.rootDir, { recursive: true });
 
+    // Refuse newer-format data BEFORE any migration side effect: the
+    // migration renames monoliths and writes shard files, which must never
+    // happen in a directory this build cannot read (#4708).
+    this.assertStorageFormatSupported();
+
     await this.migrateShardedTables();
 
     if (fileStoreManifestExists(this.rootDir) || tableSnapshotsExist(this.rootDir)) {
@@ -1752,6 +1757,27 @@ class FileTableStore {
     }
   }
 
+  /**
+   * Forward version gate, run before the shard migration: a manifest written
+   * by a NEWER storage format means this build cannot read the directory, so
+   * it must not mutate it either. An unparseable or absent manifest falls
+   * through to the existing recovery paths — loadFileSnapshots re-checks the
+   * version with full .bak recovery.
+   */
+  private assertStorageFormatSupported() {
+    const path = manifestPath(this.rootDir);
+    if (!existsSync(path)) return;
+    let version: unknown;
+    try {
+      version = parseJsonFile<TableSnapshotManifest | null>(path, null).value?.version;
+    } catch {
+      return;
+    }
+    if (typeof version === "number" && version > STORAGE_VERSION) {
+      throw new StorageFormatTooNewError(version, STORAGE_VERSION);
+    }
+  }
+
   private async loadFileSnapshots() {
     // The manifest is recoverable from on-disk table files, so a corrupted
     // manifest (e.g. both manifest.json and manifest.json.bak nulled by a
@@ -1898,6 +1924,23 @@ class FileTableStore {
         const parsedRows = Array.isArray(rows) ? rows : [];
         const source = parsedRows.filter(isRowRecord);
         const malformedRowCount = parsedRows.length - source.length;
+        if (malformedRowCount > 0 && source.length === 0) {
+          // EVERY row is malformed — the shard holds nothing usable.
+          // Quarantine the files outright (move, not copy): a copy-preserved
+          // zombie would reload, re-preserve, and re-log on every startup,
+          // because saveShardedTable's zero-row delete only reaches shards
+          // with dirty keys and an empty shard never produces one.
+          const files = await quarantineUnrecoverableFiles([path, `${path}.bak`], `table ${table} shard ${encoded}`);
+          if (files.length > 0) this.quarantinedTables.push({ table, files });
+          logger.error(
+            { table, shard: encoded, malformedRowCount, preservedFiles: files.map((file) => file.to) },
+            "[file-storage] Shard contained only malformed rows; quarantined its files for manual recovery.",
+          );
+          // Fully quarantined -> not a known shard. If the primary rename
+          // failed it is still on disk, so fall through to the copy-preserve
+          // path below rather than lose the file.
+          if (!existsSync(path)) continue;
+        }
         if (malformedRowCount > 0) {
           const sourcePath = recoveredFromBackup && existsSync(`${path}.bak`) ? `${path}.bak` : path;
           const files = await preserveMalformedRowSource(sourcePath, table);
@@ -1925,21 +1968,17 @@ class FileTableStore {
         if (!quarantinedAway) known.add(encoded);
         if ((recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0) && normalized.length > 0) {
           // Self-heal: rewrite this shard from memory on the next flush. The
-          // raw key comes from the rows (filenames may be hash forms); swipes
-          // resolve through the message index, which exists because messages
-          // load before swipes in SHARDED_TABLES order.
+          // raw keys come from the rows (filenames may be hash forms), and
+          // EVERY row's key is dirtied — a recovered file can hold rows for
+          // several shards, and dirtying only the first row's key would leave
+          // the other destinations stale. Swipes resolve through the message
+          // index, which exists because messages load before swipes in
+          // SHARDED_TABLES order.
           this.backupRecoveredPaths.add(path);
-          const firstRow = normalized[0]!;
-          const rawKey =
-            table === "messages"
-              ? typeof firstRow.chatId === "string" && firstRow.chatId
-                ? (firstRow.chatId as string)
-                : UNASSIGNED_SHARD_KEY
-              : (this.messageShardIndex.get(firstRow.messageId) ?? UNASSIGNED_SHARD_KEY);
           this.dirty = true;
           this.dirtyTables.add(table);
           const set = this.dirtyShards.get(table) ?? new Set<string>();
-          set.add(rawKey);
+          for (const rawKey of this.shardKeysForRows(table, normalized)) set.add(rawKey);
           this.dirtyShards.set(table, set);
         }
       }

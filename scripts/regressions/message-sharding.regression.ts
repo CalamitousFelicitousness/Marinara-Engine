@@ -32,12 +32,15 @@ function tempStorageDir() {
   return dir;
 }
 
+let messageRowSeq = 0;
 const messageRow = (id: string, chatId: string, content: string) => ({
   id,
   chatId,
   role: "user",
   content,
-  createdAt: `2026-08-08T10:00:${id.slice(-2).padStart(2, "0")}.000Z`,
+  // Monotonic, valid ISO timestamps: the shard loader sorts on createdAt,
+  // so the fixture must produce a real chronological order.
+  createdAt: `2026-08-08T10:00:${String(messageRowSeq++).padStart(2, "0")}.000Z`,
 });
 
 // ── Shard filename encoding is a security boundary ──
@@ -54,7 +57,11 @@ assert.ok(!encodeShardKey("..\\..\\evil").includes("\\"), "backslashes never sur
 assert.equal(encodeShardKey("orphaned-rows"), "orphaned-rows", "the orphan shard key encodes to itself (readable file)");
 assert.match(encodeShardKey("x".repeat(500)), /^%h[0-9a-f]{32}$/, "overlong keys fall back to a hash form");
 assert.match(encodeShardKey("con"), /^%h[0-9a-f]{32}$/, "Windows reserved basenames fall back to a hash form");
-assert.equal(encodeShardKey("nanoid-Like_id"), encodeShardKey("nanoid-Like_id"), "encoding is deterministic");
+assert.equal(
+  encodeShardKey("nanoid-Like_id"),
+  "nanoid-%4Cike%5Fid",
+  "nanoid-style ids encode to a stable, pinned filename",
+);
 
 // ── Fresh install: shards, never a monolith ──
 
@@ -240,6 +247,7 @@ assert.equal(encodeShardKey("nanoid-Like_id"), encodeShardKey("nanoid-Like_id"),
 {
   const dir = tempStorageDir();
   mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([messageRow("m-1", "chat-x", "untouchable")]));
   writeFileSync(
     join(dir, "manifest.json"),
     JSON.stringify({ version: 99, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
@@ -249,6 +257,11 @@ assert.equal(encodeShardKey("nanoid-Like_id"), encodeShardKey("nanoid-Like_id"),
     (error: unknown) => error instanceof StorageFormatTooNewError,
     "data from a newer format must refuse to load instead of being misread",
   );
+  // The refusal must precede EVERY migration side effect: a directory this
+  // build cannot read must not be mutated by it either.
+  assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
+  assert.equal(existsSync(join(dir, "tables", "messages.json.pre-shard")), false, "no pre-shard rename happened");
+  assert.equal(existsSync(join(dir, "tables", "messages")), false, "no shard directory was created");
   rmSync(dir, { recursive: true, force: true });
 }
 
@@ -310,6 +323,55 @@ assert.equal(encodeShardKey("nanoid-Like_id"), encodeShardKey("nanoid-Like_id"),
   try {
     const rows = await db.select().from(messages);
     assert.equal(rows.length, 1, "duplicate primary keys across shards never survive into memory");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A shard with ONLY malformed rows is quarantined, not kept as a zombie ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const shardPath = join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`);
+  writeFileSync(shardPath, JSON.stringify(["not-a-row", 42]));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 0, "malformed rows never load");
+    assert.equal(existsSync(shardPath), false, "the all-malformed shard file is removed from the shard dir");
+    const quarantined = readdirSync(join(dir, "tables", "messages")).filter((name) => name.includes(".corrupt-"));
+    assert.equal(quarantined.length, 1, "the file is preserved under a .corrupt- name for manual recovery");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Self-heal dirties EVERY shard key found in a recovered file ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  // chat-x's shard carries one malformed row plus a row that belongs to
+  // chat-y; chat-y's own file exists and is clean, so it is already "known"
+  // and only a dirty key can force its rewrite.
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify(["malformed", messageRow("m-x1", "chat-x", "x"), messageRow("m-y2", "chat-y", "displaced")]),
+  );
+  const yPath = join(dir, "tables", "messages", `${encodeShardKey("chat-y")}.json`);
+  writeFileSync(yPath, JSON.stringify([messageRow("m-y1", "chat-y", "resident")]));
+  const db = await createFileNativeDB();
+  try {
+    await db._fileStore.flush();
+    const yRows = JSON.parse(readFileSync(yPath, "utf8")) as Array<{ id: string }>;
+    assert.deepEqual(
+      yRows.map((row) => row.id).sort(),
+      ["m-y1", "m-y2"],
+      "healing a mixed recovered file rewrites EVERY shard its rows map to, not just the first row's",
+    );
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

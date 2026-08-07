@@ -174,6 +174,7 @@ import { applyKnowledgeAgentChatSettings } from "../../services/generation/knowl
 import {
   applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
+  needsForcedSnapshotFallback,
 } from "../../services/generation/custom-agent-image-settings.js";
 import {
   generateIllustratorSceneBackground,
@@ -3643,11 +3644,12 @@ async function applyRetryResultEffects(args: {
             sendSseEvent(reply, {
               type: "agent_error",
               data: {
-                agentType: "illustrator",
+                // Attribute to the agent that actually ran (custom snapshot vs vanilla).
+                agentType: result.agentType,
                 agentName: illustratorFailureName,
                 retryTarget: "illustration",
                 error:
-                  "No image generation connection is set on the Illustrator agent or under Settings -> Connections -> Defaults -> Images. Choose one there, or assign one directly in Settings -> Agents -> Illustrator.",
+                  "No image generation connection is set on this agent or under Settings -> Connections -> Defaults -> Images. Choose one there, or assign one in the agent's settings.",
               },
             });
           }
@@ -3670,10 +3672,30 @@ async function applyRetryResultEffects(args: {
         sendSseEvent(reply, {
           type: "agent_error",
           data: {
-            agentType: "illustrator",
+            // Attribute the failure to the agent that actually ran — a custom
+            // agent's snapshot failure must not be reported as the Illustrator.
+            agentType: result.agentType,
             agentName: illustratorFailureName,
             retryTarget: "illustration",
             error: illErr instanceof Error ? illErr.message : "Image generation failed",
+          },
+        });
+      }
+    } else if (needsForcedSnapshotFallback(forceImageGeneration === true, result)) {
+      // Snapshot button (#4682): the forced agent SUCCEEDED without a usable
+      // image_prompt payload (different result type, or null data), so nothing
+      // above surfaces the outcome — without this the camera press would be a
+      // silent no-op. Failed results already reach the client via agent_result.
+      const forcedAgent = resolvedAgents.find((agent) => agent.resolved.id === result.agentId);
+      if (forcedAgent && forcedAgent.resolved.type !== "illustrator") {
+        sendSseEvent(reply, {
+          type: "agent_error",
+          data: {
+            agentType: result.agentType,
+            agentName: forcedAgent.cfg.name ?? "Agent",
+            retryTarget: "illustration",
+            error:
+              "The agent completed without producing an image prompt. Check that its result type is set to Image Prompt and that its template returns a prompt when an image is requested.",
           },
         });
       }

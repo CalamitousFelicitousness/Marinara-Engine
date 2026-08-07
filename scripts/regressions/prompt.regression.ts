@@ -73,6 +73,7 @@ import { resolveConversationSelfieRequestedNames } from "../../packages/server/s
 import {
   applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
+  needsForcedSnapshotFallback,
 } from "../../packages/server/src/services/generation/custom-agent-image-settings.js";
 import {
   normalizeCyoaChoiceOutput,
@@ -9197,6 +9198,22 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(forceImageGenerationScopeError(true, 1), null);
       assert.ok(forceImageGenerationScopeError(true, 2));
       assert.ok(forceImageGenerationScopeError(true, 0));
+    },
+  },
+  {
+    name: "forced snapshots surface successful results that carry no image prompt",
+    run() {
+      // A successful non-image_prompt result (or null data) would otherwise be a
+      // silent no-op for the camera press — the fallback error must fire.
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "context_injection", data: {} }), true);
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: null }), true);
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: "text" }), true);
+      // A usable image_prompt payload is handled by the generation block itself.
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: {} }), false);
+      // Failed results already surface their error via the agent_result event.
+      assert.equal(needsForcedSnapshotFallback(true, { success: false, type: "context_injection", data: {} }), false);
+      // Non-forced retries never use the fallback.
+      assert.equal(needsForcedSnapshotFallback(false, { success: true, type: "context_injection", data: {} }), false);
     },
   },
   {

@@ -35,6 +35,21 @@ export function forceImageGenerationScopeError(
 }
 
 /**
+ * A forced snapshot (#4682) whose agent SUCCEEDED without a usable image_prompt
+ * payload (different result type, or null/non-object data) never enters the
+ * image-generation block, so nothing downstream surfaces the outcome — the
+ * camera press would look like a silent no-op. Failed results are excluded:
+ * their error already reaches the client via the agent_result event.
+ */
+export function needsForcedSnapshotFallback(
+  forceImageGeneration: boolean,
+  result: { success: boolean; type?: string | null; data?: unknown },
+): boolean {
+  if (!forceImageGeneration || !result.success) return false;
+  return !(result.type === "image_prompt" && !!result.data && typeof result.data === "object");
+}
+
+/**
  * Apply this chat's per-agent image overrides to a custom image agent's
  * resolved settings, mirroring applyKnowledgeAgentChatSettings. An empty or
  * missing entry leaves the agent's own configuration untouched, so "Agent

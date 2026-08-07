@@ -125,6 +125,10 @@ import {
 } from "../services/generation/roleplay-summary-runtime.js";
 import { resolveLorebookTokenBudget } from "../services/generation/lorebook-generation-runtime.js";
 import { resolveGameGmPromptTemplate } from "../services/generation/game-gm-prompt-runtime.js";
+import {
+  isBackgroundAutonomousCandidate,
+  hasRoleplayDmThreadMarkers,
+} from "../services/conversation/autonomous-candidates.js";
 
 type TrackerWrapFormat = "xml" | "markdown" | "none";
 type EntryStateOverrides = Record<string, { ephemeral?: number | null; enabled?: boolean }>;
@@ -628,6 +632,28 @@ export async function chatsRoutes(app: FastifyInstance) {
     await cleanupEmptyRoleplayDmChats();
     const chats = await storage.list();
     return chats.filter((chat) => !shouldHideProfessorMariChat(chat)).map(normalizeChatForResponse);
+  });
+
+  // Lightweight candidate ids for the background-autonomous poller (#4704):
+  // the poller only needs ids, so skip the full-list materialization,
+  // metadata serialization, and DM-cleanup scans the / route performs.
+  // Static path — Fastify prefers it over GET /:id.
+  app.get("/autonomous-candidates", async () => {
+    const chats = await storage.list();
+    const candidates = chats.filter(isBackgroundAutonomousCandidate);
+    // Exclude EMPTIED Roleplay DM threads: the legacy poll's GET /chats ran
+    // cleanupEmptyRoleplayDmChats as a side effect, and an emptied thread with
+    // stale in-memory activity state could otherwise receive an autonomous
+    // message, permanently exempting it from cleanup. countMessages runs only
+    // for DM-marker candidates, so the scan cost this route avoids stays avoided.
+    const eligible = [];
+    for (const chat of candidates) {
+      if (hasRoleplayDmThreadMarkers(parseChatMetadata(chat.metadata))) {
+        if ((await storage.countMessages(chat.id)) === 0) continue;
+      }
+      eligible.push({ id: chat.id });
+    }
+    return eligible;
   });
 
   app.get("/internal/professor-mari/chats", async () => {

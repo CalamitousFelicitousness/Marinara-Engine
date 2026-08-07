@@ -171,7 +171,10 @@ import {
   normalizeProseGuardianPromptTemplate,
 } from "../../services/generation/prose-guardian-settings.js";
 import { applyKnowledgeAgentChatSettings } from "../../services/generation/knowledge-agent-settings.js";
-import { applyCustomAgentImageChatSettings } from "../../services/generation/custom-agent-image-settings.js";
+import {
+  applyCustomAgentImageChatSettings,
+  forceImageGenerationScopeError,
+} from "../../services/generation/custom-agent-image-settings.js";
 import {
   generateIllustratorSceneBackground,
   illustratorBackgroundGenerationEnabled,
@@ -4166,6 +4169,19 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         throw new Error(
           "No runnable agents were found for this retry. Add tracker agents to this chat or check their connection settings.",
         );
+      }
+      // Snapshot force (#4682) is a single-agent contract: the flag applies to
+      // every image_prompt result in the batch, so reject multi-agent forced
+      // requests up front instead of guarding each downstream effect site.
+      const forceScopeError = forceImageGenerationScopeError(forceImageGeneration === true, resolvedAgents.length);
+      if (forceScopeError) {
+        logger.warn(
+          "[retry-agents] Rejected forceImageGeneration: %d agents resolved for chatId=%s agentTypes=%j",
+          resolvedAgents.length,
+          chatId,
+          agentTypes,
+        );
+        throw new Error(forceScopeError);
       }
       const lorebookKeeperAgent = resolvedAgents.find((entry) => entry.resolved.type === "lorebook-keeper") ?? null;
       const nonLorebookAgents = resolvedAgents.filter((entry) => entry.resolved.type !== "lorebook-keeper");

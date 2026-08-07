@@ -19,6 +19,22 @@ function readCustomAgentImageSettings(
 }
 
 /**
+ * Snapshot force requests (#4682) must resolve to exactly one agent: the force
+ * flag is applied per image_prompt result, so a multi-agent forced batch would
+ * force generation, skip prompt review, and emit decline errors for unrelated
+ * agents. The shipped camera button always targets one agent; this enforces
+ * that contract for hand-crafted requests too. Returns the rejection message,
+ * or null when the request is acceptable.
+ */
+export function forceImageGenerationScopeError(
+  forceImageGeneration: boolean,
+  resolvedAgentCount: number,
+): string | null {
+  if (!forceImageGeneration || resolvedAgentCount === 1) return null;
+  return "Image snapshot requests target exactly one agent. Use the camera button on a single agent's card in Chat Settings.";
+}
+
+/**
  * Apply this chat's per-agent image overrides to a custom image agent's
  * resolved settings, mirroring applyKnowledgeAgentChatSettings. An empty or
  * missing entry leaves the agent's own configuration untouched, so "Agent

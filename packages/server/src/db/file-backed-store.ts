@@ -1797,7 +1797,15 @@ class FileTableStore {
       if (typeof manifestVersion === "number" && manifestVersion > STORAGE_VERSION) {
         throw new StorageFormatTooNewError(manifestVersion, STORAGE_VERSION);
       }
-      needsManifestRewrite = result.recoveredFromBackup || result.recoveredFromFallback;
+      // A stale but valid version (a crash between the migration and its
+      // first flush leaves sharded data under a version-2 manifest) must also
+      // be rewritten promptly: the launcher/updater downgrade guard trusts
+      // manifest.version, and a lagging value would let it approve a
+      // downgrade onto data the older build cannot read (#4708).
+      needsManifestRewrite =
+        result.recoveredFromBackup ||
+        result.recoveredFromFallback ||
+        (typeof manifestVersion === "number" && manifestVersion !== STORAGE_VERSION);
       if (result.recoveredFromBackup || result.recoveredFromFallback) {
         this.backupRecoveredPaths.add(path);
       }

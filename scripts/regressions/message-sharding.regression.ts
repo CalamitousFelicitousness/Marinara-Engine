@@ -378,6 +378,33 @@ assert.equal(
   }
 }
 
+// ── A stale manifest version is rewritten on the next boot ──
+// Crash window: migration completed but the first flush never ran, leaving
+// sharded data under a version-2 manifest. The downgrade guard (#4708 PR 2)
+// trusts manifest.version, so the store must heal it on the next startup —
+// not wait for the next data write.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify([messageRow("m-1", "chat-x", "sharded")]),
+  );
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({ version: 2, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
+  );
+  const db = await createFileNativeDB();
+  try {
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
+    assert.equal(manifest.version, 3, "a lagging manifest version is healed by the startup flush");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Bak-only shard: primary vanished in a crash, .bak survives ──
 
 {

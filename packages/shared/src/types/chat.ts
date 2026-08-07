@@ -323,6 +323,9 @@ export interface ChatMetadata {
   gameImageDynamicPromptEnabled?: boolean;
   /** Per-chat source overrides for knowledge agents. */
   knowledgeAgentSources?: Partial<Record<"knowledge-retrieval" | "knowledge-router", KnowledgeAgentSourceSettings>>;
+  /** Per-chat image settings overrides for custom image agents, keyed by agent type.
+   *  The inner key ends in "ConnectionId" so deleted connections are swept automatically. */
+  customAgentImageSettings?: Partial<Record<string, { imageConnectionId?: string | null }>>;
   /** Narrative Director mode used when Push Story is armed. */
   narrativeDirectorMode?: "natural" | "random";
   /** Whether Narrative Director maintains a hidden Secret Plot arc for this roleplay chat. */

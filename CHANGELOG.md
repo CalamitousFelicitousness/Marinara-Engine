@@ -13,6 +13,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Show the localized validation error before restoring an invalid all-zero NoodleR fan activity weight.
+- Asked for confirmation before permanently deleting a prompt block from preset chat settings (#4698).
 - Let Professor Mari read trusted Wikipedia links through her structured wiki tools on Android while keeping raw shell networking sandboxed (#4691).
 - Stopped Illustrator from appending its generic anti-text list to NovelAI negative prompts, preserving the prompt supplied by the agent (#4692).
 - Converted NovelAI style-reference fidelity to the provider's inverse secondary-strength scale before sending the request (#4693).

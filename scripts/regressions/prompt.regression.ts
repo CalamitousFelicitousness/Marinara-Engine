@@ -71,6 +71,11 @@ import {
 } from "../../packages/server/src/services/game/gm-prompts.js";
 import { resolveConversationSelfieRequestedNames } from "../../packages/server/src/services/generation/conversation-selfie-command-runtime.js";
 import {
+  applyCustomAgentImageChatSettings,
+  forceImageGenerationScopeError,
+  needsForcedSnapshotFallback,
+} from "../../packages/server/src/services/generation/custom-agent-image-settings.js";
+import {
   normalizeCyoaChoiceOutput,
   normalizeCyoaDialogueQuotes,
 } from "../../packages/server/src/services/agents/cyoa-choice-normalization.js";
@@ -9184,6 +9189,69 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         budgetedMixedMatches.map((match) => match.entry.id),
         ["entry-semantic-current"],
       );
+    },
+  },
+  {
+    name: "forced image snapshots are limited to a single image-capable custom agent",
+    run() {
+      const imageAgent = { isCustomAgent: true, canEmitImagePrompt: true };
+      const nonImageAgent = { isCustomAgent: true, canEmitImagePrompt: false };
+      const builtIn = { isCustomAgent: false, canEmitImagePrompt: false };
+
+      assert.equal(forceImageGenerationScopeError(false, [imageAgent, builtIn, nonImageAgent]), null);
+      assert.equal(forceImageGenerationScopeError(true, [imageAgent]), null);
+      // Multi-agent and empty forced batches are rejected.
+      assert.match(forceImageGenerationScopeError(true, [imageAgent, imageAgent]) ?? "", /exactly one agent/);
+      assert.match(forceImageGenerationScopeError(true, []) ?? "", /exactly one agent/);
+      // Built-in targets are rejected — the Illustrator has its own manual path.
+      assert.match(forceImageGenerationScopeError(true, [builtIn]) ?? "", /custom image agents/);
+      // Custom agents without the Image generation ability are rejected.
+      assert.match(forceImageGenerationScopeError(true, [nonImageAgent]) ?? "", /Image generation ability/);
+    },
+  },
+  {
+    name: "forced snapshots surface successful results that carry no image prompt",
+    run() {
+      // A successful non-image_prompt result (or null data) would otherwise be a
+      // silent no-op for the camera press — the fallback error must fire.
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "context_injection", data: {} }), true);
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: null }), true);
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: "text" }), true);
+      // A usable image_prompt payload is handled by the generation block itself.
+      assert.equal(needsForcedSnapshotFallback(true, { success: true, type: "image_prompt", data: {} }), false);
+      // Failed results already surface their error via the agent_result event.
+      assert.equal(needsForcedSnapshotFallback(true, { success: false, type: "context_injection", data: {} }), false);
+      // Non-forced retries never use the fallback.
+      assert.equal(needsForcedSnapshotFallback(false, { success: true, type: "context_injection", data: {} }), false);
+    },
+  },
+  {
+    name: "per-chat custom agent image overrides apply to custom agents only",
+    run() {
+      const chatMeta = {
+        customAgentImageSettings: {
+          "scene-painter": { imageConnectionId: "conn-override" },
+          illustrator: { imageConnectionId: "conn-should-never-apply" },
+          "empty-entry": { imageConnectionId: "  " },
+        },
+      };
+      const base = { imageConnectionId: "conn-agent-default", other: "kept" };
+
+      const overridden = applyCustomAgentImageChatSettings("scene-painter", { ...base }, chatMeta);
+      assert.equal(overridden.imageConnectionId, "conn-override");
+      assert.equal(overridden.other, "kept");
+
+      // Built-in agents keep their own dedicated chat-level override keys.
+      const builtIn = applyCustomAgentImageChatSettings("illustrator", { ...base }, chatMeta);
+      assert.equal(builtIn.imageConnectionId, "conn-agent-default");
+
+      // Blank or missing entries leave the agent's own configuration untouched.
+      const blank = applyCustomAgentImageChatSettings("empty-entry", { ...base }, chatMeta);
+      assert.equal(blank.imageConnectionId, "conn-agent-default");
+      const missing = applyCustomAgentImageChatSettings("unlisted-agent", { ...base }, chatMeta);
+      assert.equal(missing.imageConnectionId, "conn-agent-default");
+      const noMeta = applyCustomAgentImageChatSettings("scene-painter", { ...base }, null);
+      assert.equal(noMeta.imageConnectionId, "conn-agent-default");
     },
   },
 ];

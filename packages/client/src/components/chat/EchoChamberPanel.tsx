@@ -409,6 +409,15 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
     [clampPanelSize],
   );
 
+  const handleResizeLostCapture = useCallback(() => {
+    if (!resizeRef.current) return;
+    const pendingSize = pendingPanelSizeRef.current;
+    const rect = panelRef.current?.getBoundingClientRect();
+    resizeRef.current = null;
+    if (pendingSize) commitPanelSize(pendingSize.width, pendingSize.height);
+    else if (rect) commitPanelSize(rect.width, rect.height);
+  }, [commitPanelSize]);
+
   const handleResizeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLButtonElement>) => {
       if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
@@ -684,6 +693,7 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
         onPointerMove={handleResizeMove}
         onPointerUp={handleResizeEnd}
         onPointerCancel={handleResizeCancel}
+        onLostPointerCapture={handleResizeLostCapture}
         onKeyDown={handleResizeKeyDown}
       >
         <span

@@ -88,6 +88,31 @@ const generateRouteSource = readFileSync(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
+const useGenerateSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  generateRouteSource,
+  /\.\.\.\(input\.submissionId \? \{ submissionId: input\.submissionId \} : \{\}\)/u,
+  "The durable user row must retain its client submission ID even when generation fails",
+);
+const upsertPersistedMessagesSource =
+  /export function upsertPersistedMessages\([\s\S]*?\n\}\n\nfunction appendMissingPersistedMessages/u.exec(
+    useGenerateSource,
+  )?.[0];
+assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement helper must remain available");
+assert.match(upsertPersistedMessagesSource, /const persistedUserBySubmissionId = new Map/u);
+assert.match(
+  upsertPersistedMessagesSource,
+  /msg\.id\.startsWith\("__optimistic_"\)[\s\S]*persistedUserBySubmissionId\.get\(submissionId\)/u,
+  "Durable-message reconciliation must replace the matching optimistic prompt inside the cache helper",
+);
+const confirmDurableSubmittedUserTurnSource =
+  /const confirmDurableSubmittedUserTurn = async \(\) => \{[\s\S]*?\n      \};/u.exec(useGenerateSource)?.[0];
+assert.ok(confirmDurableSubmittedUserTurnSource, "The failed-generation recovery helper must remain available");
+assert.match(confirmDurableSubmittedUserTurnSource, /upsertPersistedMessages\(qc, params\.chatId, messages\)/u);
+assert.match(useGenerateSource, /return await confirmDurableSubmittedUserTurn\(\)/u);
 const chatInputSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
   "utf8",
@@ -149,10 +174,6 @@ const conversationInputSource = readFileSync(
 );
 const presetEditorSource = readFileSync(
   new URL("../../packages/client/src/components/presets/PresetEditor.tsx", import.meta.url),
-  "utf8",
-);
-const useGenerateSource = readFileSync(
-  new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
 const useChatsSource = readFileSync(new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url), "utf8");
@@ -374,6 +395,11 @@ assert.match(
   echoChamberPanelSource,
   /onPointerCancel=\{handleResizeCancel\}/u,
   "a canceled Echo Chamber resize should use its rollback path",
+);
+assert.match(
+  echoChamberPanelSource,
+  /onLostPointerCapture=\{handleResizeLostCapture\}/u,
+  "Echo Chamber should still commit a finished drag when the browser drops pointer capture",
 );
 assert.doesNotMatch(
   echoChamberPanelSource,

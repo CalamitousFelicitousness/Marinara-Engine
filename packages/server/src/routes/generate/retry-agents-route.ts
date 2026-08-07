@@ -175,6 +175,7 @@ import {
   applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
   needsForcedSnapshotFallback,
+  resolveCustomAgentStyleProfileId,
 } from "../../services/generation/custom-agent-image-settings.js";
 import {
   generateIllustratorSceneBackground,
@@ -3316,10 +3317,13 @@ async function applyRetryResultEffects(args: {
 
             const chatMeta = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {});
             const setupConfig = parseSettingsRecord(chatMeta.gameSetupConfig);
-            const styleProfileId =
-              (typeof setupConfig.imageStyleProfileId === "string" ? setupConfig.imageStyleProfileId : "") ||
-              (typeof chatMeta.imageStyleProfileId === "string" ? chatMeta.imageStyleProfileId : "") ||
-              null;
+            const styleProfileId = resolveCustomAgentStyleProfileId({
+              usesChatIllustratorSettings,
+              agentSettings: imagePromptAgent?.resolved.settings,
+              availableProfiles: imageSettings.styleProfiles.profiles,
+              gameStyleProfileId: setupConfig.imageStyleProfileId,
+              chatStyleProfileId: chatMeta.imageStyleProfileId,
+            });
             const illustrationSize = resolveIllustratorImageSize(
               chat.mode === "game" ? imageSettings.game : imageSettings.illustration,
               illData.aspectRatio,

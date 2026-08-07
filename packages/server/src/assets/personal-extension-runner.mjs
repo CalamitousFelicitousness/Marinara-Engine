@@ -234,6 +234,14 @@ const pollInput = async () => {
       inputBuffer = inputBuffer.subarray(newline + 1);
       if (line) handleMessage(line);
     }
+    // Cap the residual (incomplete message) too — the same per-message
+    // semantic the host applies. A newline-less message must not grow the
+    // buffer unbounded between polls.
+    if (inputBuffer.byteLength > MAX_MESSAGE_BYTES) {
+      send({ type: "fatal", message: "Extension message exceeded the size limit" });
+      void stop();
+      return;
+    }
   } catch (error) {
     send({ type: "fatal", message: error instanceof Error ? error.message : String(error) });
     void stop();

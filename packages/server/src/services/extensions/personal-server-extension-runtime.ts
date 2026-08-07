@@ -457,7 +457,13 @@ export class PersonalServerExtensionRuntime {
           // exit) may still be sitting unread in the output file (#4706).
           while (pollingOutput) await new Promise((resolve) => setTimeout(resolve, 10));
           await pollOutput();
-          void outputHandle.close();
+          // Fully close the handle before cleanup removes the directory it
+          // points at (Windows refuses to delete open files).
+          try {
+            await outputHandle.close();
+          } catch (error) {
+            logger.warn(error, "[personal-extensions] Failed to close sandbox output handle");
+          }
           if (!active.expectedStop) {
             const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
             const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;

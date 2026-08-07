@@ -172,6 +172,16 @@ let stderr = "";
 child.stderr?.on("data", (chunk: Buffer) => {
   stderr += chunk.toString("utf8");
 });
+// Registered immediately so cleanup can await the real close event instead of
+// guessing with a fixed delay — the child may still hold protocol-file
+// handles, and rmSync on Windows refuses open files.
+const childClosed = new Promise<void>((resolveClosed) => {
+  if (child.exitCode !== null) {
+    resolveClosed();
+    return;
+  }
+  child.once("close", () => resolveClosed());
+});
 
 try {
   await appendFile(
@@ -224,6 +234,6 @@ try {
   console.info("Extension IPC regressions passed.");
 } finally {
   if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  await sleep(100);
+  await Promise.race([childClosed, sleep(5_000)]);
   rmSync(sandboxDir, { recursive: true, force: true });
 }

@@ -98,6 +98,7 @@ export async function checkTargetStorageFormat({
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15_000,
     });
     const parsed = JSON.parse(raw);
     if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
@@ -304,7 +305,9 @@ export async function unshardLauncherStorage({
   // shards-stay-authoritative rule above instead of aborting or trusting a
   // partial monolith.
   await mkdir(tablesDir, { recursive: true });
-  await writeFile(unshardSentinel, now.toISOString(), "utf8");
+  // Durable: after a power loss the sentinel must exist wherever the renames
+  // below landed, or the next run aborts as forked instead of resuming.
+  await writeFileDurable(unshardSentinel, now.toISOString());
   const timestamp = now.toISOString().replaceAll(":", "-").replace(".", "-");
   const results = [];
   for (const plan of plans) {
@@ -489,6 +492,12 @@ async function main() {
   }
 
   if (command === "check-target") {
+    // Exit-code contract, relied on by every launcher and the installer:
+    //   0 = compatible target, proceed
+    //   2 = REAL format block (the target cannot read the on-disk data)
+    //   1 = the check itself failed (usage error, unexpected exception via
+    //       main().catch) — consumers must fail safe but report it as a
+    //       verification failure, not as a downgrade block.
     const targetRef = process.argv[3];
     if (!targetRef) throw new Error("Usage: node scripts/protect-launcher-data.mjs check-target <ref>");
     const result = await checkTargetStorageFormat({ targetRef });

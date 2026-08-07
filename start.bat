@@ -133,10 +133,16 @@ if /I "!OLD_HEAD!"=="!TARGET_HEAD!" (
 :: Never auto-move onto a build whose storage format predates the data on
 :: disk - it would silently show empty chat history (#4708). Checked BEFORE
 :: the snapshot: a blocked target stays blocked on every launch, and
-:: re-copying the whole data directory each time serves nothing.
+:: re-copying the whole data directory each time serves nothing. Exit 2 is a
+:: real format block; any other failure means the check itself could not run.
+:: Both skip the update (fail-safe) with distinguishable messages.
 node scripts\protect-launcher-data.mjs check-target "!TARGET_HEAD!"
-if errorlevel 1 (
+if errorlevel 2 (
     echo  [WARN] Skipping auto-update: the target version is older than your data format.
+    goto :skip_update
+)
+if errorlevel 1 (
+    echo  [WARN] Skipping auto-update: could not verify the target's storage format.
     goto :skip_update
 )
 node scripts\protect-launcher-data.mjs snapshot

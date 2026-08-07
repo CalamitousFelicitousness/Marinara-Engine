@@ -220,9 +220,17 @@ elif [ -d ".git" ]; then
         # BEFORE the snapshot: a blocked target stays blocked on every launch,
         # and re-copying the whole data directory each time serves nothing.
         if [ -n "$TARGET_HEAD" ]; then
-            if ! node scripts/protect-launcher-data.mjs check-target "$TARGET_HEAD"; then
+            # Exit 2 = real format block; any other failure means the check
+            # itself could not run. Both skip the update (fail-safe), but the
+            # user must be able to tell the two apart.
+            node scripts/protect-launcher-data.mjs check-target "$TARGET_HEAD"
+            CHECK_TARGET_STATUS=$?
+            if [ "$CHECK_TARGET_STATUS" -eq 2 ]; then
                 SKIP_UPDATE_FOR_LOCAL_CHANGES=1
                 echo "  [WARN] Skipping auto-update: the target version is older than your data format."
+            elif [ "$CHECK_TARGET_STATUS" -ne 0 ]; then
+                SKIP_UPDATE_FOR_LOCAL_CHANGES=1
+                echo "  [WARN] Skipping auto-update: could not verify the target's storage format."
             fi
         fi
         if [ "$SKIP_UPDATE_FOR_LOCAL_CHANGES" != "1" ]; then

@@ -307,8 +307,11 @@ async function checkTargetStorageFormat(
     });
     const parsed = JSON.parse(stdout) as { storageFormat?: unknown };
     if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
-  } catch {
-    /* absent on the ref -> keep 2 */
+  } catch (err) {
+    // Absent on the ref -> keep 2. Any other cause (git failure, timeout)
+    // also lands here and can block a legitimate upgrade with a misleading
+    // 409, so make it diagnosable.
+    logger.warn(err, "[Update] Could not read storage-format.json at %s; assuming format 2", targetRef);
   }
   return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
 }

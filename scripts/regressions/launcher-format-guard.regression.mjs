@@ -54,6 +54,12 @@ for (const launcherPath of ["start.sh", "start-termux.sh", "start.bat"]) {
     launcherSource.indexOf("check-target") < launcherSource.indexOf("protect-launcher-data.mjs snapshot"),
     `${launcherPath} must run check-target BEFORE the data snapshot`,
   );
+  // Exit 2 = real format block, other non-zero = the check itself failed.
+  // Both fail safe, but the launcher must distinguish the messages.
+  assert.ok(
+    /-eq 2|errorlevel 2/.test(launcherSource) && launcherSource.includes("could not verify"),
+    `${launcherPath} must honor the check-target exit-code contract (2 = block, other = verification failure)`,
+  );
 }
 const installerSource = readFileSync(join(repositoryRoot, "win/installer/install.bat"), "utf8");
 assert.ok(
@@ -183,6 +189,11 @@ function storageFixture(manifestVersion) {
       env: { ...process.env, FILE_STORAGE_DIR: currentData },
     });
     assert.equal(allowed.status, 0, "check-target must exit 0 for a compatible target");
+    const broken = spawnSync(process.execPath, [guardScript, "check-target"], {
+      encoding: "utf8",
+      env: { ...process.env, FILE_STORAGE_DIR: currentData },
+    });
+    assert.equal(broken.status, 1, "a check that could not run exits 1, never 2 — consumers report it differently");
   } finally {
     for (const dir of [newerData, currentData]) rmSync(dir, { recursive: true, force: true });
   }

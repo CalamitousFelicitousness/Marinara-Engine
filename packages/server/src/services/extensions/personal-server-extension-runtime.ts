@@ -512,7 +512,13 @@ export class PersonalServerExtensionRuntime {
               const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;
               fail(detail);
             }
-            await sandbox.cleanup();
+            try {
+              await sandbox.cleanup();
+            } catch (error) {
+              // This task is detached — a rejection here would be unhandled.
+              // The leftover dir is inert; log it rather than fail the close.
+              logger.warn(error, "[personal-extensions] Sandbox cleanup failed for %s", extension.name);
+            }
           } finally {
             active.resolveCloseFinalized();
           }
@@ -562,9 +568,11 @@ export class PersonalServerExtensionRuntime {
         sandbox.backend,
       );
     } catch (error) {
-      active.expectedStop = true;
-      child.kill("SIGKILL");
-      await sandbox.cleanup();
+      // Same serialized teardown as a normal stop: kill, then wait (bounded)
+      // for the close handler's finalization before the last-resort cleanup —
+      // a direct cleanup here would race the drain and can fail on Windows
+      // against the still-open output handle.
+      await this.stopExtension(active);
       throw error;
     }
   }

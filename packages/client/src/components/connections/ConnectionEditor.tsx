@@ -524,6 +524,10 @@ export function ConnectionEditor() {
     localProvider === "image_generation"
       ? localImageGenerationSource || localImageService || effectiveImageGenerationSource
       : "";
+  const swarmUiWorkflowError =
+    selectedImageService === "swarmui" && /%reference_image_name(?:_0[1-4])?%/.test(localComfyuiWorkflow)
+      ? localizeUi("ui.connections.connectioneditor.swarmuiDoesNotSupportReferenceImageName")
+      : null;
   const selectedImageDefaultsService = imageSourceToDefaultsService(selectedImageService);
   const selectedVideoService =
     localProvider === "video_generation"
@@ -533,7 +537,9 @@ export function ConnectionEditor() {
   const selectedVideoDefaultsService = videoSelectionToDefaultsService(selectedVideoService, localModel, localBaseUrl);
   const usesComfyUiWorkflow =
     (localProvider === "image_generation" &&
-      (selectedImageService === "comfyui" || selectedImageService === "runpod_comfyui")) ||
+      (selectedImageService === "comfyui" ||
+        selectedImageService === "swarmui" ||
+        selectedImageService === "runpod_comfyui")) ||
     (localProvider === "video_generation" && selectedVideoProvider === "comfyui");
   const apiKeyLink =
     localProvider === "image_generation" && selectedImageService === "arli"
@@ -653,6 +659,10 @@ export function ConnectionEditor() {
   const handleSave = useCallback(async () => {
     if (!connectionDetailId) return;
     setSaveError(null);
+    if (swarmUiWorkflowError) {
+      setSaveError(swarmUiWorkflowError);
+      throw new Error(swarmUiWorkflowError);
+    }
     if (baseUrlValidation.error) {
       setSaveError(baseUrlValidation.error);
       throw new Error(baseUrlValidation.error);
@@ -802,6 +812,7 @@ export function ConnectionEditor() {
     localImageCaptioningEnabled,
     localImageCaptioningConnectionId,
     selectedImageService,
+    swarmUiWorkflowError,
     selectedImageDefaultsService,
     selectedVideoProvider,
     selectedVideoDefaultsService,
@@ -1219,7 +1230,7 @@ export function ConnectionEditor() {
           {dirty && !saveError && <span className="mari-editor-status mr-2 text-amber-400 max-md:hidden">{localizeUi("ui.connections.connectioneditor.unsaved")}</span>}
           <button
             onClick={handleSave}
-            disabled={updateConnection.isPending || saveConnectionDefaults.isPending}
+            disabled={updateConnection.isPending || saveConnectionDefaults.isPending || !!swarmUiWorkflowError}
             className="mari-editor-action mari-editor-action--primary inline-flex disabled:opacity-50"
           >
             <Save size="0.8125rem" /> <span className="max-md:hidden">{localizeUi("ui.noodle.noodlehome.save")}</span>
@@ -1549,19 +1560,23 @@ export function ConnectionEditor() {
                   const sourceName =
                     src.id === "atlas"
                       ? t("connections.mediaSources.atlas.name")
-                      : src.id === "zai"
-                        ? t("connections.mediaSources.zai.name")
-                        : src.id === "arli"
-                          ? t("connections.mediaSources.arli.name")
-                          : src.name;
+                      : src.id === "swarmui"
+                        ? t("connections.mediaSources.swarmui.name")
+                        : src.id === "zai"
+                          ? t("connections.mediaSources.zai.name")
+                          : src.id === "arli"
+                            ? t("connections.mediaSources.arli.name")
+                            : src.name;
                   const sourceDescription =
                     src.id === "atlas"
                       ? t("connections.mediaSources.atlas.imageDescription")
-                      : src.id === "zai"
-                        ? t("connections.mediaSources.zai.imageDescription")
-                        : src.id === "arli"
-                          ? t("connections.mediaSources.arli.imageDescription")
-                          : src.description;
+                      : src.id === "swarmui"
+                        ? t("connections.mediaSources.swarmui.imageDescription")
+                        : src.id === "zai"
+                          ? t("connections.mediaSources.zai.imageDescription")
+                          : src.id === "arli"
+                            ? t("connections.mediaSources.arli.imageDescription")
+                            : src.description;
                   return (
                     <button
                       key={src.id}
@@ -1603,6 +1618,11 @@ export function ConnectionEditor() {
               {selectedImageService === "runpod_comfyui" && (
                 <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[0.625rem] text-amber-300/80">
                   <strong>{localizeUi("ui.connections.connectioneditor.runpodConfiguration")}</strong> {localizeUi("ui.connections.connectioneditor.yourEndpointIdGoesInThe")} <strong>{localizeUi("ui.connections.connectioneditor.endpointId")}</strong> {localizeUi("ui.connections.connectioneditor.fieldBelowTheApiKeyIsYourRunpodApi")} <strong>{localizeUi("ui.connections.connectioneditor.required")}</strong> {localizeUi("ui.connections.connectioneditor.theEndpointExecutesTheWorkflowYouSupplyUse")} <code>{"%prompt%"}</code> {localizeUi("ui.connections.connectioneditor.placeholdersInTheCliptextencodeNode")}</div>
+              )}
+              {selectedImageService === "swarmui" && (
+                <p className="mt-2 text-[0.625rem] text-[var(--muted-foreground)]">
+                  {t("connections.mediaSources.swarmui.authHelp")}
+                </p>
               )}
             </FieldGroup>
           )}
@@ -1897,7 +1917,9 @@ export function ConnectionEditor() {
                   ?localizeUi("ui.connections.connectioneditor.pasteAComfyuiVideoWorkflowInApiFormatUse")
                   : selectedImageService === "runpod_comfyui"
                     ?localizeUi("ui.connections.connectioneditor.pasteYourComfyuiWorkflowJsonApiFormatRunpodNeeds")
-                    :localizeUi("ui.connections.connectioneditor.pasteACustomComfyuiWorkflowJsonApiFormatUse")
+                    : selectedImageService === "swarmui"
+                      ?localizeUi("ui.connections.connectioneditor.pasteAComfyuiWorkflowForSwarmui")
+                      :localizeUi("ui.connections.connectioneditor.pasteACustomComfyuiWorkflowJsonApiFormatUse")
               }
             >
               <textarea
@@ -1910,11 +1932,17 @@ export function ConnectionEditor() {
                 placeholder={localizeUi("ui.connections.connectioneditor.pasteWorkflowJsonHereExportedFromComfyuiViaSave")}
                 className={cn(
                   "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-xs font-mono outline-none ring-1 transition-shadow placeholder:text-[var(--muted-foreground)]/50 min-h-[120px] max-h-[300px] resize-y",
-                  comfyWorkflowValidation?.parseError
+                  comfyWorkflowValidation?.parseError || swarmUiWorkflowError
                     ? "ring-red-400/60 focus:ring-red-400"
                     : "ring-[var(--border)] focus:ring-sky-400/50",
                 )}
               />
+              {swarmUiWorkflowError && (
+                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
+                  <AlertCircle size="0.625rem" className="mt-px shrink-0" />
+                  {swarmUiWorkflowError}
+                </p>
+              )}
               {comfyWorkflowValidation?.parseError && (
                 <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
                   <AlertCircle size="0.625rem" className="mt-px shrink-0" />

@@ -4,6 +4,7 @@
 import {
   Suspense,
   lazy,
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -508,7 +509,7 @@ function HomeStarfield() {
   );
 }
 
-export function ChatArea() {
+export const ChatArea = memo(function ChatArea() {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   useRenderTimer("chat-area"); // [#3104 diagnostic]
@@ -777,14 +778,14 @@ export function ChatArea() {
   const deleteMessage = useDeleteMessage(activeChatId);
   const deleteMessages = useDeleteMessages(activeChatId);
   const deleteSwipe = useDeleteSwipe(activeChatId);
-  const updateMessage = useUpdateMessage(activeChatId);
-  const updateMessageExtra = useUpdateMessageExtra(activeChatId);
+  const { mutate: updateMessage, mutateAsync: updateMessageAsync } = useUpdateMessage(activeChatId);
+  const { mutate: updateMessageExtra } = useUpdateMessageExtra(activeChatId);
   const peekPrompt = usePeekPrompt();
   const branchChat = useBranchChat();
   const branchPendingRef = useRef(false);
   const { generate, retryAgents } = useGenerate();
   const generateGallerySelfie = useGenerateGallerySelfie(activeChatId ?? "");
-  const setActiveSwipe = useSetActiveSwipe(activeChatId);
+  const { mutateAsync: setActiveSwipe } = useSetActiveSwipe(activeChatId);
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
   const pendingNewChatMode = useChatStore((s) => s.pendingNewChatMode);
   const failedAgentTypes = useAgentStore((s) =>
@@ -1614,7 +1615,7 @@ export function ChatArea() {
         for (let i = messages.length - 1; i >= 0; i--) {
           const m = messages[i]!;
           if (m.role === "assistant") {
-            updateMessageExtra.mutate({
+            updateMessageExtra({
               messageId: m.id,
               extra: { spriteExpressions: expressions },
             });
@@ -2103,7 +2104,7 @@ export function ChatArea() {
             }
           }
           if (swipeActionSeq.current !== actionId) return;
-          const mutation = setActiveSwipe.mutateAsync({ messageId, index });
+          const mutation = setActiveSwipe({ messageId, index });
           const trackedMutation = mutation.then(
             () => undefined,
             () => undefined,
@@ -2133,28 +2134,28 @@ export function ChatArea() {
 
   const handleEdit = useCallback(
     (messageId: string, content: string) => {
-      updateMessage.mutate({ messageId, content });
+      updateMessage({ messageId, content });
     },
     [updateMessage],
   );
 
   const handleRoleplayEdit = useCallback(
     async (messageId: string, content: string) => {
-      await updateMessage.mutateAsync({ messageId, content });
+      await updateMessageAsync({ messageId, content });
     },
-    [updateMessage],
+    [updateMessageAsync],
   );
 
   const handleToggleConversationStart = useCallback(
     (messageId: string, current: boolean) => {
-      updateMessageExtra.mutate({ messageId, extra: { isConversationStart: !current } });
+      updateMessageExtra({ messageId, extra: { isConversationStart: !current } });
     },
     [updateMessageExtra],
   );
 
   const handleToggleHiddenFromAI = useCallback(
     (messageId: string, hiddenFromAll: boolean, hiddenFromAICharacterIds?: string[]) => {
-      updateMessageExtra.mutate({
+      updateMessageExtra({
         messageId,
         extra:
           hiddenFromAICharacterIds === undefined
@@ -2858,7 +2859,9 @@ export function ChatArea() {
                 ? localizeUi("ui.chat.chatarea.couldNotOpenThisChat")
                 : localizeUi("ui.chat.chatarea.openingChat")}
             </p>
-            {hasOpenError && <p className="max-w-sm text-xs text-[var(--muted-foreground)]">{errorMessage}</p>}
+            {hasOpenError && (
+              <p className="mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs">{errorMessage}</p>
+            )}
           </div>
           {hasOpenError && (
             <button
@@ -3498,7 +3501,7 @@ export function ChatArea() {
       )}
     </>
   );
-}
+});
 
 function AgentInjectionReviewModal({
   request,

@@ -6,12 +6,20 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added SwarmUI image generation, optional account-token authentication, model discovery, and ComfyUI workflow submission through SwarmUI's distributed generation queue (#4702).
+- Added an accent-colored divider above the current Roleplay new-start boundary (#4709).
 - Guided package onboarding can open the active Roleplay chat's Summary popover and assigned prompt preset Sections editor directly.
 - Added explicit step-by-step and immediate World Maps travel modes, with one committed movement per accepted Roleplay or Game turn and recoverable queued routes (#4618).
 - Added a single setting that reduces ambient animations and effects throughout the interface, including automatic support for the operating system's reduced-motion preference (#4631).
 
 ### Fixed
 
+- Kept the full desktop Roleplay edit checkmark above overlapping message layers so its entire visible hit target remains clickable (#4700).
+- Made the Windows launcher and installer detect Node.js by running it directly instead of requiring `where.exe` (#4701).
+- Added the standard expanded editor and macro guide controls to Roleplay summary editors (#4710).
+- Matched Chats hover loading text and visible error details, including “Internal Server Error,” to the active accent/chroma text color (#4712).
+- Isolated the memoized Chat area from unrelated topbar state and stabilized message mutation callbacks, preventing unchanged Roleplay transcripts from rerendering when tabs open (#4713).
+- Applied the committed-message Markdown, action, and dialogue-color formatter to Roleplay output as it streams, while keeping updates coalesced to animation frames (#4714).
 - Show the localized validation error before restoring an invalid all-zero NoodleR fan activity weight.
 - Asked for confirmation before permanently deleting a prompt block from preset chat settings (#4698).
 - Let Professor Mari read trusted Wikipedia links through her structured wiki tools on Android while keeping raw shell networking sandboxed (#4691).
@@ -37,7 +45,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Distributed mobile topbar icons evenly across the available screen width without changing the desktop layout (#4666).
 - Kept the caret at the chosen insertion point while typing in expanded Character and Preset editors instead of repeatedly focusing the field and jumping to the end (#4656).
 - Restored a full, unobstructed hit target for Roleplay message edit controls so Save no longer reacts only near one corner (#4658).
-- Kept one stable live text node while Roleplay responses stream, avoiding Firefox DOM replacement and accessibility-tree churn on every animation frame (#4659).
+- Coalesced Roleplay streaming presentation to animation frames to limit Firefox accessibility-tree churn (#4659).
 - Added an independent Noodle timeline image-size setting, defaulting to the GPT-Image-compatible 1024x1536 portrait canvas instead of reusing the Illustrator dimensions (#4660).
 - Made NoodleR stage-profile drafts tolerate single-item array responses, extra model fields, and decorated handles from local models while ignoring model-provided disclosure modes, discarding invalid values, and applying the requested valid mode (#4626).
 - Removed deprecated generation parameters from single and bulk prompt-preset exports and ignored them when importing older Marinara or SillyTavern preset files (#4650).

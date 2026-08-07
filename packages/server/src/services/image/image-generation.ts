@@ -182,6 +182,7 @@ const EXPLICIT_IMAGE_SOURCES = new Set([
   "zai",
   "atlas",
   "comfyui",
+  "swarmui",
   "automatic1111",
   "runpod_comfyui",
   "gemini_image",
@@ -251,7 +252,7 @@ export async function generateImage(
   const resolvedSource = resolveImageBackend(source, baseUrl, serviceHint, request.model);
   const normalizedBaseUrl = normalizeImageUrl(baseUrl);
   const generationTimeoutMs =
-    resolvedSource === "comfyui" || resolvedSource === "runpod_comfyui"
+    resolvedSource === "comfyui" || resolvedSource === "swarmui" || resolvedSource === "runpod_comfyui"
       ? Math.max(IMAGE_GEN_TIMEOUT, COMFYUI_GEN_TIMEOUT_SECONDS * 1000)
       : IMAGE_GEN_TIMEOUT;
   // Primary plus fallback is one logical attempt, booked once here and reported once below with
@@ -303,6 +304,8 @@ export async function generateImage(
           return generateAtlasCloudImage(normalizedBaseUrl, apiKey, scopedRequest);
         case "comfyui":
           return generateComfyUI(normalizedBaseUrl, scopedRequest);
+        case "swarmui":
+          return generateSwarmUI(normalizedBaseUrl, apiKey, scopedRequest);
         case "runpod_comfyui": {
           const endpointId = scopedRequest.imageEndpointId || "";
           if (!endpointId) {
@@ -502,7 +505,7 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 // ── Provider Implementations ──
 
 const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
-const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "automatic1111"]);
+const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
 
 class ImageGenerationDeadlineError extends Error {
@@ -3114,6 +3117,181 @@ async function generateComfyUI(baseUrl: string, request: ImageGenRequest): Promi
   }
 
   throw new Error(`ComfyUI generation timed out after ${Math.round(pollTimeoutMs / 1000)} seconds`);
+}
+
+// ── SwarmUI ──
+
+function swarmUiHeaders(apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = apiKey.trim();
+  if (token) headers.Cookie = `swarm_token=${encodeURIComponent(token)}`;
+  return headers;
+}
+
+function swarmUiApiError(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const error = typeof value.error === "string" ? value.error.trim() : "";
+  const errorId = typeof value.error_id === "string" ? value.error_id.trim() : "";
+  if (!error && !errorId) return null;
+  return sanitizeErrorText(error || errorId);
+}
+
+async function createSwarmUiSession(base: string, apiKey: string, request: ImageGenRequest): Promise<string> {
+  const response = await localImageBackendFetch(`${base}/API/GetNewSession`, {
+    method: "POST",
+    headers: swarmUiHeaders(apiKey),
+    body: "{}",
+    signal: imageRequestSignal(request),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`SwarmUI session request failed (${response.status}): ${sanitizeErrorText(text)}`);
+  }
+
+  let result: unknown;
+  try {
+    result = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("SwarmUI session request returned invalid JSON");
+  }
+  const apiError = swarmUiApiError(result);
+  if (apiError) throw new Error(`SwarmUI API error: ${apiError}`);
+  const sessionId = isRecord(result) && typeof result.session_id === "string" ? result.session_id.trim() : "";
+  if (!sessionId) throw new Error("SwarmUI did not return a session_id");
+  return sessionId;
+}
+
+export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: string): Record<string, unknown> {
+  const defaults = resolveComfyUiDefaults(request);
+  const seed = resolveSeed(request.imageDefaults);
+  const prompt = mergePromptPrefix(defaults.promptPrefix, request.prompt || "");
+  const negativePrompt = mergeNegativePrompt(defaults.negativePromptPrefix, request.negativePrompt);
+  const model = request.model?.trim();
+  const body: Record<string, unknown> = {
+    session_id: sessionId,
+    images: 1,
+    donotsave: true,
+    prompt,
+    negativeprompt: negativePrompt,
+    width: request.width ?? 512,
+    height: request.height ?? 768,
+    seed,
+    steps: defaults.steps,
+    cfgscale: defaults.cfgScale,
+    sampler: defaults.sampler,
+    scheduler: defaults.scheduler,
+  };
+  if (model) body.model = model;
+
+  const workflowText = request.comfyWorkflow?.trim();
+  if (!workflowText) return body;
+  if (/%reference_image_name(?:_0[1-4])?%/.test(workflowText)) {
+    throw new Error(
+      "SwarmUI workflows must use %reference_image% placeholders; backend-local filename placeholders cannot be distributed safely.",
+    );
+  }
+
+  let workflow: Record<string, unknown>;
+  try {
+    workflow = JSON.parse(workflowText) as Record<string, unknown>;
+  } catch {
+    throw new Error("Invalid ComfyUI workflow JSON");
+  }
+  const replacements: Record<string, string | number> = {
+    "%prompt%": prompt,
+    "%negative_prompt%": negativePrompt,
+    "%width%": request.width ?? 512,
+    "%height%": request.height ?? 768,
+    "%seed%": seed,
+    "%steps%": defaults.steps,
+    "%cfg%": defaults.cfgScale,
+    "%cfg_scale%": defaults.cfgScale,
+    "%scale%": defaults.cfgScale,
+    "%sampler%": defaults.sampler,
+    "%scheduler%": defaults.scheduler,
+    "%denoise%": defaults.denoisingStrength,
+    "%denoising_strength%": defaults.denoisingStrength,
+    "%clip_skip%": defaults.clipSkip ?? 0,
+  };
+  Object.assign(replacements, buildComfyUiLoraWorkflowReplacements(defaults.loras));
+  if (model) replacements["%model%"] = model;
+
+  const references = collectComfyReferenceImages(request, defaults);
+  for (let index = 0; index < references.length; index++) {
+    const base64 = decodeReferenceImage(references[index]!).base64;
+    replacements[numberedComfyReferencePlaceholder("reference_image", index)] = base64;
+    if (index === 0) replacements["%reference_image%"] = base64;
+  }
+  if (defaults.uploadPlaceholderOnMissingReference) {
+    for (const index of findMissingComfyReferenceSlots(workflowText, "reference_image", references.length)) {
+      replacements[numberedComfyReferencePlaceholder("reference_image", index)] = COMFYUI_PLACEHOLDER_REFERENCE_BASE64;
+    }
+  }
+
+  body.comfyworkflowraw = JSON.stringify(replaceComfyUiPlaceholders(workflow, replacements));
+  return body;
+}
+
+function redactSwarmUiWorkflowImages(workflowText: string, request: ImageGenRequest): string {
+  const imageValues = [
+    COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
+    ...collectComfyReferenceImages(request, resolveComfyUiDefaults(request)).map(
+      (reference) => decodeReferenceImage(reference).base64,
+    ),
+  ];
+  return [...new Set(imageValues)].reduce(
+    (redacted, image) => redacted.replaceAll(image, `[redacted image: ${Buffer.from(image, "base64").byteLength} bytes]`),
+    workflowText,
+  );
+}
+
+export function parseSwarmUiImageReference(value: unknown): string {
+  const apiError = swarmUiApiError(value);
+  if (apiError) throw new Error(`SwarmUI API error: ${apiError}`);
+  if (!isRecord(value) || !Array.isArray(value.images)) {
+    throw new Error("SwarmUI did not return an images array");
+  }
+  const image = value.images.find(
+    (candidate): candidate is string => typeof candidate === "string" && !!candidate.trim(),
+  );
+  if (!image) throw new Error("SwarmUI completed without an image output");
+  return image.trim();
+}
+
+async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
+  const base = baseUrl.replace(/\/+$/, "");
+  const sessionId = await createSwarmUiSession(base, apiKey, request);
+  const body = buildSwarmUiGenerationBody(request, sessionId);
+  const debugBody: Record<string, unknown> = { ...body, session_id: "[session]" };
+  if (typeof debugBody.comfyworkflowraw === "string") {
+    debugBody.comfyworkflowraw = redactSwarmUiWorkflowImages(debugBody.comfyworkflowraw, request);
+  }
+  logDebugOverride(
+    request.debugMode === true,
+    "[debug/image/swarmui] final request payload:\n%s",
+    JSON.stringify(debugBody, null, 2),
+  );
+  const response = await localImageBackendFetch(`${base}/API/GenerateText2Image`, {
+    method: "POST",
+    headers: swarmUiHeaders(apiKey),
+    body: JSON.stringify(body),
+    signal: imageRequestSignal(request),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`SwarmUI generation failed (${response.status}): ${sanitizeErrorText(text)}`);
+  }
+
+  let result: unknown;
+  try {
+    result = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("SwarmUI generation returned invalid JSON");
+  }
+  const imageReference = parseSwarmUiImageReference(result);
+  if (imageReference.startsWith("data:")) return decodeImageDataUrl(imageReference);
+  const imageUrl = new URL(imageReference, `${base}/`).toString();
+  return downloadImageUrl(imageUrl, request.privateImageResultOrigin, request.signal);
 }
 
 // ── AUTOMATIC1111 / SD Web UI / Forge ──

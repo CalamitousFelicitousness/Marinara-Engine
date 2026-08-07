@@ -4199,10 +4199,13 @@ test("editing the preceding Roleplay message keeps one live stream row", async (
   const chat = (await chatResponse.json()) as { id: string };
 
   try {
-    const responseText = Array.from(
-      { length: 80 },
-      (_, index) => `Streaming line ${index + 1} remains owned by one presentation row.`,
-    ).join("\n");
+    const responseText = [
+      "**Streaming emphasis appears before completion.**",
+      ...Array.from(
+        { length: 80 },
+        (_, index) => `Streaming line ${index + 1} remains owned by one presentation row.`,
+      ),
+    ].join("\n");
     const savedMessage = {
       id: "__edit_during_stream_saved__",
       chatId: chat.id,
@@ -4258,6 +4261,7 @@ test("editing the preceding Roleplay message keeps one live stream row", async (
     const visibleAssistantRows = page.locator('[data-message-role="assistant"]');
     await expect(liveStream).toHaveCount(1);
     await expect(visibleAssistantRows).toHaveCount(1);
+    await expect(liveStream.locator("strong")).toContainText("Streaming emphasis appears before completion.");
     const userMessage = page.locator('[data-message-role="user"]').last();
     await userMessage.hover();
     await userMessage.getByTitle("Edit").click();

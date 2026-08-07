@@ -207,13 +207,18 @@ export class PersonalServerExtensionRuntime {
     await this.send(extension, { type: "stop" }).catch((error) => {
       logger.warn(error, "[personal-extensions] Stop request failed for %s; continuing cleanup", extension.name);
     });
-    await Promise.race([
-      new Promise<void>((resolve) => extension.child.once("close", () => resolve())),
-      new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, CLEANUP_TIMEOUT_MS);
-        timer.unref?.();
-      }),
-    ]);
+    // Skip the close-event wait when the child already exited — the event has
+    // fired and a new listener would never resolve, stalling every failed
+    // startup by the full timeout on the serialized reload path.
+    if (extension.child.exitCode === null && extension.child.signalCode === null) {
+      await Promise.race([
+        new Promise<void>((resolve) => extension.child.once("close", () => resolve())),
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, CLEANUP_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    }
     if (extension.child.exitCode === null && extension.child.signalCode === null) extension.child.kill("SIGKILL");
     // The close handler owns finalization (drain -> handle close -> cleanup).
     // Await it, bounded, so this path neither removes the sandbox dir under

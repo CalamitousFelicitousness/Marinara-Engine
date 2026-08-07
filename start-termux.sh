@@ -107,6 +107,18 @@ if [ "$NODE_VERSION" -lt 24 ]; then
     echo "  [OK] Node.js $(node -v) ready"
 fi
 
+# Large profiles can exceed Node's conservative mobile heap limit while the
+# file-backed store serializes them. Keep an explicit operator limit, otherwise
+# give Termux enough headroom for installation and normal server operation.
+case "${NODE_OPTIONS:-}" in
+    *--max-old-space-size=*|*--max-old-space-size\ *|*--max_old_space_size=*|*--max_old_space_size\ *) ;;
+    *)
+        NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=2048"
+        export NODE_OPTIONS
+        echo "  [OK] Node.js heap limit raised for large profiles"
+        ;;
+esac
+
 load_launcher_setting() {
     local setting_name="$1"
     local setting_value

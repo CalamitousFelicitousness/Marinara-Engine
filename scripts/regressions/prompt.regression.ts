@@ -1533,6 +1533,27 @@ const cases: RegressionCase[] = [
           "Mari: A question from the current Persona.",
         ],
       );
+
+      const generateRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
+        "utf8",
+      );
+      const dryRunRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate/dry-run-route.ts", import.meta.url),
+        "utf8",
+      );
+      for (const source of [generateRouteSource, dryRunRouteSource]) {
+        assert.match(
+          source,
+          /\(chatMode === "conversation" \|\| chatMeta\.groupSpeakerNamesInHistory === true\)/u,
+          "individual Conversation groups should always identify speakers in model-visible history",
+        );
+      }
+      assert.match(
+        generateRouteSource,
+        /usesIndividualGroupGeneration && requestedNarrativeDirectorMode && directorAgent[\s\S]{0,700}appendSeparateAgentInjectionMessage\([\s\S]{0,400}requestedNarrativeDirectorMode === "random"/u,
+        "individual group prompts should retain the armed Narrative Director instruction at the responder boundary",
+      );
     },
   },
   {
@@ -9230,7 +9251,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     run() {
       const chatMeta = {
         customAgentImageSettings: {
-          "scene-painter": { imageConnectionId: "conn-override" },
+          "scene-painter": { imageConnectionId: "conn-override", styleProfileId: "style-override" },
           illustrator: { imageConnectionId: "conn-should-never-apply" },
           "empty-entry": { imageConnectionId: "  " },
         },
@@ -9239,6 +9260,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       const overridden = applyCustomAgentImageChatSettings("scene-painter", { ...base }, chatMeta);
       assert.equal(overridden.imageConnectionId, "conn-override");
+      assert.equal(overridden.styleProfileId, "style-override");
       assert.equal(overridden.other, "kept");
 
       // Built-in agents keep their own dedicated chat-level override keys.

@@ -80,5 +80,8 @@ export function applyCustomAgentImageChatSettings(
   if (typeof override.imageConnectionId === "string" && override.imageConnectionId.trim()) {
     next.imageConnectionId = override.imageConnectionId;
   }
+  if (typeof override.styleProfileId === "string" && override.styleProfileId.trim()) {
+    next.styleProfileId = override.styleProfileId;
+  }
   return next;
 }

@@ -7,7 +7,7 @@ import {
   parseTrackerCardColorConfig,
   useTrackerCardColorPreviews,
 } from "../../../lib/tracker-card-colors";
-import { useChat, useChatMessages } from "../../../hooks/use-chats";
+import { useChat, useChatMessagePeek } from "../../../hooks/use-chats";
 import type { TrackerDataPanelSection } from "../../../stores/ui.store";
 import { TRACKER_FEATURED_CHARACTER_META_KEY, TRACKER_SECTION_AGENT_TYPES } from "../lib/tracker-panel.constants";
 import {
@@ -71,7 +71,7 @@ export function useTrackerPanelModel({
     (personaTrackerEnabled || characterTrackerEnabled);
   const characterTrackerLookupEnabled = !!activeChatId && characterTrackerEnabled;
   const personaDataLookupEnabled = !!activeChatId && personaTrackerEnabled;
-  const { data: messageData } = useChatMessages(activeChatId, 20, spriteExpressionLookupEnabled);
+  const { data: messageData } = useChatMessagePeek(activeChatId, 20, spriteExpressionLookupEnabled);
   const { data: agentConfigs } = useAgentConfigs(characterTrackerLookupEnabled);
   const { data: activePersonaData } = usePersona(personaDataLookupEnabled ? chatPersonaId : null);
   const previewValues = useTrackerCardColorPreviews();
@@ -91,7 +91,7 @@ export function useTrackerPanelModel({
   const spriteExpressions = useMemo(
     () =>
       resolveSpriteExpressionState(
-        (messageData?.pages ? [...messageData.pages].reverse().flat() : []) as Array<{
+        (messageData ?? []) as Array<{
           extra?: unknown;
         }>,
         chatMeta.spriteExpressions,

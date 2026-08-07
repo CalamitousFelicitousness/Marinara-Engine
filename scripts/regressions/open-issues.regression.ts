@@ -72,6 +72,10 @@ import {
   resolveTrackerPanelDesktopWidth,
 } from "../../packages/client/src/lib/tracker-panel-layout.js";
 import { getApiErrorMessage } from "../../packages/client/src/lib/api-client.js";
+import {
+  getPersonalExtensionTraffic,
+  recordPersonalExtensionRequest,
+} from "../../packages/client/src/lib/personal-extension-traffic.js";
 import { scrollProfessorMariTranscriptToBottom } from "../../packages/client/src/lib/professor-mari-transcript-scroll.js";
 import { parseCustomParametersDraft } from "../../packages/client/src/lib/generation-custom-parameters.js";
 import { parseGenerationParameterDraft } from "../../packages/client/src/lib/generation-parameter-draft.js";
@@ -2360,6 +2364,12 @@ const termuxLauncher = readFileSync(new URL("../../start-termux.sh", import.meta
 assert.doesNotMatch(termuxLauncher, /run_pnpm install --force/u);
 assert.match(termuxLauncher, /run_pnpm store prune/u);
 assert.match(termuxLauncher, /TERMUX_REBUILD_REQUIRED/u);
+assert.match(termuxLauncher, /--max-old-space-size=2048/u);
+assert.match(
+  termuxLauncher,
+  /case "\$\{NODE_OPTIONS:-\}"[\s\S]*--max-old-space-size=\*[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=2048"/u,
+  "Termux must preserve an operator-provided heap limit before applying its safe default",
+);
 for (const buildEntry of [
   "packages/shared/dist/constants/defaults.js",
   "packages/server/dist/index.js",
@@ -2370,6 +2380,30 @@ for (const buildEntry of [
     `Termux must rebuild when ${buildEntry} is missing`,
   );
 }
+
+const trafficExtensionId = "open-issues-extension-traffic";
+const trafficNow = 180_000;
+for (const requestedAt of [59_000, 119_000, 179_000]) {
+  for (let request = 0; request < 61; request += 1) {
+    recordPersonalExtensionRequest(trafficExtensionId, 2, requestedAt + request);
+  }
+}
+assert.deepEqual(getPersonalExtensionTraffic(trafficExtensionId, trafficNow), {
+  requests: 183,
+  bytes: 366,
+  requestsLastMinute: 61,
+  sustainedHighRate: true,
+});
+const personalExtensionInjectorSource = readFileSync(
+  new URL("../../packages/client/src/components/layout/PersonalExtensionInjector.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(personalExtensionInjectorSource, /fetch: \(input, init\) => fetchForPersonalExtension/u);
+const personalExtensionSettingsSource = readFileSync(
+  new URL("../../packages/client/src/components/panels/settings/PersonalExtensionsSettings.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(personalExtensionSettingsSource, /settings\.personalExtensions\.traffic\.summary/u);
 
 const sharedPackageJson = JSON.parse(
   readFileSync(new URL("../../packages/shared/package.json", import.meta.url), "utf8"),
@@ -5984,6 +6018,20 @@ try {
     drawerSource,
     /useChatMessagePeek\(\s*chat\.id,\s*100,/u,
     "The secret-plot reader must fetch its newest-100 window through the limit-keyed peek hook",
+  );
+  const trackerModelSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/features/tracker-panel/hooks/use-tracker-panel-model.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    trackerModelSource,
+    /useChatMessages\(/u,
+    "The tracker panel must not observe the shared chatKeys.messages infinite query (#4724)",
+  );
+  assert.match(
+    trackerModelSource,
+    /useChatMessagePeek\(\s*activeChatId,\s*20,/u,
+    "The tracker panel must fetch its newest-20 sprite window through the limit-keyed peek hook",
   );
   const useChatsSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/hooks/use-chats.ts"), "utf8");
   assert.match(

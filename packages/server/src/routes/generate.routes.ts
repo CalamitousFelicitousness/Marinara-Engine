@@ -1783,11 +1783,10 @@ export async function generateRoutes(app: FastifyInstance) {
           (promptGroupResponseOrder !== "manual" || chatMode === "conversation") &&
           input.impersonate !== true;
         const shouldPrefixGroupHistorySpeakers =
-          chatMeta.groupSpeakerNamesInHistory === true &&
           characterIds.length > 1 &&
-          chatMode !== "conversation" &&
           chatMode !== "game" &&
-          promptGroupChatMode === "individual";
+          promptGroupChatMode === "individual" &&
+          (chatMode === "conversation" || chatMeta.groupSpeakerNamesInHistory === true);
         const promptMacroContext = await buildPromptMacroContext({
           db: app.db,
           characterIds: promptCharacterIds,
@@ -5390,6 +5389,16 @@ export async function generateRoutes(app: FastifyInstance) {
               targetedOnly: true,
             });
           }
+          if (usesIndividualGroupGeneration && requestedNarrativeDirectorMode && directorAgent) {
+            appendSeparateAgentInjectionMessage(
+              targetScopedMessagesForGen,
+              "director",
+              requestedNarrativeDirectorMode === "random"
+                ? "For this next response, introduce a surprising but plausible event that fits the scene and continuity."
+                : "For this next response, push the existing story forward naturally through its current tensions, goals, or unresolved threads.",
+              wrapFormat,
+            );
+          }
           const spatiallyScopedMessagesForGen = injectOwnerSpatialPrompt(
             targetScopedMessagesForGen,
             ownerSpatialProjection,
@@ -8828,12 +8837,21 @@ export async function generateRoutes(app: FastifyInstance) {
                       );
                       const imageDefaults = resolveConnectionImageDefaults(imgConnFull);
                       const imageSettings = await loadImageGenerationUserSettings(app.db);
+                      const customAgentStyleProfileId =
+                        !usesChatIllustratorSettings && typeof imagePromptAgent?.settings?.styleProfileId === "string"
+                          ? imagePromptAgent.settings.styleProfileId.trim()
+                          : "";
                       const styleProfileId =
-                        ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.imageStyleProfileId as
+                        (imageSettings.styleProfiles.profiles.some(
+                          (profile) => profile.id === customAgentStyleProfileId,
+                        )
+                          ? customAgentStyleProfileId
+                          : "") ||
+                        (((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.imageStyleProfileId as
                           | string
                           | undefined) ??
-                        (chatMeta.imageStyleProfileId as string | undefined) ??
-                        null;
+                          (chatMeta.imageStyleProfileId as string | undefined) ??
+                          null);
 
                       const illustrationSize = resolveIllustratorImageSize(
                         requestChatMode === "game" ? imageSettings.game : imageSettings.illustration,

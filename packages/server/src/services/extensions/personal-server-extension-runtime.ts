@@ -14,6 +14,14 @@ import {
   spawnSandboxedPersonalExtension,
   type SandboxedPersonalExtensionProcess,
 } from "./personal-extension-sandbox.js";
+import {
+  extractProtocolLines,
+  resolveSandboxPollDelay,
+  SANDBOX_HEARTBEAT_STALE_MS,
+  SANDBOX_HOST_IDLE_POLL_MS,
+  SANDBOX_HOT_POLL_MS,
+  SANDBOX_WATCHDOG_INTERVAL_MS,
+} from "./sandbox-protocol.js";
 import type { PersonalExtension } from "@marinara-engine/shared";
 
 type ActiveExtension = {
@@ -26,6 +34,8 @@ type ActiveExtension = {
   watchdog: NodeJS.Timeout | null;
   outputPoller: NodeJS.Timeout | null;
   inputQueue: Promise<void>;
+  /** Lets send() flip the adaptive output poll back to the hot cadence. */
+  onTraffic: (() => void) | null;
 };
 type RuntimeStatus = { status: "running" | "stopped" | "error"; error: string | null };
 type RunnerMessage = {
@@ -40,7 +50,9 @@ type RunnerMessage = {
 
 const LOG_LEVELS = new Set<NonNullable<RunnerMessage["level"]>>(["debug", "info", "warn", "error"]);
 const STARTUP_TIMEOUT_MS = 10_000;
-const CLEANUP_TIMEOUT_MS = 3_000;
+// Includes headroom for the runner's idle input-poll cadence (#4706): a stop
+// written after a silence is seen within SANDBOX_RUNNER_IDLE_POLL_MS.
+const CLEANUP_TIMEOUT_MS = 3_500;
 const MAX_PROTOCOL_BYTES = 2 * 1024 * 1024;
 const MAX_ERROR_LOG_BYTES = 2 * 1024 * 1024;
 const MAX_HEARTBEAT_BYTES = 128;
@@ -186,7 +198,10 @@ export class PersonalServerExtensionRuntime {
   private async stopExtension(extension: ActiveExtension) {
     extension.expectedStop = true;
     if (extension.watchdog) clearInterval(extension.watchdog);
-    await this.send(extension, { type: "stop" });
+    // A failed stop-write (e.g. the sandbox dir is already gone) must not
+    // abort the kill/cleanup below — or a stop-all loop over the remaining
+    // extensions.
+    await this.send(extension, { type: "stop" }).catch(() => undefined);
     await Promise.race([
       new Promise<void>((resolve) => extension.child.once("close", () => resolve())),
       new Promise<void>((resolve) => {
@@ -231,6 +246,9 @@ export class PersonalServerExtensionRuntime {
     active.inputQueue = active.inputQueue.then(() =>
       appendFile(active.sandbox.protocol.inputPath, serialized, "utf8"),
     );
+    // Host->runner traffic predicts a reply on the output file; flip the
+    // adaptive output poll back to the hot cadence so it lands fast (#4706).
+    active.onTraffic?.();
     return active.inputQueue;
   }
 
@@ -267,11 +285,14 @@ export class PersonalServerExtensionRuntime {
       watchdog: null,
       outputPoller: null,
       inputQueue: Promise.resolve(),
+      onTraffic: null,
     };
-    let outputBuffer = Buffer.alloc(0);
+    let outputBuffer: Buffer = Buffer.alloc(0);
     let outputOffset = 0;
     let pollingOutput = false;
     let settled = false;
+    let lastActivityAt = Date.now();
+    let pollChainStopped = false;
     let lastHeartbeat = Date.now();
     let messageWindowStartedAt = Date.now();
     let messageCount = 0;
@@ -300,7 +321,9 @@ export class PersonalServerExtensionRuntime {
             return;
           }
           if (heartbeatStats.mtimeMs > lastHeartbeat) lastHeartbeat = heartbeatStats.mtimeMs;
-          if (Date.now() - lastHeartbeat <= 5_000) return;
+          // Five missed heartbeats at the 5s cadence — the same missed-beat
+          // multiple the old 1s/5s pair allowed (#4706).
+          if (Date.now() - lastHeartbeat <= SANDBOX_HEARTBEAT_STALE_MS) return;
           active.expectedStop = true;
           this.statuses.set(extension.id, {
             status: "error",
@@ -309,7 +332,7 @@ export class PersonalServerExtensionRuntime {
           child.kill("SIGKILL");
         })
         .catch(() => undefined);
-    }, 250);
+    }, SANDBOX_WATCHDOG_INTERVAL_MS);
     active.watchdog.unref?.();
 
     const startup = new Promise<void>((resolve, reject) => {
@@ -336,17 +359,22 @@ export class PersonalServerExtensionRuntime {
           const chunk = Buffer.alloc(available);
           const { bytesRead } = await outputHandle.read(chunk, 0, available, outputOffset);
           outputOffset += bytesRead;
-          outputBuffer = Buffer.concat([outputBuffer, chunk.subarray(0, bytesRead)]);
-          if (outputBuffer.byteLength > MAX_PROTOCOL_BYTES) {
+          if (bytesRead > 0) lastActivityAt = Date.now();
+          // The size cap applies per MESSAGE, not per buffered chunk: with
+          // adaptive polling, an idle-cadence read batches everything that
+          // arrived across the silence, and several individually-legal
+          // messages must not be mistaken for one oversized one (#4706).
+          const extracted = extractProtocolLines(
+            Buffer.concat([outputBuffer, chunk.subarray(0, bytesRead)]),
+            MAX_PROTOCOL_BYTES,
+          );
+          outputBuffer = extracted.rest;
+          if (extracted.oversized) {
             fail("Extension protocol message exceeded the size limit");
             child.kill("SIGKILL");
             return;
           }
-          while (outputBuffer.includes(0x0a)) {
-            const newline = outputBuffer.indexOf(0x0a);
-            const line = outputBuffer.subarray(0, newline).toString("utf8");
-            outputBuffer = outputBuffer.subarray(newline + 1);
-            if (!line) continue;
+          for (const line of extracted.lines) {
             let message: RunnerMessage;
             try {
               message = JSON.parse(line) as RunnerMessage;
@@ -391,15 +419,45 @@ export class PersonalServerExtensionRuntime {
           pollingOutput = false;
         }
       };
-      active.outputPoller = setInterval(() => void pollOutput(), 25);
-      active.outputPoller.unref?.();
-      void pollOutput();
+      // #4706: self-scheduling timeout chain instead of a fixed 25ms interval —
+      // hot while the handshake is pending or traffic moved recently, 1s at
+      // idle. The stored handle is REASSIGNED on every tick; clearing a stale
+      // handle from a previous tick would leave the live timer running.
+      const scheduleOutputPoll = (delayMs?: number) => {
+        if (pollChainStopped) return;
+        if (active.outputPoller) clearTimeout(active.outputPoller);
+        const delay =
+          delayMs ??
+          resolveSandboxPollDelay({
+            now: Date.now(),
+            lastActivityAt,
+            settled,
+            idlePollMs: SANDBOX_HOST_IDLE_POLL_MS,
+          });
+        active.outputPoller = setTimeout(() => {
+          void pollOutput().finally(() => scheduleOutputPoll());
+        }, delay);
+        active.outputPoller.unref?.();
+      };
+      active.onTraffic = () => {
+        lastActivityAt = Date.now();
+        scheduleOutputPoll(SANDBOX_HOT_POLL_MS);
+      };
+      void pollOutput().finally(() => scheduleOutputPoll());
       const handleClose = (code: number | null, signal: string | null) => {
         if (active.watchdog) clearInterval(active.watchdog);
-        if (active.outputPoller) clearInterval(active.outputPoller);
-        void outputHandle.close();
+        pollChainStopped = true;
+        if (active.outputPoller) clearTimeout(active.outputPoller);
+        active.onTraffic = null;
         this.active.delete(extension.id);
         void (async () => {
+          // Final drain BEFORE closing the handle, before the expectedStop
+          // check, and before cleanup rm-rf's the sandbox dir: with adaptive
+          // polling the last messages (including a `fatal` explaining the
+          // exit) may still be sitting unread in the output file (#4706).
+          while (pollingOutput) await new Promise((resolve) => setTimeout(resolve, 10));
+          await pollOutput();
+          void outputHandle.close();
           if (!active.expectedStop) {
             const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
             const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;
@@ -433,6 +491,16 @@ export class PersonalServerExtensionRuntime {
     });
     try {
       await Promise.race([startup, timeout]);
+      // The close-time drain can resolve the startup race from a child that
+      // already exited (its `ready` was still sitting in the output file, and
+      // a `fatal` may have resolved right behind it). Never insert a dead
+      // sandbox into the active set: its input file is gone, and a later
+      // stop would fail and disrupt shutdown of the healthy extensions.
+      if (active.expectedStop || child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(
+          this.statuses.get(extension.id)?.error ?? "Extension sandbox exited during startup",
+        );
+      }
       this.active.set(extension.id, active);
       logger.info(
         "[personal-extensions] Sandboxed %s (%s) at %s with %s",

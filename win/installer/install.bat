@@ -247,6 +247,17 @@ if /I "!OLD_HEAD!"=="!TARGET_HEAD!" (
     goto :deps
 )
 
+:: Never check out a release whose storage format predates the data on disk -
+:: it would silently show empty chat history (#4708). Exit code 2 means
+:: "blocked"; exit code 1 can also come from an older checkout whose script
+:: predates the check-target subcommand, and must not break a legitimate
+:: upgrade, so only errorlevel 2 stops the install.
+node scripts\protect-launcher-data.mjs check-target "!TARGET_HEAD!"
+if errorlevel 2 (
+    set "INSTALL_ERROR=Release %RELEASE_TAG% is older than your data's storage format. Install a newer release, or see docs/TROUBLESHOOTING.md (Chats show no messages after switching to an older version)."
+    goto :fatal
+)
+
 set "STASHED=0"
 set "STASH_REF="
 set "DIRTY=0"

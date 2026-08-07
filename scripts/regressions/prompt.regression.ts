@@ -74,6 +74,7 @@ import {
   applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
   needsForcedSnapshotFallback,
+  resolveCustomAgentStyleProfileId,
 } from "../../packages/server/src/services/generation/custom-agent-image-settings.js";
 import {
   normalizeCyoaChoiceOutput,
@@ -1533,6 +1534,27 @@ const cases: RegressionCase[] = [
           "Mari: A question from the current Persona.",
         ],
       );
+
+      const generateRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
+        "utf8",
+      );
+      const dryRunRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate/dry-run-route.ts", import.meta.url),
+        "utf8",
+      );
+      for (const source of [generateRouteSource, dryRunRouteSource]) {
+        assert.match(
+          source,
+          /\(chatMode === "conversation" \|\| chatMeta\.groupSpeakerNamesInHistory === true\)/u,
+          "individual Conversation groups should always identify speakers in model-visible history",
+        );
+      }
+      assert.match(
+        generateRouteSource,
+        /usesIndividualGroupGeneration && requestedNarrativeDirectorMode && directorAgent[\s\S]{0,700}appendSeparateAgentInjectionMessage\([\s\S]{0,400}requestedNarrativeDirectorMode === "random"/u,
+        "individual group prompts should retain the armed Narrative Director instruction at the responder boundary",
+      );
     },
   },
   {
@@ -2658,15 +2680,19 @@ const cases: RegressionCase[] = [
         "Regrator|Runs the Northland Bank.|AI engineer.|Keep the tone formal.|formal",
       );
       assert.equal(
-        resolveDeferredCharacterMacros(deferred, { name: "Dottore" }, {
-          ...initialContext,
-          convoFields: {
-            charDisplayName: "Il Dottore",
-            charAbout: "A researcher from Snezhnaya.",
-            personaAbout: "AI engineer.",
-            convoBehavior: "Be playful with Mari.",
+        resolveDeferredCharacterMacros(
+          deferred,
+          { name: "Dottore" },
+          {
+            ...initialContext,
+            convoFields: {
+              charDisplayName: "Il Dottore",
+              charAbout: "A researcher from Snezhnaya.",
+              personaAbout: "AI engineer.",
+              convoBehavior: "Be playful with Mari.",
+            },
           },
-        }),
+        ),
         "Il Dottore|A researcher from Snezhnaya.|AI engineer.|Be playful with Mari.|playful",
       );
     },
@@ -3860,12 +3886,9 @@ const cases: RegressionCase[] = [
       assert.match(mergeIllustratorNegativePrompt(ordinaryPrompt), /speech bubbles/iu);
       assert.match(mergeIllustratorNegativePrompt(ordinaryPrompt), /SFX lettering/iu);
       assert.equal(
-        mergeIllustratorNegativePrompt(
-          ordinaryPrompt,
-          "low quality, text, low quality",
-          "text",
-          { imageService: "novelai" },
-        ),
+        mergeIllustratorNegativePrompt(ordinaryPrompt, "low quality, text, low quality", "text", {
+          imageService: "novelai",
+        }),
         "low quality, text",
         "NovelAI should receive only the compiled explicit negative prompt without Illustrator's built-in anti-text list",
       );
@@ -9230,7 +9253,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     run() {
       const chatMeta = {
         customAgentImageSettings: {
-          "scene-painter": { imageConnectionId: "conn-override" },
+          "scene-painter": { imageConnectionId: "conn-override", styleProfileId: "  style-override  " },
           illustrator: { imageConnectionId: "conn-should-never-apply" },
           "empty-entry": { imageConnectionId: "  " },
         },
@@ -9239,6 +9262,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       const overridden = applyCustomAgentImageChatSettings("scene-painter", { ...base }, chatMeta);
       assert.equal(overridden.imageConnectionId, "conn-override");
+      assert.equal(overridden.styleProfileId, "style-override");
       assert.equal(overridden.other, "kept");
 
       // Built-in agents keep their own dedicated chat-level override keys.
@@ -9252,6 +9276,38 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(missing.imageConnectionId, "conn-agent-default");
       const noMeta = applyCustomAgentImageChatSettings("scene-painter", { ...base }, null);
       assert.equal(noMeta.imageConnectionId, "conn-agent-default");
+
+      const profiles = [{ id: "style-override" }];
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: false,
+          agentSettings: overridden,
+          availableProfiles: profiles,
+          gameStyleProfileId: "game-style",
+          chatStyleProfileId: "chat-style",
+        }),
+        "style-override",
+      );
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: false,
+          agentSettings: { styleProfileId: "deleted-profile" },
+          availableProfiles: profiles,
+          gameStyleProfileId: "game-style",
+          chatStyleProfileId: "chat-style",
+        }),
+        "game-style",
+      );
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: true,
+          agentSettings: overridden,
+          availableProfiles: profiles,
+          gameStyleProfileId: "",
+          chatStyleProfileId: "chat-style",
+        }),
+        "chat-style",
+      );
     },
   },
 ];

@@ -24,6 +24,7 @@ import {
 } from "../../packages/server/src/db/schema/index.js";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
+import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -72,6 +73,10 @@ import {
   resolveTrackerPanelDesktopWidth,
 } from "../../packages/client/src/lib/tracker-panel-layout.js";
 import { getApiErrorMessage } from "../../packages/client/src/lib/api-client.js";
+import {
+  getPersonalExtensionTraffic,
+  recordPersonalExtensionRequest,
+} from "../../packages/client/src/lib/personal-extension-traffic.js";
 import { scrollProfessorMariTranscriptToBottom } from "../../packages/client/src/lib/professor-mari-transcript-scroll.js";
 import { parseCustomParametersDraft } from "../../packages/client/src/lib/generation-custom-parameters.js";
 import { parseGenerationParameterDraft } from "../../packages/client/src/lib/generation-parameter-draft.js";
@@ -2360,6 +2365,12 @@ const termuxLauncher = readFileSync(new URL("../../start-termux.sh", import.meta
 assert.doesNotMatch(termuxLauncher, /run_pnpm install --force/u);
 assert.match(termuxLauncher, /run_pnpm store prune/u);
 assert.match(termuxLauncher, /TERMUX_REBUILD_REQUIRED/u);
+assert.match(termuxLauncher, /--max-old-space-size=2048/u);
+assert.match(
+  termuxLauncher,
+  /has_explicit_node_heap_limit\(\)[\s\S]*NODE_OPTIONS_VALUE[\s\S]*const heapOption = \/\^--max[\s\S]*if ! has_explicit_node_heap_limit; then[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=2048"/u,
+  "Termux must parse complete heap-option tokens before applying its safe default",
+);
 for (const buildEntry of [
   "packages/shared/dist/constants/defaults.js",
   "packages/server/dist/index.js",
@@ -2370,6 +2381,30 @@ for (const buildEntry of [
     `Termux must rebuild when ${buildEntry} is missing`,
   );
 }
+
+const trafficExtensionId = "open-issues-extension-traffic";
+const trafficNow = 180_000;
+for (const requestedAt of [59_000, 119_000, 179_000]) {
+  for (let request = 0; request < 61; request += 1) {
+    recordPersonalExtensionRequest(trafficExtensionId, 2, requestedAt + request);
+  }
+}
+assert.deepEqual(getPersonalExtensionTraffic(trafficExtensionId, trafficNow), {
+  requests: 183,
+  bytes: 366,
+  requestsLastMinute: 61,
+  sustainedHighRate: true,
+});
+const personalExtensionInjectorSource = readFileSync(
+  new URL("../../packages/client/src/components/layout/PersonalExtensionInjector.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(personalExtensionInjectorSource, /fetch: \(input, init\) => fetchForPersonalExtension/u);
+const personalExtensionSettingsSource = readFileSync(
+  new URL("../../packages/client/src/components/panels/settings/PersonalExtensionsSettings.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(personalExtensionSettingsSource, /settings\.personalExtensions\.traffic\.summary/u);
 
 const sharedPackageJson = JSON.parse(
   readFileSync(new URL("../../packages/shared/package.json", import.meta.url), "utf8"),
@@ -5984,6 +6019,73 @@ try {
     drawerSource,
     /useChatMessagePeek\(\s*chat\.id,\s*100,/u,
     "The secret-plot reader must fetch its newest-100 window through the limit-keyed peek hook",
+  );
+  const imageSettingUpdateSource =
+    /const updateCustomAgentImageSetting = useCallback\([\s\S]*?\n  const updateCustomAgentImageConnection/u.exec(
+      drawerSource,
+    )?.[0] ?? "";
+  assert.match(
+    imageSettingUpdateSource,
+    /setCustomAgentImageSettingsDraft\(\(current\) => \(\{[\s\S]*current\?\.chatId === chat\.id \? current\.patch : \{\}[\s\S]*\[agentId\]: hasAgentSettings \? agentSettings : null/u,
+    "Rapid custom-agent connection and style changes must merge into one visible local draft",
+  );
+  assert.match(
+    imageSettingUpdateSource,
+    /if \(removingAgentImageSettingsRef\.current\.has\(agentId\)\) return;/u,
+    "Selector changes for an agent being removed must not enqueue another full-map write",
+  );
+  const toggleAgentSource =
+    /const toggleAgent = async[\s\S]*?\n  const removeAgentFromMenu/u.exec(drawerSource)?.[0] ?? "";
+  assert.match(
+    toggleAgentSource,
+    /await flushPendingCustomAgentImageSettings\(\)[\s\S]*await customAgentImageSettingsWriteQueueRef\.current\.waitForIdle\(\)[\s\S]*const latestImageSettings = readLatestCustomAgentImageSettings\(\)[\s\S]*delete next\[agentId\]/u,
+    "Removing an agent must drain queued image writes before deleting that agent's override",
+  );
+  assert.match(
+    toggleAgentSource,
+    /removingAgentImageSettingsRef\.current\.add\(agentId\)[\s\S]*customAgentImageSettingsWriteQueueRef\.current\.enqueue\(saveAgentSelection\)[\s\S]*finally \{[\s\S]*removingAgentImageSettingsRef\.current\.delete\(agentId\)/u,
+    "Agent removal must be terminal in the image-settings queue and unblock the selector afterward",
+  );
+
+  const serializedWrites = createSerializedMutationQueue();
+  const writeOrder: string[] = [];
+  let releaseFirstWrite!: () => void;
+  const firstWriteGate = new Promise<void>((resolve) => {
+    releaseFirstWrite = resolve;
+  });
+  const firstWrite = serializedWrites.enqueue(async () => {
+    writeOrder.push("first:start");
+    await firstWriteGate;
+    writeOrder.push("first:end");
+  });
+  const removalWrite = serializedWrites.enqueue(async () => {
+    writeOrder.push("removal");
+  });
+  const removingAgentIds = new Set(["image-agent"]);
+  const blockedSelectorWrite = removingAgentIds.has("image-agent")
+    ? null
+    : serializedWrites.enqueue(async () => {
+        writeOrder.push("stale-selector-write");
+      });
+  assert.equal(blockedSelectorWrite, null, "A selector event during removal must not enqueue a stale map");
+  await Promise.resolve();
+  assert.deepEqual(writeOrder, ["first:start"], "A delayed older metadata write must hold newer writes in order");
+  releaseFirstWrite();
+  await Promise.all([firstWrite, removalWrite, serializedWrites.waitForIdle()]);
+  assert.deepEqual(writeOrder, ["first:start", "first:end", "removal"]);
+  const trackerModelSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/features/tracker-panel/hooks/use-tracker-panel-model.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    trackerModelSource,
+    /useChatMessages\(/u,
+    "The tracker panel must not observe the shared chatKeys.messages infinite query (#4724)",
+  );
+  assert.match(
+    trackerModelSource,
+    /useChatMessagePeek\(\s*activeChatId,\s*20,/u,
+    "The tracker panel must fetch its newest-20 sprite window through the limit-keyed peek hook",
   );
   const useChatsSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/hooks/use-chats.ts"), "utf8");
   assert.match(

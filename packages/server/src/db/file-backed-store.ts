@@ -1136,9 +1136,11 @@ class FileTableStore {
           // removed — the shards are complete.
           await unlink(sentinelPath).catch(() => undefined);
         }
-        if (table === "messages" && shardDirPresent) {
-          // Keep the index available in case the swipes migration still needs
-          // to run this boot (crash between the two tables).
+        if (table === "messages" && shardDirPresent && this.swipesMigrationPending()) {
+          // Keep the index available ONLY when the swipes migration still has
+          // to run this boot (a crash exactly between the two tables). On a
+          // normal sharded boot this would re-read every message shard that
+          // loadFileSnapshots is about to read anyway, doubling startup work.
           this.buildMigrationIndexFromShards(dir, migrationIndex);
         }
         continue; // fresh install or normal sharded boot
@@ -1164,7 +1166,26 @@ class FileTableStore {
             "[file-storage] A previous %s shard migration did not complete; retrying from the untouched monolith",
             table,
           );
-          rmSync(dir, { recursive: true, force: true });
+          // Remove only the incomplete migration artifacts (shard data files,
+          // their .bak/.tmp companions, and the sentinel). Quarantine files
+          // (.corrupt-*) in this directory are user-recovery data the store
+          // never deletes on its own — a blanket rmSync would break that.
+          let leftovers: string[] = [];
+          try {
+            leftovers = readdirSync(dir);
+          } catch {
+            /* dir vanished — nothing to clean */
+          }
+          for (const name of leftovers) {
+            if (
+              isShardDataFileName(name) ||
+              name.endsWith(".json.bak") ||
+              name.includes(".tmp-") ||
+              name === SHARD_MIGRATION_SENTINEL
+            ) {
+              rmSync(join(dir, name), { force: true });
+            }
+          }
         } else {
           // Downgrade artifact: a pre-shard build recreated a monolith while
           // the shards kept living. The shards are authoritative.
@@ -1184,13 +1205,26 @@ class FileTableStore {
               "Recover any rows it holds manually if needed.",
             table,
           );
-          if (table === "messages") this.buildMigrationIndexFromShards(shardDirPath(this.rootDir, table), migrationIndex);
+          if (table === "messages" && this.swipesMigrationPending()) {
+            this.buildMigrationIndexFromShards(shardDirPath(this.rootDir, table), migrationIndex);
+          }
           continue;
         }
       }
 
       await this.migrateMonolithToShards(table, monolithPath, monolithBak, dir, sentinelPath, migrationIndex);
     }
+  }
+
+  /**
+   * True while the message_swipes monolith (or its .bak) is still on disk —
+   * the only state in which the swipes migration can run this boot and need
+   * the messageId -> chatId index. SHARDED_TABLES orders messages first, so
+   * nothing has consumed the monolith yet when this is checked.
+   */
+  private swipesMigrationPending() {
+    const swipesMonolith = tableFilePath(this.rootDir, "message_swipes");
+    return existsSync(swipesMonolith) || existsSync(`${swipesMonolith}.bak`);
   }
 
   /** Rebuilds the messageId -> chatId migration index from existing shard files. */
@@ -1805,15 +1839,15 @@ class FileTableStore {
       if (typeof manifestVersion === "number" && manifestVersion > STORAGE_VERSION) {
         throw new StorageFormatTooNewError(manifestVersion, STORAGE_VERSION);
       }
-      // A stale but valid version (a crash between the migration and its
-      // first flush leaves sharded data under a version-2 manifest) must also
-      // be rewritten promptly: the launcher/updater downgrade guard trusts
-      // manifest.version, and a lagging value would let it approve a
-      // downgrade onto data the older build cannot read (#4708).
+      // Any manifest whose version is not exactly STORAGE_VERSION must be
+      // rewritten promptly — stale (a crash between the migration and its
+      // first flush leaves sharded data under a version-2 manifest), absent
+      // (tables exist but manifest.json was lost), or non-numeric. The
+      // launcher/updater downgrade guard trusts manifest.version, and a
+      // lagging or missing value would let it approve a downgrade onto data
+      // the older build cannot read (#4708).
       needsManifestRewrite =
-        result.recoveredFromBackup ||
-        result.recoveredFromFallback ||
-        (typeof manifestVersion === "number" && manifestVersion !== STORAGE_VERSION);
+        result.recoveredFromBackup || result.recoveredFromFallback || manifestVersion !== STORAGE_VERSION;
       if (result.recoveredFromBackup || result.recoveredFromFallback) {
         this.backupRecoveredPaths.add(path);
       }

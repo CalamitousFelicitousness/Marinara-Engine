@@ -257,12 +257,15 @@ assert.equal(
     (error: unknown) => error instanceof StorageFormatTooNewError,
     "data from a newer format must refuse to load instead of being misread",
   );
-  // The refusal must precede EVERY migration side effect: a directory this
-  // build cannot read must not be mutated by it either.
-  assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
-  assert.equal(existsSync(join(dir, "tables", "messages.json.pre-shard")), false, "no pre-shard rename happened");
-  assert.equal(existsSync(join(dir, "tables", "messages")), false, "no shard directory was created");
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    // The refusal must precede EVERY migration side effect: a directory this
+    // build cannot read must not be mutated by it either.
+    assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
+    assert.equal(existsSync(join(dir, "tables", "messages.json.pre-shard")), false, "no pre-shard rename happened");
+    assert.equal(existsSync(join(dir, "tables", "messages")), false, "no shard directory was created");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ── Crash between mkdir and the sentinel write: monolith must NOT be quarantined ──
@@ -457,6 +460,56 @@ assert.equal(
   try {
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
     assert.equal(manifest.version, 3, "a lagging manifest version is healed by the startup flush");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A MISSING manifest is recreated on the next boot ──
+// The downgrade guard reads manifest.version; sharded data with no manifest
+// at all would give it nothing to check.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify([messageRow("m-1", "chat-x", "sharded")]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    assert.ok(existsSync(join(dir, "manifest.json")), "a boot over manifest-less table data recreates the manifest");
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
+    assert.equal(manifest.version, 3, "the recreated manifest carries the current storage version");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A crashed-migration retry never deletes quarantine artifacts ──
+// The retry clears incomplete shard files, but .corrupt-* files are
+// user-recovery data the store must never delete on its own.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([messageRow("m-1", "chat-x", "monolith")]));
+  writeFileSync(join(dir, "tables", "messages", ".migrating"), "2026-08-08T00:00:00.000Z");
+  writeFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`), JSON.stringify([]));
+  const quarantinedPath = join(dir, "tables", "messages", "chat-old.json.corrupt-2026-08-01T00-00-00-000Z");
+  writeFileSync(quarantinedPath, "preserved recovery bytes");
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 1, "the retry migrates from the monolith");
+    assert.ok(existsSync(quarantinedPath), "quarantined .corrupt files survive the migration retry");
+    assert.equal(
+      existsSync(join(dir, "tables", "messages", ".migrating")),
+      false,
+      "the sentinel is gone after the completed retry",
+    );
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

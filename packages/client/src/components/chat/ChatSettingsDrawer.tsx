@@ -145,6 +145,7 @@ import { useRegexScripts, useUpdateRegexScript, type RegexScriptRow } from "../.
 import { api } from "../../lib/api-client";
 import { readCharacterGreetings, type CharacterGreeting } from "../../lib/character-greetings";
 import { trackChatMetadataSave, waitForPendingChatMetadataSaves } from "../../lib/chat-metadata-save-barrier";
+import { createSerializedMutationQueue } from "../../lib/serialized-mutation-queue";
 import { appendLocalSidecarConnectionOption, filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import {
   deriveActiveLorebookViews,
@@ -658,6 +659,11 @@ type AgentAddPreview = {
   setup: AgentAddSetupState;
 };
 
+type CustomAgentImageSetting = {
+  imageConnectionId?: string | null;
+  styleProfileId?: string | null;
+};
+
 type KnowledgeAgentType = "knowledge-retrieval" | "knowledge-router";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -790,6 +796,22 @@ export function ChatSettingsDrawer({
   const drawerClosingRef = useRef(false);
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
+  const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
+  const pendingCustomAgentImageSettingsRef = useRef<{
+    chatId: string;
+    revision: number;
+    settings: Record<string, CustomAgentImageSetting>;
+  } | null>(null);
+  const pendingCustomAgentImageSettingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customAgentImageSettingsRevisionRef = useRef(0);
+  const customAgentImageSettingsWriteQueueRef = useRef(createSerializedMutationQueue());
+  const removingAgentImageSettingsRef = useRef(new Set<string>());
+  const [customAgentImageSettingsDraft, setCustomAgentImageSettingsDraft] = useState<{
+    chatId: string;
+    revision: number;
+    patch: Partial<Record<string, CustomAgentImageSetting | null>>;
+  } | null>(null);
+  updateMetaMutateAsyncRef.current = updateMeta.mutateAsync;
   const updateGameWidgets = useUpdateGameWidgets();
   const { data: regexScripts } = useRegexScripts();
   const updateRegexScript = useUpdateRegexScript();
@@ -2795,34 +2817,45 @@ export function ChatSettingsDrawer({
             return next;
           })()
         : null;
-    const latestImageSettings = readLatestCustomAgentImageSettings();
-    const nextImageSettings =
-      isRemoving && latestImageSettings[agentId]
-        ? (() => {
-            const next = { ...latestImageSettings };
-            delete next[agentId];
-            return next;
-          })()
-        : null;
     let metadataSaved = false;
+    if (isRemoving) removingAgentImageSettingsRef.current.add(agentId);
     try {
-      await updateMeta.mutateAsync(
-        {
-          id: chat.id,
-          activeAgentIds: current,
-          ...(nextPromptTemplateSelections ? { agentPromptTemplateIds: nextPromptTemplateSelections } : {}),
-          ...(nextImageSettings ? { customAgentImageSettings: nextImageSettings } : {}),
-        },
-        {
-          onSuccess: async () => {
-            metadataSaved = true;
-            // When removing an agent that stores persistent memory, clean it up after metadata is saved.
-            if (isRemoving && agentId === "director") {
-              await api.delete(`/agents/memory/${agentId}/${chat.id}`);
-            }
+      if (isRemoving) {
+        do {
+          await flushPendingCustomAgentImageSettings().catch(() => undefined);
+          await customAgentImageSettingsWriteQueueRef.current.waitForIdle();
+        } while (pendingCustomAgentImageSettingsRef.current?.chatId === chat.id);
+      }
+      const latestImageSettings = readLatestCustomAgentImageSettings();
+      const nextImageSettings =
+        isRemoving && latestImageSettings[agentId]
+          ? (() => {
+              const next = { ...latestImageSettings };
+              delete next[agentId];
+              return next;
+            })()
+          : null;
+      const saveAgentSelection = async () => {
+        await updateMeta.mutateAsync(
+          {
+            id: chat.id,
+            activeAgentIds: current,
+            ...(nextPromptTemplateSelections ? { agentPromptTemplateIds: nextPromptTemplateSelections } : {}),
+            ...(nextImageSettings ? { customAgentImageSettings: nextImageSettings } : {}),
           },
-        },
-      );
+          {
+            onSuccess: async () => {
+              metadataSaved = true;
+              // When removing an agent that stores persistent memory, clean it up after metadata is saved.
+              if (isRemoving && agentId === "director") {
+                await api.delete(`/agents/memory/${agentId}/${chat.id}`);
+              }
+            },
+          },
+        );
+      };
+      if (isRemoving) await customAgentImageSettingsWriteQueueRef.current.enqueue(saveAgentSelection);
+      else await saveAgentSelection();
     } catch (error) {
       if (metadataSaved && isRemoving && agentId === "director") {
         const rollbackIds = Array.from(new Set([...readLatestActiveAgentIds(), agentId]));
@@ -2832,6 +2865,8 @@ export function ChatSettingsDrawer({
         title: isRemoving ? "Couldn't Remove Agent" : "Couldn't Add Agent",
         message: error instanceof Error ? error.message : "The agent list could not be updated. Please try again.",
       });
+    } finally {
+      if (isRemoving) removingAgentImageSettingsRef.current.delete(agentId);
     }
   };
 
@@ -2880,10 +2915,18 @@ export function ChatSettingsDrawer({
 
   const customAgentImageSelections = useMemo(() => {
     const raw = metadata.customAgentImageSettings;
-    return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Partial<Record<string, { imageConnectionId?: string | null }>>)
-      : {};
-  }, [metadata.customAgentImageSettings]);
+    const persisted =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Partial<Record<string, CustomAgentImageSetting>>)
+        : {};
+    if (customAgentImageSettingsDraft?.chatId !== chat.id) return persisted;
+    const merged = { ...persisted };
+    for (const [agentId, settings] of Object.entries(customAgentImageSettingsDraft.patch)) {
+      if (settings) merged[agentId] = settings;
+      else delete merged[agentId];
+    }
+    return merged;
+  }, [chat.id, customAgentImageSettingsDraft, metadata.customAgentImageSettings]);
   const readLatestCustomAgentImageSettings = useCallback(() => {
     const latestChat = qc.getQueryData<Chat>(chatKeys.detail(chat.id));
     const latestMetadata =
@@ -2895,17 +2938,81 @@ export function ChatSettingsDrawer({
         ? (latestMetadata as { customAgentImageSettings?: unknown }).customAgentImageSettings
         : undefined;
     return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? { ...(raw as Record<string, { imageConnectionId?: string | null }>) }
+      ? {
+          ...(raw as Record<string, CustomAgentImageSetting>),
+        }
       : {};
   }, [chat.id, metadata, qc]);
-  const updateCustomAgentImageConnection = useCallback(
-    (agentId: string, connectionId: string) => {
-      const next = readLatestCustomAgentImageSettings();
-      if (connectionId) next[agentId] = { imageConnectionId: connectionId };
-      else delete next[agentId];
-      updateMeta.mutate({ id: chat.id, customAgentImageSettings: next });
+  const flushPendingCustomAgentImageSettings = useCallback((): Promise<void> => {
+    if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
+      clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
+      pendingCustomAgentImageSettingsTimerRef.current = null;
+    }
+    const pending = pendingCustomAgentImageSettingsRef.current;
+    if (!pending) return customAgentImageSettingsWriteQueueRef.current.waitForIdle();
+    pendingCustomAgentImageSettingsRef.current = null;
+    return customAgentImageSettingsWriteQueueRef.current
+      .enqueue(async () => {
+        await updateMetaMutateAsyncRef.current({
+          id: pending.chatId,
+          customAgentImageSettings: pending.settings,
+        });
+      })
+      .finally(() => {
+        setCustomAgentImageSettingsDraft((current) =>
+          current?.chatId === pending.chatId && current.revision === pending.revision ? null : current,
+        );
+      });
+  }, []);
+  useEffect(
+    () => () => {
+      void flushPendingCustomAgentImageSettings().catch(() => undefined);
     },
-    [chat.id, readLatestCustomAgentImageSettings, updateMeta],
+    [chat.id, flushPendingCustomAgentImageSettings],
+  );
+  const updateCustomAgentImageSetting = useCallback(
+    (agentId: string, field: "imageConnectionId" | "styleProfileId", value: string) => {
+      if (removingAgentImageSettingsRef.current.has(agentId)) return;
+      const pending = pendingCustomAgentImageSettingsRef.current;
+      if (pending && pending.chatId !== chat.id) {
+        void flushPendingCustomAgentImageSettings().catch(() => undefined);
+      }
+      const next = pending?.chatId === chat.id ? { ...pending.settings } : readLatestCustomAgentImageSettings();
+      const agentSettings = { ...next[agentId] };
+      if (value) agentSettings[field] = value;
+      else delete agentSettings[field];
+      const hasAgentSettings = !!(agentSettings.imageConnectionId || agentSettings.styleProfileId);
+      if (hasAgentSettings) next[agentId] = agentSettings;
+      else delete next[agentId];
+      const revision = customAgentImageSettingsRevisionRef.current + 1;
+      customAgentImageSettingsRevisionRef.current = revision;
+      pendingCustomAgentImageSettingsRef.current = { chatId: chat.id, revision, settings: next };
+      setCustomAgentImageSettingsDraft((current) => ({
+        chatId: chat.id,
+        revision,
+        patch: {
+          ...(current?.chatId === chat.id ? current.patch : {}),
+          [agentId]: hasAgentSettings ? agentSettings : null,
+        },
+      }));
+      if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
+        clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
+      }
+      pendingCustomAgentImageSettingsTimerRef.current = setTimeout(() => {
+        void flushPendingCustomAgentImageSettings().catch(() => undefined);
+      }, 150);
+    },
+    [chat.id, flushPendingCustomAgentImageSettings, readLatestCustomAgentImageSettings],
+  );
+  const updateCustomAgentImageConnection = useCallback(
+    (agentId: string, connectionId: string) =>
+      updateCustomAgentImageSetting(agentId, "imageConnectionId", connectionId),
+    [updateCustomAgentImageSetting],
+  );
+  const updateCustomAgentImageStyle = useCallback(
+    (agentId: string, styleProfileId: string) =>
+      updateCustomAgentImageSetting(agentId, "styleProfileId", styleProfileId),
+    [updateCustomAgentImageSetting],
   );
   const isImageCapableCustomAgent = useCallback(
     (agentId: string) => {
@@ -3964,9 +4071,13 @@ export function ChatSettingsDrawer({
             const promptOptions = getPromptOptionsForAgent(agent.id);
             const imageCapable = isImageCapableCustomAgent(agent.id);
             const agentImageConnectionId = customAgentImageSelections[agent.id]?.imageConnectionId ?? "";
+            const agentImageStyleProfileId = customAgentImageSelections[agent.id]?.styleProfileId ?? "";
             const agentImageConnectionMissing =
               agentImageConnectionId.length > 0 &&
               !imageConnectionsList.some((connection) => connection.id === agentImageConnectionId);
+            const agentImageStyleProfileMissing =
+              agentImageStyleProfileId.length > 0 &&
+              !imageStyleProfiles.profiles.some((profile) => profile.id === agentImageStyleProfileId);
             return (
               <div
                 key={agent.id}
@@ -4048,6 +4159,7 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.imageConnection")}
                     </span>
                     <select
+                      aria-label={localizeUi("ui.chat.chatsettingsdrawer.imageConnection")}
                       value={agentImageConnectionId}
                       onChange={(event) => updateCustomAgentImageConnection(agent.id, event.target.value)}
                       className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
@@ -4061,15 +4173,38 @@ export function ChatSettingsDrawer({
                       {imageConnectionsList.map((connection) => (
                         <option key={connection.id} value={connection.id}>
                           {connection.name}
-                          {connection.model
-                            ? localizeUi("ui.chat.datablock.value1", { value1: connection.model })
-                            : ""}
+                          {connection.model ? localizeUi("ui.chat.datablock.value1", { value1: connection.model }) : ""}
                         </option>
                       ))}
                     </select>
                     <AgentDefaultStatus
                       overridden={agentImageConnectionId.length > 0}
                       onReset={() => updateCustomAgentImageConnection(agent.id, "")}
+                    />
+                    <span className="mt-1 text-[0.625rem] font-medium text-[var(--foreground)]">
+                      {localizeUi("ui.chat.chatsettingsdrawer.imageStyle")}
+                    </span>
+                    <select
+                      aria-label={localizeUi("ui.chat.chatsettingsdrawer.imageStyle")}
+                      value={agentImageStyleProfileId}
+                      onChange={(event) => updateCustomAgentImageStyle(agent.id, event.target.value)}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                    >
+                      <option value="">{localizeUi("ui.chat.chatsettingsdrawer.chatDefault")}</option>
+                      {agentImageStyleProfileMissing && (
+                        <option value={agentImageStyleProfileId}>
+                          {localizeUi("ui.chat.chatsettingsdrawer.missingStyleProfile")}
+                        </option>
+                      )}
+                      {imageStyleProfiles.profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                    </select>
+                    <AgentDefaultStatus
+                      overridden={agentImageStyleProfileId.length > 0 && !agentImageStyleProfileMissing}
+                      onReset={() => updateCustomAgentImageStyle(agent.id, "")}
                     />
                   </div>
                 )}
@@ -8539,9 +8674,7 @@ export function ChatSettingsDrawer({
                                                 agentPromptTemplateSelections[agent.id] ??
                                                 getDefaultPromptTemplateIdForAgent(agent.id)
                                               }
-                                              overridden={
-                                                typeof agentPromptTemplateSelections[agent.id] === "string"
-                                              }
+                                              overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
                                               onChange={(promptTemplateId) =>
                                                 updateAgentPromptTemplateSelection(agent.id, promptTemplateId)
                                               }

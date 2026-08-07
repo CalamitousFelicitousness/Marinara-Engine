@@ -27,7 +27,7 @@ if /I "%AUTO_UPDATE_ENABLED%"=="no" set "AUTO_UPDATE_DISABLED=1"
 if /I "%AUTO_UPDATE_ENABLED%"=="off" set "AUTO_UPDATE_DISABLED=1"
 
 :: Check for Node.js
-where node >nul 2>&1
+node --version >nul 2>&1
 if errorlevel 1 (
     echo  [ERROR] Node.js is not installed or not in PATH.
     echo  Please install Node.js 24 LTS or newer from https://nodejs.org

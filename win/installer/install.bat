@@ -78,7 +78,7 @@ echo.
 echo  [..] Checking prerequisites...
 
 :: -- Node.js --
-where node >nul 2>&1
+node --version >nul 2>&1
 if errorlevel 1 goto :install_node
 for /f "tokens=1 delims=." %%a in ('node -v') do set "NODE_RAW=%%a"
 set "NODE_MAJOR=!NODE_RAW:v=!"
@@ -114,7 +114,7 @@ if errorlevel 1 (
 )
 del "%NODE_MSI%" 2>nul
 call :refresh_path
-where node >nul 2>&1
+node --version >nul 2>&1
 if errorlevel 1 (
     set "INSTALL_ERROR=Node.js installed but not found in PATH. Please restart your computer and re-run the installer."
     goto :fatal

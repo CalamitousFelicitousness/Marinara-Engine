@@ -137,10 +137,7 @@ const echoChamberPanelSource = readFileSync(
   new URL("../../packages/client/src/components/chat/EchoChamberPanel.tsx", import.meta.url),
   "utf8",
 );
-const uiStoreSource = readFileSync(
-  new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url),
-  "utf8",
-);
+const uiStoreSource = readFileSync(new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url), "utf8");
 const globalStylesSource = readFileSync(
   new URL("../../packages/client/src/styles/globals.css", import.meta.url),
   "utf8",
@@ -158,10 +155,7 @@ const useGenerateSource = readFileSync(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
-const useChatsSource = readFileSync(
-  new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url),
-  "utf8",
-);
+const useChatsSource = readFileSync(new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url), "utf8");
 const gameInputSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameInput.tsx", import.meta.url),
   "utf8",
@@ -193,7 +187,9 @@ const reducedAmbientEffectsHookSource = readFileSync(
 const professorMariTokenBranch =
   professorMariHomeSource.match(/if \(event\.type === "token"[\s\S]*?continue;/u)?.[0] ?? "";
 const roleplayTrackerSettingsBranch =
-  chatSettingsDrawerSource.match(/activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u)?.[0] ?? "";
+  chatSettingsDrawerSource.match(
+    /activeInCat\.map\(\(agent\) => \{[\s\S]*?\{\/\* Available agents to add \*\//u,
+  )?.[0] ?? "";
 assert.match(professorMariHomeSource, /rafThrottle<void>\(appendPendingWorkspaceText\)/u);
 assert.doesNotMatch(professorMariTokenBranch, /setWorkspaceTimeline/u);
 assert.match(professorMariHomeSource, /void refreshAfterWorkspaceRun\(chat\.id, runId\)/u);
@@ -224,15 +220,22 @@ assert.doesNotMatch(
   /applyCursorAccent\(liveAccent/u,
   "animated accent ticks must not force synchronous custom-cursor color resolution",
 );
+const roleplayLiveStreamSource =
+  chatRoleplaySurfaceSource.match(/function RoleplayLiveStreamText[\s\S]*?\nfunction StreamingIndicator/u)?.[0] ?? "";
 assert.match(
-  chatRoleplaySurfaceSource,
-  /function RoleplayLiveStreamText[\s\S]*?document\.createTextNode\(""\)[\s\S]*?textNode\.appendData[\s\S]*?requestAnimationFrame\(apply\)/u,
-  "Roleplay live text should retain one text node and append to it at animation-frame cadence",
+  roleplayLiveStreamSource,
+  /function RoleplayLiveStreamText[\s\S]*?setText\(next\)[\s\S]*?requestAnimationFrame\(apply\)/u,
+  "Roleplay live formatting should update at animation-frame cadence",
 );
 assert.doesNotMatch(
-  chatRoleplaySurfaceSource,
-  /textRef\.current\.textContent = next/u,
-  "Roleplay streaming must not replace its live Text node on every frame",
+  roleplayLiveStreamSource,
+  /replaceChildren|textContent\s*=/u,
+  "Roleplay streaming should let React reconcile formatted output instead of mutating the DOM directly",
+);
+assert.match(
+  chatMessageSource,
+  /streamingContent\(renderStreamingText\)/u,
+  "Roleplay streaming must reuse the committed-message formatter",
 );
 assert.doesNotMatch(
   chatRoleplaySurfaceSource,
@@ -348,7 +351,8 @@ const illustratorCadencePersistenceIndex = generateRouteSource.indexOf(
 );
 assert.notEqual(illustratorCadencePersistenceIndex, -1, "agent cadence decisions should be persisted eagerly");
 assert.ok(
-  illustratorCadencePersistenceIndex < generateRouteSource.indexOf("pendingIllustration =", illustratorCadencePersistenceIndex),
+  illustratorCadencePersistenceIndex <
+    generateRouteSource.indexOf("pendingIllustration =", illustratorCadencePersistenceIndex),
   "Illustrator cadence must be persisted before background image generation begins",
 );
 assert.match(
@@ -402,10 +406,7 @@ assert.doesNotMatch(
   "summary keystrokes must not update popover-level draft state",
 );
 assert.equal(
-  shouldFormatTextareaQuotes(
-    { inputType: "insertText", data: '"', isComposing: false } as InputEvent,
-    'She said "',
-  ),
+  shouldFormatTextareaQuotes({ inputType: "insertText", data: '"', isComposing: false } as InputEvent, 'She said "'),
   true,
   "direct quote insertion should retain immediate quote formatting",
 );
@@ -1285,7 +1286,11 @@ useAgentStore.setState({
 useAgentStore.getState().revealNextEchoMessage();
 assert.equal(useAgentStore.getState().echoVisibleCount, 2, "one Echo timer tick must reveal exactly one reaction");
 useAgentStore.getState().revealNextEchoMessage();
-assert.equal(useAgentStore.getState().echoVisibleCount, 3, "a second Echo timer tick must reveal only the next reaction");
+assert.equal(
+  useAgentStore.getState().echoVisibleCount,
+  3,
+  "a second Echo timer tick must reveal only the next reaction",
+);
 
 let weatherAccumulator = 0;
 let weatherDraws = 0;

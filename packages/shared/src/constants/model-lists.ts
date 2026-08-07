@@ -732,6 +732,13 @@ export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
     requiresApiKey: false,
   },
   {
+    id: "swarmui",
+    name: "SwarmUI",
+    description: "Swarm-managed image generation and distributed ComfyUI workflows.",
+    defaultBaseUrl: "http://127.0.0.1:7801",
+    requiresApiKey: false,
+  },
+  {
     id: "runpod_comfyui",
     name: "RunPod Serverless (ComfyUI)",
     description: "RunPod serverless endpoint running a ComfyUI workflow for text-to-image generation.",
@@ -911,6 +918,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
     m === "zai" ||
     m === "atlas" ||
     m === "comfyui" ||
+    m === "swarmui" ||
     m === "automatic1111" ||
     m === "runpod_comfyui" ||
     m === "gemini_image"
@@ -935,6 +943,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
   if (m.includes("black-forest") || m.includes("flux") || u.includes("together.xyz")) return "togetherai";
   if (u.includes("stablehorde.net")) return "horde";
   if (u.includes("blockentropy")) return "blockentropy";
+  if (u.includes(":7801") || u.includes("swarmui")) return "swarmui";
   if (u.includes(":8188") || u.includes("comfyui")) return "comfyui";
   if (u.includes("runpod.ai")) return "runpod_comfyui";
   if (u.includes(":7860") && !u.includes("drawthings")) return "automatic1111";

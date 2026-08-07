@@ -148,6 +148,7 @@ export function imageSourceToDefaultsService(value: unknown): ImageDefaultsServi
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
   if (normalized === "drawthings" || normalized === "arli") return "automatic1111";
+  if (normalized === "swarmui") return "comfyui";
   return isImageDefaultsService(normalized) ? normalized : null;
 }
 

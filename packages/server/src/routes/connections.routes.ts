@@ -175,7 +175,8 @@ export function parseComfyLoaderModelNames(info: unknown, nodeName: string, inpu
 
 function localUrlPolicyForProvider(provider: string, imageSource: string) {
   const isLocalImageBackend =
-    provider === "image_generation" && (imageSource === "comfyui" || imageSource === "automatic1111");
+    provider === "image_generation" &&
+    (imageSource === "comfyui" || imageSource === "swarmui" || imageSource === "automatic1111");
   const isImage = provider === "image_generation";
   const isVideo = provider === "video_generation";
   return {
@@ -191,11 +192,53 @@ function localUrlPolicyForProvider(provider: string, imageSource: string) {
   };
 }
 
+function swarmUiHeaders(apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = apiKey.trim();
+  if (token) headers.Cookie = `swarm_token=${encodeURIComponent(token)}`;
+  return headers;
+}
+
+async function postSwarmUiJson(baseUrl: string, apiKey: string, route: string, body: Record<string, unknown>) {
+  const response = await safeFetch(`${baseUrl.replace(/\/+$/, "")}/API/${route}`, {
+    method: "POST",
+    headers: swarmUiHeaders(apiKey),
+    body: JSON.stringify(body),
+    policy: localUrlPolicyForProvider("image_generation", "swarmui"),
+    maxResponseBytes: 5 * 1024 * 1024,
+    decodeCompressedResponse: true,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`SwarmUI returned ${response.status}: ${formatProviderErrorBody(text)}`);
+  }
+  let result: unknown;
+  try {
+    result = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("SwarmUI returned invalid JSON");
+  }
+  if (isRecord(result) && (typeof result.error === "string" || typeof result.error_id === "string")) {
+    const message =
+      typeof result.error === "string"
+        ? result.error
+        : typeof result.error_id === "string"
+          ? result.error_id
+          : "Unknown error";
+    throw new Error(`SwarmUI API error: ${trimProviderError(message)}`);
+  }
+  return result;
+}
+
+async function createSwarmUiSession(baseUrl: string, apiKey: string): Promise<string> {
+  const result = await postSwarmUiJson(baseUrl, apiKey, "GetNewSession", {});
+  const sessionId = isRecord(result) && typeof result.session_id === "string" ? result.session_id.trim() : "";
+  if (!sessionId) throw new Error("SwarmUI did not return a session_id");
+  return sessionId;
+}
+
 export function buildGoogleModelsPageUrl(baseUrl: string, modelsEndpoint: string, pageToken = ""): string {
-  return (
-    `${baseUrl}${modelsEndpoint}?pageSize=1000` +
-    (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "")
-  );
+  return `${baseUrl}${modelsEndpoint}?pageSize=1000` + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
 }
 
 function normalizeConnectionTestBaseUrl(baseUrl: string, provider: string): string {
@@ -584,6 +627,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
       } else if (conn.provider === "image_generation" && imageSource === "comfyui") {
         // ComfyUI: ping the system stats endpoint
         testUrl = `${baseUrl}/system_stats`;
+      } else if (conn.provider === "image_generation" && imageSource === "swarmui") {
+        await createSwarmUiSession(baseUrl, conn.apiKey || "");
+        return {
+          success: true,
+          message: "Connection successful",
+          latencyMs: Date.now() - start,
+          modelName: conn.model,
+        };
       } else if (conn.provider === "image_generation" && imageSource === "automatic1111") {
         // AUTOMATIC1111 / SD Web UI: ping the internal ping endpoint
         testUrl = `${baseUrl}/sdapi/v1/options`;
@@ -794,11 +845,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: knownStabilityImageModels() };
       }
 
+      if (conn.provider === "image_generation" && imageSource === "swarmui") {
+        const sessionId = await createSwarmUiSession(baseUrl, conn.apiKey || "");
+        const result = await postSwarmUiJson(baseUrl, conn.apiKey || "", "ListT2IParams", { session_id: sessionId });
+        const modelGroups = isRecord(result) && isRecord(result.models) ? result.models : {};
+        const modelNames = Array.isArray(modelGroups["Stable-Diffusion"])
+          ? modelGroups["Stable-Diffusion"].filter((model): model is string => typeof model === "string")
+          : [];
+        const loraNames = Array.isArray(modelGroups.LoRA)
+          ? modelGroups.LoRA.filter((model): model is string => typeof model === "string")
+          : [];
+        return {
+          models: modelNames.map((name) => ({ id: name, name })),
+          loras: loraNames.map((name) => ({ id: name, name })),
+        };
+      }
+
       // ComfyUI: fetch checkpoints and diffusion models from object_info
-      if (
-        (conn.provider === "image_generation" || conn.provider === "video_generation") &&
-        mediaSource === "comfyui"
-      ) {
+      if ((conn.provider === "image_generation" || conn.provider === "video_generation") && mediaSource === "comfyui") {
         const fetchComfyLoaderModelNames = async (nodeName: string, inputName: string) => {
           const res = await safeFetch(`${baseUrl}/object_info/${nodeName}`, {
             policy: localUrlPolicyForProvider(conn.provider, mediaSource),

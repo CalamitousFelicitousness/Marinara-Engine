@@ -584,7 +584,7 @@ const EditTextarea = memo(function EditTextarea({
   }, [onSave, quoteFormat]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative isolate z-20 flex flex-col gap-2">
       <textarea
         ref={ref}
         defaultValue={formatTextQuotes(initialContent, quoteFormat)}
@@ -600,16 +600,16 @@ const EditTextarea = memo(function EditTextarea({
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        className="w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50"
+        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50"
         style={{ fontSize, lineHeight: 1.5, maxHeight: "min(60dvh, 32rem)" }}
       />
-      <div className="relative z-10 flex items-center justify-end gap-1.5">
+      <div className="pointer-events-auto relative z-30 flex items-center justify-end gap-1.5">
         <button
           type="button"
           onClick={onCancel}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.cancelEdit")}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
+          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-white/40 hover:bg-white/10 hover:text-white/70 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.cancelEsc")}
         >
           <X size="0.8125rem" />
@@ -619,7 +619,7 @@ const EditTextarea = memo(function EditTextarea({
           onClick={handleSave}
           disabled={saving}
           aria-label={localizeUi("ui.chat.edittextarea.saveEdit")}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400 disabled:pointer-events-none disabled:opacity-50"
+          className="pointer-events-auto relative z-30 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-emerald-400/70 hover:bg-emerald-400/10 hover:text-emerald-400 disabled:pointer-events-none disabled:opacity-50"
           title={localizeUi("ui.chat.edittextarea.saveCmdEnter")}
         >
           <Check size="0.8125rem" />
@@ -633,8 +633,8 @@ const EditTextarea = memo(function EditTextarea({
 interface ChatMessageProps {
   message: Message & { swipes?: Array<{ id: string; content: string }> };
   isStreaming?: boolean;
-  /** Lightweight live text rendered without rebuilding formatted message content on every character. */
-  streamingContent?: ReactNode;
+  /** Frame-throttled live content that receives the same formatter as committed messages. */
+  streamingContent?: (renderText: (text: string) => ReactNode) => ReactNode;
   onDelete?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
@@ -2124,6 +2124,20 @@ export const ChatMessage = memo(function ChatMessage({
   const renderedContent = useMemo(() => {
     return renderContent(text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex);
   }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex]);
+  const renderStreamingText = useCallback(
+    (streamText: string) =>
+      renderContent(
+        streamText,
+        dialogueColor,
+        speakerColorMap,
+        boldDialogue,
+        htmlScopeClass,
+        quoteFormat,
+        selfCharacterId,
+        galleryIndex,
+      ),
+    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap],
+  );
 
   // Translated text is rendered through the same markdown pipeline as the
   // message so bold/italics/quotes format identically.
@@ -2299,7 +2313,7 @@ export const ChatMessage = memo(function ChatMessage({
       >
         {isStreaming && streamingContent ? (
           <>
-            {streamingContent}
+            {streamingContent(renderStreamingText)}
             <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
           </>
         ) : isStreaming && !message.content ? (
@@ -2648,15 +2662,21 @@ export const ChatMessage = memo(function ChatMessage({
 
             {/* Conversation start marker */}
             {isConversationStart && (
-              <div className="flex items-center gap-1.5 px-1 mb-1">
-                <span className={cn("h-px flex-1", MESSAGE_CHROME_MARKER_LINE_CLASS)} />
-                <span
-                  className={cn(
-                    "text-[0.5625rem] font-semibold uppercase tracking-widest",
-                    MESSAGE_CHROME_MARKER_TEXT_CLASS,
-                  )}
-                >{localizeUi("ui.chat.chatmessage.newStart")}</span>
-                <span className={cn("h-px flex-1", MESSAGE_CHROME_MARKER_LINE_CLASS)} />
+              <div className="mb-1 px-1">
+                <div
+                  aria-hidden="true"
+                  className="mari-chrome-accent-progress mari-accent-animated mb-1.5 h-0.5 w-full rounded-full"
+                />
+                <div className="flex items-center gap-1.5">
+                  <span className={cn("h-px flex-1", MESSAGE_CHROME_MARKER_LINE_CLASS)} />
+                  <span
+                    className={cn(
+                      "text-[0.5625rem] font-semibold uppercase tracking-widest",
+                      MESSAGE_CHROME_MARKER_TEXT_CLASS,
+                    )}
+                  >{localizeUi("ui.chat.chatmessage.newStart")}</span>
+                  <span className={cn("h-px flex-1", MESSAGE_CHROME_MARKER_LINE_CLASS)} />
+                </div>
               </div>
             )}
 
@@ -3227,7 +3247,7 @@ export const ChatMessage = memo(function ChatMessage({
                 >
                   {isStreaming && streamingContent ? (
                     <>
-                      {streamingContent}
+                      {streamingContent(renderStreamingText)}
                       <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-white/70" />
                     </>
                   ) : isStreaming && !message.content ? (

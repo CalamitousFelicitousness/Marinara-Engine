@@ -14,6 +14,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made edits to Conversation replies that contained character commands reach the model instead of the original wording (#4728).
 - Kept the full desktop Roleplay edit checkmark above overlapping message layers so its entire visible hit target remains clickable (#4700).
 - Made the Windows launcher and installer detect Node.js by running it directly instead of requiring `where.exe` (#4701).
 - Added the standard expanded editor and macro guide controls to Roleplay summary editors (#4710).

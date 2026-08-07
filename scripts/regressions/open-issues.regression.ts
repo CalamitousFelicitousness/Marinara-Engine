@@ -6019,6 +6019,16 @@ try {
     /useChatMessagePeek\(\s*chat\.id,\s*100,/u,
     "The secret-plot reader must fetch its newest-100 window through the limit-keyed peek hook",
   );
+  assert.match(
+    drawerSource,
+    /setCustomAgentImageSettingsDraft\(\(current\) => \(\{[\s\S]*current\?\.chatId === chat\.id \? current\.patch : \{\}[\s\S]*\[agentId\]: hasAgentSettings \? agentSettings : null/u,
+    "Rapid custom-agent connection and style changes must merge into one visible local draft",
+  );
+  assert.match(
+    drawerSource,
+    /isRemoving && \(pendingImageSettings \|\| latestImageSettings\[agentId\]\)[\s\S]*delete next\[agentId\][\s\S]*pendingCustomAgentImageSettingsRef\.current = null/u,
+    "Removing an agent must consume queued image settings without restoring that agent's override",
+  );
   const trackerModelSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/features/tracker-panel/hooks/use-tracker-panel-model.ts"),
     "utf8",

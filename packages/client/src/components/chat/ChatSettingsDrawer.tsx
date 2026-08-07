@@ -798,9 +798,16 @@ export function ChatSettingsDrawer({
   const updateMetaMutateRef = useRef(updateMeta.mutate);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
+    revision: number;
     settings: Record<string, CustomAgentImageSetting>;
   } | null>(null);
   const pendingCustomAgentImageSettingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customAgentImageSettingsRevisionRef = useRef(0);
+  const [customAgentImageSettingsDraft, setCustomAgentImageSettingsDraft] = useState<{
+    chatId: string;
+    revision: number;
+    patch: Partial<Record<string, CustomAgentImageSetting | null>>;
+  } | null>(null);
   updateMetaMutateRef.current = updateMeta.mutate;
   const updateGameWidgets = useUpdateGameWidgets();
   const { data: regexScripts } = useRegexScripts();
@@ -2807,15 +2814,29 @@ export function ChatSettingsDrawer({
             return next;
           })()
         : null;
-    const latestImageSettings = readLatestCustomAgentImageSettings();
+    const pendingImageSettings =
+      pendingCustomAgentImageSettingsRef.current?.chatId === chat.id
+        ? pendingCustomAgentImageSettingsRef.current
+        : null;
+    const latestImageSettings = pendingImageSettings
+      ? { ...pendingImageSettings.settings }
+      : readLatestCustomAgentImageSettings();
     const nextImageSettings =
-      isRemoving && latestImageSettings[agentId]
+      isRemoving && (pendingImageSettings || latestImageSettings[agentId])
         ? (() => {
             const next = { ...latestImageSettings };
             delete next[agentId];
             return next;
           })()
         : null;
+    if (isRemoving && pendingImageSettings) {
+      if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
+        clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
+        pendingCustomAgentImageSettingsTimerRef.current = null;
+      }
+      pendingCustomAgentImageSettingsRef.current = null;
+      setCustomAgentImageSettingsDraft((current) => (current?.chatId === chat.id ? null : current));
+    }
     let metadataSaved = false;
     try {
       await updateMeta.mutateAsync(
@@ -2892,10 +2913,18 @@ export function ChatSettingsDrawer({
 
   const customAgentImageSelections = useMemo(() => {
     const raw = metadata.customAgentImageSettings;
-    return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Partial<Record<string, CustomAgentImageSetting>>)
-      : {};
-  }, [metadata.customAgentImageSettings]);
+    const persisted =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Partial<Record<string, CustomAgentImageSetting>>)
+        : {};
+    if (customAgentImageSettingsDraft?.chatId !== chat.id) return persisted;
+    const merged = { ...persisted };
+    for (const [agentId, settings] of Object.entries(customAgentImageSettingsDraft.patch)) {
+      if (settings) merged[agentId] = settings;
+      else delete merged[agentId];
+    }
+    return merged;
+  }, [chat.id, customAgentImageSettingsDraft, metadata.customAgentImageSettings]);
   const readLatestCustomAgentImageSettings = useCallback(() => {
     const latestChat = qc.getQueryData<Chat>(chatKeys.detail(chat.id));
     const latestMetadata =
@@ -2920,7 +2949,16 @@ export function ChatSettingsDrawer({
     const pending = pendingCustomAgentImageSettingsRef.current;
     if (!pending) return;
     pendingCustomAgentImageSettingsRef.current = null;
-    updateMetaMutateRef.current({ id: pending.chatId, customAgentImageSettings: pending.settings });
+    updateMetaMutateRef.current(
+      { id: pending.chatId, customAgentImageSettings: pending.settings },
+      {
+        onSettled: () => {
+          setCustomAgentImageSettingsDraft((current) =>
+            current?.chatId === pending.chatId && current.revision === pending.revision ? null : current,
+          );
+        },
+      },
+    );
   }, []);
   useEffect(
     () => () => {
@@ -2936,9 +2974,20 @@ export function ChatSettingsDrawer({
       const agentSettings = { ...next[agentId] };
       if (value) agentSettings[field] = value;
       else delete agentSettings[field];
-      if (agentSettings.imageConnectionId || agentSettings.styleProfileId) next[agentId] = agentSettings;
+      const hasAgentSettings = !!(agentSettings.imageConnectionId || agentSettings.styleProfileId);
+      if (hasAgentSettings) next[agentId] = agentSettings;
       else delete next[agentId];
-      pendingCustomAgentImageSettingsRef.current = { chatId: chat.id, settings: next };
+      const revision = customAgentImageSettingsRevisionRef.current + 1;
+      customAgentImageSettingsRevisionRef.current = revision;
+      pendingCustomAgentImageSettingsRef.current = { chatId: chat.id, revision, settings: next };
+      setCustomAgentImageSettingsDraft((current) => ({
+        chatId: chat.id,
+        revision,
+        patch: {
+          ...(current?.chatId === chat.id ? current.patch : {}),
+          [agentId]: hasAgentSettings ? agentSettings : null,
+        },
+      }));
       if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
         clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
       }

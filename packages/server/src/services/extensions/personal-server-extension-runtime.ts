@@ -201,7 +201,9 @@ export class PersonalServerExtensionRuntime {
     // A failed stop-write (e.g. the sandbox dir is already gone) must not
     // abort the kill/cleanup below — or a stop-all loop over the remaining
     // extensions.
-    await this.send(extension, { type: "stop" }).catch(() => undefined);
+    await this.send(extension, { type: "stop" }).catch((error) => {
+      logger.warn(error, "[personal-extensions] Stop request failed for %s; continuing cleanup", extension.name);
+    });
     await Promise.race([
       new Promise<void>((resolve) => extension.child.once("close", () => resolve())),
       new Promise<void>((resolve) => {
@@ -293,6 +295,7 @@ export class PersonalServerExtensionRuntime {
     let settled = false;
     let lastActivityAt = Date.now();
     let pollChainStopped = false;
+    let closing = false;
     let lastHeartbeat = Date.now();
     let messageWindowStartedAt = Date.now();
     let messageCount = 0;
@@ -420,9 +423,14 @@ export class PersonalServerExtensionRuntime {
             }
           }
         } catch (error) {
-          active.expectedStop = true;
-          fail(describeError(error));
-          child.kill("SIGKILL");
+          // During close finalization, filesystem errors are expected noise —
+          // another stop path may already have removed the sandbox files —
+          // and must not overwrite the real status of an expected stop.
+          if (!closing) {
+            active.expectedStop = true;
+            fail(describeError(error));
+            child.kill("SIGKILL");
+          }
         } finally {
           pollingOutput = false;
         }
@@ -455,9 +463,14 @@ export class PersonalServerExtensionRuntime {
       const handleClose = (code: number | null, signal: string | null) => {
         if (active.watchdog) clearInterval(active.watchdog);
         pollChainStopped = true;
+        closing = true;
         if (active.outputPoller) clearTimeout(active.outputPoller);
         active.onTraffic = null;
-        this.active.delete(extension.id);
+        // A delayed close (stopExtension timed out, then a reload registered
+        // a replacement under the same id) must only remove ITS OWN entry.
+        if (this.active.get(extension.id) === active) {
+          this.active.delete(extension.id);
+        }
         void (async () => {
           // Final drain BEFORE closing the handle, before the expectedStop
           // check, and before cleanup rm-rf's the sandbox dir: with adaptive

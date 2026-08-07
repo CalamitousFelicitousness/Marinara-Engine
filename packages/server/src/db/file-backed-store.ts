@@ -176,6 +176,7 @@ export const FILE_BACKED_TABLES = [
   "noodler_prepared_posts",
   "noodler_automatic_attempts",
   "noodler_reserve_state",
+  "noodler_fan_activity_state",
   "noodle_activity_digests",
   "noodle_refresh_runs",
   "lorebooks",
@@ -242,6 +243,7 @@ const DURABLE_ON_COMMIT_TABLES = new Set<string>([
   "noodler_creator_reply_claims",
   "noodler_reserve_state",
   "noodler_prepared_posts",
+  "noodler_fan_activity_state",
 ]);
 
 export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; parentKey: string; childKey: string }> =

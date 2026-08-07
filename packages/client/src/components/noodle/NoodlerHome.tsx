@@ -45,12 +45,14 @@ import type {
 } from "@marinara-engine/shared";
 import { countNoodlerPostsSince } from "@marinara-engine/shared";
 import {
+  useAdoptNoodlerSourceIdentity,
   useCreateNoodlerPost,
   useCreateNoodlerInteraction,
   useTriggerNoodlerCreatorReply,
   useCreateNoodlerStageProfile,
   useDeleteNoodlerPost,
   useDeleteNoodlerStageProfile,
+  useDismissNoodlerSourceChanges,
   useGenerateNoodlerNoodlePost,
   useConfirmNoodlerImagePrompts,
   useRunNoodlerAutoPostNow,
@@ -73,6 +75,7 @@ import {
   useReplaceNoodlerPostImage,
   useUpdateNoodlerAccess,
   useUpdateNoodlerAutoPosting,
+  useUpdateNoodlerFanActivity,
   useUpdateNoodlerStageProfile,
   type NoodlerPostDraftImage,
 } from "../../hooks/use-noodle";
@@ -489,6 +492,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   useEffect(() => {
     profileDraftGenerationIdRef.current += 1;
   }, [profileDraftRouteKey]);
+  useEffect(() => {
+    setDraftSourceSnapshot(null);
+  }, [editingProfileId]);
   // Back from a stage profile returns to wherever it was opened from (hub feed, sidebar,
   // profile list) instead of always dumping the user on the profile list. Hub is the fallback.
   const profileReturnView = useRef<"hub" | "profiles">("hub");
@@ -777,6 +783,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
   const beginEdit = (profile: NoodlerStageProfile) => {
     invalidateProfileDraftGeneration();
     setAcceptSourceChangesForProfileId(null);
+    setDraftSourceSnapshot(null);
     setEditingProfileId(profile.id);
     setDraftNoodleAccountId(profile.noodleAccountId);
     setCreationDisclosure(profile.disclosureMode ?? "hinted");
@@ -801,6 +808,7 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     setEditingProfileId(null);
     setCreationStep(null);
     setAcceptSourceChangesForProfileId(null);
+    setDraftSourceSnapshot(null);
   };
 
   const changeDisclosure = (value: NoodleIdentityDisclosure) => {
@@ -808,28 +816,36 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
     setProfileDraft((current) => (current ? { ...current, disclosureMode: value } : current));
   };
 
-  const generateDraft = () => {
-    if (!draftNoodleAccountId && !editingProfileId) return;
+  const generateDraft = (options?: {
+    noodlerAccountId?: string;
+    disclosureMode?: NoodleIdentityDisclosure;
+    guidance?: string;
+    currentDraft?: NoodleStageProfileInput;
+  }) => {
+    const noodlerAccountId = options?.noodlerAccountId ?? editingProfileId;
+    if (!draftNoodleAccountId && !noodlerAccountId) return;
     if (connections.length === 0) {
       toast.error(localizeUi("ui.noodle.stageprofileform.noConnectionsConfiguredAddOneInSettingsConnections"));
       return;
     }
     const generationId = ++profileDraftGenerationIdRef.current;
+    const draftForGeneration = options?.currentDraft ?? profileDraft;
     generateProfileDraft.mutate(
       {
-        ...(editingProfileId ? { noodlerAccountId: editingProfileId } : { noodleAccountId: draftNoodleAccountId! }),
-        disclosureMode: creationDisclosure,
-        guidance: draftGuidance,
-        currentDraft: profileDraft ?? undefined,
+        ...(noodlerAccountId ? { noodlerAccountId } : { noodleAccountId: draftNoodleAccountId! }),
+        disclosureMode: options?.disclosureMode ?? creationDisclosure,
+        guidance: options?.guidance ?? draftGuidance,
+        currentDraft: draftForGeneration ?? undefined,
         connectionId: draftConnectionId || undefined,
       },
       {
         onSuccess: (draft) => {
           if (generationId !== profileDraftGenerationIdRef.current) return;
-          if (profileDraft) setPreviousDraft(profileDraft);
-          if (editingProfileId) setAcceptSourceChangesForProfileId(editingProfileId);
-          setDraftSourceSnapshot(draft.sourceSnapshot ?? null);
-          setProfileDraft(draft);
+          if (draftForGeneration) setPreviousDraft(draftForGeneration);
+          if (noodlerAccountId) setAcceptSourceChangesForProfileId(noodlerAccountId);
+          const { sourceSnapshot, ...stageProfile } = draft;
+          setDraftSourceSnapshot(sourceSnapshot ?? null);
+          setProfileDraft(stageProfile);
           setCreationStep("draft");
         },
         onError: (error) => {
@@ -838,6 +854,22 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
         },
       },
     );
+  };
+
+  const redraftFromSource = (profile: NoodlerStageProfile) => {
+    beginEdit(profile);
+    generateDraft({
+      noodlerAccountId: profile.id,
+      disclosureMode: profile.disclosureMode ?? "hinted",
+      guidance: localizeUi("ui.noodle.noodlerhome.redraftGuidance"),
+      currentDraft: {
+        displayName: profile.displayName,
+        handle: profile.handle,
+        bio: profile.bio,
+        stagePersonality: profile.stagePersonality,
+        disclosureMode: profile.disclosureMode ?? "hinted",
+      },
+    });
   };
 
   const saveProfile = () => {
@@ -890,7 +922,9 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
           accountId: editingProfileId,
           ...input,
           acceptSourceChanges: acceptSourceChangesForProfileId === editingProfileId,
-          sourceSnapshot: draftSourceSnapshot ?? undefined,
+           ...(acceptSourceChangesForProfileId === editingProfileId && draftSourceSnapshot
+             ? { sourceSnapshot: draftSourceSnapshot }
+             : {}),
         },
         { onSuccess, onError },
       );
@@ -1264,6 +1298,8 @@ export function NoodlerHome({ navigation, onNavigate }: NoodlerHomeProps) {
             isError={postsQuery.isError}
             onRetry={() => void postsQuery.refetch()}
             onEdit={() => beginEdit(selectedProfile)}
+            onRedraft={() => redraftFromSource(selectedProfile)}
+            redraftPending={generateProfileDraft.isPending}
             onBack={() =>
               navigation.mode === "noodler" && navigation.view === "profile" && navigation.returnToSettings
                 ? onNavigate(navigation.returnToSettings)
@@ -2359,6 +2395,8 @@ function StageProfileView({
   isError,
   onRetry,
   onEdit,
+  onRedraft,
+  redraftPending,
   onBack,
   onDelete,
   onManualPost,
@@ -2394,6 +2432,8 @@ function StageProfileView({
   isError: boolean;
   onRetry: () => void;
   onEdit: () => void;
+  onRedraft: () => void;
+  redraftPending: boolean;
   onBack: () => void;
   onDelete: () => void;
   onManualPost: (input: NoodlerPostSubmission) => Promise<void>;
@@ -2416,6 +2456,10 @@ function StageProfileView({
   const [accessSettingsOpen, setAccessSettingsOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const updateAutoPosting = useUpdateNoodlerAutoPosting();
+  const updateFanActivity = useUpdateNoodlerFanActivity();
+  const dismissSourceChanges = useDismissNoodlerSourceChanges();
+  const adoptSourceIdentity = useAdoptNoodlerSourceIdentity();
+  const globalSettings = useNoodle().data?.settings;
   const autoPosting = profile.autoPosting;
   const [activeTab, setActiveTab] = useState<NoodlerProfileTab>("posts");
   const [revealedManagedPostIds, setRevealedManagedPostIds] = useState<Set<string>>(() => new Set());
@@ -2652,7 +2696,78 @@ function StageProfileView({
             </span>
           ) : undefined
         }
-        bioContent={profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
+        bioContent={
+          <>
+            {viewingOwnCreator && profile.sourceStatus.state === "missing" && (
+              <div className="mt-3 rounded-md border border-[var(--destructive)]/40 bg-[var(--destructive)]/5 p-3 text-sm">
+                <p className="font-bold text-[var(--destructive)]">
+                  {localizeUi("ui.noodle.stageprofileview.sourceMissingTitle")}
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {localizeUi("ui.noodle.stageprofileview.sourceMissingDetail")}
+                </p>
+              </div>
+            )}
+            {viewingOwnCreator && profile.sourceStatus.state === "changed" && (
+              <div className="mt-3 rounded-md border border-[var(--noodle-divider)] bg-[var(--accent)]/40 p-3 text-sm">
+                <p className="font-bold">{localizeUi("ui.noodle.stageprofileview.sourceChangedTitle")}</p>
+                <ul className="mt-1 space-y-0.5 text-xs text-[var(--muted-foreground)]">
+                  {profile.sourceStatus.changes.map((change) => (
+                    <li key={change.field}>
+                      <span className="font-semibold">{change.field}</span>: {change.previous || "—"} →{" "}
+                      {change.current || "—"}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {profile.disclosureMode === "open" && (
+                    <button
+                      type="button"
+                      disabled={adoptSourceIdentity.isPending}
+                      onClick={() =>
+                        adoptSourceIdentity.mutate(profile.id, {
+                          onError: (error) =>
+                            toast.error(
+                              errorMessage(error, localizeUi("ui.noodle.stageprofileview.couldNotUpdateSourceIdentity")),
+                            ),
+                        })
+                      }
+                      className="h-8 rounded-md bg-[var(--noodle-accent)] px-3 text-xs font-bold text-zinc-950 hover:opacity-90 disabled:opacity-50"
+                    >
+                      {localizeUi("ui.noodle.stageprofileview.sourceAdoptIdentity")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={redraftPending}
+                    onClick={onRedraft}
+                    className="h-8 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold hover:bg-[var(--accent)] disabled:opacity-50"
+                  >
+                    {redraftPending
+                      ? localizeUi("ui.noodle.stageprofileview.sourceRedrafting")
+                      : localizeUi("ui.noodle.stageprofileview.sourceRedraft")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={dismissSourceChanges.isPending}
+                    onClick={() =>
+                      dismissSourceChanges.mutate(profile.id, {
+                        onError: (error) =>
+                          toast.error(
+                            errorMessage(error, localizeUi("ui.noodle.stageprofileview.couldNotDismissSourceChanges")),
+                          ),
+                      })
+                    }
+                    className="h-8 rounded-md border border-[var(--noodle-divider)] px-3 text-xs font-bold hover:bg-[var(--accent)] disabled:opacity-50"
+                  >
+                    {localizeUi("ui.noodle.stageprofileview.sourceDismiss")}
+                  </button>
+                </div>
+              </div>
+            )}
+            {profile.bio && <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{profile.bio}</p>}
+          </>
+        }
         contentActions={
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <button
@@ -2833,6 +2948,98 @@ function StageProfileView({
                 className="h-5 w-5 accent-[var(--noodle-accent)]"
               />
             </label>
+          </fieldset>
+          <fieldset disabled={updateFanActivity.isPending} className="space-y-3 disabled:opacity-50">
+            <legend className="text-xs font-bold">{localizeUi("ui.noodle.noodlerfanactivity.creatorTitle")}</legend>
+            <label className="block space-y-1 text-xs font-semibold">
+              <span className="text-[var(--muted-foreground)]">
+                {localizeUi("ui.noodle.noodlerfanactivity.creatorMode")}
+              </span>
+              <select
+                value={profile.fanActivity ? (profile.fanActivity.enabled === false ? "off" : "on") : "inherit"}
+                onChange={(event) => {
+                  const mode = event.target.value;
+                  updateFanActivity.mutate(
+                    {
+                      accountId: profile.id,
+                      fanActivity: mode === "inherit" ? null : { ...profile.fanActivity, enabled: mode === "on" },
+                    },
+                    {
+                      onError: (error) =>
+                        toast.error(
+                          errorMessage(error, localizeUi("ui.noodle.noodlerfanactivity.couldNotUpdateCreator")),
+                        ),
+                    },
+                  );
+                }}
+                className="h-9 w-full rounded-md border border-[var(--noodle-divider)] bg-[var(--background)] px-2"
+              >
+                <option value="inherit">{localizeUi("ui.noodle.noodlerfanactivity.inherit")}</option>
+                <option value="on">{localizeUi("ui.noodle.noodlerfanactivity.on")}</option>
+                <option value="off">{localizeUi("ui.noodle.noodlerfanactivity.off")}</option>
+              </select>
+            </label>
+            {profile.fanActivity && globalSettings && (
+              <div className="grid grid-cols-2 gap-2">
+                {(["ordinary", "eccentric", "crossFandom", "raider", "organicDiscovery", "freeResource"] as const).map(
+                  (archetype) => {
+                    const current =
+                      profile.fanActivity?.archetypeWeights?.[archetype] ??
+                      globalSettings.fanArchetypeWeights[archetype];
+                    return (
+                      <label key={archetype} className="space-y-1 text-[0.68rem] font-semibold">
+                        <span className="block text-[var(--muted-foreground)]">
+                          {localizeUi(`ui.noodle.noodlerfanactivity.archetype.${archetype}`)}
+                        </span>
+                        <input
+                          key={`${profile.id}-${archetype}-${current}`}
+                          type="number"
+                          min={0}
+                          max={100}
+                          defaultValue={current}
+                          onBlur={(event) => {
+                            const value = Number(event.target.value);
+                            if (!Number.isInteger(value) || value < 0 || value > 100) {
+                              event.target.value = String(current);
+                              return;
+                            }
+                            const archetypeWeights = {
+                              ...globalSettings.fanArchetypeWeights,
+                              ...profile.fanActivity?.archetypeWeights,
+                              [archetype]: value,
+                            };
+                            if (!Object.values(archetypeWeights).some((weight) => weight > 0)) {
+                              toast.error(localizeUi("ui.noodle.noodlerfanactivity.allWeightsZero"));
+                              event.target.value = String(current);
+                              return;
+                            }
+                            const archetypeOverrides = {
+                              ...profile.fanActivity?.archetypeWeights,
+                              [archetype]: value,
+                            };
+                            updateFanActivity.mutate(
+                              {
+                                accountId: profile.id,
+                                fanActivity: { ...profile.fanActivity, archetypeWeights: archetypeOverrides },
+                              },
+                              {
+                                onError: (error) => {
+                                  toast.error(
+                                    errorMessage(error, localizeUi("ui.noodle.noodlehome.couldNotUpdateNoodleProfile")),
+                                  );
+                                  event.target.value = String(current);
+                                },
+                              },
+                            );
+                          }}
+                          className="h-9 w-full rounded-md border border-[var(--noodle-divider)] bg-transparent px-2 text-sm"
+                        />
+                      </label>
+                    );
+                  },
+                )}
+              </div>
+            )}
           </fieldset>
           <div className="space-y-1">
             <button

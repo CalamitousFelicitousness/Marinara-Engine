@@ -11,6 +11,7 @@ import {
   noodleAccountProfileSettingsSchema,
   noodleAccountPrivacySettingsSchema,
   noodleAccountSocialSettingsSchema,
+  noodlerFanActivitySettingsSchema,
   noodleSettingsSchema,
   normalizeAvatarCrop,
   readNoodlePollFromMetadata,
@@ -56,6 +57,11 @@ import {
 import type { DB } from "../../db/connection.js";
 import { isFileUniqueConstraintError } from "../../db/file-schema.js";
 import { logger } from "../../lib/logger.js";
+import {
+  NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR,
+  parsePersistedNoodleFanActivityDayPlan,
+} from "../noodle/noodle-fan-activity-day-plan.js";
+import { NOODLER_FAN_IDENTITY_PREFIX } from "../noodle/noodle-fan-identity-provider.js";
 import { canViewNoodlerPost, isNoodlerHiddenFromViewer } from "../noodle/noodler-access.js";
 import {
   noodlerPostMediaUrl,
@@ -74,6 +80,7 @@ import {
   noodlerAutomaticAttempts,
   noodlerPreparedPosts,
   noodlerReserveState,
+  noodlerFanActivityState,
 } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { compareNoodlerSourceSnapshots, resolveNoodlerSourceSnapshot } from "../noodle/noodle-noodler-source.js";
@@ -263,12 +270,15 @@ function defaultAutoPostingSettings(): NonNullable<NoodleAccountSchedulerSetting
 
 export function normalizeScheduler(value: unknown): NoodleAccountSchedulerSettings {
   const defaults = defaultAutoPostingSettings();
-  const raw = parseRecord(parseRecord(value).autoPosting);
+  const scheduler = parseRecord(value);
+  const raw = parseRecord(scheduler.autoPosting);
+  const fanActivity = noodlerFanActivitySettingsSchema.safeParse(scheduler.fanActivity);
   return {
     autoPosting: {
       enabled: typeof raw.enabled === "boolean" ? raw.enabled : defaults.enabled,
       imagesEnabled: typeof raw.imagesEnabled === "boolean" ? raw.imagesEnabled : defaults.imagesEnabled,
     },
+    ...(fanActivity.success && { fanActivity: fanActivity.data }),
   };
 }
 
@@ -1310,6 +1320,7 @@ export function createNoodleStorage(db: DB) {
             autoPosting: currentSource
               ? (account.settings.scheduler.autoPosting ?? defaultAutoPostingSettings())
               : { ...(account.settings.scheduler.autoPosting ?? defaultAutoPostingSettings()), enabled: false },
+            fanActivity: account.settings.scheduler.fanActivity ?? null,
             sourceStatus: !currentSource
               ? { state: "missing" as const }
               : compareNoodlerSourceSnapshots(baseline ?? currentSource, currentSource),
@@ -1625,13 +1636,31 @@ export function createNoodleStorage(db: DB) {
         } else if (input.subtree === "scheduler") {
           const currentAuto = current.scheduler.autoPosting ?? defaultAutoPostingSettings();
           const patchAuto = input.patch.autoPosting;
+          const patchFan = input.patch.fanActivity;
           const config = patchAuto
             ? {
                 enabled: patchAuto.enabled ?? currentAuto.enabled,
                 imagesEnabled: patchAuto.imagesEnabled ?? currentAuto.imagesEnabled,
               }
             : currentAuto;
-          next = { ...current, scheduler: { autoPosting: config } };
+          next = {
+            ...current,
+            scheduler: {
+              ...current.scheduler,
+              autoPosting: config,
+              ...(patchFan === null
+                ? { fanActivity: undefined }
+                : patchFan
+                  ? {
+                      fanActivity: {
+                        ...current.scheduler.fanActivity,
+                        ...patchFan,
+                        ...(patchFan.archetypeWeights && { archetypeWeights: patchFan.archetypeWeights }),
+                      },
+                    }
+                  : {}),
+            },
+          };
         } else {
           next = {
             ...current,
@@ -2781,7 +2810,13 @@ export function createNoodleStorage(db: DB) {
         ...noodleAccountIds,
         ...(await this.listNoodlerAccounts()).map((account) => account.id),
       ]);
-      if (deletedRows.some((row) => !knownAccountIds.has(row.actorAccountId))) return [];
+      if (
+        deletedRows.some(
+          (row) => !knownAccountIds.has(row.actorAccountId) && !row.actorAccountId.startsWith(NOODLER_FAN_IDENTITY_PREFIX),
+        )
+      ) {
+        return [];
+      }
       const relatedDigests = await db
         .select()
         .from(noodleActivityDigests)
@@ -3175,6 +3210,95 @@ export function createNoodleStorage(db: DB) {
         type: input.type,
         content: input.content,
         parentInteractionId,
+      });
+    },
+
+    async createNoodlerFanInteraction(
+      postId: string,
+      input: {
+        id: string;
+        creatorAccountId: string;
+        actorId: string;
+        actorSnapshot: NoodleAuthorSnapshot;
+        runId: string;
+        type: "like" | "reply" | "repost";
+        content: string | null;
+      },
+    ): Promise<{ interaction: NoodleInteraction; created: boolean } | null> {
+      return db.transaction(async (tx) => {
+        const postRows = await tx.select().from(noodlePosts).where(eq(noodlePosts.id, postId));
+        const postRow = postRows[0];
+        if (!postRow || postRow.access !== "public" || postRow.authorAccountId !== input.creatorAccountId) return null;
+        const creatorRows = await tx
+          .select()
+          .from(noodleAccounts)
+          .where(and(eq(noodleAccounts.id, input.creatorAccountId), eq(noodleAccounts.platform, "noodler")));
+        if (!creatorRows[0]) return null;
+        const settings = normalizeNoodleSettings(await createAppSettingsStorage(tx).get(NOODLE_SETTINGS_KEY));
+        const creator = mapAccount(creatorRows[0]);
+        const override = creator.settings.scheduler.fanActivity;
+        if (!settings.fanActivityEnabled || override?.enabled === false) return null;
+
+        const stateRows = await tx.select().from(noodlerFanActivityState);
+        const plan = stateRows
+          .flatMap((row) => {
+            try {
+              const parsed = parsePersistedNoodleFanActivityDayPlan(JSON.parse(row.plan));
+              return parsed ? [parsed] : [];
+            } catch {
+              return [];
+            }
+          })
+          .find((candidate) => candidate.runs.some((run) => run.id === input.runId));
+        const run = plan?.runs.find((candidate) => candidate.id === input.runId);
+        const creatorActivities =
+          run?.acceptedActivities.filter((activity) => activity.creatorId === input.creatorAccountId) ?? [];
+        if (
+          run?.status !== "applying" ||
+          creatorActivities.length > NOODLE_FAN_ACTIVITY_MAX_ACTIVITIES_PER_CREATOR ||
+          !creatorActivities.some(
+            (activity) =>
+              activity.id === input.id &&
+              activity.targetPostId === postId &&
+              activity.actorId === input.actorId &&
+              activity.type === input.type,
+          )
+        ) {
+          return null;
+        }
+
+        const stableRows = await tx.select().from(noodleInteractions).where(eq(noodleInteractions.id, input.id));
+        if (stableRows[0]) return { interaction: mapInteraction(stableRows[0]), created: false };
+
+        const existingRows = await tx
+          .select()
+          .from(noodleInteractions)
+          .where(
+            and(
+              eq(noodleInteractions.postId, postId),
+              eq(noodleInteractions.actorAccountId, input.actorId),
+              eq(noodleInteractions.type, input.type),
+              isNull(noodleInteractions.parentInteractionId),
+            ),
+          );
+        const content = input.type === "reply" ? input.content?.trim() || null : null;
+        const duplicate = existingRows[0];
+        if (duplicate) return { interaction: mapInteraction(duplicate), created: false };
+        if (input.type === "reply" && !content) return null;
+
+        await tx.insert(noodleInteractions).values({
+          id: input.id,
+          postId,
+          parentInteractionId: null,
+          actorAccountId: input.actorId,
+          type: input.type,
+          content,
+          imageUrl: null,
+          actorSnapshot: JSON.stringify(input.actorSnapshot),
+          createdAt: now(),
+        });
+        const rows = await tx.select().from(noodleInteractions).where(eq(noodleInteractions.id, input.id));
+        return rows[0] ? { interaction: mapInteraction(rows[0]), created: true } : null;
       });
     },
 

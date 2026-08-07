@@ -62,6 +62,7 @@ import { isAllowedImageBuffer, safeFetch } from "../utils/security.js";
 import { createPublicNoodleGenerationService } from "../services/noodle/noodle-public-generation.service.js";
 import { rerollAmbientNoodleProfiles } from "../services/noodle/noodle-ambient-profile-generation.service.js";
 import { ensureAmbientNoodleAccounts, isAmbientNoodleAccount } from "../services/noodle/noodle-ambient-profiles.js";
+import { NOODLER_FAN_IDENTITY_PREFIX } from "../services/noodle/noodle-fan-identity-provider.js";
 import { createPublicNoodleImagesService } from "../services/noodle/noodle-public-images.service.js";
 import {
   buildNoodlerPublicIdentity,
@@ -76,6 +77,10 @@ import {
 } from "../services/noodle/noodle-noodler-post.operation.js";
 import { tryNoodlerAccountOperation } from "../services/noodle/noodle-noodler-account-operation-lock.js";
 import { generateAndApplyNoodlerCreatorReply } from "../services/noodle/noodle-noodler-creator-reply.operation.js";
+import {
+  getNoodlerFanActivityStatus,
+  runNoodlerFanActivity,
+} from "../services/noodle/noodle-fan-activity.operation.js";
 import { admissionModeForRequest, isConnectionAdmissionFailure } from "../services/generation/connection-admission.js";
 import { generateNoodlerStageProfileDraft } from "../services/noodle/noodle-stage-profile-draft.service.js";
 import { resolveNoodlerSourceSnapshot } from "../services/noodle/noodle-noodler-source.js";
@@ -409,7 +414,9 @@ export async function noodleRoutes(app: FastifyInstance) {
         followed: followedIds.has(account.id),
         posts: posts.map((post): NoodlerPostView => {
           const locked = !viewablePostIds.has(post.id);
-          const interactions = interactionsByPostId.get(post.id) ?? [];
+          const interactions = (interactionsByPostId.get(post.id) ?? []).filter(
+            (interaction) => !locked || !interaction.actorAccountId.startsWith(NOODLER_FAN_IDENTITY_PREFIX),
+          );
           return {
             id: post.id,
             authorAccountId: post.authorAccountId,
@@ -1236,6 +1243,33 @@ export async function noodleRoutes(app: FastifyInstance) {
     if (result.status === "disabled") return reply.code(404).send({ error: "Not Found" });
     return { outcomes: result.outcomes };
   });
+
+  app.post("/noodler/fan-activity/refresh-now", async (req, reply) => {
+    try {
+      const result = await runNoodlerFanActivity({
+        db: app.db,
+        mode: "manual",
+        debugMode: (req.body as { debugMode?: unknown } | undefined)?.debugMode === true,
+      });
+      if (result.status === "disabled") return reply.code(404).send({ error: "Not Found" });
+      if (result.status === "busy") return reply.code(409).send({ error: "NoodleR fan activity is already running." });
+      if (result.status === "limit_reached")
+        return reply.code(429).send({ error: "Today's audience activity limit has been reached." });
+      if (result.status === "connection_required") {
+        return reply.code(400).send({ error: "Select a Noodle generation connection first." });
+      }
+      if (result.status === "connection_not_found") {
+        return reply.code(404).send({ error: "Noodle generation connection not found" });
+      }
+      return result;
+    } catch (error) {
+      if (isConnectionAdmissionFailure(error)) return reply.code(409).send({ error: getErrorMessage(error) });
+      logger.error(error, "[noodler] Fan activity generation failed");
+      return reply.code(500).send({ error: getErrorMessage(error) });
+    }
+  });
+
+  app.get("/noodler/fan-activity/status", async () => getNoodlerFanActivityStatus(app.db));
 
   app.post("/noodler/auto-post/refresh-targeted", async (req, reply) => {
     const parsed = noodlerTargetedRefreshSchema.safeParse(req.body ?? {});

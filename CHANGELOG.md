@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added per-chat image style overrides for custom image agents, alongside their existing connection overrides (#4718).
+- Added attributed `marinara.fetch` traffic totals and sustained-rate warnings for full-page extensions (#4720).
 - Added SwarmUI image generation, optional account-token authentication, model discovery, and ComfyUI workflow submission through SwarmUI's distributed generation queue (#4702).
 - Added an accent-colored divider above the current Roleplay new-start boundary (#4709).
 - Guided package onboarding can open the active Roleplay chat's Summary popover and assigned prompt preset Sections editor directly.
@@ -14,6 +16,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Isolated the tracker panel's newest-message lookup from transcript pagination settings (#4724).
+- Preserved speaker names and timestamps in individual Conversation group history so characters can distinguish prior speakers (#4726).
+- Raised the default Termux Node.js heap limit for large profiles while preserving user-supplied limits (#4730).
+- Reconciled failed-generation prompts by submission ID so API errors do not show duplicate user messages (#4731).
+- Saved Echo Chamber resizing when pointer capture ends outside the resize handle, preserving its per-chat size across navigation and restarts (#4733).
+- Kept the selected Narrative Director push-story instruction in every individual group responder prompt, independent of queue and Secret Plot settings (#4734).
+- Allowed server extensions to finish storage writes registered through `onCleanup` during a polite stop.
 - Made edits to Conversation replies that contained character commands reach the model instead of the original wording (#4728).
 - Kept the full desktop Roleplay edit checkmark above overlapping message layers so its entire visible hit target remains clickable (#4700).
 - Made the Windows launcher and installer detect Node.js by running it directly instead of requiring `where.exe` (#4701).

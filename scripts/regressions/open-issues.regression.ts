@@ -14,7 +14,14 @@ import {
 import playwrightConfig from "../../playwright.config.js";
 import { resolveDevSharedBuildScript } from "../dev-shared-build.mjs";
 import { validatePullRequestTriage } from "../validate-pr-triage.mjs";
-import { characterCardVersions, characterGroups, characters, chatPresets, chats, messages } from "../../packages/server/src/db/schema/index.js";
+import {
+  characterCardVersions,
+  characterGroups,
+  characters,
+  chatPresets,
+  chats,
+  messages,
+} from "../../packages/server/src/db/schema/index.js";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
 
@@ -171,6 +178,7 @@ import {
 } from "../../packages/server/src/routes/generate/agent-write-approval.js";
 import { runImageGenerationRequest } from "../../packages/server/src/services/image/image-generation-queue.js";
 import {
+  buildSwarmUiGenerationBody,
   buildOpenRouterImagesRequest,
   detectNovelAiSubjectCount,
   openRouterImagesUrl,
@@ -178,11 +186,13 @@ import {
   resolveNovelAiDefaults,
   resolveNovelAiRequestSize,
   resolveNovelAiSize,
+  parseSwarmUiImageReference,
   usesOpenRouterImagesApi,
 } from "../../packages/server/src/services/image/image-generation.js";
 import {
   buildComfyUiLoraWorkflowReplacements,
   COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
+  DEFAULT_COMFYUI_DEFAULTS,
   DEFAULT_NOVELAI_DEFAULTS,
   imageSourceToDefaultsService,
   normalizeComfyUiLoraSettings,
@@ -334,10 +344,7 @@ assert.equal(resolveSpriteTransition("full-body", "none"), "crossfade");
 assert.equal(resolveSpriteTransition("full-body", "shake"), "shake");
 assert.equal(resolveSpriteTransition("expressions", "none"), "none");
 assert.deepEqual(
-  resolveSpriteExpressionState([
-    { extra: { spriteExpressions: { "character-a": "happy" } } },
-    { extra: {} },
-  ]),
+  resolveSpriteExpressionState([{ extra: { spriteExpressions: { "character-a": "happy" } } }, { extra: {} }]),
   { "character-a": "happy" },
 );
 assert.deepEqual(
@@ -466,7 +473,10 @@ assert.deepEqual(validBuildMeta, { commit: "abcdef123456", branch: "staging" });
 assert.equal(parseBuildMeta('{"commit":"abcdef123456","branch":42}'), null);
 assert.equal(parseBuildMeta(undefined), null);
 assert.equal(resolveBuildBranch(undefined, validBuildMeta?.branch, "main"), "staging");
-assert.equal(resolveBuildBranch(undefined, parseBuildMeta(undefined)?.branch, "refs/heads/feature/test"), "feature/test");
+assert.equal(
+  resolveBuildBranch(undefined, parseBuildMeta(undefined)?.branch, "refs/heads/feature/test"),
+  "feature/test",
+);
 const lorebookEnglishLocale = JSON.parse(
   readFileSync(join(REPOSITORY_ROOT, "packages/client/src/localization/locales/en.json"), "utf8"),
 ) as Record<string, unknown>;
@@ -492,7 +502,10 @@ assert.match(
   /캐릭터 정의 전, 캐릭터 정의 후/u,
 );
 const updatesRouteSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/routes/updates.routes.ts"), "utf8");
-assert.match(updatesRouteSource, /gitInstall \? await getCurrentBranch\(root\)\.catch\(\(\) => null\) : getBuildBranch\(\)/u);
+assert.match(
+  updatesRouteSource,
+  /gitInstall \? await getCurrentBranch\(root\)\.catch\(\(\) => null\) : getBuildBranch\(\)/u,
+);
 assert.match(updatesRouteSource, /const currentChannel = await getUpdateChannelForCheckout\(root, currentBranch\)/u);
 for (const dockerfile of ["Dockerfile", "Dockerfile.lite"]) {
   const dockerSource = readFileSync(join(REPOSITORY_ROOT, dockerfile), "utf8");
@@ -595,10 +608,10 @@ assert.deepEqual(resolveIllustratorImageSize({ width: 960, height: 540 }, "portr
   height: 960,
 });
 assert.deepEqual(parseImageGenerationUserSettings(null).noodle, { width: 1024, height: 1536 });
-assert.deepEqual(
-  parseImageGenerationUserSettings('{"imageNoodleWidth":1536,"imageNoodleHeight":1024}').noodle,
-  { width: 1536, height: 1024 },
-);
+assert.deepEqual(parseImageGenerationUserSettings('{"imageNoodleWidth":1536,"imageNoodleHeight":1024}').noodle, {
+  width: 1536,
+  height: 1024,
+});
 
 const minimalProfessorMariPersona = buildPersonaCreateRow(
   { name: "Minimal helper persona" },
@@ -1677,7 +1690,10 @@ try {
       }),
     ),
   );
-  assert.ok(concurrentFolderMoves.every((result) => result.ok), "Concurrent folder moves must both succeed");
+  assert.ok(
+    concurrentFolderMoves.every((result) => result.ok),
+    "Concurrent folder moves must both succeed",
+  );
   const concurrentTargetFolder = (await db.select().from(characterGroups)).find(
     (folder) => folder.id === "character-folder-concurrent-target",
   );
@@ -1706,7 +1722,11 @@ assert.equal(
   googleModelsPageUrl,
   "https://gemini-proxy.example.test/v1beta/models?pageSize=1000&pageToken=next%20page%2Ftoken",
 );
-assert.equal(new URL(googleModelsPageUrl).searchParams.has("key"), false, "Gemini API keys must stay out of model URLs");
+assert.equal(
+  new URL(googleModelsPageUrl).searchParams.has("key"),
+  false,
+  "Gemini API keys must stay out of model URLs",
+);
 
 const professorMariAboutMeCommands = parseCharacterCommands(
   '[update_character: name="Luna", about_me="fate dealer. tea hoarder. 🔮"]\n' +
@@ -1965,10 +1985,7 @@ assert.deepEqual(
   [{ id: "chroma", name: "Chroma" }],
 );
 assert.equal(buildZaiImageUrl("https://api.z.ai/api/paas/v4"), "https://api.z.ai/api/paas/v4/images/generations");
-assert.throws(
-  () => buildZaiImageUrl("https://api.z.ai/api/coding/paas/v4"),
-  /general API URL/u,
-);
+assert.throws(() => buildZaiImageUrl("https://api.z.ai/api/coding/paas/v4"), /general API URL/u);
 assert.equal(resolveZaiImageSize("glm-image", 1600, 900), "1728x960");
 assert.equal(resolveZaiImageSize("cogview-4-250304", 900, 1600), "768x1344");
 assert.deepEqual(buildZaiImageRequest({ model: "glm-image", prompt: "canal", width: 1600, height: 900 }), {
@@ -1982,6 +1999,41 @@ assert.ok(IMAGE_GENERATION_SOURCES.some((source) => source.id === "zai"));
 assert.equal(inferImageSource("flux-model", "https://api.arliai.com/v1"), "arli");
 assert.ok(IMAGE_GENERATION_SOURCES.some((source) => source.id === "arli"));
 assert.equal(imageSourceToDefaultsService("arli"), "automatic1111");
+assert.equal(inferImageSource("", "http://127.0.0.1:7801"), "swarmui");
+assert.ok(IMAGE_GENERATION_SOURCES.some((source) => source.id === "swarmui"));
+assert.equal(imageSourceToDefaultsService("swarmui"), "comfyui");
+const swarmUiBody = buildSwarmUiGenerationBody(
+  {
+    prompt: "a blue fox",
+    negativePrompt: "blurry",
+    width: 832,
+    height: 1216,
+    model: "  sdxl/model.safetensors  ",
+    comfyWorkflow: JSON.stringify({
+      "1": {
+        class_type: "CLIPTextEncode",
+        inputs: { text: "%prompt%", seed: "%seed%", model: "%model%" },
+      },
+    }),
+    imageDefaults: {
+      version: 1,
+      service: "comfyui",
+      seed: 42,
+      comfyui: { ...DEFAULT_COMFYUI_DEFAULTS, loras: [] },
+    },
+  },
+  "session-123",
+);
+assert.equal(swarmUiBody.session_id, "session-123");
+assert.equal(swarmUiBody.model, "sdxl/model.safetensors");
+assert.deepEqual(JSON.parse(String(swarmUiBody.comfyworkflowraw)), {
+  "1": {
+    class_type: "CLIPTextEncode",
+    inputs: { text: "a blue fox", seed: 42, model: "sdxl/model.safetensors" },
+  },
+});
+assert.equal(parseSwarmUiImageReference({ images: ["View/local/raw/output.png"] }), "View/local/raw/output.png");
+assert.throws(() => parseSwarmUiImageReference({ error: "queue unavailable" }), /queue unavailable/u);
 assert.deepEqual(
   ZAI_IMAGE_MODELS.map((model) => model.id),
   ["glm-image", "cogview-4-250304"],
@@ -2313,7 +2365,10 @@ for (const buildEntry of [
   "packages/server/dist/index.js",
   "packages/client/dist/index.html",
 ]) {
-  assert.ok(termuxLauncher.includes(`if [ ! -f "${buildEntry}" ]; then`), `Termux must rebuild when ${buildEntry} is missing`);
+  assert.ok(
+    termuxLauncher.includes(`if [ ! -f "${buildEntry}" ]; then`),
+    `Termux must rebuild when ${buildEntry} is missing`,
+  );
 }
 
 const sharedPackageJson = JSON.parse(
@@ -2488,6 +2543,25 @@ const presetPanelSource = readFileSync(
 const chatMessageSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
   "utf8",
+);
+const assignedSweepChatAreaSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatArea.tsx", import.meta.url),
+  "utf8",
+);
+const appRecoverySource = readFileSync(new URL("../../packages/client/src/App.tsx", import.meta.url), "utf8");
+const chatRowPeekSource = readFileSync(
+  new URL("../../packages/client/src/components/layout/ChatRowPeek.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(assignedSweepChatAreaSource, /export const ChatArea = memo\(function ChatArea/u);
+assert.doesNotMatch(assignedSweepChatAreaSource, /updateMessage(?:Extra)?\.mutate/u);
+assert.match(chatMessageSource, /mari-chrome-accent-progress mari-accent-animated mb-1\.5 h-0\.5/u);
+assert.match(chatMessageSource, /pointer-events-auto relative z-30 flex h-11 w-11/u);
+assert.match(chatRowPeekSource, /mari-chrome-accent-text-muted mari-accent-animated text-\[0\.6875rem\]/u);
+assert.match(assignedSweepChatAreaSource, /mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs/u);
+assert.match(
+  appRecoverySource,
+  /<pre className="mari-chrome-accent-text-muted mari-accent-animated[^"]*">\s*\{errorMessage\}/u,
 );
 const macroTextareaSource = readFileSync(
   new URL("../../packages/client/src/components/ui/MacroTextarea.tsx", import.meta.url),
@@ -3022,7 +3096,10 @@ assert.match(
   chatGallerySource,
   /onClick=\{\(\) => handleDelete\(confirmDeleteId\)\}[\s\S]{0,180}mari-chrome-accent-surface/u,
 );
-assert.match(globalStyles, /\.mari-gallery-card \{\s*content-visibility: auto;\s*contain-intrinsic-size: auto 12rem;\s*\}/u);
+assert.match(
+  globalStyles,
+  /\.mari-gallery-card \{\s*content-visibility: auto;\s*contain-intrinsic-size: auto 12rem;\s*\}/u,
+);
 assert.match(characterEditorSource, /ui\.characters\.colorstab\.value1AvatarPreview/u);
 assert.match(characterEditorSource, /getAvatarCropStyle/u);
 assert.match(characterEditorSource, /downloadSpriteFile/u);
@@ -4537,6 +4614,11 @@ const summaryPopoverSource = readFileSync(
 );
 assert.match(
   summaryPopoverSource,
+  /function SummaryEntryEditor[\s\S]*?<MacroTextarea[\s\S]*?textareaRef=\{textareaRef\}/u,
+  "Summary entry editing should expose the shared expanded editor and macro guide",
+);
+assert.match(
+  summaryPopoverSource,
   /summaryEntryIds:\s*selectedEntries\.map\(\(entry\) => entry\.id\)/u,
   "The summary UI must submit every selected entry to the combine endpoint",
 );
@@ -4803,6 +4885,8 @@ assert.match(
 );
 
 const windowsLauncherSource = readFileSync(join(REPOSITORY_ROOT, "start.bat"), "utf8");
+assert.match(windowsLauncherSource, /node --version >nul 2>&1/u);
+assert.doesNotMatch(windowsLauncherSource, /where node >nul 2>&1/u);
 for (const workspace of ["shared", "server", "client"]) {
   assert.match(windowsLauncherSource, new RegExp(`--filter @marinara-engine/${workspace} run clean`, "u"));
 }
@@ -5264,6 +5348,12 @@ try {
     /src\.id === "zai"[\s\S]{0,180}!ZAI_IMAGE_MODELS\.some[\s\S]{0,180}setLocalModel\("glm-image"\)/u,
     "Switching to Z.AI must replace a model that Z.AI does not support",
   );
+  assert.match(
+    connectionEditorSource,
+    /const swarmUiWorkflowError =\s*selectedImageService === "swarmui"[\s\S]{0,180}%reference_image_name/u,
+    "SwarmUI workflow validation must reject backend-local reference-image filenames before save",
+  );
+  assert.match(connectionEditorSource, /if \(swarmUiWorkflowError\) \{[\s\S]{0,180}throw new Error/u);
 
   const backgroundAutonomousSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/hooks/use-background-autonomous.ts"),
@@ -5462,6 +5552,12 @@ try {
   )?.[0];
   assert.ok(testImageHandler, "The connection test-image handler must remain available");
   assert.match(testImageHandler, /width: 1024,\s*height: 1024,/u);
+  assert.match(testImageHandler, /debugMode: readDebugMode\(req\.body\)/u);
+  assert.match(
+    connectionsRouteSource,
+    /signal: AbortSignal\.timeout\(SWARMUI_CONTROL_REQUEST_TIMEOUT_MS\)/u,
+    "SwarmUI control requests must have a bounded timeout",
+  );
 
   assert.doesNotMatch(
     agentEditorSource,
@@ -5507,10 +5603,7 @@ try {
   const sidebarPanelSources = new Map(
     ["Characters", "Personas", "Lorebooks", "Agents", "Presets", "Connections"].map((panelName) => [
       panelName,
-      readFileSync(
-        join(REPOSITORY_ROOT, `packages/client/src/components/panels/${panelName}Panel.tsx`),
-        "utf8",
-      ),
+      readFileSync(join(REPOSITORY_ROOT, `packages/client/src/components/panels/${panelName}Panel.tsx`), "utf8"),
     ]),
   );
 
@@ -5532,9 +5625,8 @@ try {
     );
     const hiddenActionOverlayCount = source.match(/pointer-events-none[^"\n]*opacity-0/gu)?.length ?? 0;
     const focusVisibleOverlayCount =
-      source.match(
-        /pointer-events-none[^"\n]*\[@media\(pointer:fine\)\]:group-focus-within(?:\/member)?:opacity-100/gu,
-      )?.length ?? 0;
+      source.match(/pointer-events-none[^"\n]*\[@media\(pointer:fine\)\]:group-focus-within(?:\/member)?:opacity-100/gu)
+        ?.length ?? 0;
     const focusInteractiveOverlayCount =
       source.match(
         /pointer-events-none[^"\n]*\[@media\(pointer:fine\)\]:group-focus-within(?:\/member)?:(?:\[&_button\]:)?pointer-events-auto/gu,
@@ -5826,9 +5918,8 @@ try {
   // must mirror the legacy client filter exactly (conversation mode with
   // autonomousMessages enabled, excluding the Professor Mari home assistant;
   // bad or missing metadata disqualifies).
-  const { isBackgroundAutonomousCandidate } = await import(
-    "../../packages/server/src/services/conversation/autonomous-candidates.js"
-  );
+  const { isBackgroundAutonomousCandidate } =
+    await import("../../packages/server/src/services/conversation/autonomous-candidates.js");
   const meta = (extra: Record<string, unknown>) => JSON.stringify({ autonomousMessages: true, ...extra });
   assert.equal(isBackgroundAutonomousCandidate({ mode: "conversation", metadata: meta({}) }), true);
   assert.equal(
@@ -5836,7 +5927,11 @@ try {
     true,
     "object metadata accepted",
   );
-  assert.equal(isBackgroundAutonomousCandidate({ mode: "roleplay", metadata: meta({}) }), false, "non-conversation excluded");
+  assert.equal(
+    isBackgroundAutonomousCandidate({ mode: "roleplay", metadata: meta({}) }),
+    false,
+    "non-conversation excluded",
+  );
   assert.equal(
     isBackgroundAutonomousCandidate({ mode: "conversation", metadata: meta({ internalAssistant: "professor-mari" }) }),
     false,
@@ -5857,9 +5952,8 @@ try {
   // The candidates route excludes EMPTIED Roleplay DM threads (the legacy poll
   // ran the DM cleanup as a GET /chats side effect); the marker expression must
   // stay in sync with cleanupEmptyRoleplayDmChats.
-  const { hasRoleplayDmThreadMarkers } = await import(
-    "../../packages/server/src/services/conversation/autonomous-candidates.js"
-  );
+  const { hasRoleplayDmThreadMarkers } =
+    await import("../../packages/server/src/services/conversation/autonomous-candidates.js");
   assert.equal(hasRoleplayDmThreadMarkers({ roleplayDmThread: true }), true);
   assert.equal(hasRoleplayDmThreadMarkers({ dmOriginChatId: "chat-1" }), true);
   assert.equal(hasRoleplayDmThreadMarkers({ roleplayDmThread: false }), false);

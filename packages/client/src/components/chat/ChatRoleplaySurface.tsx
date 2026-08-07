@@ -14,6 +14,7 @@ import {
   type ComponentProps,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { isMessageShadowedByLiveStream } from "../../lib/generation-stream-policy";
@@ -300,13 +301,19 @@ function CrossfadeBackground({
   );
 }
 
-function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyLabel: string }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const emptyRef = useRef<HTMLSpanElement>(null);
+function RoleplayLiveStreamText({
+  chatId,
+  emptyLabel,
+  renderText,
+}: {
+  chatId: string;
+  emptyLabel: string;
+  renderText: (text: string) => ReactNode;
+}) {
+  const [text, setText] = useState("");
+  const textRef = useRef("");
 
   useLayoutEffect(() => {
-    const textNode = document.createTextNode("");
-    textRef.current?.replaceChildren(textNode);
     let frame: number | null = null;
     const readBuffer = () => {
       const state = useChatStore.getState();
@@ -315,11 +322,10 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
     const apply = () => {
       frame = null;
       const next = readBuffer();
-      if (textNode.data !== next) {
-        if (next.startsWith(textNode.data)) textNode.appendData(next.slice(textNode.data.length));
-        else textNode.data = next;
+      if (textRef.current !== next) {
+        textRef.current = next;
+        setText(next);
       }
-      if (emptyRef.current) emptyRef.current.hidden = next.length > 0;
     };
     const schedule = () => {
       if (frame === null) frame = requestAnimationFrame(apply);
@@ -336,12 +342,7 @@ function RoleplayLiveStreamText({ chatId, emptyLabel }: { chatId: string; emptyL
     };
   }, [chatId]);
 
-  return (
-    <>
-      <span ref={emptyRef}>{emptyLabel}</span>
-      <span ref={textRef} />
-    </>
-  );
+  return <>{text ? renderText(text) : emptyLabel}</>;
 }
 
 function StreamingIndicator({
@@ -387,7 +388,13 @@ function StreamingIndicator({
           createdAt: new Date().toISOString(),
         }}
         isStreaming
-        streamingContent={<RoleplayLiveStreamText chatId={activeChatId} emptyLabel={t("chat.message.thinking")} />}
+        streamingContent={(renderText) => (
+          <RoleplayLiveStreamText
+            chatId={activeChatId}
+            emptyLabel={t("chat.message.thinking")}
+            renderText={renderText}
+          />
+        )}
         characterMap={characterMap}
         personaInfo={personaInfo}
         chatMode={chatMode}
@@ -418,7 +425,9 @@ function RegeneratingMessageContent({
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
-      streamingContent={<RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} />}
+      streamingContent={(renderText) => (
+        <RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} renderText={renderText} />
+      )}
       {...rest}
     />
   );

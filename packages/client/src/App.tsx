@@ -172,7 +172,7 @@ export class AppRecoveryBoundary extends Component<{ children: ReactNode }, { er
               <p className="mt-2 text-sm text-[var(--marinara-chat-chrome-panel-muted)]">
                 {t("ui.app.recovery.description")}
               </p>
-              <pre className="mt-3 max-h-32 overflow-auto rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] p-2 text-xs text-[var(--marinara-chat-chrome-accent)]">
+              <pre className="mari-chrome-accent-text-muted mari-accent-animated mt-3 max-h-32 overflow-auto rounded-lg border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] p-2 text-xs">
                 {errorMessage}
               </pre>
               <div className="mt-4 flex flex-wrap gap-2">

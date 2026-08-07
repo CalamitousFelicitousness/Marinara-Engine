@@ -125,6 +125,18 @@ assert.ok(
   batchInstallerInstall > batchInstallerDescriptorLookup,
   "The batch installer must resolve the checked-out descriptor before its frozen dependency install",
 );
+const installNodeLabel = batchInstallerSource.indexOf("\n:install_node");
+const nodeOkLabel = batchInstallerSource.indexOf("\n:node_ok", installNodeLabel);
+assert.match(
+  batchInstallerSource.slice(batchInstallerSource.indexOf(":: -- Node.js --"), installNodeLabel),
+  /if !NODE_MAJOR! GEQ 27/u,
+  "The batch installer must reject Node.js versions above the supported range before installation",
+);
+assert.match(
+  batchInstallerSource.slice(batchInstallerSource.indexOf("call :refresh_path", installNodeLabel), nodeOkLabel),
+  /if !NODE_MAJOR! GEQ 27/u,
+  "The batch installer must reject Node.js versions above the supported range after installation",
+);
 
 const troubleshootingSource = readFileSync(join(repositoryRoot, "docs/TROUBLESHOOTING.md"), "utf8");
 assert.match(troubleshootingSource, /npm install -g pnpm@10\.34\.5/u);

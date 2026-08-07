@@ -73,6 +73,7 @@ import {
 } from "@marinara-engine/shared";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
+import { MacroTextarea } from "../ui/MacroTextarea";
 import { isChatToolbarPanelTrigger } from "./ChatToolbarControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -2153,13 +2154,15 @@ function SummaryEntryEditor({
         placeholder={localizeUi("ui.chat.summaryentryeditor.summaryTitle")}
         className="w-full rounded-md bg-[var(--card)] px-2.5 py-1.5 text-xs font-semibold text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
       />
-      <textarea
-        ref={textareaRef}
+      <MacroTextarea
+        textareaRef={textareaRef}
         value={draft.content}
-        onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))}
+        onChange={(content) => setDraft((current) => ({ ...current, content }))}
         rows={7}
+        title={localizeUi("ui.chat.summaryentryeditor.summaryTitle")}
+        ariaLabel={localizeUi("ui.chat.summaryentryeditor.writeOrPasteASummaryOfThisChat")}
         placeholder={localizeUi("ui.chat.summaryentryeditor.writeOrPasteASummaryOfThisChat")}
-        className="max-h-64 min-h-36 w-full resize-y rounded-md bg-[var(--card)] p-2.5 text-xs leading-relaxed text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+        className="max-h-64 min-h-36 rounded-md bg-[var(--card)] text-xs leading-relaxed"
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[0.625rem] text-[var(--muted-foreground)]">

@@ -221,6 +221,14 @@ elif [ -d ".git" ]; then
             SKIP_UPDATE_FOR_LOCAL_CHANGES=1
             echo "  [WARN] Could not create an update snapshot. Skipping auto-update to protect your data."
         fi
+        # Never auto-move onto a build whose storage format predates the data
+        # on disk - it would silently show empty chat history (#4708).
+        if [ "$SKIP_UPDATE_FOR_LOCAL_CHANGES" != "1" ] && [ -n "$TARGET_HEAD" ]; then
+            if ! node scripts/protect-launcher-data.mjs check-target "$TARGET_HEAD"; then
+                SKIP_UPDATE_FOR_LOCAL_CHANGES=1
+                echo "  [WARN] Skipping auto-update: the target version is older than your data format."
+            fi
+        fi
         if [ "$SKIP_UPDATE_FOR_LOCAL_CHANGES" != "1" ] && [ "$CLEAN_FAILED" = "1" ]; then
             # A leftover we could not delete would be captured by "stash push -u"
             # and restored afterwards, making the broken tree permanent.

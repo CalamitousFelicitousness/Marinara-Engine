@@ -16,6 +16,7 @@ import {
   isUpdatesRemoteApplyAllowed,
 } from "../config/runtime-config.js";
 import { getBuildBranch, getBuildCommit, getBuildLabel } from "../config/build-info.js";
+import { getFileStorageDir } from "../config/runtime-config.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { isLoopbackIp } from "../middleware/ip-allowlist.js";
 import { isGitUpdateApplyAllowed } from "../services/updates/update-apply-policy.js";
@@ -274,6 +275,42 @@ async function cleanStaleSourceFiles(root: string): Promise<void> {
   } catch (err) {
     logger.warn(err, "[Update] Could not clean stale untracked source files after channel switch");
   }
+}
+
+/**
+ * Downgrade guard (#4708). Kept in sync with checkTargetStorageFormat in
+ * scripts/protect-launcher-data.mjs (the launcher-side twin — the server
+ * cannot import that script); the launcher-format-guard regression pins the
+ * pairing. Absent storage-format.json on the target ref means the build
+ * predates the file, i.e. storage format 2.
+ */
+async function checkTargetStorageFormat(
+  root: string,
+  targetRef: string,
+): Promise<{ compatible: boolean; onDiskFormat: number | null; targetFormat: number | null }> {
+  let onDiskFormat: number | null = null;
+  try {
+    const manifest = JSON.parse(readFileSync(resolve(getFileStorageDir(), "manifest.json"), "utf8")) as {
+      version?: unknown;
+    };
+    if (typeof manifest?.version === "number") onDiskFormat = manifest.version;
+  } catch {
+    /* no manifest -> nothing to protect */
+  }
+  if (onDiskFormat === null) return { compatible: true, onDiskFormat: null, targetFormat: null };
+
+  let targetFormat = 2;
+  try {
+    const { stdout } = await execFileAsync("git", ["show", `${targetRef}:storage-format.json`], {
+      cwd: root,
+      timeout: 15_000,
+    });
+    const parsed = JSON.parse(stdout) as { storageFormat?: unknown };
+    if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
+  } catch {
+    /* absent on the ref -> keep 2 */
+  }
+  return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
 }
 
 async function checkoutOrCreateUpdateBranch(root: string, channel: UpdateChannelInfo, targetHead: string): Promise<void> {
@@ -953,6 +990,21 @@ export async function updatesRoutes(app: FastifyInstance) {
         return reply.status(409).send({
           error: "Update target commit confirmation does not match the latest checked target",
           expectedTargetCommit: targetHead,
+        });
+      }
+
+      // #4708: refuse to move onto a build whose storage format predates the
+      // on-disk data — it would silently show empty chat history and could
+      // write a conflicting old-format file. No override here: manual
+      // downgrade steps live in docs/TROUBLESHOOTING.md.
+      const formatCheck = await checkTargetStorageFormat(root, targetHead);
+      if (!formatCheck.compatible) {
+        return reply.status(409).send({
+          error:
+            `The selected version only understands storage format ${formatCheck.targetFormat}, but your data ` +
+            `is at format ${formatCheck.onDiskFormat}. Switching to it would hide your chat history. See ` +
+            `docs/TROUBLESHOOTING.md ("Chats show no messages after switching to an older version") for ` +
+            `manual downgrade steps.`,
         });
       }
 

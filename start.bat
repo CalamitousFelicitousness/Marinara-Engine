@@ -136,6 +136,13 @@ if errorlevel 1 (
     goto :skip_update
 )
 set "DATA_SNAPSHOT_READY=1"
+:: Never auto-move onto a build whose storage format predates the data on
+:: disk - it would silently show empty chat history (#4708).
+node scripts\protect-launcher-data.mjs check-target "!TARGET_HEAD!"
+if errorlevel 1 (
+    echo  [WARN] Skipping auto-update: the target version is older than your data format.
+    goto :skip_update
+)
 :: Drop known-safe untracked files that older installer versions placed in
 :: $INSTDIR but are now also tracked in the repo. Without this, git merge
 :: --ff-only refuses to overwrite them and the auto-update silently fails.

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { chmod, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parseEnv } from "node:util";
@@ -30,6 +31,71 @@ async function readEnvDataDir(root, ambientEnv) {
     if (error?.code === "ENOENT") return null;
     throw error;
   }
+}
+
+async function readEnvFileStorageDir(root, ambientEnv) {
+  const ambientValue = ambientEnv.FILE_STORAGE_DIR?.trim();
+  if (ambientValue) return ambientValue;
+
+  try {
+    const parsed = parseEnv(await readFile(resolve(root, ".env"), "utf8"));
+    return parsed.FILE_STORAGE_DIR?.trim() || null;
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Mirrors the server's storage-dir resolution: FILE_STORAGE_DIR override, else DATA_DIR/storage. */
+export async function resolveLauncherStorageDir({ root = repositoryRoot, env = process.env } = {}) {
+  const configured = await readEnvFileStorageDir(root, env);
+  if (configured) {
+    return isAbsolute(configured) ? resolve(configured) : resolve(root, "packages/server", configured);
+  }
+  return resolve(await resolveLauncherDataDir({ root, env }), "storage");
+}
+
+/**
+ * Downgrade guard (#4708): compares the ON-DISK storage format (the version
+ * the store wrote into storage/manifest.json) against the format the TARGET
+ * ref's code understands (its tracked root storage-format.json; absent on
+ * refs predating that file = format 2). A build must never run against data
+ * written by a newer format — it would silently see empty chat history and
+ * could write a conflicting old-format file.
+ */
+export async function checkTargetStorageFormat({
+  root = repositoryRoot,
+  env = process.env,
+  targetRef,
+} = {}) {
+  if (!targetRef) throw new Error("checkTargetStorageFormat requires a targetRef");
+
+  let onDiskFormat = null;
+  try {
+    const manifest = JSON.parse(
+      await readFile(resolve(await resolveLauncherStorageDir({ root, env }), "manifest.json"), "utf8"),
+    );
+    if (typeof manifest?.version === "number") onDiskFormat = manifest.version;
+  } catch {
+    /* no manifest -> fresh install or pre-storage build -> nothing to protect */
+  }
+  if (onDiskFormat === null) return { compatible: true, onDiskFormat: null, targetFormat: null };
+
+  // Absent on the target ref -> that build predates storage-format.json -> 2.
+  let targetFormat = 2;
+  try {
+    const raw = execFileSync("git", ["show", `${targetRef}:storage-format.json`], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
+  } catch {
+    /* keep 2 */
+  }
+
+  return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
 }
 
 export async function resolveLauncherDataDir({
@@ -155,7 +221,24 @@ async function main() {
     return;
   }
 
-  throw new Error("Usage: node scripts/protect-launcher-data.mjs <snapshot|restore-if-missing>");
+  if (command === "check-target") {
+    const targetRef = process.argv[3];
+    if (!targetRef) throw new Error("Usage: node scripts/protect-launcher-data.mjs check-target <ref>");
+    const result = await checkTargetStorageFormat({ targetRef });
+    if (result.compatible) {
+      return;
+    }
+    console.error(
+      `  [BLOCK] Your data uses storage format ${result.onDiskFormat}, but the update target only understands ` +
+        `format ${result.targetFormat}. Running it would hide your chat history and could corrupt the data ` +
+        `layout. Update to a newer version instead, or see docs/TROUBLESHOOTING.md ("Chats show no messages ` +
+        `after switching to an older version") for manual downgrade steps.`,
+    );
+    process.exitCode = 2;
+    return;
+  }
+
+  throw new Error("Usage: node scripts/protect-launcher-data.mjs <snapshot|restore-if-missing|check-target <ref>>");
 }
 
 // pathToFileURL handles Windows drive letters; new URL(path, "file:") parses

@@ -91,6 +91,13 @@ export type FileNativeStoreController = {
   close: () => Promise<void>;
   rootDir: string;
   getQuarantinedTables: () => QuarantinedStorageTable[];
+  /**
+   * Monotonic per-table write counter (#4705): bumped on every markDirty, so
+   * pollers can skip work when a table hasn't changed since their last look.
+   * Deliberately NOT rolled back on transaction rollback — a spurious wake is
+   * safe, a missed one is not. 0 = never written in this process.
+   */
+  getTableWriteGeneration: (table: string) => number;
 };
 
 export type FileNativeDB = {
@@ -922,6 +929,8 @@ function executable<T>(operation: () => T | Promise<T>): Executable<T> {
 class FileTableStore {
   private tables = new Map<string, Row[]>();
   private dirtyTables = new Set<string>();
+  /** Monotonic per-table write counters (#4705); bumped in markDirty, never rolled back. */
+  private tableWriteGenerations = new Map<string, number>();
   private backupRecoveredPaths = new Set<string>();
   private dirty = false;
   private activeFlush: Promise<void> | null = null;
@@ -1010,6 +1019,12 @@ class FileTableStore {
       for (const tableName of ctx.dirtyTables) {
         const snapshot = ctx.snapshots.get(tableName);
         if (snapshot) this.tables.set(tableName, snapshot);
+        // Restoring rows is itself a visible mutation, so it must bump the
+        // write generation (#4705): a reader that sampled DURING the
+        // transaction may have stored a generation derived from uncommitted
+        // rows — without this bump, that stale conclusion would match the
+        // live generation after rollback and never be re-examined.
+        this.tableWriteGenerations.set(tableName, (this.tableWriteGenerations.get(tableName) ?? 0) + 1);
       }
       this.dirty = dirtySnapshot;
       this.dirtyTables = dirtyTablesSnapshot;
@@ -1233,6 +1248,10 @@ class FileTableStore {
     }));
   }
 
+  getTableWriteGeneration(table: string): number {
+    return this.tableWriteGenerations.get(table) ?? 0;
+  }
+
   contextForRow(meta: TableMeta, row: Row): RowContext {
     return {
       rows: { [meta.name]: row },
@@ -1242,6 +1261,7 @@ class FileTableStore {
   }
 
   markDirty(table: string) {
+    this.tableWriteGenerations.set(table, (this.tableWriteGenerations.get(table) ?? 0) + 1);
     this.dirty = true;
     this.dirtyTables.add(table);
     if (this.debounceTimer) return;
@@ -1550,6 +1570,7 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     flush: () => store.flush(true, true),
     close: () => store.close(),
     getQuarantinedTables: () => store.getQuarantinedTables(),
+    getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
   };
 
   let db: FileNativeDB;

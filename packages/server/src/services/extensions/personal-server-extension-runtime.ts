@@ -36,6 +36,9 @@ type ActiveExtension = {
   inputQueue: Promise<void>;
   /** Lets send() flip the adaptive output poll back to the hot cadence. */
   onTraffic: (() => void) | null;
+  /** Settles when the close handler's finalization (drain, handle close, cleanup) is done. */
+  closeFinalized: Promise<void>;
+  resolveCloseFinalized: () => void;
 };
 type RuntimeStatus = { status: "running" | "stopped" | "error"; error: string | null };
 type RunnerMessage = {
@@ -212,6 +215,18 @@ export class PersonalServerExtensionRuntime {
       }),
     ]);
     if (extension.child.exitCode === null && extension.child.signalCode === null) extension.child.kill("SIGKILL");
+    // The close handler owns finalization (drain -> handle close -> cleanup).
+    // Await it, bounded, so this path neither removes the sandbox dir under
+    // the drain's feet nor rm-fails on Windows against the still-open handle.
+    // If close never fires within the bound, the idempotent cleanup below is
+    // the last-resort guard against leaking the sandbox dir.
+    await Promise.race([
+      extension.closeFinalized,
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, CLEANUP_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ]);
     await extension.sandbox.cleanup();
   }
 
@@ -277,6 +292,10 @@ export class PersonalServerExtensionRuntime {
     child.once("error", earlyErrorHandler);
     child.once("close", earlyCloseHandler);
 
+    let resolveCloseFinalized!: () => void;
+    const closeFinalized = new Promise<void>((resolve) => {
+      resolveCloseFinalized = resolve;
+    });
     const active: ActiveExtension = {
       id: extension.id,
       contentHash: extension.contentHash,
@@ -288,6 +307,8 @@ export class PersonalServerExtensionRuntime {
       outputPoller: null,
       inputQueue: Promise.resolve(),
       onTraffic: null,
+      closeFinalized,
+      resolveCloseFinalized,
     };
     let outputBuffer: Buffer = Buffer.alloc(0);
     let outputOffset = 0;
@@ -472,25 +493,29 @@ export class PersonalServerExtensionRuntime {
           this.active.delete(extension.id);
         }
         void (async () => {
-          // Final drain BEFORE closing the handle, before the expectedStop
-          // check, and before cleanup rm-rf's the sandbox dir: with adaptive
-          // polling the last messages (including a `fatal` explaining the
-          // exit) may still be sitting unread in the output file (#4706).
-          while (pollingOutput) await new Promise((resolve) => setTimeout(resolve, 10));
-          await pollOutput();
-          // Fully close the handle before cleanup removes the directory it
-          // points at (Windows refuses to delete open files).
           try {
-            await outputHandle.close();
-          } catch (error) {
-            logger.warn(error, "[personal-extensions] Failed to close sandbox output handle");
+            // Final drain BEFORE closing the handle, before the expectedStop
+            // check, and before cleanup rm-rf's the sandbox dir: with adaptive
+            // polling the last messages (including a `fatal` explaining the
+            // exit) may still be sitting unread in the output file (#4706).
+            while (pollingOutput) await new Promise((resolve) => setTimeout(resolve, 10));
+            await pollOutput();
+            // Fully close the handle before cleanup removes the directory it
+            // points at (Windows refuses to delete open files).
+            try {
+              await outputHandle.close();
+            } catch (error) {
+              logger.warn(error, "[personal-extensions] Failed to close sandbox output handle");
+            }
+            if (!active.expectedStop) {
+              const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
+              const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;
+              fail(detail);
+            }
+            await sandbox.cleanup();
+          } finally {
+            active.resolveCloseFinalized();
           }
-          if (!active.expectedStop) {
-            const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
-            const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;
-            fail(detail);
-          }
-          await sandbox.cleanup();
         })();
       };
       // Hand off from the early setup-phase listeners, replaying an exit that

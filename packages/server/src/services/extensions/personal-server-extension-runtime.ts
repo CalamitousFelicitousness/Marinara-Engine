@@ -207,32 +207,56 @@ export class PersonalServerExtensionRuntime {
     await this.send(extension, { type: "stop" }).catch((error) => {
       logger.warn(error, "[personal-extensions] Stop request failed for %s; continuing cleanup", extension.name);
     });
-    // Skip the close-event wait when the child already exited — the event has
-    // fired and a new listener would never resolve, stalling every failed
-    // startup by the full timeout on the serialized reload path.
-    if (extension.child.exitCode === null && extension.child.signalCode === null) {
-      await Promise.race([
-        new Promise<void>((resolve) => extension.child.once("close", () => resolve())),
-        new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, CLEANUP_TIMEOUT_MS);
+    // Wait for the child to exit, killing it if the polite stop doesn't land.
+    // The waits are skipped when exit state is already known — a close event
+    // that already fired would leave a new listener unresolved forever.
+    const waitForExit = () =>
+      new Promise<boolean>((resolve) => {
+        if (extension.child.exitCode !== null || extension.child.signalCode !== null) {
+          resolve(true);
+          return;
+        }
+        const timer = setTimeout(() => resolve(false), CLEANUP_TIMEOUT_MS);
+        timer.unref?.();
+        extension.child.once("close", () => {
+          clearTimeout(timer);
+          resolve(true);
+        });
+      });
+    let exited = await waitForExit();
+    if (!exited) {
+      extension.child.kill("SIGKILL");
+      exited = await waitForExit();
+    }
+    if (exited) {
+      // The close handler owns finalization (drain -> handle close -> cleanup)
+      // and always resolves the promise from a finally. Never run cleanup on
+      // this path — a timeout-raced cleanup here would remove the sandbox dir
+      // under the drain's feet, which is the exact race this serialization
+      // exists to prevent. The generous bound only guards a wedged filesystem.
+      const settled = await Promise.race([
+        extension.closeFinalized.then(() => true),
+        new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(false), CLEANUP_TIMEOUT_MS * 3);
           timer.unref?.();
         }),
       ]);
+      if (!settled) {
+        logger.warn(
+          "[personal-extensions] Close finalization for %s did not settle in time; leaving cleanup to it",
+          extension.name,
+        );
+      }
+      return;
     }
-    if (extension.child.exitCode === null && extension.child.signalCode === null) extension.child.kill("SIGKILL");
-    // The close handler owns finalization (drain -> handle close -> cleanup).
-    // Await it, bounded, so this path neither removes the sandbox dir under
-    // the drain's feet nor rm-fails on Windows against the still-open handle.
-    // If close never fires within the bound, the idempotent cleanup below is
-    // the last-resort guard against leaking the sandbox dir.
-    await Promise.race([
-      extension.closeFinalized,
-      new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, CLEANUP_TIMEOUT_MS);
-        timer.unref?.();
-      }),
-    ]);
-    await extension.sandbox.cleanup();
+    // Close never fired (unkillable/zombie child) — nothing is draining, so a
+    // last-resort cleanup is safe. Caught so one failure cannot abort the
+    // stop-all loop over the remaining extensions.
+    try {
+      await extension.sandbox.cleanup();
+    } catch (error) {
+      logger.warn(error, "[personal-extensions] Fallback sandbox cleanup failed for %s", extension.name);
+    }
   }
 
   private async handleStorageMessage(
@@ -438,7 +462,7 @@ export class PersonalServerExtensionRuntime {
               fail(message.message || "Extension sandbox failed");
               active.expectedStop = true;
               child.kill("SIGKILL");
-            } else if (message.type === "storage" && !closing) {
+            } else if (message.type === "storage" && !closing && !active.expectedStop) {
               // Never dispatch storage during the final drain — the child is
               // gone and the reply write would race cleanup. The catch keeps a
               // failed reply from reaching the process-fatal unhandledRejection

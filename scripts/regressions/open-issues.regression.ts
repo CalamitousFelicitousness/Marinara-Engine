@@ -5553,6 +5553,11 @@ try {
   assert.ok(testImageHandler, "The connection test-image handler must remain available");
   assert.match(testImageHandler, /width: 1024,\s*height: 1024,/u);
   assert.match(testImageHandler, /debugMode: readDebugMode\(req\.body\)/u);
+  assert.match(
+    connectionsRouteSource,
+    /signal: AbortSignal\.timeout\(SWARMUI_CONTROL_REQUEST_TIMEOUT_MS\)/u,
+    "SwarmUI control requests must have a bounded timeout",
+  );
 
   assert.doesNotMatch(
     agentEditorSource,

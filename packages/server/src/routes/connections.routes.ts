@@ -43,6 +43,7 @@ import { DATA_DIR } from "../utils/data-dir.js";
 
 const CONNECTION_TEST_ERROR_PREVIEW_CHARS = 2000;
 const CONNECTION_IMAGES_DIR = join(DATA_DIR, "connections", "images");
+const SWARMUI_CONTROL_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_COMFYUI_VIDEO_BASE_URL = "http://127.0.0.1:8188";
 const DEFAULT_GEMINI_OMNI_VIDEO_MODEL = "gemini-omni-flash-preview";
 const DEFAULT_GEMINI_OMNI_VIDEO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -204,6 +205,7 @@ async function postSwarmUiJson(baseUrl: string, apiKey: string, route: string, b
     method: "POST",
     headers: swarmUiHeaders(apiKey),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(SWARMUI_CONTROL_REQUEST_TIMEOUT_MS),
     policy: localUrlPolicyForProvider("image_generation", "swarmui"),
     maxResponseBytes: 5 * 1024 * 1024,
     decodeCompressedResponse: true,

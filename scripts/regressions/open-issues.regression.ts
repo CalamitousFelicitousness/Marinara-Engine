@@ -24,6 +24,7 @@ import {
 } from "../../packages/server/src/db/schema/index.js";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
+import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -6019,16 +6020,42 @@ try {
     /useChatMessagePeek\(\s*chat\.id,\s*100,/u,
     "The secret-plot reader must fetch its newest-100 window through the limit-keyed peek hook",
   );
+  const imageSettingUpdateSource =
+    /const updateCustomAgentImageSetting = useCallback\([\s\S]*?\n  const updateCustomAgentImageConnection/u.exec(
+      drawerSource,
+    )?.[0] ?? "";
   assert.match(
-    drawerSource,
+    imageSettingUpdateSource,
     /setCustomAgentImageSettingsDraft\(\(current\) => \(\{[\s\S]*current\?\.chatId === chat\.id \? current\.patch : \{\}[\s\S]*\[agentId\]: hasAgentSettings \? agentSettings : null/u,
     "Rapid custom-agent connection and style changes must merge into one visible local draft",
   );
+  const toggleAgentSource =
+    /const toggleAgent = async[\s\S]*?\n  const removeAgentFromMenu/u.exec(drawerSource)?.[0] ?? "";
   assert.match(
-    drawerSource,
-    /isRemoving && \(pendingImageSettings \|\| latestImageSettings\[agentId\]\)[\s\S]*delete next\[agentId\][\s\S]*pendingCustomAgentImageSettingsRef\.current = null/u,
-    "Removing an agent must consume queued image settings without restoring that agent's override",
+    toggleAgentSource,
+    /await flushPendingCustomAgentImageSettings\(\)[\s\S]*await customAgentImageSettingsWriteQueueRef\.current\.waitForIdle\(\)[\s\S]*const latestImageSettings = readLatestCustomAgentImageSettings\(\)[\s\S]*delete next\[agentId\]/u,
+    "Removing an agent must drain queued image writes before deleting that agent's override",
   );
+
+  const serializedWrites = createSerializedMutationQueue();
+  const writeOrder: string[] = [];
+  let releaseFirstWrite!: () => void;
+  const firstWriteGate = new Promise<void>((resolve) => {
+    releaseFirstWrite = resolve;
+  });
+  const firstWrite = serializedWrites.enqueue(async () => {
+    writeOrder.push("first:start");
+    await firstWriteGate;
+    writeOrder.push("first:end");
+  });
+  const secondWrite = serializedWrites.enqueue(async () => {
+    writeOrder.push("second");
+  });
+  await Promise.resolve();
+  assert.deepEqual(writeOrder, ["first:start"], "A delayed older metadata write must hold newer writes in order");
+  releaseFirstWrite();
+  await Promise.all([firstWrite, secondWrite, serializedWrites.waitForIdle()]);
+  assert.deepEqual(writeOrder, ["first:start", "first:end", "second"]);
   const trackerModelSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/features/tracker-panel/hooks/use-tracker-panel-model.ts"),
     "utf8",

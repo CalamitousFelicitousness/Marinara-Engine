@@ -145,6 +145,7 @@ import { useRegexScripts, useUpdateRegexScript, type RegexScriptRow } from "../.
 import { api } from "../../lib/api-client";
 import { readCharacterGreetings, type CharacterGreeting } from "../../lib/character-greetings";
 import { trackChatMetadataSave, waitForPendingChatMetadataSaves } from "../../lib/chat-metadata-save-barrier";
+import { createSerializedMutationQueue } from "../../lib/serialized-mutation-queue";
 import { appendLocalSidecarConnectionOption, filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import {
   deriveActiveLorebookViews,
@@ -795,7 +796,7 @@ export function ChatSettingsDrawer({
   const drawerClosingRef = useRef(false);
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
-  const updateMetaMutateRef = useRef(updateMeta.mutate);
+  const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
     revision: number;
@@ -803,12 +804,13 @@ export function ChatSettingsDrawer({
   } | null>(null);
   const pendingCustomAgentImageSettingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customAgentImageSettingsRevisionRef = useRef(0);
+  const customAgentImageSettingsWriteQueueRef = useRef(createSerializedMutationQueue());
   const [customAgentImageSettingsDraft, setCustomAgentImageSettingsDraft] = useState<{
     chatId: string;
     revision: number;
     patch: Partial<Record<string, CustomAgentImageSetting | null>>;
   } | null>(null);
-  updateMetaMutateRef.current = updateMeta.mutate;
+  updateMetaMutateAsyncRef.current = updateMeta.mutateAsync;
   const updateGameWidgets = useUpdateGameWidgets();
   const { data: regexScripts } = useRegexScripts();
   const updateRegexScript = useUpdateRegexScript();
@@ -2814,29 +2816,21 @@ export function ChatSettingsDrawer({
             return next;
           })()
         : null;
-    const pendingImageSettings =
-      pendingCustomAgentImageSettingsRef.current?.chatId === chat.id
-        ? pendingCustomAgentImageSettingsRef.current
-        : null;
-    const latestImageSettings = pendingImageSettings
-      ? { ...pendingImageSettings.settings }
-      : readLatestCustomAgentImageSettings();
+    if (isRemoving) {
+      do {
+        await flushPendingCustomAgentImageSettings().catch(() => undefined);
+        await customAgentImageSettingsWriteQueueRef.current.waitForIdle();
+      } while (pendingCustomAgentImageSettingsRef.current?.chatId === chat.id);
+    }
+    const latestImageSettings = readLatestCustomAgentImageSettings();
     const nextImageSettings =
-      isRemoving && (pendingImageSettings || latestImageSettings[agentId])
+      isRemoving && latestImageSettings[agentId]
         ? (() => {
             const next = { ...latestImageSettings };
             delete next[agentId];
             return next;
           })()
         : null;
-    if (isRemoving && pendingImageSettings) {
-      if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
-        clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
-        pendingCustomAgentImageSettingsTimerRef.current = null;
-      }
-      pendingCustomAgentImageSettingsRef.current = null;
-      setCustomAgentImageSettingsDraft((current) => (current?.chatId === chat.id ? null : current));
-    }
     let metadataSaved = false;
     try {
       await updateMeta.mutateAsync(
@@ -2941,35 +2935,39 @@ export function ChatSettingsDrawer({
         }
       : {};
   }, [chat.id, metadata, qc]);
-  const flushPendingCustomAgentImageSettings = useCallback(() => {
+  const flushPendingCustomAgentImageSettings = useCallback((): Promise<void> => {
     if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
       clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
       pendingCustomAgentImageSettingsTimerRef.current = null;
     }
     const pending = pendingCustomAgentImageSettingsRef.current;
-    if (!pending) return;
+    if (!pending) return customAgentImageSettingsWriteQueueRef.current.waitForIdle();
     pendingCustomAgentImageSettingsRef.current = null;
-    updateMetaMutateRef.current(
-      { id: pending.chatId, customAgentImageSettings: pending.settings },
-      {
-        onSettled: () => {
-          setCustomAgentImageSettingsDraft((current) =>
-            current?.chatId === pending.chatId && current.revision === pending.revision ? null : current,
-          );
-        },
-      },
-    );
+    return customAgentImageSettingsWriteQueueRef.current
+      .enqueue(async () => {
+        await updateMetaMutateAsyncRef.current({
+          id: pending.chatId,
+          customAgentImageSettings: pending.settings,
+        });
+      })
+      .finally(() => {
+        setCustomAgentImageSettingsDraft((current) =>
+          current?.chatId === pending.chatId && current.revision === pending.revision ? null : current,
+        );
+      });
   }, []);
   useEffect(
     () => () => {
-      flushPendingCustomAgentImageSettings();
+      void flushPendingCustomAgentImageSettings().catch(() => undefined);
     },
     [chat.id, flushPendingCustomAgentImageSettings],
   );
   const updateCustomAgentImageSetting = useCallback(
     (agentId: string, field: "imageConnectionId" | "styleProfileId", value: string) => {
       const pending = pendingCustomAgentImageSettingsRef.current;
-      if (pending && pending.chatId !== chat.id) flushPendingCustomAgentImageSettings();
+      if (pending && pending.chatId !== chat.id) {
+        void flushPendingCustomAgentImageSettings().catch(() => undefined);
+      }
       const next = pending?.chatId === chat.id ? { ...pending.settings } : readLatestCustomAgentImageSettings();
       const agentSettings = { ...next[agentId] };
       if (value) agentSettings[field] = value;
@@ -2991,7 +2989,9 @@ export function ChatSettingsDrawer({
       if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
         clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
       }
-      pendingCustomAgentImageSettingsTimerRef.current = setTimeout(flushPendingCustomAgentImageSettings, 150);
+      pendingCustomAgentImageSettingsTimerRef.current = setTimeout(() => {
+        void flushPendingCustomAgentImageSettings().catch(() => undefined);
+      }, 150);
     },
     [chat.id, flushPendingCustomAgentImageSettings, readLatestCustomAgentImageSettings],
   );

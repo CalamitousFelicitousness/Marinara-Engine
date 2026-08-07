@@ -39,6 +39,8 @@ type ActiveExtension = {
   /** Settles when the close handler's finalization (drain, handle close, cleanup) is done. */
   closeFinalized: Promise<void>;
   resolveCloseFinalized: () => void;
+  /** The idempotent teardown shared by the close handler and the zombie fallback. */
+  finalize: ((options: { drain: boolean; code?: number | null; signal?: string | null }) => Promise<void>) | null;
 };
 type RuntimeStatus = { status: "running" | "stopped" | "error"; error: string | null };
 type RunnerMessage = {
@@ -249,14 +251,14 @@ export class PersonalServerExtensionRuntime {
       }
       return;
     }
-    // Close never fired (unkillable/zombie child) — nothing is draining, so a
-    // last-resort cleanup is safe. Caught so one failure cannot abort the
-    // stop-all loop over the remaining extensions.
-    try {
-      await extension.sandbox.cleanup();
-    } catch (error) {
-      logger.warn(error, "[personal-extensions] Fallback sandbox cleanup failed for %s", extension.name);
-    }
+    // Close never fired (unkillable/zombie child). Run the SAME idempotent
+    // finalizer the close handler uses — it stops the poll chain, closes the
+    // handle, and cleans up exactly once; skipping the drain, since nothing
+    // more can arrive and an in-flight poll may be wedged with the child. If
+    // close does fire later, the handler's own call becomes a no-op. The
+    // finalizer never rejects, so a failure here cannot abort a stop-all
+    // loop over the remaining extensions.
+    await extension.finalize?.({ drain: false });
   }
 
   private async handleStorageMessage(
@@ -338,6 +340,7 @@ export class PersonalServerExtensionRuntime {
       onTraffic: null,
       closeFinalized,
       resolveCloseFinalized,
+      finalize: null,
     };
     let outputBuffer: Buffer = Buffer.alloc(0);
     let outputOffset = 0;
@@ -516,47 +519,62 @@ export class PersonalServerExtensionRuntime {
         scheduleOutputPoll(SANDBOX_HOT_POLL_MS);
       };
       void pollOutput().finally(() => scheduleOutputPoll());
-      const handleClose = (code: number | null, signal: string | null) => {
-        if (active.watchdog) clearInterval(active.watchdog);
-        pollChainStopped = true;
+      // The ONE finalizer: stops the poll chain, drains (when safe), closes
+      // the handle, and cleans up — exactly once, whether it is triggered by
+      // the child's close event or by stopExtension's zombie fallback. The
+      // flag makes the two callers mutually exclusive; a late close event
+      // after the fallback already finalized becomes a no-op here.
+      let finalized = false;
+      const finalizeClose = async (options: { drain: boolean; code?: number | null; signal?: string | null }) => {
+        if (finalized) return;
+        finalized = true;
         closing = true;
+        pollChainStopped = true;
         if (active.outputPoller) clearTimeout(active.outputPoller);
         active.onTraffic = null;
-        // A delayed close (stopExtension timed out, then a reload registered
-        // a replacement under the same id) must only remove ITS OWN entry.
-        if (this.active.get(extension.id) === active) {
-          this.active.delete(extension.id);
-        }
-        void (async () => {
-          try {
+        try {
+          if (options.drain) {
             // Final drain BEFORE closing the handle, before the expectedStop
             // check, and before cleanup rm-rf's the sandbox dir: with adaptive
             // polling the last messages (including a `fatal` explaining the
             // exit) may still be sitting unread in the output file (#4706).
             while (pollingOutput) await new Promise((resolve) => setTimeout(resolve, 10));
             await pollOutput();
-            // Fully close the handle before cleanup removes the directory it
-            // points at (Windows refuses to delete open files).
-            try {
-              await outputHandle.close();
-            } catch (error) {
-              logger.warn(error, "[personal-extensions] Failed to close sandbox output handle");
-            }
-            if (!active.expectedStop) {
-              const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
-              const detail = diagnostics.trim() || `Sandbox exited with ${signal ?? code ?? "unknown status"}`;
-              fail(detail);
-            }
-            try {
-              await sandbox.cleanup();
-            } catch (error) {
-              // This task is detached — a rejection here would be unhandled.
-              // The leftover dir is inert; log it rather than fail the close.
-              logger.warn(error, "[personal-extensions] Sandbox cleanup failed for %s", extension.name);
-            }
-          } finally {
-            active.resolveCloseFinalized();
           }
+          // Fully close the handle before cleanup removes the directory it
+          // points at (Windows refuses to delete open files).
+          try {
+            await outputHandle.close();
+          } catch (error) {
+            logger.warn(error, "[personal-extensions] Failed to close sandbox output handle");
+          }
+          if (options.drain && !active.expectedStop) {
+            const diagnostics = await readFile(sandbox.protocol.errorPath, "utf8").catch(() => "");
+            const detail =
+              diagnostics.trim() || `Sandbox exited with ${options.signal ?? options.code ?? "unknown status"}`;
+            fail(detail);
+          }
+          try {
+            await sandbox.cleanup();
+          } catch (error) {
+            // This task is detached — a rejection here would be unhandled.
+            // The leftover dir is inert; log it rather than fail the close.
+            logger.warn(error, "[personal-extensions] Sandbox cleanup failed for %s", extension.name);
+          }
+        } finally {
+          active.resolveCloseFinalized();
+        }
+      };
+      active.finalize = finalizeClose;
+      const handleClose = (code: number | null, signal: string | null) => {
+        if (active.watchdog) clearInterval(active.watchdog);
+        // A delayed close (stopExtension timed out, then a reload registered
+        // a replacement under the same id) must only remove ITS OWN entry.
+        if (this.active.get(extension.id) === active) {
+          this.active.delete(extension.id);
+        }
+        void (async () => {
+          await finalizeClose({ drain: true, code, signal });
         })();
       };
       // Hand off from the early setup-phase listeners, replaying an exit that

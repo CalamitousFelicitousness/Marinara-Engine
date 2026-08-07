@@ -438,8 +438,14 @@ export class PersonalServerExtensionRuntime {
               fail(message.message || "Extension sandbox failed");
               active.expectedStop = true;
               child.kill("SIGKILL");
-            } else if (message.type === "storage") {
-              void this.handleStorageMessage(extension, active, message);
+            } else if (message.type === "storage" && !closing) {
+              // Never dispatch storage during the final drain — the child is
+              // gone and the reply write would race cleanup. The catch keeps a
+              // failed reply from reaching the process-fatal unhandledRejection
+              // handler.
+              void this.handleStorageMessage(extension, active, message).catch((error) => {
+                logger.warn(error, "[personal-extensions] Storage response failed for %s", extension.name);
+              });
             } else if (message.type === "log" && message.level && LOG_LEVELS.has(message.level)) {
               logger[message.level](
                 { extensionId: extension.id, extensionName: extension.name, args: Array.isArray(message.args) ? message.args : [] },

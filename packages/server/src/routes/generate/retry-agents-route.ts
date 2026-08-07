@@ -172,6 +172,11 @@ import {
 } from "../../services/generation/prose-guardian-settings.js";
 import { applyKnowledgeAgentChatSettings } from "../../services/generation/knowledge-agent-settings.js";
 import {
+  applyCustomAgentImageChatSettings,
+  forceImageGenerationScopeError,
+  needsForcedSnapshotFallback,
+} from "../../services/generation/custom-agent-image-settings.js";
+import {
   generateIllustratorSceneBackground,
   illustratorBackgroundGenerationEnabled,
   illustratorRequestedBackground,
@@ -637,6 +642,8 @@ async function buildRetryAgentContext(args: {
   wrapFormat: WrapFormat;
   forceIllustratorBackgroundGeneration: boolean;
   forceIllustratorImageGeneration: boolean;
+  /** Snapshot button (#4682): tell retried custom image agents the user explicitly requested an image. */
+  forceCustomImageGeneration: boolean;
   /**
    * When retrying agents for a specific assistant message (e.g. refreshing cached prompt injections),
    * use the game-state snapshot committed for that message+swipe — not the latest chat snapshot.
@@ -663,6 +670,7 @@ async function buildRetryAgentContext(args: {
     wrapFormat,
     forceIllustratorBackgroundGeneration,
     forceIllustratorImageGeneration,
+    forceCustomImageGeneration,
     historicalGameStateAnchor,
     useLatestGameStateFallback = true,
   } = args;
@@ -1127,6 +1135,13 @@ async function buildRetryAgentContext(args: {
     agentContext.memory._forceIllustratorImageGeneration = true;
   }
 
+  // Scoped to single-agent retries: memory is shared across the batch, and the
+  // snapshot button (#4682) only ever targets one agent — enforce that here so
+  // a multi-agent force request can't leak the directive to unrelated agents.
+  if (forceCustomImageGeneration && resolvedAgentTypes.size === 1) {
+    agentContext.memory._forceImageGeneration = true;
+  }
+
   const spotifyRetryConfig = enabledConfigs.find((config) => config.type === "spotify");
   const spotifyMusicSettings = parseSettingsRecord(spotifyRetryConfig?.settings);
   const spotifyMusicUsesYoutube = musicAgentUsesYoutube(spotifyMusicSettings);
@@ -1496,6 +1511,7 @@ async function resolveRetryAgents(args: {
     }
     settings = applyTextRewriteAgentChatSettings(cfg.type as string, settings, chatMeta);
     settings = applyKnowledgeAgentChatSettings(cfg.type as string, settings, chatMeta);
+    settings = applyCustomAgentImageChatSettings(cfg.type as string, settings, chatMeta);
     const selectedPromptTemplate = resolveAgentPromptTemplate({
       promptTemplate: normalizeProseGuardianPromptTemplate(cfg.type as string, cfg.promptTemplate),
       fallbackPromptTemplate: getRetryAgentFallbackPrompt(cfg.type as string, settings),
@@ -2698,6 +2714,7 @@ async function applyRetryResultEffects(args: {
   reviewImagePromptsBeforeSend: boolean;
   illustratorPromptReviewOverride: IllustratorPromptReviewOverride | null;
   illustratorRetryTargets: IllustratorRetryTarget[] | undefined;
+  forceImageGeneration: boolean;
   debugMode: boolean;
   secretPlotRerollMode?: "full" | "turn_only";
 }) {
@@ -2720,6 +2737,7 @@ async function applyRetryResultEffects(args: {
     reviewImagePromptsBeforeSend,
     illustratorPromptReviewOverride,
     illustratorRetryTargets,
+    forceImageGeneration,
     debugMode,
     secretPlotRerollMode,
   } = args;
@@ -3240,7 +3258,12 @@ async function applyRetryResultEffects(args: {
       const illustratorFailureName = imagePromptAgent?.cfg.name ?? "Illustrator";
       try {
         const illData = result.data as Record<string, unknown>;
-        const shouldGenerate = isManualIllustratorImageRequest || illData.shouldGenerate === true;
+        // Snapshot button (#4682): force generation for custom image agents only —
+        // the vanilla Illustrator has its own manual path (illustratorRetryTargets).
+        const shouldGenerate =
+          isManualIllustratorImageRequest ||
+          (forceImageGeneration && !usesChatIllustratorSettings) ||
+          illData.shouldGenerate === true;
         const imagePrompt = ((illData.prompt as string) ?? "").trim();
         const negativePrompt = ((illData.negativePrompt as string) ?? "").trim();
         const style = ((illData.style as string) ?? "").trim();
@@ -3457,7 +3480,11 @@ async function applyRetryResultEffects(args: {
                   }
                 : undefined;
 
-            if (reviewImagePromptsBeforeSend && !illustratorPromptReviewOverride) {
+            // A forced custom-agent snapshot (#4682) skips prompt review: the
+            // camera press is itself the explicit user request, and the review
+            // approval round-trip only supports the vanilla Illustrator.
+            const skipReviewForForcedSnapshot = forceImageGeneration && !usesChatIllustratorSettings;
+            if (reviewImagePromptsBeforeSend && !illustratorPromptReviewOverride && !skipReviewForForcedSnapshot) {
               const previewSize = resolveImagePromptReviewSize({
                 connection: imgConnFull,
                 prompt: promptSubmission.prompt,
@@ -3617,24 +3644,58 @@ async function applyRetryResultEffects(args: {
             sendSseEvent(reply, {
               type: "agent_error",
               data: {
-                agentType: "illustrator",
+                // Attribute to the agent that actually ran (custom snapshot vs vanilla).
+                agentType: result.agentType,
                 agentName: illustratorFailureName,
                 retryTarget: "illustration",
                 error:
-                  "No image generation connection is set on the Illustrator agent or under Settings -> Connections -> Defaults -> Images. Choose one there, or assign one directly in Settings -> Agents -> Illustrator.",
+                  "No image generation connection is set on this agent or under Settings -> Connections -> Defaults -> Images. Choose one there, or assign one in the agent's settings.",
               },
             });
           }
+        } else if (forceImageGeneration && !usesChatIllustratorSettings) {
+          // Snapshot button (#4682): the forced agent still declined or returned
+          // no prompt — surface it so the camera press never looks like a no-op.
+          sendSseEvent(reply, {
+            type: "agent_error",
+            data: {
+              agentType: result.agentType,
+              agentName: illustratorFailureName,
+              retryTarget: "illustration",
+              error:
+                "The agent ran but did not produce an image prompt. Try again, or adjust its prompt template so it always returns a prompt when an image is requested.",
+            },
+          });
         }
       } catch (illErr) {
         logger.error(illErr, "[retry-agents] Illustrator image generation failed");
         sendSseEvent(reply, {
           type: "agent_error",
           data: {
-            agentType: "illustrator",
+            // Attribute the failure to the agent that actually ran — a custom
+            // agent's snapshot failure must not be reported as the Illustrator.
+            agentType: result.agentType,
             agentName: illustratorFailureName,
             retryTarget: "illustration",
             error: illErr instanceof Error ? illErr.message : "Image generation failed",
+          },
+        });
+      }
+    } else if (needsForcedSnapshotFallback(forceImageGeneration === true, result)) {
+      // Snapshot button (#4682): the forced agent SUCCEEDED without a usable
+      // image_prompt payload (different result type, or null data), so nothing
+      // above surfaces the outcome — without this the camera press would be a
+      // silent no-op. Failed results already reach the client via agent_result.
+      const forcedAgent = resolvedAgents.find((agent) => agent.resolved.id === result.agentId);
+      if (forcedAgent && forcedAgent.resolved.type !== "illustrator") {
+        sendSseEvent(reply, {
+          type: "agent_error",
+          data: {
+            agentType: result.agentType,
+            agentName: forcedAgent.cfg.name ?? "Agent",
+            retryTarget: "illustration",
+            error:
+              "The agent completed without producing an image prompt. Check that its result type is set to Image Prompt and that its template returns a prompt when an image is requested.",
           },
         });
       }
@@ -3844,6 +3905,8 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
       illustratorPromptReviewOverride?: unknown;
       /** Limit an Illustrator retry to visual jobs that failed in the original run. */
       illustratorRetryTargets?: unknown;
+      /** Force image generation for retried custom image agents' results (snapshot button, #4682). */
+      forceImageGeneration?: boolean;
       lorebookKeeperBackfill?: boolean;
       /** When set, scope history and game state to this assistant message (as at original generation), not the latest turn. */
       forMessageId?: string;
@@ -3864,6 +3927,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
       agentPromptTemplateIds,
       illustratorPromptReviewOverride: rawIllustratorPromptReviewOverride,
       illustratorRetryTargets: rawIllustratorRetryTargets,
+      forceImageGeneration = false,
       lorebookKeeperBackfill = false,
       forMessageId,
       musicPlayerSource = "spotify",
@@ -4049,6 +4113,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         wrapFormat: retryWrapFormat,
         forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
         forceIllustratorImageGeneration: isManualIllustratorImageRequest,
+        forceCustomImageGeneration: forceImageGeneration === true,
         historicalGameStateAnchor,
       });
       agentContext.signal = abortController.signal;
@@ -4073,6 +4138,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
               wrapFormat: retryWrapFormat,
               forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
               forceIllustratorImageGeneration: isManualIllustratorImageRequest,
+              forceCustomImageGeneration: forceImageGeneration === true,
               historicalGameStateAnchor: preGenerationGameStateAnchor,
               useLatestGameStateFallback: false,
             })
@@ -4125,6 +4191,26 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         throw new Error(
           "No runnable agents were found for this retry. Add tracker agents to this chat or check their connection settings.",
         );
+      }
+      // Snapshot force (#4682) is a single-custom-image-agent contract: the flag
+      // applies to every image_prompt result in the batch and its directive only
+      // makes sense for agents that can emit one, so reject ineligible forced
+      // requests up front instead of guarding each downstream effect site.
+      const forceScopeError = forceImageGenerationScopeError(
+        forceImageGeneration === true,
+        resolvedAgents.map((entry) => ({
+          isCustomAgent: entry.resolved.isCustomAgent,
+          canEmitImagePrompt: customAgentHasCapability(entry.resolved.settings, "trigger_image_generation"),
+        })),
+      );
+      if (forceScopeError) {
+        logger.warn(
+          "[retry-agents] Rejected forceImageGeneration: %d agents resolved for chatId=%s agentTypes=%j",
+          resolvedAgents.length,
+          chatId,
+          agentTypes,
+        );
+        throw new Error(forceScopeError);
       }
       const lorebookKeeperAgent = resolvedAgents.find((entry) => entry.resolved.type === "lorebook-keeper") ?? null;
       const nonLorebookAgents = resolvedAgents.filter((entry) => entry.resolved.type !== "lorebook-keeper");
@@ -4361,6 +4447,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         reviewImagePromptsBeforeSend,
         illustratorPromptReviewOverride,
         illustratorRetryTargets,
+        forceImageGeneration: forceImageGeneration === true,
         debugMode,
         secretPlotRerollMode,
       });

@@ -32,6 +32,7 @@ import {
 import { parseStoredGenerationParameters } from "../../routes/generate/generate-route-utils.js";
 import { applyTextRewriteAgentChatSettings, normalizeProseGuardianPromptTemplate } from "./prose-guardian-settings.js";
 import { applyKnowledgeAgentChatSettings } from "./knowledge-agent-settings.js";
+import { applyCustomAgentImageChatSettings } from "./custom-agent-image-settings.js";
 import { withConnectionFallbackProvider, type FallbackConnection } from "../llm/connection-fallback-provider.js";
 import type { GenerationFallbackNotifier } from "./fallback-notification.js";
 
@@ -378,6 +379,7 @@ export async function resolveAgentPipelineAgents({
     }
     settings = applyTextRewriteAgentChatSettings(cfg.type as string, settings, chatMetadata);
     settings = applyKnowledgeAgentChatSettings(cfg.type as string, settings, chatMetadata);
+    settings = applyCustomAgentImageChatSettings(cfg.type as string, settings, chatMetadata);
     if (
       cfg.type === "spotify" &&
       settings.musicProvider !== "youtube" &&

@@ -2597,6 +2597,7 @@
   "ui.chat.chatsettingsdrawer.gameSessionKeeper": "Game Session Keeper",
   "ui.chat.chatsettingsdrawer.gameVideoPrompt": "Game Video Prompt",
   "ui.chat.chatsettingsdrawer.gameWidgetsUpdated": "Game widgets updated.",
+  "ui.chat.chatsettingsdrawer.generateAnImageWithValue1Now": "Generate an image with {{value1}} now",
   "ui.chat.chatsettingsdrawer.generatedDuringGameSetupEditOrClearItHere": "Generated during game setup. Edit or clear it here; the Image Style profile remains independent.",
   "ui.chat.chatsettingsdrawer.generatedSelfies": "Generated Selfies",
   "ui.chat.chatsettingsdrawer.generateManualMp4SceneVideosFromGalleryImages": "Generate manual MP4 scene videos from gallery images.",

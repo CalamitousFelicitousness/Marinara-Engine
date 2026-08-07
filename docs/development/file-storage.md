@@ -11,12 +11,22 @@ storage/
 ├── manifest.json
 └── tables/
     ├── chats.json
-    ├── messages.json
     ├── characters.json
+    ├── messages/
+    │   ├── <encoded-chat-id>.json
+    │   └── ...
+    ├── message_swipes/
+    │   └── <encoded-chat-id>.json
     └── ...
 ```
 
 `FILE_STORAGE_DIR` can override the `storage` directory. Each table file contains a JSON array. `manifest.json` records the storage format version, save time, backend identifier, and row count for every registered table.
+
+### Sharded tables
+
+`messages` and `message_swipes` persist as **one file per chat** (storage format 3) instead of a single monolith, because those tables sit on the per-message write path: with a monolith, every saved message re-serialized and rewrote the full history of every chat. Dirty tracking runs at shard granularity, so a flush touches only the chats that changed; a shard whose row count reaches zero is deleted rather than written as an empty array. Shard filenames are percent-encoded from the chat id (with hash fallbacks for overlong or reserved names) — the encoding is a security boundary, since imported profiles can carry arbitrary ids. Filenames are containers only; rows carry their own keys.
+
+On first boot of a format-3 build, existing monoliths migrate automatically: rows are grouped per chat and written as shards, then the monolith **and its `.bak`** are renamed to `.pre-shard` — those renamed files are the automatic pre-migration backup and are never deleted by the Engine. A `.migrating` sentinel makes crash recovery decidable (monolith authoritative until the sentinel clears). If an older build later recreates a monolith beside the shards (a downgrade session), the shards win and the conflicting monolith is quarantined with a timestamped `.post-downgrade-` suffix — never merged. Orphaned child rows (a swipe whose message no longer exists) land in the `orphaned-rows` shard instead of being dropped. A manifest written by a newer storage format refuses to load.
 
 ## Runtime model
 

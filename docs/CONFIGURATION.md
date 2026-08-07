@@ -89,7 +89,9 @@ The server reads `.env` by itself, no matter how you start it. This includes run
 
 ## Restart or hot reload
 
-Marinara watches the `.env` file while it runs. When you save a change, most settings take effect within about 2 seconds, with no restart. The server writes a log line starting with `[env-watcher]` each time it applies a change.
+Marinara watches the `.env` file while it runs. When you save a change, most settings take effect almost immediately, with no restart. The server writes a log line starting with `[env-watcher]` each time it applies a change. If the file watch cannot be set up on your filesystem, the server falls back to checking the file every 30 seconds and says so in the log.
+
+One caveat: on some setups the watch starts fine but change events never arrive — typically when the file is edited from *another machine or context*, such as across a network share or from the host into a container bind mount. If your `.env` edits are not being picked up, set `MARINARA_ENV_WATCH=poll` to make the server check the file every 30 seconds instead; that sees every write. To turn the watcher off entirely, set `MARINARA_ENV_WATCH=0` (in the shell environment, or in `.env` itself before starting) — changes then require a restart. Both are advanced options; the hot-reload path is how access-control changes take effect without downtime, so leave the default unless you have a specific reason.
 
 A small group of low-level settings are locked in when the server starts. Changing them needs a full restart. These settings are:
 
@@ -97,7 +99,7 @@ A small group of low-level settings are locked in when the server starts. Changi
 - `SSL_CERT`, `SSL_KEY`
 - `DATA_DIR`, `FILE_STORAGE_DIR`
 - `ENCRYPTION_KEY`
-- `MARINARA_ENV_FILE`
+- `MARINARA_ENV_FILE`, `MARINARA_ENV_WATCH`
 - `TZ`
 - `AUTO_OPEN_BROWSER`, `AUTO_UPDATE_ENABLED`, `AUTO_CREATE_DEFAULT_CONNECTION`
 - `LOG_DISABLE_REQUEST_LOGGING`

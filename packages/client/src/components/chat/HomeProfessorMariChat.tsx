@@ -2552,7 +2552,11 @@ export function HomeProfessorMariChat({
   }, [effectiveConnectionId]);
 
   const invalidateWorkspaceData = useCallback(async () => {
-    await qc.invalidateQueries({ refetchType: "all" });
+    // Invalidation marks every query stale either way; the default 'active'
+    // refetch pulls only what is mounted now, and everything else refreshes on
+    // its next mount. refetchType:'all' here made every cached chat re-drain
+    // its full message page history on each Mari workspace change (#4703).
+    await qc.invalidateQueries();
   }, [qc]);
 
   useEffect(() => {

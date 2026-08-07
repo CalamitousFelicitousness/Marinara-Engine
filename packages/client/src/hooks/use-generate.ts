@@ -17,6 +17,7 @@ import {
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../lib/backgrounds";
 import { hasVisibleUserMessagePayload } from "../lib/chat-message-visibility";
 import { formatGenerationParameterError } from "../lib/generation-parameter-errors";
+import { createLeadingTrailingCoalescer } from "../lib/message-page-cache";
 import { sanitizeAppCss } from "../lib/theme-css";
 import {
   getRoleplayTypewriterRevealCharsPerSecond,
@@ -720,33 +721,54 @@ function preserveRecentMessageContentEditsInCache(qc: QueryClient, chatId: strin
   );
 }
 
+// #4703: an authoritative refresh re-drains every loaded page of the chat, and
+// refetchQueries defaults cancelRefetch:true — so overlapping refreshes for one
+// chat (group turns, agent batches finishing together) would each abort a
+// partially-completed drain and restart it from page 0. Folding them
+// leading+trailing keeps at most two drains per burst while still guaranteeing
+// every caller a refetch that started after its own rows were persisted.
+const coalesceMessageRefresh = createLeadingTrailingCoalescer<boolean>();
+
 async function refreshMessagesAuthoritatively(
   qc: QueryClient,
   chatId: string,
   persistedMessages: Iterable<Message> = [],
+  options: { fetchEvenIfInactive?: boolean } = {},
 ) {
   const msgKey = chatKeys.messages(chatId);
   const persisted = [...persistedMessages];
-  let refetchSucceeded = false;
+  const fetchEvenIfInactive = options.fetchEvenIfInactive === true;
 
   // Also refresh the total message count used for absolute numbering
   qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
   qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
 
-  await qc.cancelQueries({ queryKey: msgKey, exact: true });
-
-  try {
-    await qc.refetchQueries({ queryKey: msgKey, exact: true, type: "all" }, { throwOnError: true });
-    refetchSucceeded = true;
-  } catch {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await qc.refetchQueries({ queryKey: msgKey, exact: true, type: "all" }, { throwOnError: true });
-      refetchSucceeded = true;
-    } catch {
-      /* best-effort — keep any persisted messages we already have */
+  // Forced refreshes run in their own coalescing lane so a rare recovery
+  // caller is never folded into a routine run that would skip the fetch.
+  const coalesceKey = fetchEvenIfInactive ? `${chatId}:forced` : chatId;
+  const refetchSucceeded = await coalesceMessageRefresh(coalesceKey, async () => {
+    const query = qc.getQueryCache().find({ queryKey: msgKey, exact: true });
+    if (!fetchEvenIfInactive && !query?.isActive()) {
+      // #4703: nothing is rendering this chat — spend no bytes re-draining its
+      // pages now. The stale-mark set at the end of this function makes the
+      // next mount refetch authoritatively instead.
+      return false;
     }
-  }
+    await qc.cancelQueries({ queryKey: msgKey, exact: true });
+    const refetchType = fetchEvenIfInactive ? "all" : "active";
+    try {
+      await qc.refetchQueries({ queryKey: msgKey, exact: true, type: refetchType }, { throwOnError: true });
+      return true;
+    } catch {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await qc.refetchQueries({ queryKey: msgKey, exact: true, type: refetchType }, { throwOnError: true });
+        return true;
+      } catch {
+        return false; /* best-effort — keep any persisted messages we already have */
+      }
+    }
+  });
 
   if (persisted.length > 0) {
     if (refetchSucceeded) {
@@ -755,10 +777,20 @@ async function refreshMessagesAuthoritatively(
       // because later agent work can add attachments or extra fields.
       appendMissingPersistedMessages(qc, chatId, persisted);
     } else {
+      // No fresh server snapshot arrived (refetch failed or the chat is not on
+      // screen) — merge the persisted rows so the cache still converges.
       upsertPersistedMessages(qc, chatId, persisted);
     }
   }
   preserveRecentMessageContentEditsInCache(qc, chatId);
+  if (!refetchSucceeded) {
+    // Set the stale-mark LAST. Every setQueryData above dispatches a 'success'
+    // state transition that clears isInvalidated and restamps dataUpdatedAt —
+    // a mark set any earlier in this function is silently erased, and the 30s
+    // global staleTime would then suppress the next-mount refetch this path
+    // depends on to deliver server-side rows and post-save agent extras.
+    qc.invalidateQueries({ queryKey: msgKey, exact: true, refetchType: "none" });
+  }
   return refetchSucceeded;
 }
 
@@ -2854,10 +2886,17 @@ export function useGenerate() {
           const settled = await waitForServerGenerationToSettle(params.chatId, abortController.signal);
           passiveStreamSettled = settled;
           if (!abortController.signal.aborted) {
+            // Force the fetch even when the chat is off screen: this is the one
+            // caller that reads the result as a discovery signal (the durable
+            // row feeds the partial-message guard, the unread badge, and the
+            // reply notification), and the stream that died is the same one
+            // that would have delivered message_saved. Rare, and the inactive
+            // trim caps the drain for backgrounded chats.
             const recoveryRefetchSucceeded = await refreshMessagesAuthoritatively(
               qc,
               params.chatId,
               persistedMessages.values(),
+              { fetchEvenIfInactive: true },
             );
             if (recoveryRefetchSucceeded) {
               passiveRecoveryDurableMessage = latestNewMessageByRole(

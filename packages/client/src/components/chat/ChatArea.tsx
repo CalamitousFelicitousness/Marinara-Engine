@@ -54,6 +54,7 @@ import { resolveSpriteExpression } from "../../lib/sprite-expression-match";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
+import { trimInactiveMessagePageCaches } from "../../lib/message-page-cache";
 import { normalizeSpriteExpressionMap, resolveSpriteExpressionState } from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { useGameStateStore } from "../../stores/game-state.store";
@@ -758,6 +759,12 @@ export function ChatArea() {
       return trimNewestLoadedMessagePage(old, messagePageSize);
     });
   }, [activeChatId, messagePageSize, newestMessagePageLength, queryClient]);
+  // #4703: bound the page depth of chats the user has navigated away from.
+  // Their old pages re-fetch on demand via Load More; keeping them would let
+  // any later refetch of that chat re-drain its full loaded history.
+  useEffect(() => {
+    trimInactiveMessagePageCaches(queryClient, activeChatId);
+  }, [activeChatId, queryClient]);
   const { data: messageCountData } = useChatMessageCount(activeChatId);
   const totalMessageCount = messageCountData?.count ?? messages?.length ?? 0;
   const loadedMessageCount = messages?.length ?? 0;

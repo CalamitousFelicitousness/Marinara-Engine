@@ -18,6 +18,7 @@ import { useGameStateStore } from "../stores/game-state.store";
 import { useEncounterStore } from "../stores/encounter.store";
 import { useUIStore } from "../stores/ui.store";
 import { clearBrowserRuntimeCaches } from "../lib/browser-runtime";
+import { shouldRefetchMessagesOnReconnect } from "../lib/message-page-cache";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import type {
@@ -290,6 +291,12 @@ export function useChatMessages(chatId: string | null, pageSize: number = 0, ena
         : oldestLoaded.createdAt;
     },
     enabled: !!chatId && enabled,
+    // #4703: a reconnect refetch re-drains every loaded page back-to-back, so
+    // a scrolled-back chat on a flaky mobile connection re-downloads its whole
+    // loaded history per network flap. Allow it only while the cache is
+    // shallow; deep caches still resync via the stale-gated refetchOnMount,
+    // the post-generation refresh, and explicit invalidations.
+    refetchOnReconnect: (query) => shouldRefetchMessagesOnReconnect(query.state.data?.pages.length ?? 0),
   });
 }
 

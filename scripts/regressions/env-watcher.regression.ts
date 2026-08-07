@@ -17,9 +17,16 @@ import { join } from "node:path";
 const PROBE_KEY = "MARINARA_ENV_WATCHER_REGRESSION_PROBE";
 const tempDir = mkdtempSync(join(tmpdir(), "marinara-env-watcher-"));
 const envPath = join(tempDir, ".env");
+const originalEnvFile = process.env.MARINARA_ENV_FILE;
+const originalEnvWatch = process.env.MARINARA_ENV_WATCH;
 process.env.MARINARA_ENV_FILE = envPath;
 delete process.env.MARINARA_ENV_WATCH;
 delete process.env[PROBE_KEY];
+
+function restoreEnv(key: string, original: string | undefined) {
+  if (original === undefined) delete process.env[key];
+  else process.env[key] = original;
+}
 
 const { ENV_WATCH_DEBOUNCE_MS, ENV_WATCH_FALLBACK_POLL_MS, isEnvWatchDisabled, resolveEnvWatchMode, startEnvWatcher } =
   await import("../../packages/server/src/config/env-watcher.js");
@@ -63,19 +70,20 @@ try {
   // ── Live cycle on the real watcher (env file does not exist yet) ──
   const watcher = startEnvWatcher();
   try {
-    await sleep(100);
+    await sleep(ENV_WATCH_DEBOUNCE_MS);
 
     assert.equal(existsSync(envPath), false, "precondition: the env file must NOT exist before the creation test");
     writeFileSync(envPath, `${PROBE_KEY}=alpha\n`);
     const createLatency = await waitFor(() => process.env[PROBE_KEY] === "alpha", 10_000);
     assert.notEqual(createLatency, -1, "a created .env is picked up");
-    // Event-driven means debounce + a little slack. The ceiling is the OLD 2s
-    // poll interval and sits far below the waitFor budget above, so it can
-    // actually fire: a pass slower than this means events are not driving the
-    // pickup on a platform where fs.watch works.
+    // Event-driven means debounce + slack. The ceiling scales with the
+    // debounce constant, carries CI headroom, and sits far below both the
+    // waitFor budget above and the 30s fallback poll — so it can actually
+    // fire, and a pass still proves events (not polling) drove the pickup.
+    const eventLatencyCeilingMs = Math.max(2_000, ENV_WATCH_DEBOUNCE_MS * 20);
     assert.ok(
-      createLatency < 2_000,
-      `pickup latency ${createLatency}ms is not event-driven (old 2s poll territory; fallback is ${ENV_WATCH_FALLBACK_POLL_MS}ms)`,
+      createLatency < eventLatencyCeilingMs,
+      `pickup latency ${createLatency}ms is not event-driven (ceiling ${eventLatencyCeilingMs}ms; fallback is ${ENV_WATCH_FALLBACK_POLL_MS}ms)`,
     );
 
     writeFileSync(envPath, `${PROBE_KEY}=beta\n`);
@@ -124,12 +132,13 @@ try {
     assert.equal(process.env[PROBE_KEY], "epsilon", "manual reload applied the value");
   } finally {
     disabled.stop();
-    delete process.env.MARINARA_ENV_WATCH;
+    restoreEnv("MARINARA_ENV_WATCH", originalEnvWatch);
   }
 
   console.info("Env watcher regressions passed.");
 } finally {
   delete process.env[PROBE_KEY];
-  delete process.env.MARINARA_ENV_FILE;
+  restoreEnv("MARINARA_ENV_FILE", originalEnvFile);
+  restoreEnv("MARINARA_ENV_WATCH", originalEnvWatch);
   rmSync(tempDir, { recursive: true, force: true });
 }

@@ -253,11 +253,26 @@ export function startEnvWatcher(): EnvWatcherHandle {
   let debounceTimer: NodeJS.Timeout | null = null;
   let usingFallback = false;
 
+  // The debounce resets on every event, so a continuously-busy directory
+  // (platforms that omit the filename report every neighbor's churn) could
+  // starve the stat indefinitely. Bound the deferral: after 4 debounce
+  // windows of uninterrupted events, stat anyway.
+  let firstEventAt = 0;
   const scheduleProcess = () => {
     if (stopped) return;
+    const now = Date.now();
+    if (firstEventAt === 0) firstEventAt = now;
+    if (now - firstEventAt >= ENV_WATCH_DEBOUNCE_MS * 4) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      firstEventAt = 0;
+      statAndProcess();
+      return;
+    }
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
+      firstEventAt = 0;
       statAndProcess();
     }, ENV_WATCH_DEBOUNCE_MS);
     debounceTimer.unref?.();
@@ -284,6 +299,14 @@ export function startEnvWatcher(): EnvWatcherHandle {
           usingFallback = true;
           startPollingFallback(err);
         }
+      });
+      // Some platforms tear the watch down with a bare 'close' and no
+      // 'error'. Our own stop()/error paths are excluded by the guards.
+      dirWatcher.on("close", () => {
+        if (stopped || usingFallback) return;
+        dirWatcher = null;
+        usingFallback = true;
+        startPollingFallback(new Error("directory watcher closed unexpectedly"));
       });
     } catch (err) {
       usingFallback = true;

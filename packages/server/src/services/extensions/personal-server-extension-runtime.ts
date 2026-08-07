@@ -251,14 +251,17 @@ export class PersonalServerExtensionRuntime {
       }
       return;
     }
-    // Close never fired (unkillable/zombie child). Run the SAME idempotent
-    // finalizer the close handler uses — it stops the poll chain, closes the
-    // handle, and cleans up exactly once; skipping the drain, since nothing
-    // more can arrive and an in-flight poll may be wedged with the child. If
-    // close does fire later, the handler's own call becomes a no-op. The
-    // finalizer never rejects, so a failure here cannot abort a stop-all
-    // loop over the remaining extensions.
-    await extension.finalize?.({ drain: false });
+    // Close never fired within the bounds. Run the SAME idempotent finalizer
+    // the close handler uses — it stops the poll chain, closes the handle,
+    // and cleans up exactly once; if close does fire later, the handler's own
+    // call becomes a no-op. Re-check exit state at this instant: the child
+    // may have exited after the waits registered (close delayed by stdio), in
+    // which case its final output is drainable and must not be dropped. Only
+    // a true zombie (still running) skips the drain — an in-flight poll may
+    // be wedged with it. The finalizer never rejects, so a failure here
+    // cannot abort a stop-all loop over the remaining extensions.
+    const exitedLate = extension.child.exitCode !== null || extension.child.signalCode !== null;
+    await extension.finalize?.({ drain: exitedLate });
   }
 
   private async handleStorageMessage(

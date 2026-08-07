@@ -301,11 +301,16 @@ export function useChatMessages(chatId: string | null, pageSize: number = 0, ena
 }
 
 /**
- * Last few messages of a chat, for read-only previews (sidebar hover peek).
+ * Newest messages of a chat as one flat window, for read-only consumers
+ * (sidebar hover peek, the Director secret-plot panel).
  *
  * Deliberately does NOT share `chatKeys.messages` — that key ignores page size, so writing
  * a short slice into it would leave ChatArea's paginated view starting from a truncated
- * cache the next time that chat is opened.
+ * cache the next time that chat is opened. The reverse direction is just as important
+ * (#4721): merely OBSERVING the shared key with a different pageSize overwrites the
+ * transcript query's option closures (queryFn limit, getNextPageParam), because React
+ * Query keeps one options set per key and the last observer wins. Read-only windows
+ * belong here, keyed by their limit.
  */
 export function useChatMessagePeek(chatId: string | null, limit = 4, enabled = false) {
   return useQuery({
@@ -1046,6 +1051,9 @@ export function useCreateMessage(chatId: string | null) {
     onSuccess: () => {
       if (chatId) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+        // Peek windows (sidebar hover, secret-plot panel) cache the same rows
+        // under their own limit-keyed queries — keep them live too (#4721).
+        qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
@@ -1061,6 +1069,7 @@ export function useDeleteMessage(chatId: string | null) {
     onSuccess: () => {
       if (chatId) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+        qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
@@ -1076,6 +1085,7 @@ export function useDeleteMessages(chatId: string | null) {
     onSuccess: () => {
       if (chatId) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+        qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
@@ -1149,6 +1159,7 @@ export function useUpdateMessage(chatId: string | null) {
         const { streamingChatId, isStreaming } = useChatStore.getState();
         if (isStreaming && streamingChatId === chatId) return;
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+        qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
       }
     },

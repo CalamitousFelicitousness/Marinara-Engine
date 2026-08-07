@@ -5961,4 +5961,36 @@ try {
   assert.equal(hasRoleplayDmThreadMarkers({}), false);
 }
 
+{
+  // #4721: the chat transcript's infinite query keys ONLY by chat id — its
+  // pageSize lives in the option closures, so ANY second observer with a
+  // different pageSize hijacks the transcript's queryFn/getNextPageParam
+  // (last observer wins in React Query). The Chat Settings drawer's
+  // secret-plot reader did exactly that with a hardcoded 100: while the
+  // drawer was open, transcript refetches ignored the user's
+  // messages-per-page and "Load More" vanished on a mis-evaluated
+  // hasNextPage. Read-only newest-N windows must go through the peek hook,
+  // which keys by limit.
+  const drawerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    drawerSource,
+    /useChatMessages\(/u,
+    "Chat Settings must not observe the shared chatKeys.messages infinite query (#4721)",
+  );
+  assert.match(
+    drawerSource,
+    /useChatMessagePeek\(\s*chat\.id,\s*100,/u,
+    "The secret-plot reader must fetch its newest-100 window through the limit-keyed peek hook",
+  );
+  const useChatsSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/hooks/use-chats.ts"), "utf8");
+  assert.match(
+    useChatsSource,
+    /queryKey: \[\.\.\.chatKeys\.messagePeek\(chatId \?\? ""\), limit\]/u,
+    "The peek hook's query key must include its limit so different windows never share options",
+  );
+}
+
 console.info("Open-issue regressions passed.");

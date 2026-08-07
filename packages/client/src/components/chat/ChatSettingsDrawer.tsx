@@ -128,7 +128,7 @@ import {
   useChats,
   useConnectChat,
   useDisconnectChat,
-  useChatMessages,
+  useChatMessagePeek,
   useChatMemories,
   useDeleteChatMemory,
   useClearChatMemories,
@@ -1647,14 +1647,20 @@ export function ChatSettingsDrawer({
     8,
     100,
   );
-  const secretPlotMessagesQuery = useChatMessages(
+  // #4721: this reader must NOT observe the shared chatKeys.messages infinite
+  // query — pageSize lives in that query's option closures (not its key), so a
+  // second observer with pageSize 100 hijacks the transcript's queryFn and
+  // getNextPageParam: refetches fetch 100 rows regardless of the user's
+  // messages-per-page and hasNextPage mis-evaluates, hiding "Load More". The
+  // peek hook keys by limit and returns the same newest-N window.
+  const secretPlotMessagesQuery = useChatMessagePeek(
     chat.id,
     100,
     open && directorActive && supportsNarrativeDirectorSecretPlot && narrativeDirectorSecretPlotEnabled,
   );
   const secretPlotMessages = useMemo<Message[]>(
-    () => secretPlotMessagesQuery.data?.pages.flat() ?? [],
-    [secretPlotMessagesQuery.data?.pages],
+    () => secretPlotMessagesQuery.data ?? [],
+    [secretPlotMessagesQuery.data],
   );
   const illustratorIncludeCharacterAppearance =
     typeof metadata.illustratorIncludeCharacterAppearance === "boolean"

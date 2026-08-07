@@ -10,6 +10,7 @@
 //     two runs per burst, every caller served by a run started at or after its
 //     own call).
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import {
   chatIdOfMessagesQueryKey,
   createLeadingTrailingCoalescer,
@@ -129,7 +130,10 @@ assert.equal(
 // half of the contract against the installed @tanstack/query-core (resolved
 // through the client workspace's react-query, which re-exports it).
 {
-  const { QueryClient } = await import("../../packages/client/node_modules/@tanstack/react-query/build/modern/index.js");
+  // Resolve react-query through the client workspace's own dependency graph
+  // instead of hardcoding a node_modules build path.
+  const clientRequire = createRequire(new URL("../../packages/client/package.json", import.meta.url));
+  const { QueryClient } = clientRequire("@tanstack/react-query") as typeof import("@tanstack/react-query");
   const qc = new QueryClient();
   const seed = (chatId: string, pageCount: number) => {
     const key = ["chats", "messages", chatId];

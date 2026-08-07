@@ -756,12 +756,22 @@ async function refreshMessagesAuthoritatively(
     }
     await qc.cancelQueries({ queryKey: msgKey, exact: true });
     const refetchType = fetchEvenIfInactive ? "all" : "active";
+    // The chat can unmount across any await above/below: refetchQueries with
+    // type 'active' then matches nothing and resolves as a false success,
+    // which would skip the stale-mark this function sets for skipped runs.
+    // Re-check right before each fetch attempt; a refetch that STARTED against
+    // an active query completes into the cache even if the observer leaves
+    // mid-fetch, so a post-fetch re-check would misreport real successes.
+    const stillFetchable = () =>
+      fetchEvenIfInactive || qc.getQueryCache().find({ queryKey: msgKey, exact: true })?.isActive() === true;
+    if (!stillFetchable()) return false;
     try {
       await qc.refetchQueries({ queryKey: msgKey, exact: true, type: refetchType }, { throwOnError: true });
       return true;
     } catch {
       try {
         await new Promise((resolve) => setTimeout(resolve, 250));
+        if (!stillFetchable()) return false;
         await qc.refetchQueries({ queryKey: msgKey, exact: true, type: refetchType }, { throwOnError: true });
         return true;
       } catch {

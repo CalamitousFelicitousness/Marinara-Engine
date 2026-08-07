@@ -350,6 +350,10 @@ export class PersonalServerExtensionRuntime {
         try {
           const outputStats = await outputHandle.stat();
           if (outputStats.size > 64 * 1024 * 1024) {
+            // expectedStop before every host-initiated kill: the close handler
+            // must not overwrite the specific error with generic exit
+            // diagnostics.
+            active.expectedStop = true;
             fail("Extension protocol output exceeded its lifetime quota");
             child.kill("SIGKILL");
             return;
@@ -370,6 +374,7 @@ export class PersonalServerExtensionRuntime {
           );
           outputBuffer = extracted.rest;
           if (extracted.oversized) {
+            active.expectedStop = true;
             fail("Extension protocol message exceeded the size limit");
             child.kill("SIGKILL");
             return;
@@ -379,6 +384,7 @@ export class PersonalServerExtensionRuntime {
             try {
               message = JSON.parse(line) as RunnerMessage;
             } catch {
+              active.expectedStop = true;
               fail("Extension emitted an invalid sandbox protocol message");
               child.kill("SIGKILL");
               return;
@@ -389,6 +395,7 @@ export class PersonalServerExtensionRuntime {
             }
             messageCount += 1;
             if (messageCount > 300) {
+              active.expectedStop = true;
               fail("Extension exceeded the sandbox message limit");
               child.kill("SIGKILL");
               return;
@@ -413,6 +420,7 @@ export class PersonalServerExtensionRuntime {
             }
           }
         } catch (error) {
+          active.expectedStop = true;
           fail(describeError(error));
           child.kill("SIGKILL");
         } finally {

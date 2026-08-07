@@ -98,6 +98,184 @@ export async function checkTargetStorageFormat({
   return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
 }
 
+// Kept in sync with SHARDED_TABLES in packages/server/src/db/file-backed-store.ts
+// (this script must run offline, so it cannot import server code).
+const SHARDED_TABLES = ["messages", "message_swipes"];
+const UNSHARD_SENTINEL = ".unshard-in-progress";
+
+async function pathExists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Shard data files: primaries (*.json) plus .bak-only shards whose primary vanished. */
+async function listShardSources(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+  const names = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+  const primaries = names.filter((name) => name.endsWith(".json"));
+  const bakOnly = names.filter(
+    (name) => name.endsWith(".json.bak") && !primaries.includes(name.slice(0, -".bak".length)),
+  );
+  return [...primaries, ...bakOnly];
+}
+
+async function readShardRowsOrThrow(dir, name) {
+  const path = resolve(dir, name);
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    const bak = `${path}.bak`;
+    if (name.endsWith(".json") && (await pathExists(bak))) {
+      try {
+        return JSON.parse(await readFile(bak, "utf8"));
+      } catch {
+        /* fall through to the error below */
+      }
+    }
+    throw new Error(
+      `Cannot parse shard file ${path} (or its .bak). Fix or remove that file, then re-run unshard. Nothing has been changed.`,
+    );
+  }
+}
+
+/**
+ * Downgrade escape hatch (#4708): rebuilds the pre-sharding monolith layout
+ * from the per-chat shard files so a format-2 build can read the data again.
+ * Run it with the server STOPPED — a running sharded server re-shards on its
+ * next flush. Shard directories are renamed to `.post-unshard-<timestamp>`
+ * (kept, never deleted), and the manifest is rewritten as format 2 so the
+ * launcher guard stops refusing the older target.
+ *
+ * All reads happen before any write; an unreadable shard aborts the run with
+ * the directory untouched. A sentinel makes a crashed run resumable: with the
+ * sentinel present, an existing monolith is a completed partial result (the
+ * tmp+rename write is atomic), not the pre-shard-build-forked-history
+ * ambiguity that otherwise aborts the run.
+ */
+export async function unshardLauncherStorage({ root = repositoryRoot, env = process.env, now = new Date() } = {}) {
+  const storageDir = await resolveLauncherStorageDir({ root, env });
+  const tablesDir = resolve(storageDir, "tables");
+  const unshardSentinel = resolve(tablesDir, UNSHARD_SENTINEL);
+  const resumingCrashedUnshard = await pathExists(unshardSentinel);
+  const warnings = [];
+  const plans = [];
+
+  for (const table of SHARDED_TABLES) {
+    const monolithPath = resolve(tablesDir, `${table}.json`);
+    const shardDir = resolve(tablesDir, table);
+    const monolithExists = await pathExists(monolithPath);
+    const sources = await listShardSources(shardDir);
+    const hasShardData = !!sources && sources.length > 0;
+    const migrationCrashed = hasShardData && (await pathExists(resolve(shardDir, ".migrating")));
+
+    if (monolithExists && hasShardData && !migrationCrashed && !resumingCrashedUnshard) {
+      throw new Error(
+        `Table "${table}" has BOTH a monolith and shard files, and neither is marked in-progress. ` +
+          `An older version may have written new history into the monolith after the shards were created; ` +
+          `merging the two automatically would guess at ordering. Start the current version once so the ` +
+          `store reconciles them, then re-run unshard. Nothing has been changed.`,
+      );
+    }
+    if (monolithExists) {
+      // Authoritative monolith (crashed migration, or a crashed unshard's
+      // completed atomic write) — just move any shard remnants aside.
+      plans.push({ table, mode: "monolith-kept", monolithPath, shardDir: sources ? shardDir : null });
+      continue;
+    }
+    if (!hasShardData) {
+      plans.push({ table, mode: "empty", monolithPath, shardDir: null });
+      continue;
+    }
+
+    const rows = [];
+    for (const name of sources) {
+      const parsed = await readShardRowsOrThrow(shardDir, name);
+      const list = Array.isArray(parsed) ? parsed : [];
+      const records = list.filter((row) => !!row && typeof row === "object" && !Array.isArray(row));
+      if (records.length !== list.length) {
+        warnings.push(
+          `${table}/${name}: skipped ${list.length - records.length} malformed row(s); the original file stays in the renamed shard directory`,
+        );
+      }
+      rows.push(...records);
+    }
+    // Mirror the store's load normalization: (createdAt, id) order, then
+    // keep-first dedup on primary key.
+    rows.sort(
+      (a, b) =>
+        String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
+        String(a.id ?? "").localeCompare(String(b.id ?? "")),
+    );
+    const seenIds = new Set();
+    const deduped = [];
+    for (const row of rows) {
+      const id = typeof row.id === "string" ? row.id : null;
+      if (id && seenIds.has(id)) continue;
+      if (id) seenIds.add(id);
+      deduped.push(row);
+    }
+    if (deduped.length !== rows.length) {
+      warnings.push(`${table}: dropped ${rows.length - deduped.length} duplicate row id(s) found across shards`);
+    }
+    plans.push({ table, mode: "rebuild", monolithPath, shardDir, rows: deduped });
+  }
+
+  // Every read succeeded — now write.
+  await mkdir(tablesDir, { recursive: true });
+  await writeFile(unshardSentinel, now.toISOString(), "utf8");
+  const timestamp = now.toISOString().replaceAll(":", "-").replace(".", "-");
+  const results = [];
+  for (const plan of plans) {
+    if (plan.mode === "rebuild") {
+      const tmp = `${plan.monolithPath}.unshard-tmp`;
+      await writeFile(tmp, JSON.stringify(plan.rows), "utf8");
+      await rename(tmp, plan.monolithPath);
+    }
+    if (plan.shardDir && (await pathExists(plan.shardDir))) {
+      await rename(plan.shardDir, `${plan.shardDir}.post-unshard-${timestamp}`);
+    }
+    results.push(
+      plan.mode === "rebuild"
+        ? `${plan.table}: rebuilt the monolith from ${plan.rows.length} row(s); shard files kept as ${plan.table}.post-unshard-${timestamp}`
+        : plan.mode === "monolith-kept"
+          ? `${plan.table}: kept the existing monolith${plan.shardDir ? `; shard remnants moved to ${plan.table}.post-unshard-${timestamp}` : ""}`
+          : `${plan.table}: no data to convert`,
+    );
+  }
+
+  // Rewrite the manifest as format 2 — the launcher guard reads it, and a
+  // leftover version 3 would keep refusing the downgrade unshard exists to
+  // allow. (Format-2 builds themselves never read the version.)
+  const manifestFile = resolve(storageDir, "manifest.json");
+  try {
+    const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+    if (manifest && typeof manifest === "object" && !Array.isArray(manifest)) {
+      manifest.version = 2;
+      manifest.savedAt = now.toISOString();
+      delete manifest.shards;
+      const serialized = JSON.stringify(manifest, null, 2);
+      await writeFile(manifestFile, serialized, "utf8");
+      await writeFile(`${manifestFile}.bak`, serialized, "utf8");
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      warnings.push(`could not rewrite ${manifestFile} (${error instanceof Error ? error.message : error})`);
+    }
+  }
+  await rm(unshardSentinel, { force: true });
+  return { storageDir, results, warnings };
+}
+
 export async function resolveLauncherDataDir({
   root = repositoryRoot,
   env = process.env,
@@ -238,7 +416,15 @@ async function main() {
     return;
   }
 
-  throw new Error("Usage: node scripts/protect-launcher-data.mjs <snapshot|restore-if-missing|check-target <ref>>");
+  if (command === "unshard") {
+    const result = await unshardLauncherStorage();
+    for (const warning of result.warnings) console.warn(`  [WARN] ${warning}`);
+    for (const line of result.results) console.log(`  [OK] ${line}`);
+    console.log(`  [OK] Storage at ${result.storageDir} is back on the monolith layout (format 2); older versions can read it again.`);
+    return;
+  }
+
+  throw new Error("Usage: node scripts/protect-launcher-data.mjs <snapshot|restore-if-missing|check-target <ref>|unshard>");
 }
 
 // pathToFileURL handles Windows drive letters; new URL(path, "file:") parses

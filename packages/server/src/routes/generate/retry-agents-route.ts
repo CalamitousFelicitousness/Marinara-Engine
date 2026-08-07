@@ -4192,10 +4192,17 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           "No runnable agents were found for this retry. Add tracker agents to this chat or check their connection settings.",
         );
       }
-      // Snapshot force (#4682) is a single-agent contract: the flag applies to
-      // every image_prompt result in the batch, so reject multi-agent forced
+      // Snapshot force (#4682) is a single-custom-image-agent contract: the flag
+      // applies to every image_prompt result in the batch and its directive only
+      // makes sense for agents that can emit one, so reject ineligible forced
       // requests up front instead of guarding each downstream effect site.
-      const forceScopeError = forceImageGenerationScopeError(forceImageGeneration === true, resolvedAgents.length);
+      const forceScopeError = forceImageGenerationScopeError(
+        forceImageGeneration === true,
+        resolvedAgents.map((entry) => ({
+          isCustomAgent: entry.resolved.isCustomAgent,
+          canEmitImagePrompt: customAgentHasCapability(entry.resolved.settings, "trigger_image_generation"),
+        })),
+      );
       if (forceScopeError) {
         logger.warn(
           "[retry-agents] Rejected forceImageGeneration: %d agents resolved for chatId=%s agentTypes=%j",

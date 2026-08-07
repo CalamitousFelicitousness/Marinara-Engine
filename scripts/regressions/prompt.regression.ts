@@ -9192,12 +9192,21 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "forced image snapshots are limited to single-agent retries",
+    name: "forced image snapshots are limited to a single image-capable custom agent",
     run() {
-      assert.equal(forceImageGenerationScopeError(false, 3), null);
-      assert.equal(forceImageGenerationScopeError(true, 1), null);
-      assert.ok(forceImageGenerationScopeError(true, 2));
-      assert.ok(forceImageGenerationScopeError(true, 0));
+      const imageAgent = { isCustomAgent: true, canEmitImagePrompt: true };
+      const nonImageAgent = { isCustomAgent: true, canEmitImagePrompt: false };
+      const builtIn = { isCustomAgent: false, canEmitImagePrompt: false };
+
+      assert.equal(forceImageGenerationScopeError(false, [imageAgent, builtIn, nonImageAgent]), null);
+      assert.equal(forceImageGenerationScopeError(true, [imageAgent]), null);
+      // Multi-agent and empty forced batches are rejected.
+      assert.match(forceImageGenerationScopeError(true, [imageAgent, imageAgent]) ?? "", /exactly one agent/);
+      assert.match(forceImageGenerationScopeError(true, []) ?? "", /exactly one agent/);
+      // Built-in targets are rejected — the Illustrator has its own manual path.
+      assert.match(forceImageGenerationScopeError(true, [builtIn]) ?? "", /custom image agents/);
+      // Custom agents without the Image generation ability are rejected.
+      assert.match(forceImageGenerationScopeError(true, [nonImageAgent]) ?? "", /Image generation ability/);
     },
   },
   {

@@ -19,19 +19,32 @@ function readCustomAgentImageSettings(
 }
 
 /**
- * Snapshot force requests (#4682) must resolve to exactly one agent: the force
- * flag is applied per image_prompt result, so a multi-agent forced batch would
- * force generation, skip prompt review, and emit decline errors for unrelated
- * agents. The shipped camera button always targets one agent; this enforces
- * that contract for hand-crafted requests too. Returns the rejection message,
- * or null when the request is acceptable.
+ * Snapshot force requests (#4682) must resolve to exactly one CUSTOM agent
+ * with the Image generation ability: the force flag is applied per
+ * image_prompt result (so a multi-agent forced batch would force generation,
+ * skip prompt review, and emit decline errors for unrelated agents), the
+ * manual-request directive is meaningless for agents whose result schema has
+ * no shouldGenerate field, and the vanilla Illustrator has its own manual
+ * path (illustratorRetryTargets). The shipped camera button already enforces
+ * all of this; this enforces it for hand-crafted requests too. Returns the
+ * rejection message, or null when the request is acceptable.
  */
 export function forceImageGenerationScopeError(
   forceImageGeneration: boolean,
-  resolvedAgentCount: number,
+  targets: Array<{ isCustomAgent: boolean; canEmitImagePrompt: boolean }>,
 ): string | null {
-  if (!forceImageGeneration || resolvedAgentCount === 1) return null;
-  return "Image snapshot requests target exactly one agent. Use the camera button on a single agent's card in Chat Settings.";
+  if (!forceImageGeneration) return null;
+  if (targets.length !== 1) {
+    return "Image snapshot requests target exactly one agent. Use the camera button on a single agent's card in Chat Settings.";
+  }
+  const target = targets[0]!;
+  if (!target.isCustomAgent) {
+    return "Image snapshots only apply to custom image agents. Built-in agents like the Illustrator have their own manual controls.";
+  }
+  if (!target.canEmitImagePrompt) {
+    return "Image snapshots require an agent with the Image generation ability. Enable it in the agent's settings first.";
+  }
+  return null;
 }
 
 /**

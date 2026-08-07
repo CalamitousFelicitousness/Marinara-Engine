@@ -6029,12 +6029,22 @@ try {
     /setCustomAgentImageSettingsDraft\(\(current\) => \(\{[\s\S]*current\?\.chatId === chat\.id \? current\.patch : \{\}[\s\S]*\[agentId\]: hasAgentSettings \? agentSettings : null/u,
     "Rapid custom-agent connection and style changes must merge into one visible local draft",
   );
+  assert.match(
+    imageSettingUpdateSource,
+    /if \(removingAgentImageSettingsRef\.current\.has\(agentId\)\) return;/u,
+    "Selector changes for an agent being removed must not enqueue another full-map write",
+  );
   const toggleAgentSource =
     /const toggleAgent = async[\s\S]*?\n  const removeAgentFromMenu/u.exec(drawerSource)?.[0] ?? "";
   assert.match(
     toggleAgentSource,
     /await flushPendingCustomAgentImageSettings\(\)[\s\S]*await customAgentImageSettingsWriteQueueRef\.current\.waitForIdle\(\)[\s\S]*const latestImageSettings = readLatestCustomAgentImageSettings\(\)[\s\S]*delete next\[agentId\]/u,
     "Removing an agent must drain queued image writes before deleting that agent's override",
+  );
+  assert.match(
+    toggleAgentSource,
+    /removingAgentImageSettingsRef\.current\.add\(agentId\)[\s\S]*customAgentImageSettingsWriteQueueRef\.current\.enqueue\(saveAgentSelection\)[\s\S]*finally \{[\s\S]*removingAgentImageSettingsRef\.current\.delete\(agentId\)/u,
+    "Agent removal must be terminal in the image-settings queue and unblock the selector afterward",
   );
 
   const serializedWrites = createSerializedMutationQueue();
@@ -6048,14 +6058,21 @@ try {
     await firstWriteGate;
     writeOrder.push("first:end");
   });
-  const secondWrite = serializedWrites.enqueue(async () => {
-    writeOrder.push("second");
+  const removalWrite = serializedWrites.enqueue(async () => {
+    writeOrder.push("removal");
   });
+  const removingAgentIds = new Set(["image-agent"]);
+  const blockedSelectorWrite = removingAgentIds.has("image-agent")
+    ? null
+    : serializedWrites.enqueue(async () => {
+        writeOrder.push("stale-selector-write");
+      });
+  assert.equal(blockedSelectorWrite, null, "A selector event during removal must not enqueue a stale map");
   await Promise.resolve();
   assert.deepEqual(writeOrder, ["first:start"], "A delayed older metadata write must hold newer writes in order");
   releaseFirstWrite();
-  await Promise.all([firstWrite, secondWrite, serializedWrites.waitForIdle()]);
-  assert.deepEqual(writeOrder, ["first:start", "first:end", "second"]);
+  await Promise.all([firstWrite, removalWrite, serializedWrites.waitForIdle()]);
+  assert.deepEqual(writeOrder, ["first:start", "first:end", "removal"]);
   const trackerModelSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/features/tracker-panel/hooks/use-tracker-panel-model.ts"),
     "utf8",

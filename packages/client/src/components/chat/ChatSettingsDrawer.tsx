@@ -805,6 +805,7 @@ export function ChatSettingsDrawer({
   const pendingCustomAgentImageSettingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customAgentImageSettingsRevisionRef = useRef(0);
   const customAgentImageSettingsWriteQueueRef = useRef(createSerializedMutationQueue());
+  const removingAgentImageSettingsRef = useRef(new Set<string>());
   const [customAgentImageSettingsDraft, setCustomAgentImageSettingsDraft] = useState<{
     chatId: string;
     revision: number;
@@ -2816,40 +2817,45 @@ export function ChatSettingsDrawer({
             return next;
           })()
         : null;
-    if (isRemoving) {
-      do {
-        await flushPendingCustomAgentImageSettings().catch(() => undefined);
-        await customAgentImageSettingsWriteQueueRef.current.waitForIdle();
-      } while (pendingCustomAgentImageSettingsRef.current?.chatId === chat.id);
-    }
-    const latestImageSettings = readLatestCustomAgentImageSettings();
-    const nextImageSettings =
-      isRemoving && latestImageSettings[agentId]
-        ? (() => {
-            const next = { ...latestImageSettings };
-            delete next[agentId];
-            return next;
-          })()
-        : null;
     let metadataSaved = false;
+    if (isRemoving) removingAgentImageSettingsRef.current.add(agentId);
     try {
-      await updateMeta.mutateAsync(
-        {
-          id: chat.id,
-          activeAgentIds: current,
-          ...(nextPromptTemplateSelections ? { agentPromptTemplateIds: nextPromptTemplateSelections } : {}),
-          ...(nextImageSettings ? { customAgentImageSettings: nextImageSettings } : {}),
-        },
-        {
-          onSuccess: async () => {
-            metadataSaved = true;
-            // When removing an agent that stores persistent memory, clean it up after metadata is saved.
-            if (isRemoving && agentId === "director") {
-              await api.delete(`/agents/memory/${agentId}/${chat.id}`);
-            }
+      if (isRemoving) {
+        do {
+          await flushPendingCustomAgentImageSettings().catch(() => undefined);
+          await customAgentImageSettingsWriteQueueRef.current.waitForIdle();
+        } while (pendingCustomAgentImageSettingsRef.current?.chatId === chat.id);
+      }
+      const latestImageSettings = readLatestCustomAgentImageSettings();
+      const nextImageSettings =
+        isRemoving && latestImageSettings[agentId]
+          ? (() => {
+              const next = { ...latestImageSettings };
+              delete next[agentId];
+              return next;
+            })()
+          : null;
+      const saveAgentSelection = async () => {
+        await updateMeta.mutateAsync(
+          {
+            id: chat.id,
+            activeAgentIds: current,
+            ...(nextPromptTemplateSelections ? { agentPromptTemplateIds: nextPromptTemplateSelections } : {}),
+            ...(nextImageSettings ? { customAgentImageSettings: nextImageSettings } : {}),
           },
-        },
-      );
+          {
+            onSuccess: async () => {
+              metadataSaved = true;
+              // When removing an agent that stores persistent memory, clean it up after metadata is saved.
+              if (isRemoving && agentId === "director") {
+                await api.delete(`/agents/memory/${agentId}/${chat.id}`);
+              }
+            },
+          },
+        );
+      };
+      if (isRemoving) await customAgentImageSettingsWriteQueueRef.current.enqueue(saveAgentSelection);
+      else await saveAgentSelection();
     } catch (error) {
       if (metadataSaved && isRemoving && agentId === "director") {
         const rollbackIds = Array.from(new Set([...readLatestActiveAgentIds(), agentId]));
@@ -2859,6 +2865,8 @@ export function ChatSettingsDrawer({
         title: isRemoving ? "Couldn't Remove Agent" : "Couldn't Add Agent",
         message: error instanceof Error ? error.message : "The agent list could not be updated. Please try again.",
       });
+    } finally {
+      if (isRemoving) removingAgentImageSettingsRef.current.delete(agentId);
     }
   };
 
@@ -2964,6 +2972,7 @@ export function ChatSettingsDrawer({
   );
   const updateCustomAgentImageSetting = useCallback(
     (agentId: string, field: "imageConnectionId" | "styleProfileId", value: string) => {
+      if (removingAgentImageSettingsRef.current.has(agentId)) return;
       const pending = pendingCustomAgentImageSettingsRef.current;
       if (pending && pending.chatId !== chat.id) {
         void flushPendingCustomAgentImageSettings().catch(() => undefined);

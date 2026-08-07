@@ -1071,7 +1071,15 @@ export function createChatsStorage(db: DB) {
             const swipePatch: Record<string, unknown> = { content };
             if (clearCommandContent) {
               const swipeExtra = parseExtraRecord(activeSwipe.extra);
-              swipePatch.extra = JSON.stringify({ ...swipeExtra, conversationCommandContent: null });
+              // Clear only a raw copy this swipe itself carries, and never a
+              // command-only carrier's.
+              if (
+                typeof swipeExtra.conversationCommandContent === "string" &&
+                swipeExtra.conversationCommandContent.trim() !== "" &&
+                swipeExtra.commandOnly !== true
+              ) {
+                swipePatch.extra = JSON.stringify({ ...swipeExtra, conversationCommandContent: null });
+              }
             }
             await db.update(messageSwipes).set(swipePatch).where(eq(messageSwipes.id, activeSwipe.id));
           }

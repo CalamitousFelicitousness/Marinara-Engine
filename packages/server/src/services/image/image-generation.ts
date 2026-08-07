@@ -139,6 +139,12 @@ export interface ImageGenRequest {
     imageEndpointId?: string;
     comfyWorkflow?: string;
     imageDefaults?: ImageGenerationDefaultsProfile | null;
+    imageGenerationSource?: string;
+    imageService?: string;
+    /** Prompt compiled for this fallback connection's provider and defaults. */
+    prompt?: string;
+    /** `null` explicitly removes the primary connection's negative prompt. */
+    negativePrompt?: string | null;
   };
 }
 
@@ -149,6 +155,9 @@ export interface ImageGenResult {
   mimeType: string;
   /** File extension without dot */
   ext: string;
+  /** The provider-specific prompt used when a fallback connection rendered the image. */
+  effectivePrompt?: string;
+  effectiveNegativePrompt?: string;
   /** Present when a configured fallback connection produced the image. */
   effectiveConnection?: {
     connectionId: string;
@@ -348,6 +357,9 @@ export async function generateImage(
       ...request,
       fallback: undefined,
       admissionMode: fallbackMode,
+      prompt: fallback.prompt ?? request.prompt,
+      negativePrompt:
+        fallback.negativePrompt === null ? undefined : (fallback.negativePrompt ?? request.negativePrompt),
       model: fallback.model,
       imageEndpointId: fallback.imageEndpointId,
       comfyWorkflow: fallback.comfyWorkflow,
@@ -363,6 +375,10 @@ export async function generateImage(
         provider: fallback.provider,
         model: fallback.model,
       },
+      effectivePrompt: result.effectivePrompt ?? fallback.prompt ?? request.prompt,
+      effectiveNegativePrompt:
+        result.effectiveNegativePrompt ??
+        (fallback.negativePrompt === null ? undefined : (fallback.negativePrompt ?? request.negativePrompt)),
     };
   } finally {
     await settle(outcome);
@@ -1851,6 +1867,10 @@ export function resolveNovelAiRequestSize(
   return resolveNovelAiSize(request, scenePrompt, defaults);
 }
 
+export function resolveNovelAiStyleReferenceSecondaryStrength(fidelity: number): number {
+  return 1 - Math.max(0, Math.min(1, fidelity));
+}
+
 function isNovelAiV4Model(model: string): boolean {
   return /^nai-diffusion-(?:4(?:-(?:curated-preview|full))?|4-5(?:-(?:curated|full))?)$/i.test(model.trim());
 }
@@ -2163,7 +2183,9 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
       index < styleReferenceOffset ? defaults.styleReferenceStrength : 1,
     );
     parameters.director_reference_secondary_strength_values = directorReferenceImages.map((_, index) =>
-      index < styleReferenceOffset ? defaults.styleReferenceFidelity : 0,
+      index < styleReferenceOffset
+        ? resolveNovelAiStyleReferenceSecondaryStrength(defaults.styleReferenceFidelity)
+        : 0,
     );
   }
 

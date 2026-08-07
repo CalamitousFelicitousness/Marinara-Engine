@@ -901,6 +901,7 @@ export async function generateRoutes(app: FastifyInstance) {
     const discordWebhookUrl = typeof earlyMeta.discordWebhookUrl === "string" ? earlyMeta.discordWebhookUrl : "";
     let pendingUserDiscordMsg = "";
     let currentTurnUserMessageId: string | null = null;
+    let currentTurnUserMessage: Awaited<ReturnType<typeof chats.createMessage>> | null = null;
     let committedSpatialTransition: {
       commandId: string;
       currentLocationId: string | null;
@@ -980,12 +981,13 @@ export async function generateRoutes(app: FastifyInstance) {
       // Spatial owner-turn packages own message creation, so merge the
       // Engine-owned correlation into their durable row before generation.
       if (input.pendingSpatialTransition && userMsg?.id && (input.attachments.length > 0 || input.submissionId)) {
-        await chats
+        const updatedUserMsg = await chats
           .updateMessageExtra(userMsg.id, {
             ...(input.attachments.length ? { attachments: input.attachments } : {}),
             ...(input.submissionId ? { submissionId: input.submissionId } : {}),
           })
           .catch(releaseActiveGenerationAndRethrow);
+        if (updatedUserMsg) userMsg = updatedUserMsg;
       }
 
       // Snapshot Persona info for per-message tracking. Only Conversation may
@@ -994,7 +996,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const snapshotPersonas = await chars.listPersonas().catch(releaseActiveGenerationAndRethrow);
         const snapshotPersona = resolveActivePersonaCandidate(snapshotPersonas, chat.personaId, requestChatMode);
         if (snapshotPersona) {
-          await chats
+          const updatedUserMsg = await chats
             .updateMessageExtra(userMsg.id, {
               personaSnapshot: {
                 personaId: snapshotPersona.id,
@@ -1011,8 +1013,10 @@ export async function generateRoutes(app: FastifyInstance) {
               },
             })
             .catch(releaseActiveGenerationAndRethrow);
+          if (updatedUserMsg) userMsg = updatedUserMsg;
         }
       }
+      currentTurnUserMessage = userMsg;
 
       // Mirror user message to Discord (deferred — personaName resolved later)
       pendingUserDiscordMsg = discordWebhookUrl && input.userMessage ? input.userMessage : "";
@@ -1135,6 +1139,10 @@ export async function generateRoutes(app: FastifyInstance) {
 
     // Set up SSE headers
     startSseReply(reply, { "X-Accel-Buffering": "no" });
+    if (currentTurnUserMessage) {
+      // Let the client replace its optimistic row before the user can edit it.
+      sendSseEvent(reply, { type: "message_saved", data: currentTurnUserMessage });
+    }
     if (committedSpatialTransition) {
       sendSseEvent(reply, {
         type: "spatial_transition_committed",
@@ -1609,6 +1617,8 @@ export async function generateRoutes(app: FastifyInstance) {
         // (#3448) — set where each is computed, read after all are known.
         let conversationContextBlockValue = "";
         let conversationContextBlocksByCharacterId = new Map<string, string>();
+        let conversationCrossChatAwarenessEnabled = false;
+        let conversationScopesAwarenessToResponder = false;
         let conversationLorebookBlockValue = "";
         let conversationMemoriesBlockValue = "";
         let conversationReplyRulesBlockValue = "";
@@ -2384,6 +2394,7 @@ export async function generateRoutes(app: FastifyInstance) {
           identityFallbackPromptTemplateSources.push(conversationPromptTemplate);
           conversationContextMacroSlots = resolveConversationContextMacroSlots(conversationPromptTemplate);
           const individualConversationGroup = isGroup && promptGroupChatMode === "individual";
+          conversationScopesAwarenessToResponder = individualConversationGroup && !input.impersonate;
           const aliasedConversationPrompt = (
             individualConversationGroup
               ? conversationPromptTemplate
@@ -2495,7 +2506,8 @@ export async function generateRoutes(app: FastifyInstance) {
           // ── Cross-chat awareness: show messages from other chats this character is in ──
           // (awarenessBlock is injected later, after persona info)
           const crossChatEnabled = chatMeta.crossChatAwareness !== false; // on by default
-          if (crossChatEnabled && !input.regenerateMessageId) {
+          conversationCrossChatAwarenessEnabled = crossChatEnabled;
+          if (crossChatEnabled && !input.regenerateMessageId && !conversationScopesAwarenessToResponder) {
             const { buildAwarenessBlock } = await import("../services/conversation/awareness.service.js");
             const charNameMap = new Map<string, string>();
             for (let ci = 0; ci < characterIds.length; ci++) {
@@ -3160,7 +3172,7 @@ export async function generateRoutes(app: FastifyInstance) {
           );
         }
 
-        if (chatMode === "conversation") {
+        if (chatMode === "conversation" && !conversationScopesAwarenessToResponder) {
           convoAwarenessBlock = await mergeConversationCharacterMemories({
             chars,
             characterIds,
@@ -5266,6 +5278,40 @@ export async function generateRoutes(app: FastifyInstance) {
           // and a merged generation that may voice several characters at once
           // stays on the hand-free spectator view.
           let gameAwareMessagesForGen = await prepareConversationLorebookForResponder(targetCharId, messagesForGen);
+          if (conversationScopesAwarenessToResponder && targetCharId) {
+            let responderAwarenessBlock: string | null = null;
+            if (conversationCrossChatAwarenessEnabled && !input.regenerateMessageId) {
+              const { buildAwarenessBlock } = await import("../services/conversation/awareness.service.js");
+              responderAwarenessBlock = await buildAwarenessBlock(
+                app.db,
+                input.chatId,
+                [targetCharId],
+                new Map(charInfo.map((character) => [character.id, character.name])),
+                personaName,
+                input.userMessage ?? "",
+                1500,
+                promptTimeZone,
+                wrapFormat,
+              );
+            }
+            responderAwarenessBlock = await mergeConversationCharacterMemories({
+              chars,
+              characterIds: [targetCharId],
+              awarenessBlock: responderAwarenessBlock,
+              timeZone: promptTimeZone,
+              wrapFormat,
+            });
+            if (responderAwarenessBlock) {
+              gameAwareMessagesForGen = [...gameAwareMessagesForGen];
+              const firstUserIdx = gameAwareMessagesForGen.findIndex(
+                (message) => message.role === "user" || message.role === "assistant",
+              );
+              gameAwareMessagesForGen.splice(firstUserIdx >= 0 ? firstUserIdx : gameAwareMessagesForGen.length, 0, {
+                role: "system",
+                content: responderAwarenessBlock,
+              });
+            }
+          }
           if (turnGameContextForSeat) {
             const viewerSeatId = input.impersonate
               ? chat.personaId || "human"
@@ -8893,12 +8939,43 @@ export async function generateRoutes(app: FastifyInstance) {
                           imagePromptAgent?.promptTemplate ?? "",
                         ),
                       });
-                      fullPrompt = compiledPrompt.prompt;
                       const finalNegativePrompt = mergeIllustratorNegativePrompt(
                         compiledPrompt.prompt,
                         compiledPrompt.negativePrompt,
                         requestedNegativePrompt,
+                        imgConnFull,
                       );
+                      const fallbackCompiledPrompt = imageFallback
+                        ? compileImagePrompt({
+                            kind: "illustration",
+                            prompt: fullPrompt,
+                            negativePrompt: requestedNegativePrompt || undefined,
+                            styleProfiles: imageSettings.styleProfiles,
+                            styleProfileId,
+                            imageDefaults: imageFallback.imageDefaults,
+                            generatedStyle: style,
+                            omitProfileStyleText:
+                              typeof agentContext.memory._illustratorImageStyleInstruction === "string",
+                            omitProfileSubjectTags: illustratorPromptTemplateOwnsComposition(
+                              imagePromptAgent?.promptTemplate ?? "",
+                            ),
+                          })
+                        : null;
+                      const providerAwareImageFallback =
+                        imageFallback && fallbackCompiledPrompt
+                          ? {
+                              ...imageFallback,
+                              prompt: fallbackCompiledPrompt.prompt,
+                              negativePrompt:
+                                mergeIllustratorNegativePrompt(
+                                  fallbackCompiledPrompt.prompt,
+                                  fallbackCompiledPrompt.negativePrompt,
+                                  requestedNegativePrompt,
+                                  imageFallback,
+                                ) || null,
+                            }
+                          : undefined;
+                      fullPrompt = compiledPrompt.prompt;
 
                       const imageResults = await generateIllustratorImageVariants({
                         count: chatMeta.illustratorImagesPerGeneration,
@@ -8914,7 +8991,7 @@ export async function generateRoutes(app: FastifyInstance) {
                             imageDefaults,
                             referenceImages: illustratorRefImages,
                             debugMode: input.debugMode,
-                            fallback: imageFallback,
+                            fallback: providerAwareImageFallback,
                             onFallback,
                           }),
                         onVariantError: (error, index) =>
@@ -8922,6 +8999,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       });
 
                       for (const [variantIndex, imageResult] of imageResults.entries()) {
+                        const renderedPrompt = imageResult.effectivePrompt ?? fullPrompt;
                         // Save to disk
                         const filePath = saveImageToDisk(input.chatId, imageResult.base64, imageResult.ext, {
                           shared: true,
@@ -8937,7 +9015,7 @@ export async function generateRoutes(app: FastifyInstance) {
                         const galleryEntry = await galleryStore.create({
                           chatId: input.chatId,
                           filePath,
-                          prompt: fullPrompt,
+                          prompt: renderedPrompt,
                           provider: effectiveImageProvider,
                           model: effectiveImageModel,
                           width: imgWidth,
@@ -8950,7 +9028,7 @@ export async function generateRoutes(app: FastifyInstance) {
                           personaIds: referenceResolution.personaId ? [referenceResolution.personaId] : [],
                           characterGallery,
                           personaGallery,
-                          prompt: fullPrompt,
+                          prompt: renderedPrompt,
                           provider: effectiveImageProvider,
                           model: effectiveImageModel,
                           width: imgWidth,
@@ -8965,7 +9043,7 @@ export async function generateRoutes(app: FastifyInstance) {
                             type: "image",
                             url: imageUrl,
                             filename: `illustration_${variantIndex + 1}.${imageResult.ext}`,
-                            prompt: fullPrompt,
+                            prompt: renderedPrompt,
                             galleryId: (galleryEntry as any)?.id,
                           };
 
@@ -8988,7 +9066,7 @@ export async function generateRoutes(app: FastifyInstance) {
                             data: {
                               messageId,
                               imageUrl,
-                              prompt: fullPrompt,
+                              prompt: renderedPrompt,
                               reason: illData.reason,
                               galleryId: (galleryEntry as any)?.id,
                             },

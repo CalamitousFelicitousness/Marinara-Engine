@@ -2613,7 +2613,9 @@ function buildAgentExtras(
 
   // Snapshot button (#4682): the user explicitly asked a custom image agent to
   // generate now, so tell it not to decline (mirrors the Illustrator block above).
-  if (context.memory._forceImageGeneration === true) {
+  // Single-agent batches only — memory is shared, and the directive must not
+  // reach unrelated agents if a caller ever mixes the force flag with a batch.
+  if (agentTypes.length === 1 && context.memory._forceImageGeneration === true) {
     parts.push(`<manual_image_request>`);
     parts.push(
       `The user explicitly requested an image from this agent right now. Set the JSON field "shouldGenerate" to true and provide the best fitting complete image prompt for the current scene.`,

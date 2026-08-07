@@ -1131,7 +1131,10 @@ async function buildRetryAgentContext(args: {
     agentContext.memory._forceIllustratorImageGeneration = true;
   }
 
-  if (forceCustomImageGeneration) {
+  // Scoped to single-agent retries: memory is shared across the batch, and the
+  // snapshot button (#4682) only ever targets one agent — enforce that here so
+  // a multi-agent force request can't leak the directive to unrelated agents.
+  if (forceCustomImageGeneration && resolvedAgentTypes.size === 1) {
     agentContext.memory._forceImageGeneration = true;
   }
 

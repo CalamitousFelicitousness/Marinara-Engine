@@ -13,8 +13,14 @@ import { appSettings, chats } from "../../packages/server/src/db/schema/index.js
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-write-gen-"));
 process.env.FILE_STORAGE_DIR = storageDir;
 
+// Closed from the finally path even when an assertion fails mid-run: an
+// unclosed store keeps its beforeExit flush handler armed, which could
+// recreate the temp dir after rmSync removes it.
+let closeStore: (() => Promise<void>) | undefined;
+
 try {
   const db = await createFileNativeDB();
+  closeStore = () => db._fileStore.close();
 
   // Never-written table reads generation 0.
   assert.equal(db._fileStore.getTableWriteGeneration("chats"), 0, "fresh table starts at generation 0");
@@ -76,8 +82,11 @@ try {
   assert.equal(shouldSkipAutonomousSweep(null, 7), false, "unarmed gate always sweeps");
   assert.equal(shouldSkipAutonomousSweep(7, null), false, "counter unavailable -> degrade to sweeping");
 
-  await db._fileStore.close();
   console.info("Autonomous scheduler gate regressions passed.");
 } finally {
-  rmSync(storageDir, { recursive: true, force: true });
+  try {
+    await closeStore?.();
+  } finally {
+    rmSync(storageDir, { recursive: true, force: true });
+  }
 }

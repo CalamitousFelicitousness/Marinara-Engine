@@ -2008,7 +2008,7 @@ const swarmUiBody = buildSwarmUiGenerationBody(
     negativePrompt: "blurry",
     width: 832,
     height: 1216,
-    model: "sdxl/model.safetensors",
+    model: "  sdxl/model.safetensors  ",
     comfyWorkflow: JSON.stringify({
       "1": {
         class_type: "CLIPTextEncode",
@@ -5348,6 +5348,12 @@ try {
     /src\.id === "zai"[\s\S]{0,180}!ZAI_IMAGE_MODELS\.some[\s\S]{0,180}setLocalModel\("glm-image"\)/u,
     "Switching to Z.AI must replace a model that Z.AI does not support",
   );
+  assert.match(
+    connectionEditorSource,
+    /const swarmUiWorkflowError =\s*selectedImageService === "swarmui"[\s\S]{0,180}%reference_image_name/u,
+    "SwarmUI workflow validation must reject backend-local reference-image filenames before save",
+  );
+  assert.match(connectionEditorSource, /if \(swarmUiWorkflowError\) \{[\s\S]{0,180}throw new Error/u);
 
   const backgroundAutonomousSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/hooks/use-background-autonomous.ts"),
@@ -5546,6 +5552,7 @@ try {
   )?.[0];
   assert.ok(testImageHandler, "The connection test-image handler must remain available");
   assert.match(testImageHandler, /width: 1024,\s*height: 1024,/u);
+  assert.match(testImageHandler, /debugMode: readDebugMode\(req\.body\)/u);
 
   assert.doesNotMatch(
     agentEditorSource,

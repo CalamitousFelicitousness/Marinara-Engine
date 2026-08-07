@@ -3166,6 +3166,7 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
   const seed = resolveSeed(request.imageDefaults);
   const prompt = mergePromptPrefix(defaults.promptPrefix, request.prompt || "");
   const negativePrompt = mergeNegativePrompt(defaults.negativePromptPrefix, request.negativePrompt);
+  const model = request.model?.trim();
   const body: Record<string, unknown> = {
     session_id: sessionId,
     images: 1,
@@ -3180,7 +3181,7 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
     sampler: defaults.sampler,
     scheduler: defaults.scheduler,
   };
-  if (request.model?.trim()) body.model = request.model.trim();
+  if (model) body.model = model;
 
   const workflowText = request.comfyWorkflow?.trim();
   if (!workflowText) return body;
@@ -3213,7 +3214,7 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
     "%clip_skip%": defaults.clipSkip ?? 0,
   };
   Object.assign(replacements, buildComfyUiLoraWorkflowReplacements(defaults.loras));
-  if (request.model) replacements["%model%"] = request.model;
+  if (model) replacements["%model%"] = model;
 
   const references = collectComfyReferenceImages(request, defaults);
   for (let index = 0; index < references.length; index++) {
@@ -3229,6 +3230,19 @@ export function buildSwarmUiGenerationBody(request: ImageGenRequest, sessionId: 
 
   body.comfyworkflowraw = JSON.stringify(replaceComfyUiPlaceholders(workflow, replacements));
   return body;
+}
+
+function redactSwarmUiWorkflowImages(workflowText: string, request: ImageGenRequest): string {
+  const imageValues = [
+    COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
+    ...collectComfyReferenceImages(request, resolveComfyUiDefaults(request)).map(
+      (reference) => decodeReferenceImage(reference).base64,
+    ),
+  ];
+  return [...new Set(imageValues)].reduce(
+    (redacted, image) => redacted.replaceAll(image, `[redacted image: ${Buffer.from(image, "base64").byteLength} bytes]`),
+    workflowText,
+  );
 }
 
 export function parseSwarmUiImageReference(value: unknown): string {
@@ -3248,10 +3262,14 @@ async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGe
   const base = baseUrl.replace(/\/+$/, "");
   const sessionId = await createSwarmUiSession(base, apiKey, request);
   const body = buildSwarmUiGenerationBody(request, sessionId);
+  const debugBody: Record<string, unknown> = { ...body, session_id: "[session]" };
+  if (typeof debugBody.comfyworkflowraw === "string") {
+    debugBody.comfyworkflowraw = redactSwarmUiWorkflowImages(debugBody.comfyworkflowraw, request);
+  }
   logDebugOverride(
     request.debugMode === true,
     "[debug/image/swarmui] final request payload:\n%s",
-    JSON.stringify({ ...body, session_id: "[session]" }, null, 2),
+    JSON.stringify(debugBody, null, 2),
   );
   const response = await localImageBackendFetch(`${base}/API/GenerateText2Image`, {
     method: "POST",

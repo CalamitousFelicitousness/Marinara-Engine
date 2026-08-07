@@ -524,6 +524,10 @@ export function ConnectionEditor() {
     localProvider === "image_generation"
       ? localImageGenerationSource || localImageService || effectiveImageGenerationSource
       : "";
+  const swarmUiWorkflowError =
+    selectedImageService === "swarmui" && /%reference_image_name(?:_0[1-4])?%/.test(localComfyuiWorkflow)
+      ? localizeUi("ui.connections.connectioneditor.swarmuiDoesNotSupportReferenceImageName")
+      : null;
   const selectedImageDefaultsService = imageSourceToDefaultsService(selectedImageService);
   const selectedVideoService =
     localProvider === "video_generation"
@@ -655,6 +659,10 @@ export function ConnectionEditor() {
   const handleSave = useCallback(async () => {
     if (!connectionDetailId) return;
     setSaveError(null);
+    if (swarmUiWorkflowError) {
+      setSaveError(swarmUiWorkflowError);
+      throw new Error(swarmUiWorkflowError);
+    }
     if (baseUrlValidation.error) {
       setSaveError(baseUrlValidation.error);
       throw new Error(baseUrlValidation.error);
@@ -804,6 +812,7 @@ export function ConnectionEditor() {
     localImageCaptioningEnabled,
     localImageCaptioningConnectionId,
     selectedImageService,
+    swarmUiWorkflowError,
     selectedImageDefaultsService,
     selectedVideoProvider,
     selectedVideoDefaultsService,
@@ -1221,7 +1230,7 @@ export function ConnectionEditor() {
           {dirty && !saveError && <span className="mari-editor-status mr-2 text-amber-400 max-md:hidden">{localizeUi("ui.connections.connectioneditor.unsaved")}</span>}
           <button
             onClick={handleSave}
-            disabled={updateConnection.isPending || saveConnectionDefaults.isPending}
+            disabled={updateConnection.isPending || saveConnectionDefaults.isPending || !!swarmUiWorkflowError}
             className="mari-editor-action mari-editor-action--primary inline-flex disabled:opacity-50"
           >
             <Save size="0.8125rem" /> <span className="max-md:hidden">{localizeUi("ui.noodle.noodlehome.save")}</span>
@@ -1923,11 +1932,17 @@ export function ConnectionEditor() {
                 placeholder={localizeUi("ui.connections.connectioneditor.pasteWorkflowJsonHereExportedFromComfyuiViaSave")}
                 className={cn(
                   "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-xs font-mono outline-none ring-1 transition-shadow placeholder:text-[var(--muted-foreground)]/50 min-h-[120px] max-h-[300px] resize-y",
-                  comfyWorkflowValidation?.parseError
+                  comfyWorkflowValidation?.parseError || swarmUiWorkflowError
                     ? "ring-red-400/60 focus:ring-red-400"
                     : "ring-[var(--border)] focus:ring-sky-400/50",
                 )}
               />
+              {swarmUiWorkflowError && (
+                <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
+                  <AlertCircle size="0.625rem" className="mt-px shrink-0" />
+                  {swarmUiWorkflowError}
+                </p>
+              )}
               {comfyWorkflowValidation?.parseError && (
                 <p className="mt-1 flex items-start gap-1 text-[0.625rem] text-red-400">
                   <AlertCircle size="0.625rem" className="mt-px shrink-0" />

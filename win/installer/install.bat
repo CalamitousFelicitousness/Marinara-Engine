@@ -119,6 +119,17 @@ if errorlevel 1 (
     set "INSTALL_ERROR=Node.js installed but not found in PATH. Please restart your computer and re-run the installer."
     goto :fatal
 )
+set "NODE_RAW="
+for /f "tokens=1 delims=." %%a in ('node -v') do set "NODE_RAW=%%a"
+set "NODE_MAJOR=!NODE_RAW:v=!"
+if not defined NODE_MAJOR (
+    set "INSTALL_ERROR=Node.js installed but its version could not be determined. Please restart your computer and re-run the installer."
+    goto :fatal
+)
+if !NODE_MAJOR! LSS 24 (
+    set "INSTALL_ERROR=Node.js installation completed, but PATH still resolves to an unsupported version. Node.js 24 or newer is required."
+    goto :fatal
+)
 echo  [OK] Node.js installed successfully
 
 :node_ok

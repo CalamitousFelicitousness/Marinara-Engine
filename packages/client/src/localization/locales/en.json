@@ -3941,6 +3941,7 @@
   "ui.connections.connectioneditor.subscriptionAuthIsTheSameMechanismVisualStudioCode": "Subscription auth is the same mechanism Visual Studio Code and other Anthropic-endorsed IDE integrations use. Embeddings are not available on this provider; configure a separate connection for embedding work.",
   "ui.connections.connectioneditor.subscriptionInsteadOfAnApiKeyPrerequisitesOnThe": "subscription instead of an API key. Prerequisites on the Marinara host:",
   "ui.connections.connectioneditor.supergrokXPremium": "SuperGrok / X Premium+",
+  "ui.connections.connectioneditor.swarmuiDoesNotSupportReferenceImageName": "SwarmUI workflows cannot use %reference_image_name%. Use %reference_image% so Marinara can send the image through SwarmUI's distributed queue.",
   "ui.connections.connectioneditor.temporaryLinkLifetime": "Temporary link lifetime",
   "ui.connections.connectioneditor.testConnection": "Test Connection",
   "ui.connections.connectioneditor.testImage": "Test Image",

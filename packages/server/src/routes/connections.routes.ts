@@ -1161,6 +1161,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         height: 1024,
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
         imageDefaults,
+        debugMode: readDebugMode(req.body),
       });
       return {
         success: true,

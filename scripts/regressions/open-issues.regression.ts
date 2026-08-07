@@ -5821,4 +5821,50 @@ try {
   );
 }
 
+{
+  // #4704: the background-autonomous poller's server-side candidate filter
+  // must mirror the legacy client filter exactly (conversation mode with
+  // autonomousMessages enabled, excluding the Professor Mari home assistant;
+  // bad or missing metadata disqualifies).
+  const { isBackgroundAutonomousCandidate } = await import(
+    "../../packages/server/src/services/conversation/autonomous-candidates.js"
+  );
+  const meta = (extra: Record<string, unknown>) => JSON.stringify({ autonomousMessages: true, ...extra });
+  assert.equal(isBackgroundAutonomousCandidate({ mode: "conversation", metadata: meta({}) }), true);
+  assert.equal(
+    isBackgroundAutonomousCandidate({ mode: "conversation", metadata: { autonomousMessages: true } }),
+    true,
+    "object metadata accepted",
+  );
+  assert.equal(isBackgroundAutonomousCandidate({ mode: "roleplay", metadata: meta({}) }), false, "non-conversation excluded");
+  assert.equal(
+    isBackgroundAutonomousCandidate({ mode: "conversation", metadata: meta({ internalAssistant: "professor-mari" }) }),
+    false,
+    "Professor Mari home chat excluded",
+  );
+  assert.equal(
+    isBackgroundAutonomousCandidate({ mode: "conversation", metadata: JSON.stringify({ autonomousMessages: false }) }),
+    false,
+    "autonomous disabled excluded",
+  );
+  assert.equal(
+    isBackgroundAutonomousCandidate({ mode: "conversation", metadata: "{not json" }),
+    false,
+    "unparseable metadata excluded",
+  );
+  assert.equal(isBackgroundAutonomousCandidate({ mode: "conversation" }), false, "missing metadata excluded");
+
+  // The candidates route excludes EMPTIED Roleplay DM threads (the legacy poll
+  // ran the DM cleanup as a GET /chats side effect); the marker expression must
+  // stay in sync with cleanupEmptyRoleplayDmChats.
+  const { hasRoleplayDmThreadMarkers } = await import(
+    "../../packages/server/src/services/conversation/autonomous-candidates.js"
+  );
+  assert.equal(hasRoleplayDmThreadMarkers({ roleplayDmThread: true }), true);
+  assert.equal(hasRoleplayDmThreadMarkers({ dmOriginChatId: "chat-1" }), true);
+  assert.equal(hasRoleplayDmThreadMarkers({ roleplayDmThread: false }), false);
+  assert.equal(hasRoleplayDmThreadMarkers({ dmOriginChatId: 42 }), false, "non-string origin id is not a marker");
+  assert.equal(hasRoleplayDmThreadMarkers({}), false);
+}
+
 console.info("Open-issue regressions passed.");

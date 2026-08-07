@@ -74,6 +74,7 @@ import {
   applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
   needsForcedSnapshotFallback,
+  resolveCustomAgentStyleProfileId,
 } from "../../packages/server/src/services/generation/custom-agent-image-settings.js";
 import {
   normalizeCyoaChoiceOutput,
@@ -2679,15 +2680,19 @@ const cases: RegressionCase[] = [
         "Regrator|Runs the Northland Bank.|AI engineer.|Keep the tone formal.|formal",
       );
       assert.equal(
-        resolveDeferredCharacterMacros(deferred, { name: "Dottore" }, {
-          ...initialContext,
-          convoFields: {
-            charDisplayName: "Il Dottore",
-            charAbout: "A researcher from Snezhnaya.",
-            personaAbout: "AI engineer.",
-            convoBehavior: "Be playful with Mari.",
+        resolveDeferredCharacterMacros(
+          deferred,
+          { name: "Dottore" },
+          {
+            ...initialContext,
+            convoFields: {
+              charDisplayName: "Il Dottore",
+              charAbout: "A researcher from Snezhnaya.",
+              personaAbout: "AI engineer.",
+              convoBehavior: "Be playful with Mari.",
+            },
           },
-        }),
+        ),
         "Il Dottore|A researcher from Snezhnaya.|AI engineer.|Be playful with Mari.|playful",
       );
     },
@@ -3881,12 +3886,9 @@ const cases: RegressionCase[] = [
       assert.match(mergeIllustratorNegativePrompt(ordinaryPrompt), /speech bubbles/iu);
       assert.match(mergeIllustratorNegativePrompt(ordinaryPrompt), /SFX lettering/iu);
       assert.equal(
-        mergeIllustratorNegativePrompt(
-          ordinaryPrompt,
-          "low quality, text, low quality",
-          "text",
-          { imageService: "novelai" },
-        ),
+        mergeIllustratorNegativePrompt(ordinaryPrompt, "low quality, text, low quality", "text", {
+          imageService: "novelai",
+        }),
         "low quality, text",
         "NovelAI should receive only the compiled explicit negative prompt without Illustrator's built-in anti-text list",
       );
@@ -9251,7 +9253,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     run() {
       const chatMeta = {
         customAgentImageSettings: {
-          "scene-painter": { imageConnectionId: "conn-override", styleProfileId: "style-override" },
+          "scene-painter": { imageConnectionId: "conn-override", styleProfileId: "  style-override  " },
           illustrator: { imageConnectionId: "conn-should-never-apply" },
           "empty-entry": { imageConnectionId: "  " },
         },
@@ -9274,6 +9276,38 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(missing.imageConnectionId, "conn-agent-default");
       const noMeta = applyCustomAgentImageChatSettings("scene-painter", { ...base }, null);
       assert.equal(noMeta.imageConnectionId, "conn-agent-default");
+
+      const profiles = [{ id: "style-override" }];
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: false,
+          agentSettings: overridden,
+          availableProfiles: profiles,
+          gameStyleProfileId: "game-style",
+          chatStyleProfileId: "chat-style",
+        }),
+        "style-override",
+      );
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: false,
+          agentSettings: { styleProfileId: "deleted-profile" },
+          availableProfiles: profiles,
+          gameStyleProfileId: "game-style",
+          chatStyleProfileId: "chat-style",
+        }),
+        "game-style",
+      );
+      assert.equal(
+        resolveCustomAgentStyleProfileId({
+          usesChatIllustratorSettings: true,
+          agentSettings: overridden,
+          availableProfiles: profiles,
+          gameStyleProfileId: "",
+          chatStyleProfileId: "chat-style",
+        }),
+        "chat-style",
+      );
     },
   },
 ];

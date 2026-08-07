@@ -2367,8 +2367,8 @@ assert.match(termuxLauncher, /TERMUX_REBUILD_REQUIRED/u);
 assert.match(termuxLauncher, /--max-old-space-size=2048/u);
 assert.match(
   termuxLauncher,
-  /case "\$\{NODE_OPTIONS:-\}"[\s\S]*--max-old-space-size=\*[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=2048"/u,
-  "Termux must preserve an operator-provided heap limit before applying its safe default",
+  /has_explicit_node_heap_limit\(\)[\s\S]*NODE_OPTIONS_VALUE[\s\S]*const heapOption = \/\^--max[\s\S]*if ! has_explicit_node_heap_limit; then[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=2048"/u,
+  "Termux must parse complete heap-option tokens before applying its safe default",
 );
 for (const buildEntry of [
   "packages/shared/dist/constants/defaults.js",

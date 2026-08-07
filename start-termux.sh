@@ -110,14 +110,51 @@ fi
 # Large profiles can exceed Node's conservative mobile heap limit while the
 # file-backed store serializes them. Keep an explicit operator limit, otherwise
 # give Termux enough headroom for installation and normal server operation.
-case "${NODE_OPTIONS:-}" in
-    *--max-old-space-size=*|*--max-old-space-size\ *|*--max_old_space_size=*|*--max_old_space_size\ *) ;;
-    *)
-        NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=2048"
-        export NODE_OPTIONS
-        echo "  [OK] Node.js heap limit raised for large profiles"
-        ;;
-esac
+has_explicit_node_heap_limit() {
+    local node_options_value="${NODE_OPTIONS:-}"
+    NODE_OPTIONS= NODE_OPTIONS_VALUE="$node_options_value" node <<'NODE_OPTIONS_PARSER'
+const input = process.env.NODE_OPTIONS_VALUE ?? "";
+const tokens = [];
+let token = "";
+let quote = null;
+let escaped = false;
+for (const character of input) {
+  if (escaped) {
+    token += character;
+    escaped = false;
+  } else if (character === "\\" && quote !== "'") {
+    escaped = true;
+  } else if (quote) {
+    if (character === quote) quote = null;
+    else token += character;
+  } else if (character === '"' || character === "'") {
+    quote = character;
+  } else if (/\s/u.test(character)) {
+    if (token) tokens.push(token);
+    token = "";
+  } else {
+    token += character;
+  }
+}
+if (escaped) token += "\\";
+if (token) tokens.push(token);
+
+const heapOption = /^--max(?:-|_)old(?:-|_)space(?:-|_)size(?:=(.*))?$/u;
+const hasHeapLimit = tokens.some((value, index) => {
+  const match = heapOption.exec(value);
+  if (!match) return false;
+  const size = match[1] ?? tokens[index + 1] ?? "";
+  return /^\d+$/u.test(size) && Number(size) > 0;
+});
+process.exit(hasHeapLimit ? 0 : 1);
+NODE_OPTIONS_PARSER
+}
+
+if ! has_explicit_node_heap_limit; then
+    NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=2048"
+    export NODE_OPTIONS
+    echo "  [OK] Node.js heap limit raised for large profiles"
+fi
 
 load_launcher_setting() {
     local setting_name="$1"

@@ -97,13 +97,22 @@ assert.match(
   /\.\.\.\(input\.submissionId \? \{ submissionId: input\.submissionId \} : \{\}\)/u,
   "The durable user row must retain its client submission ID even when generation fails",
 );
-assert.match(useGenerateSource, /const persistedUserBySubmissionId = new Map/u);
-assert.match(useGenerateSource, /return await confirmDurableSubmittedUserTurn\(\)/u);
+const upsertPersistedMessagesSource =
+  /export function upsertPersistedMessages\([\s\S]*?\n\}\n\nfunction appendMissingPersistedMessages/u.exec(
+    useGenerateSource,
+  )?.[0];
+assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement helper must remain available");
+assert.match(upsertPersistedMessagesSource, /const persistedUserBySubmissionId = new Map/u);
 assert.match(
-  useGenerateSource,
+  upsertPersistedMessagesSource,
   /msg\.id\.startsWith\("__optimistic_"\)[\s\S]*persistedUserBySubmissionId\.get\(submissionId\)/u,
-  "A failed request must replace the optimistic prompt with its durable row instead of showing both",
+  "Durable-message reconciliation must replace the matching optimistic prompt inside the cache helper",
 );
+const confirmDurableSubmittedUserTurnSource =
+  /const confirmDurableSubmittedUserTurn = async \(\) => \{[\s\S]*?\n      \};/u.exec(useGenerateSource)?.[0];
+assert.ok(confirmDurableSubmittedUserTurnSource, "The failed-generation recovery helper must remain available");
+assert.match(confirmDurableSubmittedUserTurnSource, /upsertPersistedMessages\(qc, params\.chatId, messages\)/u);
+assert.match(useGenerateSource, /return await confirmDurableSubmittedUserTurn\(\)/u);
 const chatInputSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
   "utf8",

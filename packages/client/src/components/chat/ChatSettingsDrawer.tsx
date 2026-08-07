@@ -658,6 +658,11 @@ type AgentAddPreview = {
   setup: AgentAddSetupState;
 };
 
+type CustomAgentImageSetting = {
+  imageConnectionId?: string | null;
+  styleProfileId?: string | null;
+};
+
 type KnowledgeAgentType = "knowledge-retrieval" | "knowledge-router";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -790,6 +795,13 @@ export function ChatSettingsDrawer({
   const drawerClosingRef = useRef(false);
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
+  const updateMetaMutateRef = useRef(updateMeta.mutate);
+  const pendingCustomAgentImageSettingsRef = useRef<{
+    chatId: string;
+    settings: Record<string, CustomAgentImageSetting>;
+  } | null>(null);
+  const pendingCustomAgentImageSettingsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  updateMetaMutateRef.current = updateMeta.mutate;
   const updateGameWidgets = useUpdateGameWidgets();
   const { data: regexScripts } = useRegexScripts();
   const updateRegexScript = useUpdateRegexScript();
@@ -2881,7 +2893,7 @@ export function ChatSettingsDrawer({
   const customAgentImageSelections = useMemo(() => {
     const raw = metadata.customAgentImageSettings;
     return raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Partial<Record<string, { imageConnectionId?: string | null; styleProfileId?: string | null }>>)
+      ? (raw as Partial<Record<string, CustomAgentImageSetting>>)
       : {};
   }, [metadata.customAgentImageSettings]);
   const readLatestCustomAgentImageSettings = useCallback(() => {
@@ -2896,21 +2908,43 @@ export function ChatSettingsDrawer({
         : undefined;
     return raw && typeof raw === "object" && !Array.isArray(raw)
       ? {
-          ...(raw as Record<string, { imageConnectionId?: string | null; styleProfileId?: string | null }>),
+          ...(raw as Record<string, CustomAgentImageSetting>),
         }
       : {};
   }, [chat.id, metadata, qc]);
+  const flushPendingCustomAgentImageSettings = useCallback(() => {
+    if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
+      clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
+      pendingCustomAgentImageSettingsTimerRef.current = null;
+    }
+    const pending = pendingCustomAgentImageSettingsRef.current;
+    if (!pending) return;
+    pendingCustomAgentImageSettingsRef.current = null;
+    updateMetaMutateRef.current({ id: pending.chatId, customAgentImageSettings: pending.settings });
+  }, []);
+  useEffect(
+    () => () => {
+      flushPendingCustomAgentImageSettings();
+    },
+    [chat.id, flushPendingCustomAgentImageSettings],
+  );
   const updateCustomAgentImageSetting = useCallback(
     (agentId: string, field: "imageConnectionId" | "styleProfileId", value: string) => {
-      const next = readLatestCustomAgentImageSettings();
+      const pending = pendingCustomAgentImageSettingsRef.current;
+      if (pending && pending.chatId !== chat.id) flushPendingCustomAgentImageSettings();
+      const next = pending?.chatId === chat.id ? { ...pending.settings } : readLatestCustomAgentImageSettings();
       const agentSettings = { ...next[agentId] };
       if (value) agentSettings[field] = value;
       else delete agentSettings[field];
       if (agentSettings.imageConnectionId || agentSettings.styleProfileId) next[agentId] = agentSettings;
       else delete next[agentId];
-      updateMeta.mutate({ id: chat.id, customAgentImageSettings: next });
+      pendingCustomAgentImageSettingsRef.current = { chatId: chat.id, settings: next };
+      if (pendingCustomAgentImageSettingsTimerRef.current !== null) {
+        clearTimeout(pendingCustomAgentImageSettingsTimerRef.current);
+      }
+      pendingCustomAgentImageSettingsTimerRef.current = setTimeout(flushPendingCustomAgentImageSettings, 150);
     },
-    [chat.id, readLatestCustomAgentImageSettings, updateMeta],
+    [chat.id, flushPendingCustomAgentImageSettings, readLatestCustomAgentImageSettings],
   );
   const updateCustomAgentImageConnection = useCallback(
     (agentId: string, connectionId: string) =>
@@ -3983,6 +4017,9 @@ export function ChatSettingsDrawer({
             const agentImageConnectionMissing =
               agentImageConnectionId.length > 0 &&
               !imageConnectionsList.some((connection) => connection.id === agentImageConnectionId);
+            const agentImageStyleProfileMissing =
+              agentImageStyleProfileId.length > 0 &&
+              !imageStyleProfiles.profiles.some((profile) => profile.id === agentImageStyleProfileId);
             return (
               <div
                 key={agent.id}
@@ -4064,6 +4101,7 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.imageConnection")}
                     </span>
                     <select
+                      aria-label={localizeUi("ui.chat.chatsettingsdrawer.imageConnection")}
                       value={agentImageConnectionId}
                       onChange={(event) => updateCustomAgentImageConnection(agent.id, event.target.value)}
                       className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
@@ -4077,9 +4115,7 @@ export function ChatSettingsDrawer({
                       {imageConnectionsList.map((connection) => (
                         <option key={connection.id} value={connection.id}>
                           {connection.name}
-                          {connection.model
-                            ? localizeUi("ui.chat.datablock.value1", { value1: connection.model })
-                            : ""}
+                          {connection.model ? localizeUi("ui.chat.datablock.value1", { value1: connection.model }) : ""}
                         </option>
                       ))}
                     </select>
@@ -4091,11 +4127,17 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.imageStyle")}
                     </span>
                     <select
+                      aria-label={localizeUi("ui.chat.chatsettingsdrawer.imageStyle")}
                       value={agentImageStyleProfileId}
                       onChange={(event) => updateCustomAgentImageStyle(agent.id, event.target.value)}
                       className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
                     >
                       <option value="">{localizeUi("ui.chat.chatsettingsdrawer.chatDefault")}</option>
+                      {agentImageStyleProfileMissing && (
+                        <option value={agentImageStyleProfileId}>
+                          {localizeUi("ui.chat.chatsettingsdrawer.missingStyleProfile")}
+                        </option>
+                      )}
                       {imageStyleProfiles.profiles.map((profile) => (
                         <option key={profile.id} value={profile.id}>
                           {profile.name}
@@ -4103,7 +4145,7 @@ export function ChatSettingsDrawer({
                       ))}
                     </select>
                     <AgentDefaultStatus
-                      overridden={agentImageStyleProfileId.length > 0}
+                      overridden={agentImageStyleProfileId.length > 0 && !agentImageStyleProfileMissing}
                       onReset={() => updateCustomAgentImageStyle(agent.id, "")}
                     />
                   </div>
@@ -8574,9 +8616,7 @@ export function ChatSettingsDrawer({
                                                 agentPromptTemplateSelections[agent.id] ??
                                                 getDefaultPromptTemplateIdForAgent(agent.id)
                                               }
-                                              overridden={
-                                                typeof agentPromptTemplateSelections[agent.id] === "string"
-                                              }
+                                              overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
                                               onChange={(promptTemplateId) =>
                                                 updateAgentPromptTemplateSelection(agent.id, promptTemplateId)
                                               }

@@ -4,6 +4,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function nonEmptyString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function resolveCustomAgentStyleProfileId({
+  usesChatIllustratorSettings,
+  agentSettings,
+  availableProfiles,
+  gameStyleProfileId,
+  chatStyleProfileId,
+}: {
+  usesChatIllustratorSettings: boolean;
+  agentSettings: unknown;
+  availableProfiles: ReadonlyArray<{ id: string }>;
+  gameStyleProfileId: unknown;
+  chatStyleProfileId: unknown;
+}): string | null {
+  const customAgentStyleProfileId = isRecord(agentSettings) ? nonEmptyString(agentSettings.styleProfileId) : "";
+  if (
+    !usesChatIllustratorSettings &&
+    customAgentStyleProfileId &&
+    availableProfiles.some((profile) => profile.id === customAgentStyleProfileId)
+  ) {
+    return customAgentStyleProfileId;
+  }
+  return nonEmptyString(gameStyleProfileId) || nonEmptyString(chatStyleProfileId) || null;
+}
+
 function readCustomAgentImageSettings(
   agentType: string,
   chatMetadata: Record<string, unknown> | null | undefined,
@@ -80,8 +108,9 @@ export function applyCustomAgentImageChatSettings(
   if (typeof override.imageConnectionId === "string" && override.imageConnectionId.trim()) {
     next.imageConnectionId = override.imageConnectionId;
   }
-  if (typeof override.styleProfileId === "string" && override.styleProfileId.trim()) {
-    next.styleProfileId = override.styleProfileId;
+  const styleProfileId = nonEmptyString(override.styleProfileId);
+  if (styleProfileId) {
+    next.styleProfileId = styleProfileId;
   }
   return next;
 }

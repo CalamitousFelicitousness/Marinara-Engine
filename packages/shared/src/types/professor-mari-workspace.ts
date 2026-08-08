@@ -226,6 +226,7 @@ export interface MariWorkspaceConnectionSummary {
   name: string;
   provider: string;
   model: string;
+  maxContext: number;
 }
 
 export interface MariWorkspaceSkillSummary {

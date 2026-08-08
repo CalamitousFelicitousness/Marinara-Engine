@@ -33,6 +33,7 @@ import {
 } from "@marinara-engine/shared";
 import { getAgentCallTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
+import { repairJsonText } from "../../lib/json-repair.js";
 import { wrapContent } from "../prompt/format-engine.js";
 import { sanitizePromptLeaf } from "../prompt/prompt-escaping.js";
 import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
@@ -2947,6 +2948,7 @@ function parseAgentResponse(
     try {
       const jsonStr = extractJson(responseText);
       const parsedData: unknown = JSON.parse(jsonStr);
+      if (!parsedData || typeof parsedData !== "object") throw new Error("Structured agent response must be JSON");
       const data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
       return { type: resultType, data };
     } catch {
@@ -2961,113 +2963,15 @@ function parseAgentResponse(
 
 /** Extract JSON from a response that may contain markdown fences. */
 function extractJson(text: string): string {
-  // Try markdown code fences
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenceMatch) text = fenceMatch[1]!.trim();
-  else {
-    // Try to find a bare JSON object or array
-    const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    if (jsonMatch) text = jsonMatch[1]!;
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)(?:\n?```|$)/i);
+  if (fenceMatch) {
+    text = fenceMatch[1]!.trim();
+  } else {
+    const objectStart = text.indexOf("{");
+    const arrayStart = text.indexOf("[");
+    const starts = [objectStart, arrayStart].filter((index) => index >= 0);
+    if (starts.length > 0) text = text.slice(Math.min(...starts));
   }
 
-  // Repair common LLM JSON issues
-  text = repairJson(text);
-  return text;
-}
-
-/** Fix common LLM JSON mistakes: trailing commas, comments, ellipsis placeholders. */
-function repairJson(str: string): string {
-  try {
-    JSON.parse(str);
-    return str;
-  } catch {
-    return stripTrailingCommas(stripJsonRepairTokens(str));
-  }
-}
-
-function stripTrailingCommas(str: string): string {
-  let repaired = "";
-  let inString = false;
-  let escaped = false;
-  for (let index = 0; index < str.length; index++) {
-    const char = str[index] ?? "";
-    if (inString) {
-      repaired += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      repaired += char;
-      continue;
-    }
-
-    if (char === ",") {
-      let lookahead = index + 1;
-      while (lookahead < str.length && /\s/.test(str[lookahead] ?? "")) lookahead++;
-      const nextSignificant = str[lookahead];
-      if (nextSignificant === "}" || nextSignificant === "]") continue;
-    }
-
-    repaired += char;
-  }
-  return repaired;
-}
-
-function stripJsonRepairTokens(str: string): string {
-  let repaired = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < str.length; index += 1) {
-    const char = str[index] ?? "";
-    const next = str[index + 1];
-    const nextTwo = str.slice(index, index + 3);
-
-    if (inString) {
-      repaired += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      repaired += char;
-      continue;
-    }
-
-    if (char === "/" && next === "/") {
-      while (index + 1 < str.length && str[index + 1] !== "\n") index += 1;
-      continue;
-    }
-
-    if (char === "/" && next === "*") {
-      index += 2;
-      while (index + 1 < str.length && !(str[index] === "*" && str[index + 1] === "/")) index += 1;
-      index += 1;
-      continue;
-    }
-
-    if (nextTwo === "...") {
-      index += 2;
-      continue;
-    }
-
-    repaired += char;
-  }
-
-  return repaired;
+  return repairJsonText(text) ?? text;
 }

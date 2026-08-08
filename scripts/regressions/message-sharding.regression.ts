@@ -25,7 +25,15 @@ import {
   STORAGE_VERSION,
   StorageFormatTooNewError,
 } from "../../packages/server/src/db/file-backed-store.js";
-import { chats, memoryChunks, messages, messageSwipes } from "../../packages/server/src/db/schema/index.js";
+import {
+  chats,
+  gameCheckpoints,
+  memoryChunks,
+  messages,
+  messageSwipes,
+  oocInfluences,
+  spatialContextSnapshots,
+} from "../../packages/server/src/db/schema/index.js";
 
 function tempStorageDir() {
   const dir = mkdtempSync(join(tmpdir(), "marinara-shards-"));
@@ -804,6 +812,75 @@ assert.equal(
     );
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
     assert.equal(manifest.version, STORAGE_VERSION, "the migrated store lands on the current format");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── SET_NULL cascades persist for sharded children ──
+// applySetNullRelations was the one mutation path calling markDirty without
+// shard keys: the null-out landed in memory but the flush never wrote it,
+// so a restart resurrected the dangling FK.
+
+{
+  const dir = tempStorageDir();
+  const db = await createFileNativeDB();
+  try {
+    await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
+    await db.insert(spatialContextSnapshots).values({
+      id: "spatial-1",
+      chatId: "chat-a",
+      messageId: "m-1",
+      definitionRevision: 1,
+      source: "test",
+      createdAt: "2026-08-08T10:00:00.000Z",
+    });
+    await db.insert(gameCheckpoints).values({
+      id: "cp-1",
+      chatId: "chat-a",
+      snapshotId: "snap-1",
+      spatialSnapshotId: "spatial-1",
+      createdAt: "2026-08-08T10:00:01.000Z",
+    });
+    await db._fileStore.flush();
+    await db.delete(spatialContextSnapshots).where(eq(spatialContextSnapshots.id, "spatial-1"));
+    await db._fileStore.flush();
+    const onDisk = JSON.parse(
+      readFileSync(join(dir, "tables", "game_checkpoints", `${encodeShardKey("chat-a")}.json`), "utf8"),
+    ) as Array<{ id: string; spatialSnapshotId: string | null }>;
+    assert.equal(onDisk[0]!.spatialSnapshotId, null, "the SET_NULL cascade reaches the checkpoint's shard file on disk");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Influences and notes cascade with their chats (both FKs) ──
+// The schemas declare onDelete: cascade on sourceChatId AND targetChatId,
+// but the store's graph never carried the relations — post-sharding that
+// left permanent orphaned shard files and stale injections on chat-id reuse.
+
+{
+  const dir = tempStorageDir();
+  const db = await createFileNativeDB();
+  try {
+    await db.insert(chats).values({ id: "chat-src", name: "S", mode: "conversation" });
+    await db.insert(chats).values({ id: "chat-tgt", name: "T", mode: "roleplay" });
+    await db.insert(oocInfluences).values({
+      id: "inf-1",
+      sourceChatId: "chat-src",
+      targetChatId: "chat-tgt",
+      createdAt: "2026-08-08T10:00:00.000Z",
+    });
+    await db._fileStore.flush();
+    const shardPath = join(dir, "tables", "ooc_influences", `${encodeShardKey("chat-tgt")}.json`);
+    assert.ok(existsSync(shardPath), "influences shard by targetChatId");
+    await db.delete(chats).where(eq(chats.id, "chat-tgt"));
+    await db._fileStore.flush();
+    assert.equal(existsSync(shardPath), false, "deleting the target chat removes its influence shard file");
+    const rows = await db.select().from(oocInfluences);
+    assert.equal(rows.length, 0, "the rows are gone from memory too");
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

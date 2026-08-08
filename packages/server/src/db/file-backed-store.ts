@@ -385,6 +385,14 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "chats", child: "agent_memory", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "chat_images", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "memory_chunks", parentKey: "id", childKey: "chatId" },
+    // The influences/notes schemas declare onDelete: cascade on BOTH chat
+    // FKs, but the graph never carried them — the rows outlived their chats
+    // (invisible inside the old monolith; a permanent leaked shard file once
+    // the tables sharded, and stale injections if a chat id is ever reused).
+    { parent: "chats", child: "ooc_influences", parentKey: "id", childKey: "sourceChatId" },
+    { parent: "chats", child: "ooc_influences", parentKey: "id", childKey: "targetChatId" },
+    { parent: "chats", child: "conversation_notes", parentKey: "id", childKey: "sourceChatId" },
+    { parent: "chats", child: "conversation_notes", parentKey: "id", childKey: "targetChatId" },
     { parent: "chats", child: "game_state_snapshots", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "spatial_context_snapshots", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "game_engine_state", parentKey: "id", childKey: "chatId" },
@@ -1867,16 +1875,23 @@ class FileTableStore {
     for (const relation of SET_NULL_RELATIONS.filter((entry) => entry.parent === parentTable)) {
       const childMeta = getMeta(relation.child);
       const deletedValues = new Set(deletedRows.map((row) => row[relation.parentKey]));
-      let changed = false;
+      const changedRows: Row[] = [];
       for (const row of this.rows(childMeta.name)) {
         if (row[relation.childKey] != null && deletedValues.has(row[relation.childKey])) {
-          if (!changed) this.recordTxMutation(childMeta.name);
+          if (changedRows.length === 0) this.recordTxMutation(childMeta.name);
           row[relation.childKey] = null;
-          changed = true;
+          changedRows.push(row);
         }
       }
-      if (changed) {
-        this.markDirty(childMeta.name);
+      if (changedRows.length > 0) {
+        // A sharded child needs its shard keys, like every other mutation
+        // path — a bare markDirty leaves dirtyShards empty and the flush
+        // never writes the null-out to disk (#4708).
+        if (SHARDED_TABLE_SET.has(childMeta.name)) {
+          this.markDirty(childMeta.name, this.shardKeysForRows(childMeta.name, changedRows));
+        } else {
+          this.markDirty(childMeta.name);
+        }
       }
     }
   }

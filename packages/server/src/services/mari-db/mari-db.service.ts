@@ -27,6 +27,7 @@ import {
   normalizeLorebookCategory,
   normalizePersonalExtensionCapabilities,
   type MariDbCommandResult,
+  type MariDbReadTruncation,
   type MariDbDiffSummary,
   type MariDbHistoryEntry,
   type MariDbPendingApproval,
@@ -1317,6 +1318,144 @@ function truncateStr(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+// ── Field-aware bounding for full-object reads (#4767) ──────────────────────
+// A `.get` returns the whole parsed row, which for a heavy card (many long
+// alternate greetings, a big lorebook body) used to overflow the workspace
+// output cap and get sliced mid-field — silently, and sometimes dropping
+// name/description entirely. Instead we elide whole fields largest-first,
+// keeping the object structurally valid and reporting exactly what was cut so
+// the model can re-read any elided field with `app_data { field, offset }`.
+// Measured against the pretty-printed form the workspace renders, and kept well
+// under the 32k char command cap so the char-level truncation never re-fires.
+const MARI_READ_OUTPUT_BUDGET = 24_000;
+const MARI_READ_FIELD_WINDOW_MAX = 20_000;
+// Identity fields are never elided, so a bounded overview always tells the model
+// what it is looking at even when every large field was cut.
+const MARI_NEVER_ELIDE_PATHS = new Set(["id", "name", "data.id", "data.name"]);
+
+function prettyLength(value: unknown): number {
+  try {
+    return JSON.stringify(value, null, 2)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function collectStringLeaves(
+  value: unknown,
+  path: string,
+  out: Array<{ path: string; length: number }>,
+): Array<{ path: string; length: number }> {
+  if (typeof value === "string") {
+    out.push({ path, length: value.length });
+  } else if (Array.isArray(value)) {
+    value.forEach((entry, index) => collectStringLeaves(entry, `${path}[${index}]`, out));
+  } else if (value && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      collectStringLeaves(entry, path ? `${path}.${key}` : key, out);
+    }
+  }
+  return out;
+}
+
+// "data.alternate_greetings[3]" -> ["data", "alternate_greetings", 3]
+function parseFieldPath(path: string): Array<string | number> {
+  return path
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter((token) => token.length > 0)
+    .map((token) => (/^\d+$/.test(token) ? Number(token) : token));
+}
+
+function getByPath(root: unknown, path: string): unknown {
+  let current: unknown = root;
+  for (const token of parseFieldPath(path)) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = Array.isArray(current)
+      ? current[Number(token)]
+      : (current as Record<string, unknown>)[String(token)];
+  }
+  return current;
+}
+
+function setByPath(root: unknown, path: string, next: unknown): void {
+  const tokens = parseFieldPath(path);
+  let current: unknown = root;
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    if (current == null || typeof current !== "object") return;
+    current = Array.isArray(current)
+      ? current[Number(tokens[i])]
+      : (current as Record<string, unknown>)[String(tokens[i])];
+  }
+  if (current == null || typeof current !== "object") return;
+  const last = tokens[tokens.length - 1]!;
+  if (Array.isArray(current)) current[Number(last)] = next;
+  else (current as Record<string, unknown>)[String(last)] = next;
+}
+
+function boundReadObject(output: Row, budget: number): { output: Row; truncation: MariDbReadTruncation } {
+  if (prettyLength(output) <= budget) return { output, truncation: { truncated: false } };
+
+  const clone = JSON.parse(JSON.stringify(output)) as Row;
+  const candidates = collectStringLeaves(clone, "", [])
+    .filter((leaf) => !MARI_NEVER_ELIDE_PATHS.has(leaf.path))
+    .sort((a, b) => b.length - a.length);
+
+  const fields: NonNullable<MariDbReadTruncation["fields"]> = [];
+  for (const leaf of candidates) {
+    if (prettyLength(clone) <= budget) break;
+    const placeholder = `[elided ${leaf.length} chars — read this field with app_data { field: "${leaf.path}" }]`;
+    setByPath(clone, leaf.path, placeholder);
+    fields.push({ path: leaf.path, fullLength: leaf.length, returnedLength: placeholder.length });
+  }
+  return { output: clone, truncation: { truncated: fields.length > 0, fields } };
+}
+
+function projectReadField(
+  output: Row,
+  path: string,
+  offset: number,
+  limit: number,
+): { found: false } | { found: true; value: string; meta: NonNullable<MariDbReadTruncation["field"]> } {
+  const raw = getByPath(output, path);
+  if (raw === undefined) return { found: false };
+  const text = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
+  const window = text.slice(offset, offset + limit);
+  return { found: true, value: window, meta: { path, offset, returned: window.length, total: text.length } };
+}
+
+// Post-processes a structured read so a single response stays bounded while the
+// model retains a path to every byte. Only touches single-object reads (`.get`):
+// list/search results are already summarized arrays and pass straight through.
+function applyReadBounding(result: MariDbCommandResult, envelope: Row): MariDbCommandResult {
+  if (result.ok === false || result.mode !== "read") return result;
+  const output = result.output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return result;
+
+  const fieldPath = firstString(envelope, ["field"]);
+  if (fieldPath) {
+    const offset = normalizeOffset(firstNumber(envelope, ["offset"]));
+    const limit = normalizeLimit(firstNumber(envelope, ["limit"]), MARI_READ_FIELD_WINDOW_MAX, MARI_READ_FIELD_WINDOW_MAX);
+    const projected = projectReadField(output as Row, fieldPath, offset, limit);
+    if (projected.found) {
+      return {
+        ...result,
+        output: projected.value,
+        truncation: {
+          truncated: projected.meta.offset > 0 || projected.meta.returned < projected.meta.total,
+          field: projected.meta,
+        },
+      };
+    }
+    // Unknown path: fall through to the bounded overview, whose elision
+    // placeholders name the real field paths so the model can retry.
+  }
+
+  const bounded = boundReadObject(output as Row, MARI_READ_OUTPUT_BUDGET);
+  if (!bounded.truncation.truncated) return result;
+  return { ...result, output: bounded.output, truncation: bounded.truncation };
+}
+
 function summarizeCharacterRow(row: Row): Row {
   const data = (tryParseJsonColumn(row, "data") as Record<string, unknown>) ?? {};
   return {
@@ -1704,22 +1843,27 @@ export class MariDbService {
         cwd: typeof envelope.cwd === "string" ? envelope.cwd : undefined,
       };
       const key = normalizeAppDataActionName(action);
-      if (key.startsWith("character.")) return await this.executeCharacterAction(key.slice("character.".length), envelope, context);
-      if (key.startsWith("persona.")) return await this.executePersonaAction(key.slice("persona.".length), envelope, context);
-      if (key.startsWith("lorebook.")) return await this.executeLorebookAction(key.slice("lorebook.".length), envelope, context);
-      if (key.startsWith("theme.")) return await this.executeThemeAction(key.slice("theme.".length), envelope, context);
-      if (key.startsWith("personalextension.")) {
-        return await this.executePersonalExtensionAction(key.slice("personalextension.".length), envelope, context);
-      }
-      if (key.startsWith("agent.")) return await this.executeAgentAction(key.slice("agent.".length), envelope, context);
-      if (key.startsWith("preset.")) return await this.executePresetAction(key.slice("preset.".length), envelope, context);
-      return {
-        ok: false,
-        mode: "read",
-        command,
-        error:
-          "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, or preset.* actions for structured no-shell app-data work.",
+      const dispatch = async (): Promise<MariDbCommandResult> => {
+        if (key.startsWith("character.")) return this.executeCharacterAction(key.slice("character.".length), envelope, context);
+        if (key.startsWith("persona.")) return this.executePersonaAction(key.slice("persona.".length), envelope, context);
+        if (key.startsWith("lorebook.")) return this.executeLorebookAction(key.slice("lorebook.".length), envelope, context);
+        if (key.startsWith("theme.")) return this.executeThemeAction(key.slice("theme.".length), envelope, context);
+        if (key.startsWith("personalextension.")) {
+          return this.executePersonalExtensionAction(key.slice("personalextension.".length), envelope, context);
+        }
+        if (key.startsWith("agent.")) return this.executeAgentAction(key.slice("agent.".length), envelope, context);
+        if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
+        return {
+          ok: false,
+          mode: "read",
+          command,
+          error:
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, or preset.* actions for structured no-shell app-data work.",
+        };
       };
+      // Field-aware bounding keeps a single read response within the workspace
+      // output cap while leaving every elided field re-readable (#4767).
+      return applyReadBounding(await dispatch(), envelope);
     } catch (err) {
       logger.warn(err, "[mari-db] structured app_data action failed");
       return { ok: false, mode: "read", command, error: err instanceof Error ? err.message : String(err) };

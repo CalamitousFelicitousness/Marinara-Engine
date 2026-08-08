@@ -1574,6 +1574,73 @@ try {
     "character.update must preserve every omitted Character Card field through the real merge and persistence path",
   );
 
+  // #4767: a heavy single-item read must bound its own size — eliding whole
+  // oversized fields (identity preserved) with a structured signal, and staying
+  // re-readable field by field — instead of getting sliced mid-JSON at the
+  // workspace output cap with no way to recover the lost content.
+  const heavyCharacterId = "heavy-card-4767";
+  const heavyGreeting = "G".repeat(40_000);
+  const heavyCreate = await mariDb.executeAction({
+    action: "character.create",
+    id: heavyCharacterId,
+    data: {
+      name: "Heavy Card",
+      description: "A compact identity that must survive the bounding.",
+      alternateGreetings: [heavyGreeting],
+    },
+  });
+  assert.equal(heavyCreate.ok, true, "#4767 heavy-card fixture must be created");
+
+  const heavyRead = await mariDb.executeAction({ action: "character.get", id: heavyCharacterId });
+  assert.equal(heavyRead.ok, true);
+  const heavyData = (heavyRead.output as { data: Record<string, unknown> }).data;
+  assert.equal(heavyData.name, "Heavy Card", "#4767 bounding must preserve the character name");
+  assert.equal(
+    heavyData.description,
+    "A compact identity that must survive the bounding.",
+    "#4767 bounding must preserve the description",
+  );
+  assert.equal(heavyRead.truncation?.truncated, true, "#4767 a heavy read must report structured truncation");
+  const greetingElision = (heavyRead.truncation?.fields ?? []).find(
+    (entry) => entry.path === "data.alternate_greetings[0]",
+  );
+  assert.ok(greetingElision, "#4767 must elide the oversized greeting and name its exact field path");
+  assert.equal(greetingElision.fullLength, 40_000, "#4767 truncation metadata must report the field's true full length");
+  assert.ok(
+    !String((heavyData.alternate_greetings as string[])[0]).includes("GGGGGGGGGG"),
+    "#4767 the oversized greeting must be elided in the overview, not inlined",
+  );
+  assert.ok(
+    JSON.stringify(heavyRead.output, null, 2).length < 30_000,
+    "#4767 the bounded overview must fit well under the 32k workspace output cap",
+  );
+
+  // The complete value must reassemble across field= windows — nothing is lost.
+  const firstWindow = await mariDb.executeAction({
+    action: "character.get",
+    id: heavyCharacterId,
+    field: "data.alternate_greetings[0]",
+    offset: 0,
+    limit: 20_000,
+  });
+  const secondWindow = await mariDb.executeAction({
+    action: "character.get",
+    id: heavyCharacterId,
+    field: "data.alternate_greetings[0]",
+    offset: 20_000,
+    limit: 20_000,
+  });
+  assert.equal(firstWindow.truncation?.field?.total, 40_000, "#4767 a field read must report the true total length");
+  assert.equal(
+    String(firstWindow.output) + String(secondWindow.output),
+    heavyGreeting,
+    "#4767 field= windows must reassemble the complete original value with nothing lost",
+  );
+
+  // A small read is untouched: no truncation metadata, behavior identical to before.
+  const smallRead = await mariDb.executeAction({ action: "character.get", id: characterId });
+  assert.equal(smallRead.truncation, undefined, "#4767 a small read must not be bounded or flagged");
+
   const characterFolderTimestamp = "2026-08-04T12:00:00.000Z";
   await db.insert(characterGroups).values({
     id: "character-folder-source",

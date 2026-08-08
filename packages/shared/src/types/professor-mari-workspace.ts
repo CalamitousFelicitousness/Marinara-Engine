@@ -283,11 +283,24 @@ export interface MariDbDiffSummary {
   truncated: boolean;
 }
 
+/**
+ * Signals how a structured read was bounded so the model gets a machine-readable
+ * cue instead of a silent mid-field cut. `fields` lists whole values elided from
+ * an object read (largest first) with the exact `field` path to re-read each;
+ * `field` describes a single windowed field read (`app_data { field, offset }`).
+ */
+export interface MariDbReadTruncation {
+  truncated: boolean;
+  fields?: Array<{ path: string; fullLength: number; returnedLength: number }>;
+  field?: { path: string; offset: number; returned: number; total: number };
+}
+
 export interface MariDbCommandResult {
   ok: boolean;
   mode: "read" | "dry-run" | "apply";
   command: string;
   output?: unknown;
+  truncation?: MariDbReadTruncation;
   summary?: MariDbDiffSummary;
   validation?: MariDbValidationResult;
   approval?: {

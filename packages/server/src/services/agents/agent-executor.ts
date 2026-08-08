@@ -2948,7 +2948,9 @@ function parseAgentResponse(
     try {
       const jsonStr = extractJson(responseText);
       const parsedData: unknown = JSON.parse(jsonStr);
-      if (!parsedData || typeof parsedData !== "object") throw new Error("Structured agent response must be JSON");
+      if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
+        throw new Error("Structured agent response must be a JSON object");
+      }
       const data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
       return { type: resultType, data };
     } catch {

@@ -439,6 +439,40 @@ assert.equal(
   }
 }
 
+// ── Inserting a parent message adopts its orphan swipes' shard files ──
+// Orphan swipes live in the unassigned shard. When their message is later
+// INSERTED, they silently regroup into the chat's shard at flush time — both
+// swipe files must be rewritten, or the unassigned file keeps a stale copy
+// that duplicates on the next load.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  mkdirSync(join(dir, "tables", "message_swipes"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "message_swipes", "orphaned-rows.json"),
+    JSON.stringify([{ id: "s-1", messageId: "m-1", index: 0, content: "orphan swipe" }]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
+    await db.insert(messages).values(messageRow("m-1", "chat-a", "parent arrives"));
+    await db._fileStore.flush();
+    const swipes = JSON.parse(
+      readFileSync(join(dir, "tables", "message_swipes", `${encodeShardKey("chat-a")}.json`), "utf8"),
+    ) as Array<{ id: string }>;
+    assert.deepEqual(swipes.map((row) => row.id), ["s-1"], "the orphan swipe lands in the adopting chat's shard");
+    assert.equal(
+      existsSync(join(dir, "tables", "message_swipes", "orphaned-rows.json")),
+      false,
+      "the unassigned shard file is rewritten away, not left holding a stale copy",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── A stale manifest version is rewritten on the next boot ──
 // Crash window: migration completed but the first flush never ran, leaving
 // sharded data under a version-2 manifest. The downgrade guard (#4708 PR 2)

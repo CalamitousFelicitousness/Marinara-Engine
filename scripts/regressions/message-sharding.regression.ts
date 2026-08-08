@@ -762,18 +762,27 @@ assert.equal(
   }
 }
 
-// ── PR 3 migration: all six monoliths shard in one boot, originals preserved ──
+// ── PR 3 migration: every new monolith shards in one boot, rows and originals preserved ──
 
 {
   const dir = tempStorageDir();
   mkdirSync(join(dir, "tables"), { recursive: true });
   const seeded: Array<[string, Record<string, unknown>]> = [
-    ["memory_chunks", { id: "r-1", chatId: "chat-x", content: "c", messageCount: 1, firstMessageAt: "t", lastMessageAt: "t", createdAt: "2026-08-08T10:00:00.000Z" }],
-    ["chat_images", { id: "r-2", chatId: "chat-x", filePath: "img.png", createdAt: "2026-08-08T10:00:01.000Z" }],
-    ["agent_runs", { id: "r-3", agentConfigId: "cfg", chatId: "chat-x", messageId: "m-1", resultType: "text", createdAt: "2026-08-08T10:00:02.000Z" }],
-    ["conversation_call_messages", { id: "r-4", callId: "call-1", chatId: "chat-x", role: "user", participantKind: "user", kind: "text", createdAt: "2026-08-08T10:00:03.000Z" }],
-    ["game_state_snapshots", { id: "r-5", chatId: "chat-x", messageId: "m-1", createdAt: "2026-08-08T10:00:04.000Z" }],
-    ["spatial_context_snapshots", { id: "r-6", chatId: "chat-x", messageId: "m-1", definitionRevision: 1, source: "test", createdAt: "2026-08-08T10:00:05.000Z" }],
+    ["memory_chunks", { id: "row-memory_chunks", chatId: "chat-x", content: "c", messageCount: 1, firstMessageAt: "t", lastMessageAt: "t", createdAt: "2026-08-08T10:00:00.000Z" }],
+    ["chat_images", { id: "row-chat_images", chatId: "chat-x", filePath: "img.png", createdAt: "2026-08-08T10:00:01.000Z" }],
+    ["agent_runs", { id: "row-agent_runs", agentConfigId: "cfg", chatId: "chat-x", messageId: "m-1", resultType: "text", createdAt: "2026-08-08T10:00:02.000Z" }],
+    ["agent_memory", { id: "row-agent_memory", agentConfigId: "cfg", chatId: "chat-x", key: "k", value: "v", updatedAt: "2026-08-08T10:00:02.500Z" }],
+    ["conversation_call_sessions", { id: "row-conversation_call_sessions", chatId: "chat-x", status: "ended", mode: "audio", createdAt: "2026-08-08T10:00:02.750Z" }],
+    ["conversation_call_messages", { id: "row-conversation_call_messages", callId: "call-1", chatId: "chat-x", role: "user", participantKind: "user", kind: "text", createdAt: "2026-08-08T10:00:03.000Z" }],
+    ["game_state_snapshots", { id: "row-game_state_snapshots", chatId: "chat-x", messageId: "m-1", createdAt: "2026-08-08T10:00:04.000Z" }],
+    ["game_engine_state", { id: "row-game_engine_state", chatId: "chat-x", gameType: "uno", createdAt: "2026-08-08T10:00:04.250Z" }],
+    ["game_checkpoints", { id: "row-game_checkpoints", chatId: "chat-x", snapshotId: "row-game_state_snapshots", createdAt: "2026-08-08T10:00:04.500Z" }],
+    ["game_turn_storyboards", { id: "row-game_turn_storyboards", chatId: "chat-x", messageId: "m-1", createdAt: "2026-08-08T10:00:04.750Z" }],
+    ["game_scene_videos", { id: "row-game_scene_videos", chatId: "chat-x", filePath: "v.mp4", createdAt: "2026-08-08T10:00:05.000Z" }],
+    ["spatial_context_snapshots", { id: "row-spatial_context_snapshots", chatId: "chat-x", messageId: "m-1", definitionRevision: 1, source: "test", createdAt: "2026-08-08T10:00:05.250Z" }],
+    // The two target-keyed tables shard by targetChatId, not sourceChatId.
+    ["ooc_influences", { id: "row-ooc_influences", sourceChatId: "chat-other", targetChatId: "chat-x", createdAt: "2026-08-08T10:00:05.500Z" }],
+    ["conversation_notes", { id: "row-conversation_notes", sourceChatId: "chat-other", targetChatId: "chat-x", createdAt: "2026-08-08T10:00:05.750Z" }],
   ];
   for (const [table, row] of seeded) {
     writeFileSync(join(dir, "tables", `${table}.json`), JSON.stringify([row]));
@@ -781,18 +790,50 @@ assert.equal(
   const db = await createFileNativeDB();
   try {
     for (const [table] of seeded) {
-      assert.ok(
-        existsSync(join(dir, "tables", table, `${encodeShardKey("chat-x")}.json`)),
-        `${table} migrated into a per-chat shard`,
-      );
-      assert.ok(
-        existsSync(join(dir, "tables", `${table}.json.pre-shard`)),
-        `${table} monolith preserved as .pre-shard`,
-      );
+      const shardPath = join(dir, "tables", table, `${encodeShardKey("chat-x")}.json`);
+      assert.ok(existsSync(shardPath), `${table} migrated into a per-chat shard`);
+      const rows = JSON.parse(readFileSync(shardPath, "utf8")) as Array<{ id: string }>;
+      assert.deepEqual(rows.map((row) => row.id), [`row-${table}`], `${table} rows survive the migration intact`);
+      assert.ok(existsSync(join(dir, "tables", `${table}.json.pre-shard`)), `${table} monolith preserved as .pre-shard`);
       assert.equal(existsSync(join(dir, "tables", `${table}.json`)), false, `${table} monolith renamed away`);
     }
+    assert.equal(
+      existsSync(join(dir, "tables", "ooc_influences", `${encodeShardKey("chat-other")}.json`)),
+      false,
+      "influences shard by targetChatId, never by sourceChatId",
+    );
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
     assert.equal(manifest.version, STORAGE_VERSION, "the migrated store lands on the current format");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A re-migration never clobbers the original .pre-shard backup ──
+// Round trip: migrate -> unshard -> migrate again. The docs promise the
+// pre-migration originals are never deleted by the Engine, so the second
+// migration must take the timestamped form instead of renaming over the
+// first backup.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(join(dir, "tables", "memory_chunks.json.pre-shard"), JSON.stringify([{ id: "pristine-original" }]));
+  writeFileSync(
+    join(dir, "tables", "memory_chunks.json"),
+    JSON.stringify([{ id: "chunk-1", chatId: "chat-x", content: "rebuilt", messageCount: 1, firstMessageAt: "t", lastMessageAt: "t", createdAt: "2026-08-08T10:00:00.000Z" }]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    const original = JSON.parse(readFileSync(join(dir, "tables", "memory_chunks.json.pre-shard"), "utf8")) as Array<{
+      id: string;
+    }>;
+    assert.deepEqual(original.map((row) => row.id), ["pristine-original"], "the first .pre-shard backup survives a re-migration");
+    assert.ok(
+      readdirSync(join(dir, "tables")).some((name) => /^memory_chunks\.json\.pre-shard-.+/.test(name)),
+      "the re-migrated monolith is preserved under a timestamped .pre-shard- name",
+    );
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

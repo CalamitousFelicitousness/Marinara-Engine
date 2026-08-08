@@ -177,17 +177,40 @@ const SAFETY_SAVE_MS = 10_000;
 // machinery); only load/save/dirty plumbing consults this marker.
 // Order matters only for the first pair: messages must load/migrate before
 // message_swipes so the messageId -> chatId index exists when swipes resolve
-// their shard. Every other table shards by its own chatId column directly.
+// their shard. Every other table shards by one of its own columns (see
+// SHARD_KEY_COLUMNS). Deliberately NOT sharded: `lorebooks` (nullable chatId
+// — a chat-linked library entity, not per-chat data) and
+// `game_turn_storyboard_keyframes` (no chat column; resolves only through
+// its parent storyboard — sharding it needs either a second parent index or
+// a denormalized chatId column, tracked as a follow-up on #4708).
 export const SHARDED_TABLES = [
   "messages",
   "message_swipes",
   "memory_chunks",
   "chat_images",
   "agent_runs",
+  "agent_memory",
+  "conversation_call_sessions",
   "conversation_call_messages",
   "game_state_snapshots",
+  "game_engine_state",
+  "game_checkpoints",
+  "game_turn_storyboards",
+  "game_scene_videos",
   "spatial_context_snapshots",
+  "ooc_influences",
+  "conversation_notes",
 ] as const;
+
+/**
+ * Tables whose per-chat shard key is not their `chatId` column. Influences
+ * and notes are written by a conversation chat but READ (and injected) per
+ * roleplay turn of the TARGET chat, so that is the access-pattern key.
+ */
+const SHARD_KEY_COLUMNS: Record<string, string> = {
+  ooc_influences: "targetChatId",
+  conversation_notes: "targetChatId",
+};
 const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
 
 /**
@@ -1315,7 +1338,8 @@ class FileTableStore {
       if (table === "message_swipes") {
         key = migrationIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY;
       } else {
-        key = typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY;
+        const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+        key = typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
         if (table === "messages" && typeof row.id === "string" && typeof row.chatId === "string") {
           migrationIndex.set(row.id, row.chatId);
         }
@@ -1339,7 +1363,16 @@ class FileTableStore {
     // would leave only the one-flush-stale .bak, and the retry would rebuild
     // the shards from it — silently losing the newest messages.
     for (const path of [monolithBak, monolithPath]) {
-      if (existsSync(path)) await rename(path, `${path}.pre-shard`);
+      if (!existsSync(path)) continue;
+      // Never clobber an existing .pre-shard: a later re-migration (after an
+      // unshard round trip) would otherwise silently replace the pristine
+      // pre-migration original with a rebuilt monolith — the docs promise
+      // these files are never deleted by the Engine. Subsequent copies get
+      // the timestamped form, matching the .post-downgrade-/.post-unshard-
+      // convention.
+      const preferred = `${path}.pre-shard`;
+      const target = existsSync(preferred) ? `${preferred}-${corruptionTimestamp()}` : preferred;
+      await rename(path, target);
     }
     await unlink(sentinelPath).catch(() => undefined);
     // Land the version-3 manifest on the next flush.
@@ -1730,8 +1763,9 @@ class FileTableStore {
 
   /**
    * Raw shard key for one row — the single source of truth for how a sharded
-   * table's rows map to per-chat files. Every table shards by its own chatId
-   * column except message_swipes, which resolves through the parent message.
+   * table's rows map to per-chat files. Every table shards by one of its own
+   * columns (chatId unless SHARD_KEY_COLUMNS overrides it) except
+   * message_swipes, which resolves through the parent message.
    */
   private shardKeyForRow(table: string, row: Row): string {
     if (table === "message_swipes") {
@@ -1746,7 +1780,8 @@ class FileTableStore {
       }
       return chatId ?? UNASSIGNED_SHARD_KEY;
     }
-    return typeof row.chatId === "string" && row.chatId ? (row.chatId as string) : UNASSIGNED_SHARD_KEY;
+    const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+    return typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
   }
 
   /**

@@ -282,7 +282,11 @@ function shardedStorageFixture() {
   try {
     await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
     const monolith = JSON.parse(readFileSync(join(dir, "tables", "memory_chunks.json"), "utf8"));
-    assert.equal(monolith.length, 1, "memory_chunks shards fold back into a monolith");
+    assert.deepEqual(
+      monolith.map((row) => [row.id, row.content]),
+      [["chunk-1", "c"]],
+      "memory_chunks shards fold back into a monolith with rows intact",
+    );
     assert.ok(
       readdirSync(join(dir, "tables")).some((name) => name.startsWith("memory_chunks.post-unshard-")),
       "the chunk shard files are kept as .post-unshard-<timestamp>",

@@ -1049,6 +1049,14 @@ class FileTableStore {
    * rewrites each canonically or deletes it; cleared per table afterwards.
    */
   private staleShardFiles = new Map<string, Set<string>>();
+  /**
+   * messageIds of swipes currently resolving to the unassigned shard. When
+   * such a message is later INSERTED, its swipes silently regroup into the
+   * chat's shard, so BOTH swipe files must be dirtied (see
+   * reindexMovedMessages). Kept tiny — usually empty — so the check costs
+   * nothing on the ordinary insert path.
+   */
+  private orphanSwipeMessageIds = new Set<string>();
   private shardDirsCreated = new Set<string>();
   /** Monotonic per-table write counters (#4705); bumped in markDirty, never rolled back. */
   private tableWriteGenerations = new Map<string, number>();
@@ -1694,6 +1702,13 @@ class FileTableStore {
         keys.add(typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY);
       } else {
         const chatId = this.messageShardIndex.get(row.messageId);
+        // Deliberate side effect: every path that resolves a swipe's shard
+        // funnels through here (load, insert, update, self-heal), so this is
+        // the single point that learns a swipe is currently orphaned — the
+        // knowledge reindexMovedMessages needs when the parent arrives later.
+        if (chatId === undefined && typeof row.messageId === "string") {
+          this.orphanSwipeMessageIds.add(row.messageId);
+        }
         keys.add(chatId ?? UNASSIGNED_SHARD_KEY);
       }
     }
@@ -1712,8 +1727,13 @@ class FileTableStore {
     for (const row of affectedRows) {
       if (typeof row.id !== "string" || typeof row.chatId !== "string") continue;
       const previous = this.messageShardIndex.get(row.id);
-      if (previous !== undefined && previous !== row.chatId) {
-        movedSwipeShards.add(previous);
+      // A first-time index entry is also a "move" when the message ADOPTS
+      // orphan swipes: they regroup from the unassigned shard into the chat's
+      // shard, and the unassigned file would otherwise keep its stale copies.
+      // Set.delete doubles as the membership test and the cleanup.
+      const adoptsOrphans = previous === undefined && this.orphanSwipeMessageIds.delete(row.id);
+      if ((previous !== undefined && previous !== row.chatId) || adoptsOrphans) {
+        movedSwipeShards.add(previous ?? UNASSIGNED_SHARD_KEY);
         movedSwipeShards.add(row.chatId);
       }
       this.messageShardIndex.set(row.id, row.chatId);

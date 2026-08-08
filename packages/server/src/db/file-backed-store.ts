@@ -1391,6 +1391,14 @@ class FileTableStore {
       // Rollback restored the full messages array — the shard index must
       // match the restored rows, not the rolled-back ones (#4708).
       if (ctx.dirtyTables.has("messages")) this.rebuildMessageShardIndex();
+      // Same for the orphan markers: a rolled-back parent insert consumed a
+      // marker via reindexMovedMessages, and a rolled-back swipe insert may
+      // have added one. Rebuild from the restored rows against the rebuilt
+      // index, or a later real parent insert would not dirty the unassigned
+      // swipe shard.
+      if (ctx.dirtyTables.has("messages") || ctx.dirtyTables.has("message_swipes")) {
+        this.rebuildOrphanSwipeMessageIds();
+      }
       if (ctx.flushed) {
         this.dirty = true;
         for (const tableName of ctx.dirtyTables) this.dirtyTables.add(tableName);
@@ -1741,6 +1749,16 @@ class FileTableStore {
     if (movedSwipeShards.size > 0) {
       const hasSwipes = (this.tables.get("message_swipes") ?? []).length > 0;
       if (hasSwipes) this.markDirty("message_swipes", movedSwipeShards);
+    }
+  }
+
+  /** Rebuilds the orphan-swipe markers from the current rows (rollback path). */
+  private rebuildOrphanSwipeMessageIds() {
+    this.orphanSwipeMessageIds.clear();
+    for (const row of this.tables.get("message_swipes") ?? []) {
+      if (typeof row.messageId === "string" && !this.messageShardIndex.has(row.messageId)) {
+        this.orphanSwipeMessageIds.add(row.messageId);
+      }
     }
   }
 

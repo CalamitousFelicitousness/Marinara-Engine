@@ -473,6 +473,45 @@ assert.equal(
   }
 }
 
+// ── Rollback restores the orphan-swipe markers ──
+// A rolled-back parent insert consumes the orphan marker inside the
+// transaction; without rebuilding it on rollback, the REAL insert afterwards
+// would no longer dirty the unassigned swipe shard.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  mkdirSync(join(dir, "tables", "message_swipes"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "message_swipes", "orphaned-rows.json"),
+    JSON.stringify([{ id: "s-1", messageId: "m-1", index: 0, content: "orphan swipe" }]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
+    await db
+      .transaction(async (tx) => {
+        await tx.insert(messages).values(messageRow("m-1", "chat-a", "rolled back"));
+        throw new Error("force rollback");
+      })
+      .catch(() => {});
+    await db.insert(messages).values(messageRow("m-1", "chat-a", "real parent"));
+    await db._fileStore.flush();
+    const swipes = JSON.parse(
+      readFileSync(join(dir, "tables", "message_swipes", `${encodeShardKey("chat-a")}.json`), "utf8"),
+    ) as Array<{ id: string }>;
+    assert.deepEqual(swipes.map((row) => row.id), ["s-1"], "adoption still works after a rolled-back attempt");
+    assert.equal(
+      existsSync(join(dir, "tables", "message_swipes", "orphaned-rows.json")),
+      false,
+      "the unassigned shard file is still rewritten away after the rollback consumed and restored the marker",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── A stale manifest version is rewritten on the next boot ──
 // Crash window: migration completed but the first flush never ran, leaving
 // sharded data under a version-2 manifest. The downgrade guard (#4708 PR 2)

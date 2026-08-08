@@ -233,6 +233,11 @@ elif [ -d ".git" ]; then
                 SKIP_UPDATE_FOR_LOCAL_CHANGES=1
                 echo "  [WARN] Skipping auto-update: could not verify the target's storage format."
             fi
+        else
+            # No resolvable target commit: nothing to verify, and the update
+            # steps below could not use it either — skip before the snapshot.
+            SKIP_UPDATE_FOR_LOCAL_CHANGES=1
+            echo "  [WARN] Skipping auto-update: could not resolve the update target."
         fi
         if [ "$SKIP_UPDATE_FOR_LOCAL_CHANGES" != "1" ]; then
             if node scripts/protect-launcher-data.mjs snapshot; then

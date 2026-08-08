@@ -97,7 +97,13 @@ let updateApplyInProgress = false;
 type InstallType = "git" | "docker" | "standalone";
 type ServerPlatform = "windows" | "macos" | "linux" | "android-termux" | "unknown";
 type ClientPlatform = "ios" | "android" | "desktop" | "unknown";
-type ApplyUnavailableReason = "disabled" | "unsupported-install" | "container-install" | null;
+type ApplyUnavailableReason =
+  | "disabled"
+  | "unsupported-install"
+  | "container-install"
+  | "storage-format-incompatible"
+  | "storage-format-unverified"
+  | null;
 
 /** Detect whether this install is a git repo. */
 function isGitInstall(): boolean {
@@ -281,13 +287,15 @@ async function cleanStaleSourceFiles(root: string): Promise<void> {
  * Downgrade guard (#4708). Kept in sync with checkTargetStorageFormat in
  * scripts/protect-launcher-data.mjs (the launcher-side twin — the server
  * cannot import that script); the launcher-format-guard regression pins the
- * pairing. Absent storage-format.json on the target ref means the build
- * predates the file, i.e. storage format 2.
+ * pairing. A CONFIRMED-absent storage-format.json on the target ref means the
+ * build predates the file, i.e. storage format 2; any other git failure
+ * (timeout, lock, bad ref) is `verified: false` — treating those as format 2
+ * would block a legitimate upgrade with a misleading downgrade message.
  */
 async function checkTargetStorageFormat(
   root: string,
   targetRef: string,
-): Promise<{ compatible: boolean; onDiskFormat: number | null; targetFormat: number | null }> {
+): Promise<{ compatible: boolean; verified: boolean; onDiskFormat: number | null; targetFormat: number | null }> {
   let onDiskFormat: number | null = null;
   try {
     const manifest = JSON.parse(readFileSync(resolve(getFileStorageDir(), "manifest.json"), "utf8")) as {
@@ -297,23 +305,42 @@ async function checkTargetStorageFormat(
   } catch {
     /* no manifest -> nothing to protect */
   }
-  if (onDiskFormat === null) return { compatible: true, onDiskFormat: null, targetFormat: null };
+  if (onDiskFormat === null) return { compatible: true, verified: true, onDiskFormat: null, targetFormat: null };
 
-  let targetFormat = 2;
+  // Two steps because git's error text cannot distinguish a bad ref from an
+  // absent path: first CONFIRM the ref resolves, then a show failure can only
+  // mean the file is absent on it (a pre-#4708 build -> format 2).
+  try {
+    await execFileAsync("git", ["rev-parse", "--verify", "--quiet", `${targetRef}^{commit}`], {
+      cwd: root,
+      timeout: 15_000,
+    });
+  } catch (err) {
+    logger.warn(err, "[Update] Could not verify the update target ref %s", targetRef);
+    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
+  }
+  let targetFormat: number | null = null;
+  let raw: string | null = null;
   try {
     const { stdout } = await execFileAsync("git", ["show", `${targetRef}:storage-format.json`], {
       cwd: root,
       timeout: 15_000,
     });
-    const parsed = JSON.parse(stdout) as { storageFormat?: unknown };
-    if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
-  } catch (err) {
-    // Absent on the ref -> keep 2. Any other cause (git failure, timeout)
-    // also lands here and can block a legitimate upgrade with a misleading
-    // 409, so make it diagnosable.
-    logger.warn(err, "[Update] Could not read storage-format.json at %s; assuming format 2", targetRef);
+    raw = stdout;
+  } catch {
+    targetFormat = 2;
   }
-  return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw) as { storageFormat?: unknown };
+      // A malformed committed file stays unverified rather than being misread.
+      if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
+    } catch (err) {
+      logger.warn(err, "[Update] Malformed storage-format.json at %s", targetRef);
+    }
+  }
+  if (targetFormat === null) return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
+  return { compatible: targetFormat >= onDiskFormat, verified: true, onDiskFormat, targetFormat };
 }
 
 async function checkoutOrCreateUpdateBranch(root: string, channel: UpdateChannelInfo, targetHead: string): Promise<void> {
@@ -1001,6 +1028,14 @@ export async function updatesRoutes(app: FastifyInstance) {
       // write a conflicting old-format file. No override here: manual
       // downgrade steps live in docs/TROUBLESHOOTING.md.
       const formatCheck = await checkTargetStorageFormat(root, targetHead);
+      if (!formatCheck.verified) {
+        return reply.status(409).send({
+          error:
+            "Could not verify the selected version's storage format (git could not read storage-format.json " +
+            "at the update target). This is not a downgrade block — try again, and check the server log if it persists.",
+          applyUnavailableReason: "storage-format-unverified" as ApplyUnavailableReason,
+        });
+      }
       if (!formatCheck.compatible) {
         return reply.status(409).send({
           error:
@@ -1008,6 +1043,7 @@ export async function updatesRoutes(app: FastifyInstance) {
             `is at format ${formatCheck.onDiskFormat}. Switching to it would hide your chat history. See ` +
             `docs/TROUBLESHOOTING.md ("Chats show no messages after switching to an older version") for ` +
             `manual downgrade steps.`,
+          applyUnavailableReason: "storage-format-incompatible" as ApplyUnavailableReason,
         });
       }
 

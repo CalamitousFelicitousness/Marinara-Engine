@@ -89,24 +89,47 @@ export async function checkTargetStorageFormat({
   } catch {
     /* no manifest -> fresh install or pre-storage build -> nothing to protect */
   }
-  if (onDiskFormat === null) return { compatible: true, onDiskFormat: null, targetFormat: null };
+  if (onDiskFormat === null) return { compatible: true, verified: true, onDiskFormat: null, targetFormat: null };
 
-  // Absent on the target ref -> that build predates storage-format.json -> 2.
-  let targetFormat = 2;
+  // CONFIRMED-absent on the target ref -> that build predates the file -> 2.
+  // A git failure (timeout, lock, bad ref) is verified: false instead —
+  // treating those as format 2 would misreport a downgrade block. Two steps
+  // because git's error text cannot distinguish a bad ref from an absent
+  // path: first confirm the ref resolves, then a show failure can only mean
+  // the file is absent on it.
   try {
-    const raw = execFileSync("git", ["show", `${targetRef}:storage-format.json`], {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${targetRef}^{commit}`], {
       cwd: root,
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
       timeout: 15_000,
     });
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
   } catch {
-    /* keep 2 */
+    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
   }
-
-  return { compatible: targetFormat >= onDiskFormat, onDiskFormat, targetFormat };
+  let targetFormat = null;
+  let raw = null;
+  try {
+    raw = execFileSync("git", ["show", `${targetRef}:storage-format.json`], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 15_000,
+    });
+  } catch {
+    targetFormat = 2;
+  }
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw);
+      // A malformed committed file stays unverified rather than being misread.
+      if (typeof parsed?.storageFormat === "number") targetFormat = parsed.storageFormat;
+    } catch {
+      /* fall through unverified */
+    }
+  }
+  if (targetFormat === null) return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
+  return { compatible: targetFormat >= onDiskFormat, verified: true, onDiskFormat, targetFormat };
 }
 
 // Kept in sync with SHARDED_TABLES in packages/server/src/db/file-backed-store.ts
@@ -512,13 +535,21 @@ async function main() {
     // Exit-code contract, relied on by every launcher and the installer:
     //   0 = compatible target, proceed
     //   2 = REAL format block (the target cannot read the on-disk data)
-    //   1 = the check itself failed (usage error, unexpected exception via
-    //       main().catch) — consumers must fail safe but report it as a
-    //       verification failure, not as a downgrade block.
+    //   1 = the check itself failed (usage error, an unverifiable target's
+    //       format, or an unexpected exception via main().catch) — consumers
+    //       must fail safe but report it as a verification failure, not as a
+    //       downgrade block.
     const targetRef = process.argv[3];
     if (!targetRef) throw new Error("Usage: node scripts/protect-launcher-data.mjs check-target <ref>");
     const result = await checkTargetStorageFormat({ targetRef });
     if (result.compatible) {
+      return;
+    }
+    if (!result.verified) {
+      console.error(
+        "  [WARN] Could not verify the update target's storage format (git error); this is NOT a downgrade block.",
+      );
+      process.exitCode = 1;
       return;
     }
     console.error(

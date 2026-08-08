@@ -257,6 +257,9 @@ if errorlevel 2 (
     set "INSTALL_ERROR=Release %RELEASE_TAG% is older than your data's storage format. Install a newer release, or see docs/TROUBLESHOOTING.md (Chats show no messages after switching to an older version)."
     goto :fatal
 )
+if errorlevel 1 (
+    echo  [WARN] Could not verify the release's storage format; continuing with the install.
+)
 
 set "STASHED=0"
 set "STASH_REF="

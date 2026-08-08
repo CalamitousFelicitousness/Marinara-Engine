@@ -76,6 +76,10 @@ assert.ok(
   "install.bat must carry the downgrade guard on its update-over-existing-install path, blocking only on exit code 2 " +
     "(exit 1 can come from an older checkout whose script predates the subcommand, and must not break upgrades)",
 );
+assert.ok(
+  installerSource.includes("Could not verify"),
+  "install.bat must surface a distinguishable warning (not silence, not a block) when the format check itself fails",
+);
 for (const dockerfile of ["Dockerfile", "Dockerfile.lite"]) {
   const dockerfileSource = readFileSync(join(repositoryRoot, dockerfile), "utf8");
   assert.ok(
@@ -160,8 +164,8 @@ function storageFixture(manifestVersion) {
     const blocked = await checkTargetStorageFormat({ root: repo, env: envFor(formatThreeData), targetRef: preShardingRef });
     assert.deepEqual(
       blocked,
-      { compatible: false, onDiskFormat: 3, targetFormat: 2 },
-      "format-3 data must refuse a target ref that predates storage-format.json (absent -> 2)",
+      { compatible: false, verified: true, onDiskFormat: 3, targetFormat: 2 },
+      "format-3 data must refuse a target ref that CONFIRMS storage-format.json absent (-> 2)",
     );
     const allowed = await checkTargetStorageFormat({ root: repo, env: envFor(formatThreeData), targetRef: shardedRef });
     assert.equal(allowed.compatible, true, "format-3 data accepts a format-3 target");
@@ -172,8 +176,21 @@ function storageFixture(manifestVersion) {
     const fresh = await checkTargetStorageFormat({ root: repo, env: envFor(freshData), targetRef: preShardingRef });
     assert.deepEqual(
       fresh,
-      { compatible: true, onDiskFormat: null, targetFormat: null },
+      { compatible: true, verified: true, onDiskFormat: null, targetFormat: null },
       "no manifest means nothing to protect — never block a fresh install",
+    );
+    // A git failure (bad ref, lock, timeout) is NOT the same as a confirmed
+    // absence: it must come back unverified, never as a fake format-2 that
+    // would misreport a downgrade block.
+    const unverified = await checkTargetStorageFormat({
+      root: repo,
+      env: envFor(formatThreeData),
+      targetRef: "0000000000000000000000000000000000000000",
+    });
+    assert.deepEqual(
+      unverified,
+      { compatible: false, verified: false, onDiskFormat: 3, targetFormat: null },
+      "an unreadable target ref is unverified, not misread as a pre-sharding build",
     );
   } finally {
     for (const dir of [repo, formatThreeData, formatTwoData, freshData]) rmSync(dir, { recursive: true, force: true });
@@ -203,6 +220,13 @@ function storageFixture(manifestVersion) {
       env: { ...process.env, FILE_STORAGE_DIR: currentData },
     });
     assert.equal(broken.status, 1, "a check that could not run exits 1, never 2 — consumers report it differently");
+    const unverifiable = spawnSync(
+      process.execPath,
+      [guardScript, "check-target", "0000000000000000000000000000000000000000"],
+      { encoding: "utf8", env: { ...process.env, FILE_STORAGE_DIR: newerData } },
+    );
+    assert.equal(unverifiable.status, 1, "an unverifiable target exits 1 (verification failure), never 2 (block)");
+    assert.match(unverifiable.stderr, /NOT a downgrade block/, "the unverified message says it is not a downgrade");
   } finally {
     for (const dir of [newerData, currentData]) rmSync(dir, { recursive: true, force: true });
   }

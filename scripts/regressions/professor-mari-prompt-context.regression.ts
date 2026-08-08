@@ -189,11 +189,19 @@ function makeStores(opts: {
   );
 
   // The tail element must carry the volatile content AND mark it contextKind
-  // "injection" so the history-trim pass leaves it alone.
-  const contentIdx = src.indexOf("content: professorMariVolatileContext");
-  assert.ok(contentIdx >= 0, "the volatile half must be injected as a message content field");
-  const window = src.slice(contentIdx, contentIdx + 120);
-  assert.match(window, /contextKind:\s*"injection"/, 'the tail Mari block must be tagged contextKind "injection"');
+  // "injection" so the history-trim pass leaves it alone. Match the object
+  // literal structurally (up to its closing brace) rather than a fixed-width
+  // window, so an added property/comment between the two lines can't fail this
+  // for a reason unrelated to the contract.
+  assert.ok(
+    src.includes("content: professorMariVolatileContext"),
+    "the volatile half must be injected as a message content field",
+  );
+  assert.match(
+    src,
+    /content:\s*professorMariVolatileContext\s*,[^}]*contextKind:\s*"injection"/,
+    'the tail Mari block must be tagged contextKind "injection"',
+  );
 
   // The whole point of #4768: the volatile half must NEVER be concatenated onto
   // the system prompt. This is the assertion that fails loudly on a fold-back.

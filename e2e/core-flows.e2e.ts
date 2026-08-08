@@ -2358,6 +2358,7 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
       return { backgroundColor: style.backgroundColor, color: style.color };
     });
     expect(connectionListboxStyle.backgroundColor).not.toBe("rgb(255, 255, 255)");
+    expect(connectionListboxStyle.color).not.toBe(connectionListboxStyle.backgroundColor);
     await connectionListbox.getByRole("option", { name: "None", exact: true }).click();
     await expect(connectionListbox).toBeHidden();
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();

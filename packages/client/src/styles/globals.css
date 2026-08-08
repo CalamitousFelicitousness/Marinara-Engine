@@ -1224,6 +1224,20 @@
   color: var(--marinara-preset-select-option-selected-text, var(--marinara-chat-chrome-button-text-active)) !important;
 }
 
+.mari-chat-setup-wizard select {
+  color-scheme: dark;
+}
+
+[data-theme="light"] .mari-chat-setup-wizard select {
+  color-scheme: light;
+}
+
+.mari-chat-setup-wizard select option,
+.mari-chat-setup-wizard select optgroup {
+  background-color: var(--secondary) !important;
+  color: var(--foreground) !important;
+}
+
 .mari-editor-legacy-bridge .mari-preset-native-select {
   --marinara-preset-select-bg: var(--marinara-editor-control-bg);
   --marinara-preset-select-text: var(--marinara-editor-text);

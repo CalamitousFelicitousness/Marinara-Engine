@@ -69,6 +69,11 @@ import {
   buildGmFormatReminder,
   buildPartyRecruitCardPrompt,
 } from "../../packages/server/src/services/game/gm-prompts.js";
+import {
+  addNameLookupEntry,
+  findCharAvatarFuzzy,
+  loadCharacterLibraryAvatarLookup,
+} from "../../packages/server/src/services/game/npc-avatar-utils.js";
 import { resolveConversationSelfieRequestedNames } from "../../packages/server/src/services/generation/conversation-selfie-command-runtime.js";
 import {
   applyCustomAgentImageChatSettings,
@@ -8623,6 +8628,76 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "playful",
         "stale values should be removed before Random Pick resolves",
       );
+
+      const booleanOptions = [{ value: "enabled" }];
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: "",
+          options: booleanOptions,
+          multiSelect: false,
+          randomPick: false,
+        }),
+        "",
+        "an explicit empty Boolean choice must stay OFF",
+      );
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: [],
+          options: booleanOptions,
+          multiSelect: true,
+          randomPick: false,
+        }),
+        "",
+        "an explicit empty multi-choice must stay empty",
+      );
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: undefined,
+          options: booleanOptions,
+          multiSelect: false,
+          randomPick: false,
+        }),
+        "enabled",
+        "missing legacy selections should retain the first-option fallback",
+      );
+    },
+  },
+  {
+    name: "Game portrait lookup reuses only unambiguous character-library avatars",
+    async run() {
+      const avatars = new Map<string, string>();
+      addNameLookupEntry(avatars, "Dottore", "/api/avatars/file/dottore.png");
+      assert.equal(findCharAvatarFuzzy("Il Dottore", avatars), "/api/avatars/file/dottore.png");
+      assert.equal(findCharAvatarFuzzy("Dottore", avatars), "/api/avatars/file/dottore.png");
+
+      addNameLookupEntry(avatars, "John Smith", "/api/avatars/file/john-smith.png");
+      addNameLookupEntry(avatars, "John Doe", "/api/avatars/file/john-doe.png");
+      assert.equal(findCharAvatarFuzzy("John", avatars), undefined, "ambiguous aliases must not select by insertion order");
+      assert.equal(findCharAvatarFuzzy("John Smith", avatars), "/api/avatars/file/john-smith.png");
+
+      const boundaryAvatars = new Map<string, string>();
+      addNameLookupEntry(boundaryAvatars, "Ann", "/api/avatars/file/ann.png");
+      assert.equal(findCharAvatarFuzzy("Joanne", boundaryAvatars), undefined, "partial matches require word boundaries");
+
+      let warned = false;
+      let updateByMessageCalled = false;
+      const unavailableLibrary = await loadCharacterLibraryAvatarLookup(
+        async () => {
+          throw new Error("library unavailable");
+        },
+        () => {
+          warned = true;
+        },
+      );
+      const gameStateStore = {
+        async updateByMessage() {
+          updateByMessageCalled = true;
+        },
+      };
+      await gameStateStore.updateByMessage();
+      assert.equal(unavailableLibrary.size, 0);
+      assert.equal(warned, true);
+      assert.equal(updateByMessageCalled, true, "optional avatar enrichment failures must not block tracker persistence");
     },
   },
   {

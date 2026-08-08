@@ -248,7 +248,7 @@ try {
     "Packages that add Fastify routes must not claim they can activate after startup",
   );
 
-  const { createCapabilityEmbeddingHost } =
+  const { createCapabilityEmbeddingHost, createConfiguredCapabilityEmbeddingHost } =
     await import("../../packages/server/src/services/capability-packages/capability-embedding.service.js");
   const embeddingHost = createCapabilityEmbeddingHost();
   assert.match(embeddingHost.spaceId, /^local:/u);
@@ -968,6 +968,43 @@ try {
   const { closeDB, getDB } = await import("../../packages/server/src/db/connection.js");
   closeDatabase = closeDB;
   const db = await getDB();
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
+  const remoteEmbeddingConnection = await createConnectionsStorage(db).create({
+    name: "Capability remote embeddings",
+    provider: "custom",
+    baseUrl: "https://chat.example.invalid/v1",
+    embeddingBaseUrl: "https://embeddings.example.invalid/v1",
+    embeddingModel: "text-embedding-regression",
+  });
+  const configuredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(db, remoteEmbeddingConnection.id);
+  assert.equal(configuredEmbeddingHost.label, "Capability remote embeddings (text-embedding-regression)");
+  assert.match(configuredEmbeddingHost.spaceId, /^remote:/u);
+  const repeatedConfiguredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(
+    db,
+    remoteEmbeddingConnection.id,
+  );
+  assert.equal(
+    configuredEmbeddingHost.spaceId,
+    repeatedConfiguredEmbeddingHost.spaceId,
+    "the same configured embedding source must keep a stable space ID",
+  );
+  const caseDistinctEmbeddingConnection = await createConnectionsStorage(db).create({
+    name: "Capability case-distinct embeddings",
+    provider: "custom",
+    baseUrl: "https://chat.example.invalid/v1",
+    embeddingBaseUrl: "https://embeddings.example.invalid/v1",
+    embeddingModel: "Text-Embedding-Regression",
+  });
+  const caseDistinctEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(
+    db,
+    caseDistinctEmbeddingConnection.id,
+  );
+  assert.notEqual(
+    configuredEmbeddingHost.spaceId,
+    caseDistinctEmbeddingHost.spaceId,
+    "opaque embedding model IDs must retain case distinctions",
+  );
   const { createCapabilityPersistenceHost } =
     await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
   const { createCapabilityResourceHost } =

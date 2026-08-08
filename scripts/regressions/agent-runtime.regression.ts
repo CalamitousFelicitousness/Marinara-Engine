@@ -91,6 +91,37 @@ await executeAgent(
 );
 assert.equal(disabledTemperatureProvider.options[0]?.temperature, undefined);
 
+const repairedJsonProvider = new RecordingProvider("```json\n{weather: 'rain', nested: {value: 1}");
+const repairedJsonResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  repairedJsonProvider,
+  "agent-model",
+);
+assert.equal(repairedJsonResult.success, true, "structured agents should recover repairable JSON without a retry");
+assert.equal(repairedJsonProvider.calls, 1, "repairable JSON should not spend another model call");
+assert.deepEqual(repairedJsonResult.data, { weather: "rain", nested: { value: 1 } });
+
+const invalidJsonProvider = new RecordingProvider("not JSON at all");
+const invalidJsonResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  invalidJsonProvider,
+  "agent-model",
+);
+assert.equal(invalidJsonResult.success, false, "non-JSON agent output must still fail after the repair attempt");
+assert.equal(invalidJsonProvider.calls, 2, "unrepairable JSON should retain the existing single retry");
+
+const arrayJsonProvider = new RecordingProvider('[{"weather":"rain"}]');
+const arrayJsonResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  arrayJsonProvider,
+  "agent-model",
+);
+assert.equal(arrayJsonResult.success, false, "structured agent output must be a JSON object, not an array");
+assert.equal(arrayJsonProvider.calls, 2, "array-shaped JSON should retain the existing single retry");
+
 const mixedParameterBatchProvider = new RecordingProvider();
 await executeAgentBatch(
   [

@@ -79,6 +79,11 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import { useUIStore } from "../../stores/ui.store";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import { scrollProfessorMariTranscriptToBottom } from "../../lib/professor-mari-transcript-scroll";
+import {
+  formatCompactTokenCount,
+  resolveProfessorMariContextBudget,
+  type ProfessorMariContextBudget,
+} from "../../lib/professor-mari-context-budget";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { rafThrottle } from "../../lib/raf-throttle";
 import { prepareImageAttachment } from "../../lib/chat-attachment-images";
@@ -1692,6 +1697,41 @@ function LoadingHistoryState() {
   );
 }
 
+function ProfessorMariContextBudgetIndicator({ budget }: { budget: ProfessorMariContextBudget }) {
+  const { t: localizeUi } = useUiTranslation();
+  const used = formatCompactTokenCount(budget.usedTokens);
+  const maximum = formatCompactTokenCount(budget.maxTokens);
+  const ariaLabel = localizeUi("ui.chat.homeprofessormarichat.contextBudgetAria", { used, maximum });
+  const progressStyle = { "--mari-context-budget": `${budget.percentage}%` } as CSSProperties;
+
+  return (
+    <div
+      data-component="HomeProfessorMariChat.ContextBudget"
+      className="mb-2 space-y-1 px-0.5 text-[0.6875rem] text-[var(--muted-foreground)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span>{localizeUi("ui.chat.homeprofessormarichat.contextBudget")}</span>
+        <span className="tabular-nums text-[var(--foreground)]/70">
+          {localizeUi("ui.chat.homeprofessormarichat.contextBudgetValue", { used, maximum })}
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={ariaLabel}
+        aria-valuemin={0}
+        aria-valuemax={budget.maxTokens}
+        aria-valuenow={Math.min(budget.usedTokens, budget.maxTokens)}
+        className="h-1 overflow-hidden rounded-full bg-[var(--muted)]/55"
+      >
+        <div
+          className="h-full w-[var(--mari-context-budget)] rounded-full bg-[var(--primary)] transition-[width] duration-200"
+          style={progressStyle}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ProfessorMariPixelScene({ active }: { active: boolean }) {
   return (
     <div className="mari-professor-pixel-scene" data-state={active ? "active" : "idle"} aria-hidden="true">
@@ -2383,6 +2423,7 @@ export function HomeProfessorMariChat({
   const recordMariPlanAnswer = useAgentStore((state) => state.recordMariPlanAnswer);
   const clearMariPlan = useAgentStore((state) => state.clearMariPlan);
   const professorMariSuggestionsEnabled = useUIStore((state) => state.professorMariSuggestionsEnabled);
+  const showTokenUsage = useUIStore((state) => state.showTokenUsage);
 
   const languageConnections = useMemo<ProfessorMariConnectionOption[]>(
     () => filterLanguageGenerationConnections((connectionsRaw ?? []) as APIConnection[]),
@@ -2408,6 +2449,10 @@ export function HomeProfessorMariChat({
   const effectiveConnection =
     selectedConnection ?? connectionOptions.find((connection) => connection.isDefault) ?? connectionOptions[0] ?? null;
   const effectiveConnectionId = effectiveConnection?.id ?? null;
+  const contextBudget = useMemo(
+    () => resolveProfessorMariContextBudget(messages, workspaceStatus?.connection?.maxContext),
+    [messages, workspaceStatus?.connection?.maxContext],
+  );
   const isBusy = sending || hasActiveGeneration || workspaceActive;
   useEffect(() => {
     messageMutationBusyRef.current = isBusy;
@@ -3793,6 +3838,7 @@ export function HomeProfessorMariChat({
           void handleSubmit();
         }}
       >
+        {showTokenUsage && contextBudget && <ProfessorMariContextBudgetIndicator budget={contextBudget} />}
         <input
           ref={attachmentInputRef}
           type="file"
@@ -4439,6 +4485,9 @@ export function HomeProfessorMariChat({
                           void handleSubmit();
                         }}
                       >
+                        {showTokenUsage && contextBudget && (
+                          <ProfessorMariContextBudgetIndicator budget={contextBudget} />
+                        )}
                         <input
                           ref={attachmentInputRef}
                           type="file"

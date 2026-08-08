@@ -78,6 +78,10 @@ import {
   recordPersonalExtensionRequest,
 } from "../../packages/client/src/lib/personal-extension-traffic.js";
 import { scrollProfessorMariTranscriptToBottom } from "../../packages/client/src/lib/professor-mari-transcript-scroll.js";
+import {
+  formatCompactTokenCount,
+  resolveProfessorMariContextBudget,
+} from "../../packages/client/src/lib/professor-mari-context-budget.js";
 import { parseCustomParametersDraft } from "../../packages/client/src/lib/generation-custom-parameters.js";
 import { parseGenerationParameterDraft } from "../../packages/client/src/lib/generation-parameter-draft.js";
 import {
@@ -2501,6 +2505,32 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+const professorMariContextBudget = resolveProfessorMariContextBudget(
+  [
+    {
+      role: "assistant",
+      extra: { generationInfo: { tokensPrompt: 12_000, tokensCompletion: 345 } },
+    },
+  ] as Message[],
+  128_000,
+);
+assert.deepEqual(professorMariContextBudget, {
+  usedTokens: 12_345,
+  maxTokens: 128_000,
+  percentage: (12_345 / 128_000) * 100,
+});
+assert.equal(formatCompactTokenCount(professorMariContextBudget!.usedTokens), "12.3k");
+assert.equal(
+  resolveProfessorMariContextBudget(
+    [
+      { role: "assistant", extra: { generationInfo: { usage: { promptTokens: 8_000, completionTokens: 192 } } } },
+    ] as Message[],
+    32_000,
+  )?.usedTokens,
+  8_192,
+  "legacy Professor Mari usage metadata should keep the context indicator available",
+);
+assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);

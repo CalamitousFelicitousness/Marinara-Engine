@@ -10652,6 +10652,86 @@ test("Professor Mari chat fills the mobile home viewport and keeps its composer 
     .toBe(true);
 });
 
+test("Professor Mari shows the latest context budget when token usage is enabled", async ({ page }) => {
+  const chatResponse = await page.request.get("/api/chats/internal/professor-mari");
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+    data: {
+      role: "assistant",
+      characterId: "__professor_mari__",
+      content: "Context budget regression response.",
+    },
+  });
+  expect(messageResponse.ok()).toBeTruthy();
+  const message = (await messageResponse.json()) as { id: string };
+  const extraResponse = await page.request.patch(`/api/chats/${chat.id}/messages/${message.id}/extra`, {
+    data: {
+      generationInfo: {
+        provider: "custom",
+        model: "budget-model",
+        temperature: null,
+        tokensPrompt: 12_000,
+        tokensCompletion: 345,
+        durationMs: null,
+        finishReason: "stop",
+      },
+    },
+  });
+  expect(extraResponse.ok()).toBeTruthy();
+
+  try {
+    await page.route("**/api/professor-mari/workspace/status*", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          enabled: true,
+          piAvailable: false,
+          workspace: "/tmp/marinara",
+          dataDir: "/tmp/marinara/data",
+          tools: [],
+          shellSandbox: { available: true, backend: "macos-seatbelt" },
+          dbAccess: "server-managed",
+          connection: {
+            id: "budget-connection",
+            name: "Budget connection",
+            provider: "custom",
+            model: "budget-model",
+            maxContext: 128_000,
+          },
+          skills: [],
+          skillDiagnostics: [],
+          active: false,
+          pendingApprovals: [],
+          history: [],
+          error: null,
+        }),
+      });
+    });
+
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+        useUIStore: { getState: () => { setShowTokenUsage: (value: boolean) => void } };
+      };
+      useUIStore.getState().setShowTokenUsage(true);
+    });
+    await page
+      .locator('[data-component="HomeProfessorMariChat.MariPanel"]')
+      .getByRole("button", { name: "Ask Professor Mari" })
+      .click();
+
+    const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
+    const budget = window.locator('[data-component="HomeProfessorMariChat.ContextBudget"]');
+    await expect(budget).toContainText("Context");
+    await expect(budget).toContainText("12.3k / 128k tokens");
+    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12345");
+    await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "128000");
+  } finally {
+    await bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${message.id}`);
+  }
+});
+
 test("Professor Mari history opens a loaded chat at its newest message", async ({ page }) => {
   const createdChatIds: string[] = [];
 
@@ -13930,6 +14010,57 @@ test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, requ
     expect(errors).toEqual([]);
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
+test("Re-imported backgrounds with the same filename bypass stale browser cache", async ({ page }, testInfo) => {
+  const suffix = testInfo.project.name.includes("mobile") ? "mobile" : "desktop";
+  const filename = `background-cache-revalidation-${suffix}.gif`;
+  const original = Buffer.from(TRANSPARENT_GIF_BASE64, "base64");
+  const replacement = Buffer.concat([original, Buffer.from([0x00])]);
+  let uploadedFilename: string | null = null;
+
+  try {
+    const firstUpload = await page.request.post("/api/backgrounds/upload", {
+      multipart: { file: { name: filename, mimeType: "image/gif", buffer: original } },
+    });
+    expect(firstUpload.ok()).toBeTruthy();
+    const first = (await firstUpload.json()) as { filename: string; url: string };
+    uploadedFilename = first.filename;
+    expect(first.filename).toBe(filename);
+
+    await page.goto("/");
+    const readInBrowser = (url: string) =>
+      page.evaluate(async (backgroundUrl) => {
+        const response = await fetch(backgroundUrl);
+        return {
+          bytes: Array.from(new Uint8Array(await response.arrayBuffer())),
+          cacheControl: response.headers.get("cache-control"),
+        };
+      }, url);
+    const before = await readInBrowser(first.url);
+    expect(before.cacheControl).toBe("no-cache, must-revalidate");
+
+    const deleted = await page.request.delete(`/api/backgrounds/${encodeURIComponent(first.filename)}`);
+    expect(deleted.ok()).toBeTruthy();
+    uploadedFilename = null;
+    const secondUpload = await page.request.post("/api/backgrounds/upload", {
+      multipart: { file: { name: filename, mimeType: "image/gif", buffer: replacement } },
+    });
+    expect(secondUpload.ok()).toBeTruthy();
+    const second = (await secondUpload.json()) as { filename: string; url: string };
+    uploadedFilename = second.filename;
+    expect(second.filename).toBe(filename);
+    expect(second.url).toBe(first.url);
+
+    const after = await readInBrowser(second.url);
+    expect(after.cacheControl).toBe("no-cache, must-revalidate");
+    expect(after.bytes).toEqual(Array.from(replacement));
+    expect(after.bytes).not.toEqual(before.bytes);
+  } finally {
+    if (uploadedFilename) {
+      await bestEffortDelete(page.request, `/api/backgrounds/${encodeURIComponent(uploadedFilename)}`);
+    }
   }
 });
 

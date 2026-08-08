@@ -192,6 +192,37 @@ function storageFixture(manifestVersion) {
       { compatible: false, verified: false, onDiskFormat: 3, targetFormat: null },
       "an unreadable target ref is unverified, not misread as a pre-sharding build",
     );
+    // A backup-only manifest still declares the on-disk format: guard state
+    // must never fall open because a crash took the primary with it.
+    const bakOnlyData = mkdtempSync(join(tmpdir(), "marinara-format-bakonly-"));
+    try {
+      writeFileSync(
+        join(bakOnlyData, "manifest.json.bak"),
+        JSON.stringify({ version: 3, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
+      );
+      const bakOnly = await checkTargetStorageFormat({ root: repo, env: envFor(bakOnlyData), targetRef: preShardingRef });
+      assert.deepEqual(
+        bakOnly,
+        { compatible: false, verified: true, onDiskFormat: 3, targetFormat: 2 },
+        "a manifest surviving only as .bak still blocks the downgrade",
+      );
+    } finally {
+      rmSync(bakOnlyData, { recursive: true, force: true });
+    }
+    // A ref that LISTS storage-format.json but cannot read it (missing blob
+    // object) is a read failure, not an absence: unverified, never format 2.
+    // Run last — it corrupts the fixture repo's blob on purpose.
+    const blobSha = execFileSync("git", ["rev-parse", `${shardedRef}:storage-format.json`], {
+      cwd: repo,
+      encoding: "utf8",
+    }).trim();
+    rmSync(join(repo, ".git", "objects", blobSha.slice(0, 2), blobSha.slice(2)), { force: true });
+    const unreadable = await checkTargetStorageFormat({ root: repo, env: envFor(formatThreeData), targetRef: shardedRef });
+    assert.deepEqual(
+      unreadable,
+      { compatible: false, verified: false, onDiskFormat: 3, targetFormat: null },
+      "a listed-but-unreadable storage-format.json is unverified, not misread as absent",
+    );
   } finally {
     for (const dir of [repo, formatThreeData, formatTwoData, freshData]) rmSync(dir, { recursive: true, force: true });
   }

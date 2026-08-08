@@ -80,44 +80,50 @@ export async function checkTargetStorageFormat({
 } = {}) {
   if (!targetRef) throw new Error("checkTargetStorageFormat requires a targetRef");
 
+  // A crash can leave only manifest.json.bak — the on-disk format must not
+  // fall back to "nothing to protect" while a backup still declares it.
   let onDiskFormat = null;
-  try {
-    const manifest = JSON.parse(
-      await readFile(resolve(await resolveLauncherStorageDir({ root, env }), "manifest.json"), "utf8"),
-    );
-    if (typeof manifest?.version === "number") onDiskFormat = manifest.version;
-  } catch {
-    /* no manifest -> fresh install or pre-storage build -> nothing to protect */
+  const storageDir = await resolveLauncherStorageDir({ root, env });
+  for (const name of ["manifest.json", "manifest.json.bak"]) {
+    try {
+      const manifest = JSON.parse(await readFile(resolve(storageDir, name), "utf8"));
+      if (typeof manifest?.version === "number") {
+        onDiskFormat = manifest.version;
+        break;
+      }
+    } catch {
+      /* try the backup */
+    }
   }
   if (onDiskFormat === null) return { compatible: true, verified: true, onDiskFormat: null, targetFormat: null };
 
   // CONFIRMED-absent on the target ref -> that build predates the file -> 2.
-  // A git failure (timeout, lock, bad ref) is verified: false instead —
-  // treating those as format 2 would misreport a downgrade block. Two steps
-  // because git's error text cannot distinguish a bad ref from an absent
-  // path: first confirm the ref resolves, then a show failure can only mean
-  // the file is absent on it.
-  try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${targetRef}^{commit}`], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 15_000,
-    });
-  } catch {
-    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
-  }
+  // Any git failure (bad ref, timeout, unreadable object) is verified: false
+  // instead — misreading it as format 2 would report a false downgrade
+  // block. ls-tree distinguishes all three cases in one call: a bad ref
+  // throws, a verified ref lists the path when present and prints nothing
+  // when absent — git show's own error text cannot tell those apart.
   let targetFormat = null;
   let raw = null;
   try {
-    raw = execFileSync("git", ["show", `${targetRef}:storage-format.json`], {
+    const listed = execFileSync("git", ["ls-tree", "--name-only", targetRef, "--", "storage-format.json"], {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 15_000,
     });
+    if (!listed.trim()) {
+      targetFormat = 2;
+    } else {
+      raw = execFileSync("git", ["show", `${targetRef}:storage-format.json`], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 15_000,
+      });
+    }
   } catch {
-    targetFormat = 2;
+    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
   }
   if (raw !== null) {
     try {

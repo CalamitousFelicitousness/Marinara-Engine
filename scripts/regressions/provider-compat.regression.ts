@@ -154,6 +154,44 @@ try {
   );
 }
 
+const openRouterCachingRequestBodies: Array<Record<string, unknown>> = [];
+const openRouterCachingServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  openRouterCachingRequestBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "cached" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => openRouterCachingServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = openRouterCachingServer.address();
+  assert.ok(address && typeof address === "object");
+  const provider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/openrouter.ai/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "openrouter",
+  );
+  await provider.chatComplete([{ role: "user", content: "cache Gemini" }], {
+    model: "google/gemini-3-pro-preview",
+    stream: false,
+    enableCaching: true,
+  });
+  await provider.chatComplete([{ role: "user", content: "do not cache" }], {
+    model: "google/gemini-3-pro-preview",
+    stream: false,
+    enableCaching: false,
+  });
+  assert.deepEqual(openRouterCachingRequestBodies[0]?.cache_control, { type: "ephemeral" });
+  assert.equal("cache_control" in (openRouterCachingRequestBodies[1] ?? {}), false);
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    openRouterCachingServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
 let customParametersRequestBody: Record<string, unknown> | null = null;
 const testToolDefinition = {
   type: "function" as const,
@@ -368,6 +406,13 @@ assert.equal(opus5?.maxOutput, 128_000);
 const subscriptionOpus5 = findKnownModel("claude_subscription", "claude-opus-5");
 assert.equal(subscriptionOpus5?.context, 1_000_000);
 assert.equal(subscriptionOpus5?.maxOutput, 128_000);
+assert.equal(findKnownModel("nanogpt", "deepseek-v4-pro")?.maxOutput, 384_000);
+assert.equal(findKnownModel("openrouter", "deepseek/deepseek-v4-flash")?.maxOutput, 384_000);
+assert.equal(findKnownModel("openrouter", "xiaomi/mimo-v2.5-pro")?.maxOutput, 128_000);
+assert.equal(findKnownModel("custom", "mimo-v2.5-pro")?.context, 1_000_000);
+assert.equal(findKnownModel("nanogpt", "glm-5.1")?.maxOutput, 128_000);
+assert.equal(findKnownModel("openrouter", "moonshotai/kimi-k2.6")?.maxOutput, 32_768);
+assert.equal(findKnownModel("nanogpt", "kimi-k3")?.maxOutput, 131_072);
 assert.equal(
   resolveProviderReasoningEffort({
     provider: "anthropic",

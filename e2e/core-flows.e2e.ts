@@ -1636,6 +1636,69 @@ test("connection test-message errors inherit the configured editor accent", asyn
   }
 });
 
+test("NovelAI style plate upload keeps the connection editor mounted", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "Desktop connection editor behavior is covered here.");
+
+  let connectionId: string | null = null;
+  let testFailure: unknown;
+  let cleanupFailure: unknown;
+  const errors = collectUnexpectedErrors(page);
+
+  try {
+    const connectionResponse = await page.request.post("/api/connections", {
+      data: {
+        name: "NovelAI Style Plate Upload",
+        provider: "image_generation",
+        imageGenerationSource: "novelai",
+        imageService: "novelai",
+        model: "nai-diffusion-4-5-full",
+      },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    const connection = (await connectionResponse.json()) as { id: string };
+    connectionId = connection.id;
+
+    await page.goto("/");
+    await page.locator('[data-tour="panel-connections"]').click();
+    const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
+    await rightPanel
+      .getByText("NovelAI Style Plate Upload", { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+
+    const editor = page.locator(".mari-editor-shell");
+    await expect(editor).toBeVisible();
+    await editor.getByRole("button", { name: /NovelAI generation setup/iu }).click();
+    await editor.locator('input[type="file"][accept*="image/png"]').setInputFiles({
+      name: "style-plate.png",
+      mimeType: "image/png",
+      buffer: readFileSync(new URL("../packages/client/public/logo.png", import.meta.url)),
+    });
+
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole("img", { name: "NovelAI style plate preview" })).toBeVisible();
+    expect(errors).toEqual([]);
+  } catch (error) {
+    testFailure = error;
+  } finally {
+    if (connectionId) {
+      try {
+        const deletionResponse = await page.request.delete(`/api/connections/${connectionId}`);
+        if (!deletionResponse.ok()) throw new Error(`Connection cleanup failed with ${deletionResponse.status()}`);
+      } catch (cleanupError) {
+        if (testFailure !== undefined) {
+          console.warn("NovelAI style plate test cleanup failed", cleanupError);
+        } else {
+          cleanupFailure = cleanupError;
+        }
+      }
+    }
+  }
+
+  if (testFailure !== undefined) throw testFailure;
+  if (cleanupFailure !== undefined) throw cleanupFailure;
+});
+
 test("Connection image captioning defaults persist with a dedicated captioning connection", async ({
   page,
   request,
@@ -2275,8 +2338,23 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
 
     const roleplayWizard = page.locator('[data-component="ChatSetupWizard"]');
     await expect(roleplayWizard).toBeVisible();
+    await expect(roleplayWizard).toHaveClass(/mari-chat-setup-wizard/u);
+    const roleplayConnectionSelect = roleplayWizard.getByLabel("Connection", { exact: true });
+    await expect(roleplayConnectionSelect).toHaveCSS("color-scheme", "dark");
+    const [optionStyle, selectStyle] = await Promise.all([
+      roleplayConnectionSelect.locator("option").first().evaluate((option) => {
+        const style = getComputedStyle(option);
+        return { backgroundColor: style.backgroundColor, color: style.color };
+      }),
+      roleplayConnectionSelect.evaluate((select) => {
+        const style = getComputedStyle(select);
+        return { backgroundColor: style.backgroundColor, color: style.color };
+      }),
+    ]);
+    expect(optionStyle).toEqual(selectStyle);
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();
     await expect(roleplayWizard.getByRole("heading", { name: "Pick a Preset", exact: true })).toBeVisible();
+    await expect(roleplayWizard.getByRole("combobox")).toHaveCSS("color-scheme", "dark");
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();
     const participantsHeading = roleplayWizard.getByRole("heading", {
       name: "Persona & Characters",

@@ -489,12 +489,16 @@ assert.equal(
   const db = await createFileNativeDB();
   try {
     await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
-    await db
-      .transaction(async (tx) => {
+    // assert.rejects on the DELIBERATE error: a transaction that failed
+    // before inserting m-1 would leave the marker untouched and pass this
+    // test without exercising the restoration at all.
+    await assert.rejects(
+      db.transaction(async (tx) => {
         await tx.insert(messages).values(messageRow("m-1", "chat-a", "rolled back"));
         throw new Error("force rollback");
-      })
-      .catch(() => {});
+      }),
+      /force rollback/,
+    );
     await db.insert(messages).values(messageRow("m-1", "chat-a", "real parent"));
     await db._fileStore.flush();
     const swipes = JSON.parse(

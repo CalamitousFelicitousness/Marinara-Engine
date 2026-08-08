@@ -17,12 +17,14 @@ type NamedListStore = {
 // prefix (and, with caching enabled, the cache). A code constant, mirroring
 // MAX_MARI_FETCHED_PRESET_CONTEXT_CHARS; not a user setting. Fetching still
 // works for any exact name even when it is beyond the cap (see <data_access>).
-const MAX_MARI_AVAILABLE_NAMES_PER_TYPE = 100;
+export const MAX_MARI_AVAILABLE_NAMES_PER_TYPE = 100;
 
-// Codepoint order, not localeCompare: byte-identical across Node builds with
-// different ICU (small-icu vs full-icu), which is what keeps the block stable
-// and the regression pin reliable.
-function compareCodepoint(a: string, b: string): number {
+// Lexicographic UTF-16 code-unit order (JS string relational comparison), not
+// localeCompare: spec-defined and ICU-independent, so the emitted block is
+// byte-identical across Node builds (small-icu vs full-icu). That determinism
+// is the whole point — it keeps the block stable and the regression pin
+// reliable — and it does not depend on true codepoint ordering.
+function compareCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -36,7 +38,7 @@ function asName(value: unknown): string | null {
 function buildNameSection(type: string, rawNames: Array<string | null>): string | null {
   const unique = Array.from(new Set(rawNames.filter((name): name is string => name !== null)));
   if (unique.length === 0) return null;
-  unique.sort(compareCodepoint);
+  unique.sort(compareCodeUnit);
 
   const shown = unique.slice(0, MAX_MARI_AVAILABLE_NAMES_PER_TYPE);
   const overflow = unique.length - shown.length;

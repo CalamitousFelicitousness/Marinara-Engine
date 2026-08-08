@@ -7,11 +7,16 @@
 // stays a static system prefix, and the volatile half is injected as a tail message.
 // These pins lock in that separation, the per-category cap, and byte-determinism.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PROFESSOR_MARI_ID } from "../../packages/shared/src/constants/defaults.js";
 import { MARI_ASSISTANT_PROMPT } from "../../packages/server/src/db/seed-mari.js";
-import { resolveProfessorMariPromptContext } from "../../packages/server/src/routes/generate/professor-mari-prompt-context.js";
+import {
+  MAX_MARI_AVAILABLE_NAMES_PER_TYPE,
+  resolveProfessorMariPromptContext,
+} from "../../packages/server/src/routes/generate/professor-mari-prompt-context.js";
 
-const MAX_PER_TYPE = 100; // must track MAX_MARI_AVAILABLE_NAMES_PER_TYPE in the source.
+const MAX_PER_TYPE = MAX_MARI_AVAILABLE_NAMES_PER_TYPE;
 
 type CharRow = { id?: string | null; data?: unknown };
 type NamedRow = { name?: unknown };
@@ -161,6 +166,41 @@ function makeStores(opts: {
 
   const emptyLib = await resolveProfessorMariPromptContext({ chatMeta: {}, ...makeStores({}) });
   assert.equal(emptyLib.volatileContext, "", "an empty library yields an empty volatile block");
+}
+
+// ── 7. The call-site wiring, source-scanned. The resolver returning two halves
+//       is worthless if the caller folds them back together — the cache fix
+//       lives entirely in HOW generate.routes.ts places each half. A pure-unit
+//       test on the resolver would stay green through a fold-back regression, so
+//       pin the wiring directly (mirrors prompt.regression.ts's source scans).
+{
+  const routesPath = fileURLToPath(new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url));
+  const src = readFileSync(routesPath, "utf8");
+
+  assert.match(
+    src,
+    /conversationSystemPrompt\s*\+=\s*"\\n\\n"\s*\+\s*stablePrompt/,
+    "the stable half must be appended to the system message",
+  );
+  assert.match(
+    src,
+    /professorMariVolatileContext\s*=\s*volatileContext/,
+    "the volatile half must be captured for tail injection",
+  );
+
+  // The tail element must carry the volatile content AND mark it contextKind
+  // "injection" so the history-trim pass leaves it alone.
+  const contentIdx = src.indexOf("content: professorMariVolatileContext");
+  assert.ok(contentIdx >= 0, "the volatile half must be injected as a message content field");
+  const window = src.slice(contentIdx, contentIdx + 120);
+  assert.match(window, /contextKind:\s*"injection"/, 'the tail Mari block must be tagged contextKind "injection"');
+
+  // The whole point of #4768: the volatile half must NEVER be concatenated onto
+  // the system prompt. This is the assertion that fails loudly on a fold-back.
+  assert.ok(
+    !/conversationSystemPrompt\s*\+=[^;]*(?:professorMariVolatileContext|volatileContext)/.test(src),
+    "the volatile half must not be folded back into the system prefix (#4768 regression)",
+  );
 }
 
 process.stdout.write("Professor Mari prompt-context regression passed.\n");

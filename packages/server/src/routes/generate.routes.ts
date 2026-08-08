@@ -2590,8 +2590,10 @@ export async function generateRoutes(app: FastifyInstance) {
               : []),
             // Home Professor Mari's name lists + fetched data, injected at the
             // tail rather than the system prefix (#4768). contextKind "injection"
-            // keeps fitMessagesToContext from trimming it away (it only drops
-            // "history"), matching the recentSocialMediaActivityBlock pattern.
+            // means the normal history-trim pass leaves it alone (that pass only
+            // targets contextKind "history"); it is preferentially retained and
+            // only yields in the last-resort fitMessagesToContext passes once all
+            // history is gone — matching the recentSocialMediaActivityBlock pattern.
             ...(professorMariVolatileContext.trim().length > 0
               ? [
                   {

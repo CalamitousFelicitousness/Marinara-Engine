@@ -676,6 +676,29 @@ assert.equal(
   }
 }
 
+// ── A corrupt primary with a valid EMPTY .bak is cleaned up, not zombied ──
+// recoveredFromBackup with zero rows left the corrupt primary in `known`
+// with no dirty key derivable from rows — re-parsed, re-recovered, and
+// re-logged on every startup forever.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const shardPath = join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`);
+  writeFileSync(shardPath, "{corrupt json");
+  writeFileSync(`${shardPath}.bak`, JSON.stringify([]));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 0, "nothing usable loads from the empty backup");
+    assert.equal(existsSync(shardPath), false, "the corrupt primary is removed by the startup flush");
+    assert.equal(existsSync(`${shardPath}.bak`), false, "the empty backup goes with it — zero-row shards are deleted");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Bak-only shard: primary vanished in a crash, .bak survives ──
 
 {

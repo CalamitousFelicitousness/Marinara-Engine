@@ -666,6 +666,15 @@ function isRowRecord(value: unknown): value is Row {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** unlink that tolerates ONLY a missing file; every other failure propagates. */
+async function unlinkIgnoringMissing(path: string) {
+  try {
+    await unlink(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+  }
+}
+
 async function preserveMalformedRowSource(path: string, table: string): Promise<QuarantinedFile[]> {
   if (!existsSync(path)) return [];
   const to = quarantinePath(path, corruptionTimestamp());
@@ -1296,7 +1305,9 @@ class FileTableStore {
       let key: string;
       if (table === "messages") {
         key = typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY;
-        if (typeof row.id === "string" && typeof row.chatId === "string") migrationIndex.set(row.id, row.chatId);
+        // Canonical key, never "": swipes must resolve to the same raw key
+        // their parent grouped under.
+        if (typeof row.id === "string" && typeof row.chatId === "string") migrationIndex.set(row.id, key);
       } else {
         key = migrationIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY;
       }
@@ -1739,12 +1750,15 @@ class FileTableStore {
       // orphan swipes: they regroup from the unassigned shard into the chat's
       // shard, and the unassigned file would otherwise keep its stale copies.
       // Set.delete doubles as the membership test and the cleanup.
+      // Canonical key, never "": every index consumer compares raw keys, so
+      // "" and UNASSIGNED_SHARD_KEY must not alias the same shard file.
+      const canonical = row.chatId || UNASSIGNED_SHARD_KEY;
       const adoptsOrphans = previous === undefined && this.orphanSwipeMessageIds.delete(row.id);
-      if ((previous !== undefined && previous !== row.chatId) || adoptsOrphans) {
+      if ((previous !== undefined && previous !== canonical) || adoptsOrphans) {
         movedSwipeShards.add(previous ?? UNASSIGNED_SHARD_KEY);
-        movedSwipeShards.add(row.chatId);
+        movedSwipeShards.add(canonical);
       }
-      this.messageShardIndex.set(row.id, row.chatId);
+      this.messageShardIndex.set(row.id, canonical);
     }
     if (movedSwipeShards.size > 0) {
       const hasSwipes = (this.tables.get("message_swipes") ?? []).length > 0;
@@ -1767,7 +1781,7 @@ class FileTableStore {
     this.messageShardIndex.clear();
     for (const row of this.tables.get("messages") ?? []) {
       if (typeof row.id === "string" && typeof row.chatId === "string") {
-        this.messageShardIndex.set(row.id, row.chatId);
+        this.messageShardIndex.set(row.id, row.chatId || UNASSIGNED_SHARD_KEY);
       }
     }
   }
@@ -2098,6 +2112,16 @@ class FileTableStore {
               "[file-storage] Shard file holds rows belonging to other shards; it will be rewritten canonically on the next flush.",
             );
           }
+        } else if (recoveredFromBackup) {
+          // A corrupt primary recovered from a VALID but EMPTY .bak: there
+          // are no row keys to dirty, so mark the FILE stale — the flush
+          // removes the corrupt primary and its backup (zero-row shards are
+          // deleted by design), instead of re-recovering it every boot.
+          this.dirty = true;
+          this.dirtyTables.add(table);
+          const stale = this.staleShardFiles.get(table) ?? new Set<string>();
+          stale.add(encoded);
+          this.staleShardFiles.set(table, stale);
         }
       }
       // Belt-and-braces: the monolith preserved one global insertion order;
@@ -2230,8 +2254,13 @@ class FileTableStore {
       for (const encoded of stale) {
         if (encodedToKey.has(encoded)) continue; // rewritten canonically above
         const path = shardFilePath(this.rootDir, table, encoded);
-        await unlink(path).catch(() => undefined);
-        await unlink(`${path}.bak`).catch(() => undefined);
+        // Only a MISSING file is an acceptable unlink outcome: any other
+        // failure (EBUSY/EPERM from a scanner holding the handle) must
+        // propagate so the flush error path keeps the dirty/stale marks and
+        // retries — swallowing it would let `known` claim the file is gone
+        // while its rows reload on the next restart.
+        await unlinkIgnoringMissing(path);
+        await unlinkIgnoringMissing(`${path}.bak`);
         known.delete(encoded);
       }
     }
@@ -2240,8 +2269,8 @@ class FileTableStore {
       const encoded = encodeShardKey(key);
       if (!known.has(encoded)) continue;
       const path = shardFilePath(this.rootDir, table, encoded);
-      await unlink(path).catch(() => undefined);
-      await unlink(`${path}.bak`).catch(() => undefined);
+      await unlinkIgnoringMissing(path);
+      await unlinkIgnoringMissing(`${path}.bak`);
       known.delete(encoded);
     }
     this.staleShardFiles.delete(table);

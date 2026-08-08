@@ -16,6 +16,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept NovelAI V4.5 style-plate uploads inside the Connection editor by decoding oversized images directly to a bounded preview and avoiding redundant copies of their encoded data (#4748).
+- Replaced the Windows Chromium native Connection and Preset popups in new Conversation and Roleplay setup with readable themed selectors (#4750).
 - Kept explicitly disabled Boolean preset choices empty instead of injecting their first option into prompts (#4740).
 - Resolved current DeepSeek, MiMo, GLM, and Kimi output limits through NanoGPT, OpenRouter, and custom OAI-compatible connections, and stopped Professor Mari before executing tool calls from truncated output (#4741).
 - Sent explicit OpenRouter prompt-caching markers for every compatible model, including Gemini, instead of limiting the option to Claude (#4742).

@@ -1672,11 +1672,21 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     await editor.locator('input[type="file"][accept*="image/png"]').setInputFiles({
       name: "style-plate.png",
       mimeType: "image/png",
-      buffer: readFileSync(new URL("../packages/client/public/logo.png", import.meta.url)),
+      buffer: readFileSync(new URL("../packages/client/public/sprites/mari/Mari_wave.png", import.meta.url)),
     });
 
     await expect(editor).toBeVisible();
-    await expect(editor.getByRole("img", { name: "NovelAI style plate preview" })).toBeVisible();
+    const preview = editor.getByRole("img", { name: "NovelAI style plate preview" });
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveAttribute("src", /^data:image\/jpeg;base64,/u);
+    await expect
+      .poll(async () => (await preview.getAttribute("src"))?.length ?? Number.POSITIVE_INFINITY)
+      .toBeLessThan(6 * 1024 * 1024);
+    expect(
+      await preview.evaluate((image) =>
+        Math.max((image as HTMLImageElement).naturalWidth, (image as HTMLImageElement).naturalHeight),
+      ),
+    ).toBeLessThanOrEqual(1536);
     expect(errors).toEqual([]);
   } catch (error) {
     testFailure = error;
@@ -2339,22 +2349,30 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
     const roleplayWizard = page.locator('[data-component="ChatSetupWizard"]');
     await expect(roleplayWizard).toBeVisible();
     await expect(roleplayWizard).toHaveClass(/mari-chat-setup-wizard/u);
-    const roleplayConnectionSelect = roleplayWizard.getByLabel("Connection", { exact: true });
-    await expect(roleplayConnectionSelect).toHaveCSS("color-scheme", "dark");
-    const [optionStyle, selectStyle] = await Promise.all([
-      roleplayConnectionSelect.locator("option").first().evaluate((option) => {
-        const style = getComputedStyle(option);
-        return { backgroundColor: style.backgroundColor, color: style.color };
-      }),
-      roleplayConnectionSelect.evaluate((select) => {
-        const style = getComputedStyle(select);
-        return { backgroundColor: style.backgroundColor, color: style.color };
-      }),
-    ]);
-    expect(optionStyle).toEqual(selectStyle);
+    const roleplayConnectionSelect = roleplayWizard.getByRole("combobox", { name: "Connection", exact: true });
+    await roleplayConnectionSelect.click();
+    const connectionListbox = roleplayWizard.getByRole("listbox", { name: "Connection", exact: true });
+    await expect(connectionListbox).toBeVisible();
+    const connectionListboxStyle = await connectionListbox.evaluate((listbox) => {
+      const style = getComputedStyle(listbox);
+      return { backgroundColor: style.backgroundColor, color: style.color };
+    });
+    expect(connectionListboxStyle.backgroundColor).not.toBe("rgb(255, 255, 255)");
+    await connectionListbox.getByRole("option", { name: "None", exact: true }).click();
+    await expect(connectionListbox).toBeHidden();
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();
     await expect(roleplayWizard.getByRole("heading", { name: "Pick a Preset", exact: true })).toBeVisible();
-    await expect(roleplayWizard.getByRole("combobox")).toHaveCSS("color-scheme", "dark");
+    const presetSelect = roleplayWizard.getByRole("combobox", { name: "Preset", exact: true });
+    await presetSelect.click();
+    const presetListbox = roleplayWizard.getByRole("listbox", { name: "Preset", exact: true });
+    await expect(presetListbox).toBeVisible();
+    expect(
+      await presetListbox.evaluate((listbox) => {
+        const style = getComputedStyle(listbox);
+        return { backgroundColor: style.backgroundColor, color: style.color };
+      }),
+    ).toEqual(connectionListboxStyle);
+    await presetListbox.getByRole("option", { name: "None", exact: true }).click();
     await roleplayWizard.getByRole("button", { name: "Next", exact: true }).click();
     const participantsHeading = roleplayWizard.getByRole("heading", {
       name: "Persona & Characters",

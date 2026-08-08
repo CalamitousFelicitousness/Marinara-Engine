@@ -1648,7 +1648,7 @@ try {
   // longer placeholder — the whole array is elided as one unit. This is the
   // regression for the review's major finding.
   const manyTagsId = "many-tags-4767";
-  await mariDb.executeAction({
+  const manyTagsCreate = await mariDb.executeAction({
     action: "character.create",
     id: manyTagsId,
     data: {
@@ -1657,6 +1657,7 @@ try {
       tags: Array.from({ length: 4000 }, (_, i) => `tag-${i}`),
     },
   });
+  assert.equal(manyTagsCreate.ok, true, "#4767 tag-storm fixture must be created");
   const tagsRead = await mariDb.executeAction({ action: "character.get", id: manyTagsId });
   assert.equal(tagsRead.ok, true);
   assert.equal((tagsRead.output as { data: Record<string, unknown> }).data.name, "Tag Storm", "#4767 name survives a tag storm");
@@ -1669,12 +1670,14 @@ try {
   // still survives and the description remains recoverable via field=.
   const descHeavyId = "desc-heavy-4767";
   const heavyDescription = "D".repeat(40_000);
-  await mariDb.executeAction({
+  const descHeavyCreate = await mariDb.executeAction({
     action: "character.create",
     id: descHeavyId,
     data: { name: "Wordy", description: heavyDescription },
   });
+  assert.equal(descHeavyCreate.ok, true, "#4767 description-heavy fixture must be created");
   const descRead = await mariDb.executeAction({ action: "character.get", id: descHeavyId });
+  assert.equal(descRead.ok, true);
   assert.equal((descRead.output as { data: Record<string, unknown> }).data.name, "Wordy", "#4767 name survives even when description is the bulk");
   assert.ok(
     (descRead.truncation?.fields ?? []).some((f) => f.path === "data.description"),
@@ -1696,6 +1699,30 @@ try {
     field: "data.no_such_field",
   });
   assert.equal(missingField.truncation?.unresolvedField, "data.no_such_field", "#4767 an unresolved field= must be flagged, not silently swallowed");
+
+  // Same path on a SMALL row that needs no elision: still flags the miss, and
+  // reports no elided fields (so the note must not promise a field list).
+  const smallMissingField = await mariDb.executeAction({
+    action: "character.get",
+    id: characterId,
+    field: "data.no_such_field",
+  });
+  assert.equal(smallMissingField.truncation?.unresolvedField, "data.no_such_field", "#4767 a small-row unresolved field= must still be flagged");
+  assert.equal(
+    (smallMissingField.truncation?.fields ?? []).length,
+    0,
+    "#4767 a small-row unresolved field= reports no elided fields",
+  );
+
+  // A path reaching an inherited/prototype key must resolve to nothing, not the
+  // Object constructor (which would crash the field window). Own-property only.
+  const prototypeField = await mariDb.executeAction({
+    action: "character.get",
+    id: heavyCharacterId,
+    field: "constructor",
+  });
+  assert.equal(prototypeField.ok, true, "#4767 a prototype-key field= must not crash the read");
+  assert.equal(prototypeField.truncation?.unresolvedField, "constructor", "#4767 an inherited key must resolve as unresolved, not the constructor");
 
   // A small read is untouched: no truncation metadata, behavior identical to before.
   const smallRead = await mariDb.executeAction({ action: "character.get", id: characterId });

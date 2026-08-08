@@ -1380,16 +1380,23 @@ function parseFieldPath(path: string): Array<string | number> {
 }
 
 // Numeric tokens index arrays; against an object they are string keys — so the
-// container type, not the token type, decides how each hop resolves.
+// container type, not the token type, decides how each hop resolves. Object hops
+// resolve OWN properties only, so a caller-supplied path like "constructor" or
+// "__proto__" reads nothing instead of walking the prototype chain.
+function resolveHop(current: object, tokenValue: string | number): unknown {
+  if (Array.isArray(current)) return current[Number(tokenValue)];
+  const key = String(tokenValue);
+  if (!Object.prototype.hasOwnProperty.call(current, key)) return undefined;
+  return (current as Record<string, unknown>)[key];
+}
+
 function getByPath(root: unknown, path: string): unknown {
   const tokens = parseFieldPath(path);
   if (tokens.length === 0) return undefined;
   let current: unknown = root;
   for (const tokenValue of tokens) {
     if (current == null || typeof current !== "object") return undefined;
-    current = Array.isArray(current)
-      ? current[Number(tokenValue)]
-      : (current as Record<string, unknown>)[String(tokenValue)];
+    current = resolveHop(current, tokenValue);
   }
   return current;
 }
@@ -1400,14 +1407,13 @@ function setByPath(root: unknown, path: string, next: unknown): void {
   let current: unknown = root;
   for (let i = 0; i < tokens.length - 1; i += 1) {
     if (current == null || typeof current !== "object") return;
-    current = Array.isArray(current)
-      ? current[Number(tokens[i])]
-      : (current as Record<string, unknown>)[String(tokens[i])];
+    current = resolveHop(current, tokens[i]!);
   }
   if (current == null || typeof current !== "object") return;
   const last = tokens[tokens.length - 1]!;
   if (Array.isArray(current)) current[Number(last)] = next;
-  else (current as Record<string, unknown>)[String(last)] = next;
+  else if (Object.prototype.hasOwnProperty.call(current, String(last)))
+    (current as Record<string, unknown>)[String(last)] = next;
 }
 
 // Elidable nodes are whole strings and whole arrays (elided as a unit — so a big
@@ -1479,6 +1485,9 @@ function projectReadField(
   const raw = getByPath(output, path);
   if (raw === undefined) return { found: false };
   const text = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
+  // A value that does not serialize (e.g. a function reached via an odd path) has
+  // no readable window — treat it as unresolved rather than throwing on .slice.
+  if (typeof text !== "string") return { found: false };
   const window = text.slice(offset, offset + limit);
   return { found: true, value: window, meta: { path, offset, returned: window.length, total: text.length } };
 }

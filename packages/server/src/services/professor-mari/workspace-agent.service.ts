@@ -728,12 +728,13 @@ function formatMariReadTruncation(truncation: MariDbReadTruncation | undefined):
     return `Field "${path}": showing characters ${offset}–${end} of ${total}.${more}`;
   }
   const lines: string[] = [];
+  const fields = truncation.fields ?? [];
   if (truncation.unresolvedField) {
+    const hint = fields.length > 0 ? " Valid field paths are named below." : "";
     lines.push(
-      `Requested field "${truncation.unresolvedField}" was not found on this item; showing the bounded overview instead. Valid field paths are named below.`,
+      `Requested field "${truncation.unresolvedField}" was not found on this item; showing the bounded overview instead.${hint}`,
     );
   }
-  const fields = truncation.fields ?? [];
   if (fields.length > 0) {
     lines.push(
       'Note: oversized fields were elided to fit the output limit. Read any one in full by repeating this action with field="<path>" (add offset to page a long value):',

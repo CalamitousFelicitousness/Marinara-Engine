@@ -140,7 +140,24 @@ export async function checkTargetStorageFormat({
 
 // Kept in sync with SHARDED_TABLES in packages/server/src/db/file-backed-store.ts
 // (this script must run offline, so it cannot import server code).
-const SHARDED_TABLES = ["messages", "message_swipes"];
+const SHARDED_TABLES = [
+  "messages",
+  "message_swipes",
+  "memory_chunks",
+  "chat_images",
+  "agent_runs",
+  "agent_memory",
+  "conversation_call_sessions",
+  "conversation_call_messages",
+  "game_state_snapshots",
+  "game_engine_state",
+  "game_checkpoints",
+  "game_turn_storyboards",
+  "game_scene_videos",
+  "spatial_context_snapshots",
+  "ooc_influences",
+  "conversation_notes",
+];
 const UNSHARD_SENTINEL = ".unshard-in-progress";
 
 async function pathExists(path) {
@@ -558,7 +575,7 @@ async function main() {
     if (result.manifestRewritten) {
       console.log(`  [OK] Storage at ${result.storageDir} is back on the monolith layout (format 2); older versions can read it again.`);
     } else {
-      console.warn(`  [WARN] Storage at ${result.storageDir} is on the monolith layout, but the manifest still says format 3 — see the warning above.`);
+      console.warn(`  [WARN] Storage at ${result.storageDir} is on the monolith layout, but the manifest still reports the newer format — see the warning above.`);
       process.exitCode = 1;
     }
     return;

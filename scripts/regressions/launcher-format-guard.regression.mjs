@@ -108,9 +108,15 @@ for (const pinnedFragment of [":storage-format.json", "targetFormat >= onDiskFor
 // must run offline and cannot import server code). Pin them against the store
 // source so a rename or a new sharded table cannot silently desynchronize them.
 const parseTableList = (source, label) => {
-  const raw = /const SHARDED_TABLES[^=]*= \[([^\]]+)\]/.exec(source)?.[1];
+  // Tolerant of whitespace, newlines, and trailing annotations (`as const`):
+  // lazy-match through the array's own closing bracket only — table names
+  // cannot contain `]`, so the first `]` always ends the literal.
+  const raw = /const SHARDED_TABLES[\s\S]*?=\s*\[([\s\S]*?)\]/.exec(source)?.[1];
   assert.ok(raw, `could not find SHARDED_TABLES in ${label}`);
-  return raw.split(",").map((entry) => entry.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+  return raw
+    .split(",")
+    .map((entry) => entry.replace(/\/\/[^\n]*/g, "").trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
 };
 assert.deepEqual(
   parseTableList(launcherGuardSource, "protect-launcher-data.mjs"),
@@ -317,6 +323,35 @@ function shardedStorageFixture() {
     assert.equal(manifest.version, 2, "the manifest is rewritten as format 2 so the guard stops refusing the downgrade");
     assert.equal("shards" in manifest, false, "the shards diagnostic is dropped from the format-2 manifest");
     assert.equal(result.warnings.length, 0, "a clean conversion reports no warnings");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── unshard: the direct-chatId table family converts too (PR 3, #4708) ──
+// memory_chunks stands in for every table that shards by its own chatId; the
+// SHARDED_TABLES pairing pin above guarantees the list itself matches the
+// store, and this case proves the conversion handles a non-message table.
+
+{
+  const dir = shardedStorageFixture();
+  mkdirSync(join(dir, "tables", "memory_chunks"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "memory_chunks", "chat-a.json"),
+    JSON.stringify([{ id: "chunk-1", chatId: "chat-a", content: "c", createdAt: "2026-08-08T10:00:00.000Z" }]),
+  );
+  try {
+    await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
+    const monolith = JSON.parse(readFileSync(join(dir, "tables", "memory_chunks.json"), "utf8"));
+    assert.deepEqual(
+      monolith.map((row) => [row.id, row.content]),
+      [["chunk-1", "c"]],
+      "memory_chunks shards fold back into a monolith with rows intact",
+    );
+    assert.ok(
+      readdirSync(join(dir, "tables")).some((name) => name.startsWith("memory_chunks.post-unshard-")),
+      "the chunk shard files are kept as .post-unshard-<timestamp>",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

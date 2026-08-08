@@ -162,7 +162,10 @@ type InsertValuesBuilder = Executable<void> & {
   onConflictDoUpdate: (config: { target: unknown; set: Row }) => Executable<void>;
 };
 
-const STORAGE_VERSION = 3;
+// Exported so regressions can pin behavior against the CURRENT version
+// without chasing literals on every bump. Must equal root storage-format.json
+// (the launcher-format-guard regression pins the pairing).
+export const STORAGE_VERSION = 4;
 const SAVE_DEBOUNCE_MS = 750;
 const SAFETY_SAVE_MS = 10_000;
 
@@ -172,7 +175,42 @@ const SAFETY_SAVE_MS = 10_000;
 // chat — the dominant active-use cost on phone-hosted installs. These tables
 // stay in FILE_BACKED_TABLES (the master registry for schema/backup/query
 // machinery); only load/save/dirty plumbing consults this marker.
-export const SHARDED_TABLES = ["messages", "message_swipes"] as const;
+// Order matters only for the first pair: messages must load/migrate before
+// message_swipes so the messageId -> chatId index exists when swipes resolve
+// their shard. Every other table shards by one of its own columns (see
+// SHARD_KEY_COLUMNS). Deliberately NOT sharded: `lorebooks` (nullable chatId
+// — a chat-linked library entity, not per-chat data) and
+// `game_turn_storyboard_keyframes` (no chat column; resolves only through
+// its parent storyboard — sharding it needs either a second parent index or
+// a denormalized chatId column, tracked as a follow-up on #4708).
+export const SHARDED_TABLES = [
+  "messages",
+  "message_swipes",
+  "memory_chunks",
+  "chat_images",
+  "agent_runs",
+  "agent_memory",
+  "conversation_call_sessions",
+  "conversation_call_messages",
+  "game_state_snapshots",
+  "game_engine_state",
+  "game_checkpoints",
+  "game_turn_storyboards",
+  "game_scene_videos",
+  "spatial_context_snapshots",
+  "ooc_influences",
+  "conversation_notes",
+] as const;
+
+/**
+ * Tables whose per-chat shard key is not their `chatId` column. Influences
+ * and notes are written by a conversation chat but READ (and injected) per
+ * roleplay turn of the TARGET chat, so that is the access-pattern key.
+ */
+const SHARD_KEY_COLUMNS: Record<string, string> = {
+  ooc_influences: "targetChatId",
+  conversation_notes: "targetChatId",
+};
 const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
 
 /**
@@ -347,6 +385,14 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "chats", child: "agent_memory", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "chat_images", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "memory_chunks", parentKey: "id", childKey: "chatId" },
+    // The influences/notes schemas declare onDelete: cascade on BOTH chat
+    // FKs, but the graph never carried them — the rows outlived their chats
+    // (invisible inside the old monolith; a permanent leaked shard file once
+    // the tables sharded, and stale injections if a chat id is ever reused).
+    { parent: "chats", child: "ooc_influences", parentKey: "id", childKey: "sourceChatId" },
+    { parent: "chats", child: "ooc_influences", parentKey: "id", childKey: "targetChatId" },
+    { parent: "chats", child: "conversation_notes", parentKey: "id", childKey: "sourceChatId" },
+    { parent: "chats", child: "conversation_notes", parentKey: "id", childKey: "targetChatId" },
     { parent: "chats", child: "game_state_snapshots", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "spatial_context_snapshots", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "game_engine_state", parentKey: "id", childKey: "chatId" },
@@ -1302,14 +1348,20 @@ class FileTableStore {
 
     const rowsByShard = new Map<string, Row[]>();
     for (const row of normalized) {
+      // Migration-time twin of shardKeyForRow: it runs BEFORE the load builds
+      // messageShardIndex, so swipes resolve through the migrationIndex the
+      // messages pass populated instead.
       let key: string;
-      if (table === "messages") {
-        key = typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY;
-        // Canonical key, never "": swipes must resolve to the same raw key
-        // their parent grouped under.
-        if (typeof row.id === "string" && typeof row.chatId === "string") migrationIndex.set(row.id, key);
-      } else {
+      if (table === "message_swipes") {
         key = migrationIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY;
+      } else {
+        const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+        key = typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
+        if (table === "messages" && typeof row.id === "string" && typeof row.chatId === "string") {
+          // Canonical key, never "": swipes must resolve to the same raw key
+          // their parent grouped under.
+          migrationIndex.set(row.id, key);
+        }
       }
       const bucket = rowsByShard.get(key);
       if (bucket) bucket.push(row);
@@ -1330,7 +1382,16 @@ class FileTableStore {
     // would leave only the one-flush-stale .bak, and the retry would rebuild
     // the shards from it — silently losing the newest messages.
     for (const path of [monolithBak, monolithPath]) {
-      if (existsSync(path)) await rename(path, `${path}.pre-shard`);
+      if (!existsSync(path)) continue;
+      // Never clobber an existing .pre-shard: a later re-migration (after an
+      // unshard round trip) would otherwise silently replace the pristine
+      // pre-migration original with a rebuilt monolith — the docs promise
+      // these files are never deleted by the Engine. Subsequent copies get
+      // the timestamped form, matching the .post-downgrade-/.post-unshard-
+      // convention.
+      const preferred = `${path}.pre-shard`;
+      const target = existsSync(preferred) ? `${preferred}-${corruptionTimestamp()}` : preferred;
+      await rename(path, target);
     }
     await unlink(sentinelPath).catch(() => undefined);
     // Land the version-3 manifest on the next flush.
@@ -1709,29 +1770,37 @@ class FileTableStore {
   }
 
   /**
-   * Shard keys for a set of rows of a sharded table (#4708). Messages shard by
-   * their own chatId; swipes resolve through the message index — an orphan
-   * swipe (no parent message) lands in the reserved unassigned shard rather
-   * than vanishing on the next flush.
+   * Shard keys for a set of rows of a sharded table (#4708). An orphan row
+   * (no usable chatId, or a swipe with no parent message) lands in the
+   * reserved unassigned shard rather than vanishing on the next flush.
    */
   private shardKeysForRows(table: string, rows: Iterable<Row>): Set<string> {
     const keys = new Set<string>();
-    for (const row of rows) {
-      if (table === "messages") {
-        keys.add(typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY);
-      } else {
-        const chatId = this.messageShardIndex.get(row.messageId);
-        // Deliberate side effect: every path that resolves a swipe's shard
-        // funnels through here (load, insert, update, self-heal), so this is
-        // the single point that learns a swipe is currently orphaned — the
-        // knowledge reindexMovedMessages needs when the parent arrives later.
-        if (chatId === undefined && typeof row.messageId === "string") {
-          this.orphanSwipeMessageIds.add(row.messageId);
-        }
-        keys.add(chatId ?? UNASSIGNED_SHARD_KEY);
-      }
-    }
+    for (const row of rows) keys.add(this.shardKeyForRow(table, row));
     return keys;
+  }
+
+  /**
+   * Raw shard key for one row — the single source of truth for how a sharded
+   * table's rows map to per-chat files. Every table shards by one of its own
+   * columns (chatId unless SHARD_KEY_COLUMNS overrides it) except
+   * message_swipes, which resolves through the parent message.
+   */
+  private shardKeyForRow(table: string, row: Row): string {
+    if (table === "message_swipes") {
+      const chatId = this.messageShardIndex.get(row.messageId);
+      // Deliberate side effect: every path that resolves a swipe's shard
+      // funnels through here (load, insert, update, self-heal, dedup), so
+      // this is the single point that learns a swipe is currently orphaned —
+      // the knowledge reindexMovedMessages needs when the parent arrives
+      // later.
+      if (chatId === undefined && typeof row.messageId === "string") {
+        this.orphanSwipeMessageIds.add(row.messageId);
+      }
+      return chatId ?? UNASSIGNED_SHARD_KEY;
+    }
+    const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+    return typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
   }
 
   /**
@@ -1820,16 +1889,23 @@ class FileTableStore {
     for (const relation of SET_NULL_RELATIONS.filter((entry) => entry.parent === parentTable)) {
       const childMeta = getMeta(relation.child);
       const deletedValues = new Set(deletedRows.map((row) => row[relation.parentKey]));
-      let changed = false;
+      const changedRows: Row[] = [];
       for (const row of this.rows(childMeta.name)) {
         if (row[relation.childKey] != null && deletedValues.has(row[relation.childKey])) {
-          if (!changed) this.recordTxMutation(childMeta.name);
+          if (changedRows.length === 0) this.recordTxMutation(childMeta.name);
           row[relation.childKey] = null;
-          changed = true;
+          changedRows.push(row);
         }
       }
-      if (changed) {
-        this.markDirty(childMeta.name);
+      if (changedRows.length > 0) {
+        // A sharded child needs its shard keys, like every other mutation
+        // path — a bare markDirty leaves dirtyShards empty and the flush
+        // never writes the null-out to disk (#4708).
+        if (SHARDED_TABLE_SET.has(childMeta.name)) {
+          this.markDirty(childMeta.name, this.shardKeysForRows(childMeta.name, changedRows));
+        } else {
+          this.markDirty(childMeta.name);
+        }
       }
     }
   }
@@ -2141,12 +2217,7 @@ class FileTableStore {
       // self-healing. Equal canonicality keeps the sort-first copy. Losers
       // are dropped and their shards dirtied so the next flush rewrites the
       // stale copies away.
-      const logicalKeyOf = (row: Row) =>
-        table === "messages"
-          ? typeof row.chatId === "string" && row.chatId
-            ? (row.chatId as string)
-            : UNASSIGNED_SHARD_KEY
-          : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY);
+      const logicalKeyOf = (row: Row) => this.shardKeyForRow(table, row);
       const isCanonical = (row: Row) => encodeShardKey(logicalKeyOf(row)) === rowSource.get(row);
       const keptIndexById = new Map<string, number>();
       const deduped: Row[] = [];
@@ -2211,12 +2282,7 @@ class FileTableStore {
     }
     const rowsByShard = new Map<string, Row[]>();
     for (const row of rows) {
-      const key =
-        table === "messages"
-          ? typeof row.chatId === "string" && row.chatId
-            ? row.chatId
-            : UNASSIGNED_SHARD_KEY
-          : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY);
+      const key = this.shardKeyForRow(table, row);
       const bucket = rowsByShard.get(key);
       if (bucket) bucket.push(row);
       else rowsByShard.set(key, [row]);

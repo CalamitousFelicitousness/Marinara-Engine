@@ -252,12 +252,12 @@ assert.equal(
     join(dir, "manifest.json"),
     JSON.stringify({ version: 99, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
   );
-  await assert.rejects(
-    createFileNativeDB(),
-    (error: unknown) => error instanceof StorageFormatTooNewError,
-    "data from a newer format must refuse to load instead of being misread",
-  );
   try {
+    await assert.rejects(
+      createFileNativeDB(),
+      (error: unknown) => error instanceof StorageFormatTooNewError,
+      "data from a newer format must refuse to load instead of being misread",
+    );
     // The refusal must precede EVERY migration side effect: a directory this
     // build cannot read must not be mutated by it either.
     assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
@@ -281,12 +281,12 @@ assert.equal(
     join(dir, "manifest.json.bak"),
     JSON.stringify({ version: 99, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
   );
-  await assert.rejects(
-    createFileNativeDB(),
-    (error: unknown) => error instanceof StorageFormatTooNewError,
-    "a newer version surviving only in manifest.json.bak must still refuse to load",
-  );
   try {
+    await assert.rejects(
+      createFileNativeDB(),
+      (error: unknown) => error instanceof StorageFormatTooNewError,
+      "a newer version surviving only in manifest.json.bak must still refuse to load",
+    );
     assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
     assert.equal(existsSync(join(dir, "tables", "messages.json.pre-shard")), false, "no pre-shard rename happened");
     assert.equal(existsSync(join(dir, "tables", "messages")), false, "no shard directory was created");

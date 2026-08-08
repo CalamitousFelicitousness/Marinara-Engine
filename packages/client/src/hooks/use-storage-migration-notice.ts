@@ -44,8 +44,16 @@ export function useAcknowledgeStorageMigrationNotice() {
     mutationFn: async () => {
       await api.put(`/app-settings/${STORAGE_MIGRATION_NOTICE_SETTINGS_KEY}`, { value: "" });
     },
-    onSuccess: () => {
+    // Dismissal must be authoritative CLIENT-side (the WhatsNew rule): clear
+    // the cache before the request, or the modal's auto-open effect re-fires
+    // while the PUT is in flight — and forever if it fails. The server
+    // acknowledge is best-effort; on failure the durable marker simply
+    // re-shows the notice on the next launch.
+    onMutate: () => {
       qc.setQueryData(storageMigrationNoticeKeys.notice, null);
+    },
+    onError: (error) => {
+      console.warn("Failed to acknowledge the storage migration notice; it will reappear next launch.", error);
     },
   });
 }

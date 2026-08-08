@@ -1010,4 +1010,50 @@ assert.equal(
   }
 }
 
+// An UNACKNOWLEDGED prior notice merges with a new migration instead of
+// being overwritten: the original fromFormat wins and the table lists union.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "app_settings.json"),
+    JSON.stringify([
+      {
+        key: "storage-migration-notice",
+        value: JSON.stringify({ fromFormat: 2, toFormat: 3, migratedTables: ["messages"], migratedAt: "t" }),
+        updatedAt: "2026-08-08T00:00:00.000Z",
+      },
+    ]),
+  );
+  writeFileSync(
+    join(dir, "tables", "memory_chunks.json"),
+    JSON.stringify([
+      { id: "chunk-1", chatId: "chat-x", content: "c", messageCount: 1, firstMessageAt: "t", lastMessageAt: "t", createdAt: "2026-08-08T10:00:00.000Z" },
+    ]),
+  );
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({ version: 3, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
+  );
+  const db = await createFileNativeDB();
+  try {
+    const settings = JSON.parse(readFileSync(join(dir, "tables", "app_settings.json"), "utf8")) as Array<{
+      key: string;
+      value: string;
+    }>;
+    const marker = settings.find((row) => row.key === "storage-migration-notice");
+    const notice = JSON.parse(marker!.value) as { fromFormat: number; toFormat: number; migratedTables: string[] };
+    assert.equal(notice.fromFormat, 2, "the prior unacknowledged notice's fromFormat wins the merge");
+    assert.equal(notice.toFormat, STORAGE_VERSION, "toFormat advances to the current format");
+    assert.ok(
+      notice.migratedTables.includes("messages") && notice.migratedTables.includes("memory_chunks"),
+      "the migrated-table lists union across the merged notices",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.info("Message sharding regressions passed.");

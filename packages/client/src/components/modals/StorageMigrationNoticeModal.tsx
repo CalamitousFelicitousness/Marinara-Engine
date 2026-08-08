@@ -27,20 +27,30 @@ export function StorageMigrationNoticeModal({
   const { data: notice } = useStorageMigrationNotice();
   const acknowledge = useAcknowledgeStorageMigrationNotice();
   const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [showTechnical, setShowTechnical] = useState(false);
 
   useEffect(() => {
-    if (!presentationAllowed || !hasCompletedOnboarding || !notice || open) return;
+    // `dismissed` makes the close authoritative client-side even if the
+    // cached notice were still present — without it, the auto-open effect
+    // re-fires the moment `open` flips false and the modal cannot be closed
+    // until (unless) the acknowledge round trip lands.
+    if (!presentationAllowed || !hasCompletedOnboarding || !notice || open || dismissed) return;
     setOpen(true);
-  }, [hasCompletedOnboarding, notice, open, presentationAllowed]);
+  }, [dismissed, hasCompletedOnboarding, notice, open, presentationAllowed]);
 
   useEffect(() => {
     onOpenChange?.(open);
+    // The component render-nulls (never unmounts) once the notice clears —
+    // without this cleanup the parent's suppression gate would latch on the
+    // last pushed value and silence the agent-update prompter all session.
+    return () => onOpenChange?.(false);
   }, [onOpenChange, open]);
 
   if (!notice) return null;
 
   const handleDismiss = () => {
+    setDismissed(true);
     setOpen(false);
     acknowledge.mutate();
   };
@@ -92,11 +102,16 @@ export function StorageMigrationNoticeModal({
         {showTechnical ? (
           <ul className="list-disc space-y-2 rounded-lg border border-[var(--border)] bg-[var(--sidebar)] py-3 pl-8 pr-4 text-sm leading-6 text-[var(--muted-foreground)]">
             <li>
-              {localizeUi("ui.modals.storagemigrationnoticemodal.technicalFormats", {
-                from: notice.fromFormat ?? 2,
-                to: notice.toFormat,
-                count: notice.migratedTables.length,
-              })}
+              {notice.fromFormat === null
+                ? localizeUi("ui.modals.storagemigrationnoticemodal.technicalFormatsUnknownFrom", {
+                    to: notice.toFormat,
+                    count: notice.migratedTables.length,
+                  })
+                : localizeUi("ui.modals.storagemigrationnoticemodal.technicalFormats", {
+                    from: notice.fromFormat,
+                    to: notice.toFormat,
+                    count: notice.migratedTables.length,
+                  })}
             </li>
             <li>{localizeUi("ui.modals.storagemigrationnoticemodal.technicalBackups")}</li>
             <li>{localizeUi("ui.modals.storagemigrationnoticemodal.technicalDowngrade")}</li>

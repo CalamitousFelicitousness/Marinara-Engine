@@ -2175,6 +2175,16 @@ class FileTableStore {
    * count for the manifest diagnostics.
    */
   private async saveShardedTable(table: string, rows: Row[], dirtyKeys: Set<string>): Promise<number> {
+    const known = this.knownShardFiles.get(table) ?? new Set<string>();
+    this.knownShardFiles.set(table, known);
+    const stale = this.staleShardFiles.get(table);
+    // Nothing dirty and nothing to repair: skip the O(rows) regroup — this
+    // runs for BOTH sharded tables on every flush, so an unrelated
+    // flat-table write must not scan every message and swipe on the 750ms
+    // flush cadence.
+    if (dirtyKeys.size === 0 && (!stale || stale.size === 0)) {
+      return known.size;
+    }
     const rowsByShard = new Map<string, Row[]>();
     for (const row of rows) {
       const key =
@@ -2187,8 +2197,6 @@ class FileTableStore {
       if (bucket) bucket.push(row);
       else rowsByShard.set(key, [row]);
     }
-    const known = this.knownShardFiles.get(table) ?? new Set<string>();
-    this.knownShardFiles.set(table, known);
     if (!this.shardDirsCreated.has(table)) {
       mkdirSync(shardDirPath(this.rootDir, table), { recursive: true });
       this.shardDirsCreated.add(table);
@@ -2199,7 +2207,6 @@ class FileTableStore {
     // duplicates (healed by the next load) rather than rows that exist only
     // in memory. Cleared per table once the flush lands; a failed flush keeps
     // the marks and retries.
-    const stale = this.staleShardFiles.get(table);
     let effectiveDirty = dirtyKeys;
     const encodedToKey = new Map<string, string>();
     if (stale && stale.size > 0) {

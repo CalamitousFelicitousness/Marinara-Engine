@@ -60,6 +60,15 @@ for (const launcherPath of ["start.sh", "start-termux.sh", "start.bat"]) {
     /-eq 2|errorlevel 2/.test(launcherSource) && launcherSource.includes("could not verify"),
     `${launcherPath} must honor the check-target exit-code contract (2 = block, other = verification failure)`,
   );
+  // The shell launchers run under set -e: a bare check-target invocation
+  // would kill the whole launcher on a blocked target instead of skipping
+  // the update. The || capture keeps the non-zero status handled.
+  if (launcherPath.endsWith(".sh")) {
+    assert.ok(
+      launcherSource.includes('check-target "$TARGET_HEAD" || CHECK_TARGET_STATUS=$?'),
+      `${launcherPath} must capture check-target's status errexit-safely (bare invocation dies under set -e)`,
+    );
+  }
 }
 const installerSource = readFileSync(join(repositoryRoot, "win/installer/install.bat"), "utf8");
 assert.ok(

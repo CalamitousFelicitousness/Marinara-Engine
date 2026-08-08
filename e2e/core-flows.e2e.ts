@@ -1641,6 +1641,7 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
 
   let connectionId: string | null = null;
   let testFailure: unknown;
+  let cleanupFailure: unknown;
   const errors = collectUnexpectedErrors(page);
 
   try {
@@ -1679,18 +1680,23 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     expect(errors).toEqual([]);
   } catch (error) {
     testFailure = error;
-    throw error;
   } finally {
     if (connectionId) {
       try {
         const deletionResponse = await page.request.delete(`/api/connections/${connectionId}`);
         if (!deletionResponse.ok()) throw new Error(`Connection cleanup failed with ${deletionResponse.status()}`);
       } catch (cleanupError) {
-        if (!testFailure) throw cleanupError;
-        console.warn("NovelAI style plate test cleanup failed", cleanupError);
+        if (testFailure !== undefined) {
+          console.warn("NovelAI style plate test cleanup failed", cleanupError);
+        } else {
+          cleanupFailure = cleanupError;
+        }
       }
     }
   }
+
+  if (testFailure !== undefined) throw testFailure;
+  if (cleanupFailure !== undefined) throw cleanupFailure;
 });
 
 test("Connection image captioning defaults persist with a dedicated captioning connection", async ({

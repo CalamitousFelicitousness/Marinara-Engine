@@ -2831,6 +2831,8 @@ function ImageGenerationDefaultsPanel({
   onReset: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const activeServiceRef = useRef(service);
+  activeServiceRef.current = service;
   const updateSeed = (seed: number) => {
     onChange({ ...value, seed });
   };
@@ -2888,6 +2890,7 @@ function ImageGenerationDefaultsPanel({
 
     try {
       const prepared = await prepareImageAttachment(file, file.name);
+      if (activeServiceRef.current !== "novelai") return;
       onChange((current) => {
         const currentNovelAi =
           current.novelai ?? createDefaultImageGenerationProfile("novelai").novelai!;

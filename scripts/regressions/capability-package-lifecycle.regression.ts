@@ -980,6 +980,15 @@ try {
   const configuredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(db, remoteEmbeddingConnection.id);
   assert.equal(configuredEmbeddingHost.label, "Capability remote embeddings (text-embedding-regression)");
   assert.match(configuredEmbeddingHost.spaceId, /^remote:/u);
+  const repeatedConfiguredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(
+    db,
+    remoteEmbeddingConnection.id,
+  );
+  assert.equal(
+    configuredEmbeddingHost.spaceId,
+    repeatedConfiguredEmbeddingHost.spaceId,
+    "the same configured embedding source must keep a stable space ID",
+  );
   const caseDistinctEmbeddingConnection = await createConnectionsStorage(db).create({
     name: "Capability case-distinct embeddings",
     provider: "custom",

@@ -449,7 +449,7 @@ IMPORTANT RULES FOR FETCH:
 - When the user asks about a specific character/lorebook/etc., fetch it first before answering.
 - You can fetch multiple items in one message by including multiple [fetch] commands.
 - Fetched data stays in your context for subsequent messages — no need to fetch the same item again.
-- The available names are listed in <available_names> blocks in your context.
+- Available names are provided in <available_names> reference blocks. For large libraries these lists are capped, so a name the user mentions may not appear — you can still fetch ANY item by its exact name even when it is not listed. Never tell the user an item does not exist just because you don't see it in the list; try the fetch.
 - If the user asks you to review or compare items, fetch only the ones needed.
 </data_access>`;
 

@@ -716,6 +716,9 @@ function stringifyOutput(value: unknown): string {
 
 // Renders the structured read-bounding signal (#4767) into a short instruction
 // the model can act on, so a size-bounded read never looks like a silent cut.
+// The note itself is capped so it can never grow toward the output limit.
+const MARI_MAX_NOTE_FIELDS = 20;
+
 function formatMariReadTruncation(truncation: MariDbReadTruncation | undefined): string | null {
   if (!truncation?.truncated) return null;
   if (truncation.field) {
@@ -724,12 +727,30 @@ function formatMariReadTruncation(truncation: MariDbReadTruncation | undefined):
     const more = end < total ? ` Re-read with field="${path}" offset=${end} for the next window.` : "";
     return `Field "${path}": showing characters ${offset}–${end} of ${total}.${more}`;
   }
+  const lines: string[] = [];
+  if (truncation.unresolvedField) {
+    lines.push(
+      `Requested field "${truncation.unresolvedField}" was not found on this item; showing the bounded overview instead. Valid field paths are named below.`,
+    );
+  }
   const fields = truncation.fields ?? [];
-  if (fields.length === 0) return null;
-  return [
-    "Note: oversized fields were elided to fit the output limit. Read any one in full by repeating this action with field=\"<path>\" (add offset to page a long value):",
-    ...fields.map((entry) => `  - ${entry.path} (${entry.fullLength} chars)`),
-  ].join("\n");
+  if (fields.length > 0) {
+    lines.push(
+      'Note: oversized fields were elided to fit the output limit. Read any one in full by repeating this action with field="<path>" (add offset to page a long value):',
+    );
+    for (const entry of fields.slice(0, MARI_MAX_NOTE_FIELDS)) {
+      lines.push(`  - ${entry.path} (${entry.fullLength} chars)`);
+    }
+    if (fields.length > MARI_MAX_NOTE_FIELDS) {
+      lines.push(`  … and ${fields.length - MARI_MAX_NOTE_FIELDS} more elided field(s).`);
+    }
+  }
+  if (truncation.hardCapped) {
+    lines.push(
+      "The overview was hard-capped to fit the output limit; re-read specific fields with field= for their complete values.",
+    );
+  }
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function compactMutationResult(result: MariDbCommandResult): MariDbCommandResult | Record<string, unknown> {

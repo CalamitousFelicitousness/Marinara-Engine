@@ -1601,14 +1601,19 @@ try {
     "#4767 bounding must preserve the description",
   );
   assert.equal(heavyRead.truncation?.truncated, true, "#4767 a heavy read must report structured truncation");
+  // The oversized greetings array is elided as a unit (one placeholder, not one
+  // per element), naming the array path for drill-down.
   const greetingElision = (heavyRead.truncation?.fields ?? []).find(
-    (entry) => entry.path === "data.alternate_greetings[0]",
+    (entry) => entry.path === "data.alternate_greetings",
   );
-  assert.ok(greetingElision, "#4767 must elide the oversized greeting and name its exact field path");
-  assert.equal(greetingElision.fullLength, 40_000, "#4767 truncation metadata must report the field's true full length");
+  assert.ok(greetingElision, "#4767 must elide the oversized greetings array and name its field path");
   assert.ok(
-    !String((heavyData.alternate_greetings as string[])[0]).includes("GGGGGGGGGG"),
-    "#4767 the oversized greeting must be elided in the overview, not inlined",
+    greetingElision.fullLength >= 40_000,
+    "#4767 truncation metadata must report the elided value's true (serialized) length",
+  );
+  assert.ok(
+    !JSON.stringify(heavyData.alternate_greetings).includes("GGGGGGGGGG"),
+    "#4767 the oversized greetings must be elided in the overview, not inlined",
   );
   assert.ok(
     JSON.stringify(heavyRead.output, null, 2).length < 30_000,
@@ -1616,6 +1621,7 @@ try {
   );
 
   // The complete value must reassemble across field= windows — nothing is lost.
+  // Element-level drill-down still resolves even though elision was array-level.
   const firstWindow = await mariDb.executeAction({
     action: "character.get",
     id: heavyCharacterId,
@@ -1636,6 +1642,60 @@ try {
     heavyGreeting,
     "#4767 field= windows must reassemble the complete original value with nothing lost",
   );
+
+  // The guaranteed bound: a card whose bulk is MANY short strings (a huge tags
+  // array) must NOT inflate past the cap by turning each short value into a
+  // longer placeholder — the whole array is elided as one unit. This is the
+  // regression for the review's major finding.
+  const manyTagsId = "many-tags-4767";
+  await mariDb.executeAction({
+    action: "character.create",
+    id: manyTagsId,
+    data: {
+      name: "Tag Storm",
+      description: "Short identity.",
+      tags: Array.from({ length: 4000 }, (_, i) => `tag-${i}`),
+    },
+  });
+  const tagsRead = await mariDb.executeAction({ action: "character.get", id: manyTagsId });
+  assert.equal(tagsRead.ok, true);
+  assert.equal((tagsRead.output as { data: Record<string, unknown> }).data.name, "Tag Storm", "#4767 name survives a tag storm");
+  assert.ok(
+    JSON.stringify(tagsRead.output, null, 2).length < 30_000,
+    "#4767 a many-short-strings card must be bounded, never inflated past the cap",
+  );
+
+  // Description-dominated card: description is elided (last-resort) but the name
+  // still survives and the description remains recoverable via field=.
+  const descHeavyId = "desc-heavy-4767";
+  const heavyDescription = "D".repeat(40_000);
+  await mariDb.executeAction({
+    action: "character.create",
+    id: descHeavyId,
+    data: { name: "Wordy", description: heavyDescription },
+  });
+  const descRead = await mariDb.executeAction({ action: "character.get", id: descHeavyId });
+  assert.equal((descRead.output as { data: Record<string, unknown> }).data.name, "Wordy", "#4767 name survives even when description is the bulk");
+  assert.ok(
+    (descRead.truncation?.fields ?? []).some((f) => f.path === "data.description"),
+    "#4767 a description-dominated card elides the description (recoverable), not the identity",
+  );
+  const descWindow = await mariDb.executeAction({
+    action: "character.get",
+    id: descHeavyId,
+    field: "data.description",
+    offset: 0,
+    limit: 20_000,
+  });
+  assert.equal(descWindow.truncation?.field?.total, 40_000, "#4767 the elided description must be fully recoverable via field=");
+
+  // A field= path that does not resolve returns the overview WITH a not-found signal.
+  const missingField = await mariDb.executeAction({
+    action: "character.get",
+    id: heavyCharacterId,
+    field: "data.no_such_field",
+  });
+  assert.equal(missingField.truncation?.unresolvedField, "data.no_such_field", "#4767 an unresolved field= must be flagged, not silently swallowed");
 
   // A small read is untouched: no truncation metadata, behavior identical to before.
   const smallRead = await mariDb.executeAction({ action: "character.get", id: characterId });

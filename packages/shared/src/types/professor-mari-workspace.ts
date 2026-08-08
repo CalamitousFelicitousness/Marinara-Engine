@@ -293,6 +293,10 @@ export interface MariDbReadTruncation {
   truncated: boolean;
   fields?: Array<{ path: string; fullLength: number; returnedLength: number }>;
   field?: { path: string; offset: number; returned: number; total: number };
+  /** Set when even structured elision could not fit the overview and it was hard-capped. */
+  hardCapped?: boolean;
+  /** Set when a `field=` read named a path that did not resolve on this row. */
+  unresolvedField?: string;
 }
 
 export interface MariDbCommandResult {

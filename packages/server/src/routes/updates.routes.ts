@@ -296,39 +296,50 @@ async function checkTargetStorageFormat(
   root: string,
   targetRef: string,
 ): Promise<{ compatible: boolean; verified: boolean; onDiskFormat: number | null; targetFormat: number | null }> {
+  // A crash can leave only manifest.json.bak — the on-disk format must not
+  // fall back to "nothing to protect" while a backup still declares it.
   let onDiskFormat: number | null = null;
-  try {
-    const manifest = JSON.parse(readFileSync(resolve(getFileStorageDir(), "manifest.json"), "utf8")) as {
-      version?: unknown;
-    };
-    if (typeof manifest?.version === "number") onDiskFormat = manifest.version;
-  } catch {
-    /* no manifest -> nothing to protect */
+  for (const name of ["manifest.json", "manifest.json.bak"]) {
+    try {
+      const manifest = JSON.parse(readFileSync(resolve(getFileStorageDir(), name), "utf8")) as {
+        version?: unknown;
+      };
+      if (typeof manifest?.version === "number") {
+        onDiskFormat = manifest.version;
+        break;
+      }
+    } catch {
+      /* try the backup */
+    }
   }
   if (onDiskFormat === null) return { compatible: true, verified: true, onDiskFormat: null, targetFormat: null };
 
-  // Two steps because git's error text cannot distinguish a bad ref from an
-  // absent path: first CONFIRM the ref resolves, then a show failure can only
-  // mean the file is absent on it (a pre-#4708 build -> format 2).
-  try {
-    await execFileAsync("git", ["rev-parse", "--verify", "--quiet", `${targetRef}^{commit}`], {
-      cwd: root,
-      timeout: 15_000,
-    });
-  } catch (err) {
-    logger.warn(err, "[Update] Could not verify the update target ref %s", targetRef);
-    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
-  }
+  // CONFIRMED-absent on the target ref -> that build predates the file -> 2.
+  // Any git failure (bad ref, timeout, unreadable object) is verified: false
+  // instead — misreading it as format 2 would report a false downgrade
+  // block. ls-tree distinguishes all three cases in one call: a bad ref
+  // throws, a verified ref lists the path when present and prints nothing
+  // when absent — git show's own error text cannot tell those apart.
   let targetFormat: number | null = null;
   let raw: string | null = null;
   try {
-    const { stdout } = await execFileAsync("git", ["show", `${targetRef}:storage-format.json`], {
-      cwd: root,
-      timeout: 15_000,
-    });
-    raw = stdout;
-  } catch {
-    targetFormat = 2;
+    const { stdout: listed } = await execFileAsync(
+      "git",
+      ["ls-tree", "--name-only", targetRef, "--", "storage-format.json"],
+      { cwd: root, timeout: 15_000 },
+    );
+    if (!listed.trim()) {
+      targetFormat = 2;
+    } else {
+      const { stdout } = await execFileAsync("git", ["show", `${targetRef}:storage-format.json`], {
+        cwd: root,
+        timeout: 15_000,
+      });
+      raw = stdout;
+    }
+  } catch (err) {
+    logger.warn(err, "[Update] Could not verify storage-format.json at %s", targetRef);
+    return { compatible: false, verified: false, onDiskFormat, targetFormat: null };
   }
   if (raw !== null) {
     try {

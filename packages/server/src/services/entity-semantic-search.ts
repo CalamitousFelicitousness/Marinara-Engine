@@ -37,10 +37,11 @@ export interface EntityDescriptor {
   listAll(): Promise<EntityCandidate[]>;
   /**
    * Narrow, embedding-only persisted setter (bypasses the entity's normal
-   * update() so no version snapshot / JSON merge / recency bump fires). Absent
-   * ⇒ this type is not persisted and is embedded on the fly each search.
+   * update() so no version snapshot / JSON merge / recency bump fires). Receives
+   * the embedText so the store can content-hash it for staleness. Absent ⇒ this
+   * type is not persisted and is embedded on the fly each search.
    */
-  updateEmbedding?(id: string, vector: number[] | null): Promise<void>;
+  updateEmbedding?(id: string, vector: number[] | null, embedText: string): Promise<void>;
 }
 
 export type EntityResolution =
@@ -129,7 +130,7 @@ export async function warmEntityEmbeddings(
   for (let i = 0; i < missing.length; i += 1) {
     const vector = embeddings[i];
     if (!vector || vector.length === 0) continue;
-    await descriptor.updateEmbedding(missing[i]!.id, vector);
+    await descriptor.updateEmbedding(missing[i]!.id, vector, missing[i]!.embedText);
     missing[i]!.embedding = vector;
     embedded += 1;
   }

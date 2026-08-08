@@ -45,6 +45,7 @@ import {
 import { normalizeThemeCss } from "./lib/theme-css";
 import { useLegacyThemeMigration, useThemes } from "./hooks/use-themes";
 import { useSettingsSync } from "./hooks/use-settings-sync";
+import { useStorageMigrationNotice } from "./hooks/use-storage-migration-notice";
 import { useCustomNotificationSoundStatus } from "./hooks/use-custom-notification-sound";
 import { useReducedAmbientEffects } from "./hooks/use-reduced-ambient-effects";
 import { installLongTaskWarner } from "./lib/perf-diagnostics";
@@ -508,7 +509,11 @@ export function App() {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [whatsNewResolved, setWhatsNewResolved] = useState(false);
   const handleWhatsNewResolved = useCallback(() => setWhatsNewResolved(true), []);
-  const [migrationNoticeOpen, setMigrationNoticeOpen] = useState(false);
+  // Shares the modal's query via the cache; gating the prompter on the QUERY
+  // (pending or a notice still waiting) instead of the modal's open state
+  // closes the race where the prompter fires in the window before the notice
+  // fetch resolves.
+  const { data: migrationNotice, isPending: migrationNoticePending } = useStorageMigrationNotice();
 
   useEffect(() => {
     setCustomNotificationSoundUrl(customNotificationSound?.url ?? null);
@@ -1050,7 +1055,6 @@ export function App() {
         presentationAllowed={
           whatsNewResolved && !hasModalOpen && !hasAppDialogOpen && !whatsNewOpen && (isLite || !showDownloadModal)
         }
-        onOpenChange={setMigrationNoticeOpen}
       />
       <AgentUpdatePrompter
         presentationAllowed={
@@ -1058,7 +1062,8 @@ export function App() {
           !hasModalOpen &&
           !hasAppDialogOpen &&
           !whatsNewOpen &&
-          !migrationNoticeOpen &&
+          !migrationNoticePending &&
+          !migrationNotice &&
           (isLite || !showDownloadModal)
         }
       />

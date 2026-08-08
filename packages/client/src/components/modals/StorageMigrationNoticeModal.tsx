@@ -15,13 +15,7 @@ import { Modal } from "../ui/Modal";
  * the downgrade path lives. Dismissing acknowledges server-side, so the
  * notice never returns (until a future storage-format bump migrates again).
  */
-export function StorageMigrationNoticeModal({
-  presentationAllowed,
-  onOpenChange,
-}: {
-  presentationAllowed: boolean;
-  onOpenChange?: (open: boolean) => void;
-}) {
+export function StorageMigrationNoticeModal({ presentationAllowed }: { presentationAllowed: boolean }) {
   const { t: localizeUi } = useUiTranslation();
   const hasCompletedOnboarding = useUIStore((state) => state.hasCompletedOnboarding);
   const { data: notice } = useStorageMigrationNotice();
@@ -38,14 +32,6 @@ export function StorageMigrationNoticeModal({
     if (!presentationAllowed || !hasCompletedOnboarding || !notice || open || dismissed) return;
     setOpen(true);
   }, [dismissed, hasCompletedOnboarding, notice, open, presentationAllowed]);
-
-  useEffect(() => {
-    onOpenChange?.(open);
-    // The component render-nulls (never unmounts) once the notice clears —
-    // without this cleanup the parent's suppression gate would latch on the
-    // last pushed value and silence the agent-update prompter all session.
-    return () => onOpenChange?.(false);
-  }, [onOpenChange, open]);
 
   if (!notice) return null;
 

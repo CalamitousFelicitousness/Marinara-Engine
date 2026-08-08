@@ -1958,7 +1958,10 @@ class FileTableStore {
     if (existing && typeof existing.value === "string" && existing.value) {
       try {
         const prior = JSON.parse(existing.value) as { fromFormat?: unknown; migratedTables?: unknown };
-        if (typeof prior.fromFormat === "number") fromFormat = prior.fromFormat;
+        // The ORIGINAL fromFormat wins the merge — including an explicit null
+        // (no manifest existed); only an absent/invalid property falls back
+        // to this boot's value.
+        if (prior.fromFormat === null || typeof prior.fromFormat === "number") fromFormat = prior.fromFormat;
         if (Array.isArray(prior.migratedTables)) {
           tables = [
             ...new Set([...prior.migratedTables.filter((entry): entry is string => typeof entry === "string"), ...tables]),

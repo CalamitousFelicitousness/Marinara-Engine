@@ -11,20 +11,64 @@ type NamedListStore = {
   list(): Promise<unknown[]>;
 };
 
-function namedValue(row: unknown): string | null {
-  if (!row || typeof row !== "object") return null;
-  const name = (row as { name?: unknown }).name;
-  return typeof name === "string" && name.trim().length > 0 ? name : null;
+// Per-category cap on the <available_names> reference lists. Bounds the token
+// noise on large libraries and — together with the deterministic sort below —
+// keeps the block byte-stable across turns so it no longer churns the prompt
+// prefix (and, with caching enabled, the cache). A code constant, mirroring
+// MAX_MARI_FETCHED_PRESET_CONTEXT_CHARS; not a user setting. Fetching still
+// works for any exact name even when it is beyond the cap (see <data_access>).
+export const MAX_MARI_AVAILABLE_NAMES_PER_TYPE = 100;
+
+// Lexicographic UTF-16 code-unit order (JS string relational comparison), not
+// localeCompare: spec-defined and ICU-independent, so the emitted block is
+// byte-identical across Node builds (small-icu vs full-icu). That determinism
+// is the whole point — it keeps the block stable and the regression pin
+// reliable — and it does not depend on true codepoint ordering.
+function compareCodeUnit(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
+function asName(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+// Dedupe → sort (deterministic) → cap. Only the set of distinct names and the
+// rename of one changes the output; merely touching an item (updatedAt bump)
+// no longer reorders it, because we sort by name rather than trust store order.
+function buildNameSection(type: string, rawNames: Array<string | null>): string | null {
+  const unique = Array.from(new Set(rawNames.filter((name): name is string => name !== null)));
+  if (unique.length === 0) return null;
+  unique.sort(compareCodeUnit);
+
+  const shown = unique.slice(0, MAX_MARI_AVAILABLE_NAMES_PER_TYPE);
+  const overflow = unique.length - shown.length;
+  const lines = [shown.join(", ")];
+  if (overflow > 0) {
+    lines.push(
+      `…and ${overflow} more not listed — you can still fetch any of them by exact name if the user names one.`,
+    );
+  }
+  return `<available_names type="${type}">\n${lines.join("\n")}\n</available_names>`;
+}
+
+/**
+ * Builds Professor Mari's Home-assistant prompt context, split into two halves:
+ *
+ * - `stablePrompt`: the invariant instruction block (MARI_ASSISTANT_PROMPT).
+ *   The caller appends this to the system message.
+ * - `volatileContext`: the `<available_names>` reference lists plus any
+ *   `<loaded_context>` fetched data. The caller injects this as a tail
+ *   user-role message (contextKind "injection") so a change to the library or
+ *   a `[fetch:]` no longer invalidates the static system prefix.
+ */
 export async function resolveProfessorMariPromptContext(args: {
   chatMeta: Record<string, unknown>;
   chars: ProfessorMariCharactersStore;
   lorebooksStore: NamedListStore;
   chats: NamedListStore;
   presets: NamedListStore;
-}): Promise<string> {
-  const sections = [MARI_ASSISTANT_PROMPT];
+}): Promise<{ stablePrompt: string; volatileContext: string }> {
+  const volatileSections: string[] = [];
 
   try {
     const allChars = await args.chars.list();
@@ -38,39 +82,26 @@ export async function resolveProfessorMariPromptContext(args: {
       .map((c) => {
         try {
           const d = typeof c.data === "string" ? JSON.parse(c.data) : c.data;
-          return d?.name;
+          return asName(d?.name);
         } catch {
           return null;
         }
-      })
-      .filter(Boolean);
+      });
 
-    const personaNames = allPersonasList.map((p) => p.name).filter(Boolean);
-    const lorebookNames = allLorebooks.map(namedValue).filter(Boolean);
-    const chatNames = allChats
-      .slice(0, 50)
-      .map(namedValue)
-      .filter(Boolean);
-    const presetNames = allPresets.map(namedValue).filter(Boolean);
+    const personaNames = allPersonasList.map((p) => asName(p.name));
+    const lorebookNames = allLorebooks.map((row) => asName((row as { name?: unknown })?.name));
+    const chatNames = allChats.map((row) => asName((row as { name?: unknown })?.name));
+    const presetNames = allPresets.map((row) => asName((row as { name?: unknown })?.name));
 
-    const namesSections: string[] = [];
-    if (charNames.length > 0) {
-      namesSections.push(`<available_names type="character">\n${charNames.join(", ")}\n</available_names>`);
-    }
-    if (personaNames.length > 0) {
-      namesSections.push(`<available_names type="persona">\n${personaNames.join(", ")}\n</available_names>`);
-    }
-    if (lorebookNames.length > 0) {
-      namesSections.push(`<available_names type="lorebook">\n${lorebookNames.join(", ")}\n</available_names>`);
-    }
-    if (chatNames.length > 0) {
-      namesSections.push(`<available_names type="chat">\n${chatNames.join(", ")}\n</available_names>`);
-    }
-    if (presetNames.length > 0) {
-      namesSections.push(`<available_names type="preset">\n${presetNames.join(", ")}\n</available_names>`);
-    }
+    const namesSections = [
+      buildNameSection("character", charNames),
+      buildNameSection("persona", personaNames),
+      buildNameSection("lorebook", lorebookNames),
+      buildNameSection("chat", chatNames),
+      buildNameSection("preset", presetNames),
+    ].filter((section): section is string => section !== null);
 
-    if (namesSections.length > 0) sections.push(namesSections.join("\n\n"));
+    if (namesSections.length > 0) volatileSections.push(namesSections.join("\n\n"));
   } catch {
     // Non-critical: continue without name lists.
   }
@@ -81,12 +112,15 @@ export async function resolveProfessorMariPromptContext(args: {
     for (const [key, value] of Object.entries(mariContext)) {
       contextSections.push(`<fetched_data key="${key}">\n${value}\n</fetched_data>`);
     }
-    sections.push(
+    volatileSections.push(
       "<loaded_context>\nThe following items were previously fetched and are available for reference:\n\n" +
         contextSections.join("\n\n") +
         "\n</loaded_context>",
     );
   }
 
-  return sections.join("\n\n");
+  return {
+    stablePrompt: MARI_ASSISTANT_PROMPT,
+    volatileContext: volatileSections.join("\n\n"),
+  };
 }

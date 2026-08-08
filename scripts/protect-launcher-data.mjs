@@ -111,7 +111,16 @@ export async function checkTargetStorageFormat({
 
 // Kept in sync with SHARDED_TABLES in packages/server/src/db/file-backed-store.ts
 // (this script must run offline, so it cannot import server code).
-const SHARDED_TABLES = ["messages", "message_swipes"];
+const SHARDED_TABLES = [
+  "messages",
+  "message_swipes",
+  "memory_chunks",
+  "chat_images",
+  "agent_runs",
+  "conversation_call_messages",
+  "game_state_snapshots",
+  "spatial_context_snapshots",
+];
 const UNSHARD_SENTINEL = ".unshard-in-progress";
 
 async function pathExists(path) {

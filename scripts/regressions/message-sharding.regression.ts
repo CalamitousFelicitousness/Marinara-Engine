@@ -22,9 +22,10 @@ import { eq } from "../../packages/server/src/db/file-query.js";
 import {
   createFileNativeDB,
   encodeShardKey,
+  STORAGE_VERSION,
   StorageFormatTooNewError,
 } from "../../packages/server/src/db/file-backed-store.js";
-import { chats, messages, messageSwipes } from "../../packages/server/src/db/schema/index.js";
+import { chats, memoryChunks, messages, messageSwipes } from "../../packages/server/src/db/schema/index.js";
 
 function tempStorageDir() {
   const dir = mkdtempSync(join(tmpdir(), "marinara-shards-"));
@@ -85,7 +86,7 @@ assert.equal(
     const swipeShard = join(dir, "tables", "message_swipes", `${encodeShardKey("chat-a")}.json`);
     assert.ok(existsSync(swipeShard), "swipes shard beside their parent chat");
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
-    assert.equal(manifest.version, 3, "the manifest records storage format 3");
+    assert.equal(manifest.version, STORAGE_VERSION, "the manifest records the current storage format");
     assert.equal(manifest.tables.messages, 2, "logical row counts still cover sharded tables");
     assert.equal(manifest.shards.messages, 2, "shard diagnostics record the file count");
 
@@ -563,7 +564,7 @@ assert.equal(
   const db = await createFileNativeDB();
   try {
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
-    assert.equal(manifest.version, 3, "a lagging manifest version is healed by the startup flush");
+    assert.equal(manifest.version, STORAGE_VERSION, "a lagging manifest version is healed by the startup flush");
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });
@@ -585,7 +586,7 @@ assert.equal(
   try {
     assert.ok(existsSync(join(dir, "manifest.json")), "a boot over manifest-less table data recreates the manifest");
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
-    assert.equal(manifest.version, 3, "the recreated manifest carries the current storage version");
+    assert.equal(manifest.version, STORAGE_VERSION, "the recreated manifest carries the current storage version");
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });
@@ -696,6 +697,102 @@ assert.equal(
       existsSync(join(dir, "tables", "messages", `${encoded}.json`)),
       "self-heal rewrites the missing primary on the next flush",
     );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── PR 3 (#4708): every remaining chat-keyed table shards by its own chatId ──
+// memory_chunks stands in for the direct-chatId family (chat_images,
+// agent_runs, conversation_call_messages, game_state_snapshots,
+// spatial_context_snapshots resolve identically through shardKeyForRow).
+
+{
+  const dir = tempStorageDir();
+  const writes: string[] = [];
+  const db = await createFileNativeDB({ beforeTableWrite: (table) => void writes.push(table) });
+  try {
+    await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
+    await db.insert(chats).values({ id: "chat-b", name: "B", mode: "conversation" });
+    for (const chatId of ["chat-a", "chat-b"]) {
+      await db.insert(memoryChunks).values({
+        id: `chunk-${chatId}`,
+        chatId,
+        content: "chunked",
+        messageCount: 1,
+        firstMessageAt: "2026-08-08T10:00:00.000Z",
+        lastMessageAt: "2026-08-08T10:00:00.000Z",
+        createdAt: "2026-08-08T10:00:00.000Z",
+      });
+    }
+    await db._fileStore.flush();
+    assert.equal(existsSync(join(dir, "tables", "memory_chunks.json")), false, "no memory_chunks monolith is created");
+    assert.ok(
+      existsSync(join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`)),
+      "memory chunks land in per-chat shard files",
+    );
+
+    // Per-chat flush granularity: touching one chat's chunks writes ONLY that
+    // chat's file.
+    writes.length = 0;
+    await db
+      .update(memoryChunks)
+      .set({ content: "rewritten" })
+      .where(eq(memoryChunks.id, "chunk-chat-a"));
+    await db._fileStore.flush();
+    const chunkWrites = writes.filter((t) => t.startsWith("memory_chunks/"));
+    assert.deepEqual(
+      chunkWrites,
+      [`memory_chunks/${encodeShardKey("chat-a")}`],
+      "one chat's chunk write touches only that chat's shard file",
+    );
+
+    // Chat deletion cascades remove the shard files, not just the rows.
+    await db.delete(chats).where(eq(chats.id, "chat-b"));
+    await db._fileStore.flush();
+    assert.equal(
+      existsSync(join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-b")}.json`)),
+      false,
+      "deleting a chat removes its chunk shard file",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── PR 3 migration: all six monoliths shard in one boot, originals preserved ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  const seeded: Array<[string, Record<string, unknown>]> = [
+    ["memory_chunks", { id: "r-1", chatId: "chat-x", content: "c", messageCount: 1, firstMessageAt: "t", lastMessageAt: "t", createdAt: "2026-08-08T10:00:00.000Z" }],
+    ["chat_images", { id: "r-2", chatId: "chat-x", filePath: "img.png", createdAt: "2026-08-08T10:00:01.000Z" }],
+    ["agent_runs", { id: "r-3", agentConfigId: "cfg", chatId: "chat-x", messageId: "m-1", resultType: "text", createdAt: "2026-08-08T10:00:02.000Z" }],
+    ["conversation_call_messages", { id: "r-4", callId: "call-1", chatId: "chat-x", role: "user", participantKind: "user", kind: "text", createdAt: "2026-08-08T10:00:03.000Z" }],
+    ["game_state_snapshots", { id: "r-5", chatId: "chat-x", messageId: "m-1", createdAt: "2026-08-08T10:00:04.000Z" }],
+    ["spatial_context_snapshots", { id: "r-6", chatId: "chat-x", messageId: "m-1", definitionRevision: 1, source: "test", createdAt: "2026-08-08T10:00:05.000Z" }],
+  ];
+  for (const [table, row] of seeded) {
+    writeFileSync(join(dir, "tables", `${table}.json`), JSON.stringify([row]));
+  }
+  const db = await createFileNativeDB();
+  try {
+    for (const [table] of seeded) {
+      assert.ok(
+        existsSync(join(dir, "tables", table, `${encodeShardKey("chat-x")}.json`)),
+        `${table} migrated into a per-chat shard`,
+      );
+      assert.ok(
+        existsSync(join(dir, "tables", `${table}.json.pre-shard`)),
+        `${table} monolith preserved as .pre-shard`,
+      );
+      assert.equal(existsSync(join(dir, "tables", `${table}.json`)), false, `${table} monolith renamed away`);
+    }
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as { version: number };
+    assert.equal(manifest.version, STORAGE_VERSION, "the migrated store lands on the current format");
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

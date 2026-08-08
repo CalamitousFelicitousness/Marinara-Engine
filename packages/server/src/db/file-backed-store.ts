@@ -162,7 +162,10 @@ type InsertValuesBuilder = Executable<void> & {
   onConflictDoUpdate: (config: { target: unknown; set: Row }) => Executable<void>;
 };
 
-const STORAGE_VERSION = 3;
+// Exported so regressions can pin behavior against the CURRENT version
+// without chasing literals on every bump. Must equal root storage-format.json
+// (the launcher-format-guard regression pins the pairing).
+export const STORAGE_VERSION = 4;
 const SAVE_DEBOUNCE_MS = 750;
 const SAFETY_SAVE_MS = 10_000;
 
@@ -172,7 +175,19 @@ const SAFETY_SAVE_MS = 10_000;
 // chat — the dominant active-use cost on phone-hosted installs. These tables
 // stay in FILE_BACKED_TABLES (the master registry for schema/backup/query
 // machinery); only load/save/dirty plumbing consults this marker.
-export const SHARDED_TABLES = ["messages", "message_swipes"] as const;
+// Order matters only for the first pair: messages must load/migrate before
+// message_swipes so the messageId -> chatId index exists when swipes resolve
+// their shard. Every other table shards by its own chatId column directly.
+export const SHARDED_TABLES = [
+  "messages",
+  "message_swipes",
+  "memory_chunks",
+  "chat_images",
+  "agent_runs",
+  "conversation_call_messages",
+  "game_state_snapshots",
+  "spatial_context_snapshots",
+] as const;
 const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
 
 /**
@@ -1293,12 +1308,17 @@ class FileTableStore {
 
     const rowsByShard = new Map<string, Row[]>();
     for (const row of normalized) {
+      // Migration-time twin of shardKeyForRow: it runs BEFORE the load builds
+      // messageShardIndex, so swipes resolve through the migrationIndex the
+      // messages pass populated instead.
       let key: string;
-      if (table === "messages") {
-        key = typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY;
-        if (typeof row.id === "string" && typeof row.chatId === "string") migrationIndex.set(row.id, row.chatId);
-      } else {
+      if (table === "message_swipes") {
         key = migrationIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY;
+      } else {
+        key = typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY;
+        if (table === "messages" && typeof row.id === "string" && typeof row.chatId === "string") {
+          migrationIndex.set(row.id, row.chatId);
+        }
       }
       const bucket = rowsByShard.get(key);
       if (bucket) bucket.push(row);
@@ -1698,29 +1718,35 @@ class FileTableStore {
   }
 
   /**
-   * Shard keys for a set of rows of a sharded table (#4708). Messages shard by
-   * their own chatId; swipes resolve through the message index — an orphan
-   * swipe (no parent message) lands in the reserved unassigned shard rather
-   * than vanishing on the next flush.
+   * Shard keys for a set of rows of a sharded table (#4708). An orphan row
+   * (no usable chatId, or a swipe with no parent message) lands in the
+   * reserved unassigned shard rather than vanishing on the next flush.
    */
   private shardKeysForRows(table: string, rows: Iterable<Row>): Set<string> {
     const keys = new Set<string>();
-    for (const row of rows) {
-      if (table === "messages") {
-        keys.add(typeof row.chatId === "string" && row.chatId ? row.chatId : UNASSIGNED_SHARD_KEY);
-      } else {
-        const chatId = this.messageShardIndex.get(row.messageId);
-        // Deliberate side effect: every path that resolves a swipe's shard
-        // funnels through here (load, insert, update, self-heal), so this is
-        // the single point that learns a swipe is currently orphaned — the
-        // knowledge reindexMovedMessages needs when the parent arrives later.
-        if (chatId === undefined && typeof row.messageId === "string") {
-          this.orphanSwipeMessageIds.add(row.messageId);
-        }
-        keys.add(chatId ?? UNASSIGNED_SHARD_KEY);
-      }
-    }
+    for (const row of rows) keys.add(this.shardKeyForRow(table, row));
     return keys;
+  }
+
+  /**
+   * Raw shard key for one row — the single source of truth for how a sharded
+   * table's rows map to per-chat files. Every table shards by its own chatId
+   * column except message_swipes, which resolves through the parent message.
+   */
+  private shardKeyForRow(table: string, row: Row): string {
+    if (table === "message_swipes") {
+      const chatId = this.messageShardIndex.get(row.messageId);
+      // Deliberate side effect: every path that resolves a swipe's shard
+      // funnels through here (load, insert, update, self-heal, dedup), so
+      // this is the single point that learns a swipe is currently orphaned —
+      // the knowledge reindexMovedMessages needs when the parent arrives
+      // later.
+      if (chatId === undefined && typeof row.messageId === "string") {
+        this.orphanSwipeMessageIds.add(row.messageId);
+      }
+      return chatId ?? UNASSIGNED_SHARD_KEY;
+    }
+    return typeof row.chatId === "string" && row.chatId ? (row.chatId as string) : UNASSIGNED_SHARD_KEY;
   }
 
   /**
@@ -2117,12 +2143,7 @@ class FileTableStore {
       // self-healing. Equal canonicality keeps the sort-first copy. Losers
       // are dropped and their shards dirtied so the next flush rewrites the
       // stale copies away.
-      const logicalKeyOf = (row: Row) =>
-        table === "messages"
-          ? typeof row.chatId === "string" && row.chatId
-            ? (row.chatId as string)
-            : UNASSIGNED_SHARD_KEY
-          : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY);
+      const logicalKeyOf = (row: Row) => this.shardKeyForRow(table, row);
       const isCanonical = (row: Row) => encodeShardKey(logicalKeyOf(row)) === rowSource.get(row);
       const keptIndexById = new Map<string, number>();
       const deduped: Row[] = [];
@@ -2187,12 +2208,7 @@ class FileTableStore {
     }
     const rowsByShard = new Map<string, Row[]>();
     for (const row of rows) {
-      const key =
-        table === "messages"
-          ? typeof row.chatId === "string" && row.chatId
-            ? row.chatId
-            : UNASSIGNED_SHARD_KEY
-          : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY);
+      const key = this.shardKeyForRow(table, row);
       const bucket = rowsByShard.get(key);
       if (bucket) bucket.push(row);
       else rowsByShard.set(key, [row]);

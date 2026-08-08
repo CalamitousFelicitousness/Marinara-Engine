@@ -267,6 +267,31 @@ function shardedStorageFixture() {
   }
 }
 
+// ── unshard: the direct-chatId table family converts too (PR 3, #4708) ──
+// memory_chunks stands in for every table that shards by its own chatId; the
+// SHARDED_TABLES pairing pin above guarantees the list itself matches the
+// store, and this case proves the conversion handles a non-message table.
+
+{
+  const dir = shardedStorageFixture();
+  mkdirSync(join(dir, "tables", "memory_chunks"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "memory_chunks", "chat-a.json"),
+    JSON.stringify([{ id: "chunk-1", chatId: "chat-a", content: "c", createdAt: "2026-08-08T10:00:00.000Z" }]),
+  );
+  try {
+    await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
+    const monolith = JSON.parse(readFileSync(join(dir, "tables", "memory_chunks.json"), "utf8"));
+    assert.equal(monolith.length, 1, "memory_chunks shards fold back into a monolith");
+    assert.ok(
+      readdirSync(join(dir, "tables")).some((name) => name.startsWith("memory_chunks.post-unshard-")),
+      "the chunk shard files are kept as .post-unshard-<timestamp>",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── unshard: duplicates keep-first, bak-only shards recovered ──
 
 {

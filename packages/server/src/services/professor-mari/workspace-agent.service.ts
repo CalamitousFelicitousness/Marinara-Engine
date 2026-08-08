@@ -6,7 +6,6 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
-import { jsonrepair } from "jsonrepair";
 import type {
   BaseLLMProvider,
   ChatCompletionResult,
@@ -34,6 +33,7 @@ import { apiConnections } from "../../db/schema/index.js";
 import { decryptApiKey } from "../../utils/crypto.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { logger } from "../../lib/logger.js";
+import { tryParseJsonRecord } from "../../lib/json-repair.js";
 import { PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE } from "./official-agent-knowledge.js";
 import {
   formatDocumentationRead,
@@ -871,6 +871,7 @@ function connectionSummary(connection: WorkspaceConnection | null): MariWorkspac
     name: connection.name,
     provider: connection.provider,
     model: connection.model,
+    maxContext: connection.maxContext,
   };
 }
 
@@ -892,7 +893,7 @@ function createProviderForConnection(connection: WorkspaceConnection): BaseLLMPr
 
 function parseToolArgumentsValue(value: unknown): Record<string, unknown> {
   if (isRecord(value)) return value;
-  if (typeof value === "string") return tryParseJsonPayload(value) ?? {};
+  if (typeof value === "string") return tryParseJsonRecord(value) ?? {};
   return {};
 }
 
@@ -911,65 +912,12 @@ function hasActionPayload(payload: Record<string, unknown>): boolean {
   );
 }
 
-function closeOpenJsonContainers(raw: string): string | null {
-  const stack: string[] = [];
-  let inString = false;
-  let escaped = false;
-  for (const char of raw) {
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === "{" || char === "[") {
-      stack.push(char);
-      continue;
-    }
-    if (char !== "}" && char !== "]") continue;
-    const expected = char === "}" ? "{" : "[";
-    if (stack.pop() !== expected) return null;
-  }
-  if (inString) return null;
-  return (
-    raw +
-    stack
-      .reverse()
-      .map((opening) => (opening === "{" ? "}" : "]"))
-      .join("")
-  );
-}
-
-function tryParseJsonPayload(raw: string): Record<string, unknown> | null {
-  let repaired: string | null = null;
-  try {
-    repaired = jsonrepair(raw);
-  } catch {
-    // Fall through to the conservative container-closing recovery.
-  }
-  const candidates = [raw, repaired, closeOpenJsonContainers(raw), repaired && closeOpenJsonContainers(repaired)];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    try {
-      const parsed = JSON.parse(candidate) as unknown;
-      return isRecord(parsed) ? parsed : null;
-    } catch {
-      // Try the next conservative repair candidate.
-    }
-  }
-  return null;
-}
-
 function findJsonPayloadMatch(content: string): JsonPayloadMatch | null {
   const fencedRe = /```(?:json)?\s*([\s\S]*?)```/gi;
   for (const match of content.matchAll(fencedRe)) {
     const rawJson = match[1]?.trim();
     if (!rawJson) continue;
-    const payload = tryParseJsonPayload(rawJson);
+    const payload = tryParseJsonRecord(rawJson);
     if (!payload || !hasActionPayload(payload)) continue;
     const start = match.index ?? 0;
     return { payload, raw: match[0], start, end: start + match[0].length };
@@ -998,7 +946,7 @@ function findJsonPayloadMatch(content: string): JsonPayloadMatch | null {
         depth -= 1;
         if (depth !== 0) continue;
         const raw = content.slice(start, index + 1);
-        const payload = tryParseJsonPayload(raw);
+        const payload = tryParseJsonRecord(raw);
         if (payload && hasActionPayload(payload)) return { payload, raw, start, end: index + 1 };
         closedWithoutAction = true;
         break;
@@ -1006,7 +954,7 @@ function findJsonPayloadMatch(content: string): JsonPayloadMatch | null {
     }
     if (closedWithoutAction) continue;
     const incompleteRaw = content.slice(start).trim();
-    const incompletePayload = tryParseJsonPayload(incompleteRaw);
+    const incompletePayload = tryParseJsonRecord(incompleteRaw);
     if (incompletePayload && hasActionPayload(incompletePayload)) {
       return { payload: incompletePayload, raw: incompleteRaw, start, end: content.length };
     }
@@ -1102,7 +1050,7 @@ function parseXmlCommandCalls(content: string): WorkspaceCommandCall[] {
     const name = match[1];
     if (!name || !isWorkspaceToolName(name)) continue;
     const rawBody = match[2]?.trim() ?? "{}";
-    let args = tryParseJsonPayload(rawBody) ?? {};
+    let args = tryParseJsonRecord(rawBody) ?? {};
     if (name === "bash" && !args.command && rawBody && !rawBody.startsWith("{")) args = { command: rawBody };
     calls.push({ id: newToolCallId(name, index), name, arguments: args, raw: match[0] });
   }
@@ -1170,7 +1118,7 @@ function assistantHistoryContentForAction(
 
 function assistantHistoryContentFromVisibleText(content: string): string {
   const trimmed = content.trim();
-  const payload = tryParseJsonPayload(trimmed);
+  const payload = tryParseJsonRecord(trimmed);
   if (payload && hasActionPayload(payload)) return trimmed;
   return assistantHistoryContentForAction({ visibleText: trimmed, commands: [], stop: true });
 }
@@ -1521,9 +1469,10 @@ export function workspaceTextClaimsMutationCompletion(text: string): boolean {
   const completedMutation =
     "created|updated|changed|deleted|removed|renamed|wrote|written|fixed|implemented|built|installed|imported|exported|saved|enabled|disabled|assigned|linked|unlinked|generated|moved|copied|replaced|verified";
   return (
-    new RegExp(`\\b(?:i(?:'ve| have)?|we(?:'ve| have)?|it(?:'s| is)?|that(?:'s| is)?)\\s+(?:successfully\\s+)?(?:${completedMutation})\\b`, "iu").test(
-      normalized,
-    ) ||
+    new RegExp(
+      `\\b(?:i(?:'ve| have)?|we(?:'ve| have)?|it(?:'s| is)?|that(?:'s| is)?)\\s+(?:successfully\\s+)?(?:${completedMutation})\\b`,
+      "iu",
+    ).test(normalized) ||
     new RegExp(`\\b(?:is|was|has been)\\s+(?:successfully\\s+)?(?:${completedMutation})\\b`, "iu").test(normalized)
   );
 }
@@ -1762,9 +1711,7 @@ export class ProfessorMariWorkspaceService {
     if (!connection) throw new Error("Set up a language connection before using Professor Mari workspace mode.");
 
     const attachments = normalizeProfessorMariAttachments(args.attachments);
-    let userMessage = args.existingUserMessageId
-      ? await chatStorage.getMessage(args.existingUserMessageId)
-      : null;
+    let userMessage = args.existingUserMessageId ? await chatStorage.getMessage(args.existingUserMessageId) : null;
     if (args.existingUserMessageId) {
       if (!userMessage || userMessage.chatId !== args.chatId || userMessage.role !== "user") {
         throw new Error("Existing Professor Mari user message was not found in this chat.");
@@ -1798,6 +1745,8 @@ export class ProfessorMariWorkspaceService {
     let assistantText = "";
     let thinkingText = "";
     let totalUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let latestUsage: LLMUsage | undefined;
+    let latestFinishReason: string | null = null;
     const commandResultsForContinuity: WorkspaceCommandResult[] = [];
     let assistantMessagePersisted = false;
 
@@ -1824,7 +1773,16 @@ export class ProfessorMariWorkspaceService {
         commandResults: commandResultsForContinuity,
       });
       if (continuity) extraUpdate.mariWorkspaceContinuity = continuity;
-      extraUpdate.generationInfo = { provider: connection.provider, model: connection.model, usage: totalUsage };
+      extraUpdate.generationInfo = {
+        provider: connection.provider,
+        model: connection.model,
+        temperature: null,
+        tokensPrompt: latestUsage?.promptTokens ?? null,
+        tokensCompletion: latestUsage?.completionTokens ?? null,
+        durationMs: null,
+        finishReason: latestFinishReason,
+        usage: totalUsage,
+      };
       await chatStorage.updateMessageExtra(message.id, extraUpdate);
       await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
       return message;
@@ -1846,6 +1804,8 @@ export class ProfessorMariWorkspaceService {
       for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
         if (controller.signal.aborted) throw new Error("aborted");
         const result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {});
+        latestUsage = result.usage;
+        latestFinishReason = result.finishReason ?? null;
         const usage = mapUsage(result.usage);
         totalUsage = {
           promptTokens: totalUsage.promptTokens + usage.promptTokens,
@@ -2009,6 +1969,8 @@ export class ProfessorMariWorkspaceService {
               "You reached the workspace command round limit. Do not issue more commands. Summarize what you learned or what remains blocked.",
           });
           const finalResult = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {});
+          latestUsage = finalResult.usage;
+          latestFinishReason = finalResult.finishReason ?? null;
           const finalUsage = mapUsage(finalResult.usage);
           totalUsage = {
             promptTokens: totalUsage.promptTokens + finalUsage.promptTokens,

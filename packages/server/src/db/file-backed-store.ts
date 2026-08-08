@@ -2000,6 +2000,9 @@ class FileTableStore {
       const dataFiles = discoverShardPrimaries(entries);
       const known = new Set<string>();
       const combined: Row[] = [];
+      // Which physical file each row came from (encoded name) — the dedup
+      // below needs it to prefer the canonical copy of a duplicated id.
+      const rowSource = new Map<Row, string>();
       for (const fileName of dataFiles) {
         const encoded = fileName.slice(0, -".json".length);
         const path = join(dir, fileName);
@@ -2041,6 +2044,7 @@ class FileTableStore {
         }
         const normalized = source.map((row) => normalizeRow(meta, row));
         combined.push(...normalized);
+        for (const row of normalized) rowSource.set(row, encoded);
         let quarantinedAway = false;
         if (recoveredFromFallback && unreadablePaths.length > 0) {
           const files = await quarantineUnrecoverableFiles(unreadablePaths, `table ${table} shard ${encoded}`);
@@ -2053,7 +2057,10 @@ class FileTableStore {
             );
           }
         }
-        if (!quarantinedAway) known.add(encoded);
+        // A shard is "known" only when its primary actually sits on disk: a
+        // bak-only shard whose backup was just quarantined has NO file left,
+        // and counting it would report a phantom shard in the manifest.
+        if (!quarantinedAway && existsSync(path)) known.add(encoded);
         if (normalized.length > 0) {
           const needsRepair = recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0;
           const rowKeys = this.shardKeysForRows(table, normalized);
@@ -2100,26 +2107,39 @@ class FileTableStore {
       );
       // Duplicate primary keys across shards (a stale copy left by an
       // interrupted re-home, or hand-edited files) must not survive into
-      // memory — keep the first occurrence, drop the rest, and dirty the
-      // affected shards so the next flush rewrites the stale copies away.
-      const seenIds = new Set<string>();
+      // memory. Among copies of one id, a copy living in its CANONICAL shard
+      // file beats a foreign copy regardless of sort position — the store
+      // last wrote the canonical file authoritatively, and letting a stale
+      // foreign copy win would replace the canonical row during
+      // self-healing. Equal canonicality keeps the sort-first copy. Losers
+      // are dropped and their shards dirtied so the next flush rewrites the
+      // stale copies away.
+      const logicalKeyOf = (row: Row) =>
+        table === "messages"
+          ? typeof row.chatId === "string" && row.chatId
+            ? (row.chatId as string)
+            : UNASSIGNED_SHARD_KEY
+          : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY);
+      const isCanonical = (row: Row) => encodeShardKey(logicalKeyOf(row)) === rowSource.get(row);
+      const keptIndexById = new Map<string, number>();
       const deduped: Row[] = [];
       const duplicateShardKeys = new Set<string>();
       let duplicateCount = 0;
       for (const row of combined) {
         const id = typeof row.id === "string" ? row.id : null;
-        if (id && seenIds.has(id)) {
+        if (id && keptIndexById.has(id)) {
           duplicateCount++;
-          duplicateShardKeys.add(
-            table === "messages"
-              ? typeof row.chatId === "string" && row.chatId
-                ? (row.chatId as string)
-                : UNASSIGNED_SHARD_KEY
-              : (this.messageShardIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY),
-          );
+          const keptIndex = keptIndexById.get(id)!;
+          const kept = deduped[keptIndex]!;
+          let loser = row;
+          if (isCanonical(row) && !isCanonical(kept)) {
+            deduped[keptIndex] = row;
+            loser = kept;
+          }
+          duplicateShardKeys.add(logicalKeyOf(loser));
           continue;
         }
-        if (id) seenIds.add(id);
+        if (id) keptIndexById.set(id, deduped.length);
         deduped.push(row);
       }
       if (duplicateCount > 0) {

@@ -931,8 +931,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     return (
       !this.isGenericCustomProvider() &&
       this.baseUrl.includes("openrouter.ai") &&
-      !!options.enableCaching &&
-      options.model.toLowerCase().includes("claude")
+      !!options.enableCaching
     );
   }
 

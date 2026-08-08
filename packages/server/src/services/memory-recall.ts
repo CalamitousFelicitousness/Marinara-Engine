@@ -64,6 +64,8 @@ export interface RecalledMemory {
 }
 
 export interface MemoryRecallEmbeddingSource {
+  /** Stable identity for the provider/model vector space, when known. */
+  spaceId?: string;
   label: string;
   embed(texts: string[], signal?: AbortSignal): Promise<number[][] | null>;
 }

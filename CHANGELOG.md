@@ -16,6 +16,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept explicitly disabled Boolean preset choices empty instead of injecting their first option into prompts (#4740).
+- Resolved current DeepSeek, MiMo, GLM, and Kimi output limits through NanoGPT, OpenRouter, and custom OAI-compatible connections, and stopped Professor Mari before executing tool calls from truncated output (#4741).
+- Sent explicit OpenRouter prompt-caching markers for every compatible model, including Gemini, instead of limiting the option to Claude (#4742).
+- Gave native Connection and Preset dropdown options readable theme colors in the new Conversation and Roleplay setup wizards on Chromium (#4743).
+- Prepared and bounded NovelAI V4.5 style-plate uploads before previewing them so large images no longer destabilize the Connection editor (#4744).
+- Let capability packages use the remote embedding source configured on their agent connection, retaining local MiniLM only as a fallback (#4745).
+- Reused matching avatars from the full Character library in both Game portrait-generation paths instead of repeatedly generating replacements (#4746).
 - Isolated the tracker panel's newest-message lookup from transcript pagination settings (#4724).
 - Preserved speaker names and timestamps in individual Conversation group history so characters can distinguish prior speakers (#4726).
 - Raised the default Termux Node.js heap limit for large profiles while preserving user-supplied limits (#4730).

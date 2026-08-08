@@ -20,6 +20,7 @@ import { CustomThemeInjector } from "./components/layout/CustomThemeInjector";
 import { PersonalExtensionInjector } from "./components/layout/PersonalExtensionInjector";
 import { ModelDownloadModal } from "./components/modals/ModelDownloadModal";
 import { WhatsNewModal } from "./components/modals/WhatsNewModal";
+import { StorageMigrationNoticeModal } from "./components/modals/StorageMigrationNoticeModal";
 import { AppDialogRenderer } from "./components/ui/AppDialogRenderer";
 import { ChibiProfessorMariEasterEgg } from "./components/ui/ChibiProfessorMariEasterEgg";
 import { CsrfOriginWarningBanner } from "./components/diagnostics/CsrfOriginWarningBanner";
@@ -507,6 +508,7 @@ export function App() {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [whatsNewResolved, setWhatsNewResolved] = useState(false);
   const handleWhatsNewResolved = useCallback(() => setWhatsNewResolved(true), []);
+  const [migrationNoticeOpen, setMigrationNoticeOpen] = useState(false);
 
   useEffect(() => {
     setCustomNotificationSoundUrl(customNotificationSound?.url ?? null);
@@ -1044,9 +1046,20 @@ export function App() {
         onOpenChange={setWhatsNewOpen}
         onResolved={handleWhatsNewResolved}
       />
-      <AgentUpdatePrompter
+      <StorageMigrationNoticeModal
         presentationAllowed={
           whatsNewResolved && !hasModalOpen && !hasAppDialogOpen && !whatsNewOpen && (isLite || !showDownloadModal)
+        }
+        onOpenChange={setMigrationNoticeOpen}
+      />
+      <AgentUpdatePrompter
+        presentationAllowed={
+          whatsNewResolved &&
+          !hasModalOpen &&
+          !hasAppDialogOpen &&
+          !whatsNewOpen &&
+          !migrationNoticeOpen &&
+          (isLite || !showDownloadModal)
         }
       />
       {!isLite && <ModelDownloadModal open={showDownloadModal} onClose={() => setShowDownloadModal(false)} />}

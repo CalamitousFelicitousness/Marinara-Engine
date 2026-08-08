@@ -69,6 +69,10 @@ import {
   buildGmFormatReminder,
   buildPartyRecruitCardPrompt,
 } from "../../packages/server/src/services/game/gm-prompts.js";
+import {
+  addNameLookupEntry,
+  findCharAvatarFuzzy,
+} from "../../packages/server/src/services/game/npc-avatar-utils.js";
 import { resolveConversationSelfieRequestedNames } from "../../packages/server/src/services/generation/conversation-selfie-command-runtime.js";
 import {
   applyCustomAgentImageChatSettings,
@@ -8623,6 +8627,47 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "playful",
         "stale values should be removed before Random Pick resolves",
       );
+
+      const booleanOptions = [{ value: "enabled" }];
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: "",
+          options: booleanOptions,
+          multiSelect: false,
+          randomPick: false,
+        }),
+        "",
+        "an explicit empty Boolean choice must stay OFF",
+      );
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: [],
+          options: booleanOptions,
+          multiSelect: true,
+          randomPick: false,
+        }),
+        "",
+        "an explicit empty multi-choice must stay empty",
+      );
+      assert.equal(
+        resolveChoiceVariableValue({
+          selected: undefined,
+          options: booleanOptions,
+          multiSelect: false,
+          randomPick: false,
+        }),
+        "enabled",
+        "missing legacy selections should retain the first-option fallback",
+      );
+    },
+  },
+  {
+    name: "Game portrait lookup reuses titled character-library avatars",
+    run() {
+      const avatars = new Map<string, string>();
+      addNameLookupEntry(avatars, "Dottore", "/api/avatars/file/dottore.png");
+      assert.equal(findCharAvatarFuzzy("Il Dottore", avatars), "/api/avatars/file/dottore.png");
+      assert.equal(findCharAvatarFuzzy("Dottore", avatars), "/api/avatars/file/dottore.png");
     },
   },
   {

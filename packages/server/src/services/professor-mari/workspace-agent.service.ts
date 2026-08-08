@@ -1960,12 +1960,14 @@ export class ProfessorMariWorkspaceService {
 
         messages.push({ role: "assistant", content: action.assistantHistoryContent });
 
+        if (isLengthFinishReason(result.finishReason)) {
+          const content = "Mari hit the model output limit. Ask her to continue and she can pick up from here.";
+          appendTraceStatus(workspaceTrace, content);
+          args.onEvent({ type: "status", data: { content, kind: "output_limit", level: "warning" } });
+          break;
+        }
+
         if (action.commands.length === 0) {
-          if (isLengthFinishReason(result.finishReason)) {
-            const content = "Mari hit the model output limit. Ask her to continue and she can pick up from here.";
-            appendTraceStatus(workspaceTrace, content);
-            args.onEvent({ type: "status", data: { content, kind: "output_limit", level: "warning" } });
-          }
           break;
         }
 

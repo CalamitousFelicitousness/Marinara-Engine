@@ -92,7 +92,14 @@ import {
 import { generateWeather, inferBiome, shouldWeatherChange } from "../services/game/weather.service.js";
 import { rollEncounter, rollEnemyCount } from "../services/game/encounter.service.js";
 import { processReputationActions } from "../services/game/reputation.service.js";
-import { npcAvatarSlug, sanitizeGameNpcAvatarUrls } from "../services/game/npc-avatar-utils.js";
+import {
+  addNameLookupEntry,
+  findCharAvatarFuzzy,
+  nameLookupWithoutLeadingPrefix,
+  normalizeAvatarLookupName,
+  npcAvatarSlug,
+  sanitizeGameNpcAvatarUrls,
+} from "../services/game/npc-avatar-utils.js";
 import { createCheckpointService, type CheckpointTrigger } from "../services/game/checkpoint.service.js";
 import {
   resolveSkillCheck,
@@ -287,68 +294,6 @@ import { readIllustratorAppearance } from "./generate/illustrator-references.js"
 // Helpers
 // ──────────────────────────────────────────────
 
-const CHARACTER_NAME_LEADING_PREFIX_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "il",
-  "lo",
-  "la",
-  "le",
-  "l",
-  "el",
-  "sir",
-  "lady",
-  "lord",
-  "professor",
-  "old",
-  "young",
-  "elder",
-  "great",
-  "captain",
-]);
-
-function normalizeAvatarLookupName(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/['’]/g, "")
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-function nameLookupWithoutLeadingPrefix(normalizedName: string): string {
-  const words = normalizedName.split(/\s+/).filter(Boolean);
-  return words.length > 1 && CHARACTER_NAME_LEADING_PREFIX_WORDS.has(words[0]!)
-    ? words.slice(1).join(" ")
-    : normalizedName;
-}
-
-function avatarLookupAliases(value: string): string[] {
-  const normalized = normalizeAvatarLookupName(value);
-  const words = normalized.split(/\s+/).filter(Boolean);
-  const withoutLeadingPrefix = nameLookupWithoutLeadingPrefix(normalized);
-  return Array.from(
-    new Set([
-      value.normalize("NFKC").trim().toLocaleLowerCase(),
-      normalized,
-      withoutLeadingPrefix,
-      ...words.filter((word) => word.length >= 3 && !CHARACTER_NAME_LEADING_PREFIX_WORDS.has(word)),
-    ]),
-  ).filter(Boolean);
-}
-
-export function addNameLookupEntry(map: Map<string, string>, name: unknown, value: unknown): void {
-  if (typeof name !== "string" || typeof value !== "string") return;
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return;
-  for (const alias of avatarLookupAliases(name)) {
-    map.set(alias, trimmedValue);
-  }
-}
-
 function generatedStringValue(value: unknown): string | undefined {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -369,35 +314,6 @@ function generatedStringValue(value: unknown): string | undefined {
 
 const generatedRequiredStringSchema = z.preprocess((value) => generatedStringValue(value) ?? value, z.string());
 const generatedOptionalStringSchema = z.preprocess((value) => generatedStringValue(value), z.string().optional());
-
-/**
- * Fuzzy-match an NPC name against the character-avatar/description map.
- * Title aliases make "Il Dottore" resolve to a saved "Dottore" card and
- * "Il Capitano" resolve to "Capitano" before any image generation is attempted.
- */
-export function findCharAvatarFuzzy(npcName: string, charAvatarByName: Map<string, string>): string | undefined {
-  const npcAliases = avatarLookupAliases(npcName);
-
-  // 1. Exact
-  for (const alias of npcAliases) {
-    const exact = charAvatarByName.get(alias);
-    if (exact) return exact;
-  }
-
-  // 2. Any character alias that overlaps the NPC aliases.
-  for (const [charName, avatar] of charAvatarByName) {
-    const charAliases = avatarLookupAliases(charName);
-    for (const npcAlias of npcAliases) {
-      for (const charAlias of charAliases) {
-        if (npcAlias === charAlias) return avatar;
-        if (charAlias.length >= 3 && npcAlias.includes(charAlias)) return avatar;
-        if (npcAlias.length >= 3 && charAlias.includes(npcAlias)) return avatar;
-      }
-    }
-  }
-
-  return undefined;
-}
 
 const ILLUSTRATION_COOLDOWN_TURNS = 2;
 

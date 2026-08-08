@@ -52,6 +52,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { cn } from "../../lib/utils";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
+import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import {
   CONNECTION_EXPORT_WARNING,
   createConnectionExportEnvelope,
@@ -2245,7 +2246,7 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
-          {/* ── Prompt Caching (Anthropic + OpenRouter Claude) ── */}
+          {/* ── Prompt Caching (Anthropic + compatible OpenRouter models) ── */}
           {(localProvider === "anthropic" || localProvider === "openrouter") && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.promptCaching")}
@@ -2253,7 +2254,7 @@ export function ConnectionEditor() {
               help={
                 localProvider === "anthropic"
                   ?localizeUi("ui.connections.connectioneditor.enablesAnthropicPromptCachingWhichCachesYourSystemPrompt")
-                  :localizeUi("ui.connections.connectioneditor.forOpenrouterClaudeModelsSendsTheCacheControlFlag")
+                  :localizeUi("ui.connections.connectioneditor.enablesExplicitPromptCachingForCompatibleOpenrouterModels")
               }
             >
               <SettingsSwitch
@@ -2268,7 +2269,7 @@ export function ConnectionEditor() {
               <p className="text-[0.625rem] text-[var(--muted-foreground)] px-2">
                 {localProvider === "anthropic"
                   ?localizeUi("ui.connections.connectioneditor.cachesTheSystemPromptExplicitlyAndUsesAutomaticCaching")
-                  :localizeUi("ui.connections.connectioneditor.onOpenrouterThisCurrentlyTargetsClaudeModelsByAdding")}
+                  :localizeUi("ui.connections.connectioneditor.onOpenrouterAddsCacheControlForModelsThatSupportExplicitCaching")}
               </p>
               {localProvider === "anthropic" && localEnableCaching && (
                 <div className="mt-2 space-y-2">
@@ -2862,7 +2863,7 @@ function ImageGenerationDefaultsPanel({
     });
   };
 
-  const handleNovelAiStylePlateUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleNovelAiStylePlateUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
@@ -2877,20 +2878,15 @@ function ImageGenerationDefaultsPanel({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        updateNovelAi({ styleReferenceImage: reader.result });
-      } else {
-        toast.error(localizeUi("ui.connections.imagegenerationdefaultspanel.theNovelaiStylePlateCouldNotBeRead"));
-      }
-      input.value = "";
-    };
-    reader.onerror = () => {
+    try {
+      const prepared = await prepareImageAttachment(file, file.name);
+      updateNovelAi({ styleReferenceImage: prepared.data });
+    } catch (error) {
+      console.error("[ConnectionEditor] Failed to prepare NovelAI style plate", error);
       toast.error(localizeUi("ui.connections.imagegenerationdefaultspanel.theNovelaiStylePlateCouldNotBeRead"));
+    } finally {
       input.value = "";
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   return (

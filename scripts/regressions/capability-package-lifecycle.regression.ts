@@ -248,7 +248,7 @@ try {
     "Packages that add Fastify routes must not claim they can activate after startup",
   );
 
-  const { createCapabilityEmbeddingHost } =
+  const { createCapabilityEmbeddingHost, createConfiguredCapabilityEmbeddingHost } =
     await import("../../packages/server/src/services/capability-packages/capability-embedding.service.js");
   const embeddingHost = createCapabilityEmbeddingHost();
   assert.match(embeddingHost.spaceId, /^local:/u);
@@ -968,6 +968,18 @@ try {
   const { closeDB, getDB } = await import("../../packages/server/src/db/connection.js");
   closeDatabase = closeDB;
   const db = await getDB();
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
+  const remoteEmbeddingConnection = await createConnectionsStorage(db).create({
+    name: "Capability remote embeddings",
+    provider: "custom",
+    baseUrl: "https://chat.example.invalid/v1",
+    embeddingBaseUrl: "https://embeddings.example.invalid/v1",
+    embeddingModel: "text-embedding-regression",
+  });
+  const configuredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(db, remoteEmbeddingConnection.id);
+  assert.equal(configuredEmbeddingHost.label, "Capability remote embeddings (text-embedding-regression)");
+  assert.match(configuredEmbeddingHost.spaceId, /^remote:/u);
   const { createCapabilityPersistenceHost } =
     await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
   const { createCapabilityResourceHost } =

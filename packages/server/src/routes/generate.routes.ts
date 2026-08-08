@@ -9549,6 +9549,8 @@ export async function generateRoutes(app: FastifyInstance) {
                   isHomeProfessorMariAssistantChat,
                   db: app.db,
                   stores: { chars, chats, lorebooksStore, presets },
+                  embeddingSource: memoryRecallEmbeddingSource,
+                  vectorizerAvailable: memoryRecallVectorizerAvailable,
                   sendAssistantAction: (data) => {
                     reply.raw.write(
                       `data: ${JSON.stringify({

@@ -24,6 +24,9 @@ import {
   type UpdatePersonaCommand,
 } from "../conversation/character-commands.js";
 import { bumpCharacterVersion } from "./generation-text-utils.js";
+import { createEntityEmbeddingStore } from "../entity-embedding-store.js";
+import { tieredResolveEntity, type EntityDescriptor, type EntitySearchType } from "../entity-semantic-search.js";
+import type { MemoryRecallEmbeddingSource } from "../memory-recall.js";
 import {
   MAX_MARI_FETCHED_PRESET_CONTEXT_CHARS,
   normalizeAssistantPresetIdentifier,
@@ -77,6 +80,9 @@ export async function handleProfessorMariCommand(args: {
   db: DB;
   stores: ProfessorMariCommandStores;
   sendAssistantAction: (data: Record<string, unknown>) => void;
+  /** Embedding source + availability for the semantic fetch tier (#4768); already resolved by the caller. */
+  embeddingSource?: MemoryRecallEmbeddingSource | null;
+  vectorizerAvailable?: boolean;
 }): Promise<{ handled: boolean; fetchSucceeded: boolean }> {
   if (!isProfessorMariCommandType(args.command.type)) return { handled: false, fetchSucceeded: false };
 
@@ -584,13 +590,18 @@ function sendPlan(command: PlanCommand, args: Parameters<typeof handleProfessorM
   args.sendAssistantAction({ action: "plan", plan });
 }
 
+type FetchResolution =
+  | { kind: "single"; name: string; content: string }
+  | { kind: "candidates"; query: string; candidates: Array<{ name: string; blurb: string }> }
+  | { kind: "none" };
+
 async function fetchProfessorMariContext(
   command: FetchCommand,
   args: Parameters<typeof handleProfessorMariCommand>[0],
 ): Promise<boolean> {
   try {
-    const fetchedContent = await resolveFetchedContent(command, args);
-    if (!fetchedContent) {
+    const resolution = await resolveFetchedContent(command, args);
+    if (resolution.kind === "none") {
       logger.warn("[commands] Fetch: %s %s not found", command.fetchType, command.name);
       return false;
     }
@@ -600,12 +611,28 @@ async function fetchProfessorMariContext(
       ? (parseExtra(freshChat.metadata) as Record<string, unknown>)
       : (parseExtra(args.sourceChatMetadata) as Record<string, unknown>);
     const mariContext = (currentMeta.mariContext as Record<string, string>) ?? {};
-    mariContext[`${command.fetchType}:${command.name}`] = fetchedContent;
+
+    // Both a resolved item and a disambiguation list ride the durable mariContext
+    // slot — which #4768 relocated into the volatile tail, so neither churns the
+    // cached system prefix — and both trigger the fetch follow-up so Mari speaks
+    // to what she just pulled (a single card, or "which of these did you mean?").
+    if (resolution.kind === "single") {
+      mariContext[`${command.fetchType}:${resolution.name}`] = resolution.content;
+      args.sendAssistantAction({ action: "data_fetched", fetchType: command.fetchType, name: resolution.name });
+      logger.info('[commands] Assistant fetched %s: "%s"', command.fetchType, resolution.name);
+    } else {
+      mariContext[`${command.fetchType} options for "${resolution.query}"`] = renderCandidateBlock(command.fetchType, resolution);
+      args.sendAssistantAction({
+        action: "data_candidates",
+        fetchType: command.fetchType,
+        name: resolution.query,
+        candidates: resolution.candidates,
+      });
+      logger.info('[commands] Assistant fetch "%s" matched %d candidates', resolution.query, resolution.candidates.length);
+    }
     currentMeta.mariContext = mariContext;
     await args.stores.chats.updateMetadata(args.chatId, currentMeta);
 
-    args.sendAssistantAction({ action: "data_fetched", fetchType: command.fetchType, name: command.name });
-    logger.info('[commands] Assistant fetched %s: "%s"', command.fetchType, command.name);
     return args.isHomeProfessorMariAssistantChat && (args.characterId === PROFESSOR_MARI_ID || args.characterId === null);
   } catch (err) {
     logger.error(err, "[commands] Fetch failed");
@@ -613,7 +640,47 @@ async function fetchProfessorMariContext(
   }
 }
 
-async function resolveFetchedContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+function renderCandidateBlock(fetchType: string, resolution: { query: string; candidates: Array<{ name: string; blurb: string }> }): string {
+  const lines = [
+    `Several ${fetchType} matches for "${resolution.query}". Ask the user which one they mean, then fetch it by its exact name — do not guess:`,
+  ];
+  for (const candidate of resolution.candidates) lines.push(`- ${candidate.blurb}`);
+  return lines.join("\n");
+}
+
+// Resolve the fetch query in tiers (exact → substring → semantic) via the shared
+// resolver, then render the winning entity with the existing per-type renderer.
+async function resolveFetchedContent(
+  command: FetchCommand,
+  args: Parameters<typeof handleProfessorMariCommand>[0],
+): Promise<FetchResolution> {
+  const type = command.fetchType as EntitySearchType;
+  const store = createEntityEmbeddingStore(args.db);
+  const descriptor: EntityDescriptor = {
+    type,
+    listAll: () => store.listCandidates(type),
+    updateEmbedding: (id, vector, embedText) => store.updateEmbedding(type, id, vector, embedText),
+  };
+  const resolution = await tieredResolveEntity(descriptor, command.name, {
+    embeddingSource: args.embeddingSource,
+    vectorizerAvailable: args.vectorizerAvailable,
+  });
+  if (resolution.kind === "none") return { kind: "none" };
+  if (resolution.kind === "candidates") {
+    return {
+      kind: "candidates",
+      query: command.name,
+      candidates: resolution.candidates.map((c) => ({ name: c.name, blurb: c.blurb })),
+    };
+  }
+  // Single confident hit: render the full content by the resolved exact name.
+  const resolvedCommand = { ...command, name: resolution.candidate.name };
+  const content = await renderSingleFetchContent(resolvedCommand, args);
+  if (!content) return { kind: "none" };
+  return { kind: "single", name: resolution.candidate.name, content };
+}
+
+async function renderSingleFetchContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   if (command.fetchType === "character") return fetchCharacterContent(command, args);
   if (command.fetchType === "persona") return fetchPersonaContent(command, args);
   if (command.fetchType === "lorebook") return fetchLorebookContent(command, args);

@@ -178,11 +178,27 @@ export async function prepareImageAttachment(blob: Blob, displayName = "image"):
   try {
     const encodedDimensions = readEncodedImageDimensions(new Uint8Array(await blob.arrayBuffer()));
     if (encodedDimensions) assertSafeImageDimensions(encodedDimensions);
-    bitmap = await createImageBitmap(blob);
+    const decodeSize = encodedDimensions
+      ? fitWithinEdge(encodedDimensions.width, encodedDimensions.height, IMAGE_COMPRESSION_EDGE)
+      : null;
+    const shouldResizeWhileDecoding =
+      !!decodeSize &&
+      !!encodedDimensions &&
+      (decodeSize.width !== encodedDimensions.width || decodeSize.height !== encodedDimensions.height);
+    if (shouldResizeWhileDecoding && decodeSize) {
+      bitmap = await createImageBitmap(blob, {
+        resizeWidth: decodeSize.width,
+        resizeHeight: decodeSize.height,
+        resizeQuality: "high",
+      });
+    } else {
+      bitmap = await createImageBitmap(blob);
+    }
     assertSafeImageDimensions(bitmap);
     const shouldCompress =
       shouldAlwaysConvert ||
       blob.size > IMAGE_COMPRESSION_SOURCE_BYTES ||
+      shouldResizeWhileDecoding ||
       bitmap.width > IMAGE_COMPRESSION_EDGE ||
       bitmap.height > IMAGE_COMPRESSION_EDGE;
 

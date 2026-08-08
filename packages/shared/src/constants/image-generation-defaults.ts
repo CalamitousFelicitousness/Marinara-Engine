@@ -173,8 +173,16 @@ export function normalizeImageGenerationProfile(
   rawProfile: unknown,
   service: ImageDefaultsService,
 ): NormalizeImageGenerationProfileResult {
+  const profile = normalizeImageGenerationProfileValue(rawProfile, service);
+  return { profile, changed: JSON.stringify(profile) !== JSON.stringify(rawProfile) };
+}
+
+function normalizeImageGenerationProfileValue(
+  rawProfile: unknown,
+  service: ImageDefaultsService,
+): ImageGenerationDefaultsProfile {
   if (!isRecord(rawProfile)) {
-    return { profile: createDefaultImageGenerationProfile(service), changed: true };
+    return createDefaultImageGenerationProfile(service);
   }
 
   const profile = createDefaultImageGenerationProfile(service);
@@ -189,15 +197,14 @@ export function normalizeImageGenerationProfile(
     profile.novelai = normalizeNovelAiDefaults(rawProfile.novelai);
   }
 
-  const changed = JSON.stringify(profile) !== JSON.stringify(rawProfile);
-  return { profile, changed };
+  return profile;
 }
 
 export function sanitizeImageGenerationProfile(
   profile: ImageGenerationDefaultsProfile,
   service: ImageDefaultsService,
 ): ImageGenerationDefaultsProfile {
-  return normalizeImageGenerationProfile(profile, service).profile;
+  return normalizeImageGenerationProfileValue(profile, service);
 }
 
 export function mergePromptPrefix(prefix: string, prompt: string): string {

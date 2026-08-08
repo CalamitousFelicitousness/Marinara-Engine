@@ -5400,8 +5400,8 @@ export async function generateRoutes(app: FastifyInstance) {
               targetScopedMessagesForGen,
               "director",
               requestedNarrativeDirectorMode === "random"
-                ? "For this next response, introduce a surprising but plausible event that fits the scene and continuity."
-                : "For this next response, push the existing story forward naturally through its current tensions, goals, or unresolved threads.",
+                ? "The scene is getting stale. For this next response, introduce a random but plausible event that fits the scene and continuity. Surprise the user!"
+                : "The scene is getting stale. For this next response, switch the scene to a new one or push the existing story forward naturally through its current tensions, goals, or unresolved threads.",
               wrapFormat,
             );
           }

@@ -108,9 +108,15 @@ for (const pinnedFragment of [":storage-format.json", "targetFormat >= onDiskFor
 // must run offline and cannot import server code). Pin them against the store
 // source so a rename or a new sharded table cannot silently desynchronize them.
 const parseTableList = (source, label) => {
-  const raw = /const SHARDED_TABLES[^=]*= \[([^\]]+)\]/.exec(source)?.[1];
+  // Tolerant of whitespace, newlines, and trailing annotations (`as const`):
+  // lazy-match through the array's own closing bracket only — table names
+  // cannot contain `]`, so the first `]` always ends the literal.
+  const raw = /const SHARDED_TABLES[\s\S]*?=\s*\[([\s\S]*?)\]/.exec(source)?.[1];
   assert.ok(raw, `could not find SHARDED_TABLES in ${label}`);
-  return raw.split(",").map((entry) => entry.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+  return raw
+    .split(",")
+    .map((entry) => entry.replace(/\/\/[^\n]*/g, "").trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
 };
 assert.deepEqual(
   parseTableList(launcherGuardSource, "protect-launcher-data.mjs"),

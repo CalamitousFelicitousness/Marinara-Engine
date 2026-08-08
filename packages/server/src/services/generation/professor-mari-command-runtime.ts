@@ -612,6 +612,14 @@ async function fetchProfessorMariContext(
       : (parseExtra(args.sourceChatMetadata) as Record<string, unknown>);
     const mariContext = (currentMeta.mariContext as Record<string, string>) ?? {};
 
+    // A candidate "options" block is a transient pending-question directive, not a
+    // durable reference card — drop any prior one on every resolution so a
+    // resolved (or re-asked) question stops re-injecting "ask which one they mean"
+    // forever. At most one options block is ever live.
+    for (const key of Object.keys(mariContext)) {
+      if (key.includes(' options for "')) delete mariContext[key];
+    }
+
     // Both a resolved item and a disambiguation list ride the durable mariContext
     // slot — which #4768 relocated into the volatile tail, so neither churns the
     // cached system prefix — and both trigger the fetch follow-up so Mari speaks
@@ -655,7 +663,8 @@ async function resolveFetchedContent(
   args: Parameters<typeof handleProfessorMariCommand>[0],
 ): Promise<FetchResolution> {
   const type = command.fetchType as EntitySearchType;
-  const store = createEntityEmbeddingStore(args.db);
+  const sourceId = args.embeddingSource?.spaceId ?? args.embeddingSource?.label ?? "local";
+  const store = createEntityEmbeddingStore(args.db, sourceId);
   const descriptor: EntityDescriptor = {
     type,
     listAll: () => store.listCandidates(type),

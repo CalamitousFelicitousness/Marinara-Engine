@@ -39,12 +39,18 @@ function hashText(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-function resolveStoredEmbedding(raw: unknown, embedText: string): number[] | null {
+// The envelope carries a content hash (h) AND the embedding source id (m), so a
+// stored vector is fresh only when BOTH the embed-text and the model that
+// produced it are unchanged. Without m, switching to a different embedding model
+// of the same dimensionality would leave every vector hash-matching and silently
+// mix incompatible vectors into cosine ranking.
+function resolveStoredEmbedding(raw: unknown, embedText: string, sourceId: string): number[] | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { h?: unknown; v?: unknown };
+    const parsed = JSON.parse(raw) as { h?: unknown; v?: unknown; m?: unknown };
     if (parsed && Array.isArray(parsed.v) && typeof parsed.h === "string") {
-      return parsed.h === hashText(embedText) ? (parsed.v as number[]) : null; // stale ⇒ absent
+      const fresh = parsed.h === hashText(embedText) && parsed.m === sourceId;
+      return fresh ? (parsed.v as number[]) : null; // stale content or model ⇒ absent
     }
   } catch {
     // fall through
@@ -52,8 +58,8 @@ function resolveStoredEmbedding(raw: unknown, embedText: string): number[] | nul
   return null;
 }
 
-function serializeEmbedding(vector: number[], embedText: string): string {
-  return JSON.stringify({ h: hashText(embedText), v: vector });
+function serializeEmbedding(vector: number[], embedText: string, sourceId: string): string {
+  return JSON.stringify({ h: hashText(embedText), v: vector, m: sourceId });
 }
 
 function buildText(parts: Array<[string, string | string[] | undefined | null]>): string {
@@ -120,7 +126,10 @@ function projectCharacter(row: Row): Projection | null {
       ["Personality", data.personality],
       ["Scenario", data.scenario],
       ["Tags", Array.isArray(data.tags) ? data.tags : []],
-      ["Notes", typeof row.comment === "string" ? row.comment : data.creator_notes],
+      // Prefer the user comment; fall back to the card's creator notes. Guard on
+      // emptiness, not type — `comment` is a not-null "" column, so a type check
+      // would make the fallback dead and drop notes entirely for blank comments.
+      ["Notes", typeof row.comment === "string" && row.comment.trim() ? row.comment : data.creator_notes],
     ]),
     blurb: blurb(name, data.description ?? ""),
   };
@@ -208,7 +217,9 @@ export interface EntityEmbeddingStore {
   updateEmbedding(type: EntitySearchType, id: string, vector: number[] | null, embedText: string): Promise<void>;
 }
 
-export function createEntityEmbeddingStore(db: DB): EntityEmbeddingStore {
+// sourceId identifies the embedding model/provider vector space, so a model swap
+// invalidates persisted vectors. Defaults to "local" (the on-device embedder).
+export function createEntityEmbeddingStore(db: DB, sourceId = "local"): EntityEmbeddingStore {
   return {
     async listCandidates(type) {
       const config = TYPE_CONFIG[type];
@@ -221,7 +232,7 @@ export function createEntityEmbeddingStore(db: DB): EntityEmbeddingStore {
           id: String(row.id),
           name: projected.name,
           embedText: projected.embedText,
-          embedding: resolveStoredEmbedding(row.embedding, projected.embedText),
+          embedding: resolveStoredEmbedding(row.embedding, projected.embedText, sourceId),
           blurb: projected.blurb,
         });
       }
@@ -232,7 +243,7 @@ export function createEntityEmbeddingStore(db: DB): EntityEmbeddingStore {
       try {
         await db
           .update(config.table)
-          .set({ embedding: vector && vector.length > 0 ? serializeEmbedding(vector, embedText) : null })
+          .set({ embedding: vector && vector.length > 0 ? serializeEmbedding(vector, embedText, sourceId) : null })
           .where(eq(config.table.id, id));
       } catch (err) {
         // Embeddings are regenerable derived data — never let a persist failure

@@ -123,6 +123,17 @@ async function runFetch(name: string) {
   assert.ok(Array.isArray(last.candidates) && (last.candidates as unknown[]).length === 2);
 }
 
+// ── Resolving a fetch evicts the stale candidate options block (no re-asking) ──
+{
+  await runFetch("vampire"); // leaves a "character options for" block
+  const { mariContext } = await runFetch("Dracula"); // a resolved fetch must clear it
+  assert.ok(mariContext["character:Dracula"], "the resolved item is present");
+  assert.ok(
+    !Object.keys(mariContext).some((k) => k.includes(' options for "')),
+    "a resolved fetch evicts the stale candidate options block so it stops re-injecting",
+  );
+}
+
 // ── No match → no context written, follow-up not triggered ──
 {
   const { result, actions } = await runFetch("a spaceship pilot from andromeda");

@@ -69,7 +69,11 @@ const AUTO_OPEN_MIN_MARGIN = 0.1;
 // than to offer five irrelevant guesses.
 const CANDIDATE_MIN_SIMILARITY = 0.15;
 const DEFAULT_CANDIDATE_TOP_K = 5;
-const WARMUP_BATCH_SIZE = 64;
+// Hard cap on embeddings computed per fetch — bounds BOTH compute and persistence
+// so a paraphrase over a large cold library never embeds the whole thing inline.
+// Any surplus warms over subsequent fetches (the substring tier covers the common
+// case meanwhile, needing no embeddings).
+const MAX_EMBED_PER_FETCH = 64;
 
 // Unrelated sentences used to estimate (and subtract) the embedding model's
 // common cosine floor — same technique as the lorebook semantic path.
@@ -79,12 +83,19 @@ const SEMANTIC_CALIBRATION_TEXTS = [
   "A city council reviews municipal zoning regulations.",
 ] as const;
 
-function embedTexts(texts: string[], options: EntityResolveOptions): Promise<number[][]> {
-  return embedMemoryRecallTexts(texts, {
-    embeddingSource: options.embeddingSource,
-    localEmbedder: options.localEmbedder ?? localEmbed,
-    signal: options.signal,
-  });
+async function embedTexts(texts: string[], options: EntityResolveOptions): Promise<number[][]> {
+  // A throwing embedder must degrade exactly like an unavailable one — every
+  // in-tree source catches internally, but a future/custom one might not.
+  try {
+    return await embedMemoryRecallTexts(texts, {
+      embeddingSource: options.embeddingSource,
+      localEmbedder: options.localEmbedder ?? localEmbed,
+      signal: options.signal,
+    });
+  } catch (err) {
+    logger.warn(err, "[entity-search] embedding call failed; degrading to substring");
+    return [];
+  }
 }
 
 function normalizeTopK(value: unknown): number {
@@ -94,18 +105,19 @@ function normalizeTopK(value: unknown): number {
 }
 
 /**
- * Backfill missing persisted embeddings for a candidate pool. No-op when the
- * descriptor has no persisted column (embed-on-the-fly types) or the embedder is
- * unavailable. Skips a whole batch if the embedding dimension drifted (a changed
- * embedding model), mirroring the lorebook warmup guard.
+ * Embed the missing vectors in a candidate pool — bounded to MAX_EMBED_PER_FETCH
+ * so the generation path never blocks on the whole library — setting them in
+ * memory for immediate ranking and persisting them when the descriptor has a
+ * store (so the work is not repeated next fetch). Skips a batch on dimension
+ * drift (a changed embedding model), mirroring the lorebook warmup guard.
+ * `embedded` counts persisted vectors; `attempted` counts embedded-in-memory.
  */
 export async function warmEntityEmbeddings(
   descriptor: EntityDescriptor,
   pool: EntityCandidate[],
   options: EntityResolveOptions,
 ): Promise<{ attempted: number; embedded: number }> {
-  if (!descriptor.updateEmbedding) return { attempted: 0, embedded: 0 };
-  const missing = pool.filter((c) => !c.embedding || c.embedding.length === 0).slice(0, WARMUP_BATCH_SIZE);
+  const missing = pool.filter((c) => !c.embedding || c.embedding.length === 0).slice(0, MAX_EMBED_PER_FETCH);
   if (missing.length === 0) return { attempted: 0, embedded: 0 };
 
   const embeddings = await embedTexts(
@@ -130,11 +142,13 @@ export async function warmEntityEmbeddings(
   for (let i = 0; i < missing.length; i += 1) {
     const vector = embeddings[i];
     if (!vector || vector.length === 0) continue;
-    await descriptor.updateEmbedding(missing[i]!.id, vector, missing[i]!.embedText);
-    missing[i]!.embedding = vector;
-    embedded += 1;
+    missing[i]!.embedding = vector; // in memory for this fetch's ranking
+    if (descriptor.updateEmbedding) {
+      await descriptor.updateEmbedding(missing[i]!.id, vector, missing[i]!.embedText);
+      embedded += 1;
+    }
   }
-  if (embedded > 0) logger.debug("[entity-search] Warmed %d/%d %s embedding(s)", embedded, missing.length, descriptor.type);
+  if (embedded > 0) logger.debug("[entity-search] Persisted %d/%d %s embedding(s)", embedded, missing.length, descriptor.type);
   return { attempted: missing.length, embedded };
 }
 
@@ -151,27 +165,16 @@ export async function shortlistEntities(
   options: EntityResolveOptions,
 ): Promise<Array<{ candidate: EntityCandidate; similarity: number }> | null> {
   if (pool.length === 0) return null;
+  // Bounded embed of the pool's missing vectors (persisted when supported). Any
+  // candidate beyond the per-fetch cap stays unembedded and is simply not ranked
+  // this call; it warms over subsequent fetches.
   await warmEntityEmbeddings(descriptor, pool, options);
 
   const queryEmbeddings = await embedTexts([query, ...SEMANTIC_CALIBRATION_TEXTS], options);
   const queryEmbedding = queryEmbeddings[0];
   if (!queryEmbedding || queryEmbedding.length === 0) return null; // embedder unavailable
+
   const baseline = lorebookSimilarityBaseline(queryEmbeddings.slice(1));
-
-  // Any candidate still without a stored vector (no persisted column, or warmup
-  // declined) gets embedded on the fly so the whole pool is rankable.
-  const unembedded = pool.filter((c) => !c.embedding || c.embedding.length === 0);
-  if (unembedded.length > 0) {
-    const fresh = await embedTexts(
-      unembedded.map((c) => c.embedText),
-      options,
-    );
-    unembedded.forEach((candidate, i) => {
-      const vector = fresh[i];
-      if (vector && vector.length > 0) candidate.embedding = vector;
-    });
-  }
-
   let dimensionWarned = false;
   const ranked = pool
     .map((candidate) => {
@@ -220,18 +223,28 @@ export async function tieredResolveEntity(
   const topK = normalizeTopK(options.topK);
   const normalizedQuery = normalizeTextForMatch(trimmed);
 
-  // Tier 1 — exact normalized name. One match auto-opens (unchanged behavior);
-  // several identically-named entities disambiguate.
-  const exactMatches = candidates.filter((c) => normalizeTextForMatch(c.name) === normalizedQuery);
-  if (exactMatches.length === 1) return { kind: "single", candidate: exactMatches[0]! };
-  if (exactMatches.length > 1) return { kind: "candidates", candidates: exactMatches.slice(0, topK) };
+  // Tier 0 — exact id. Lets a fetch by a stored id (e.g. a preset id surfaced in
+  // an earlier card) resolve directly rather than being run through name matching.
+  const idMatch = candidates.find((c) => c.id === trimmed);
+  if (idMatch) return { kind: "single", candidate: idMatch };
 
-  // Tier 2 — substring over the searchable text. A single hit auto-opens.
+  // Tier 1 — exact normalized name. Auto-opens the FIRST match (the original
+  // behavior). Same-named entities are indistinguishable by name, so a candidate
+  // list can't resolve them — a re-fetch by that name would just loop — so open
+  // the first rather than dead-end.
+  const exactMatches = candidates.filter((c) => normalizeTextForMatch(c.name) === normalizedQuery);
+  if (exactMatches.length >= 1) return { kind: "single", candidate: exactMatches[0]! };
+
+  // Tier 2 — a UNIQUE NAME substring auto-opens (a distinctive partial name). A
+  // match only in the description/tags is NOT confident enough to auto-open (a
+  // coincidental word could open the wrong entity); it joins the pool the
+  // semantic tier confirms or the degrade path offers for confirmation.
   const lowerQuery = trimmed.toLowerCase();
+  const nameMatches = candidates.filter((c) => c.name.toLowerCase().includes(lowerQuery));
+  if (nameMatches.length === 1) return { kind: "single", candidate: nameMatches[0]! };
   const substringMatches = candidates.filter(
     (c) => c.name.toLowerCase().includes(lowerQuery) || c.embedText.toLowerCase().includes(lowerQuery),
   );
-  if (substringMatches.length === 1) return { kind: "single", candidate: substringMatches[0]! };
 
   // Tier 3 — semantic. Rank the substring survivors when there are any (cheap,
   // precise), else the whole set (the pure-paraphrase case).
@@ -249,8 +262,10 @@ export async function tieredResolveEntity(
     }
   }
 
-  // Degrade (semantic unavailable): surface substring survivors for the user to pick.
-  if (substringMatches.length > 1) return { kind: "candidates", candidates: substringMatches.slice(0, topK) };
+  // Degrade (semantic unavailable or inconclusive): surface the substring
+  // survivors — including a lone description/tag match — for the user to confirm,
+  // rather than auto-opening an uncertain hit or reporting nothing.
+  if (substringMatches.length >= 1) return { kind: "candidates", candidates: substringMatches.slice(0, topK) };
   return { kind: "none" };
 }
 

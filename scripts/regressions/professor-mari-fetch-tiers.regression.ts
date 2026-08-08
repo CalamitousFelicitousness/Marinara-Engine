@@ -131,9 +131,13 @@ const library = () => [
   assert.equal(persisted.size, rows.length, "the descriptor setter must be called per entity");
   assert.ok(pool.every((c) => c.embedding && c.embedding.length === DIM), "pool embeddings must be populated in place");
 
-  // No persisted setter → warmup is a clean no-op (on-the-fly types).
-  const onTheFly = await warmEntityEmbeddings(makeDescriptor(rows), rows.map((r) => ({ ...r })), OPTS);
-  assert.deepEqual(onTheFly, { attempted: 0, embedded: 0 });
+  // No persisted setter (on-the-fly types): embeddings are still set in memory
+  // for ranking, but nothing is persisted (embedded === 0).
+  const onTheFlyPool = rows.map((r) => ({ ...r }));
+  const onTheFly = await warmEntityEmbeddings(makeDescriptor(rows), onTheFlyPool, OPTS);
+  assert.equal(onTheFly.embedded, 0, "with no setter, nothing is persisted");
+  assert.equal(onTheFly.attempted, rows.length, "with no setter, embeddings are still computed in memory");
+  assert.ok(onTheFlyPool.every((c) => c.embedding && c.embedding.length === DIM), "in-memory embeddings populate the pool");
 }
 
 process.stdout.write("Professor Mari fetch-tiers regression passed.\n");

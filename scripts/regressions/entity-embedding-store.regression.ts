@@ -11,7 +11,7 @@ import { PROFESSOR_MARI_ID } from "../../packages/shared/src/constants/defaults.
 process.env.FILE_STORAGE_DIR = mkdtempSync(join(tmpdir(), "marinara-entity-embed-"));
 
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
-const { characters } = await import("../../packages/server/src/db/schema/index.js");
+const { characters, chats } = await import("../../packages/server/src/db/schema/index.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { createEntityEmbeddingStore } = await import("../../packages/server/src/services/entity-embedding-store.js");
 
@@ -76,6 +76,43 @@ await store.updateEmbedding("character", "c1", [0.1, 0.2, 0.3], draculaText);
   assert.deepEqual((await store.listCandidates("character")).find((c) => c.id === "c1")!.embedding, [0.9, 0.8]);
   await store.updateEmbedding("character", "c1", null, dracula.embedText);
   assert.equal((await store.listCandidates("character")).find((c) => c.id === "c1")!.embedding, null, "null clears the vector");
+}
+
+// ── A second table (chats) exercises the real db.update path for the flat-column
+//    tables, not just characters ──
+{
+  await db.insert(chats).values({
+    id: "chat1",
+    name: "Vampire Council",
+    mode: "conversation",
+    characterIds: "[]",
+    metadata: JSON.stringify({ tags: ["undead"], summary: "the vampires convene" }),
+    createdAt: STAMP,
+    updatedAt: STAMP,
+  });
+  const chat = (await store.listCandidates("chat")).find((c) => c.id === "chat1")!;
+  assert.equal(chat.name, "Vampire Council");
+  assert.match(chat.embedText, /undead/, "chat embed text includes metadata tags");
+  assert.equal(chat.embedding, null);
+  await store.updateEmbedding("chat", "chat1", [0.5, 0.5], chat.embedText);
+  assert.deepEqual((await store.listCandidates("chat")).find((c) => c.id === "chat1")!.embedding, [0.5, 0.5]);
+  const chatRow = (await db.select().from(chats).where(eq(chats.id, "chat1")))[0] as { updatedAt?: string };
+  assert.equal(chatRow.updatedAt, STAMP, "persisting a chat embedding must not touch updatedAt");
+}
+
+// ── A different embedding source invalidates vectors persisted under another
+//    (a same-dimension model swap must not silently mix incompatible vectors) ──
+{
+  const local = createEntityEmbeddingStore(db, "local");
+  const remote = createEntityEmbeddingStore(db, "remote-model-v2");
+  const chat = (await local.listCandidates("chat")).find((c) => c.id === "chat1")!;
+  await local.updateEmbedding("chat", "chat1", [0.1, 0.2], chat.embedText);
+  assert.deepEqual((await local.listCandidates("chat")).find((c) => c.id === "chat1")!.embedding, [0.1, 0.2], "same source reads its vector");
+  assert.equal(
+    (await remote.listCandidates("chat")).find((c) => c.id === "chat1")!.embedding,
+    null,
+    "a different embedding source treats the stored vector as stale",
+  );
 }
 
 process.stdout.write("Entity embedding store regression passed.\n");

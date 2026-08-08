@@ -1846,7 +1846,10 @@ class FileTableStore {
    */
   private assertStorageFormatSupported() {
     const path = manifestPath(this.rootDir);
-    if (!existsSync(path)) return;
+    // A crash can leave only manifest.json.bak — parseJsonFile recovers the
+    // version from it, so the gate must not short-circuit on a missing
+    // primary alone.
+    if (!existsSync(path) && !existsSync(`${path}.bak`)) return;
     let version: unknown;
     try {
       version = parseJsonFile<TableSnapshotManifest | null>(path, null).value?.version;

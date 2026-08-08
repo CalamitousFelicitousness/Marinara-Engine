@@ -268,6 +268,33 @@ assert.equal(
   }
 }
 
+// ── A bak-only NEWER manifest still refuses before migration side effects ──
+// A crash can leave only manifest.json.bak; the pre-migration gate must
+// recover the version from it rather than short-circuit on the missing
+// primary and let the migration mutate a directory this build cannot read.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([messageRow("m-1", "chat-x", "untouchable")]));
+  writeFileSync(
+    join(dir, "manifest.json.bak"),
+    JSON.stringify({ version: 99, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
+  );
+  await assert.rejects(
+    createFileNativeDB(),
+    (error: unknown) => error instanceof StorageFormatTooNewError,
+    "a newer version surviving only in manifest.json.bak must still refuse to load",
+  );
+  try {
+    assert.ok(existsSync(join(dir, "tables", "messages.json")), "the refused startup leaves the monolith untouched");
+    assert.equal(existsSync(join(dir, "tables", "messages.json.pre-shard")), false, "no pre-shard rename happened");
+    assert.equal(existsSync(join(dir, "tables", "messages")), false, "no shard directory was created");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Crash between mkdir and the sentinel write: monolith must NOT be quarantined ──
 
 {

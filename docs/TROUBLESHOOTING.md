@@ -249,6 +249,27 @@ Check both of these local locations for a `storage` folder:
 
 The server prints the data and storage directories it resolved on startup.
 
+### Chats show no messages after switching to an older version
+
+Newer versions of Marinara store each chat's messages in its own file instead of one big file, which makes saving long chats much faster. Older versions do not understand that layout. If you switch to an older version, your chats look empty — the messages are still on disk, the older version just cannot see them.
+
+Marinara refuses obvious downgrades on its own: the launcher skips an auto-update that would land on an incompatible version, and the in-app updater blocks it with an error that points here.
+
+To downgrade anyway:
+
+1. Stop the Marinara server.
+2. From the Marinara folder, run:
+
+   ```bash
+   node scripts/protect-launcher-data.mjs unshard
+   ```
+
+3. Switch to the older version and start it normally.
+
+The command rebuilds the old single-file layout from the per-chat files. Nothing is deleted: the per-chat files are kept next to the rebuilt file in folders named `messages.post-unshard-<timestamp>` and `message_swipes.post-unshard-<timestamp>`, and any pre-migration originals stay as `.pre-shard` files. When you upgrade again later, Marinara converts your data back automatically.
+
+Docker and Podman keep data in the `marinara-data` volume, so run the command in a one-off container instead: stop the running container, then `docker compose run --rm marinara node scripts/protect-launcher-data.mjs unshard`, then start the older image.
+
 ### Backup or Export returns 403
 
 Loopback sessions can make backups without an admin secret. From another device, a network address, or Docker, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.

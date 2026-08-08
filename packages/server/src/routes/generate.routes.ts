@@ -165,8 +165,8 @@ import {
   resolveIllustratorPromptStyle,
 } from "../services/generation/illustrator-background-generation.js";
 import {
-  addNameLookupEntry,
   findCharAvatarFuzzy,
+  loadCharacterLibraryAvatarLookup,
   npcAvatarSlug,
   sanitizeGameNpcAvatarUrls,
 } from "../services/game/npc-avatar-utils.js";
@@ -8011,17 +8011,10 @@ export async function generateRoutes(app: FastifyInstance) {
                 // 2. Fall back to stored NPC avatars (per-chat generated/uploaded)
                 const NPC_AVATAR_DIR = join(DATA_DIR, "avatars", "npc");
                 const storedNpcAvatarByName = new Map<string, string>();
-                const libraryAvatarByName = new Map<string, string>();
-                for (const libraryCharacter of await createCharactersStorage(app.db).list()) {
-                  try {
-                    const data = JSON.parse(libraryCharacter.data) as { name?: string };
-                    if (data.name && libraryCharacter.avatarPath) {
-                      addNameLookupEntry(libraryAvatarByName, data.name, libraryCharacter.avatarPath);
-                    }
-                  } catch {
-                    /* skip malformed library rows */
-                  }
-                }
+                const libraryAvatarByName = await loadCharacterLibraryAvatarLookup(
+                  () => createCharactersStorage(app.db).list(),
+                  (error) => logger.warn(error, "[generate] Failed to load library characters for avatar enrichment"),
+                );
                 const gameNpcs = sanitizeGameNpcAvatarUrls((chatMeta.gameNpcs as GameNpc[]) ?? []);
                 if (gameNpcs !== chatMeta.gameNpcs) {
                   chatMeta.gameNpcs = gameNpcs;

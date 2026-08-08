@@ -62,7 +62,7 @@ function nonEmptyString(value: unknown): string | null {
 
 function embeddingSpaceId(kind: string, ...parts: Array<string | null | undefined>): string {
   const digest = createHash("sha256")
-    .update(JSON.stringify(parts.map((part) => part?.trim().toLowerCase() ?? "")))
+    .update(JSON.stringify(parts.map((part) => part?.trim() ?? "")))
     .digest("hex");
   return `${kind}:${digest}`;
 }

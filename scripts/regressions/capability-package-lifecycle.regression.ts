@@ -980,6 +980,22 @@ try {
   const configuredEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(db, remoteEmbeddingConnection.id);
   assert.equal(configuredEmbeddingHost.label, "Capability remote embeddings (text-embedding-regression)");
   assert.match(configuredEmbeddingHost.spaceId, /^remote:/u);
+  const caseDistinctEmbeddingConnection = await createConnectionsStorage(db).create({
+    name: "Capability case-distinct embeddings",
+    provider: "custom",
+    baseUrl: "https://chat.example.invalid/v1",
+    embeddingBaseUrl: "https://embeddings.example.invalid/v1",
+    embeddingModel: "Text-Embedding-Regression",
+  });
+  const caseDistinctEmbeddingHost = await createConfiguredCapabilityEmbeddingHost(
+    db,
+    caseDistinctEmbeddingConnection.id,
+  );
+  assert.notEqual(
+    configuredEmbeddingHost.spaceId,
+    caseDistinctEmbeddingHost.spaceId,
+    "opaque embedding model IDs must retain case distinctions",
+  );
   const { createCapabilityPersistenceHost } =
     await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
   const { createCapabilityResourceHost } =

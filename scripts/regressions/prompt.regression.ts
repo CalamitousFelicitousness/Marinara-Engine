@@ -72,6 +72,7 @@ import {
 import {
   addNameLookupEntry,
   findCharAvatarFuzzy,
+  loadCharacterLibraryAvatarLookup,
 } from "../../packages/server/src/services/game/npc-avatar-utils.js";
 import { resolveConversationSelfieRequestedNames } from "../../packages/server/src/services/generation/conversation-selfie-command-runtime.js";
 import {
@@ -8662,12 +8663,41 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "Game portrait lookup reuses titled character-library avatars",
-    run() {
+    name: "Game portrait lookup reuses only unambiguous character-library avatars",
+    async run() {
       const avatars = new Map<string, string>();
       addNameLookupEntry(avatars, "Dottore", "/api/avatars/file/dottore.png");
       assert.equal(findCharAvatarFuzzy("Il Dottore", avatars), "/api/avatars/file/dottore.png");
       assert.equal(findCharAvatarFuzzy("Dottore", avatars), "/api/avatars/file/dottore.png");
+
+      addNameLookupEntry(avatars, "John Smith", "/api/avatars/file/john-smith.png");
+      addNameLookupEntry(avatars, "John Doe", "/api/avatars/file/john-doe.png");
+      assert.equal(findCharAvatarFuzzy("John", avatars), undefined, "ambiguous aliases must not select by insertion order");
+      assert.equal(findCharAvatarFuzzy("John Smith", avatars), "/api/avatars/file/john-smith.png");
+
+      const boundaryAvatars = new Map<string, string>();
+      addNameLookupEntry(boundaryAvatars, "Ann", "/api/avatars/file/ann.png");
+      assert.equal(findCharAvatarFuzzy("Joanne", boundaryAvatars), undefined, "partial matches require word boundaries");
+
+      let warned = false;
+      let updateByMessageCalled = false;
+      const unavailableLibrary = await loadCharacterLibraryAvatarLookup(
+        async () => {
+          throw new Error("library unavailable");
+        },
+        () => {
+          warned = true;
+        },
+      );
+      const gameStateStore = {
+        async updateByMessage() {
+          updateByMessageCalled = true;
+        },
+      };
+      await gameStateStore.updateByMessage();
+      assert.equal(unavailableLibrary.size, 0);
+      assert.equal(warned, true);
+      assert.equal(updateByMessageCalled, true, "optional avatar enrichment failures must not block tracker persistence");
     },
   },
   {

@@ -1639,20 +1639,24 @@ test("connection test-message errors inherit the configured editor accent", asyn
 test("NovelAI style plate upload keeps the connection editor mounted", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop connection editor behavior is covered here.");
 
-  const connectionResponse = await page.request.post("/api/connections", {
-    data: {
-      name: "NovelAI Style Plate Upload",
-      provider: "image_generation",
-      imageGenerationSource: "novelai",
-      imageService: "novelai",
-      model: "nai-diffusion-4-5-full",
-    },
-  });
-  expect(connectionResponse.ok()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
+  let connectionId: string | null = null;
+  let testFailure: unknown;
   const errors = collectUnexpectedErrors(page);
 
   try {
+    const connectionResponse = await page.request.post("/api/connections", {
+      data: {
+        name: "NovelAI Style Plate Upload",
+        provider: "image_generation",
+        imageGenerationSource: "novelai",
+        imageService: "novelai",
+        model: "nai-diffusion-4-5-full",
+      },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    const connection = (await connectionResponse.json()) as { id: string };
+    connectionId = connection.id;
+
     await page.goto("/");
     await page.locator('[data-tour="panel-connections"]').click();
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
@@ -1667,14 +1671,25 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     await editor.locator('input[type="file"][accept*="image/png"]').setInputFiles({
       name: "style-plate.png",
       mimeType: "image/png",
-      buffer: Buffer.concat([Buffer.from(TRANSPARENT_GIF_BASE64, "base64"), Buffer.alloc(9 * 1024 * 1024)]),
+      buffer: readFileSync(new URL("../packages/client/public/logo.png", import.meta.url)),
     });
 
     await expect(editor).toBeVisible();
     await expect(editor.getByRole("img", { name: "NovelAI style plate preview" })).toBeVisible();
     expect(errors).toEqual([]);
+  } catch (error) {
+    testFailure = error;
+    throw error;
   } finally {
-    await page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+    if (connectionId) {
+      try {
+        const deletionResponse = await page.request.delete(`/api/connections/${connectionId}`);
+        if (!deletionResponse.ok()) throw new Error(`Connection cleanup failed with ${deletionResponse.status()}`);
+      } catch (cleanupError) {
+        if (!testFailure) throw cleanupError;
+        console.warn("NovelAI style plate test cleanup failed", cleanupError);
+      }
+    }
   }
 });
 

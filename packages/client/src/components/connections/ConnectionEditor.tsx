@@ -2003,7 +2003,11 @@ export function ConnectionEditor() {
               expanded={imageDefaultsExpanded}
               onExpandedChange={setImageDefaultsExpanded}
               onChange={(next) => {
-                setLocalImageDefaults(sanitizeImageGenerationProfile(next, selectedImageDefaultsService));
+                setLocalImageDefaults((current) => {
+                  if (!current) return current;
+                  const resolved = typeof next === "function" ? next(current) : next;
+                  return sanitizeImageGenerationProfile(resolved, selectedImageDefaultsService);
+                });
                 markDirty();
               }}
               onReset={() => {
@@ -2819,7 +2823,11 @@ function ImageGenerationDefaultsPanel({
   remoteLoras: RemoteConnectionModel[];
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
-  onChange: (next: ImageGenerationDefaultsProfile) => void;
+  onChange: (
+    next:
+      | ImageGenerationDefaultsProfile
+      | ((current: ImageGenerationDefaultsProfile) => ImageGenerationDefaultsProfile),
+  ) => void;
   onReset: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -2880,7 +2888,15 @@ function ImageGenerationDefaultsPanel({
 
     try {
       const prepared = await prepareImageAttachment(file, file.name);
-      updateNovelAi({ styleReferenceImage: prepared.data });
+      onChange((current) => {
+        const currentNovelAi =
+          current.novelai ?? createDefaultImageGenerationProfile("novelai").novelai!;
+        return {
+          ...current,
+          service: "novelai",
+          novelai: { ...currentNovelAi, styleReferenceImage: prepared.data },
+        };
+      });
     } catch (error) {
       console.error("[ConnectionEditor] Failed to prepare NovelAI style plate", error);
       toast.error(localizeUi("ui.connections.imagegenerationdefaultspanel.theNovelaiStylePlateCouldNotBeRead"));

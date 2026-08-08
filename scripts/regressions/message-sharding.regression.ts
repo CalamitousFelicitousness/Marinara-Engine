@@ -593,6 +593,62 @@ assert.equal(
   }
 }
 
+// ── Duplicate ids: the canonical shard's copy beats a stale foreign copy ──
+// With identical sort keys, keep-first would let discovery order decide — a
+// stale foreign copy could win and self-healing would then overwrite the
+// canonical row with it.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const canonical = messageRow("m-dup", "chat-b", "canonical content");
+  // The foreign copy shares id AND createdAt, and lives in chat-a.json —
+  // which sorts and loads FIRST, so keep-first would pick it.
+  writeFileSync(
+    join(dir, "tables", "messages", `${encodeShardKey("chat-a")}.json`),
+    JSON.stringify([{ ...canonical, content: "stale foreign copy" }]),
+  );
+  writeFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-b")}.json`), JSON.stringify([canonical]));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 1, "one copy survives");
+    assert.equal(rows[0]!.content, "canonical content", "the canonical shard's copy wins, not discovery order");
+    const bRows = JSON.parse(
+      readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-b")}.json`), "utf8"),
+    ) as Array<{ content: string }>;
+    assert.equal(bRows[0]!.content, "canonical content", "self-healing never replaces the canonical row with the stale copy");
+    assert.equal(
+      existsSync(join(dir, "tables", "messages", `${encodeShardKey("chat-a")}.json`)),
+      false,
+      "the foreign file holding the stale copy is cleaned up",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A quarantined bak-only shard leaves no phantom manifest entry ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  writeFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json.bak`), "{corrupt");
+  const db = await createFileNativeDB();
+  try {
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as {
+      shards: Record<string, number>;
+    };
+    assert.equal(manifest.shards.messages, 0, "an unreadable bak-only shard is quarantined, never counted as known");
+    const quarantined = readdirSync(join(dir, "tables", "messages")).filter((name) => name.includes(".corrupt-"));
+    assert.equal(quarantined.length, 1, "the unreadable backup is preserved for manual recovery");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Bak-only shard: primary vanished in a crash, .bak survives ──
 
 {

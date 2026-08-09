@@ -970,31 +970,32 @@ export async function charactersRoutes(app: FastifyInstance) {
     const versionSource = typeof body.versionSource === "string" ? body.versionSource : undefined;
     const versionReason = typeof body.versionReason === "string" ? body.versionReason : undefined;
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
-    let characterDataUpdate = update.data ?? {};
-    const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
-    if (Object.hasOwn(extensions, "characterSheetImageId")) {
-      const selectedImageId =
-        typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-      const selectedImage = selectedImageId ? await characterGallery.getById(selectedImageId) : null;
-      if (!selectedImage || selectedImage.characterId !== req.params.id) {
-        characterDataUpdate = {
-          ...characterDataUpdate,
-          extensions: {
-            ...extensions,
-            characterSheetImageId: null,
-            useCharacterSheetAsReference: false,
-          },
-        };
+    const characterDataUpdate = update.data ?? {};
+    return enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
+      let validatedDataUpdate = characterDataUpdate;
+      const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
+      if (Object.hasOwn(extensions, "characterSheetImageId")) {
+        const selectedImageId =
+          typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
+        const selectedImage = selectedImageId ? await characterGallery.getById(selectedImageId) : null;
+        if (!selectedImage || selectedImage.characterId !== req.params.id) {
+          validatedDataUpdate = {
+            ...characterDataUpdate,
+            extensions: {
+              ...extensions,
+              characterSheetImageId: null,
+              useCharacterSheetAsReference: false,
+            },
+          };
+        }
       }
-    }
-    return enqueueUpdate(characterUpdateQueues, req.params.id, () =>
-      storage.update(req.params.id, characterDataUpdate, avatarPath, {
+      return storage.update(req.params.id, validatedDataUpdate, avatarPath, {
         comment,
         versionSource,
         versionReason,
         skipVersionSnapshot,
-      }),
-    );
+      });
+    });
   });
 
   app.patch<{ Params: { id: string }; Body: { paint?: unknown } }>("/:id/tracker-card-colors", async (req, reply) => {
@@ -2011,11 +2012,6 @@ export async function charactersRoutes(app: FastifyInstance) {
       if (imageId !== null && typeof imageId !== "string") {
         return reply.status(400).send({ error: "characterSheetImageId must be a string or null" });
       }
-      const image = typeof imageId === "string" ? await personaGallery.getById(imageId) : null;
-      if (!image || image.personaId !== req.params.id) {
-        body.characterSheetImageId = null;
-        body.useCharacterSheetAsReference = "false";
-      }
     }
     if (Object.hasOwn(body, "useCharacterSheetAsReference")) {
       const enabled = body.useCharacterSheetAsReference;
@@ -2037,11 +2033,23 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, async () => {
-      if (!parsedPaint) return storage.updatePersona(req.params.id, body);
+      let validatedBody = body;
+      if (Object.hasOwn(body, "characterSheetImageId")) {
+        const imageId = body.characterSheetImageId;
+        const image = typeof imageId === "string" ? await personaGallery.getById(imageId) : null;
+        if (!image || image.personaId !== req.params.id) {
+          validatedBody = {
+            ...body,
+            characterSheetImageId: null,
+            useCharacterSheetAsReference: "false",
+          };
+        }
+      }
+      if (!parsedPaint) return storage.updatePersona(req.params.id, validatedBody);
       const currentPersona = await storage.getPersona(req.params.id);
       if (!currentPersona) return null;
       return storage.updatePersona(req.params.id, {
-        ...body,
+        ...validatedBody,
         trackerCardColors: JSON.stringify(
           applyTrackerCardPaint(currentPersona.trackerCardColors, parsedPaint, false),
         ),

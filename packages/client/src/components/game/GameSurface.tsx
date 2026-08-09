@@ -82,7 +82,7 @@ import { useGenerate } from "../../hooks/use-generate";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import { useGenerateSpatialMapDraft, useSpatialContext } from "../../hooks/use-spatial-context";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { spriteKeys, type SpriteInfo } from "../../hooks/use-characters";
+import { spriteKeys, useUploadAvatar, useUploadPersonaAvatar, type SpriteInfo } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
@@ -6503,6 +6503,8 @@ function GameSurfaceComponent({
   const generateMap = useGenerateMap();
   const deleteChat = useDeleteChat();
   const updateChatMetadata = useUpdateChatMetadata();
+  const uploadCharacterAvatar = useUploadAvatar();
+  const uploadPersonaAvatar = useUploadPersonaAvatar();
   const updateSessionHistoryMetadata = useUpdateChatMetadata();
   const updateMessage = useUpdateMessage(activeChatId);
   const startSessionLocked = startSession.isPending || startSessionRequested;
@@ -6919,6 +6921,35 @@ function GameSurfaceComponent({
       }
     },
     [activeChatId, clearFailedNpcAvatars, updateChatMetadata, localizeUi],
+  );
+
+  const handlePartyPortraitUpload = useCallback(
+    async (memberId: string, memberName: string, file: File) => {
+      try {
+        const character = characters.find((candidate) => candidate.id === memberId);
+        if (!character && !memberId.startsWith("persona:")) {
+          await handleNpcPortraitUpload(memberName, file);
+          return;
+        }
+        const avatar = await readFileAsDataUrl(file);
+        if (character) {
+          await uploadCharacterAvatar.mutateAsync({ id: memberId, avatar });
+        } else {
+          const encodedId = memberId.slice("persona:".length);
+          const personaId = !["active", "default"].includes(encodedId) ? encodedId : personaInfo?.id;
+          if (!personaId) throw new Error(localizeUi("ui.game.gamesurfacecomponent.noPersonaAvailableForPortrait"));
+          await uploadPersonaAvatar.mutateAsync({ id: personaId, avatar, filename: file.name });
+        }
+        toast.success(localizeUi("ui.game.gamesurfacecomponent.value1PortraitUpdated", { value1: memberName }));
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToUpdateValue1Portrait", { value1: memberName }),
+        );
+      }
+    },
+    [characters, handleNpcPortraitUpload, localizeUi, personaInfo?.id, uploadCharacterAvatar, uploadPersonaAvatar],
   );
 
   const handleNpcPortraitGenerate = useCallback(
@@ -12305,6 +12336,9 @@ function GameSurfaceComponent({
           isRegenerating={regenerateCharacterSheet.isPending}
           onSave={(gameCard: GameCharacterSheetGameCard | undefined) =>
             handleSaveCharacterSheet(partyCards[characterSheetCharId].title, gameCard)
+          }
+          onAvatarSelect={(file) =>
+            handlePartyPortraitUpload(characterSheetCharId, partyCards[characterSheetCharId].title, file)
           }
         />
       )}

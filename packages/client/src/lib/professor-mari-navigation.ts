@@ -5,16 +5,10 @@ export type ProfessorMariNavigationTarget =
   | { kind: "home" }
   | { kind: "professor" }
   | { kind: "chats" }
+  | { kind: "chat"; chatId: string }
   | {
       kind: "panel";
-      panel:
-        | "characters"
-        | "personas"
-        | "lorebooks"
-        | "presets"
-        | "connections"
-        | "agents"
-        | "extensions";
+      panel: "characters" | "personas" | "lorebooks" | "presets" | "connections" | "agents" | "extensions";
     }
   | { kind: "settings"; tab: ProfessorMariSettingsTab; controlId?: string }
   | {
@@ -39,6 +33,11 @@ export interface ProfessorMariNavigationResource {
   id: string;
   name: string;
   aliases?: string[];
+}
+
+export interface ProfessorMariNavigationChat {
+  id: string;
+  name: string;
 }
 
 interface NavigationRule {
@@ -261,9 +260,9 @@ function scoreDynamicResource(query: string, resource: ProfessorMariNavigationRe
   const names = [resource.name, ...(resource.aliases ?? [])]
     .map(normalizeProfessorMariNavigationQuery)
     .filter((name) => name.length >= 2);
-  const hintedKinds = (Object.entries(RESOURCE_TYPE_ALIASES) as Array<
-    [ProfessorMariNavigationResourceKind, readonly string[]]
-  >)
+  const hintedKinds = (
+    Object.entries(RESOURCE_TYPE_ALIASES) as Array<[ProfessorMariNavigationResourceKind, readonly string[]]>
+  )
     .filter(([, aliases]) =>
       aliases.some((alias) => includesNormalizedPhrase(query, normalizeProfessorMariNavigationQuery(alias))),
     )
@@ -320,9 +319,25 @@ export function resolveProfessorMariNavigation(
   value: string,
   browserTabs: readonly ProfessorMariBrowserTab[] = [],
   resources: readonly ProfessorMariNavigationResource[] = [],
+  chats: readonly ProfessorMariNavigationChat[] = [],
 ): ProfessorMariNavigationTarget | null {
   const query = normalizeProfessorMariNavigationQuery(value);
   if (!query) return null;
+
+  // Exact chat titles outrank keyword routing, except for the generic words
+  // users naturally use to ask for the Chats surface itself.
+  const genericChatQueries = new Set([
+    "chat",
+    "chats",
+    "conversations",
+    "convo",
+    "rp",
+    "games",
+  ]);
+  if (!genericChatQueries.has(query)) {
+    const exactChat = chats.find((chat) => normalizeProfessorMariNavigationQuery(chat.name) === query);
+    if (exactChat) return { kind: "chat", chatId: exactChat.id };
+  }
 
   const matches: Array<{ target: ProfessorMariNavigationTarget; score: number; order: number }> = [];
   const consider = (target: ProfessorMariNavigationTarget, score: number, order: number) => {

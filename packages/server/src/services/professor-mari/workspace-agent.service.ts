@@ -2673,8 +2673,17 @@ ${sections.join("\n\n")}
       // it tied to the exact source inode until the source name is removed.
       await link(source, destination);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("move destination already exists");
-      throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EEXIST") throw new Error("move destination already exists");
+      if (code !== "EXDEV" && code !== "EPERM") throw error;
+      try {
+        await copyFile(source, destination, constants.COPYFILE_EXCL);
+      } catch (copyError) {
+        if ((copyError as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new Error("move destination already exists");
+        }
+        throw copyError;
+      }
     }
     try {
       await unlink(source);

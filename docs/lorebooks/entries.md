@@ -208,6 +208,126 @@ You want the village gossip about the Count to feel inconsistent — but you nev
 
 Across the whole lorebook, only the premise is Constant, one entry layers selective logic with a low order, and everything else simply waits for its keys. That is what keeps the prompt lean while still putting the right fact in front of the AI at the right moment.
 
+## Use cases by parameter
+
+The strategy and worked example above show these controls in combination. This section is a quick reference: what each control is *for*, and one example apiece.
+
+### Matching
+
+**Whole Words** — stops a key from matching inside a longer word.
+
+- Use it for: short or single-syllable keys, acronyms, or a key that is a fragment of other words.
+- *Example:* the key `Ash` (a character) matches "Ash" but not "ashes" or "cash".
+
+**Case Sensitive** — the key must match capitalization exactly.
+
+- Use it for: a key that is also a common lowercase word; acronyms and initialisms; codes where case carries meaning.
+- *Example:* `IT` (the tech department) matches "IT" but not the word "it".
+
+**Regex** — treats the key as a regular-expression pattern.
+
+- Use it for: several spellings or forms at once, optional suffixes, or numbers and codes with a pattern. Keep patterns simple — each runs under a short safety timeout.
+- *Example:* `\bVlad(?:'s)?\b` matches both "Vlad" and "Vlad's" as whole words.
+
+### Entry type
+
+**Constant** — injects every turn, with no keyword.
+
+- Use it for: the setting's premise and ground rules, a tone or style directive, or a fact so central the AI should never be without it.
+- *Example:* a keyless Constant entry — "Everyone speaks in period 1800s English." — is present in every reply.
+
+**Selective (secondary keys + logic)** — adds a second keyword condition on top of the primary keys.
+
+- Use it for: a common primary keyword that fires in the wrong scene, lore that should appear only in a specific combination of topics, or blocking an entry when a certain term is present.
+- *Example (AND Any):* primary `king`, secondary `Silverhaven` — the king's entry fires only when Silverhaven is also mentioned.
+- *Example (NOT Any):* primary `the prophecy`, secondary `fulfilled` — the "unfulfilled prophecy" entry is blocked once the prophecy is fulfilled.
+
+### Placement
+
+**Before chat / After chat** — where the entry sits relative to the conversation.
+
+- Use it for: most lore (Before chat, the default); a nudge you want closest to the model's next reply (After chat).
+- *Example:* a faction summary Before chat; a short "stay in character" reminder After chat.
+
+**@ Depth (with Depth and Role)** — injects the entry *inside* the recent messages. Use sparingly — see the caution in **Position, Depth, and Order** above.
+
+- Use it for: a rule the model keeps forgetting mid-scene, or a fact that just changed and must land beside the latest turn. **Role** labels the injected line **System**, **User**, or **Assistant**.
+- *Example:* "The tavern is now on fire." at @ Depth 1, Role System.
+
+**Order** — the sequence in which activated entries load.
+
+- Use it for: making one entry win when several fire and the budget is tight, or controlling the order of related entries.
+- *Example:* a plot-critical rule at Order 10 loads before flavor entries at the default 100 and survives budget trimming.
+
+**Outlet** — collects activated entries into a named macro instead of injecting them directly.
+
+- Use it for: gathering several entries into one spot in your prompt, or building a dynamic block you place yourself.
+- *Example:* three entries at Position Outlet with the name `house_rules`; put `{{outlet::house_rules}}` in a prompt section and only the ones that activated this turn appear there, joined in Order.
+
+### When and how often an entry fires
+
+**Probability** — the percent chance the entry fires when its keys match.
+
+- Use it for: occasional flavor, random events, or a quirk that should surface only some of the time.
+- *Example:* "the innkeeper is in a foul mood today" at Probability 30%.
+
+**Sticky** — keeps the entry active for a set number of messages after it triggers.
+
+- Use it for: holding a fact in the prompt for a few turns so the model does not forget it mid-scene.
+- *Example:* a revealed secret at Sticky 3 stays active for three messages after it comes up.
+
+**Cooldown** — blocks the entry from re-firing for a set number of messages after it triggers.
+
+- Use it for: stopping a dramatic or heavy entry from repeating every message, or pacing a recurring event.
+- *Example:* a "the ground trembles" omen at Cooldown 5 fires at most once every five messages.
+
+**Delay** — the entry cannot fire until a set number of messages into the chat.
+
+- Use it for: lore that should not appear at the very start; a twist or later-arc fact held back until the story develops.
+- *Example:* a "the mentor was the traitor all along" entry at Delay 20.
+
+**Ephemeral** — the entry disables itself after a set number of activations.
+
+- Use it for: one-time (or few-time) content — an intro, a first-meeting note, a tutorial hint.
+- *Example:* "You wake with no memory of how you got here." at Ephemeral 1 fires once, then turns itself off.
+
+### Organization and control
+
+**Group** — makes entries mutually exclusive; only one in a group activates per reply.
+
+- Use it for: alternatives (one of several rumors, moods, or versions), or a random-pick pool.
+- *Example:* three "weather today" entries in Group `weather` — exactly one is chosen per reply.
+
+**Tag** — a free-text label for your own sorting. It does not affect activation.
+
+- Use it for: organizing and filtering entries in the editor.
+- *Example:* tag entries `npc`, `location`, or `wip` to find and manage them quickly.
+
+**Description** — a summary the Knowledge Router agent reads to route the entry; never sent to the AI as content.
+
+- Use it for: giving a dense or macro-heavy entry a plain-language summary the router can match by meaning, or a note to yourself.
+- *Example:* an entry full of formatting macros gets the Description "the rules of the dueling arena".
+
+**Recursion (per-entry)** — lets this entry's content trigger more entries. Off by default.
+
+- Use it for: an entry you *want* to chain into a bounded set of related lore. Keep it off for hub entries (see **Structure lore as a tree** above).
+- *Example:* "The party enters the Thornwood." with Recursion on and content naming the wood's landmarks, so those entries activate too.
+
+**No Vector** — excludes the entry from semantic search.
+
+- Use it for: keeping a generic or boilerplate entry from polluting meaning-based matches, or an entry you only want triggered by its exact keys.
+- *Example:* mark a formatting-instruction entry No Vector so it never surfaces as a semantic "related lore" hit.
+
+**Locked** — protects the entry from the Lorebook Keeper agent.
+
+- Use it for: a hand-tuned entry an automated pass should not rewrite.
+- *Example:* lock your carefully-worded premise so the Keeper cannot edit it.
+
+**Context filters** — limit an entry to certain characters, character tags, or generation types.
+
+- Use it for: lore that applies to only some characters or only some generation types.
+- *Example:* filter a character's private backstory to that character only, so it never activates in chats they are not part of.
+
 ## Using macros in entry content
 
 An entry's **Content** is expanded like any other prompt text: prompt macros resolve before the content is injected. A few that are handy inside lorebook entries:

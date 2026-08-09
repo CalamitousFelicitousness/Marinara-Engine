@@ -266,7 +266,7 @@ export function RecentChats() {
               <ChatModeIcon
                 mode={chatMode}
                 size="3rem"
-                className="absolute -bottom-1 right-1 text-[var(--recent-chat-accent)] opacity-15 md:-bottom-2 md:[width:4.5rem] md:[height:4.5rem]"
+                className="mari-rgb-static-icon absolute -bottom-1 right-1 text-[var(--recent-chat-accent)] opacity-15 md:-bottom-2 md:[width:4.5rem] md:[height:4.5rem]"
                 aria-hidden="true"
               />
             )}
@@ -278,7 +278,8 @@ export function RecentChats() {
               )}
             >
               <span className="inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--recent-chat-accent)_48%,transparent)] bg-[color-mix(in_srgb,var(--recent-chat-accent)_14%,var(--card))] px-1.5 py-0.5 text-[0.52rem] font-bold uppercase tracking-[0.1em] text-[var(--recent-chat-accent)] md:gap-1.5 md:px-2 md:py-1 md:text-[0.625rem] md:tracking-[0.12em]">
-                <ChatModeIcon mode={chatMode} size="0.7rem" aria-hidden="true" /> {t(mode.labelKey)}
+                <ChatModeIcon mode={chatMode} size="0.7rem" className="mari-rgb-static-icon" aria-hidden="true" />{" "}
+                {t(mode.labelKey)}
               </span>
               <span className="mt-1 block truncate text-xs font-semibold leading-tight text-[var(--foreground)] md:mt-2 md:line-clamp-2 md:whitespace-normal md:text-sm">
                 {chat.name}

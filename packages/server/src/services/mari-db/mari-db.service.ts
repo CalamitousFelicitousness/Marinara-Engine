@@ -819,6 +819,16 @@ export function normalizeCharacterActionData(input: Row): Row {
   return out;
 }
 
+const SELECTIVE_LOGIC_VALUES = new Set(["and", "and_all", "or", "not", "not_all"]);
+
+/** Validate an incoming selectiveLogic against the stored enum; undefined if absent or invalid. */
+function normalizeSelectiveLogic(source: Row): string | undefined {
+  const raw = firstString(source, ["selectiveLogic", "selective_logic"]);
+  if (raw === undefined) return undefined;
+  const normalized = raw.toLowerCase();
+  return SELECTIVE_LOGIC_VALUES.has(normalized) ? normalized : undefined;
+}
+
 export function buildLorebookEntryCreateRow(
   data: Row,
   lorebookId: string,
@@ -837,11 +847,11 @@ export function buildLorebookEntryCreateRow(
     secondaryKeys: firstStringList(data, ["secondaryKeys", "secondary_keys"]) ?? [],
     enabled: boolText(firstBoolean(data, ["enabled"]) ?? true),
     constant: boolText(firstBoolean(data, ["constant"]) ?? false),
-    selective: "false",
-    selectiveLogic: "and",
-    matchWholeWords: "false",
-    caseSensitive: "false",
-    useRegex: "false",
+    selective: boolText(firstBoolean(data, ["selective"]) ?? false),
+    selectiveLogic: normalizeSelectiveLogic(data) ?? "and",
+    matchWholeWords: boolText(firstBoolean(data, ["matchWholeWords", "match_whole_words"]) ?? false),
+    caseSensitive: boolText(firstBoolean(data, ["caseSensitive", "case_sensitive"]) ?? false),
+    useRegex: boolText(firstBoolean(data, ["useRegex", "use_regex"]) ?? false),
     characterFilterMode: "any",
     characterFilterIds: [],
     characterTagFilterMode: "any",
@@ -2409,6 +2419,15 @@ export class MariDbService {
     changed = assignNumberField(target, source, ["depth"], "depth") || changed;
     changed = assignStringField(target, source, ["role"], "role") || changed;
     changed = assignStringField(target, source, ["group"], "group") || changed;
+    changed = assignBooleanTextField(target, source, ["selective"], "selective") || changed;
+    const selectiveLogic = normalizeSelectiveLogic(source);
+    if (selectiveLogic !== undefined) {
+      target.selectiveLogic = selectiveLogic;
+      changed = true;
+    }
+    changed = assignBooleanTextField(target, source, ["matchWholeWords", "match_whole_words"], "matchWholeWords") || changed;
+    changed = assignBooleanTextField(target, source, ["caseSensitive", "case_sensitive"], "caseSensitive") || changed;
+    changed = assignBooleanTextField(target, source, ["useRegex", "use_regex"], "useRegex") || changed;
     return changed;
   }
 
@@ -2603,6 +2622,11 @@ export class MariDbService {
           "depth",
           "role",
           "group",
+          "selective",
+          "selectiveLogic",
+          "matchWholeWords",
+          "caseSensitive",
+          "useRegex",
         ]);
         const timestamp = now();
         const id = firstString(args, ["entryId", "id"]) ?? newId();
@@ -2645,6 +2669,11 @@ export class MariDbService {
           "depth",
           "role",
           "group",
+          "selective",
+          "selectiveLogic",
+          "matchWholeWords",
+          "caseSensitive",
+          "useRegex",
         ]);
         const patch: Row = { updatedAt: now() };
         this.assignLorebookEntryActionFields(patch, data);

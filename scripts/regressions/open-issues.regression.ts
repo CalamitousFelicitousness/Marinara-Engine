@@ -3403,6 +3403,21 @@ assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
 assert.match(gameSetupWizardSource, /enableAgents: enableAgents \|\| undefined/u);
+assert.match(
+  gameSetupWizardSource,
+  /id="game-setup-spatial-map-target-count"[\s\S]{0,180}min=\{1\}[\s\S]{0,120}max=\{SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT\}/u,
+  "New Game AI map setup must expose the bounded custom place target from World Maps",
+);
+assert.match(
+  gameSetupWizardSource,
+  /targetLocationCount:\s*spatialMapTargetLocationCount/u,
+  "New Game setup must preserve the selected custom place target in its post-setup map plan",
+);
+assert.match(
+  gameSurfaceSource,
+  /targetLocationCount:\s*plan\.targetLocationCount/u,
+  "Game setup must send the custom place target to World Maps draft generation",
+);
 assert.match(gameTypesSource, /enableAgents\?: boolean;/u);
 assert.match(gameRoutesSource, /enableAgents: z\.boolean\(\)\.optional\(\)/u);
 assert.match(gameRoutesSource, /enableAgents: setupConfig\.enableAgents === true/u);

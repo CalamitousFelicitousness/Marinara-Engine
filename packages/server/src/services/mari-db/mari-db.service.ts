@@ -147,6 +147,7 @@ const BOOLEAN_FLAGS = new Set([
   "apply",
   "cached",
   "cascade",
+  "case-sensitive",
   "changed",
   "constant",
   "disable",
@@ -156,15 +157,22 @@ const BOOLEAN_FLAGS = new Set([
   "global",
   "help",
   "jsonl",
+  "match-whole-words",
+  "no-case-sensitive",
   "no-constant",
   "no-global",
+  "no-match-whole-words",
+  "no-selective",
+  "no-use-regex",
   "parsed",
   "patch",
   "raw",
   "resume",
+  "selective",
   "staged",
   "strict",
   "tail",
+  "use-regex",
 ]);
 
 function truncateOutput(value: string, limit = COMMAND_OUTPUT_LIMIT): { text: string; truncated: boolean } {
@@ -821,12 +829,16 @@ export function normalizeCharacterActionData(input: Row): Row {
 
 const SELECTIVE_LOGIC_VALUES = new Set(["and", "and_all", "or", "not", "not_all"]);
 
+/** Validate a selectiveLogic string against the stored enum; undefined if absent or invalid. */
+function normalizeSelectiveLogicValue(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  return SELECTIVE_LOGIC_VALUES.has(normalized) ? normalized : undefined;
+}
+
 /** Validate an incoming selectiveLogic against the stored enum; undefined if absent or invalid. */
 function normalizeSelectiveLogic(source: Row): string | undefined {
-  const raw = firstString(source, ["selectiveLogic", "selective_logic"]);
-  if (raw === undefined) return undefined;
-  const normalized = raw.toLowerCase();
-  return SELECTIVE_LOGIC_VALUES.has(normalized) ? normalized : undefined;
+  return normalizeSelectiveLogicValue(firstString(source, ["selectiveLogic", "selective_logic"]));
 }
 
 export function buildLorebookEntryCreateRow(
@@ -4098,7 +4110,7 @@ export class MariDbService {
         const lorebookId = parsed.positionals[0];
         if (!lorebookId) {
           throw new Error(
-            "Usage: mari lorebooks add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
+            "Usage: mari lorebooks add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--case-sensitive] [--use-regex] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
           );
         }
         const entryName = flagString(flags, "name")?.trim();
@@ -4121,47 +4133,37 @@ export class MariDbService {
           : [];
         const addOutletName = flagString(flags, "outlet-name")?.trim() ?? "";
         const timestamp = now();
-        const entryRow: Row = {
-          id: flagString(flags, "id") ?? newId(),
+        const addSecondaryKeysRaw = flagString(flags, "secondary-keys") ?? "";
+        const addSecondaryKeys = addSecondaryKeysRaw
+          ? addSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+          : [];
+        const addSelectiveLogic = flagString(flags, "selective-logic");
+        if (addSelectiveLogic !== undefined && !normalizeSelectiveLogicValue(addSelectiveLogic)) {
+          throw new Error("--selective-logic must be one of: and, and_all, or, not, not_all");
+        }
+        // Reuse buildLorebookEntryCreateRow (the app_data create path) so the CLI and app_data
+        // entry shapes cannot drift; then apply the CLI-only folderId.
+        const entryRow = buildLorebookEntryCreateRow(
+          {
+            name: entryName,
+            content: flagString(flags, "content") ?? "",
+            description: flagString(flags, "description") ?? "",
+            tag: flagString(flags, "tag") ?? "",
+            keys,
+            secondaryKeys: addSecondaryKeys,
+            selective: hasFlag(flags, "selective"),
+            selectiveLogic: addSelectiveLogic,
+            matchWholeWords: hasFlag(flags, "match-whole-words"),
+            caseSensitive: hasFlag(flags, "case-sensitive"),
+            useRegex: hasFlag(flags, "use-regex"),
+            outletName: addOutletName,
+            position: addOutletName ? 7 : 0,
+          },
           lorebookId,
-          folderId: addFolderId ?? null,
-          name: entryName,
-          content: flagString(flags, "content") ?? "",
-          description: flagString(flags, "description") ?? "",
-          tag: flagString(flags, "tag") ?? "",
-          keys,
-          secondaryKeys: [],
-          enabled: "true",
-          constant: "false",
-          selective: "false",
-          selectiveLogic: "and",
-          matchWholeWords: "false",
-          caseSensitive: "false",
-          useRegex: "false",
-          characterFilterMode: "any",
-          characterFilterIds: [],
-          characterTagFilterMode: "any",
-          characterTagFilters: [],
-          generationTriggerFilterMode: "any",
-          generationTriggerFilters: [],
-          additionalMatchingSources: [],
-          position: addOutletName ? 7 : 0,
-          outletName: addOutletName,
-          depth: 4,
-          order: 100,
-          role: "system",
-          group: "",
-          relationships: {},
-          dynamicState: {},
-          activationConditions: [],
-          preventRecursion: "true",
-          excludeRecursion: "false",
-          delayUntilRecursion: "false",
-          excludeFromVectorization: "false",
-          locked: "false",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
+          flagString(flags, "id") ?? newId(),
+          timestamp,
+        );
+        entryRow.folderId = addFolderId ?? null;
         const request: ParsedMutationRequest = {
           kind: "insert",
           table: "lorebook_entries",
@@ -4178,7 +4180,7 @@ export class MariDbService {
         const entryId = parsed.positionals[0];
         if (!entryId) {
           throw new Error(
-            "Usage: mari lorebooks update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
+            "Usage: mari lorebooks update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--selective] [--no-selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--no-match-whole-words] [--case-sensitive] [--no-case-sensitive] [--use-regex] [--no-use-regex] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
           );
         }
         const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
@@ -4212,6 +4214,26 @@ export class MariDbService {
         if (hasFlag(flags, "disable")) entryPatch.enabled = "false";
         if (hasFlag(flags, "constant")) entryPatch.constant = "true";
         if (hasFlag(flags, "no-constant")) entryPatch.constant = "false";
+        if (hasFlag(flags, "selective")) entryPatch.selective = "true";
+        if (hasFlag(flags, "no-selective")) entryPatch.selective = "false";
+        if (hasFlag(flags, "match-whole-words")) entryPatch.matchWholeWords = "true";
+        if (hasFlag(flags, "no-match-whole-words")) entryPatch.matchWholeWords = "false";
+        if (hasFlag(flags, "case-sensitive")) entryPatch.caseSensitive = "true";
+        if (hasFlag(flags, "no-case-sensitive")) entryPatch.caseSensitive = "false";
+        if (hasFlag(flags, "use-regex")) entryPatch.useRegex = "true";
+        if (hasFlag(flags, "no-use-regex")) entryPatch.useRegex = "false";
+        const updateSelectiveLogic = flagString(flags, "selective-logic");
+        if (updateSelectiveLogic !== undefined) {
+          const normalizedLogic = normalizeSelectiveLogicValue(updateSelectiveLogic);
+          if (!normalizedLogic) throw new Error("--selective-logic must be one of: and, and_all, or, not, not_all");
+          entryPatch.selectiveLogic = normalizedLogic;
+        }
+        const updateSecondaryKeysRaw = flagString(flags, "secondary-keys");
+        if (updateSecondaryKeysRaw !== undefined) {
+          entryPatch.secondaryKeys = updateSecondaryKeysRaw
+            ? updateSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+            : [];
+        }
         const patchFolderId = flagString(flags, "folder-id");
         if (patchFolderId !== undefined) {
           if (!patchFolderId || patchFolderId === "none") {
@@ -4226,7 +4248,7 @@ export class MariDbService {
         }
         if (Object.keys(entryPatch).length <= 1) {
           throw new Error(
-            "Provide at least one field to update (--name, --content, --keys, --description, --tag, --outlet-name, --enable, --disable, --constant, --no-constant, --order, --folder-id)",
+            "Provide at least one field to update (--name, --content, --keys, --secondary-keys, --description, --tag, --outlet-name, --enable, --disable, --constant, --no-constant, --selective, --no-selective, --selective-logic, --match-whole-words, --no-match-whole-words, --case-sensitive, --no-case-sensitive, --use-regex, --no-use-regex, --order, --folder-id)",
           );
         }
         const updateEntryRequest: ParsedMutationRequest = {
@@ -5473,8 +5495,8 @@ export class MariDbService {
       "Read:  search <query> [--limit <n>]",
       "Write: create --name <name> [--description <text>] [--category <text>] [--global] [--apply] [--reason <text>]",
       "Write: update <id> [--name <name>] [--description <text>] [--category <text>] [--tags <t1,t2,...>] [--global] [--enable] [--disable] [--apply] [--reason <text>]",
-      "Write: add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
-      "Write: update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
+      "Write: add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--case-sensitive] [--use-regex] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
+      "Write: update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--selective] [--no-selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--no-match-whole-words] [--case-sensitive] [--no-case-sensitive] [--use-regex] [--no-use-regex] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
       "Write: delete-entry <entry-id> [--apply] [--reason <text>]",
       "Write: link-character <lorebook-id> --character <character-id> [--apply] [--reason <text>]",
       "Write: unlink-character <lorebook-id> --character <character-id> [--apply] [--reason <text>]",

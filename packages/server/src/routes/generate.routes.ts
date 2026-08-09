@@ -2478,6 +2478,12 @@ export async function generateRoutes(app: FastifyInstance) {
               lorebooksStore,
               chats,
               presets,
+              // Rank the name lists by relevance to the current message (#4768 ph3);
+              // degrades to the alphabetical list when the embedder is unavailable.
+              db: app.db,
+              queryText: input.userMessage ?? "",
+              embeddingSource: memoryRecallEmbeddingSource,
+              vectorizerAvailable: memoryRecallVectorizerAvailable,
             });
             conversationSystemPrompt += "\n\n" + stablePrompt;
             professorMariVolatileContext = volatileContext;

@@ -1,6 +1,13 @@
 import { PROFESSOR_MARI_ID } from "@marinara-engine/shared";
 
+import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { MARI_ASSISTANT_PROMPT } from "../../db/seed-mari.js";
+import { createEntityEmbeddingStore } from "../../services/entity-embedding-store.js";
+import type { EntitySearchType } from "../../services/entity-semantic-search.js";
+import { localEmbed } from "../../services/local-embedder.js";
+import { cosineSimilarity } from "../../services/lorebook/embeddings.js";
+import { embedMemoryRecallTexts, type MemoryRecallEmbeddingSource } from "../../services/memory-recall.js";
 
 type ProfessorMariCharactersStore = {
   list(): Promise<Array<{ id?: string | null; data?: unknown }>>;
@@ -10,6 +17,16 @@ type ProfessorMariCharactersStore = {
 type NamedListStore = {
   list(): Promise<unknown[]>;
 };
+
+// When the conversation can be embedded, the name lists are ranked by relevance
+// to it and trimmed to a small top-K — the entities that matter *now* — instead
+// of an arbitrary alphabetical slice, which is both cheaper and more useful on a
+// large library. This runs only on the volatile tail (so it never churns the
+// cached system prefix), embeds ONLY the conversation query per turn (never the
+// entities — those are the persisted store's vectors), and degrades to the
+// alphabetical list below when the embedder is unavailable or cold.
+const MAX_MARI_RELEVANT_NAMES_PER_TYPE = 12;
+const MARI_RELEVANCE_TYPES: EntitySearchType[] = ["character", "persona", "lorebook", "chat", "preset"];
 
 // Per-category cap on the <available_names> reference lists. Bounds the token
 // noise on large libraries and — together with the deterministic sort below —
@@ -51,6 +68,69 @@ function buildNameSection(type: string, rawNames: Array<string | null>): string 
   return `<available_names type="${type}">\n${lines.join("\n")}\n</available_names>`;
 }
 
+// Emit names in a caller-provided order (relevance rank), deduped and capped to a
+// small top-K, with an overflow hint that points at fetch for the long tail.
+function buildRankedNameSection(type: string, orderedNames: string[], totalCount: number): string | null {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of orderedNames) {
+    const name = raw.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    unique.push(name);
+  }
+  if (unique.length === 0) return null;
+  const shown = unique.slice(0, MAX_MARI_RELEVANT_NAMES_PER_TYPE);
+  const overflow = totalCount - shown.length;
+  const lines = [shown.join(", ")];
+  if (overflow > 0) {
+    lines.push(
+      `…and ${overflow} more not shown (these are ranked by relevance to this conversation) — fetch any item by name or description.`,
+    );
+  }
+  return `<available_names type="${type}">\n${lines.join("\n")}\n</available_names>`;
+}
+
+// Rank each type's entities by cosine similarity of their stored embedding to the
+// conversation query. Embeds ONLY the query (one call); entities are never
+// embedded here — unranked (not-yet-warmed or wrong-dimension) ones sort last so
+// warm relevant items lead. Returns null (→ alphabetical fallback) when the
+// embedder is unavailable.
+async function buildRelevanceRankedSections(
+  db: DB,
+  queryText: string,
+  embeddingSource: MemoryRecallEmbeddingSource | null | undefined,
+): Promise<string[] | null> {
+  try {
+    const sourceId = embeddingSource?.spaceId ?? embeddingSource?.label ?? "local";
+    const store = createEntityEmbeddingStore(db, sourceId);
+    const [queryEmbedding] = await embedMemoryRecallTexts([queryText], { embeddingSource, localEmbedder: localEmbed });
+    if (!queryEmbedding || queryEmbedding.length === 0) return null; // unavailable ⇒ fall back
+
+    const sections: string[] = [];
+    for (const type of MARI_RELEVANCE_TYPES) {
+      const candidates = await store.listCandidates(type);
+      if (candidates.length === 0) continue;
+      const ordered = candidates
+        .map((candidate) => ({
+          name: candidate.name,
+          score:
+            candidate.embedding && candidate.embedding.length === queryEmbedding.length
+              ? cosineSimilarity(queryEmbedding, candidate.embedding)
+              : -1,
+        }))
+        .sort((a, b) => b.score - a.score)
+        .map((entry) => entry.name);
+      const section = buildRankedNameSection(type, ordered, candidates.length);
+      if (section) sections.push(section);
+    }
+    return sections.length > 0 ? sections : null;
+  } catch (err) {
+    logger.warn(err, "[mari-prompt] relevance ranking failed; falling back to alphabetical names");
+    return null;
+  }
+}
+
 /**
  * Builds Professor Mari's Home-assistant prompt context, split into two halves:
  *
@@ -67,44 +147,59 @@ export async function resolveProfessorMariPromptContext(args: {
   lorebooksStore: NamedListStore;
   chats: NamedListStore;
   presets: NamedListStore;
+  /** Enables relevance ranking (all four are needed; otherwise the list is alphabetical). */
+  db?: DB;
+  queryText?: string;
+  embeddingSource?: MemoryRecallEmbeddingSource | null;
+  vectorizerAvailable?: boolean;
 }): Promise<{ stablePrompt: string; volatileContext: string }> {
   const volatileSections: string[] = [];
 
-  try {
-    const allChars = await args.chars.list();
-    const allPersonasList = await args.chars.listPersonas();
-    const allLorebooks = await args.lorebooksStore.list();
-    const allChats = await args.chats.list();
-    const allPresets = await args.presets.list();
-
-    const charNames = allChars
-      .filter((c) => c.id !== PROFESSOR_MARI_ID)
-      .map((c) => {
-        try {
-          const d = typeof c.data === "string" ? JSON.parse(c.data) : c.data;
-          return asName(d?.name);
-        } catch {
-          return null;
-        }
-      });
-
-    const personaNames = allPersonasList.map((p) => asName(p.name));
-    const lorebookNames = allLorebooks.map((row) => asName((row as { name?: unknown })?.name));
-    const chatNames = allChats.map((row) => asName((row as { name?: unknown })?.name));
-    const presetNames = allPresets.map((row) => asName((row as { name?: unknown })?.name));
-
-    const namesSections = [
-      buildNameSection("character", charNames),
-      buildNameSection("persona", personaNames),
-      buildNameSection("lorebook", lorebookNames),
-      buildNameSection("chat", chatNames),
-      buildNameSection("preset", presetNames),
-    ].filter((section): section is string => section !== null);
-
-    if (namesSections.length > 0) volatileSections.push(namesSections.join("\n\n"));
-  } catch {
-    // Non-critical: continue without name lists.
+  // Preferred path: rank the lists by relevance to the conversation. Falls
+  // through to the alphabetical list when ranking is disabled/unavailable.
+  let namesSections: string[] | null = null;
+  if (args.db && args.vectorizerAvailable && args.queryText?.trim()) {
+    namesSections = await buildRelevanceRankedSections(args.db, args.queryText, args.embeddingSource);
   }
+
+  if (!namesSections) {
+    try {
+      const allChars = await args.chars.list();
+      const allPersonasList = await args.chars.listPersonas();
+      const allLorebooks = await args.lorebooksStore.list();
+      const allChats = await args.chats.list();
+      const allPresets = await args.presets.list();
+
+      const charNames = allChars
+        .filter((c) => c.id !== PROFESSOR_MARI_ID)
+        .map((c) => {
+          try {
+            const d = typeof c.data === "string" ? JSON.parse(c.data) : c.data;
+            return asName(d?.name);
+          } catch {
+            return null;
+          }
+        });
+
+      const personaNames = allPersonasList.map((p) => asName(p.name));
+      const lorebookNames = allLorebooks.map((row) => asName((row as { name?: unknown })?.name));
+      const chatNames = allChats.map((row) => asName((row as { name?: unknown })?.name));
+      const presetNames = allPresets.map((row) => asName((row as { name?: unknown })?.name));
+
+      namesSections = [
+        buildNameSection("character", charNames),
+        buildNameSection("persona", personaNames),
+        buildNameSection("lorebook", lorebookNames),
+        buildNameSection("chat", chatNames),
+        buildNameSection("preset", presetNames),
+      ].filter((section): section is string => section !== null);
+    } catch {
+      // Non-critical: continue without name lists.
+      namesSections = null;
+    }
+  }
+
+  if (namesSections && namesSections.length > 0) volatileSections.push(namesSections.join("\n\n"));
 
   const mariContext = args.chatMeta.mariContext as Record<string, string> | undefined;
   if (mariContext && Object.keys(mariContext).length > 0) {

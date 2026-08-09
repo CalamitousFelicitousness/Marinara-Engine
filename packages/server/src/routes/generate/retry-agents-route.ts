@@ -3361,6 +3361,7 @@ async function applyRetryResultEffects(args: {
             let referenceImages: string[] | undefined;
             const referenceResolution = await resolveIllustratorCharacterReferences({
               charactersStore: chars,
+              characterGallery: createCharacterGalleryStorage(app.db),
               chatCharacters: agentContext.characters.map((character) => ({
                 id: character.id,
                 name: character.name,

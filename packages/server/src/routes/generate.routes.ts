@@ -8976,6 +8976,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       let illustratorRefImages: string[] | undefined;
                       const referenceResolution = await resolveIllustratorCharacterReferences({
                         charactersStore: chars,
+                        characterGallery,
                         chatCharacters: charInfo.map((character) => ({
                           id: character.id,
                           name: character.name,

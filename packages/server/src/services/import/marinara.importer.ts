@@ -177,8 +177,9 @@ async function restoreCharacterGallery(
   gallery: unknown,
   characterId: string,
   galleryStorage: ReturnType<typeof createCharacterGalleryStorage>,
-): Promise<void> {
-  if (!Array.isArray(gallery) || gallery.length === 0) return;
+): Promise<string | null> {
+  if (!Array.isArray(gallery) || gallery.length === 0) return null;
+  let characterSheetImageId: string | null = null;
   const dir = join(DATA_DIR, "gallery", "characters", characterId);
   await mkdir(dir, { recursive: true });
   for (const item of gallery) {
@@ -228,7 +229,7 @@ async function restoreCharacterGallery(
     try {
       const filepath = assertInsideDir(dir, join(dir, safeFilename));
       await writeFile(filepath, decoded.buffer);
-      await galleryStorage.create({
+      const restored = await galleryStorage.create({
         characterId,
         filePath: `characters/${characterId}/${safeFilename}`,
         prompt: typeof entry.prompt === "string" ? entry.prompt : "",
@@ -237,10 +238,12 @@ async function restoreCharacterGallery(
         width: typeof entry.width === "number" ? entry.width : undefined,
         height: typeof entry.height === "number" ? entry.height : undefined,
       });
+      if (entry.isCharacterSheet === true && restored) characterSheetImageId = restored.id;
     } catch {
       // skip this image
     }
   }
+  return characterSheetImageId;
 }
 
 function readTimestampOverrides(value: unknown): TimestampOverrides | undefined {
@@ -418,7 +421,13 @@ async function importCharacter(data: unknown, db: DB) {
       await storage.updateAvatar(result.id, avatar.avatarPath);
     }
     await restoreSprites(d.sprites, result.id);
-    await restoreCharacterGallery(d.gallery, result.id, galleryStorage);
+    const characterSheetImageId = await restoreCharacterGallery(d.gallery, result.id, galleryStorage);
+    if (characterSheetImageId) {
+      await storage.update(result.id, { extensions: { characterSheetImageId } } as Partial<CharacterData>, undefined, {
+        skipVersionSnapshot: true,
+        mergeExtensions: true,
+      });
+    }
   }
   return {
     success: true,

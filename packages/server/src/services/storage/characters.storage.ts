@@ -694,6 +694,13 @@ export function createCharactersStorage(db: DB) {
         const sourceData = JSON.parse(source.data) as Record<string, unknown>;
         const sourceName = typeof sourceData.name === "string" ? sourceData.name.trim() : "";
         sourceData.name = `${sourceName || "Character"} (Copy)`;
+        const sourceExtensions =
+          sourceData.extensions && typeof sourceData.extensions === "object" && !Array.isArray(sourceData.extensions)
+            ? { ...(sourceData.extensions as Record<string, unknown>) }
+            : {};
+        delete sourceExtensions.characterSheetImageId;
+        sourceExtensions.useCharacterSheetAsReference = false;
+        sourceData.extensions = sourceExtensions;
         await db.insert(characters).values({
           id: newCharId,
           data: JSON.stringify(sourceData),

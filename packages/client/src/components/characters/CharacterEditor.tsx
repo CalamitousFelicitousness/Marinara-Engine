@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Character Editor — Full-page detail view
 // Replaces the chat area when editing a character.
-// Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats, Advanced
+// Sections: Metadata, Character Sheet, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats, Advanced
 // ──────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback, type ChangeEvent, type ReactNode, type SyntheticEvent } from "react";
 import { toast } from "sonner";
@@ -143,6 +143,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 // ── Tabs ──
 const TABS = [
   { id: "metadata", label: "Metadata", icon: User },
+  { id: "character-sheet", label: "Character Sheet", icon: Image },
   { id: "card", label: "Card", icon: IdCard },
   { id: "convo", label: "Convo", icon: MessageCircle },
   { id: "lorebook", label: "Lorebook", icon: Library },
@@ -1098,7 +1099,13 @@ export function CharacterEditor() {
 
       {/* ── Body: Tabs + Content ── */}
       <div className="mari-editor-body @max-5xl:flex-col">
-        <EditorTabRail tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
+        <EditorTabRail
+          tabs={TABS.map((tab) =>
+            tab.id === "character-sheet" ? { ...tab, label: localizeUi("ui.characters.charactersheet.tab") } : tab,
+          )}
+          activeId={activeTab}
+          onChange={setActiveTab}
+        />
 
         {/* Tab Content */}
         <div className="mari-editor-content @max-5xl:p-4">
@@ -1128,6 +1135,19 @@ export function CharacterEditor() {
             )}
             {activeTab === "card" && (
               <CharacterCardTab formData={formData} updateField={updateField} updateExtension={updateExtension} />
+            )}
+            {activeTab === "character-sheet" && characterId && (
+              <CharacterSheetTab
+                characterId={characterId}
+                characterName={formData.name}
+                characterSheetImageId={
+                  typeof formData.extensions.characterSheetImageId === "string"
+                    ? formData.extensions.characterSheetImageId
+                    : null
+                }
+                useAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                updateExtension={updateExtension}
+              />
             )}
             {activeTab === "convo" && (
               <ConvoTab
@@ -2439,6 +2459,173 @@ function characterClipTrimLabel(clip: CharacterGalleryClip) {
   const end = readClipTrimEnd(clip);
   if (start <= 0 && end === null) return null;
   return `${formatTrimSecond(start)} -> ${formatTrimSecond(end)}`;
+}
+
+function CharacterSheetTab({
+  characterId,
+  characterName,
+  characterSheetImageId,
+  useAsReference,
+  updateExtension,
+}: {
+  characterId: string;
+  characterName: string;
+  characterSheetImageId: string | null;
+  useAsReference: boolean;
+  updateExtension: (key: string, value: unknown) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const { data: images, isLoading } = useCharacterGalleryImages(characterId);
+  const upload = useUploadCharacterGalleryImage(characterId);
+  const selectedImage = images?.find((image) => image.id === characterSheetImageId) ?? null;
+  const selectionMissing = Boolean(characterSheetImageId && !isLoading && !selectedImage);
+
+  const chooseImage = useCallback(
+    (imageId: string) => {
+      updateExtension("characterSheetImageId", imageId);
+    },
+    [updateExtension],
+  );
+
+  const handleUpload = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+      try {
+        const uploaded = await upload.mutateAsync([file]);
+        const image = uploaded[0];
+        if (image) chooseImage(image.id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.charactersheet.uploadFailed"));
+      }
+    },
+    [chooseImage, localizeUi, upload],
+  );
+
+  const clearSelection = useCallback(() => {
+    updateExtension("characterSheetImageId", null);
+    updateExtension("useCharacterSheetAsReference", false);
+  }, [updateExtension]);
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title={localizeUi("ui.characters.charactersheet.title")}
+        subtitle={localizeUi("ui.characters.charactersheet.subtitle")}
+      />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+          {selectedImage ? (
+            <img
+              src={selectedImage.url}
+              alt={localizeUi("ui.characters.charactersheet.previewAlt", { name: characterName })}
+              className="max-h-[32rem] w-full bg-[var(--secondary)] object-contain"
+            />
+          ) : (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 bg-[var(--secondary)] px-6 text-center">
+              <Image size="2rem" className="text-[var(--muted-foreground)]/50" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-semibold">{localizeUi("ui.characters.charactersheet.emptyTitle")}</p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {localizeUi("ui.characters.charactersheet.emptyDescription")}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <ImageUploadDropzone
+            label={
+              selectedImage
+                ? localizeUi("ui.characters.charactersheet.replace")
+                : localizeUi("ui.characters.charactersheet.upload")
+            }
+            pending={upload.isPending}
+            pendingLabel={localizeUi("ui.characters.charactersheet.uploading")}
+            dragLabel={localizeUi("ui.characters.charactersheet.dropImage")}
+            onFilesSelected={(files) => void handleUpload(files)}
+            icon={<Upload size="1rem" />}
+            className="w-full"
+          />
+
+          <SettingsSwitch
+            label={<span className="font-medium">{localizeUi("ui.characters.charactersheet.useAsReference")}</span>}
+            description={localizeUi("ui.characters.charactersheet.useAsReferenceDescription")}
+            checked={Boolean(selectedImage) && useAsReference}
+            disabled={!selectedImage}
+            onChange={(checked) => updateExtension("useCharacterSheetAsReference", checked)}
+            labelPosition="start"
+            className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+          />
+
+          <p className="rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--muted-foreground)]">
+            {selectedImage && useAsReference
+              ? localizeUi("ui.characters.charactersheet.activeStatus")
+              : localizeUi("ui.characters.charactersheet.avatarFallbackStatus")}
+          </p>
+
+          {(selectedImage || selectionMissing) && (
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="mari-editor-action inline-flex w-full justify-center text-red-500"
+            >
+              <X size="0.875rem" />
+              {localizeUi("ui.characters.charactersheet.remove")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold">{localizeUi("ui.characters.charactersheet.chooseFromGallery")}</h3>
+        {isLoading ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="shimmer aspect-square rounded-xl" />
+            ))}
+          </div>
+        ) : images && images.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {images.map((image) => {
+              const selected = image.id === characterSheetImageId;
+              return (
+                <button
+                  key={image.id}
+                  type="button"
+                  onClick={() => chooseImage(image.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative aspect-square overflow-hidden rounded-xl border-2 bg-[var(--secondary)] transition-colors",
+                    selected ? "border-[var(--primary)]" : "border-transparent hover:border-[var(--border)]",
+                  )}
+                >
+                  <img
+                    src={image.url}
+                    alt={image.prompt || characterName}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                  />
+                  {selected && (
+                    <span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/75 px-2 py-1 text-xs font-semibold text-white">
+                      {localizeUi("ui.characters.charactersheet.selected")}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-xs text-[var(--muted-foreground)]">
+            {localizeUi("ui.characters.charactersheet.galleryEmpty")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function CharacterGalleryTab({ characterId, characterName }: { characterId: string; characterName?: string }) {

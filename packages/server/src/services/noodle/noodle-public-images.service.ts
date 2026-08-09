@@ -173,6 +173,7 @@ export async function generateNoodlePostImage(input: {
           });
         const referenceResolution = await resolveIllustratorCharacterReferences({
           charactersStore: input.characters,
+          characterGallery: input.characterGallery,
           chatCharacters,
           persona: null,
           requestedNames: [input.account.displayName],

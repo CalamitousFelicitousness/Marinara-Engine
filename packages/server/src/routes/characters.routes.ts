@@ -506,6 +506,7 @@ async function readSpritesForId(id: string): Promise<Array<{ filename: string; d
 async function readGalleryForCharacter(
   characterId: string,
   galleryStorage: { listByCharacterId: (id: string) => Promise<any[]> },
+  characterSheetImageId?: string | null,
 ): Promise<Array<Record<string, unknown>>> {
   const images = await galleryStorage.listByCharacterId(characterId);
   const result: Array<Record<string, unknown>> = [];
@@ -528,6 +529,7 @@ async function readGalleryForCharacter(
       model: img.model ?? "",
       width: img.width ?? null,
       height: img.height ?? null,
+      ...(img.id === characterSheetImageId ? { isCharacterSheet: true } : {}),
     });
   }
   return result;
@@ -538,10 +540,16 @@ async function buildNativeCharacterEnvelope(
   data: any,
   galleryStorage: { listByCharacterId: (id: string) => Promise<any[]> },
 ) {
+  const extensions = parseCharacterDataRecord(data?.extensions);
+  const characterSheetImageId =
+    typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
+  const portableExtensions = { ...extensions };
+  delete portableExtensions.characterSheetImageId;
+  const portableData = { ...data, extensions: portableExtensions };
   const [avatar, sprites, gallery] = await Promise.all([
     readAvatarDataUrl(char.avatarPath),
     readSpritesForId(char.id),
-    readGalleryForCharacter(char.id, galleryStorage),
+    readGalleryForCharacter(char.id, galleryStorage, characterSheetImageId),
   ]);
   return {
     type: "marinara_character",
@@ -550,7 +558,7 @@ async function buildNativeCharacterEnvelope(
     data: {
       spec: "chara_card_v2",
       spec_version: "2.0",
-      data,
+      data: portableData,
       ...(avatar ? { avatar } : {}),
       ...(sprites.length > 0 ? { sprites } : {}),
       ...(gallery.length > 0 ? { gallery } : {}),
@@ -564,10 +572,13 @@ async function buildNativeCharacterEnvelope(
 }
 
 function buildCompatibleCharacterExport(data: any) {
+  const extensions = parseCharacterDataRecord(data?.extensions);
+  delete extensions.characterSheetImageId;
+  extensions.useCharacterSheetAsReference = false;
   return {
     spec: "chara_card_v2",
     spec_version: "2.0",
-    data,
+    data: { ...data, extensions },
   };
 }
 
@@ -865,8 +876,25 @@ export async function charactersRoutes(app: FastifyInstance) {
     const versionSource = typeof body.versionSource === "string" ? body.versionSource : undefined;
     const versionReason = typeof body.versionReason === "string" ? body.versionReason : undefined;
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
+    let characterDataUpdate = update.data ?? {};
+    const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
+    if (Object.hasOwn(extensions, "characterSheetImageId")) {
+      const selectedImageId =
+        typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
+      const selectedImage = selectedImageId ? await characterGallery.getById(selectedImageId) : null;
+      if (!selectedImage || selectedImage.characterId !== req.params.id) {
+        characterDataUpdate = {
+          ...characterDataUpdate,
+          extensions: {
+            ...extensions,
+            characterSheetImageId: null,
+            useCharacterSheetAsReference: false,
+          },
+        };
+      }
+    }
     return enqueueUpdate(characterUpdateQueues, req.params.id, () =>
-      storage.update(req.params.id, update.data ?? {}, avatarPath, {
+      storage.update(req.params.id, characterDataUpdate, avatarPath, {
         comment,
         versionSource,
         versionReason,
@@ -1394,6 +1422,23 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     await characterGallery.remove(imageId);
+    const character = await storage.getById(id);
+    if (character) {
+      const characterData = parseCharacterDataRecord(character.data);
+      const extensions = parseCharacterDataRecord(characterData.extensions);
+      if (extensions.characterSheetImageId === imageId) {
+        await enqueueUpdate(characterUpdateQueues, id, () =>
+          storage.update(
+            id,
+            {
+              extensions: { characterSheetImageId: null, useCharacterSheetAsReference: false },
+            } as Partial<CharacterData>,
+            undefined,
+            { skipVersionSnapshot: true, mergeExtensions: true },
+          ),
+        );
+      }
+    }
     await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     return { success: true };
   });

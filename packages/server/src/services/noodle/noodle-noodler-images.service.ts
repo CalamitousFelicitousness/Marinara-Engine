@@ -13,6 +13,7 @@ import { compileImagePrompt } from "../image/image-prompt-compiler.js";
 import { resolveImagePromptReviewSize } from "../image/image-prompt-review.js";
 import { resolveIllustratorCharacterReferences } from "../image/illustrator-references.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
 import { createPromptOverridesStorage } from "../storage/prompt-overrides.storage.js";
 import { loadPrompt, NOODLE_IMAGE_POST } from "../prompt-overrides/index.js";
@@ -93,6 +94,7 @@ export async function generateNoodlerPostImage(input: {
       if (input.settings.imageGenerationIncludeDescriptions || input.settings.imageGenerationUseAvatarReferences) {
         const referenceResolution = await resolveIllustratorCharacterReferences({
           charactersStore: input.characters,
+          characterGallery: createCharacterGalleryStorage(input.db),
           chatCharacters: [
             {
               id: row.id,

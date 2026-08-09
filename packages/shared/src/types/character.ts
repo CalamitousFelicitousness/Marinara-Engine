@@ -69,6 +69,10 @@ export interface CharacterExtensions {
   conversationImageInstructions?: string;
   /** Marinara Engine: also apply conversationImageInstructions to this character's Noodle images. */
   applyConversationImageInstructionsToNoodle?: boolean;
+  /** Marinara Engine: gallery image selected as this character's optional visual reference sheet. */
+  characterSheetImageId?: string | null;
+  /** Marinara Engine: prefer the selected character sheet over the avatar for image references. */
+  useCharacterSheetAsReference?: boolean;
   [key: string]: unknown;
 }
 

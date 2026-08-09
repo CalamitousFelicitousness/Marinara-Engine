@@ -2611,6 +2611,93 @@ test("Character and Persona avatar actions stay separated and visually balanced"
   }
 });
 
+test("Character sheets persist an explicit reference choice and fall back safely", async ({ page, request }) => {
+  const suffix = Date.now().toString(36);
+  const characterName = `Reference Sheet ${suffix}`;
+  const characterResponse = await request.post("/api/characters", {
+    data: { data: { name: characterName } },
+  });
+  expect(characterResponse.ok()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string; data: string };
+  let duplicateId: string | null = null;
+
+  try {
+    const uploadResponse = await request.post(`/api/characters/${character.id}/gallery/upload`, {
+      multipart: {
+        file: {
+          name: "reference-sheet.gif",
+          mimeType: "image/gif",
+          buffer: Buffer.from(TRANSPARENT_GIF_BASE64, "base64"),
+        },
+      },
+    });
+    expect(uploadResponse.ok()).toBeTruthy();
+    const sheet = (await uploadResponse.json()) as { id: string };
+
+    const currentResponse = await request.get(`/api/characters/${character.id}`);
+    expect(currentResponse.ok()).toBeTruthy();
+    const current = (await currentResponse.json()) as { data: string };
+    const currentData = JSON.parse(current.data) as Record<string, unknown>;
+    const currentExtensions = (currentData.extensions ?? {}) as Record<string, unknown>;
+    const updateResponse = await request.patch(`/api/characters/${character.id}`, {
+      data: {
+        data: {
+          ...currentData,
+          extensions: {
+            ...currentExtensions,
+            characterSheetImageId: sheet.id,
+            useCharacterSheetAsReference: true,
+          },
+        },
+      },
+    });
+    expect(updateResponse.ok()).toBeTruthy();
+
+    await page.goto("/");
+    await page.locator('[data-tour="panel-characters"]').click();
+    await page.getByText(characterName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    const editor = page.locator(".mari-editor-shell");
+    await expect(editor).toBeVisible();
+    await editor
+      .getByRole("navigation", { name: "Editor sections" })
+      .getByRole("button", { name: "Character Sheet", exact: true })
+      .click();
+    await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
+    await expect(editor.getByAltText(`${characterName} character sheet`)).toBeVisible();
+    await expect(editor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
+    await expect(editor.getByText(/Character sheet reference is active/u)).toBeVisible();
+
+    const exportResponse = await request.get(`/api/characters/${character.id}/export`);
+    expect(exportResponse.ok()).toBeTruthy();
+    const exported = (await exportResponse.json()) as {
+      data: { data: { extensions?: Record<string, unknown> }; gallery?: Array<Record<string, unknown>> };
+    };
+    expect(exported.data.data.extensions?.characterSheetImageId).toBeUndefined();
+    expect(exported.data.gallery?.some((entry) => entry.isCharacterSheet === true)).toBe(true);
+
+    const duplicateResponse = await request.post(`/api/characters/${character.id}/duplicate`);
+    expect(duplicateResponse.ok()).toBeTruthy();
+    const duplicate = (await duplicateResponse.json()) as { id: string; data: string };
+    duplicateId = duplicate.id;
+    const duplicateExtensions = (JSON.parse(duplicate.data).extensions ?? {}) as Record<string, unknown>;
+    expect(duplicateExtensions.characterSheetImageId).toBeUndefined();
+    expect(duplicateExtensions.useCharacterSheetAsReference).toBe(false);
+
+    const deleteResponse = await request.delete(`/api/characters/${character.id}/gallery/${sheet.id}`);
+    expect(deleteResponse.ok()).toBeTruthy();
+    const afterDeleteResponse = await request.get(`/api/characters/${character.id}`);
+    const afterDelete = (await afterDeleteResponse.json()) as { data: string };
+    const afterDeleteExtensions = (JSON.parse(afterDelete.data).extensions ?? {}) as Record<string, unknown>;
+    expect(afterDeleteExtensions.characterSheetImageId).toBeNull();
+    expect(afterDeleteExtensions.useCharacterSheetAsReference).toBe(false);
+  } finally {
+    await Promise.all([
+      request.delete(`/api/characters/${character.id}`).catch(() => undefined),
+      duplicateId ? request.delete(`/api/characters/${duplicateId}`).catch(() => undefined) : Promise.resolve(),
+    ]);
+  }
+});
+
 test("Matched full-body sprites approve a neutral anchor before using portrait references", async ({
   page,
   request,

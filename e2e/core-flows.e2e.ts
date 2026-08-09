@@ -12613,13 +12613,12 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
     await expect(menu.getByText(label, { exact: true })).toBeVisible();
   }
 
-  const menuStayedMountedForExit = await menu.getByRole("button", { name: "FAQ", exact: true }).evaluate((button) => {
-    button.click();
-    return Boolean(document.querySelector('[data-component="HomeBrowserHub.MobileBookmarksMenu"]'));
-  });
-  expect(menuStayedMountedForExit).toBe(true);
-  await expect(menu).toHaveCount(0);
+  await menu.getByRole("button", { name: "FAQ", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Professor Mari's FAQ" })).toBeVisible();
+  await expect(menu).toBeAttached();
+  await page.waitForTimeout(50);
+  await expect(menu).toBeAttached();
+  await expect(menu).toHaveCount(0);
 });
 
 test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller widgets", async ({ page }, testInfo) => {

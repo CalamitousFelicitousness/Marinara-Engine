@@ -117,7 +117,7 @@ function isOpenAICompatibleProvider(provider: string): boolean {
 }
 
 function usesResponsesEndpointForTestMessage(provider: string, model: string): boolean {
-  if (!isOpenAICompatibleProvider(provider) || provider === "custom" || provider === "arli") return false;
+  if (!isOpenAICompatibleProvider(provider) || provider === "custom") return false;
   const normalized = model.toLowerCase();
   return (
     normalized.startsWith("gpt-5.6") ||

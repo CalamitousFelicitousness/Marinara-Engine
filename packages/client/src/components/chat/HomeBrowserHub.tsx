@@ -12,11 +12,12 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Bot,
   ChevronLeft,
   ChevronRight,
@@ -25,17 +26,28 @@ import {
   EyeOff,
   ExternalLink,
   GripVertical,
+  Heart,
   LibraryBig,
   MessageCircle,
+  NotebookPen,
   PackagePlus,
   RefreshCw,
   Search,
+  Sparkles,
   Star,
+  Trash2,
   X,
 } from "lucide-react";
-import { APP_VERSION, type AchievementEvent } from "@marinara-engine/shared";
+import {
+  APP_VERSION,
+  HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
+  type AchievementEvent,
+  type HomeCustomWidget,
+  type HomeCustomWidgetCatalog,
+} from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import { useAgentConfigs } from "../../hooks/use-agents";
+import { useChats } from "../../hooks/use-chats";
 import { useCharacters, usePersonas } from "../../hooks/use-characters";
 import {
   selectHomeBrowserPackages,
@@ -46,8 +58,11 @@ import { useLorebooks } from "../../hooks/use-lorebooks";
 import { usePresets } from "../../hooks/use-presets";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { achievementKeys, trackAchievementEvent } from "../../hooks/use-achievements";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
+import { showConfirmDialog } from "../../lib/app-dialogs";
+import { HOME_CHAT_MODE_ACCENTS } from "../../lib/home-chat-mode-style";
 import { parseCharacterDisplayData } from "../../lib/character-display";
+import { resolveCapabilityPackageDisplay } from "../../lib/capability-package-localization";
 import {
   resolveProfessorMariNavigation,
   type ProfessorMariBrowserTab,
@@ -56,6 +71,7 @@ import {
 } from "../../lib/professor-mari-navigation";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
+import { useChatStore } from "../../stores/chat.store";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { Modal } from "../ui/Modal";
 import { HomeAchievements } from "./HomeAchievements";
@@ -73,6 +89,24 @@ const MARI_ASSISTANT_MAP = "/sprites/mari/generated/professor-mari-assistant-map
 const MARI_ASSISTANT_SHRUG = "/sprites/mari/generated/professor-mari-assistant-shrug.png";
 const MARI_ASSISTANT_DRAG_SHEET = "/sprites/mari/generated/professor-mari-assistant-drag-sheet-v3.png";
 const HOME_BROWSER_PANEL_ID = "marinara-home-browser-panel";
+const MARINARA_EFFECTS_PAUSED_EVENT = "marinara:effects-paused";
+
+function readMarinaraEffectsPaused() {
+  return typeof document !== "undefined" && document.documentElement.dataset.marinaraEffectsPaused === "true";
+}
+
+function useMarinaraEffectsPaused() {
+  const [paused, setPaused] = useState(readMarinaraEffectsPaused);
+  useEffect(() => {
+    const sync = (event: Event) => {
+      const detail = (event as CustomEvent<{ paused?: boolean }>).detail;
+      setPaused(typeof detail?.paused === "boolean" ? detail.paused : readMarinaraEffectsPaused());
+    };
+    window.addEventListener(MARINARA_EFFECTS_PAUSED_EVENT, sync);
+    return () => window.removeEventListener(MARINARA_EFFECTS_PAUSED_EVENT, sync);
+  }, []);
+  return paused;
+}
 
 function homeBrowserTabId(tabId: string) {
   return `marinara-home-tab-${tabId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -90,6 +124,7 @@ const HOME_WIDGET_ORDER_STORAGE_KEY = "marinara:home:widget-order:v1";
 const HOME_WIDGET_LAYOUT_STORAGE_KEY = "marinara:home:widget-layout:v2";
 const HOME_WIDGET_VISIBILITY_STORAGE_KEY = "marinara:home:widget-visibility:v2";
 const LEGACY_HOME_WIDGET_VISIBILITY_STORAGE_KEY = "marinara:home:widget-visibility:v1";
+const HOME_CUSTOM_WIDGET_KNOWN_STORAGE_KEY = "marinara:home:custom-widget-known:v1";
 const HOME_WIDGET_IDS = [
   "professor",
   "whats-new",
@@ -101,7 +136,15 @@ const HOME_WIDGET_IDS = [
   "clock",
   "achievements",
 ] as const;
-type HomeWidgetId = (typeof HOME_WIDGET_IDS)[number];
+type BuiltInHomeWidgetId = (typeof HOME_WIDGET_IDS)[number];
+type HomeWidgetId = BuiltInHomeWidgetId | `custom:${string}`;
+
+function isHomeWidgetId(value: unknown): value is HomeWidgetId {
+  return (
+    typeof value === "string" &&
+    (HOME_WIDGET_IDS.includes(value as BuiltInHomeWidgetId) || /^custom:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))
+  );
+}
 
 type ProfessorAssistantPosition = { x: number; y: number };
 
@@ -249,19 +292,19 @@ const DEFAULT_HOME_WIDGET_ORDER = [
   "character",
   "clock",
   "achievements",
-] as const satisfies readonly HomeWidgetId[];
+] as const satisfies readonly BuiltInHomeWidgetId[];
 const DEFAULT_VISIBLE_HOME_WIDGETS = [
   "professor",
   "whats-new",
   "recent",
   "learn",
   "community",
-] as const satisfies readonly HomeWidgetId[];
-const NEW_DEFAULT_HOME_WIDGET_IDS: readonly HomeWidgetId[] = ["community", "clock"];
+] as const satisfies readonly BuiltInHomeWidgetId[];
+const NEW_DEFAULT_HOME_WIDGET_IDS: readonly BuiltInHomeWidgetId[] = ["community", "clock"];
 type HomeGridColumns = 1 | 2 | 3 | 4;
 type HomeWidgetSlot = HomeWidgetId | null;
 type HomeWidgetLayouts = Record<HomeGridColumns, HomeWidgetSlot[]>;
-const HOME_WIDGET_LABEL_KEYS: Record<HomeWidgetId, string> = {
+const HOME_WIDGET_LABEL_KEYS: Record<BuiltInHomeWidgetId, string> = {
   professor: "home.widgets.professor",
   recent: "home.widgets.recent",
   "whats-new": "home.widgets.whatsNew",
@@ -281,6 +324,20 @@ const HOME_MODULE_ACCENTS = {
   pink: "oklch(0.73 0.21 345)",
   violet: "oklch(0.72 0.17 303)",
 } as const;
+
+const HOME_CUSTOM_WIDGET_ICONS = {
+  sparkles: Sparkles,
+  note: NotebookPen,
+  heart: Heart,
+  star: Star,
+  book: BookOpen,
+  compass: Compass,
+} as const;
+
+function customHomeWidgetId(id: string): HomeWidgetId {
+  return `custom:${id}`;
+}
+
 const HOME_STARS = Array.from({ length: 42 }, (_, index) => ({
   x: (index * 37 + 7) % 100,
   y: (index * 53 + 11) % 100,
@@ -329,8 +386,7 @@ function readHomeWidgetOrder(): HomeWidgetId[] {
     const parsed = JSON.parse(window.localStorage.getItem(HOME_WIDGET_ORDER_STORAGE_KEY) ?? "null") as unknown;
     if (!Array.isArray(parsed)) return [...DEFAULT_HOME_WIDGET_ORDER];
     const valid = parsed.filter(
-      (value, index): value is HomeWidgetId =>
-        DEFAULT_HOME_WIDGET_ORDER.includes(value as HomeWidgetId) && parsed.indexOf(value) === index,
+      (value, index): value is HomeWidgetId => isHomeWidgetId(value) && parsed.indexOf(value) === index,
     );
     return valid.length > 0 ? valid : [...DEFAULT_HOME_WIDGET_ORDER];
   } catch {
@@ -345,7 +401,7 @@ function readHomeWidgetVisibility(): HomeWidgetId[] {
     if (current !== null) {
       const parsed = JSON.parse(current) as unknown;
       if (!Array.isArray(parsed)) return [...DEFAULT_VISIBLE_HOME_WIDGETS];
-      return HOME_WIDGET_IDS.filter((id) => parsed.includes(id));
+      return parsed.filter((id, index): id is HomeWidgetId => isHomeWidgetId(id) && parsed.indexOf(id) === index);
     }
     const legacy = JSON.parse(
       window.localStorage.getItem(LEGACY_HOME_WIDGET_VISIBILITY_STORAGE_KEY) ?? "null",
@@ -382,17 +438,12 @@ function normalizeHomeWidgetSlots(
       slots.push(null);
       continue;
     }
-    if (
-      !HOME_WIDGET_IDS.includes(item as HomeWidgetId) ||
-      !visible.has(item as HomeWidgetId) ||
-      seen.has(item as HomeWidgetId)
-    )
-      continue;
+    if (!isHomeWidgetId(item) || !visible.has(item as HomeWidgetId) || seen.has(item as HomeWidgetId)) continue;
     seen.add(item as HomeWidgetId);
     slots.push(item as HomeWidgetId);
   }
 
-  for (const id of [...fallbackOrder, ...DEFAULT_HOME_WIDGET_ORDER]) {
+  for (const id of [...fallbackOrder, ...DEFAULT_HOME_WIDGET_ORDER, ...visibleWidgets] as HomeWidgetId[]) {
     if (!visible.has(id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);
@@ -764,6 +815,7 @@ function FloatingProfessorMari({
   onNavigate,
   onOpenProfessor,
   onOpenDocumentation,
+  onMeaningfulDrag,
 }: {
   pageActive: boolean;
   enabled: boolean;
@@ -772,9 +824,11 @@ function FloatingProfessorMari({
   onNavigate: (target: ProfessorMariNavigationTarget) => void;
   onOpenProfessor: () => void;
   onOpenDocumentation: () => void;
+  onMeaningfulDrag: () => void;
 }) {
   const { t } = useTranslation();
   const reduceMotion = useReducedAmbientEffects();
+  const effectsPaused = useMarinaraEffectsPaused();
   const [visible, setVisible] = useState(
     () => pageActive && enabled && professorAssistantHasAppearedForRuntime && !professorAssistantMinimizedForRuntime,
   );
@@ -789,6 +843,9 @@ function FloatingProfessorMari({
   const arrivalCompleteTimerRef = useRef<number | null>(null);
   const navigationTimerRef = useRef<number | null>(null);
   const resetTimerRef = useRef<number | null>(null);
+  const pendingNavigationTargetRef = useRef<ProfessorMariNavigationTarget | null>(null);
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
   const focusFrameRef = useRef<number | null>(null);
   const overlayRef = useRef<HTMLElement | null>(null);
   const spriteRef = useRef<HTMLDivElement | null>(null);
@@ -803,6 +860,9 @@ function FloatingProfessorMari({
     pointerId: number;
     offsetX: number;
     offsetY: number;
+    startClientX: number;
+    startClientY: number;
+    meaningful: boolean;
   } | null>(null);
   const [desktopDragEnabled, setDesktopDragEnabled] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(min-width: 640px) and (pointer: fine)").matches,
@@ -825,6 +885,7 @@ function FloatingProfessorMari({
 
   const returnToIdle = useCallback(() => {
     clearTimers();
+    pendingNavigationTargetRef.current = null;
     setMode("prompt");
     setPhase("idle");
     setQuery("");
@@ -890,9 +951,8 @@ function FloatingProfessorMari({
     const maxY = Math.max(minY, boundaryBottom - spriteBounds.height);
     let normalized = normalizedPositionRef.current;
     if (!normalized) {
-      const defaultX = Math.max(minX, boundaryRight - spriteBounds.width - bubbleBounds.width + 12);
       normalized = {
-        x: maxX === minX ? 0 : (Math.min(maxX, defaultX) - minX) / (maxX - minX),
+        x: 0,
         y: 1,
       };
       normalizedPositionRef.current = normalized;
@@ -947,6 +1007,22 @@ function FloatingProfessorMari({
   );
 
   useEffect(() => {
+    if (effectsPaused) {
+      clearTimers();
+      if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
+      if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current);
+      const activeDrag = dragRef.current;
+      if (activeDrag && spriteRef.current?.hasPointerCapture(activeDrag.pointerId)) {
+        spriteRef.current.releasePointerCapture(activeDrag.pointerId);
+      }
+      focusFrameRef.current = null;
+      dragMoveFrameRef.current = null;
+      pendingDragPositionRef.current = null;
+      dragRef.current = null;
+      document.documentElement.classList.remove("mari-home-professor-drag-active");
+      setDragging(false);
+      return;
+    }
     if (!pageActive || !enabled) {
       clearTimers();
       if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current);
@@ -965,8 +1041,13 @@ function FloatingProfessorMari({
     }
     if (professorAssistantHasAppearedForRuntime) {
       setMinimized(false);
-      setPhase("idle");
       setVisible(true);
+      if (phase === "arriving" && !reduceMotion) {
+        arrivalCompleteTimerRef.current = window.setTimeout(() => {
+          arrivalCompleteTimerRef.current = null;
+          setPhase("idle");
+        }, 1_600);
+      }
       return;
     }
     appearanceTimerRef.current = window.setTimeout(
@@ -985,7 +1066,28 @@ function FloatingProfessorMari({
       reduceMotion ? 0 : 1_150,
     );
     return clearTimers;
-  }, [clearTimers, enabled, pageActive, reduceMotion]);
+  }, [clearTimers, effectsPaused, enabled, pageActive, phase, reduceMotion]);
+
+  useEffect(() => {
+    if (effectsPaused || !pageActive || !enabled || mode !== "success" || phase !== "map") return;
+    const target = pendingNavigationTargetRef.current;
+    if (target) {
+      navigationTimerRef.current = window.setTimeout(() => {
+        navigationTimerRef.current = null;
+        pendingNavigationTargetRef.current = null;
+        onNavigateRef.current(target);
+        resetTimerRef.current = window.setTimeout(returnToIdle, reduceMotion ? 1_250 : 1_400);
+      }, 650);
+    } else {
+      resetTimerRef.current = window.setTimeout(returnToIdle, reduceMotion ? 1_250 : 1_400);
+    }
+    return () => {
+      if (navigationTimerRef.current !== null) window.clearTimeout(navigationTimerRef.current);
+      if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+      navigationTimerRef.current = null;
+      resetTimerRef.current = null;
+    };
+  }, [effectsPaused, enabled, mode, pageActive, phase, reduceMotion, returnToIdle]);
 
   const applyProfessorDragPosition = useCallback((position: ProfessorAssistantPosition) => {
     const sprite = spriteRef.current;
@@ -1000,11 +1102,12 @@ function FloatingProfessorMari({
     bubble.dataset.tailSide = placement.bubbleOnLeft ? "right" : "left";
   }, []);
 
-  const beginProfessorDrag = (event: ReactPointerEvent<HTMLSpanElement>) => {
+  const beginProfessorDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (!desktopDragEnabled || !dragSpriteReady || !dragLayoutRef.current || !positionRef.current) return;
     event.preventDefault();
     event.stopPropagation();
-    event.currentTarget.focus({ preventScroll: true });
+    if (event.target instanceof HTMLElement)
+      event.target.closest<HTMLElement>("[role=button]")?.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
     const spriteBounds = spriteRef.current?.getBoundingClientRect();
     if (!spriteBounds) return;
@@ -1012,6 +1115,9 @@ function FloatingProfessorMari({
       pointerId: event.pointerId,
       offsetX: spriteBounds.width * PROFESSOR_ASSISTANT_HOOD_GRAB_X,
       offsetY: spriteBounds.height * PROFESSOR_ASSISTANT_HOOD_GRAB_Y,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      meaningful: false,
     };
     if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current);
     dragMoveFrameRef.current = null;
@@ -1021,12 +1127,15 @@ function FloatingProfessorMari({
     flushSync(() => setDragging(true));
   };
 
-  const moveProfessorDrag = (event: ReactPointerEvent<HTMLSpanElement>) => {
+  const moveProfessorDrag = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     const layout = dragLayoutRef.current;
     const overlay = overlayRef.current;
     if (!drag || !layout || !overlay || drag.pointerId !== event.pointerId) return;
     event.preventDefault();
+    if (!drag.meaningful && Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) >= 8) {
+      drag.meaningful = true;
+    }
     const overlayBounds = overlay.getBoundingClientRect();
     const nextPosition = {
       x: Math.max(layout.minX, Math.min(layout.maxX, event.clientX - overlayBounds.left - drag.offsetX)),
@@ -1043,7 +1152,7 @@ function FloatingProfessorMari({
     });
   };
 
-  const finishProfessorDrag = (event: ReactPointerEvent<HTMLSpanElement>) => {
+  const finishProfessorDrag = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     const layout = dragLayoutRef.current;
     const position = positionRef.current;
@@ -1057,6 +1166,7 @@ function FloatingProfessorMari({
       event.currentTarget.releasePointerCapture(event.pointerId);
     document.documentElement.classList.remove("mari-home-professor-drag-active");
     setDragging(false);
+    if (drag.meaningful) onMeaningfulDrag();
     if (!layout || !position) return;
     setDragPosition(position);
     const normalized = {
@@ -1150,18 +1260,21 @@ function FloatingProfessorMari({
   }
   const minimize = () => {
     clearTimers();
+    pendingNavigationTargetRef.current = null;
     professorAssistantMinimizedForRuntime = true;
     setMinimized(true);
     setVisible(false);
   };
   const openInput = () => {
     clearTimers();
+    pendingNavigationTargetRef.current = null;
     setMode("input");
     setPhase("idle");
     queueInputFocus();
   };
   const returnToSearch = () => {
     clearTimers();
+    pendingNavigationTargetRef.current = null;
     setMode("input");
     setPhase("idle");
     setQuery("");
@@ -1173,13 +1286,9 @@ function FloatingProfessorMari({
     clearTimers();
     const target = onResolve(query);
     if (target) {
+      pendingNavigationTargetRef.current = target;
       setMode("success");
       setPhase("map");
-      navigationTimerRef.current = window.setTimeout(() => {
-        navigationTimerRef.current = null;
-        resetTimerRef.current = window.setTimeout(returnToIdle, reduceMotion ? 1_250 : 1_400);
-        onNavigate(target);
-      }, 650);
       return;
     }
     setMode("failure");
@@ -1201,10 +1310,16 @@ function FloatingProfessorMari({
         ref={spriteRef}
         className={cn(
           "mari-home-professor-popup__sprite group relative z-[2] h-[11.5rem] w-[7.65rem] shrink-0 sm:h-[14rem] sm:w-[9.3rem]",
-          desktopDragEnabled && "pointer-events-auto absolute touch-none select-none",
+          desktopDragEnabled &&
+            "pointer-events-auto absolute cursor-grab touch-none select-none active:cursor-grabbing",
         )}
         style={desktopSpriteStyle}
         data-component="HomeBrowserHub.ProfessorAssistantSprite"
+        onPointerDown={beginProfessorDrag}
+        onPointerMove={moveProfessorDrag}
+        onPointerUp={finishProfessorDrag}
+        onPointerCancel={finishProfessorDrag}
+        onLostPointerCapture={finishProfessorDrag}
       >
         {desktopDragEnabled && dragSpriteReady ? (
           <span
@@ -1215,19 +1330,10 @@ function FloatingProfessorMari({
             title={t("home.assistant.drag")}
             data-component="HomeBrowserHub.ProfessorDragHandle"
             className={cn(
-              "pointer-events-auto absolute z-[8] flex h-7 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center text-[var(--muted-foreground)] opacity-0 drop-shadow-[0_2px_4px_var(--background)] transition-[opacity,color,transform] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:text-[var(--marinara-app-accent-solid)] focus-visible:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100",
+              "pointer-events-auto absolute left-1/2 top-[-0.45rem] z-[8] flex h-7 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center text-[var(--muted-foreground)] opacity-0 drop-shadow-[0_2px_4px_var(--background)] transition-[opacity,color,transform] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:text-[var(--marinara-app-accent-solid)] focus-visible:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100",
               dragging && "!cursor-grabbing !text-[var(--marinara-app-accent-solid)] !opacity-100",
             )}
-            style={{
-              left: `${PROFESSOR_ASSISTANT_HOOD_GRAB_X * 100}%`,
-              top: `${PROFESSOR_ASSISTANT_HOOD_GRAB_Y * 100}%`,
-            }}
             onKeyDown={nudgeProfessor}
-            onPointerDown={beginProfessorDrag}
-            onPointerMove={moveProfessorDrag}
-            onPointerUp={finishProfessorDrag}
-            onPointerCancel={finishProfessorDrag}
-            onLostPointerCapture={finishProfessorDrag}
           >
             <GripVertical size="0.9rem" />
           </span>
@@ -1296,9 +1402,7 @@ function FloatingProfessorMari({
         style={desktopBubblePlacement?.style}
         data-component="HomeBrowserHub.ProfessorAssistantBubble"
         data-tour="home-navigation"
-        data-tail-side={
-          desktopBubblePlacement ? (desktopBubblePlacement.bubbleOnLeft ? "right" : "left") : undefined
-        }
+        data-tail-side={desktopBubblePlacement ? (desktopBubblePlacement.bubbleOnLeft ? "right" : "left") : undefined}
       >
         <span
           className="mari-home-professor-popup__bubble-tail"
@@ -1406,8 +1510,39 @@ export function HomeBrowserHub({
   onProfessorChatExitComplete,
   onOpenCredits,
 }: HomeBrowserHubProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const customWidgetsQuery = useQuery({
+    queryKey: ["home-custom-widgets"],
+    queryFn: () => api.get<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`),
+  });
+  const customWidgets = useMemo(() => customWidgetsQuery.data?.widgets ?? [], [customWidgetsQuery.data?.widgets]);
+  const customWidgetIds = useMemo(() => customWidgets.map((widget) => customHomeWidgetId(widget.id)), [customWidgets]);
+  const customWidgetsById = useMemo(
+    () => new Map(customWidgets.map((widget) => [customHomeWidgetId(widget.id), widget])),
+    [customWidgets],
+  );
+  const deleteCustomWidgetMutation = useMutation({
+    mutationFn: async (widgetId: string) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const catalog = await api.get<HomeCustomWidgetCatalog>(
+          `/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`,
+        );
+        if (!catalog.widgets.some((widget) => widget.id === widgetId)) return catalog;
+        try {
+          return await api.put<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, {
+            ...catalog,
+            widgets: catalog.widgets.filter((widget) => widget.id !== widgetId),
+          });
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 409 || attempt > 0) throw error;
+        }
+      }
+      throw new Error("Home widget catalog changed repeatedly; try again.");
+    },
+    onSuccess: (catalog) => queryClient.setQueryData(["home-custom-widgets"], catalog),
+    onError: () => queryClient.invalidateQueries({ queryKey: ["home-custom-widgets"] }),
+  });
   const installed = useInstalledCapabilityPackages();
   const catalog = useCapabilityCatalog();
   const characters = useCharacters();
@@ -1415,6 +1550,7 @@ export function HomeBrowserHub({
   const presets = usePresets();
   const lorebooks = useLorebooks(undefined, { includeHidden: true });
   const agents = useAgentConfigs();
+  const chats = useChats();
   const reduceMotion = useReducedAmbientEffects();
   const debugMode = useUIStore((state) => state.debugMode);
   const reviewImagePromptsBeforeSend = useUIStore((state) => state.reviewImagePromptsBeforeSend);
@@ -1423,13 +1559,20 @@ export function HomeBrowserHub({
   const professorMariNavigationEnabled = useUIStore((state) => state.professorMariNavigationEnabled);
   const hasCompletedOnboarding = useUIStore((state) => state.hasCompletedOnboarding);
   const browserPackages = useMemo(() => selectHomeBrowserPackages(installed.data), [installed.data]);
+  const localizedBrowserPackages = useMemo(
+    () =>
+      browserPackages.map((item) => ({
+        item,
+        display: resolveCapabilityPackageDisplay(item.manifest, i18n.resolvedLanguage ?? i18n.language),
+      })),
+    [browserPackages, i18n.language, i18n.resolvedLanguage],
+  );
   const noodleBrowserPackage = useMemo(
     () => browserPackages.find((item) => item.id === "noodle") ?? null,
     [browserPackages],
   );
   const [activeTab, setActiveTab] = useState("home");
   const [seenNoodleRefreshMarker, setSeenNoodleRefreshMarker] = useState(readSeenNoodleRefreshMarker);
-  const [browserRevision, setBrowserRevision] = useState(0);
   const [faqOpen, setFaqOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [widgetManagerOpen, setWidgetManagerOpen] = useState(false);
@@ -1466,14 +1609,37 @@ export function HomeBrowserHub({
   });
   const latestNoodleRefreshMarker = noodleRefreshIndicator.data?.marker ?? null;
   const noodleRefreshUnread = Boolean(
-    latestNoodleRefreshMarker &&
-      latestNoodleRefreshMarker !== seenNoodleRefreshMarker &&
-      activeTab !== "noodle",
+    latestNoodleRefreshMarker && latestNoodleRefreshMarker !== seenNoodleRefreshMarker && activeTab !== "noodle",
   );
   const activeWidgetSlots = widgetLayouts[gridColumns];
-  const availableWidgetIds: readonly HomeWidgetId[] = achievementsEnabled
-    ? HOME_WIDGET_IDS
-    : HOME_WIDGET_IDS.filter((id) => id !== "achievements");
+  const allWidgetIds = useMemo<HomeWidgetId[]>(() => [...HOME_WIDGET_IDS, ...customWidgetIds], [customWidgetIds]);
+  const availableWidgetIds = useMemo<HomeWidgetId[]>(
+    () => (achievementsEnabled ? allWidgetIds : allWidgetIds.filter((id) => id !== "achievements")),
+    [achievementsEnabled, allWidgetIds],
+  );
+
+  useEffect(() => {
+    if (!customWidgetsQuery.isSuccess) return;
+    let knownIds: string[] = [];
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(HOME_CUSTOM_WIDGET_KNOWN_STORAGE_KEY) ?? "[]") as unknown;
+      if (Array.isArray(parsed)) knownIds = parsed.filter((id): id is string => typeof id === "string");
+    } catch {
+      /* A malformed marker simply makes the current catalog visible once. */
+    }
+    const catalogIds = customWidgets.map((widget) => widget.id);
+    const catalogWidgetIds = new Set(catalogIds.map(customHomeWidgetId));
+    const newlyCreated = catalogIds.filter((id) => !knownIds.includes(id)).map(customHomeWidgetId);
+    setVisibleWidgets((current) => [
+      ...current.filter((id) => !id.startsWith("custom:") || catalogWidgetIds.has(id)),
+      ...newlyCreated.filter((id) => !current.includes(id)),
+    ]);
+    try {
+      window.localStorage.setItem(HOME_CUSTOM_WIDGET_KNOWN_STORAGE_KEY, JSON.stringify(catalogIds));
+    } catch {
+      /* Local storage is optional; the current session still updates. */
+    }
+  }, [customWidgets, customWidgetsQuery.isSuccess]);
 
   useEffect(() => {
     if (!achievementsEnabled) setAchievementsOpen(false);
@@ -1508,7 +1674,7 @@ export function HomeBrowserHub({
         ? (Number.parseFloat(pagePadding.paddingTop) || 0) + (Number.parseFloat(pagePadding.paddingBottom) || 0)
         : 0;
       const pageHeight = content.clientHeight - hero.getBoundingClientRect().height - paddingBlock - 2;
-      const referenceRowCount = Math.max(1, Math.ceil(homeWidgetSpotCount(columns, HOME_WIDGET_IDS) / columns));
+      const referenceRowCount = Math.max(1, Math.ceil(homeWidgetSpotCount(columns, allWidgetIds) / columns));
       const referenceRowHeight = Math.min(
         HOME_WIDGET_MAX_ROW_HEIGHT,
         Math.max(HOME_WIDGET_MIN_ROW_HEIGHT, (pageHeight - rowGap * (referenceRowCount - 1)) / referenceRowCount),
@@ -1526,7 +1692,7 @@ export function HomeBrowserHub({
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [activeTab, visibleWidgets]);
+  }, [activeTab, allWidgetIds, visibleWidgets]);
 
   useEffect(
     () => () => {
@@ -1593,6 +1759,9 @@ export function HomeBrowserHub({
   );
   const activeRecommendation =
     recommendations.length > 0 ? recommendations[discoveryIndex % recommendations.length] : null;
+  const activeRecommendationDisplay = activeRecommendation
+    ? resolveCapabilityPackageDisplay(activeRecommendation.manifest, i18n.resolvedLanguage ?? i18n.language)
+    : null;
 
   const discoveryRotationActive =
     pageActive && activeTab === "home" && visibleWidgets.includes("discovery") && recommendations.length >= 2;
@@ -1725,6 +1894,17 @@ export function HomeBrowserHub({
     });
     animateHomeWidgetReflow(previousRects);
   };
+  const deleteCustomWidget = async (widget: HomeCustomWidget) => {
+    const confirmed = await showConfirmDialog({
+      title: t("home.widgets.deleteTitle", { widget: widget.title }),
+      message: t("home.widgets.deleteDescription"),
+      confirmLabel: t("home.widgets.delete"),
+      cancelLabel: t("chat.delete.dialog.cancel"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+    await deleteCustomWidgetMutation.mutateAsync(widget.id);
+  };
   const beginPointerWidgetDrag = (id: HomeWidgetId, event: ReactPointerEvent<HTMLSpanElement>) => {
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
@@ -1809,6 +1989,10 @@ export function HomeBrowserHub({
     lastDragTargetRef.current = null;
     document.documentElement.classList.remove("mari-home-widget-drag-active");
   };
+  const widgetLabel = (id: HomeWidgetId) => {
+    const customWidget = customWidgetsById.get(id);
+    return customWidget?.title ?? t(HOME_WIDGET_LABEL_KEYS[id as BuiltInHomeWidgetId]);
+  };
   const widgetFrameProps = (id: HomeWidgetId) => ({
     id,
     order: activeWidgetSlots.indexOf(id),
@@ -1818,12 +2002,8 @@ export function HomeBrowserHub({
     onPointerDragMove: movePointerWidgetDrag,
     onPointerDragEnd: endPointerWidgetDrag,
     onKeyboardMove: nudgeWidget,
-    dragLabel: t("home.widgets.drag", { widget: t(HOME_WIDGET_LABEL_KEYS[id]) }),
+    dragLabel: t("home.widgets.drag", { widget: widgetLabel(id) }),
   });
-  const refreshActivePage = () => {
-    setBrowserRevision((current) => current + 1);
-    if (activeTab === "home") void queryClient.invalidateQueries({ queryKey: ["home-feed"] });
-  };
   const trackHomeAction = (event: AchievementEvent) => {
     void trackAchievementEvent(event, { keepalive: true })
       .catch(() => undefined)
@@ -1831,12 +2011,12 @@ export function HomeBrowserHub({
   };
   const professorMariBrowserTabs = useMemo<ProfessorMariBrowserTab[]>(
     () =>
-      browserPackages.map((item) => ({
+      localizedBrowserPackages.map(({ item, display }) => ({
         id: item.id,
-        label: item.manifest.contributions?.homeBrowserTab?.label ?? item.manifest.name,
-        aliases: [item.manifest.name],
+        label: display.homeBrowserTab?.label ?? display.name,
+        aliases: [item.manifest.name, display.name],
       })),
-    [browserPackages],
+    [localizedBrowserPackages],
   );
   const professorMariResources = useMemo<ProfessorMariNavigationResource[]>(() => {
     const characterResources = ((characters.data ?? []) as CharacterRow[]).flatMap((row) => {
@@ -1877,6 +2057,12 @@ export function HomeBrowserHub({
     if (target.kind === "chats") {
       ui.closeRightPanel();
       ui.setSidebarOpen(true);
+      return;
+    }
+    if (target.kind === "chat") {
+      ui.closeRightPanel();
+      ui.setSidebarOpen(true);
+      useChatStore.getState().setActiveChatId(target.chatId);
       return;
     }
     if (target.kind === "panel") {
@@ -1925,7 +2111,7 @@ export function HomeBrowserHub({
     selectTab(target.packageId);
   };
   const resolveWithProfessorMari = (query: string) =>
-    resolveProfessorMariNavigation(query, professorMariBrowserTabs, professorMariResources);
+    resolveProfessorMariNavigation(query, professorMariBrowserTabs, professorMariResources, chats.data ?? []);
 
   return (
     <div
@@ -1992,8 +2178,8 @@ export function HomeBrowserHub({
                 <img src="/sprites/mari/Mari_profile.png" alt="" className="h-4 w-4 rounded-sm object-cover" />
                 <span className="min-w-0 truncate">{t("home.browser.professorTab")}</span>
               </button>
-              {browserPackages.map((item) => {
-                const tab = item.manifest.contributions?.homeBrowserTab;
+              {localizedBrowserPackages.map(({ item, display }) => {
+                const tab = display.homeBrowserTab;
                 const hasUnreadRefresh = item.id === "noodle" && noodleRefreshUnread;
                 const activityDescriptionId = `${homeBrowserTabId(item.id)}-activity`;
                 return (
@@ -2015,7 +2201,7 @@ export function HomeBrowserHub({
                     )}
                   >
                     <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
-                    <span className="min-w-0 truncate">{tab?.label ?? item.manifest.name}</span>
+                    <span className="min-w-0 truncate">{tab?.label ?? display.name}</span>
                     {hasUnreadRefresh ? (
                       <span
                         id={activityDescriptionId}
@@ -2054,14 +2240,13 @@ export function HomeBrowserHub({
               >
                 <ArrowRight size="0.9rem" />
               </button>
-              <button
-                type="button"
-                onClick={refreshActivePage}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.76_0.19_52)]"
-                aria-label={t("home.browser.reload")}
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted-foreground)] opacity-70"
+                data-component="HomeBrowserHub.DecorativeRefresh"
               >
                 <RefreshCw size="0.88rem" />
-              </button>
+              </span>
             </div>
             <div
               className="mari-home-browser-address flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--marinara-app-accent-solid)_44%,var(--border))] px-2.5 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_8%,transparent),0_0_18px_-14px_var(--marinara-app-accent-solid)] sm:h-9 sm:px-3"
@@ -2292,7 +2477,7 @@ export function HomeBrowserHub({
         >
           {activeTab !== "home" && activeTab !== "professor" ? (
             <CapabilityElement
-              key={`${activeTab}:${browserRevision}`}
+              key={activeTab}
               packageId={activeTab}
               view="browser"
               className="block h-full min-h-0 w-full"
@@ -2321,7 +2506,6 @@ export function HomeBrowserHub({
             </div>
           ) : (
             <div
-              key={browserRevision}
               className="relative min-h-full overflow-hidden bg-[radial-gradient(circle_at_12%_8%,oklch(0.79_0.16_205/0.14),transparent_27%),radial-gradient(circle_at_87%_12%,oklch(0.73_0.21_345/0.14),transparent_29%),radial-gradient(circle_at_72%_76%,oklch(0.76_0.19_52/0.08),transparent_28%),var(--background)]"
               data-component="HomeBrowserHub.HomePage"
             >
@@ -2332,7 +2516,7 @@ export function HomeBrowserHub({
                   className="mari-home-hero flex min-w-0 flex-col items-center gap-2 px-[clamp(0.35rem,0.8vw,0.9rem)] pb-[clamp(0.7rem,1.1vw,1rem)] pt-[clamp(0.4rem,0.7vw,0.7rem)] text-center"
                   data-tour="home-hub"
                 >
-                  <div className="min-w-0 max-w-2xl">
+                  <div className="min-w-0 max-w-5xl">
                     <div className="flex min-w-0 flex-col items-center">
                       <img
                         src="/logo.png"
@@ -2355,10 +2539,10 @@ export function HomeBrowserHub({
                   <div className="grid w-full max-w-md grid-cols-3 gap-2" aria-label={t("home.shortcuts.label")}>
                     <HomeNewChatLauncher
                       mode="conversation"
-                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,oklch(0.79_0.16_205)_35%,var(--border))] !bg-[color-mix(in_srgb,oklch(0.79_0.16_205)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
+                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,var(--home-chat-mode-accent)_35%,var(--border))] !bg-[color-mix(in_srgb,var(--home-chat-mode-accent)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
                       ariaLabel={t("home.shortcuts.newConversation")}
                     >
-                      <ShortcutIcon tone={HOME_MODULE_ACCENTS.cyan}>
+                      <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.conversation}>
                         <ChatModeIcon mode="conversation" size="1rem" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
@@ -2367,10 +2551,10 @@ export function HomeBrowserHub({
                     </HomeNewChatLauncher>
                     <HomeNewChatLauncher
                       mode="roleplay"
-                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,oklch(0.76_0.19_52)_35%,var(--border))] !bg-[color-mix(in_srgb,oklch(0.76_0.19_52)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
+                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,var(--home-chat-mode-accent)_35%,var(--border))] !bg-[color-mix(in_srgb,var(--home-chat-mode-accent)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
                       ariaLabel={t("home.shortcuts.newRoleplay")}
                     >
-                      <ShortcutIcon tone={HOME_MODULE_ACCENTS.orange}>
+                      <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.roleplay}>
                         <ChatModeIcon mode="roleplay" size="1rem" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
@@ -2379,10 +2563,10 @@ export function HomeBrowserHub({
                     </HomeNewChatLauncher>
                     <HomeNewChatLauncher
                       mode="game"
-                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,oklch(0.73_0.21_345)_35%,var(--border))] !bg-[color-mix(in_srgb,oklch(0.73_0.21_345)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
+                      className="group !h-auto !min-h-11 !w-full !gap-1.5 !border-[color-mix(in_srgb,var(--home-chat-mode-accent)_35%,var(--border))] !bg-[color-mix(in_srgb,var(--home-chat-mode-accent)_7%,var(--card))] !px-2 !py-1 !text-center sm:!min-h-9"
                       ariaLabel={t("home.shortcuts.newGame")}
                     >
-                      <ShortcutIcon tone={HOME_MODULE_ACCENTS.pink}>
+                      <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.game}>
                         <ChatModeIcon mode="game" size="1rem" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
@@ -2404,8 +2588,14 @@ export function HomeBrowserHub({
                     }
                   >
                     <HomeWidgetFrame {...widgetFrameProps("professor")}>
-                      <section className="relative h-full min-h-52 min-w-0 overflow-visible rounded-2xl border border-[color-mix(in_srgb,oklch(0.73_0.21_345)_40%,var(--border))] bg-[color-mix(in_srgb,oklch(0.73_0.21_345)_8%,var(--card))] p-3 shadow-[0_18px_42px_-32px_oklch(0.73_0.21_345/0.7)] sm:p-[clamp(1rem,1.2vw,1.35rem)]">
-                        <div className="relative z-[2] max-w-[70%] sm:max-w-[58%]">
+                      <section
+                        className="mari-home-professor-widget relative grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,40%)] overflow-hidden rounded-2xl border border-[color-mix(in_srgb,oklch(0.73_0.21_345)_40%,var(--border))] bg-[color-mix(in_srgb,oklch(0.73_0.21_345)_8%,var(--card))] p-3 shadow-[0_18px_42px_-32px_oklch(0.73_0.21_345/0.7)] sm:p-[clamp(0.85rem,1vw,1.2rem)]"
+                        data-component="HomeBrowserHub.ProfessorWidget"
+                      >
+                        <div
+                          className="relative z-[2] flex min-h-0 min-w-0 flex-col items-start justify-center"
+                          data-home-professor-content
+                        >
                           <p className="text-[0.625rem] font-extrabold uppercase tracking-[0.16em] text-[oklch(0.73_0.21_345)]">
                             {t("home.professorMari.eyebrow")}
                           </p>
@@ -2413,7 +2603,7 @@ export function HomeBrowserHub({
                             {t("home.shortcuts.professorMari")}
                           </h2>
                           <p
-                            className="mt-1 text-[0.625rem] leading-[1.35] text-[var(--muted-foreground)] sm:mt-2 sm:text-xs sm:leading-relaxed"
+                            className="mt-1 line-clamp-6 min-w-0 text-[clamp(0.56rem,2.4cqw,0.75rem)] leading-[1.3] text-[var(--muted-foreground)] sm:mt-1.5 sm:line-clamp-7"
                             data-home-professor-description
                           >
                             {t("home.professorMari.widgetDescription")}
@@ -2421,17 +2611,20 @@ export function HomeBrowserHub({
                           <button
                             type="button"
                             onClick={openProfessor}
-                            className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg bg-[oklch(0.73_0.21_345)] px-2.5 text-[0.625rem] font-bold text-[oklch(0.98_0.01_345)] shadow-[0_10px_24px_-14px_oklch(0.73_0.21_345)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.79_0.16_205)] motion-reduce:transform-none sm:mt-3 sm:min-h-9 sm:gap-1.5 sm:px-3 sm:text-xs"
+                            className="mt-2 inline-flex min-h-8 max-w-full shrink-0 items-center justify-center gap-1 rounded-lg bg-[oklch(0.73_0.21_345)] px-2 text-center text-[clamp(0.56rem,2.2cqw,0.75rem)] font-bold leading-tight text-[oklch(0.98_0.01_345)] shadow-[0_10px_24px_-14px_oklch(0.73_0.21_345)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.79_0.16_205)] motion-reduce:transform-none sm:gap-1.5 sm:px-2.5"
                             data-home-professor-action
                           >
                             <MessageCircle size="0.8rem" /> {t("home.professorMari.ask")}
                           </button>
                         </div>
                         <div
-                          className="pointer-events-none absolute -right-2 bottom-1 z-[1] w-[43%] max-w-sm sm:-right-3 sm:w-[54%]"
+                          className="pointer-events-none relative z-[1] h-full min-h-0 w-full self-end overflow-hidden"
+                          data-home-professor-art
                           aria-hidden="true"
                         >
-                          <ProfessorMariPixelScene active={false} />
+                          <div className="absolute bottom-0 right-0 w-[clamp(7rem,38cqw,11rem)] max-w-full">
+                            <ProfessorMariPixelScene active={false} />
+                          </div>
                         </div>
                       </section>
                     </HomeWidgetFrame>
@@ -2522,10 +2715,11 @@ export function HomeBrowserHub({
                               </span>
                               <span className="min-w-0">
                                 <span className="block truncate text-sm font-bold text-[var(--foreground)]">
-                                  {activeRecommendation.manifest.name}
+                                  {activeRecommendationDisplay?.name ?? activeRecommendation.manifest.name}
                                 </span>
                                 <span className="mt-0.5 line-clamp-2 text-[0.68rem] leading-relaxed text-[var(--muted-foreground)]">
-                                  {activeRecommendation.manifest.description}
+                                  {activeRecommendationDisplay?.description ??
+                                    activeRecommendation.manifest.description}
                                 </span>
                                 {recommendations.length > 1 ? (
                                   <span className="mt-1.5 block text-[0.58rem] font-bold uppercase tracking-[0.12em] text-[var(--home-module-accent)]">
@@ -2727,6 +2921,29 @@ export function HomeBrowserHub({
                         />
                       </FeedModule>
                     </HomeWidgetFrame>
+                    {customWidgets.map((widget) => {
+                      const id = customHomeWidgetId(widget.id);
+                      const Icon = HOME_CUSTOM_WIDGET_ICONS[widget.icon];
+                      return (
+                        <HomeWidgetFrame key={id} {...widgetFrameProps(id)}>
+                          <FeedModule
+                            eyebrow={t("home.widgets.customEyebrow")}
+                            title={widget.title}
+                            accent={HOME_MODULE_ACCENTS[widget.accent]}
+                            className="h-full"
+                          >
+                            <div className="flex h-full min-h-0 items-center gap-3">
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[color-mix(in_srgb,var(--home-module-accent)_38%,var(--border))] bg-[color-mix(in_srgb,var(--home-module-accent)_12%,var(--card))] text-[var(--home-module-accent)]">
+                                <Icon size="1.25rem" aria-hidden="true" />
+                              </span>
+                              <p className="line-clamp-6 min-w-0 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                                {widget.description}
+                              </p>
+                            </div>
+                          </FeedModule>
+                        </HomeWidgetFrame>
+                      );
+                    })}
                     {activeWidgetSlots.map((slot, index) =>
                       slot === null ? (
                         <div
@@ -2754,6 +2971,7 @@ export function HomeBrowserHub({
           onNavigate={openProfessorMariTarget}
           onOpenProfessor={openProfessor}
           onOpenDocumentation={() => useUIStore.getState().openModal("docs-viewer")}
+          onMeaningfulDrag={() => trackHomeAction("prof_mari_dragged")}
         />
       ) : null}
       {achievementsEnabled ? (
@@ -2780,7 +2998,8 @@ export function HomeBrowserHub({
           <div className="grid gap-2">
             {availableWidgetIds.map((id, index) => {
               const enabled = visibleWidgets.includes(id);
-              const label = t(HOME_WIDGET_LABEL_KEYS[id]);
+              const label = widgetLabel(id);
+              const customWidget = customWidgetsById.get(id);
               const tones = [
                 HOME_MODULE_ACCENTS.pink,
                 HOME_MODULE_ACCENTS.cyan,
@@ -2806,6 +3025,18 @@ export function HomeBrowserHub({
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)]">
                     {label}
                   </span>
+                  {customWidget ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteCustomWidget(customWidget)}
+                      disabled={deleteCustomWidgetMutation.isPending}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)] transition-[background-color,color,border-color,transform] hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-95 disabled:opacity-50"
+                      aria-label={t("home.widgets.deleteLabel", { widget: label })}
+                      title={t("home.widgets.deleteLabel", { widget: label })}
+                    >
+                      <Trash2 size="1rem" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="switch"

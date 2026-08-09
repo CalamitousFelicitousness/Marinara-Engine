@@ -293,7 +293,15 @@ import {
   MariDbService,
   normalizeCharacterActionData,
 } from "../../packages/server/src/services/mari-db/mari-db.service.js";
-import { PROFESSOR_MARI_APP_DATA_ACTIONS } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
+import {
+  HomeWidgetCatalogConflictError,
+  readHomeWidgetCatalog,
+  replaceHomeWidgetCatalog,
+} from "../../packages/server/src/services/home-widget-catalog.service.js";
+import {
+  isMutatingWorkspaceCommand,
+  PROFESSOR_MARI_APP_DATA_ACTIONS,
+} from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
 import {
   checkAutonomousMessaging,
   clearChatActivity,
@@ -328,6 +336,10 @@ import {
   getNextBackgroundFolderName,
 } from "../../packages/client/src/lib/background-library.js";
 import { resolveProfessorMariNavigation } from "../../packages/client/src/lib/professor-mari-navigation.js";
+import { resolveCapabilityPackageDisplay } from "../../packages/client/src/lib/capability-package-localization.js";
+import { normalizeHydratedMessage } from "../../packages/client/src/lib/message-hydration.js";
+import { HOME_CHAT_MODE_ACCENTS } from "../../packages/client/src/lib/home-chat-mode-style.js";
+import { homeCustomWidgetCatalogSchema, type CapabilityPackageManifest } from "../../packages/shared/src/index.js";
 
 assert.deepEqual(resolveProfessorMariNavigation("Where are the characters?"), {
   kind: "panel",
@@ -411,6 +423,162 @@ assert.deepEqual(
 );
 assert.equal(resolveProfessorMariNavigation("Where did Noodle go?"), null);
 assert.equal(resolveProfessorMariNavigation("quantum spaghetti cupboard"), null);
+assert.deepEqual(
+  resolveProfessorMariNavigation(
+    "Midnight at Zapolyarny",
+    [],
+    [],
+    [{ id: "chat-midnight", name: "Midnight at Zapolyarny" }],
+  ),
+  { kind: "chat", chatId: "chat-midnight" },
+);
+assert.deepEqual(resolveProfessorMariNavigation("CHAT", [], [], [{ id: "chat-generic", name: "Chat" }]), {
+  kind: "chats",
+});
+for (const name of ["Conversation", "Roleplay", "Game"]) {
+  assert.deepEqual(resolveProfessorMariNavigation(name, [], [], [{ id: `chat-${name}`, name }]), {
+    kind: "chat",
+    chatId: `chat-${name}`,
+  });
+}
+
+const localizedPackageManifest = {
+  name: "Noodle",
+  description: "Canonical description",
+  contributions: { homeBrowserTab: { label: "Noodle", ariaLabel: "Open Noodle" } },
+  localizations: {
+    pl: {
+      name: "Kluska",
+      description: "Polski opis",
+      homeBrowserTab: { label: "Kluska", ariaLabel: "Otwórz Kluskę" },
+    },
+  },
+} as CapabilityPackageManifest;
+assert.deepEqual(resolveCapabilityPackageDisplay(localizedPackageManifest, "pl-PL"), {
+  name: "Kluska",
+  description: "Polski opis",
+  homeBrowserTab: { label: "Kluska", ariaLabel: "Otwórz Kluskę" },
+});
+assert.deepEqual(resolveCapabilityPackageDisplay(localizedPackageManifest, "de-DE"), {
+  name: "Noodle",
+  description: "Canonical description",
+  homeBrowserTab: { label: "Noodle", ariaLabel: "Open Noodle" },
+});
+const regionalLocalizedPackageManifest = {
+  ...localizedPackageManifest,
+  localizations: {
+    pt_BR: {
+      name: "Macarrão",
+      description: "Descrição em português",
+      homeBrowserTab: { label: "Macarrão", ariaLabel: "Abrir Macarrão" },
+    },
+  },
+} as CapabilityPackageManifest;
+assert.equal(resolveCapabilityPackageDisplay(regionalLocalizedPackageManifest, "pt-BR").name, "Macarrão");
+assert.equal(homeCustomWidgetCatalogSchema.parse({ widgets: [] }).revision, 0);
+assert.throws(() =>
+  homeCustomWidgetCatalogSchema.parse({
+    widgets: [
+      {
+        id: "bad-timestamp",
+        title: "Bad timestamp",
+        description: "Widget timestamps must use the ISO format emitted by the writer.",
+        accent: "cyan",
+        icon: "sparkles",
+        createdAt: "yesterday",
+        updatedAt: "today",
+      },
+    ],
+  }),
+);
+assert.equal(
+  isMutatingWorkspaceCommand({
+    id: "widget-preview",
+    name: "app_data",
+    arguments: { action: "home_widget.create", apply: false },
+  }),
+  false,
+);
+assert.equal(
+  isMutatingWorkspaceCommand({
+    id: "widget-save",
+    name: "app_data",
+    arguments: { action: "home_widget.create", apply: true },
+  }),
+  true,
+);
+
+assert.deepEqual(
+  normalizeHydratedMessage({
+    id: "legacy-reactions",
+    chatId: "chat-legacy",
+    role: "assistant",
+    content: { reactions: [{ emoji: "💖", count: 1 }] },
+    createdAt: "2026-08-09T00:00:00.000Z",
+  } as unknown as Message),
+  {
+    id: "legacy-reactions",
+    chatId: "chat-legacy",
+    role: "assistant",
+    content: "",
+    extra: {
+      displayText: null,
+      isGenerated: true,
+      tokenCount: null,
+      generationInfo: null,
+      reactions: [{ emoji: "💖", count: 1 }],
+    },
+    createdAt: "2026-08-09T00:00:00.000Z",
+    activeSwipeIndex: 0,
+  },
+);
+assert.throws(() =>
+  homeCustomWidgetCatalogSchema.parse({
+    widgets: [
+      {
+        id: "unsafe-widget",
+        title: "Unsafe",
+        description: "No executable fields are allowed.",
+        accent: "cyan",
+        icon: "sparkles",
+        html: "<script>alert(1)</script>",
+        createdAt: "2026-08-09T00:00:00.000Z",
+        updatedAt: "2026-08-09T00:00:00.000Z",
+      },
+    ],
+  }),
+);
+assert.throws(
+  () =>
+    homeCustomWidgetCatalogSchema.parse({
+      widgets: [
+        {
+          id: "duplicate-widget",
+          title: "One",
+          description: "First widget",
+          accent: "cyan",
+          icon: "note",
+          createdAt: "2026-08-09T00:00:00.000Z",
+          updatedAt: "2026-08-09T00:00:00.000Z",
+        },
+        {
+          id: "duplicate-widget",
+          title: "Two",
+          description: "Second widget",
+          accent: "pink",
+          icon: "heart",
+          createdAt: "2026-08-09T00:00:00.000Z",
+          updatedAt: "2026-08-09T00:00:00.000Z",
+        },
+      ],
+    }),
+  /Widget IDs must be unique/u,
+);
+assert.deepEqual(HOME_CHAT_MODE_ACCENTS, {
+  conversation: "oklch(0.79 0.16 205)",
+  roleplay: "oklch(0.76 0.19 52)",
+  game: "oklch(0.73 0.21 345)",
+});
 
 const backgroundOrganization = normalizeBackgroundLibraryOrganization({
   folders: [
@@ -988,9 +1156,7 @@ try {
   const legacyLorebook = await lorebookStorage.create(
     createLorebookSchema.parse({ name: "Legacy notes", characterIds: [legacyOwner.id], hiddenFromLibrary: true }),
   );
-  await db
-    .delete(lorebookCharacterLinks)
-    .where(eq(lorebookCharacterLinks.lorebookId, legacyLorebook.id));
+  await db.delete(lorebookCharacterLinks).where(eq(lorebookCharacterLinks.lorebookId, legacyLorebook.id));
   await characterStorage.remove(legacyOwner.id);
   const retainedLegacyOrphan = (await db.select().from(lorebooks).where(eq(lorebooks.id, legacyLorebook.id)))[0];
   assert.equal(retainedLegacyOrphan.characterId, null, "Deleting a Character must clear legacy direct ownership");
@@ -1581,6 +1747,63 @@ try {
       vectorMaxResults: 10,
     },
   );
+  // #4798 — the CLI add-entry / update-entry paths now expose the keyword-matching + selective
+  // fields that were previously hardcoded on the CLI. add-entry delegates to buildLorebookEntryCreateRow.
+  const professorMariCliAddEntry = await mariDb.executeCli({
+    argv: [
+      "lorebooks", "add-entry", professorMariCliLorebookId,
+      "--name", "Regex CLI entry",
+      "--keys", "Lycan",
+      "--secondary-keys", "moon,howl",
+      "--selective",
+      "--selective-logic", "and_all",
+      "--match-whole-words",
+      "--use-regex",
+      "--apply",
+    ],
+  });
+  assert.equal(professorMariCliAddEntry.ok, true, `CLI add-entry must succeed: ${JSON.stringify(professorMariCliAddEntry)}`);
+  const professorMariCliEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
+    (entry) => entry.name === "Regex CLI entry",
+  );
+  assert.ok(professorMariCliEntry);
+  assert.equal(professorMariCliEntry.selective, true, "CLI add-entry must persist --selective");
+  assert.equal(professorMariCliEntry.selectiveLogic, "and_all", "CLI add-entry must persist --selective-logic");
+  assert.equal(professorMariCliEntry.matchWholeWords, true, "CLI add-entry must persist --match-whole-words");
+  assert.equal(professorMariCliEntry.useRegex, true, "CLI add-entry must persist --use-regex");
+  assert.deepEqual(professorMariCliEntry.secondaryKeys, ["moon", "howl"], "CLI add-entry must persist --secondary-keys");
+  assert.equal(professorMariCliEntry.caseSensitive, false, "unset --case-sensitive stays default");
+
+  const professorMariCliUpdateEntry = await mariDb.executeCli({
+    argv: [
+      "lorebooks", "update-entry", professorMariCliEntry.id,
+      "--no-match-whole-words",
+      "--no-selective",
+      "--selective-logic", "not",
+      "--apply",
+    ],
+  });
+  assert.equal(professorMariCliUpdateEntry.ok, true, `CLI update-entry must succeed: ${JSON.stringify(professorMariCliUpdateEntry)}`);
+  const professorMariCliUpdatedEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
+    (entry) => entry.id === professorMariCliEntry.id,
+  );
+  assert.ok(professorMariCliUpdatedEntry);
+  assert.equal(professorMariCliUpdatedEntry.matchWholeWords, false, "CLI update-entry --no-match-whole-words clears it");
+  assert.equal(professorMariCliUpdatedEntry.selective, false, "CLI update-entry --no-selective clears it");
+  assert.equal(professorMariCliUpdatedEntry.selectiveLogic, "not", "CLI update-entry patches --selective-logic");
+
+  // An invalid --selective-logic is rejected with a clear error on both CLI subcommands.
+  const professorMariCliBadUpdateLogic = await mariDb.executeCli({
+    argv: ["lorebooks", "update-entry", professorMariCliEntry.id, "--selective-logic", "bogus", "--apply"],
+  });
+  assert.equal(professorMariCliBadUpdateLogic.ok, false, "CLI update-entry rejects an invalid --selective-logic");
+  assert.match(String(professorMariCliBadUpdateLogic.error), /selective-logic must be one of/u);
+  const professorMariCliBadAddLogic = await mariDb.executeCli({
+    argv: ["lorebooks", "add-entry", professorMariCliLorebookId, "--name", "Bad logic", "--selective-logic", "bogus", "--apply"],
+  });
+  assert.equal(professorMariCliBadAddLogic.ok, false, "CLI add-entry rejects an invalid --selective-logic");
+  assert.match(String(professorMariCliBadAddLogic.error), /selective-logic must be one of/u);
+
   await lorebookStorage.remove(professorMariCliLorebookId);
   assert.equal(await lorebookStorage.getById(professorMariCliLorebookId), null);
   const rangedChatId = "professor-mari-range-regression";
@@ -1894,7 +2117,11 @@ try {
   assert.equal(manyTagsCreate.ok, true, "#4767 tag-storm fixture must be created");
   const tagsRead = await mariDb.executeAction({ action: "character.get", id: manyTagsId });
   assert.equal(tagsRead.ok, true);
-  assert.equal((tagsRead.output as { data: Record<string, unknown> }).data.name, "Tag Storm", "#4767 name survives a tag storm");
+  assert.equal(
+    (tagsRead.output as { data: Record<string, unknown> }).data.name,
+    "Tag Storm",
+    "#4767 name survives a tag storm",
+  );
   assert.ok(
     JSON.stringify(tagsRead.output, null, 2).length < 30_000,
     "#4767 a many-short-strings card must be bounded, never inflated past the cap",
@@ -1912,7 +2139,11 @@ try {
   assert.equal(descHeavyCreate.ok, true, "#4767 description-heavy fixture must be created");
   const descRead = await mariDb.executeAction({ action: "character.get", id: descHeavyId });
   assert.equal(descRead.ok, true);
-  assert.equal((descRead.output as { data: Record<string, unknown> }).data.name, "Wordy", "#4767 name survives even when description is the bulk");
+  assert.equal(
+    (descRead.output as { data: Record<string, unknown> }).data.name,
+    "Wordy",
+    "#4767 name survives even when description is the bulk",
+  );
   assert.ok(
     (descRead.truncation?.fields ?? []).some((f) => f.path === "data.description"),
     "#4767 a description-dominated card elides the description (recoverable), not the identity",
@@ -1924,7 +2155,11 @@ try {
     offset: 0,
     limit: 20_000,
   });
-  assert.equal(descWindow.truncation?.field?.total, 40_000, "#4767 the elided description must be fully recoverable via field=");
+  assert.equal(
+    descWindow.truncation?.field?.total,
+    40_000,
+    "#4767 the elided description must be fully recoverable via field=",
+  );
 
   // A field= path that does not resolve returns the overview WITH a not-found signal.
   const missingField = await mariDb.executeAction({
@@ -1932,7 +2167,11 @@ try {
     id: heavyCharacterId,
     field: "data.no_such_field",
   });
-  assert.equal(missingField.truncation?.unresolvedField, "data.no_such_field", "#4767 an unresolved field= must be flagged, not silently swallowed");
+  assert.equal(
+    missingField.truncation?.unresolvedField,
+    "data.no_such_field",
+    "#4767 an unresolved field= must be flagged, not silently swallowed",
+  );
 
   // Same path on a SMALL row that needs no elision: still flags the miss, and
   // reports no elided fields (so the note must not promise a field list).
@@ -1941,7 +2180,11 @@ try {
     id: characterId,
     field: "data.no_such_field",
   });
-  assert.equal(smallMissingField.truncation?.unresolvedField, "data.no_such_field", "#4767 a small-row unresolved field= must still be flagged");
+  assert.equal(
+    smallMissingField.truncation?.unresolvedField,
+    "data.no_such_field",
+    "#4767 a small-row unresolved field= must still be flagged",
+  );
   assert.equal(
     (smallMissingField.truncation?.fields ?? []).length,
     0,
@@ -1956,7 +2199,11 @@ try {
     field: "constructor",
   });
   assert.equal(prototypeField.ok, true, "#4767 a prototype-key field= must not crash the read");
-  assert.equal(prototypeField.truncation?.unresolvedField, "constructor", "#4767 an inherited key must resolve as unresolved, not the constructor");
+  assert.equal(
+    prototypeField.truncation?.unresolvedField,
+    "constructor",
+    "#4767 an inherited key must resolve as unresolved, not the constructor",
+  );
 
   // A small read is untouched: no truncation metadata, behavior identical to before.
   const smallRead = await mariDb.executeAction({ action: "character.get", id: characterId });
@@ -2098,6 +2345,65 @@ try {
     JSON.parse(concurrentTargetFolder?.characterIds ?? "[]").sort(),
     [characterId, concurrentCharacterId].sort(),
     "Serialized folder moves must preserve both memberships",
+  );
+
+  const widgetPreview = await mariDb.executeAction({
+    action: "home_widget.create",
+    data: {
+      title: "Tonight's menu",
+      description: "A tiny reminder to choose a chat mood before cooking.",
+      accent: "orange",
+      icon: "note",
+    },
+    apply: false,
+  });
+  assert.equal(widgetPreview.ok, true);
+  assert.equal(widgetPreview.mode, "dry-run", "Professor Mari must preview a custom widget before confirmation");
+  assert.deepEqual((await mariDb.executeAction({ action: "home_widget.list" })).output, []);
+
+  const approvalsBeforeWidgetCreate = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+  const widgetCreate = await mariDb.executeAction({
+    action: "home_widget.create",
+    data: {
+      title: "Tonight's menu",
+      description: "A tiny reminder to choose a chat mood before cooking.",
+      accent: "orange",
+      icon: "note",
+    },
+    apply: true,
+  });
+  assert.equal(widgetCreate.ok, true);
+  const widgetList = await mariDb.executeAction({ action: "home_widget.list" });
+  const createdWidget = (widgetList.output as Array<{ id: string; title: string }>)[0];
+  assert.equal(createdWidget?.title, "Tonight's menu");
+  assert.equal((await mariDb.executeAction({ action: "home_widget.get", widgetId: createdWidget.id })).ok, true);
+  const catalogBeforeConcurrentWrites = await readHomeWidgetCatalog(db);
+  const concurrentCatalogWrites = await Promise.allSettled([
+    replaceHomeWidgetCatalog(db, catalogBeforeConcurrentWrites.revision, catalogBeforeConcurrentWrites.widgets),
+    replaceHomeWidgetCatalog(db, catalogBeforeConcurrentWrites.revision, catalogBeforeConcurrentWrites.widgets),
+  ]);
+  assert.equal(
+    concurrentCatalogWrites.filter((result) => result.status === "fulfilled").length,
+    1,
+    "Only one write may commit for a Home widget catalog revision",
+  );
+  const rejectedCatalogWrite = concurrentCatalogWrites.find((result) => result.status === "rejected");
+  assert.equal(
+    rejectedCatalogWrite?.status === "rejected" &&
+      rejectedCatalogWrite.reason instanceof HomeWidgetCatalogConflictError,
+    true,
+  );
+  const widgetApproval = mariDb.getPendingApprovals().find((approval) => !approvalsBeforeWidgetCreate.has(approval.id));
+  assert.ok(widgetApproval, "Applying a Home widget change must create a review approval");
+  await assert.rejects(
+    mariDb.restoreAppliedReview(widgetApproval.id),
+    HomeWidgetCatalogConflictError,
+    "A conflicting Home widget restore must fail safely",
+  );
+  assert.equal(
+    mariDb.getPendingApprovals().some((approval) => approval.id === widgetApproval.id),
+    true,
+    "A failed Home widget restore must remain available to retry or keep",
   );
 
   for (const approval of mariDb.getPendingApprovals()) {
@@ -3411,6 +3717,25 @@ assert.match(playwrightServerSource, /resolve\(dataRoot, name\)/u);
 assert.match(playwrightServerSource, /DATA_DIR:\s*dataDir/u);
 
 const appSource = readFileSync(new URL("../../packages/client/src/App.tsx", import.meta.url), "utf8");
+const homeBrowserHubSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/HomeBrowserHub.tsx", import.meta.url),
+  "utf8",
+);
+const globalStylesSource = readFileSync(
+  new URL("../../packages/client/src/styles/globals.css", import.meta.url),
+  "utf8",
+);
+assert.equal(
+  appSource.match(/document\.addEventListener\("visibilitychange", syncEffectsPausedState\)/gu)?.length,
+  1,
+  "Home effect pausing must keep one central visibility listener",
+);
+assert.match(appSource, /dispatchEvent\(new CustomEvent\("marinara:effects-paused"/u);
+assert.match(homeBrowserHubSource, /window\.removeEventListener\(MARINARA_EFFECTS_PAUSED_EVENT, sync\)/u);
+assert.match(
+  globalStylesSource,
+  /data-marinara-effects-paused="true"[^}]+mari-home-professor-popup__sprite[\s\S]+animation-play-state: paused !important;/u,
+);
 const agentEditorSource = readFileSync(
   new URL("../../packages/client/src/components/agents/AgentEditor.tsx", import.meta.url),
   "utf8",

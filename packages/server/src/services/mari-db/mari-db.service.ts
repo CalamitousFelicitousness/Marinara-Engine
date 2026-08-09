@@ -23,7 +23,12 @@ import { executeWikiCli } from "../professor-mari/fandom-mediawiki/wiki-cli.js";
 import {
   LIMITS,
   PROFESSOR_MARI_ID,
+  HOME_CUSTOM_WIDGET_LIMIT,
+  HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
   createPersonalExtensionSchema,
+  homeCustomWidgetCatalogSchema,
+  homeCustomWidgetDraftSchema,
+  homeCustomWidgetSchema,
   normalizeLorebookCategory,
   normalizePersonalExtensionCapabilities,
   type MariDbCommandResult,
@@ -36,6 +41,7 @@ import {
   type MariDbValidationResult,
 } from "@marinara-engine/shared";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
+import { replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
 
 type Row = Record<string, unknown>;
 type Table = AnyFileTable;
@@ -69,7 +75,16 @@ type Plan = {
   request: ParsedMutationRequest;
 };
 type ParsedMutationRequest = {
-  kind: "insert" | "patch" | "replace" | "delete" | "transform" | "theme-create" | "theme-update" | "theme-set-active" | "character-move-folder";
+  kind:
+    | "insert"
+    | "patch"
+    | "replace"
+    | "delete"
+    | "transform"
+    | "theme-create"
+    | "theme-update"
+    | "theme-set-active"
+    | "character-move-folder";
   table: string | "all";
   id?: string;
   characterId?: string;
@@ -98,6 +113,23 @@ type PendingRecord = MariDbPendingApproval & {
   journalPath: string | null;
   timer: NodeJS.Timeout;
 };
+
+function homeWidgetCatalogFromPlanRow(row: Row | null | undefined) {
+  if (typeof row?.value !== "string") return homeCustomWidgetCatalogSchema.parse({ widgets: [] });
+  return homeCustomWidgetCatalogSchema.parse(JSON.parse(row.value));
+}
+
+function singleHomeWidgetCatalogChange(plan: Plan): PlanChange | null {
+  const applied = plan.changes.filter((change) => change.apply);
+  if (
+    applied.length !== 1 ||
+    applied[0]?.table !== "app_settings" ||
+    applied[0].id !== HOME_CUSTOM_WIDGETS_SETTINGS_KEY
+  ) {
+    return null;
+  }
+  return applied[0];
+}
 
 type MariCliEnvelope = {
   argv?: string[];
@@ -147,6 +179,7 @@ const BOOLEAN_FLAGS = new Set([
   "apply",
   "cached",
   "cascade",
+  "case-sensitive",
   "changed",
   "constant",
   "disable",
@@ -156,15 +189,22 @@ const BOOLEAN_FLAGS = new Set([
   "global",
   "help",
   "jsonl",
+  "match-whole-words",
+  "no-case-sensitive",
   "no-constant",
   "no-global",
+  "no-match-whole-words",
+  "no-selective",
+  "no-use-regex",
   "parsed",
   "patch",
   "raw",
   "resume",
+  "selective",
   "staged",
   "strict",
   "tail",
+  "use-regex",
 ]);
 
 function truncateOutput(value: string, limit = COMMAND_OUTPUT_LIMIT): { text: string; truncated: boolean } {
@@ -172,7 +212,11 @@ function truncateOutput(value: string, limit = COMMAND_OUTPUT_LIMIT): { text: st
   return { text: `${value.slice(0, limit)}\n… output truncated at ${limit} characters …`, truncated: true };
 }
 
-function appendLimited(current: string, chunk: string, limit = COMMAND_OUTPUT_LIMIT): { text: string; truncated: boolean } {
+function appendLimited(
+  current: string,
+  chunk: string,
+  limit = COMMAND_OUTPUT_LIMIT,
+): { text: string; truncated: boolean } {
   if (current.length >= limit) return { text: current, truncated: true };
   const next = current + chunk;
   return truncateOutput(next, limit);
@@ -182,7 +226,11 @@ function displayCommand(bin: string, args: string[]) {
   return [bin, ...args].map((part) => (/[\s"']/.test(part) ? JSON.stringify(part) : part)).join(" ");
 }
 
-function runProcess(bin: string, args: string[], options: { cwd: string; timeoutMs: number }): Promise<ProcessRunResult> {
+function runProcess(
+  bin: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number },
+): Promise<ProcessRunResult> {
   const startedAt = Date.now();
   const command = displayCommand(bin, args);
   return new Promise((resolveRun) => {
@@ -661,7 +709,10 @@ function hasFlag(flags: Map<string, string | boolean>, name: string): boolean {
 }
 
 function normalizeAppDataActionName(action: string): string {
-  let key = action.trim().toLowerCase().replace(/[-_\s]+/g, "");
+  let key = action
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]+/g, "");
   key = key
     .replace(/^characters\./, "character.")
     .replace(/^personas\./, "persona.")
@@ -821,12 +872,16 @@ export function normalizeCharacterActionData(input: Row): Row {
 
 const SELECTIVE_LOGIC_VALUES = new Set(["and", "and_all", "or", "not", "not_all"]);
 
+/** Validate a selectiveLogic string against the stored enum; undefined if absent or invalid. */
+function normalizeSelectiveLogicValue(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  return SELECTIVE_LOGIC_VALUES.has(normalized) ? normalized : undefined;
+}
+
 /** Validate an incoming selectiveLogic against the stored enum; undefined if absent or invalid. */
 function normalizeSelectiveLogic(source: Row): string | undefined {
-  const raw = firstString(source, ["selectiveLogic", "selective_logic"]);
-  if (raw === undefined) return undefined;
-  const normalized = raw.toLowerCase();
-  return SELECTIVE_LOGIC_VALUES.has(normalized) ? normalized : undefined;
+  return normalizeSelectiveLogicValue(firstString(source, ["selectiveLogic", "selective_logic"]));
 }
 
 export function buildLorebookEntryCreateRow(
@@ -956,12 +1011,13 @@ function normalizeAgentActionData(input: Row, existing?: Row | null): Row {
   if (resultType) settings.resultType = resultType;
   const row: Row = {
     ...input,
-    type: firstString(input, ["type", "agentType", "agent_type"]) ?? (typeof existing?.type === "string" ? existing.type : `custom-${slugFromName(name)}`),
+    type:
+      firstString(input, ["type", "agentType", "agent_type"]) ??
+      (typeof existing?.type === "string" ? existing.type : `custom-${slugFromName(name)}`),
     name,
-    description: firstString(input, ["description"]) ?? (typeof existing?.description === "string" ? existing.description : ""),
-    phase:
-      firstString(input, ["phase"]) ??
-      (typeof existing?.phase === "string" ? existing.phase : "parallel"),
+    description:
+      firstString(input, ["description"]) ?? (typeof existing?.description === "string" ? existing.description : ""),
+    phase: firstString(input, ["phase"]) ?? (typeof existing?.phase === "string" ? existing.phase : "parallel"),
     enabled: boolText(firstBoolean(input, ["enabled"]) ?? (existing ? existing.enabled !== "false" : true)),
     connectionId:
       input.connectionId === undefined && input.connection_id === undefined
@@ -988,7 +1044,8 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
   const row: Row = {
     ...input,
     name: firstString(input, ["name"]) ?? (typeof existing?.name === "string" ? existing.name : ""),
-    description: firstString(input, ["description"]) ?? (typeof existing?.description === "string" ? existing.description : ""),
+    description:
+      firstString(input, ["description"]) ?? (typeof existing?.description === "string" ? existing.description : ""),
     imagePath:
       input.imagePath === undefined && input.image_path === undefined
         ? (existing?.imagePath ?? null)
@@ -997,16 +1054,20 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
       firstString(input, ["conversationPrompt", "conversation_prompt"]) ??
       (typeof existing?.conversationPrompt === "string" ? existing.conversationPrompt : ""),
     gamePrompt:
-      firstString(input, ["gamePrompt", "game_prompt"]) ?? (typeof existing?.gamePrompt === "string" ? existing.gamePrompt : ""),
+      firstString(input, ["gamePrompt", "game_prompt"]) ??
+      (typeof existing?.gamePrompt === "string" ? existing.gamePrompt : ""),
     sectionOrder: jsonString(input.sectionOrder ?? input.section_order ?? existing?.sectionOrder, []),
     groupOrder: jsonString(input.groupOrder ?? input.group_order ?? existing?.groupOrder, []),
     variableGroups: jsonString(input.variableGroups ?? input.variable_groups ?? existing?.variableGroups, []),
     variableValues: jsonString(input.variableValues ?? input.variable_values ?? existing?.variableValues, {}),
     parameters: jsonString(input.parameters ?? existing?.parameters, {}),
     wrapFormat:
-      firstString(input, ["wrapFormat", "wrap_format"]) ?? (typeof existing?.wrapFormat === "string" ? existing.wrapFormat : "xml"),
+      firstString(input, ["wrapFormat", "wrap_format"]) ??
+      (typeof existing?.wrapFormat === "string" ? existing.wrapFormat : "xml"),
     defaultChoices: jsonString(input.defaultChoices ?? input.default_choices ?? existing?.defaultChoices, {}),
-    isDefault: boolText(firstBoolean(input, ["isDefault", "is_default"]) ?? (existing ? existing.isDefault === "true" : false)),
+    isDefault: boolText(
+      firstBoolean(input, ["isDefault", "is_default"]) ?? (existing ? existing.isDefault === "true" : false),
+    ),
     author: firstString(input, ["author"]) ?? (typeof existing?.author === "string" ? existing.author : ""),
   };
   delete row.conversation_prompt;
@@ -1513,7 +1574,11 @@ function applyReadBounding(result: MariDbCommandResult, envelope: Row): MariDbCo
   const fieldPath = firstString(envelope, ["field"]);
   if (fieldPath) {
     const offset = normalizeOffset(firstNumber(envelope, ["offset"]));
-    const limit = normalizeLimit(firstNumber(envelope, ["limit"]), MARI_READ_FIELD_WINDOW_MAX, MARI_READ_FIELD_WINDOW_MAX);
+    const limit = normalizeLimit(
+      firstNumber(envelope, ["limit"]),
+      MARI_READ_FIELD_WINDOW_MAX,
+      MARI_READ_FIELD_WINDOW_MAX,
+    );
     const projected = projectReadField(output as Row, fieldPath, offset, limit);
     if (projected.found) {
       return {
@@ -1701,11 +1766,18 @@ function looksLikeCharacterData(value: Row): boolean {
 }
 
 function looksLikeCharacterRowInput(value: Row): boolean {
-  return isRecord(value.data) || (typeof value.data === "string" && ["id", "comment", "avatarPath", "spriteFolderPath", "createdAt", "updatedAt"].some((key) => hasOwnKey(value, key)));
+  return (
+    isRecord(value.data) ||
+    (typeof value.data === "string" &&
+      ["id", "comment", "avatarPath", "spriteFolderPath", "createdAt", "updatedAt"].some((key) =>
+        hasOwnKey(value, key),
+      ))
+  );
 }
 
 function normalizeCharacterDataBase(base: Record<string, unknown>): Record<string, unknown> {
-  const parsedData = typeof base.data === "string" && looksLikeCharacterRowInput(base) ? parseJsonMaybe(base.data) : null;
+  const parsedData =
+    typeof base.data === "string" && looksLikeCharacterRowInput(base) ? parseJsonMaybe(base.data) : null;
   const source =
     isRecord(base.data) &&
     (typeof base.spec === "string" ||
@@ -1739,9 +1811,10 @@ function addUnknownColumnIssues(meta: TableMeta, row: Row, id: unknown, issues: 
   const unknownKeys = Object.keys(row).filter((key) => !meta.byKey.has(key));
   if (unknownKeys.length === 0) return;
   const issueId = id == null ? null : String(id);
-  const hint = meta.name === "characters" && unknownKeys.some((key) => key === "appearance" || key === "backstory")
-    ? " Use mari characters update --appearance/--backstory, or patch data.extensions.appearance/backstory."
-    : " Check `mari db schema <table>` and nest JSON-column edits under the JSON column name.";
+  const hint =
+    meta.name === "characters" && unknownKeys.some((key) => key === "appearance" || key === "backstory")
+      ? " Use mari characters update --appearance/--backstory, or patch data.extensions.appearance/backstory."
+      : " Check `mari db schema <table>` and nest JSON-column edits under the JSON column name.";
   issues.push({
     level: "error",
     table: meta.name,
@@ -1755,11 +1828,21 @@ function addCharacterDataShapeIssues(tableName: string, row: Row, id: unknown, i
   const card = tryParseJsonColumn(row, "data");
   const issueId = id == null ? null : String(id);
   if (!isRecord(card)) {
-    issues.push({ level: "error", table: tableName, id: issueId, message: "Character data does not look like a CharacterData card" });
+    issues.push({
+      level: "error",
+      table: tableName,
+      id: issueId,
+      message: "Character data does not look like a CharacterData card",
+    });
     return;
   }
   if (typeof card.name !== "string") {
-    issues.push({ level: "error", table: tableName, id: issueId, message: "Character data does not look like a CharacterData card" });
+    issues.push({
+      level: "error",
+      table: tableName,
+      id: issueId,
+      message: "Character data does not look like a CharacterData card",
+    });
   }
   const numericKeys = Object.keys(card).filter((key) => /^\d+$/.test(key));
   if (numericKeys.length > 0) {
@@ -1823,7 +1906,10 @@ function buildMinimalCharacterData(
   const tagsVal = flagString(flags, "tags");
   if (tagsVal !== undefined) {
     data.tags = tagsVal
-      ? tagsVal.split(/[,|]/).map((t: string) => t.trim()).filter(Boolean)
+      ? tagsVal
+          .split(/[,|]/)
+          .map((t: string) => t.trim())
+          .filter(Boolean)
       : [];
   }
   return data;
@@ -1905,7 +1991,8 @@ export class MariDbService {
             ok: false,
             mode: "read",
             command,
-            error: "mari storage tx is reserved for a later hot-reload repair phase; use mari db for managed data edits.",
+            error:
+              "mari storage tx is reserved for a later hot-reload repair phase; use mari db for managed data edits.",
           };
         }
         return { ok: false, mode: "read", command, error: this.topLevelHelpText() };
@@ -1924,26 +2011,34 @@ export class MariDbService {
       command = formatAppDataActionCommand(action, envelope);
       const context = {
         command,
-        sessionId: typeof envelope.sessionId === "string" && envelope.sessionId.trim() ? envelope.sessionId.trim() : "mari-app-data",
+        sessionId:
+          typeof envelope.sessionId === "string" && envelope.sessionId.trim()
+            ? envelope.sessionId.trim()
+            : "mari-app-data",
         cwd: typeof envelope.cwd === "string" ? envelope.cwd : undefined,
       };
       const key = normalizeAppDataActionName(action);
       const dispatch = async (): Promise<MariDbCommandResult> => {
-        if (key.startsWith("character.")) return this.executeCharacterAction(key.slice("character.".length), envelope, context);
-        if (key.startsWith("persona.")) return this.executePersonaAction(key.slice("persona.".length), envelope, context);
-        if (key.startsWith("lorebook.")) return this.executeLorebookAction(key.slice("lorebook.".length), envelope, context);
+        if (key.startsWith("character."))
+          return this.executeCharacterAction(key.slice("character.".length), envelope, context);
+        if (key.startsWith("persona."))
+          return this.executePersonaAction(key.slice("persona.".length), envelope, context);
+        if (key.startsWith("lorebook."))
+          return this.executeLorebookAction(key.slice("lorebook.".length), envelope, context);
         if (key.startsWith("theme.")) return this.executeThemeAction(key.slice("theme.".length), envelope, context);
         if (key.startsWith("personalextension.")) {
           return this.executePersonalExtensionAction(key.slice("personalextension.".length), envelope, context);
         }
         if (key.startsWith("agent.")) return this.executeAgentAction(key.slice("agent.".length), envelope, context);
         if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
+        if (key.startsWith("homewidget."))
+          return this.executeHomeWidgetAction(key.slice("homewidget.".length), envelope, context);
         return {
           ok: false,
           mode: "read",
           command,
           error:
-            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, or preset.* actions for structured no-shell app-data work.",
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, or home_widget.* actions for structured no-shell app-data work.",
         };
       };
       // Field-aware bounding keeps a single read response within the workspace
@@ -1991,7 +2086,12 @@ export class MariDbService {
       case "get": {
         const id = requiredString(args, ["id", "characterId"], "character id");
         const row = await this.getRawById(getMeta("characters"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseRow("characters", row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("characters", row) : null,
+        };
       }
       case "search": {
         const query = requiredString(args, ["query", "search"], "character search query").toLowerCase();
@@ -2004,24 +2104,28 @@ export class MariDbService {
       }
       case "create": {
         const data = normalizeCharacterActionData(
-          actionDataWithTopLevel(args, ["data", "card", "character"], [
-            "name",
-            "description",
-            "personality",
-            "scenario",
-            "first_mes",
-            "firstMes",
-            "mes_example",
-            "creator_notes",
-            "creatorNotes",
-            "backstory",
-            "appearance",
-            "aboutMe",
-            "about_me",
-            "about-me",
-            "tags",
-            "comment",
-          ]),
+          actionDataWithTopLevel(
+            args,
+            ["data", "card", "character"],
+            [
+              "name",
+              "description",
+              "personality",
+              "scenario",
+              "first_mes",
+              "firstMes",
+              "mes_example",
+              "creator_notes",
+              "creatorNotes",
+              "backstory",
+              "appearance",
+              "aboutMe",
+              "about_me",
+              "about-me",
+              "tags",
+              "comment",
+            ],
+          ),
         );
         const name = requiredString(data, ["name"], "character name");
         const comment = firstString(data, ["comment"]) ?? "";
@@ -2058,31 +2162,42 @@ export class MariDbService {
         const existingDataRaw = tryParseJsonColumn(existing, "data");
         const existingData = isRecord(existingDataRaw) ? existingDataRaw : {};
         const patchData = normalizeCharacterActionData(
-          actionDataWithTopLevel(args, ["patch", "data", "card", "character"], [
-            "name",
-            "description",
-            "personality",
-            "scenario",
-            "first_mes",
-            "firstMes",
-            "mes_example",
-            "creator_notes",
-            "creatorNotes",
-            "backstory",
-            "appearance",
-            "aboutMe",
-            "about_me",
-            "about-me",
-            "tags",
-            "comment",
-          ]),
+          actionDataWithTopLevel(
+            args,
+            ["patch", "data", "card", "character"],
+            [
+              "name",
+              "description",
+              "personality",
+              "scenario",
+              "first_mes",
+              "firstMes",
+              "mes_example",
+              "creator_notes",
+              "creatorNotes",
+              "backstory",
+              "appearance",
+              "aboutMe",
+              "about_me",
+              "about-me",
+              "tags",
+              "comment",
+            ],
+          ),
         );
-        const comment = firstString(patchData, ["comment"]) ?? (typeof existing.comment === "string" ? existing.comment : "");
+        const comment =
+          firstString(patchData, ["comment"]) ?? (typeof existing.comment === "string" ? existing.comment : "");
         delete patchData.comment;
-        if (Object.keys(patchData).length === 0 && comment === (typeof existing.comment === "string" ? existing.comment : "")) {
-          throw new Error("character.update needs a patch field such as name, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment");
+        if (
+          Object.keys(patchData).length === 0 &&
+          comment === (typeof existing.comment === "string" ? existing.comment : "")
+        ) {
+          throw new Error(
+            "character.update needs a patch field such as name, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment",
+          );
         }
-        const name = firstString(patchData, ["name"]) ?? (typeof existingData.name === "string" ? existingData.name : "");
+        const name =
+          firstString(patchData, ["name"]) ?? (typeof existingData.name === "string" ? existingData.name : "");
         const row: Row = {
           id,
           data: buildMinimalCharacterData(name, deepMerge(existingData, patchData) as Row, new Map()),
@@ -2170,7 +2285,12 @@ export class MariDbService {
         const rows = (await this.rawRows("personas")).sort((a, b) =>
           String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")),
         );
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizePersonaRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizePersonaRow),
+        };
       }
       case "active": {
         const row = (await this.rawRows("personas")).find((candidate) => candidate.isActive === "true") ?? null;
@@ -2179,7 +2299,12 @@ export class MariDbService {
       case "get": {
         const id = requiredString(args, ["id", "personaId"], "persona id");
         const row = await this.getRawById(getMeta("personas"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseRow("personas", row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("personas", row) : null,
+        };
       }
       case "search": {
         const query = requiredString(args, ["query", "search"], "persona search query").toLowerCase();
@@ -2191,27 +2316,31 @@ export class MariDbService {
         return { ok: true, mode: "read", command: context.command, output: rows };
       }
       case "create": {
-        const data = actionDataWithTopLevel(args, ["data", "persona", "row"], [
-          "name",
-          "description",
-          "personality",
-          "scenario",
-          "backstory",
-          "appearance",
-          "comment",
-          "creator",
-          "creatorNotes",
-          "creator_notes",
-          "tags",
-          "phoneticName",
-          "phonetic_name",
-          "convoDisplayName",
-          "convo_display_name",
-          "aboutMe",
-          "about_me",
-          "convoBehavior",
-          "convo_behavior",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "persona", "row"],
+          [
+            "name",
+            "description",
+            "personality",
+            "scenario",
+            "backstory",
+            "appearance",
+            "comment",
+            "creator",
+            "creatorNotes",
+            "creator_notes",
+            "tags",
+            "phoneticName",
+            "phonetic_name",
+            "convoDisplayName",
+            "convo_display_name",
+            "aboutMe",
+            "about_me",
+            "convoBehavior",
+            "convo_behavior",
+          ],
+        );
         const timestamp = now();
         const id = firstString(args, ["id", "personaId"]) ?? newId();
         const row = buildPersonaCreateRow(data, id, timestamp);
@@ -2233,27 +2362,31 @@ export class MariDbService {
       }
       case "update": {
         const id = requiredString(args, ["id", "personaId"], "persona id");
-        const data = actionDataWithTopLevel(args, ["patch", "data", "persona"], [
-          "name",
-          "description",
-          "personality",
-          "scenario",
-          "backstory",
-          "appearance",
-          "comment",
-          "creator",
-          "creatorNotes",
-          "creator_notes",
-          "tags",
-          "phoneticName",
-          "phonetic_name",
-          "convoDisplayName",
-          "convo_display_name",
-          "aboutMe",
-          "about_me",
-          "convoBehavior",
-          "convo_behavior",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "persona"],
+          [
+            "name",
+            "description",
+            "personality",
+            "scenario",
+            "backstory",
+            "appearance",
+            "comment",
+            "creator",
+            "creatorNotes",
+            "creator_notes",
+            "tags",
+            "phoneticName",
+            "phonetic_name",
+            "convoDisplayName",
+            "convo_display_name",
+            "aboutMe",
+            "about_me",
+            "convoBehavior",
+            "convo_behavior",
+          ],
+        );
         const patch: Row = { updatedAt: now() };
         assignStringField(patch, data, ["name"], "name");
         assignStringField(patch, data, ["description"], "description");
@@ -2272,14 +2405,20 @@ export class MariDbService {
           "convoDisplayName",
         );
         assignStringField(patch, data, ["aboutMe", "about_me", "about-me"], "aboutMe");
-        if (data.convoBehavior !== undefined || data.convo_behavior !== undefined || data["convo-behavior"] !== undefined) {
+        if (
+          data.convoBehavior !== undefined ||
+          data.convo_behavior !== undefined ||
+          data["convo-behavior"] !== undefined
+        ) {
           patch.convoBehavior = normalizePersonaConvoBehavior(
             data.convoBehavior ?? data.convo_behavior ?? data["convo-behavior"],
           );
         }
         assignListField(patch, data, ["tags"], "tags");
         if (Object.keys(patch).length <= 1) {
-          throw new Error("persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, tags, comment, creator, or creatorNotes");
+          throw new Error(
+            "persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, tags, comment, creator, or creatorNotes",
+          );
         }
         return this.executeMutation(
           {
@@ -2342,7 +2481,8 @@ export class MariDbService {
         LIMITS.LOREBOOK_ENTRY_LIMIT_MIN,
         LIMITS.LOREBOOK_ENTRY_LIMIT_MAX,
       ) || changed;
-    changed = assignBooleanTextField(target, source, ["recursiveScanning", "recursive"], "recursiveScanning") || changed;
+    changed =
+      assignBooleanTextField(target, source, ["recursiveScanning", "recursive"], "recursiveScanning") || changed;
     changed =
       assignBoundedNumberField(
         target,
@@ -2352,7 +2492,13 @@ export class MariDbService {
         1,
         10,
       ) || changed;
-    changed = assignBooleanTextField(target, source, ["excludeFromVectorization", "vectorsDisabled"], "excludeFromVectorization") || changed;
+    changed =
+      assignBooleanTextField(
+        target,
+        source,
+        ["excludeFromVectorization", "vectorsDisabled"],
+        "excludeFromVectorization",
+      ) || changed;
     changed =
       assignBoundedNumberField(
         target,
@@ -2371,8 +2517,7 @@ export class MariDbService {
         0,
         1,
         false,
-      ) ||
-      changed;
+      ) || changed;
     changed =
       assignBoundedNumberField(
         target,
@@ -2425,7 +2570,8 @@ export class MariDbService {
       target.selectiveLogic = selectiveLogic;
       changed = true;
     }
-    changed = assignBooleanTextField(target, source, ["matchWholeWords", "match_whole_words"], "matchWholeWords") || changed;
+    changed =
+      assignBooleanTextField(target, source, ["matchWholeWords", "match_whole_words"], "matchWholeWords") || changed;
     changed = assignBooleanTextField(target, source, ["caseSensitive", "case_sensitive"], "caseSensitive") || changed;
     changed = assignBooleanTextField(target, source, ["useRegex", "use_regex"], "useRegex") || changed;
     return changed;
@@ -2443,14 +2589,24 @@ export class MariDbService {
         const rows = (await this.rawRows("lorebooks"))
           .filter((row) => !globalOnly || row.isGlobal === "true")
           .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizeLorebookRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizeLorebookRow),
+        };
       }
       case "get": {
         const id = requiredString(args, ["id", "lorebookId"], "lorebook id");
         const row = await this.getRawById(getMeta("lorebooks"), id);
         if (!row) return { ok: false, mode: "read", command: context.command, output: null };
         const entryCount = (await this.rawRows("lorebook_entries")).filter((entry) => entry.lorebookId === id).length;
-        return { ok: true, mode: "read", command: context.command, output: { ...parseRow("lorebooks", row), entryCount } };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: { ...parseRow("lorebooks", row), entryCount },
+        };
       }
       case "entries": {
         const lorebookId = requiredString(args, ["lorebookId", "id"], "lorebook id");
@@ -2484,27 +2640,31 @@ export class MariDbService {
         return { ok: true, mode: "read", command: context.command, output: rows };
       }
       case "create": {
-        const data = actionDataWithTopLevel(args, ["data", "lorebook", "row"], [
-          "name",
-          "description",
-          "category",
-          "tags",
-          "global",
-          "isGlobal",
-          "enabled",
-          "scanDepth",
-          "tokenBudget",
-          "entryLimit",
-          "recursiveScanning",
-          "recursive",
-          "maxRecursionDepth",
-          "excludeFromVectorization",
-          "vectorQueryDepth",
-          "vectorScoreThreshold",
-          "vectorMaxResults",
-          "scope",
-          "entries",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "lorebook", "row"],
+          [
+            "name",
+            "description",
+            "category",
+            "tags",
+            "global",
+            "isGlobal",
+            "enabled",
+            "scanDepth",
+            "tokenBudget",
+            "entryLimit",
+            "recursiveScanning",
+            "recursive",
+            "maxRecursionDepth",
+            "excludeFromVectorization",
+            "vectorQueryDepth",
+            "vectorScoreThreshold",
+            "vectorMaxResults",
+            "scope",
+            "entries",
+          ],
+        );
         const name = requiredString(data, ["name"], "lorebook name");
         const timestamp = now();
         const id = firstString(args, ["id", "lorebookId"]) ?? newId();
@@ -2560,32 +2720,38 @@ export class MariDbService {
       }
       case "update": {
         const id = requiredString(args, ["id", "lorebookId"], "lorebook id");
-        const data = actionDataWithTopLevel(args, ["patch", "data", "lorebook"], [
-          "name",
-          "description",
-          "category",
-          "tags",
-          "global",
-          "isGlobal",
-          "enabled",
-          "enable",
-          "disable",
-          "scanDepth",
-          "tokenBudget",
-          "entryLimit",
-          "recursiveScanning",
-          "recursive",
-          "maxRecursionDepth",
-          "excludeFromVectorization",
-          "vectorQueryDepth",
-          "vectorScoreThreshold",
-          "vectorMaxResults",
-          "scope",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "lorebook"],
+          [
+            "name",
+            "description",
+            "category",
+            "tags",
+            "global",
+            "isGlobal",
+            "enabled",
+            "enable",
+            "disable",
+            "scanDepth",
+            "tokenBudget",
+            "entryLimit",
+            "recursiveScanning",
+            "recursive",
+            "maxRecursionDepth",
+            "excludeFromVectorization",
+            "vectorQueryDepth",
+            "vectorScoreThreshold",
+            "vectorMaxResults",
+            "scope",
+          ],
+        );
         const patch: Row = { updatedAt: now() };
         this.assignLorebookActionFields(patch, data);
         if (Object.keys(patch).length <= 1) {
-          throw new Error("lorebook.update needs a patch field such as name, description, category, tags, enabled, global, scanDepth, tokenBudget, entryLimit, recursiveScanning, excludeFromVectorization, vectorQueryDepth, vectorScoreThreshold, or vectorMaxResults");
+          throw new Error(
+            "lorebook.update needs a patch field such as name, description, category, tags, enabled, global, scanDepth, tokenBudget, entryLimit, recursiveScanning, excludeFromVectorization, vectorQueryDepth, vectorScoreThreshold, or vectorMaxResults",
+          );
         }
         return this.executeMutation(
           {
@@ -2607,27 +2773,31 @@ export class MariDbService {
         const lorebookId = requiredString(args, ["lorebookId"], "lorebook id");
         const lorebookExists = await this.getRawById(getMeta("lorebooks"), lorebookId);
         if (!lorebookExists) throw new Error(`Lorebook ${lorebookId} not found`);
-        const data = actionDataWithTopLevel(args, ["data", "entry", "row"], [
-          "name",
-          "content",
-          "description",
-          "tag",
-          "keys",
-          "secondaryKeys",
-          "enabled",
-          "constant",
-          "order",
-          "position",
-          "outletName",
-          "depth",
-          "role",
-          "group",
-          "selective",
-          "selectiveLogic",
-          "matchWholeWords",
-          "caseSensitive",
-          "useRegex",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "entry", "row"],
+          [
+            "name",
+            "content",
+            "description",
+            "tag",
+            "keys",
+            "secondaryKeys",
+            "enabled",
+            "constant",
+            "order",
+            "position",
+            "outletName",
+            "depth",
+            "role",
+            "group",
+            "selective",
+            "selectiveLogic",
+            "matchWholeWords",
+            "caseSensitive",
+            "useRegex",
+          ],
+        );
         const timestamp = now();
         const id = firstString(args, ["entryId", "id"]) ?? newId();
         const row = buildLorebookEntryCreateRow(data, lorebookId, id, timestamp);
@@ -2652,33 +2822,39 @@ export class MariDbService {
         const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");
         const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
         if (!entryExists) throw new Error(`Lorebook entry ${entryId} not found`);
-        const data = actionDataWithTopLevel(args, ["patch", "data", "entry"], [
-          "name",
-          "content",
-          "description",
-          "tag",
-          "keys",
-          "secondaryKeys",
-          "enabled",
-          "enable",
-          "disable",
-          "constant",
-          "order",
-          "position",
-          "outletName",
-          "depth",
-          "role",
-          "group",
-          "selective",
-          "selectiveLogic",
-          "matchWholeWords",
-          "caseSensitive",
-          "useRegex",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "entry"],
+          [
+            "name",
+            "content",
+            "description",
+            "tag",
+            "keys",
+            "secondaryKeys",
+            "enabled",
+            "enable",
+            "disable",
+            "constant",
+            "order",
+            "position",
+            "outletName",
+            "depth",
+            "role",
+            "group",
+            "selective",
+            "selectiveLogic",
+            "matchWholeWords",
+            "caseSensitive",
+            "useRegex",
+          ],
+        );
         const patch: Row = { updatedAt: now() };
         this.assignLorebookEntryActionFields(patch, data);
         if (Object.keys(patch).length <= 1) {
-          throw new Error("lorebook.updateEntry needs entryId plus a patch field such as name, content, keys, description, enabled, constant, or order");
+          throw new Error(
+            "lorebook.updateEntry needs entryId plus a patch field such as name, content, keys, description, enabled, constant, or order",
+          );
         }
         return this.executeMutation(
           {
@@ -2700,6 +2876,95 @@ export class MariDbService {
     }
   }
 
+  private async executeHomeWidgetAction(
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const rows = await this.rawRows("app_settings");
+    const settingsRow = rows.find((row) => row.key === HOME_CUSTOM_WIDGETS_SETTINGS_KEY) ?? null;
+    let catalog = homeCustomWidgetCatalogSchema.parse({ widgets: [] });
+    if (typeof settingsRow?.value === "string") {
+      try {
+        catalog = homeCustomWidgetCatalogSchema.parse(JSON.parse(settingsRow.value));
+      } catch {
+        throw new Error("The stored Home custom widget catalog is invalid and must be repaired before editing it.");
+      }
+    }
+
+    const saveCatalog = (widgets: typeof catalog.widgets) => {
+      const nextCatalog = homeCustomWidgetCatalogSchema.parse({ revision: catalog.revision + 1, widgets });
+      const request: ParsedMutationRequest = {
+        kind: settingsRow ? "replace" : "insert",
+        table: "app_settings",
+        ...(settingsRow ? { id: HOME_CUSTOM_WIDGETS_SETTINGS_KEY } : {}),
+        row: { key: HOME_CUSTOM_WIDGETS_SETTINGS_KEY, value: JSON.stringify(nextCatalog), updatedAt: now() },
+        apply: firstBoolean(args, ["apply"]) === true,
+        cascade: false,
+        reason: firstString(args, ["reason"]) ?? null,
+        cwd: context.cwd,
+      };
+      return this.executeMutation(request, context.command, context.sessionId);
+    };
+
+    switch (sub) {
+      case "list":
+        return { ok: true, mode: "read", command: context.command, output: catalog.widgets };
+      case "get": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        const widget = catalog.widgets.find((candidate) => candidate.id === id) ?? null;
+        return { ok: Boolean(widget), mode: "read", command: context.command, output: widget };
+      }
+      case "create": {
+        if (catalog.widgets.length >= HOME_CUSTOM_WIDGET_LIMIT)
+          throw new Error(`Home supports at most ${HOME_CUSTOM_WIDGET_LIMIT} custom widgets.`);
+        const data = actionDataWithTopLevel(args, ["data", "widget"], ["title", "description", "accent", "icon"]);
+        const draft = homeCustomWidgetDraftSchema.parse(data);
+        const slug =
+          draft.title
+            .toLowerCase()
+            .normalize("NFKD")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 48) || "widget";
+        const suffix = newId()
+          .replace(/[^a-z0-9]/gi, "")
+          .toLowerCase()
+          .slice(0, 8);
+        const timestamp = now();
+        return saveCatalog([
+          ...catalog.widgets,
+          homeCustomWidgetSchema.parse({
+            ...draft,
+            id: `${slug}-${suffix}`,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }),
+        ]);
+      }
+      case "update": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        const index = catalog.widgets.findIndex((candidate) => candidate.id === id);
+        if (index < 0) throw new Error(`Home widget ${id} was not found.`);
+        const patch = homeCustomWidgetDraftSchema
+          .partial()
+          .parse(actionDataWithTopLevel(args, ["patch", "data", "widget"], ["title", "description", "accent", "icon"]));
+        if (Object.keys(patch).length === 0) throw new Error("home_widget.update needs a non-empty patch.");
+        const widgets = [...catalog.widgets];
+        widgets[index] = homeCustomWidgetSchema.parse({ ...widgets[index], ...patch, updatedAt: now() });
+        return saveCatalog(widgets);
+      }
+      case "delete": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        if (!catalog.widgets.some((candidate) => candidate.id === id))
+          throw new Error(`Home widget ${id} was not found.`);
+        return saveCatalog(catalog.widgets.filter((candidate) => candidate.id !== id));
+      }
+      default:
+        return { ok: false, mode: "read", command: context.command, error: "Unsupported Home widget app_data action." };
+    }
+  }
+
   private async executeThemeAction(
     sub: string,
     args: Row,
@@ -2712,10 +2977,16 @@ export class MariDbService {
         const rows = (await this.rawRows(THEME_TABLE))
           .filter((row) => !activeOnly || row.isActive === THEME_ACTIVE_TRUE)
           .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizeThemeRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizeThemeRow),
+        };
       }
       case "active": {
-        const row = (await this.rawRows(THEME_TABLE)).find((candidate) => candidate.isActive === THEME_ACTIVE_TRUE) ?? null;
+        const row =
+          (await this.rawRows(THEME_TABLE)).find((candidate) => candidate.isActive === THEME_ACTIVE_TRUE) ?? null;
         return { ok: true, mode: "read", command: context.command, output: row ? parseThemeRow(row) : null };
       }
       case "get": {
@@ -2724,7 +2995,11 @@ export class MariDbService {
         return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseThemeRow(row) : null };
       }
       case "create": {
-        const data = actionDataWithTopLevel(args, ["data", "theme", "row"], ["name", "css", "activate", "active", "installedAt"]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "theme", "row"],
+          ["name", "css", "activate", "active", "installedAt"],
+        );
         const id = firstString(args, ["id", "themeId"]) ?? newId();
         const activate = firstBoolean(data, ["activate", "active"]) === true;
         const request: ParsedMutationRequest = {
@@ -2756,7 +3031,8 @@ export class MariDbService {
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
         };
-        if (request.name === undefined && request.css === undefined) throw new Error("theme.update needs a patch with name or css");
+        if (request.name === undefined && request.css === undefined)
+          throw new Error("theme.update needs a patch with name or css");
         return this.executeMutation(request, context.command, context.sessionId);
       }
       case "setactive": {
@@ -2840,16 +3116,11 @@ export class MariDbService {
         return { ok: true, mode: "read", command: context.command, output: rows };
       }
       case "create": {
-        const data = actionDataWithTopLevel(args, ["data", "extension", "row"], [
-          "name",
-          "version",
-          "description",
-          "runtime",
-          "capabilities",
-          "css",
-          "js",
-          "serverJs",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "extension", "row"],
+          ["name", "version", "description", "runtime", "capabilities", "css", "js", "serverJs"],
+        );
         const parsed = createPersonalExtensionSchema.parse(data);
         const runtime = parsed.runtime === "server" ? "server" : "client";
         const executable = {
@@ -2899,18 +3170,16 @@ export class MariDbService {
         const existingRaw = await this.getRawById(getMeta(table), id);
         if (!existingRaw) throw new Error(`Personal Extension ${id} not found`);
         const existing = parseRow(table, existingRaw);
-        const data = actionDataWithTopLevel(args, ["patch", "data", "extension"], [
-          "name",
-          "version",
-          "description",
-          "runtime",
-          "capabilities",
-          "css",
-          "js",
-          "serverJs",
-        ]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "extension"],
+          ["name", "version", "description", "runtime", "capabilities", "css", "js", "serverJs"],
+        );
         if (Object.keys(data).length === 0) throw new Error("personal_extension.update needs a code or metadata patch");
-        const runtime = data.runtime === "server" || (data.runtime === undefined && existing.runtime === "server") ? "server" : "client";
+        const runtime =
+          data.runtime === "server" || (data.runtime === undefined && existing.runtime === "server")
+            ? "server"
+            : "client";
         const textOrFallback = (key: string, fallback: unknown) =>
           data[key] === null ? null : typeof data[key] === "string" ? data[key] : fallback;
         const parsed = createPersonalExtensionSchema.parse({
@@ -2951,9 +3220,7 @@ export class MariDbService {
                 ...previousExecutable,
                 savedAt: now(),
               },
-              ...existingRevisions.filter(
-                (revision) => !isRecord(revision) || revision.contentHash !== previousHash,
-              ),
+              ...existingRevisions.filter((revision) => !isRecord(revision) || revision.contentHash !== previousHash),
             ].slice(0, 10)
           : existingRevisions;
         const row: Row = {
@@ -3019,7 +3286,12 @@ export class MariDbService {
       case "get": {
         const id = requiredString(args, ["id", "agentId", "agentConfigId"], "agent id");
         const row = await this.getRawById(getMeta("agent_configs"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseRow("agent_configs", row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("agent_configs", row) : null,
+        };
       }
       case "search": {
         const query = requiredString(args, ["query", "search"], "agent search query").toLowerCase();
@@ -3032,20 +3304,24 @@ export class MariDbService {
       }
       case "create": {
         const data = normalizeAgentActionData(
-          actionDataWithTopLevel(args, ["data", "agent", "row"], [
-            "type",
-            "agentType",
-            "name",
-            "description",
-            "phase",
-            "enabled",
-            "connectionId",
-            "imagePath",
-            "promptTemplate",
-            "prompt",
-            "settings",
-            "resultType",
-          ]),
+          actionDataWithTopLevel(
+            args,
+            ["data", "agent", "row"],
+            [
+              "type",
+              "agentType",
+              "name",
+              "description",
+              "phase",
+              "enabled",
+              "connectionId",
+              "imagePath",
+              "promptTemplate",
+              "prompt",
+              "settings",
+              "resultType",
+            ],
+          ),
         );
         requiredString(data, ["name"], "agent name");
         requiredString(data, ["type"], "agent type");
@@ -3065,20 +3341,24 @@ export class MariDbService {
         const id = requiredString(args, ["id", "agentId", "agentConfigId"], "agent id");
         const existing = await this.requireRawById(getMeta("agent_configs"), id);
         const data = normalizeAgentActionData(
-          actionDataWithTopLevel(args, ["patch", "data", "agent"], [
-            "type",
-            "agentType",
-            "name",
-            "description",
-            "phase",
-            "enabled",
-            "connectionId",
-            "imagePath",
-            "promptTemplate",
-            "prompt",
-            "settings",
-            "resultType",
-          ]),
+          actionDataWithTopLevel(
+            args,
+            ["patch", "data", "agent"],
+            [
+              "type",
+              "agentType",
+              "name",
+              "description",
+              "phase",
+              "enabled",
+              "connectionId",
+              "imagePath",
+              "promptTemplate",
+              "prompt",
+              "settings",
+              "resultType",
+            ],
+          ),
           parseRow("agent_configs", existing),
         );
         delete data.id;
@@ -3119,7 +3399,12 @@ export class MariDbService {
       case "get": {
         const id = requiredString(args, ["id", "presetId", "promptPresetId"], "prompt preset id");
         const row = await this.getRawById(getMeta("prompt_presets"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parsePromptPresetRow(row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parsePromptPresetRow(row) : null,
+        };
       }
       case "search": {
         const query = requiredString(args, ["query", "search"], "prompt preset search query").toLowerCase();
@@ -3131,28 +3416,32 @@ export class MariDbService {
         return { ok: true, mode: "read", command: context.command, output: rows };
       }
       case "create": {
-        const payload = actionDataWithTopLevel(args, ["data", "preset", "promptPreset", "row"], [
-          "name",
-          "description",
-          "imagePath",
-          "conversationPrompt",
-          "gamePrompt",
-          "sectionOrder",
-          "groupOrder",
-          "variableGroups",
-          "variableValues",
-          "parameters",
-          "wrapFormat",
-          "defaultChoices",
-          "isDefault",
-          "author",
-          "groups",
-          "sections",
-          "promptSections",
-          "choiceBlocks",
-          "variables",
-          "choices",
-        ]);
+        const payload = actionDataWithTopLevel(
+          args,
+          ["data", "preset", "promptPreset", "row"],
+          [
+            "name",
+            "description",
+            "imagePath",
+            "conversationPrompt",
+            "gamePrompt",
+            "sectionOrder",
+            "groupOrder",
+            "variableGroups",
+            "variableValues",
+            "parameters",
+            "wrapFormat",
+            "defaultChoices",
+            "isDefault",
+            "author",
+            "groups",
+            "sections",
+            "promptSections",
+            "choiceBlocks",
+            "variables",
+            "choices",
+          ],
+        );
         const presetId = firstString(payload, ["id", "presetId", "promptPresetId"]) ?? newId();
         payload.id = presetId;
         const relatedInserts = normalizePromptPresetChildInserts(payload, presetId);
@@ -3174,28 +3463,32 @@ export class MariDbService {
       case "update": {
         const id = requiredString(args, ["id", "presetId", "promptPresetId"], "prompt preset id");
         const existing = await this.requireRawById(getMeta("prompt_presets"), id);
-        const payload = actionDataWithTopLevel(args, ["patch", "data", "preset", "promptPreset"], [
-          "name",
-          "description",
-          "imagePath",
-          "conversationPrompt",
-          "gamePrompt",
-          "sectionOrder",
-          "groupOrder",
-          "variableGroups",
-          "variableValues",
-          "parameters",
-          "wrapFormat",
-          "defaultChoices",
-          "isDefault",
-          "author",
-          "groups",
-          "sections",
-          "promptSections",
-          "choiceBlocks",
-          "variables",
-          "choices",
-        ]);
+        const payload = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "preset", "promptPreset"],
+          [
+            "name",
+            "description",
+            "imagePath",
+            "conversationPrompt",
+            "gamePrompt",
+            "sectionOrder",
+            "groupOrder",
+            "variableGroups",
+            "variableValues",
+            "parameters",
+            "wrapFormat",
+            "defaultChoices",
+            "isDefault",
+            "author",
+            "groups",
+            "sections",
+            "promptSections",
+            "choiceBlocks",
+            "variables",
+            "choices",
+          ],
+        );
         const relatedInserts = normalizePromptPresetChildInserts(payload, id);
         const data = normalizePromptPresetActionData(stripPromptPresetChildPayload(payload), existing);
         delete data.id;
@@ -3213,7 +3506,12 @@ export class MariDbService {
         return this.executeMutation(request, context.command, context.sessionId);
       }
       default:
-        return { ok: false, mode: "read", command: context.command, error: "Unsupported prompt preset app_data action." };
+        return {
+          ok: false,
+          mode: "read",
+          command: context.command,
+          error: "Unsupported prompt preset app_data action.",
+        };
     }
   }
 
@@ -3247,7 +3545,9 @@ export class MariDbService {
     await writeFile(this.historyPath(), "", "utf8");
   }
 
-  async keepAppliedReviewAndWait(id: string): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry | null; completed: boolean } | null> {
+  async keepAppliedReviewAndWait(
+    id: string,
+  ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry | null; completed: boolean } | null> {
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
@@ -3270,13 +3570,15 @@ export class MariDbService {
     return history;
   }
 
-  async restoreAppliedReview(id: string): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry } | null> {
+  async restoreAppliedReview(
+    id: string,
+  ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry } | null> {
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
+    await this.restorePlan(record.plan);
     clearTimeout(record.timer);
     this.pending.delete(id);
-    await this.restorePlan(record.plan);
     const history = await this.recordHistory({
       plan: record.plan,
       command: record.command,
@@ -3305,7 +3607,12 @@ export class MariDbService {
       for (const row of rows) {
         const id = row[pk];
         if (typeof id !== "string" || id.trim().length === 0) {
-          issues.push({ level: "error", table: tableName, id: id == null ? null : String(id), message: `Missing primary key ${pk}` });
+          issues.push({
+            level: "error",
+            table: tableName,
+            id: id == null ? null : String(id),
+            message: `Missing primary key ${pk}`,
+          });
         } else if (ids.has(id)) {
           issues.push({ level: "error", table: tableName, id, message: `Duplicate primary key ${pk}=${id}` });
         } else {
@@ -3313,7 +3620,12 @@ export class MariDbService {
         }
         for (const column of meta.columns) {
           if (column.notNull && (row[column.key] === null || row[column.key] === undefined)) {
-            issues.push({ level: "error", table: tableName, id: id == null ? null : String(id), message: `Missing required column ${column.key}` });
+            issues.push({
+              level: "error",
+              table: tableName,
+              id: id == null ? null : String(id),
+              message: `Missing required column ${column.key}`,
+            });
           }
         }
         for (const key of JSON_COLUMNS[tableName] ?? []) {
@@ -3324,7 +3636,12 @@ export class MariDbService {
           try {
             JSON.parse(value);
           } catch {
-            issues.push({ level: "error", table: tableName, id: id == null ? null : String(id), message: `Column ${key} is not valid JSON` });
+            issues.push({
+              level: "error",
+              table: tableName,
+              id: id == null ? null : String(id),
+              message: `Column ${key} is not valid JSON`,
+            });
           }
         }
         addCharacterDataShapeIssues(tableName, row, id, issues);
@@ -3347,7 +3664,9 @@ export class MariDbService {
 
     for (const cascade of CASCADES) {
       if (table && table !== cascade.child && table !== cascade.parent) continue;
-      const parents = new Set((await getRows(cascade.parent)).map((row) => row[cascade.parentKey]).filter((id) => typeof id === "string"));
+      const parents = new Set(
+        (await getRows(cascade.parent)).map((row) => row[cascade.parentKey]).filter((id) => typeof id === "string"),
+      );
       for (const child of await getRows(cascade.child)) {
         const ref = child[cascade.childKey];
         if (typeof ref === "string" && ref && !parents.has(ref)) {
@@ -3384,10 +3703,20 @@ export class MariDbService {
       });
     }
     if (typeof row.enabled !== "string" || !BOOLEAN_TEXT_VALUES.has(row.enabled)) {
-      issues.push({ level: "error", table: "agent_configs", id, message: "Agent enabled must be stored as \"true\" or \"false\"" });
+      issues.push({
+        level: "error",
+        table: "agent_configs",
+        id,
+        message: 'Agent enabled must be stored as "true" or "false"',
+      });
     }
     if (row.connectionId !== null && row.connectionId !== undefined && typeof row.connectionId !== "string") {
-      issues.push({ level: "error", table: "agent_configs", id, message: "Agent connectionId must be a string or null" });
+      issues.push({
+        level: "error",
+        table: "agent_configs",
+        id,
+        message: "Agent connectionId must be a string or null",
+      });
     }
     if (row.imagePath !== null && row.imagePath !== undefined && typeof row.imagePath !== "string") {
       issues.push({ level: "error", table: "agent_configs", id, message: "Agent imagePath must be a string or null" });
@@ -3407,7 +3736,12 @@ export class MariDbService {
       issues.push({ level: "error", table: "custom_tools", id, message: "Tool name must be lowercase snake_case" });
     }
     if (typeof row.description !== "string" || row.description.trim().length === 0) {
-      issues.push({ level: "error", table: "custom_tools", id, message: "Tool description must be a non-empty string" });
+      issues.push({
+        level: "error",
+        table: "custom_tools",
+        id,
+        message: "Tool description must be a non-empty string",
+      });
     }
     if (typeof row.executionType !== "string" || !TOOL_EXECUTION_TYPES.has(row.executionType)) {
       issues.push({
@@ -3426,7 +3760,12 @@ export class MariDbService {
       });
     }
     if (typeof row.enabled !== "string" || !BOOLEAN_TEXT_VALUES.has(row.enabled)) {
-      issues.push({ level: "error", table: "custom_tools", id, message: "Tool enabled must be stored as \"true\" or \"false\"" });
+      issues.push({
+        level: "error",
+        table: "custom_tools",
+        id,
+        message: 'Tool enabled must be stored as "true" or "false"',
+      });
     }
     if (
       row.includeHiddenContext !== undefined &&
@@ -3436,16 +3775,26 @@ export class MariDbService {
         level: "error",
         table: "custom_tools",
         id,
-        message: "Tool includeHiddenContext must be stored as \"true\" or \"false\"",
+        message: 'Tool includeHiddenContext must be stored as "true" or "false"',
       });
     }
     const parametersSchema = tryParseJsonColumn(row, "parametersSchema");
     if (parametersSchema !== undefined && !isRecord(parametersSchema)) {
-      issues.push({ level: "error", table: "custom_tools", id, message: "Tool parametersSchema must be a JSON object" });
+      issues.push({
+        level: "error",
+        table: "custom_tools",
+        id,
+        message: "Tool parametersSchema must be a JSON object",
+      });
     }
     if (row.webhookUrl !== null && row.webhookUrl !== undefined && row.webhookUrl !== "") {
       if (typeof row.webhookUrl !== "string") {
-        issues.push({ level: "error", table: "custom_tools", id, message: "Tool webhookUrl must be a URL string or null" });
+        issues.push({
+          level: "error",
+          table: "custom_tools",
+          id,
+          message: "Tool webhookUrl must be a URL string or null",
+        });
       } else {
         try {
           new URL(row.webhookUrl);
@@ -3455,10 +3804,25 @@ export class MariDbService {
       }
     }
     if (row.executionType === "script" && (typeof row.scriptBody !== "string" || row.scriptBody.trim().length === 0)) {
-      issues.push({ level: "error", table: "custom_tools", id, message: "Script tools require a non-empty scriptBody" });
+      issues.push({
+        level: "error",
+        table: "custom_tools",
+        id,
+        message: "Script tools require a non-empty scriptBody",
+      });
     }
-    if (row.executionType === "static" && row.staticResult !== null && row.staticResult !== undefined && typeof row.staticResult !== "string") {
-      issues.push({ level: "error", table: "custom_tools", id, message: "Static tool result must be a string or null" });
+    if (
+      row.executionType === "static" &&
+      row.staticResult !== null &&
+      row.staticResult !== undefined &&
+      typeof row.staticResult !== "string"
+    ) {
+      issues.push({
+        level: "error",
+        table: "custom_tools",
+        id,
+        message: "Static tool result must be a string or null",
+      });
     }
   }
 
@@ -3472,7 +3836,8 @@ export class MariDbService {
       return { ok: true, mode: "read", command: context.command, output: this.codeHelpText() };
     }
     const parsed = parseArgs(args.slice(1));
-    if (hasFlag(parsed.flags, "help")) return { ok: true, mode: "read", command: context.command, output: this.codeHelpText() };
+    if (hasFlag(parsed.flags, "help"))
+      return { ok: true, mode: "read", command: context.command, output: this.codeHelpText() };
 
     switch (sub) {
       case "status":
@@ -3528,13 +3893,18 @@ export class MariDbService {
           statusShort: statusText,
           changedFiles: parseGitStatusFiles(statusText),
           diffStat: stat.stdout.trim(),
-          errors: [repoRoot, branch, status, stat].filter((result) => !result.ok).map((result) => result.stderr.trim() || `${result.command} failed`),
+          errors: [repoRoot, branch, status, stat]
+            .filter((result) => !result.ok)
+            .map((result) => result.stderr.trim() || `${result.command} failed`),
         },
       },
     };
   }
 
-  private async executeCodeDiff(context: CodeCommandContext, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async executeCodeDiff(
+    context: CodeCommandContext,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     const cwd = this.codeCwd(context.cwd);
     const cached = hasFlag(flags, "cached") || hasFlag(flags, "staged");
     const includePatch = hasFlag(flags, "patch") || hasFlag(flags, "full");
@@ -3543,14 +3913,18 @@ export class MariDbService {
       runProcess("git", ["status", "--short", "--branch"], { cwd, timeoutMs: CODE_READ_TIMEOUT_MS }),
       runProcess("git", [...diffBaseArgs, "--stat"], { cwd, timeoutMs: CODE_READ_TIMEOUT_MS }),
       runProcess("git", [...diffBaseArgs, "--name-only"], { cwd, timeoutMs: CODE_READ_TIMEOUT_MS }),
-      includePatch ? runProcess("git", [...diffBaseArgs, "--patch"], { cwd, timeoutMs: CODE_READ_TIMEOUT_MS }) : Promise.resolve(null),
+      includePatch
+        ? runProcess("git", [...diffBaseArgs, "--patch"], { cwd, timeoutMs: CODE_READ_TIMEOUT_MS })
+        : Promise.resolve(null),
     ]);
     const statusText = status.stdout.trim();
     const gitFiles = nameOnly.stdout
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
-    const changedFiles = [...new Set([...parseGitStatusFiles(statusText), ...gitFiles])].sort((a, b) => a.localeCompare(b));
+    const changedFiles = [...new Set([...parseGitStatusFiles(statusText), ...gitFiles])].sort((a, b) =>
+      a.localeCompare(b),
+    );
     return {
       ok: status.ok && stat.ok && nameOnly.ok && (!patch || patch.ok),
       mode: "read",
@@ -3563,12 +3937,17 @@ export class MariDbService {
         stat: stat.stdout.trim(),
         patch: patch?.stdout,
         truncated: Boolean(patch?.truncated || stat.truncated || nameOnly.truncated),
-        errors: [status, stat, nameOnly, patch].filter((result): result is ProcessRunResult => !!result && !result.ok).map((result) => result.stderr.trim() || `${result.command} failed`),
+        errors: [status, stat, nameOnly, patch]
+          .filter((result): result is ProcessRunResult => !!result && !result.ok)
+          .map((result) => result.stderr.trim() || `${result.command} failed`),
       },
     };
   }
 
-  private async executeCodeCheck(context: CodeCommandContext, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async executeCodeCheck(
+    context: CodeCommandContext,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     const cwd = this.codeCwd(context.cwd);
     const changedOnly = hasFlag(flags, "changed");
     const result = await runProcess("pnpm", ["check"], { cwd, timeoutMs: CODE_CHECK_TIMEOUT_MS });
@@ -3626,7 +4005,12 @@ export class MariDbService {
       return { ok: true, mode: "read", command: context.command, output: this.codeReloadHelpText() };
     }
     if (sub !== "request") {
-      return { ok: false, mode: "read", command: context.command, error: `Unknown mari code reload command: ${sub}\n${this.codeReloadHelpText()}` };
+      return {
+        ok: false,
+        mode: "read",
+        command: context.command,
+        error: `Unknown mari code reload command: ${sub}\n${this.codeReloadHelpText()}`,
+      };
     }
     const kind = flagString(parsed.flags, "kind") ?? "client";
     if (!["client", "server", "full"].includes(kind)) {
@@ -3649,19 +4033,27 @@ export class MariDbService {
           kind === "client"
             ? ["Reload the browser tab or rely on Vite HMR if it already updated.", "Continue after the UI reconnects."]
             : kind === "server"
-              ? ["Restart the Marinara server or wait for tsx watch/dev launcher to restart it.", "Run mari code health after reconnecting."]
-              : ["Restart the Marinara server and reload the browser client.", "Run mari code health after reconnecting."],
+              ? [
+                  "Restart the Marinara server or wait for tsx watch/dev launcher to restart it.",
+                  "Run mari code health after reconnecting.",
+                ]
+              : [
+                  "Restart the Marinara server and reload the browser client.",
+                  "Run mari code health after reconnecting.",
+                ],
       },
     };
   }
 
   private executeCodeContinue(runId: string | undefined, context: CodeCommandContext): MariDbCommandResult {
-    if (!runId) return { ok: false, mode: "read", command: context.command, error: "Usage: mari code continue <run-id>" };
+    if (!runId)
+      return { ok: false, mode: "read", command: context.command, error: "Usage: mari code continue <run-id>" };
     return {
       ok: false,
       mode: "read",
       command: context.command,
-      error: "Durable workspace run resume is planned but not implemented yet. Reopen Professor Mari and paste the run context or continue manually.",
+      error:
+        "Durable workspace run resume is planned but not implemented yet. Reopen Professor Mari and paste the run context or continue manually.",
     };
   }
 
@@ -3692,7 +4084,12 @@ export class MariDbService {
         const id = parsed.positionals[0];
         if (!id) throw new Error("Usage: mari characters get <id>");
         const row = await this.getRawById(getMeta("characters"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseRow("characters", row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("characters", row) : null,
+        };
       }
       case "search": {
         const query = parsed.positionals[0];
@@ -3813,7 +4210,12 @@ export class MariDbService {
         const rows = (await this.rawRows("personas")).sort((a, b) =>
           String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")),
         );
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizePersonaRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizePersonaRow),
+        };
       }
       case "active": {
         const row = (await this.rawRows("personas")).find((r) => r.isActive === "true") ?? null;
@@ -3823,7 +4225,12 @@ export class MariDbService {
         const id = parsed.positionals[0];
         if (!id) throw new Error("Usage: mari personas get <id>");
         const row = await this.getRawById(getMeta("personas"), id);
-        return { ok: Boolean(row), mode: "read", command: context.command, output: row ? parseRow("personas", row) : null };
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("personas", row) : null,
+        };
       }
       case "search": {
         const query = parsed.positionals[0];
@@ -3904,7 +4311,10 @@ export class MariDbService {
         const personaTagsRaw = flagString(flags, "tags");
         if (personaTagsRaw !== undefined) {
           patch.tags = personaTagsRaw
-            ? personaTagsRaw.split(/[,|]/).map((t) => t.trim()).filter(Boolean)
+            ? personaTagsRaw
+                .split(/[,|]/)
+                .map((t) => t.trim())
+                .filter(Boolean)
             : [];
         }
         const convoBehaviorRaw = flagString(flags, "convo-behavior");
@@ -3965,7 +4375,12 @@ export class MariDbService {
           .filter((row) => !globalOnly || row.isGlobal === "true")
           .filter((row) => !characterId || row.characterId === characterId)
           .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizeLorebookRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizeLorebookRow),
+        };
       }
       case "get": {
         const id = parsed.positionals[0];
@@ -3973,11 +4388,17 @@ export class MariDbService {
         const row = await this.getRawById(getMeta("lorebooks"), id);
         if (!row) return { ok: false, mode: "read", command: context.command, output: null };
         const entryCount = (await this.rawRows("lorebook_entries")).filter((e) => e.lorebookId === id).length;
-        return { ok: true, mode: "read", command: context.command, output: { ...parseRow("lorebooks", row), entryCount } };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: { ...parseRow("lorebooks", row), entryCount },
+        };
       }
       case "entries": {
         const lorebookId = parsed.positionals[0];
-        if (!lorebookId) throw new Error("Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]");
+        if (!lorebookId)
+          throw new Error("Usage: mari lorebooks entries <lorebook-id> [--limit <n>] [--entry-id <entry-id>]");
         const limit = normalizeLimit(flagString(flags, "limit"), 100, 2000);
         const entryId = flagString(flags, "entry-id") ?? flagString(flags, "entryId");
         const entries = (await this.rawRows("lorebook_entries"))
@@ -4012,7 +4433,8 @@ export class MariDbService {
       }
       case "create": {
         const name = flagString(flags, "name")?.trim();
-        if (!name) throw new Error("Usage: mari lorebooks create --name <name> [--description <text>] [--global] [--apply]");
+        if (!name)
+          throw new Error("Usage: mari lorebooks create --name <name> [--description <text>] [--global] [--apply]");
         const timestamp = now();
         const row: Row = {
           id: flagString(flags, "id") ?? newId(),
@@ -4074,7 +4496,10 @@ export class MariDbService {
         const lorebookTagsRaw = flagString(flags, "tags");
         if (lorebookTagsRaw !== undefined) {
           patch.tags = lorebookTagsRaw
-            ? lorebookTagsRaw.split(/[,|]/).map((t) => t.trim()).filter(Boolean)
+            ? lorebookTagsRaw
+                .split(/[,|]/)
+                .map((t) => t.trim())
+                .filter(Boolean)
             : [];
         }
         if (Object.keys(patch).length <= 1) {
@@ -4098,7 +4523,7 @@ export class MariDbService {
         const lorebookId = parsed.positionals[0];
         if (!lorebookId) {
           throw new Error(
-            "Usage: mari lorebooks add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
+            "Usage: mari lorebooks add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--case-sensitive] [--use-regex] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
           );
         }
         const entryName = flagString(flags, "name")?.trim();
@@ -4121,47 +4546,37 @@ export class MariDbService {
           : [];
         const addOutletName = flagString(flags, "outlet-name")?.trim() ?? "";
         const timestamp = now();
-        const entryRow: Row = {
-          id: flagString(flags, "id") ?? newId(),
+        const addSecondaryKeysRaw = flagString(flags, "secondary-keys") ?? "";
+        const addSecondaryKeys = addSecondaryKeysRaw
+          ? addSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+          : [];
+        const addSelectiveLogic = flagString(flags, "selective-logic");
+        if (addSelectiveLogic !== undefined && !normalizeSelectiveLogicValue(addSelectiveLogic)) {
+          throw new Error("--selective-logic must be one of: and, and_all, or, not, not_all");
+        }
+        // Reuse buildLorebookEntryCreateRow (the app_data create path) so the CLI and app_data
+        // entry shapes cannot drift; then apply the CLI-only folderId.
+        const entryRow = buildLorebookEntryCreateRow(
+          {
+            name: entryName,
+            content: flagString(flags, "content") ?? "",
+            description: flagString(flags, "description") ?? "",
+            tag: flagString(flags, "tag") ?? "",
+            keys,
+            secondaryKeys: addSecondaryKeys,
+            selective: hasFlag(flags, "selective"),
+            selectiveLogic: addSelectiveLogic,
+            matchWholeWords: hasFlag(flags, "match-whole-words"),
+            caseSensitive: hasFlag(flags, "case-sensitive"),
+            useRegex: hasFlag(flags, "use-regex"),
+            outletName: addOutletName,
+            position: addOutletName ? 7 : 0,
+          },
           lorebookId,
-          folderId: addFolderId ?? null,
-          name: entryName,
-          content: flagString(flags, "content") ?? "",
-          description: flagString(flags, "description") ?? "",
-          tag: flagString(flags, "tag") ?? "",
-          keys,
-          secondaryKeys: [],
-          enabled: "true",
-          constant: "false",
-          selective: "false",
-          selectiveLogic: "and",
-          matchWholeWords: "false",
-          caseSensitive: "false",
-          useRegex: "false",
-          characterFilterMode: "any",
-          characterFilterIds: [],
-          characterTagFilterMode: "any",
-          characterTagFilters: [],
-          generationTriggerFilterMode: "any",
-          generationTriggerFilters: [],
-          additionalMatchingSources: [],
-          position: addOutletName ? 7 : 0,
-          outletName: addOutletName,
-          depth: 4,
-          order: 100,
-          role: "system",
-          group: "",
-          relationships: {},
-          dynamicState: {},
-          activationConditions: [],
-          preventRecursion: "true",
-          excludeRecursion: "false",
-          delayUntilRecursion: "false",
-          excludeFromVectorization: "false",
-          locked: "false",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
+          flagString(flags, "id") ?? newId(),
+          timestamp,
+        );
+        entryRow.folderId = addFolderId ?? null;
         const request: ParsedMutationRequest = {
           kind: "insert",
           table: "lorebook_entries",
@@ -4178,7 +4593,7 @@ export class MariDbService {
         const entryId = parsed.positionals[0];
         if (!entryId) {
           throw new Error(
-            "Usage: mari lorebooks update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
+            "Usage: mari lorebooks update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--selective] [--no-selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--no-match-whole-words] [--case-sensitive] [--no-case-sensitive] [--use-regex] [--no-use-regex] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
           );
         }
         const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
@@ -4199,7 +4614,10 @@ export class MariDbService {
         const keysRaw = flagString(flags, "keys");
         if (keysRaw !== undefined) {
           entryPatch.keys = keysRaw
-            ? keysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+            ? keysRaw
+                .split(",")
+                .map((k) => k.trim())
+                .filter(Boolean)
             : [];
         }
         const orderVal = flagString(flags, "order");
@@ -4212,6 +4630,26 @@ export class MariDbService {
         if (hasFlag(flags, "disable")) entryPatch.enabled = "false";
         if (hasFlag(flags, "constant")) entryPatch.constant = "true";
         if (hasFlag(flags, "no-constant")) entryPatch.constant = "false";
+        if (hasFlag(flags, "selective")) entryPatch.selective = "true";
+        if (hasFlag(flags, "no-selective")) entryPatch.selective = "false";
+        if (hasFlag(flags, "match-whole-words")) entryPatch.matchWholeWords = "true";
+        if (hasFlag(flags, "no-match-whole-words")) entryPatch.matchWholeWords = "false";
+        if (hasFlag(flags, "case-sensitive")) entryPatch.caseSensitive = "true";
+        if (hasFlag(flags, "no-case-sensitive")) entryPatch.caseSensitive = "false";
+        if (hasFlag(flags, "use-regex")) entryPatch.useRegex = "true";
+        if (hasFlag(flags, "no-use-regex")) entryPatch.useRegex = "false";
+        const updateSelectiveLogic = flagString(flags, "selective-logic");
+        if (updateSelectiveLogic !== undefined) {
+          const normalizedLogic = normalizeSelectiveLogicValue(updateSelectiveLogic);
+          if (!normalizedLogic) throw new Error("--selective-logic must be one of: and, and_all, or, not, not_all");
+          entryPatch.selectiveLogic = normalizedLogic;
+        }
+        const updateSecondaryKeysRaw = flagString(flags, "secondary-keys");
+        if (updateSecondaryKeysRaw !== undefined) {
+          entryPatch.secondaryKeys = updateSecondaryKeysRaw
+            ? updateSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+            : [];
+        }
         const patchFolderId = flagString(flags, "folder-id");
         if (patchFolderId !== undefined) {
           if (!patchFolderId || patchFolderId === "none") {
@@ -4226,7 +4664,7 @@ export class MariDbService {
         }
         if (Object.keys(entryPatch).length <= 1) {
           throw new Error(
-            "Provide at least one field to update (--name, --content, --keys, --description, --tag, --outlet-name, --enable, --disable, --constant, --no-constant, --order, --folder-id)",
+            "Provide at least one field to update (--name, --content, --keys, --secondary-keys, --description, --tag, --outlet-name, --enable, --disable, --constant, --no-constant, --selective, --no-selective, --selective-logic, --match-whole-words, --no-match-whole-words, --case-sensitive, --no-case-sensitive, --use-regex, --no-use-regex, --order, --folder-id)",
           );
         }
         const updateEntryRequest: ParsedMutationRequest = {
@@ -4286,7 +4724,8 @@ export class MariDbService {
         const links = (await this.rawRows("lorebook_character_links")).filter(
           (row) => row.lorebookId === lorebookId && row.characterId === characterId,
         );
-        if (links.length === 0) throw new Error(`No link found between lorebook ${lorebookId} and character ${characterId}`);
+        if (links.length === 0)
+          throw new Error(`No link found between lorebook ${lorebookId} and character ${characterId}`);
         const request: ParsedMutationRequest = {
           kind: "delete",
           table: "lorebook_character_links",
@@ -4349,7 +4788,12 @@ export class MariDbService {
         const row = await this.getRawById(getMeta("chats"), id);
         if (!row) return { ok: false, mode: "read", command: context.command, output: null };
         const messageCount = (await this.rawRows("messages")).filter((m) => m.chatId === id).length;
-        return { ok: true, mode: "read", command: context.command, output: { ...parseRow("chats", row), messageCount } };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: { ...parseRow("chats", row), messageCount },
+        };
       }
       case "messages": {
         const chatId = parsed.positionals[0];
@@ -4374,8 +4818,7 @@ export class MariDbService {
         const numberedMessages = messages.map((message, index) => ({ message, postNumber: index + 1 }));
         let selectedMessages: typeof numberedMessages;
         if (last !== null || afterPost !== null) {
-          const scopedMessages =
-            last !== null ? numberedMessages.slice(-last) : numberedMessages.slice(afterPost ?? 0);
+          const scopedMessages = last !== null ? numberedMessages.slice(-last) : numberedMessages.slice(afterPost ?? 0);
           selectedMessages = scopedMessages.slice(offset, limit !== null ? offset + limit : undefined);
         } else if (tail) {
           const offsetMessages =
@@ -4410,7 +4853,10 @@ export class MariDbService {
     }
   }
 
-  private async executeThemeCommand(args: string[], context: { command: string; sessionId: string; cwd?: string }): Promise<MariDbCommandResult> {
+  private async executeThemeCommand(
+    args: string[],
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
     const sub = args[0];
     const rest = args.slice(1);
     const parsed = parseArgs(rest);
@@ -4426,10 +4872,16 @@ export class MariDbService {
         const rows = (await this.rawRows(THEME_TABLE))
           .filter((row) => !activeOnly || row.isActive === THEME_ACTIVE_TRUE)
           .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
-        return { ok: true, mode: "read", command: context.command, output: rows.slice(0, limit).map(summarizeThemeRow) };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: rows.slice(0, limit).map(summarizeThemeRow),
+        };
       }
       case "active": {
-        const row = (await this.rawRows(THEME_TABLE)).find((candidate) => candidate.isActive === THEME_ACTIVE_TRUE) ?? null;
+        const row =
+          (await this.rawRows(THEME_TABLE)).find((candidate) => candidate.isActive === THEME_ACTIVE_TRUE) ?? null;
         return { ok: true, mode: "read", command: context.command, output: row ? parseThemeRow(row) : null };
       }
       case "get": {
@@ -4440,7 +4892,10 @@ export class MariDbService {
       }
       case "create": {
         const name = flagString(flags, "name")?.trim();
-        if (!name) throw new Error("Usage: mari themes create --name <name> (--css <css> | --css-file <path>) [--activate] [--apply]");
+        if (!name)
+          throw new Error(
+            "Usage: mari themes create --name <name> (--css <css> | --css-file <path>) [--activate] [--apply]",
+          );
         const css = await parseCssInput(flags, context.cwd);
         const request: ParsedMutationRequest = {
           kind: "theme-create",
@@ -4459,7 +4914,8 @@ export class MariDbService {
       }
       case "update": {
         const id = parsed.positionals[0];
-        if (!id) throw new Error("Usage: mari themes update <id> [--name <name>] [--css <css> | --css-file <path>] [--apply]");
+        if (!id)
+          throw new Error("Usage: mari themes update <id> [--name <name>] [--css <css> | --css-file <path>] [--apply]");
         const hasCssInput = flags.has("css") || flags.has("css-file") || flags.has("file");
         const name = flagString(flags, "name")?.trim();
         const css = hasCssInput ? await parseCssInput(flags, context.cwd) : undefined;
@@ -4499,7 +4955,10 @@ export class MariDbService {
     }
   }
 
-  private async executeDbCommand(args: string[], context: { command: string; sessionId: string; cwd?: string }): Promise<MariDbCommandResult> {
+  private async executeDbCommand(
+    args: string[],
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
     const sub = args[0];
     const rest = args.slice(1);
     const parsed = parseArgs(rest);
@@ -4508,7 +4967,12 @@ export class MariDbService {
     }
     switch (sub) {
       case "status":
-        return { ok: true, mode: "read", command: context.command, output: { status: "ok", dataDir: getFileStorageDir(), tables: FILE_BACKED_TABLES.length } };
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: { status: "ok", dataDir: getFileStorageDir(), tables: FILE_BACKED_TABLES.length },
+        };
       case "tables":
         return { ok: true, mode: "read", command: context.command, output: [...FILE_BACKED_TABLES] };
       case "schema": {
@@ -4553,7 +5017,13 @@ export class MariDbService {
         return this.searchRows(parsed.positionals[0], parsed.positionals[1], context.command, parsed.flags);
       case "validate": {
         const result = await this.validate(flagString(parsed.flags, "table") ?? null);
-        return { ok: result.status === "passed", mode: "read", command: context.command, validation: result, output: result };
+        return {
+          ok: result.status === "passed",
+          mode: "read",
+          command: context.command,
+          validation: result,
+          output: result,
+        };
       }
       case "insert":
       case "patch":
@@ -4568,7 +5038,11 @@ export class MariDbService {
     }
   }
 
-  private async listRows(table: string | undefined, command: string, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async listRows(
+    table: string | undefined,
+    command: string,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     if (!table) throw new Error("Usage: mari db list <table>");
     const rows = (await this.rawRows(table)).map((row) => (hasFlag(flags, "parsed") ? parseRow(table, row) : row));
     const limit = normalizeLimit(flagString(flags, "limit"), 50, 1000);
@@ -4576,14 +5050,28 @@ export class MariDbService {
     return { ok: true, mode: "read", command, output: rows.slice(offset, offset + limit) };
   }
 
-  private async getRow(table: string | undefined, id: string | undefined, command: string, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async getRow(
+    table: string | undefined,
+    id: string | undefined,
+    command: string,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     if (!table || !id) throw new Error("Usage: mari db get <table> <id>");
     const meta = getMeta(table);
     const row = await this.getRawById(meta, id);
-    return { ok: Boolean(row), mode: "read", command, output: row && hasFlag(flags, "parsed") ? parseRow(table, row) : row };
+    return {
+      ok: Boolean(row),
+      mode: "read",
+      command,
+      output: row && hasFlag(flags, "parsed") ? parseRow(table, row) : row,
+    };
   }
 
-  private async selectRows(table: string | undefined, command: string, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async selectRows(
+    table: string | undefined,
+    command: string,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     if (!table) throw new Error("Usage: mari db select <table> --where <expr>");
     const predicate = createWherePredicate(flagString(flags, "where"));
     const rows = (await this.rawRows(table)).map((row) => parseRow(table, row)).filter(predicate);
@@ -4591,7 +5079,12 @@ export class MariDbService {
     return { ok: true, mode: "read", command, output: rows.slice(0, limit) };
   }
 
-  private async searchRows(tableArg: string | undefined, query: string | undefined, command: string, flags: Map<string, string | boolean>): Promise<MariDbCommandResult> {
+  private async searchRows(
+    tableArg: string | undefined,
+    query: string | undefined,
+    command: string,
+    flags: Map<string, string | boolean>,
+  ): Promise<MariDbCommandResult> {
     if (!tableArg || !query) throw new Error("Usage: mari db search <table|all> <query>");
     const needle = query.toLowerCase();
     const tables = tableArg === "all" ? [...FILE_BACKED_TABLES] : [tableArg];
@@ -4608,7 +5101,12 @@ export class MariDbService {
     return { ok: true, mode: "read", command, output: results };
   }
 
-  private async parseMutation(kind: ParsedMutationRequest["kind"], positionals: string[], flags: Map<string, string | boolean>, cwd?: string): Promise<ParsedMutationRequest> {
+  private async parseMutation(
+    kind: ParsedMutationRequest["kind"],
+    positionals: string[],
+    flags: Map<string, string | boolean>,
+    cwd?: string,
+  ): Promise<ParsedMutationRequest> {
     const apply = hasFlag(flags, "apply");
     const cascade = hasFlag(flags, "cascade");
     const reason = flagString(flags, "reason") ?? null;
@@ -4619,12 +5117,18 @@ export class MariDbService {
     }
     if (kind === "patch") {
       const [table, id] = positionals;
-      if (!table || !id) throw new Error("Usage: mari db patch <table> <id> (--json '<partial-row-json>' | --json-file <path>) [--apply]");
+      if (!table || !id)
+        throw new Error(
+          "Usage: mari db patch <table> <id> (--json '<partial-row-json>' | --json-file <path>) [--apply]",
+        );
       return { kind, table, id, patch: await parseJsonInput(flags, cwd), apply, cascade, reason, cwd };
     }
     if (kind === "replace") {
       const [table, id] = positionals;
-      if (!table || !id) throw new Error("Usage: mari db replace <table> <id> (--json '<full-row-json>' | --json-file <path>) [--apply]");
+      if (!table || !id)
+        throw new Error(
+          "Usage: mari db replace <table> <id> (--json '<full-row-json>' | --json-file <path>) [--apply]",
+        );
       return { kind, table, id, row: await parseJsonInput(flags, cwd), apply, cascade, reason, cwd };
     }
     if (kind === "delete") {
@@ -4633,16 +5137,28 @@ export class MariDbService {
       return { kind, table, id: positionals[1], where: flagString(flags, "where"), apply, cascade, reason, cwd };
     }
     const [table, scriptPath] = positionals;
-    if (!table || !scriptPath) throw new Error("Usage: mari db transform <table|all> <script.mjs> [--dry-run] [--apply]");
+    if (!table || !scriptPath)
+      throw new Error("Usage: mari db transform <table|all> <script.mjs> [--dry-run] [--apply]");
     return { kind, table, scriptPath, apply, cascade: true, reason, cwd };
   }
 
-  private async executeMutation(request: ParsedMutationRequest, command: string, sessionId: string): Promise<MariDbCommandResult> {
+  private async executeMutation(
+    request: ParsedMutationRequest,
+    command: string,
+    sessionId: string,
+  ): Promise<MariDbCommandResult> {
     const planTimestamp = now();
     const plan = await this.planMutation(request, command, planTimestamp);
     if (plan.validation.status === "blocked") {
       await this.recordHistory({ plan, command, sessionId, status: "blocked", journalPath: null });
-      return { ok: false, mode: request.apply ? "apply" : "dry-run", command, summary: plan.summary, validation: plan.validation, error: "Blocking validation failed" };
+      return {
+        ok: false,
+        mode: request.apply ? "apply" : "dry-run",
+        command,
+        summary: plan.summary,
+        validation: plan.validation,
+        error: "Blocking validation failed",
+      };
     }
 
     if (!request.apply) {
@@ -4713,7 +5229,11 @@ export class MariDbService {
     }
   }
 
-  private async planMutation(request: ParsedMutationRequest, command: string, timestamp: string = now()): Promise<Plan> {
+  private async planMutation(
+    request: ParsedMutationRequest,
+    command: string,
+    timestamp: string = now(),
+  ): Promise<Plan> {
     const issues: MariDbValidationIssue[] = [];
     const allocateId = createRequestIdAllocator(request);
     let changes: PlanChange[] = [];
@@ -4757,11 +5277,25 @@ export class MariDbService {
     const touchedTables = [...new Set(changes.map((change) => change.table))];
     const validation = await this.validateTouchedRows(changes, touchedTables, issues);
     const summary = summaryForChanges(changes);
-    const operationHash = hash({ command, request, changes: changes.map((change) => ({ table: change.table, id: change.id, action: change.action, beforeRaw: change.beforeRaw ?? null, afterRaw: change.afterRaw ?? null })) });
+    const operationHash = hash({
+      command,
+      request,
+      changes: changes.map((change) => ({
+        table: change.table,
+        id: change.id,
+        action: change.action,
+        beforeRaw: change.beforeRaw ?? null,
+        afterRaw: change.afterRaw ?? null,
+      })),
+    });
     return { changes, validation, summary, operationHash, reason: request.reason, request };
   }
 
-  private async planInsert(request: ParsedMutationRequest, timestamp: string, allocateId: () => string): Promise<PlanChange[]> {
+  private async planInsert(
+    request: ParsedMutationRequest,
+    timestamp: string,
+    allocateId: () => string,
+  ): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
     const pk = getPrimary(meta);
     const parsed = { ...(request.row ?? {}) };
@@ -4842,7 +5376,18 @@ export class MariDbService {
     if (meta.byKey.has("createdAt") && !next.createdAt) next.createdAt = existing.createdAt;
     this.fillTimestamps(meta, next, false, timestamp);
     const afterRaw = serializeRow(meta.name, next);
-    return [{ table: meta.name, id: rowId(meta, existing), action: "replace", before: parseRow(meta.name, existing), after: parseRow(meta.name, afterRaw), beforeRaw: existing, afterRaw, apply: true }];
+    return [
+      {
+        table: meta.name,
+        id: rowId(meta, existing),
+        action: "replace",
+        before: parseRow(meta.name, existing),
+        after: parseRow(meta.name, afterRaw),
+        beforeRaw: existing,
+        afterRaw,
+        apply: true,
+      },
+    ];
   }
 
   private async planCharacterMoveFolder(request: ParsedMutationRequest, timestamp: string): Promise<PlanChange[]> {
@@ -4903,7 +5448,9 @@ export class MariDbService {
   private async planDelete(request: ParsedMutationRequest, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
     const rows = await this.rawRows(meta.name);
-    const predicate = request.id ? (row: Row) => String(row[getPrimary(meta)]) === request.id : createWherePredicate(request.where);
+    const predicate = request.id
+      ? (row: Row) => String(row[getPrimary(meta)]) === request.id
+      : createWherePredicate(request.where);
     const selected = rows.filter((row) => predicate(parseRow(meta.name, row)));
     const changes: PlanChange[] = selected.map((row) => ({
       table: meta.name,
@@ -4918,12 +5465,20 @@ export class MariDbService {
     await this.addCascadeDeletes(changes, request.cascade);
     const cascaded = changes.filter((change) => change.cascadeOf);
     if (cascaded.length > 0 && !request.cascade) {
-      issues.push({ level: "error", table: meta.name, message: `Delete would cascade to ${cascaded.length} child row(s). Re-run with --cascade to confirm.` });
+      issues.push({
+        level: "error",
+        table: meta.name,
+        message: `Delete would cascade to ${cascaded.length} child row(s). Re-run with --cascade to confirm.`,
+      });
     }
     return this.dedupeDeletes(changes);
   }
 
-  private async planTransform(request: ParsedMutationRequest, timestamp: string, allocateId: () => string): Promise<PlanChange[]> {
+  private async planTransform(
+    request: ParsedMutationRequest,
+    timestamp: string,
+    allocateId: () => string,
+  ): Promise<PlanChange[]> {
     const cwd = request.cwd ? resolve(request.cwd) : process.cwd();
     const scriptPath = resolve(cwd, String(request.scriptPath));
     const transform = await importTransform(scriptPath);
@@ -4934,7 +5489,10 @@ export class MariDbService {
       getMeta(table);
       const rawRows = await this.rawRows(table);
       allRaw.set(table, rawRows);
-      allParsed.set(table, rawRows.map((row) => parseRow(table, row)));
+      allParsed.set(
+        table,
+        rawRows.map((row) => parseRow(table, row)),
+      );
     }
     const changes: PlanChange[] = [];
     for (const table of tables) {
@@ -4955,7 +5513,16 @@ export class MariDbService {
         const result = await transform(row, ctx);
         if (result === null || result === false || result === undefined) continue;
         if (isRecord(result) && result.delete === true) {
-          changes.push({ table, id: rowId(meta, raw), action: "delete", before: row, after: null, beforeRaw: raw, afterRaw: null, apply: true });
+          changes.push({
+            table,
+            id: rowId(meta, raw),
+            action: "delete",
+            before: row,
+            after: null,
+            beforeRaw: raw,
+            afterRaw: null,
+            apply: true,
+          });
           continue;
         }
         if (isRecord(result) && Object.prototype.hasOwnProperty.call(result, "insert")) {
@@ -4967,18 +5534,39 @@ export class MariDbService {
             if (insertRow[pk] == null || insertRow[pk] === "") insertRow[pk] = allocateId();
             this.fillTimestamps(meta, insertRow, true, timestamp);
             const afterRaw = serializeRow(table, insertRow);
-            changes.push({ table, id: String(afterRaw[pk]), action: "insert", before: null, after: parseRow(table, afterRaw), beforeRaw: null, afterRaw, apply: true });
+            changes.push({
+              table,
+              id: String(afterRaw[pk]),
+              action: "insert",
+              before: null,
+              after: parseRow(table, afterRaw),
+              beforeRaw: null,
+              afterRaw,
+              apply: true,
+            });
           }
           continue;
         }
-        const resultRow = isRecord(result) && Object.prototype.hasOwnProperty.call(result, "update") ? (deepMerge(row, result.update) as Row) : (result as Row);
+        const resultRow =
+          isRecord(result) && Object.prototype.hasOwnProperty.call(result, "update")
+            ? (deepMerge(row, result.update) as Row)
+            : (result as Row);
         if (!isRecord(resultRow)) continue;
         const next = normalizeWriteRow(table, resultRow);
         next[getPrimary(meta)] = raw[getPrimary(meta)];
         this.fillTimestamps(meta, next, false, timestamp);
         const afterRaw = serializeRow(table, next);
         if (stableJson(afterRaw) !== stableJson(raw)) {
-          changes.push({ table, id: rowId(meta, raw), action: "update", before: row, after: parseRow(table, afterRaw), beforeRaw: raw, afterRaw, apply: true });
+          changes.push({
+            table,
+            id: rowId(meta, raw),
+            action: "update",
+            before: row,
+            after: parseRow(table, afterRaw),
+            beforeRaw: raw,
+            afterRaw,
+            apply: true,
+          });
         }
       }
     }
@@ -4986,7 +5574,11 @@ export class MariDbService {
     return this.dedupeDeletes(changes);
   }
 
-  private async planThemeCreate(request: ParsedMutationRequest, timestamp: string, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
+  private async planThemeCreate(
+    request: ParsedMutationRequest,
+    timestamp: string,
+    issues: MariDbValidationIssue[],
+  ): Promise<PlanChange[]> {
     const meta = getMeta(THEME_TABLE);
     const pk = getPrimary(meta);
     const id = String(request.id ?? newId());
@@ -5000,7 +5592,12 @@ export class MariDbService {
       issues.push({ level: "error", table: THEME_TABLE, id, message: `Theme id ${id} already exists` });
     }
     if (existingRows.some((row) => row.name === name && row.css === css)) {
-      issues.push({ level: "notice", table: THEME_TABLE, id, message: "A theme with the same name and CSS already exists" });
+      issues.push({
+        level: "notice",
+        table: THEME_TABLE,
+        id,
+        message: "A theme with the same name and CSS already exists",
+      });
     }
 
     const changes = request.activate ? this.planThemeActivationChanges(existingRows, id, timestamp) : [];
@@ -5026,7 +5623,11 @@ export class MariDbService {
     return changes;
   }
 
-  private async planThemeUpdate(request: ParsedMutationRequest, timestamp: string, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
+  private async planThemeUpdate(
+    request: ParsedMutationRequest,
+    timestamp: string,
+    issues: MariDbValidationIssue[],
+  ): Promise<PlanChange[]> {
     const meta = getMeta(THEME_TABLE);
     const id = String(request.id ?? "");
     const existing = await this.requireRawById(meta, id);
@@ -5054,7 +5655,11 @@ export class MariDbService {
     ];
   }
 
-  private async planThemeSetActive(request: ParsedMutationRequest, timestamp: string, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
+  private async planThemeSetActive(
+    request: ParsedMutationRequest,
+    timestamp: string,
+    issues: MariDbValidationIssue[],
+  ): Promise<PlanChange[]> {
     const targetId = request.id ? String(request.id) : null;
     const rows = await this.rawRows(THEME_TABLE);
     if (targetId && !rows.some((row) => row.id === targetId)) {
@@ -5070,7 +5675,11 @@ export class MariDbService {
         const id = rowId(meta, row);
         const nextActive = targetId && id === targetId ? THEME_ACTIVE_TRUE : THEME_ACTIVE_FALSE;
         if (row.isActive === nextActive) return null;
-        const afterRaw = serializeRow(THEME_TABLE, { ...parseRow(THEME_TABLE, row), isActive: nextActive, updatedAt: timestamp });
+        const afterRaw = serializeRow(THEME_TABLE, {
+          ...parseRow(THEME_TABLE, row),
+          isActive: nextActive,
+          updatedAt: timestamp,
+        });
         return {
           table: THEME_TABLE,
           id,
@@ -5087,7 +5696,8 @@ export class MariDbService {
 
   private addThemeNameIssues(name: string, id: string, issues: MariDbValidationIssue[]) {
     if (!name) issues.push({ level: "error", table: THEME_TABLE, id, message: "Theme name is required" });
-    if (name.length > 200) issues.push({ level: "error", table: THEME_TABLE, id, message: "Theme name must be 200 characters or fewer" });
+    if (name.length > 200)
+      issues.push({ level: "error", table: THEME_TABLE, id, message: "Theme name must be 200 characters or fewer" });
   }
 
   private fillTimestamps(meta: TableMeta, row: Row, isCreate: boolean, stamp: string) {
@@ -5144,7 +5754,11 @@ export class MariDbService {
     return out;
   }
 
-  private async validateTouchedRows(changes: PlanChange[], tables: string[], priorIssues: MariDbValidationIssue[]): Promise<MariDbValidationResult> {
+  private async validateTouchedRows(
+    changes: PlanChange[],
+    tables: string[],
+    priorIssues: MariDbValidationIssue[],
+  ): Promise<MariDbValidationResult> {
     const issues = [...priorIssues];
     for (const change of changes) {
       if (change.action === "delete") continue;
@@ -5157,7 +5771,12 @@ export class MariDbService {
       }
       for (const column of meta.columns) {
         if (column.notNull && (row[column.key] === null || row[column.key] === undefined)) {
-          issues.push({ level: "error", table: change.table, id: change.id, message: `Missing required column ${column.key}` });
+          issues.push({
+            level: "error",
+            table: change.table,
+            id: change.id,
+            message: `Missing required column ${column.key}`,
+          });
         }
       }
       for (const key of JSON_COLUMNS[change.table] ?? []) {
@@ -5167,7 +5786,12 @@ export class MariDbService {
         try {
           JSON.parse(value);
         } catch {
-          issues.push({ level: "error", table: change.table, id: change.id, message: `Column ${key} is not valid JSON` });
+          issues.push({
+            level: "error",
+            table: change.table,
+            id: change.id,
+            message: `Column ${key} is not valid JSON`,
+          });
         }
       }
       addCharacterDataShapeIssues(change.table, row, change.id, issues);
@@ -5187,12 +5811,15 @@ export class MariDbService {
         const ref = change.afterRaw?.[cascade.childKey];
         if (typeof ref !== "string" || !ref) continue;
         const parentInsertedOrUpdated = changes.some(
-          (entry) => entry.table === cascade.parent && entry.action !== "delete" && entry.afterRaw?.[cascade.parentKey] === ref,
+          (entry) =>
+            entry.table === cascade.parent && entry.action !== "delete" && entry.afterRaw?.[cascade.parentKey] === ref,
         );
         const parentDeleted = changes.some(
-          (entry) => entry.table === cascade.parent && entry.action === "delete" && entry.beforeRaw?.[cascade.parentKey] === ref,
+          (entry) =>
+            entry.table === cascade.parent && entry.action === "delete" && entry.beforeRaw?.[cascade.parentKey] === ref,
         );
-        const parentExists = !parentDeleted && (await parentRows(cascade.parent)).some((row) => row[cascade.parentKey] === ref);
+        const parentExists =
+          !parentDeleted && (await parentRows(cascade.parent)).some((row) => row[cascade.parentKey] === ref);
         if (!parentInsertedOrUpdated && !parentExists) {
           issues.push({
             level: "error",
@@ -5214,90 +5841,119 @@ export class MariDbService {
       const issueId = issue.id == null ? null : String(issue.id);
       return !issueId || !touchedRows.has(`${issue.table}:${issueId}`);
     });
-    return validationFromIssues([...issues, ...scopedExistingErrors, ...fullValidation.notices, ...fullValidation.infos]);
+    return validationFromIssues([
+      ...issues,
+      ...scopedExistingErrors,
+      ...fullValidation.notices,
+      ...fullValidation.infos,
+    ]);
   }
 
   private async applyPlan(plan: Plan): Promise<string> {
     const operationId = newId();
     const journalPath = await this.writeJournal(operationId, plan);
-    await this.db.transaction(async (tx) => {
-      const characterStorage = createCharactersStorage(tx as unknown as DB);
-      for (const change of plan.changes) {
-        if (!change.apply) continue;
-        const meta = getMeta(change.table);
-        const pk = getPrimary(meta);
-        if ((change.action === "update" || change.action === "replace") && change.table === "characters") {
-          await characterStorage.createVersionSnapshot(change.id, {
-            source: "professor-mari-workspace",
-            reason: plan.reason ?? "Professor Mari database change",
-          });
+    const homeWidgetChange = singleHomeWidgetCatalogChange(plan);
+    if (homeWidgetChange) {
+      const before = homeWidgetCatalogFromPlanRow(homeWidgetChange.beforeRaw);
+      const after = homeWidgetCatalogFromPlanRow(homeWidgetChange.afterRaw);
+      await replaceHomeWidgetCatalog(this.db, before.revision, after.widgets);
+    } else {
+      await this.db.transaction(async (tx) => {
+        const characterStorage = createCharactersStorage(tx as unknown as DB);
+        for (const change of plan.changes) {
+          if (!change.apply) continue;
+          const meta = getMeta(change.table);
+          const pk = getPrimary(meta);
+          if ((change.action === "update" || change.action === "replace") && change.table === "characters") {
+            await characterStorage.createVersionSnapshot(change.id, {
+              source: "professor-mari-workspace",
+              reason: plan.reason ?? "Professor Mari database change",
+            });
+          }
+          if (change.action === "insert") {
+            await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.afterRaw ?? {}));
+          } else if (change.action === "update" || change.action === "replace") {
+            await tx
+              .update(meta.table as any)
+              .set(knownColumnPatch(meta, change.afterRaw ?? {}))
+              .where(eq(meta.byKey.get(pk)!.column as any, change.id));
+          } else if (change.action === "delete") {
+            await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+          }
         }
-        if (change.action === "insert") {
-          await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.afterRaw ?? {}));
-        } else if (change.action === "update" || change.action === "replace") {
-          await tx
-            .update(meta.table as any)
-            .set(knownColumnPatch(meta, change.afterRaw ?? {}))
-            .where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        } else if (change.action === "delete") {
-          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-      }
-    });
+      });
+    }
     const validation = await this.validate();
     if (validation.status === "blocked") {
       const touchedRows = new Set(plan.changes.map((change) => `${change.table}:${change.id}`));
-      const touchedErrors = validation.errors.filter((issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`));
+      const touchedErrors = validation.errors.filter(
+        (issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`),
+      );
       if (touchedErrors.length > 0) {
         throw new Error(`Post-apply validation failed: ${touchedErrors.map((issue) => issue.message).join("; ")}`);
       }
-      logger.warn("[mari-db] post-apply validation still reports unrelated errors: %s", validation.errors.map((issue) => issue.message).join("; "));
+      logger.warn(
+        "[mari-db] post-apply validation still reports unrelated errors: %s",
+        validation.errors.map((issue) => issue.message).join("; "),
+      );
     }
     await flushDB();
     return journalPath;
   }
 
   private async restorePlan(plan: Plan): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const insertedRows = [...plan.changes].reverse().filter((change) => change.action === "insert");
-      for (const change of insertedRows) {
-        const meta = getMeta(change.table);
-        const pk = getPrimary(meta);
-        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-      }
+    const homeWidgetChange = singleHomeWidgetCatalogChange(plan);
+    if (homeWidgetChange) {
+      const before = homeWidgetCatalogFromPlanRow(homeWidgetChange.beforeRaw);
+      const after = homeWidgetCatalogFromPlanRow(homeWidgetChange.afterRaw);
+      await replaceHomeWidgetCatalog(this.db, after.revision, before.widgets);
+    } else {
+      await this.db.transaction(async (tx) => {
+        const insertedRows = [...plan.changes].reverse().filter((change) => change.action === "insert");
+        for (const change of insertedRows) {
+          const meta = getMeta(change.table);
+          const pk = getPrimary(meta);
+          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+        }
 
-      const updatedRows = plan.changes.filter((change) => change.action === "update" || change.action === "replace");
-      for (const change of updatedRows) {
-        if (!change.beforeRaw) continue;
-        const meta = getMeta(change.table);
-        const pk = getPrimary(meta);
-        await tx
-          .update(meta.table as any)
-          .set(knownColumnPatch(meta, change.beforeRaw))
-          .where(eq(meta.byKey.get(pk)!.column as any, change.id));
-      }
+        const updatedRows = plan.changes.filter((change) => change.action === "update" || change.action === "replace");
+        for (const change of updatedRows) {
+          if (!change.beforeRaw) continue;
+          const meta = getMeta(change.table);
+          const pk = getPrimary(meta);
+          await tx
+            .update(meta.table as any)
+            .set(knownColumnPatch(meta, change.beforeRaw))
+            .where(eq(meta.byKey.get(pk)!.column as any, change.id));
+        }
 
-      const deletedRows = plan.changes.filter((change) => change.action === "delete");
-      for (const change of [...deletedRows].reverse()) {
-        const meta = getMeta(change.table);
-        const pk = getPrimary(meta);
-        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-      }
-      for (const change of deletedRows) {
-        if (!change.beforeRaw) continue;
-        const meta = getMeta(change.table);
-        await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
-      }
-    });
+        const deletedRows = plan.changes.filter((change) => change.action === "delete");
+        for (const change of [...deletedRows].reverse()) {
+          const meta = getMeta(change.table);
+          const pk = getPrimary(meta);
+          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+        }
+        for (const change of deletedRows) {
+          if (!change.beforeRaw) continue;
+          const meta = getMeta(change.table);
+          await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
+        }
+      });
+    }
 
     const validation = await this.validate();
     if (validation.status === "blocked") {
       const touchedRows = new Set(plan.changes.map((change) => `${change.table}:${change.id}`));
-      const touchedErrors = validation.errors.filter((issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`));
+      const touchedErrors = validation.errors.filter(
+        (issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`),
+      );
       if (touchedErrors.length > 0) {
         throw new Error(`Post-restore validation failed: ${touchedErrors.map((issue) => issue.message).join("; ")}`);
       }
-      logger.warn("[mari-db] post-restore validation still reports unrelated errors: %s", validation.errors.map((issue) => issue.message).join("; "));
+      logger.warn(
+        "[mari-db] post-restore validation still reports unrelated errors: %s",
+        validation.errors.map((issue) => issue.message).join("; "),
+      );
     }
     await flushDB();
   }
@@ -5365,7 +6021,13 @@ export class MariDbService {
     return view;
   }
 
-  private async recordHistory(args: { plan: Plan; command: string; sessionId: string; status: MariDbHistoryEntry["status"]; journalPath: string | null }) {
+  private async recordHistory(args: {
+    plan: Plan;
+    command: string;
+    sessionId: string;
+    status: MariDbHistoryEntry["status"];
+    journalPath: string | null;
+  }) {
     const entry: MariDbHistoryEntry = {
       id: newId(),
       sessionId: args.sessionId,
@@ -5400,7 +6062,10 @@ export class MariDbService {
 
   private async getRawById(meta: TableMeta, id: string): Promise<Row | null> {
     const pk = getPrimary(meta);
-    const rows = (await this.db.select().from(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, id))) as Row[];
+    const rows = (await this.db
+      .select()
+      .from(meta.table as any)
+      .where(eq(meta.byKey.get(pk)!.column as any, id))) as Row[];
     return rows[0] ? { ...rows[0] } : null;
   }
 
@@ -5473,8 +6138,8 @@ export class MariDbService {
       "Read:  search <query> [--limit <n>]",
       "Write: create --name <name> [--description <text>] [--category <text>] [--global] [--apply] [--reason <text>]",
       "Write: update <id> [--name <name>] [--description <text>] [--category <text>] [--tags <t1,t2,...>] [--global] [--enable] [--disable] [--apply] [--reason <text>]",
-      "Write: add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
-      "Write: update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
+      "Write: add-entry <lorebook-id> --name <name> [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--case-sensitive] [--use-regex] [--outlet-name <name>] [--folder-id <folder-id>] [--apply] [--reason <text>]",
+      "Write: update-entry <entry-id> [--name <name>] [--content <text>] [--keys <k1,k2,...>] [--secondary-keys <k1,k2,...>] [--description <text>] [--tag <tag>] [--outlet-name <name>] [--enable] [--disable] [--constant] [--no-constant] [--selective] [--no-selective] [--selective-logic <and|and_all|or|not|not_all>] [--match-whole-words] [--no-match-whole-words] [--case-sensitive] [--no-case-sensitive] [--use-regex] [--no-use-regex] [--order <n>] [--folder-id <folder-id>|none] [--apply] [--reason <text>]",
       "Write: delete-entry <entry-id> [--apply] [--reason <text>]",
       "Write: link-character <lorebook-id> --character <character-id> [--apply] [--reason <text>]",
       "Write: unlink-character <lorebook-id> --character <character-id> [--apply] [--reason <text>]",
@@ -5510,7 +6175,7 @@ export class MariDbService {
       "  mari code status",
       "  mari code diff --patch",
       "  mari code check",
-      "  mari code reload request --kind server --reason \"Server route changed\" --resume",
+      '  mari code reload request --kind server --reason "Server route changed" --resume',
     ].join("\n");
   }
 

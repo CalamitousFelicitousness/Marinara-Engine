@@ -8,6 +8,7 @@ import { resolveAssetTag } from "../../lib/asset-fuzzy-match";
 import { chatBackgroundMetadataToUrl } from "../../lib/backgrounds";
 import { gameAssetFileUrl } from "../../lib/game-asset-urls";
 import { resolveSpriteExpression } from "../../lib/sprite-expression-match";
+import { HOME_CHAT_MODE_ACCENTS } from "../../lib/home-chat-mode-style";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat.store";
 import { useTranslation } from "react-i18next";
@@ -16,15 +17,15 @@ import { ChatModeIcon } from "./ChatModeIcon";
 const MODE_BADGE = {
   conversation: {
     labelKey: "home.recentChats.mode.conversation",
-    accent: "oklch(0.79 0.16 205)",
+    accent: HOME_CHAT_MODE_ACCENTS.conversation,
   },
   roleplay: {
     labelKey: "home.recentChats.mode.roleplay",
-    accent: "oklch(0.76 0.19 52)",
+    accent: HOME_CHAT_MODE_ACCENTS.roleplay,
   },
   game: {
     labelKey: "home.recentChats.mode.game",
-    accent: "oklch(0.73 0.21 345)",
+    accent: HOME_CHAT_MODE_ACCENTS.game,
   },
 } as const;
 
@@ -216,6 +217,7 @@ export function RecentChats() {
             type="button"
             onClick={() => setActiveChatId(chat.id)}
             style={style}
+            data-chat-mode={chatMode}
             data-has-sprite={sprite ? "true" : "false"}
             data-sprite-layout={sprite?.layout}
             className={cn(
@@ -247,9 +249,7 @@ export function RecentChats() {
                 decoding="async"
                 className={cn(
                   "absolute bottom-0 right-0 origin-bottom object-contain object-bottom object-center opacity-95 drop-shadow-[0_10px_18px_rgba(0,0,0,0.48)] transition-transform duration-300 ease-out group-hover:scale-[1.025] motion-reduce:transition-none",
-                  sprite.layout === "full-body"
-                    ? "h-[96%] w-[46%] px-1 pt-1"
-                    : "h-[90%] w-[44%] pb-1 pr-1",
+                  sprite.layout === "full-body" ? "h-[96%] w-[46%] px-1 pt-1" : "h-[90%] w-[44%] pb-1 pr-1",
                 )}
               />
             ) : character?.avatarUrl ? (

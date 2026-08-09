@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page, type Rou
 import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 
 const TRANSPARENT_GIF_BASE64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -484,7 +485,15 @@ test("default dialogue color fills only cards without their own dialogue color",
     await dialogueColorControl.scrollIntoViewIfNeeded();
     await expect(dialogueColorControl.locator('input[type="checkbox"]')).toHaveCount(0);
     await dialogueColorControl.getByRole("button", { name: /Scheme default/ }).click();
-    await dialogueColorControl.getByLabel("Default Dialogue Color hex or CSS color").fill("#d946ef");
+    const dialogueColorInput = dialogueColorControl.getByLabel("Default Dialogue Color hex or CSS color");
+    await dialogueColorInput.fill("red");
+    const namedColorSliders = dialogueColorControl
+      .getByLabel("Pick Default Dialogue Color color")
+      .locator('input[type="range"]');
+    await expect(namedColorSliders.nth(0)).toHaveValue("0");
+    await expect(namedColorSliders.nth(1)).toHaveValue("100");
+    await expect(namedColorSliders.nth(2)).toHaveValue("50");
+    await dialogueColorInput.fill("#d946ef");
 
     await expect(uncoloredDialogue).toHaveCSS("color", "rgb(217, 70, 239)");
     await expect(coloredDialogue).toHaveCSS("color", "rgb(34, 197, 94)");
@@ -498,6 +507,25 @@ test("default dialogue color fills only cards without their own dialogue color",
         }),
       )
       .toEqual([null, "#d946ef"]);
+
+    const chatTextColorControl = page.locator("#settings-control-chat-text-color");
+    await chatTextColorControl.scrollIntoViewIfNeeded();
+    await chatTextColorControl.getByRole("button", { name: /Scheme default/ }).click();
+    await chatTextColorControl.getByRole("button", { name: "Gradient", exact: true }).click();
+    const firstGradientStop = chatTextColorControl.locator('input:not([type])').first();
+    await firstGradientStop.fill("red 20%");
+    await firstGradientStop.fill("blue 35%");
+    const positionedStopSliders = chatTextColorControl
+      .locator('div[aria-label="Edit color stop 1"]')
+      .locator('input[type="range"]');
+    await expect(positionedStopSliders.nth(0)).toHaveValue("240");
+    await expect(positionedStopSliders.nth(1)).toHaveValue("100");
+    await expect(positionedStopSliders.nth(2)).toHaveValue("50");
+    await positionedStopSliders.nth(2).fill("0");
+    await positionedStopSliders.nth(2).fill("50");
+    await expect(firstGradientStop).toHaveValue("#0000ff 35%");
+    await positionedStopSliders.nth(0).fill("120");
+    await expect(firstGradientStop).toHaveValue("#00ff00 35%");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
     await Promise.all([
@@ -7482,6 +7510,48 @@ test("home shell and primary topbar panels open without client errors", async ({
   await expect(page.locator('.mari-home-browser-chrome img[src="/logo-splash.gif"]')).toBeVisible();
   await expect(page.locator('.mari-home-hero img[src="/logo-splash.gif"]')).toHaveCount(0);
   await expect(page.locator('[data-tour="noodle-tab"]')).toHaveCount(0);
+  const guideGeometry = await page.locator('[data-home-widget-id="professor"]').evaluate((guide) => {
+    const panel = guide.querySelector<HTMLElement>('[data-component="HomeBrowserHub.ProfessorWidget"]')!;
+    const content = guide.querySelector<HTMLElement>("[data-home-professor-content]")!;
+    const art = guide.querySelector<HTMLElement>("[data-home-professor-art]")!;
+    const action = guide.querySelector<HTMLElement>("[data-home-professor-action]")!;
+    const grid = guide.parentElement!;
+    const guideBounds = guide.getBoundingClientRect();
+    const panelBounds = panel.getBoundingClientRect();
+    const contentBounds = content.getBoundingClientRect();
+    const artBounds = art.getBoundingClientRect();
+    const actionBounds = action.getBoundingClientRect();
+    const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const siblingSeparations = Array.from(grid.querySelectorAll<HTMLElement>("[data-home-widget-id]"))
+      .filter((widget) => widget !== guide)
+      .map((widget) => {
+        const bounds = widget.getBoundingClientRect();
+        const horizontal = Math.max(bounds.left - guideBounds.right, guideBounds.left - bounds.right, 0);
+        const vertical = Math.max(bounds.top - guideBounds.bottom, guideBounds.top - bounds.bottom, 0);
+        return Math.max(horizontal, vertical);
+      });
+    const inside = (child: DOMRect, parent: DOMRect) =>
+      child.left >= parent.left - 1 &&
+      child.top >= parent.top - 1 &&
+      child.right <= parent.right + 1 &&
+      child.bottom <= parent.bottom + 1;
+    return {
+      panelInsideFrame: inside(panelBounds, guideBounds),
+      contentInsidePanel: inside(contentBounds, panelBounds),
+      artInsidePanel: inside(artBounds, panelBounds),
+      actionInsidePanel: inside(actionBounds, panelBounds),
+      preservesGridGap: siblingSeparations.every((separation) => separation >= gap - 1),
+      panelOverflow: getComputedStyle(panel).overflow,
+    };
+  });
+  expect(guideGeometry).toEqual({
+    panelInsideFrame: true,
+    contentInsidePanel: true,
+    artInsidePanel: true,
+    actionInsidePanel: true,
+    preservesGridGap: true,
+    panelOverflow: "hidden",
+  });
   const chromeSurfaces = await page.evaluate(() => ({
     app: getComputedStyle(document.querySelector<HTMLElement>('[data-component="TopBar"]')!).backgroundColor,
     home: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
@@ -7925,6 +7995,59 @@ test("Home feed prioritizes read-only visits and exposes current Game presentati
     expect(gamePreview?.spriteExpressions["fixture-character"]).toBe("smiling");
   } finally {
     await Promise.allSettled(createdChatIds.map((chatId) => request.delete(`/api/chats/${chatId}?force=true`)));
+  }
+});
+
+test("new Professor Mari Home widgets receive a movable layout slot immediately", async ({ page }) => {
+  const widget = {
+    id: `mari-widget-${Date.now()}`,
+    title: "Mari's Field Formula",
+    description: "A safe custom note created for the Home layout regression.",
+    accent: "cyan",
+    icon: "sparkles",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await page.addInitScript(() => {
+    localStorage.removeItem("marinara:home:custom-widget-known:v1");
+    localStorage.removeItem("marinara:home:widget-layout:v2");
+    localStorage.removeItem("marinara:home:widget-visibility:v2");
+  });
+  const originalResponse = await page.request.get("/api/app-settings/home_custom_widgets");
+  expect(originalResponse.ok()).toBeTruthy();
+  const originalCatalog = (await originalResponse.json()) as HomeCustomWidgetCatalog;
+  let savedCatalog = originalCatalog;
+
+  try {
+    const saveResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...originalCatalog, widgets: [widget] },
+    });
+    expect(saveResponse.ok()).toBeTruthy();
+    savedCatalog = (await saveResponse.json()) as HomeCustomWidgetCatalog;
+    const staleResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...originalCatalog, widgets: [] },
+    });
+    expect(staleResponse.status()).toBe(409);
+    await page.goto("/");
+    const customWidget = page.locator(`[data-home-widget-id="custom:${widget.id}"]`);
+    await expect(customWidget).toBeVisible({ timeout: 30_000 });
+    const initialOrder = Number(await customWidget.evaluate((element) => getComputedStyle(element).order));
+    expect(initialOrder).toBeGreaterThan(0);
+
+    const handle = customWidget.locator("[data-home-drag-handle]");
+    await handle.press("ArrowUp");
+    await expect
+      .poll(() => customWidget.evaluate((element) => Number(getComputedStyle(element).order)))
+      .toBe(initialOrder - 1);
+  } finally {
+    const currentResponse = await page.request.get("/api/app-settings/home_custom_widgets");
+    const currentCatalog = currentResponse.ok()
+      ? ((await currentResponse.json()) as HomeCustomWidgetCatalog)
+      : savedCatalog;
+    const restoreResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...currentCatalog, widgets: originalCatalog.widgets },
+    });
+    expect(restoreResponse.ok()).toBeTruthy();
   }
 });
 

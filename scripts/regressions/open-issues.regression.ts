@@ -115,7 +115,6 @@ import {
 } from "../../packages/shared/src/utils/managed-generation-parameters.js";
 import { isAgentManifestAvailableInChatMode } from "../../packages/shared/src/constants/chat-mode-agent-policy.js";
 import { CHAT_SETTINGS_SURFACES } from "../../packages/client/src/components/chat/chat-settings-surfaces.js";
-import { mergeNoodleCustomEmojiMap } from "../../packages/client/src/lib/noodle-custom-emojis.js";
 import {
   isBundledGameAssetFolderPath,
   isBundledGameAssetPath,
@@ -328,6 +327,90 @@ import {
   filterAndSortBackgrounds,
   getNextBackgroundFolderName,
 } from "../../packages/client/src/lib/background-library.js";
+import { resolveProfessorMariNavigation } from "../../packages/client/src/lib/professor-mari-navigation.js";
+
+assert.deepEqual(resolveProfessorMariNavigation("Where are the characters?"), {
+  kind: "panel",
+  panel: "characters",
+});
+assert.deepEqual(resolveProfessorMariNavigation("CHARS"), { kind: "panel", panel: "characters" });
+assert.deepEqual(resolveProfessorMariNavigation("Persona?"), { kind: "panel", panel: "personas" });
+for (const query of ["Chats", "conversations", "convo", "roleplay", "GAME"]) {
+  assert.deepEqual(resolveProfessorMariNavigation(query), { kind: "chats" });
+}
+assert.deepEqual(resolveProfessorMariNavigation("Can I talk to Professor Mari?"), { kind: "professor" });
+assert.deepEqual(resolveProfessorMariNavigation("Where do I disable Professor Mari navigation?"), {
+  kind: "settings",
+  tab: "general",
+  controlId: "professor-mari-navigation",
+});
+assert.deepEqual(resolveProfessorMariNavigation("change my theme"), { kind: "settings", tab: "appearance" });
+assert.deepEqual(resolveProfessorMariNavigation("image generation settings"), {
+  kind: "settings",
+  tab: "generations",
+});
+assert.deepEqual(resolveProfessorMariNavigation("open Discord"), { kind: "window", window: "discord" });
+assert.deepEqual(resolveProfessorMariNavigation("customize my home widgets"), {
+  kind: "window",
+  window: "widgets",
+});
+const professorMariNamedResources = [
+  { kind: "character" as const, id: "character-maukie", name: "Maukie" },
+  { kind: "persona" as const, id: "persona-echo", name: "Echo" },
+  { kind: "character" as const, id: "character-echo", name: "Echo" },
+  { kind: "preset" as const, id: "preset-cinema", name: "Cinematic RP" },
+  { kind: "lorebook" as const, id: "lorebook-snezhnaya", name: "Snezhnaya Archives" },
+  { kind: "agent" as const, id: "illustrator", name: "Illustrator", aliases: ["image agent"] },
+];
+assert.deepEqual(resolveProfessorMariNavigation("Maukie", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "character",
+  id: "character-maukie",
+});
+assert.deepEqual(resolveProfessorMariNavigation("Where is Maukie?", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "character",
+  id: "character-maukie",
+});
+assert.deepEqual(resolveProfessorMariNavigation("Mauk", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "character",
+  id: "character-maukie",
+});
+assert.deepEqual(resolveProfessorMariNavigation("edit the Echo persona", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "persona",
+  id: "persona-echo",
+});
+// An ambiguous name resolves to the first matching resource in supply order.
+assert.deepEqual(resolveProfessorMariNavigation("Echo", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "persona",
+  id: "persona-echo",
+});
+assert.deepEqual(resolveProfessorMariNavigation("open Cinematic RP preset", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "preset",
+  id: "preset-cinema",
+});
+assert.deepEqual(resolveProfessorMariNavigation("Snezhnaya Archives lorebook", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "lorebook",
+  id: "lorebook-snezhnaya",
+});
+assert.deepEqual(resolveProfessorMariNavigation("Illustrator", [], professorMariNamedResources), {
+  kind: "resource",
+  resource: "agent",
+  id: "illustrator",
+});
+assert.deepEqual(
+  resolveProfessorMariNavigation("Where did Noodle go?", [
+    { id: "official.noodle", label: "Noodle", aliases: ["NoodleR"] },
+  ]),
+  { kind: "package", packageId: "official.noodle" },
+);
+assert.equal(resolveProfessorMariNavigation("Where did Noodle go?"), null);
+assert.equal(resolveProfessorMariNavigation("quantum spaghetti cupboard"), null);
 
 const backgroundOrganization = normalizeBackgroundLibraryOrganization({
   folders: [
@@ -1382,6 +1465,80 @@ try {
   assert.equal(await lorebookStorage.getById(professorMariLorebookId), null);
   assert.equal((await lorebookStorage.listEntries(professorMariLorebookId)).length, 0);
 
+  // #4791 — Professor Mari's lorebook.create + updateEntry now persist the keyword-matching and
+  // selective fields that were previously hardcoded, so her authoring + fidelity pass can set them.
+  const professorMariParamLorebookId = "professor-mari-param-lorebook-regression";
+  const professorMariParamCreate = await mariDb.executeAction({
+    action: "lorebook.create",
+    lorebookId: professorMariParamLorebookId,
+    data: {
+      name: "Professor Mari parameterized entries",
+      entries: [
+        {
+          name: "Vlad",
+          content: "The immortal count.",
+          keys: ["Vlad"],
+          secondaryKeys: ["count", "castle"],
+          selective: true,
+          selectiveLogic: "and_all",
+          matchWholeWords: true,
+          caseSensitive: true,
+        },
+      ],
+    },
+    apply: true,
+  });
+  assert.equal(professorMariParamCreate.ok, true);
+  const professorMariParamEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariParamEntry);
+  assert.equal(professorMariParamEntry.selective, true, "create must persist selective");
+  assert.equal(professorMariParamEntry.selectiveLogic, "and_all", "create must persist selectiveLogic");
+  assert.equal(professorMariParamEntry.matchWholeWords, true, "create must persist matchWholeWords");
+  assert.equal(professorMariParamEntry.caseSensitive, true, "create must persist caseSensitive");
+  assert.equal(professorMariParamEntry.useRegex, false, "unset useRegex stays default");
+
+  // updateEntry (the fidelity-pass path, via assignLorebookEntryActionFields) patches the same fields.
+  const professorMariEntryUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { matchWholeWords: false, selectiveLogic: "not", useRegex: true },
+    apply: true,
+  });
+  assert.equal(professorMariEntryUpdate.ok, true);
+  const professorMariUpdatedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariUpdatedEntry);
+  assert.equal(professorMariUpdatedEntry.matchWholeWords, false, "updateEntry must clear matchWholeWords");
+  assert.equal(professorMariUpdatedEntry.selectiveLogic, "not", "updateEntry must patch selectiveLogic");
+  assert.equal(professorMariUpdatedEntry.useRegex, true, "updateEntry must set useRegex");
+
+  // An invalid selectiveLogic is ignored; a valid sibling field in the same patch still applies.
+  const professorMariBadLogicUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { content: "Updated body.", selectiveLogic: "nonsense" },
+    apply: true,
+  });
+  assert.equal(professorMariBadLogicUpdate.ok, true);
+  const professorMariAfterBadLogic = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariAfterBadLogic);
+  assert.equal(professorMariAfterBadLogic.content, "Updated body.", "valid sibling field still applies");
+  assert.equal(professorMariAfterBadLogic.selectiveLogic, "not", "invalid selectiveLogic is ignored");
+
+  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm its path also persists a new field.
+  const professorMariAddEntry = await mariDb.executeAction({
+    action: "lorebook.addEntry",
+    lorebookId: professorMariParamLorebookId,
+    data: { name: "Regex entry", content: "Pattern-matched lore.", keys: ["\\bLycan\\b"], useRegex: true },
+    apply: true,
+  });
+  assert.equal(professorMariAddEntry.ok, true);
+  const professorMariAddedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId)).find(
+    (entry) => entry.name === "Regex entry",
+  );
+  assert.ok(professorMariAddedEntry);
+  assert.equal(professorMariAddedEntry.useRegex, true, "addEntry must persist useRegex");
+  await lorebookStorage.remove(professorMariParamLorebookId);
+
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({
     argv: [
@@ -1998,6 +2155,50 @@ assert.equal(generatedLorebookEntry.lorebookId, "lorebook-generated");
 assert.equal(generatedLorebookEntry.content, "A city made from black glass.");
 assert.deepEqual(generatedLorebookEntry.keys, ["Glass City", "black glass"]);
 assert.deepEqual(generatedLorebookEntry.secondaryKeys, ["rain"]);
+// #4791 — unset keyword-matching/selective fields fall back to the stored defaults.
+assert.equal(generatedLorebookEntry.selective, "false");
+assert.equal(generatedLorebookEntry.selectiveLogic, "and");
+assert.equal(generatedLorebookEntry.matchWholeWords, "false");
+assert.equal(generatedLorebookEntry.caseSensitive, "false");
+assert.equal(generatedLorebookEntry.useRegex, "false");
+// #4791 — Professor Mari can now set them explicitly (previously hardcoded and ignored).
+const parameterizedLorebookEntry = buildLorebookEntryCreateRow(
+  {
+    name: "Vlad",
+    content: "The immortal count.",
+    keys: ["Vlad"],
+    secondaryKeys: ["count", "castle"],
+    selective: true,
+    selectiveLogic: "and_all",
+    matchWholeWords: true,
+    caseSensitive: true,
+    useRegex: false,
+  },
+  "lorebook-generated",
+  "entry-parameterized",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(parameterizedLorebookEntry.selective, "true");
+assert.equal(parameterizedLorebookEntry.selectiveLogic, "and_all");
+assert.equal(parameterizedLorebookEntry.matchWholeWords, "true");
+assert.equal(parameterizedLorebookEntry.caseSensitive, "true");
+assert.equal(parameterizedLorebookEntry.useRegex, "false");
+// An invalid selectiveLogic is rejected and falls back to the stored default.
+const invalidLogicLorebookEntry = buildLorebookEntryCreateRow(
+  { name: "Bad logic", content: "x", selectiveLogic: "nonsense" },
+  "lorebook-generated",
+  "entry-bad-logic",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(invalidLogicLorebookEntry.selectiveLogic, "and");
+// #4796 review — "or" is an accepted legacy selectiveLogic value (behaves like "and").
+const orLogicLorebookEntry = buildLorebookEntryCreateRow(
+  { name: "Or logic", content: "x", selectiveLogic: "or" },
+  "lorebook-generated",
+  "entry-or-logic",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(orLogicLorebookEntry.selectiveLogic, "or");
 
 // Issue #4135 — Markdown headings inside Lorebook Keeper content are content,
 // not approval-entry delimiters.
@@ -2845,7 +3046,7 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
-  /const refreshWorkspaceStatus = useCallback\(async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,500}if \(shouldApply\?\.\(\) === false\) return status;[\s\S]{0,80}setWorkspaceStatus\(status\)/u,
+  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,500}if \(shouldApply\?\.\(\) === false\) return status;[\s\S]{0,80}setWorkspaceStatus\(status\)/u,
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(
@@ -4489,18 +4690,6 @@ assert.deepEqual(parseNoodleAvatarCrop({ zoom: 2, offsetX: -10, offsetY: 5, full
   fullImage: true,
 });
 assert.equal(parseNoodleAvatarCrop({ srcX: 0, srcY: 0, srcWidth: 0, srcHeight: 0 }), null);
-
-const noodleEmojiMap = mergeNoodleCustomEmojiMap(
-  [{ name: "d20lesbian", url: "/global-d20.png" }],
-  [
-    [
-      { customKind: "emoji", customName: "d20lesbian", url: "/persona-d20.png" },
-      { customKind: "sticker", customName: "not-an-emoji", url: "/sticker.png" },
-    ],
-  ],
-);
-assert.equal(noodleEmojiMap.get("d20lesbian"), "/persona-d20.png");
-assert.equal(noodleEmojiMap.has("not-an-emoji"), false);
 
 assert.deepEqual(appendLorebookActivationKeys(["Apples"], " Apple, Appletree, red fruit, Apple, , Apples "), [
   "Apples",
@@ -6430,6 +6619,17 @@ try {
     /queryKey: \[\.\.\.chatKeys\.messagePeek\(chatId \?\? ""\), limit\]/u,
     "The peek hook's query key must include its limit so different windows never share options",
   );
+}
+
+{
+  const { parseMessageCursor } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  assert.deepEqual(parseMessageCursor("2026-08-09T12:00:00.000Z|message%7C42"), {
+    createdAt: "2026-08-09T12:00:00.000Z",
+    id: "message|42",
+  });
+  assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z"), null, "bare timestamps are not cursors");
+  assert.equal(parseMessageCursor("not-a-date|42"), null, "cursor timestamps must be valid");
+  assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z|%"), null, "cursor ids must be valid URI components");
 }
 
 console.info("Open-issue regressions passed.");

@@ -4012,26 +4012,6 @@ function ArliMultiModelPicker({
             />
           </div>
 
-          {selected.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {selected.map((id) => {
-                const label = options.find((m) => m.id === id)?.name ?? id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => toggle(id)}
-                    title={label}
-                    className="inline-flex items-center gap-1 rounded-full bg-sky-400/10 px-2.5 py-1 text-[0.625rem] font-medium text-sky-300 ring-1 ring-sky-400/20 transition-all hover:bg-sky-400/20 active:scale-95"
-                  >
-                    <span className="max-w-40 truncate">{label}</span>
-                    <X size="0.625rem" className="shrink-0" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)]/40">
             {filtered.length === 0 ? (
               <p className="px-3 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
@@ -4057,30 +4037,50 @@ function ArliMultiModelPicker({
               ))
             )}
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              value={manualId}
-              onChange={(e) => setManualId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addManualId();
-                }
-              }}
-              placeholder={localizeUi("ui.connections.connectioneditor.arliMultiModelAddManually")}
-              className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
-            />
-            <button
-              type="button"
-              onClick={addManualId}
-              className="rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-95"
-            >
-              {localizeUi("ui.connections.connectioneditor.arliMultiModelAdd")}
-            </button>
-          </div>
         </>
       )}
+
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((id) => {
+            const label = options.find((m) => m.id === id)?.name ?? id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggle(id)}
+                title={label}
+                className="inline-flex items-center gap-1 rounded-full bg-sky-400/10 px-2.5 py-1 text-[0.625rem] font-medium text-sky-300 ring-1 ring-sky-400/20 transition-all hover:bg-sky-400/20 active:scale-95"
+              >
+                <span className="max-w-40 truncate">{label}</span>
+                <X size="0.625rem" className="shrink-0" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          value={manualId}
+          onChange={(e) => setManualId(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addManualId();
+            }
+          }}
+          placeholder={localizeUi("ui.connections.connectioneditor.arliMultiModelAddManually")}
+          className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
+        />
+        <button
+          type="button"
+          onClick={addManualId}
+          className="rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-95"
+        >
+          {localizeUi("ui.connections.connectioneditor.arliMultiModelAdd")}
+        </button>
+      </div>
     </div>
   );
 }

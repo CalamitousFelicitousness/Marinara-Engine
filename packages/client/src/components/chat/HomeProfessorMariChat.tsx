@@ -1807,6 +1807,20 @@ function summarizeDeletedRow(change: MariDbPendingApproval["diffPreview"][number
   return name ? `${change.table}: ${name}` : `${change.table}: ${change.id}`;
 }
 
+function summarizeCreatedRow(change: MariDbPendingApproval["diffPreview"][number]) {
+  const data = change.after?.data;
+  const dataName = data && typeof data === "object" ? (data as Record<string, unknown>).name : undefined;
+  const name =
+    typeof change.after?.name === "string"
+      ? change.after.name
+      : typeof change.after?.title === "string"
+        ? change.after.title
+        : typeof dataName === "string"
+          ? dataName
+          : null;
+  return name ? `${change.table}: ${name}` : `${change.table}: ${change.id}`;
+}
+
 function formatRowPreview(row: Record<string, unknown> | null | undefined) {
   if (!row) return "No row snapshot available.";
   try {
@@ -1840,6 +1854,7 @@ function DatabaseWorkspaceApprovalCard({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const deletedRows = approval.diffPreview.filter((change) => change.action === "delete");
+  const insertedRows = approval.diffPreview.filter((change) => change.action === "insert");
 
   return (
     <TranscriptRow marker={<ShieldAlert size="0.85rem" className="mt-1 text-[var(--primary)]" />}>
@@ -1867,6 +1882,9 @@ function DatabaseWorkspaceApprovalCard({
             {approval.affectedRows === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}
           </span>
         </div>
+        {approval.diffTruncated && (
+          <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}</p>
+        )}
         {deletedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--destructive)]">
@@ -1895,6 +1913,28 @@ function DatabaseWorkspaceApprovalCard({
                   {deletedRows.length - 3 === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}{" "}
                   {localizeUi("ui.chat.databaseworkspaceapprovalcard.hiddenInThisPreview")}
                 </p>
+              )}
+            </div>
+          </div>
+        )}
+        {insertedRows.length > 0 && (
+          <div className="mt-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
+            <div className="flex items-center gap-1.5 font-semibold text-[var(--primary)]">
+              <Sparkles size="0.75rem" />{localizeUi("ui.chat.databaseworkspaceapprovalcard.mariCreatedNewItems")}</div>
+            <p className="mt-1 text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.keepSavesThemToYourLibraryRestoreRemovesEverything")}</p>
+            <div className="mt-2 space-y-2">
+              {insertedRows.slice(0, 3).map((change) => (
+                <details key={`${change.table}:${change.id}`} className="rounded-md bg-[var(--background)]/80 p-2">
+                  <summary className="cursor-pointer font-medium text-[var(--foreground)]">
+                    {summarizeCreatedRow(change)}
+                  </summary>
+                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[0.625rem] text-[var(--muted-foreground)]">
+                    {formatRowPreview(change.after)}
+                  </pre>
+                </details>
+              ))}
+              {insertedRows.length > 3 && (
+                <p className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.moreNewItemsAreHiddenInThisPreview")}</p>
               )}
             </div>
           </div>

@@ -99,7 +99,6 @@ type ParsedMutationRequest = {
   activate?: boolean;
   cwd?: string;
   apply: boolean;
-  requiresApproval?: boolean;
   personalExtensionDraftMutation?: boolean;
   cascade: boolean;
   reason: string | null;
@@ -2146,7 +2145,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2351,7 +2349,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2708,7 +2705,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2809,7 +2805,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -3011,7 +3006,6 @@ export class MariDbService {
           installedAt: firstString(data, ["installedAt", "installed_at"]) ?? now(),
           activate,
           apply: appDataCreateApply(args),
-          requiresApproval: activate ? undefined : false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -3155,7 +3149,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             personalExtensionDraftMutation: true,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? "Professor Mari created a Personal Extension draft",
@@ -3330,7 +3323,6 @@ export class MariDbService {
           table: "agent_configs",
           row: data,
           apply: appDataCreateApply(args),
-          requiresApproval: false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -3452,7 +3444,6 @@ export class MariDbService {
           table: "prompt_presets",
           row: data,
           apply: appDataCreateApply(args),
-          requiresApproval: false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -5173,34 +5164,6 @@ export class MariDbService {
       };
     }
 
-    if (request.requiresApproval === false) {
-      try {
-        const journalPath = await this.applyPlan(plan);
-        await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
-        return {
-          ok: true,
-          mode: "apply",
-          command,
-          summary: plan.summary,
-          validation: plan.validation,
-          approval: { status: "not_required", operationHash: plan.operationHash },
-          journalPath,
-        };
-      } catch (err) {
-        logger.error(err, "[mari-db] approval-free apply failed");
-        await this.recordHistory({ plan, command, sessionId, status: "failed", journalPath: null });
-        return {
-          ok: false,
-          mode: "apply",
-          command,
-          summary: plan.summary,
-          validation: plan.validation,
-          approval: { status: "not_required", operationHash: plan.operationHash },
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
-
     try {
       const journalPath = await this.applyPlan(plan);
       const history = await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
@@ -5300,6 +5263,15 @@ export class MariDbService {
     const pk = getPrimary(meta);
     const parsed = { ...(request.row ?? {}) };
     if (parsed[pk] == null || parsed[pk] === "") parsed[pk] = allocateId();
+    // #4813: a create must insert a NEW row. If a row with this id already exists, refuse
+    // rather than overwrite it — an insert records beforeRaw:null, so a later Restore would
+    // delete the pre-existing row too (unrecoverable). Callers changing an existing row use update.
+    const insertPk = String(parsed[pk]);
+    if (await this.getRawById(meta, insertPk)) {
+      throw new Error(
+        `A ${meta.name} row with id "${insertPk}" already exists; a create cannot overwrite it. Use an update instead.`,
+      );
+    }
     this.fillTimestamps(meta, parsed, true, timestamp);
     const afterRaw = serializeRow(meta.name, parsed);
     const changes: PlanChange[] = [

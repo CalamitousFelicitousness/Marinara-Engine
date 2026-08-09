@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- Added optional per-character reference sheets under Metadata, with upload, Gallery selection, AI creation, and an explicit generation-reference toggle that safely falls back to the avatar (#4786).
+- Added optional character and persona reference sheets under Metadata, with upload, AI creation, and an explicit generation-reference toggle that safely falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
 - Added a custom 1–40 place target to the New Game wizard's AI world-map draft options (#4783).
 - Added a compact context-budget indicator to Professor Mari Workspace when message token usage is enabled (#4752).
 - Added per-chat image style overrides for custom image agents, alongside their existing connection overrides (#4718).

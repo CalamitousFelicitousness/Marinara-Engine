@@ -216,6 +216,8 @@ export interface PersonaCardSnapshot {
   scenario: string;
   backstory: string;
   appearance: string;
+  characterSheetImageId: string;
+  useCharacterSheetAsReference: string;
   avatarCrop: string;
   nameColor: string;
   dialogueColor: string;

@@ -286,6 +286,7 @@ export function CharacterEditor() {
   const duplicateCharacter = useDuplicateCharacter();
   const createPersona = useCreatePersona();
   const uploadPersonaAvatar = useUploadPersonaAvatar();
+  const uploadCharacterSheet = useUploadCharacterGalleryImage(characterId ?? "");
   const { data: connectionsList } = useConnections();
 
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -324,6 +325,7 @@ export function CharacterEditor() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
+  const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -451,6 +453,23 @@ export function CharacterEditor() {
       markDirty();
     },
     [formatQuotes, markDirty, setExtensionValue],
+  );
+
+  const handleGeneratedCharacterSheet = useCallback(
+    async (dataUrl: string) => {
+      let file: File;
+      try {
+        file = dataImageUrlToFile(dataUrl, `${formData?.name || "character"}-sheet`);
+      } catch {
+        throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      }
+      const uploaded = await uploadCharacterSheet.mutateAsync([file]);
+      const image = uploaded[0];
+      if (!image) throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      updateExtension("characterSheetImageId", image.id);
+      toast.success(localizeUi("ui.characters.charactersheet.created"));
+    },
+    [formData?.name, localizeUi, updateExtension, uploadCharacterSheet],
   );
 
   const beginAvatarUpload = useCallback(() => {
@@ -968,6 +987,18 @@ export function CharacterEditor() {
         onClose={() => setAvatarGeneratorOpen(false)}
         onUseAvatar={handleGeneratedAvatar}
       />
+      <AvatarGenerationModal
+        open={characterSheetGeneratorOpen}
+        mode="character-sheet"
+        title={localizeUi("ui.characters.charactersheet.createTitle")}
+        entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
+        defaultAppearance={
+          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
+        }
+        defaultAvatarUrl={avatarPreview}
+        onClose={() => setCharacterSheetGeneratorOpen(false)}
+        onUseAvatar={handleGeneratedCharacterSheet}
+      />
 
       {/* ── Header ── */}
       <div className="mari-editor-header">
@@ -1131,11 +1162,7 @@ export function CharacterEditor() {
                     : null
                 }
                 useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
-                characterAppearance={
-                  typeof formData.extensions.appearance === "string"
-                    ? formData.extensions.appearance
-                    : formData.description
-                }
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "card" && (
@@ -1166,7 +1193,11 @@ export function CharacterEditor() {
               />
             )}
             {activeTab === "gallery" && characterId && (
-              <CharacterGalleryTab characterId={characterId} characterName={formData.name} />
+              <CharacterGalleryTab
+                characterId={characterId}
+                characterName={formData.name}
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+              />
             )}
             {activeTab === "colors" && (
               <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
@@ -1428,7 +1459,7 @@ function MetadataTab({
   hasUnsavedChanges,
   characterSheetImageId,
   useCharacterSheetAsReference,
-  characterAppearance,
+  onCreateCharacterSheet,
 }: {
   characterId: string | null;
   formData: CharacterData;
@@ -1451,7 +1482,7 @@ function MetadataTab({
   hasUnsavedChanges: boolean;
   characterSheetImageId: string | null;
   useCharacterSheetAsReference: boolean;
-  characterAppearance: string;
+  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -1694,9 +1725,8 @@ function MetadataTab({
           characterName={formData.name}
           characterSheetImageId={characterSheetImageId}
           useAsReference={useCharacterSheetAsReference}
-          defaultAppearance={characterAppearance}
-          defaultAvatarUrl={avatarPreview}
           updateExtension={updateExtension}
+          onCreateCharacterSheet={onCreateCharacterSheet}
         />
       )}
     </div>
@@ -2476,20 +2506,17 @@ function CharacterSheetSection({
   characterName,
   characterSheetImageId,
   useAsReference,
-  defaultAppearance,
-  defaultAvatarUrl,
   updateExtension,
+  onCreateCharacterSheet,
 }: {
   characterId: string;
   characterName: string;
   characterSheetImageId: string | null;
   useAsReference: boolean;
-  defaultAppearance?: string;
-  defaultAvatarUrl?: string | null;
   updateExtension: (key: string, value: unknown) => void;
+  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const [sheetGeneratorOpen, setSheetGeneratorOpen] = useState(false);
   const { data: images, isLoading } = useCharacterGalleryImages(characterId);
   const upload = useUploadCharacterGalleryImage(characterId);
   const selectedImage = images?.find((image) => image.id === characterSheetImageId) ?? null;
@@ -2522,36 +2549,8 @@ function CharacterSheetSection({
     updateExtension("useCharacterSheetAsReference", false);
   }, [updateExtension]);
 
-  const handleGeneratedCharacterSheet = useCallback(
-    async (dataUrl: string) => {
-      let file: File;
-      try {
-        file = dataImageUrlToFile(dataUrl, `${characterName || "character"}-sheet`);
-      } catch {
-        throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
-      }
-      const uploaded = await upload.mutateAsync([file]);
-      const image = uploaded[0];
-      if (!image) throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
-      chooseImage(image.id);
-      toast.success(localizeUi("ui.characters.charactersheet.created"));
-    },
-    [characterName, chooseImage, localizeUi, upload],
-  );
-
   return (
     <section className="space-y-6 border-t border-[var(--border)] pt-5">
-      <AvatarGenerationModal
-        open={sheetGeneratorOpen}
-        mode="character-sheet"
-        title={localizeUi("ui.characters.charactersheet.createTitle")}
-        entityName={characterName || localizeUi("ui.characters.charactersheet.characterFallback")}
-        defaultAppearance={defaultAppearance}
-        defaultAvatarUrl={defaultAvatarUrl}
-        onClose={() => setSheetGeneratorOpen(false)}
-        onUseAvatar={handleGeneratedCharacterSheet}
-      />
-
       <SectionHeader
         title={localizeUi("ui.characters.charactersheet.title")}
         subtitle={localizeUi("ui.characters.charactersheet.subtitle")}
@@ -2581,7 +2580,7 @@ function CharacterSheetSection({
         <div className="space-y-4">
           <button
             type="button"
-            onClick={() => setSheetGeneratorOpen(true)}
+            onClick={onCreateCharacterSheet}
             disabled={upload.isPending}
             className="mari-editor-action mari-editor-action--primary inline-flex w-full justify-center disabled:cursor-wait disabled:opacity-60"
           >
@@ -2633,56 +2632,19 @@ function CharacterSheetSection({
         </div>
       </div>
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">{localizeUi("ui.characters.charactersheet.chooseFromGallery")}</h3>
-        {isLoading ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="shimmer aspect-square rounded-xl" />
-            ))}
-          </div>
-        ) : images && images.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {images.map((image) => {
-              const selected = image.id === characterSheetImageId;
-              return (
-                <button
-                  key={image.id}
-                  type="button"
-                  onClick={() => chooseImage(image.id)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "relative aspect-square overflow-hidden rounded-xl border-2 bg-[var(--secondary)] transition-colors",
-                    selected ? "border-[var(--primary)]" : "border-transparent hover:border-[var(--border)]",
-                  )}
-                >
-                  <img
-                    src={image.url}
-                    alt={image.prompt || characterName}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-full w-full object-cover"
-                  />
-                  {selected && (
-                    <span className="absolute inset-x-2 bottom-2 rounded-lg bg-black/75 px-2 py-1 text-xs font-semibold text-white">
-                      {localizeUi("ui.characters.charactersheet.selected")}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-xs text-[var(--muted-foreground)]">
-            {localizeUi("ui.characters.charactersheet.galleryEmpty")}
-          </p>
-        )}
-      </div>
     </section>
   );
 }
 
-function CharacterGalleryTab({ characterId, characterName }: { characterId: string; characterName?: string }) {
+function CharacterGalleryTab({
+  characterId,
+  characterName,
+  onCreateCharacterSheet,
+}: {
+  characterId: string;
+  characterName?: string;
+  onCreateCharacterSheet: () => void;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const [mediaTab, setMediaTab] = useState<CharacterGalleryMediaTab>("images");
   const { data: images, isLoading } = useCharacterGalleryImages(characterId);
@@ -2796,6 +2758,17 @@ function CharacterGalleryTab({ characterId, characterName }: { characterId: stri
 
       {mediaTab === "images" ? (
         <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onCreateCharacterSheet}
+              className="mari-editor-action mari-editor-action--primary inline-flex max-sm:w-full max-sm:justify-center"
+            >
+              <Wand2 size="0.875rem" />
+              {localizeUi("ui.characters.charactersheet.createWithAi")}
+            </button>
+          </div>
+
           <ImageUploadDropzone
             label={localizeUi("ui.characters.charactergallerytab.uploadCharacterImages")}
             pending={upload.isPending}

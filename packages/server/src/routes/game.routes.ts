@@ -14,6 +14,7 @@ import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
+import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
 import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { createGameSceneVideosStorage } from "../services/storage/game-scene-videos.storage.js";
 import { createGameStoryboardsStorage } from "../services/storage/game-storyboards.storage.js";
@@ -289,7 +290,11 @@ import {
   getGameSpotifyErrorStatus,
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
-import { readIllustratorAppearance, readPreferredCharacterReferenceImage } from "./generate/illustrator-references.js";
+import {
+  readIllustratorAppearance,
+  readPreferredCharacterReferenceImage,
+  readPreferredPersonaReferenceImage,
+} from "./generate/illustrator-references.js";
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -442,7 +447,7 @@ async function addCharacterRowIllustrationAssets(
   }
 }
 
-function addPersonaIllustrationAssets(
+async function addPersonaIllustrationAssets(
   maps: IllustrationCharacterAssetMaps,
   persona:
     | {
@@ -450,17 +455,27 @@ function addPersonaIllustrationAssets(
         name?: string | null;
         avatarPath?: string | null;
         appearance?: string | null;
+        characterSheetImageId?: string | null;
+        useCharacterSheetAsReference?: string;
       }
     | null
     | undefined,
-): string | null {
+  personaGallery: ReturnType<typeof createPersonaGalleryStorage>,
+): Promise<string | null> {
   const name = typeof persona?.name === "string" && persona.name.trim() ? persona.name.trim() : null;
   if (!persona || !name) return null;
 
-  const fullBodyReference = readPreferredFullBodySpriteBase64(persona.id);
-  if (fullBodyReference) {
-    addNameLookupEntry(maps.charReferenceByName, name, fullBodyReference.base64);
-    addNameLookupEntry(maps.charReferenceSourceByName, name, "sprite");
+  const preferredReference = await readPreferredPersonaReferenceImage({
+    personaId: persona.id,
+    characterSheetImageId: persona.characterSheetImageId,
+    useCharacterSheetAsReference: persona.useCharacterSheetAsReference === "true",
+    personaGallery,
+    // Preserve storyboard's existing full-body-sprite priority when no sheet is selected.
+    loaders: { avatar: () => undefined, sprite: () => readPreferredFullBodySpriteBase64(persona.id)?.base64 },
+  });
+  if (preferredReference) {
+    addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
+    addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
   }
   if (persona.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
 
@@ -505,6 +520,7 @@ async function buildStoryboardCharacterContext(args: {
   setupConfig: Record<string, unknown> | null;
   latestState: unknown;
   characterGallery: ReturnType<typeof createCharacterGalleryStorage>;
+  personaGallery: ReturnType<typeof createPersonaGalleryStorage>;
 }): Promise<StoryboardCharacterContext> {
   const maps = emptyIllustrationCharacterAssetMaps();
   const allowedCharacterNames: string[] = [];
@@ -528,7 +544,7 @@ async function buildStoryboardCharacterContext(args: {
   if (personaId) {
     try {
       const persona = await args.characters.getPersona(personaId);
-      const name = addPersonaIllustrationAssets(maps, persona);
+      const name = await addPersonaIllustrationAssets(maps, persona, args.personaGallery);
       personaName = name;
       addUniqueCharacterName(allowedCharacterNames, seenAllowedNames, name);
     } catch {
@@ -5721,6 +5737,7 @@ async function serializeGameTurnStoryboard(args: {
 export async function gameRoutes(app: FastifyInstance) {
   await recoverStaleGameStoryboards(createGameStoryboardsStorage(app.db), new Date().toISOString(), "startup");
   const characterGallery = createCharacterGalleryStorage(app.db);
+  const personaGallery = createPersonaGalleryStorage(app.db);
 
   const buildHydratedGameMeta = async (
     chatId: string,
@@ -10957,6 +10974,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const storyboardCharacterContext = await buildStoryboardCharacterContext({
         characters: charStore,
         characterGallery,
+        personaGallery,
         chat,
         meta,
         setupConfig: setupCfg,

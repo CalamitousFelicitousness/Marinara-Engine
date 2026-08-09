@@ -2611,9 +2611,13 @@ test("Character and Persona avatar actions stay separated and visually balanced"
   }
 });
 
-test("Character sheets persist an explicit reference choice and fall back safely", async ({ page, request }) => {
+test("Character and persona sheets persist an explicit reference choice and fall back safely", async ({
+  page,
+  request,
+}) => {
   const suffix = Date.now().toString(36);
   const characterName = `Reference Sheet ${suffix}`;
+  const personaName = `Persona Reference Sheet ${suffix}`;
   const connectionResponse = await request.post("/api/connections", {
     data: {
       name: `Character Sheet ${suffix}`,
@@ -2628,7 +2632,14 @@ test("Character sheets persist an explicit reference choice and fall back safely
   });
   expect(characterResponse.ok()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string; data: string };
+  const personaResponse = await request.post("/api/characters/personas", {
+    data: { name: personaName, description: "A traveler with silver hair and a dark coat." },
+  });
+  expect(personaResponse.ok()).toBeTruthy();
+  const persona = (await personaResponse.json()) as { id: string };
   let duplicateId: string | null = null;
+  let duplicatePersonaId: string | null = null;
+  let importedPersonaId: string | null = null;
 
   try {
     const previewResponse = await request.post("/api/characters/avatar-generation/preview", {
@@ -2681,6 +2692,25 @@ test("Character sheets persist an explicit reference choice and fall back safely
     });
     expect(updateResponse.ok()).toBeTruthy();
 
+    const personaUploadResponse = await request.post(`/api/characters/personas/${persona.id}/gallery/upload`, {
+      multipart: {
+        file: {
+          name: "persona-reference-sheet.gif",
+          mimeType: "image/gif",
+          buffer: Buffer.from(TRANSPARENT_GIF_BASE64, "base64"),
+        },
+      },
+    });
+    expect(personaUploadResponse.ok()).toBeTruthy();
+    const personaSheet = (await personaUploadResponse.json()) as { id: string };
+    const personaUpdateResponse = await request.patch(`/api/characters/personas/${persona.id}`, {
+      data: {
+        characterSheetImageId: personaSheet.id,
+        useCharacterSheetAsReference: true,
+      },
+    });
+    expect(personaUpdateResponse.ok()).toBeTruthy();
+
     await page.goto("/");
     await page.locator('[data-tour="panel-characters"]').click();
     await page.getByText(characterName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
@@ -2699,11 +2729,44 @@ test("Character sheets persist an explicit reference choice and fall back safely
     await expect(editor.getByAltText(`${characterName} character sheet`)).toBeVisible();
     await expect(editor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
     await expect(editor.getByText(/Character sheet reference is active/u)).toBeVisible();
+    await expect(editor.getByRole("heading", { name: "Choose from Character Gallery", exact: true })).toHaveCount(0);
     await editor.getByRole("button", { name: "Create with AI", exact: true }).click();
     const sheetDialog = page.getByRole("dialog", { name: "Create Character Sheet" });
     await expect(sheetDialog).toBeVisible();
     await expect(sheetDialog.getByText("Character Sheet Prompt", { exact: true })).toBeVisible();
     await expect(sheetDialog.getByRole("button", { name: "Save as Character Sheet", exact: true })).toBeDisabled();
+    await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    await editor
+      .getByRole("navigation", { name: "Editor sections" })
+      .getByRole("button", { name: "Gallery", exact: true })
+      .click();
+    await editor.getByRole("button", { name: "Create with AI", exact: true }).click();
+    await expect(sheetDialog).toBeVisible();
+    await expect(sheetDialog.getByText("Character Sheet Prompt", { exact: true })).toBeVisible();
+    await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    await editor
+      .locator(".mari-editor-header .mari-editor-action")
+      .first()
+      .evaluate((button: HTMLButtonElement) => button.click());
+    await expect(editor).toHaveCount(0);
+    await page.locator('[data-tour="panel-personas"]').click();
+    await page.getByText(personaName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    const personaEditor = page.locator(".mari-editor-shell");
+    await expect(personaEditor).toBeVisible();
+    await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
+    await expect(personaEditor.getByAltText(`${personaName} character sheet`)).toBeVisible();
+    await expect(personaEditor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
+    await personaEditor.getByRole("button", { name: "Create with AI", exact: true }).click();
+    await expect(sheetDialog).toBeVisible();
+    await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await personaEditor
+      .getByRole("navigation", { name: "Editor sections" })
+      .getByRole("button", { name: "Gallery", exact: true })
+      .click();
+    await personaEditor.getByRole("button", { name: "Create with AI", exact: true }).click();
+    await expect(sheetDialog).toBeVisible();
     await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
     const exportResponse = await request.get(`/api/characters/${character.id}/export`);
@@ -2722,6 +2785,42 @@ test("Character sheets persist an explicit reference choice and fall back safely
     expect(duplicateExtensions.characterSheetImageId).toBeUndefined();
     expect(duplicateExtensions.useCharacterSheetAsReference).toBe(false);
 
+    const personaExportResponse = await request.get(`/api/characters/personas/${persona.id}/export`);
+    expect(personaExportResponse.ok()).toBeTruthy();
+    const personaExported = (await personaExportResponse.json()) as {
+      type: "marinara_persona";
+      version: 1;
+      data: { characterSheetImageId?: unknown; gallery?: Array<Record<string, unknown>> };
+    };
+    expect(personaExported.data.characterSheetImageId).toBeUndefined();
+    expect(personaExported.data.gallery?.some((entry) => entry.isCharacterSheet === true)).toBe(true);
+
+    const personaImportResponse = await request.post("/api/import/marinara", { data: personaExported });
+    expect(personaImportResponse.ok()).toBeTruthy();
+    const importedPersona = (await personaImportResponse.json()) as { id?: string };
+    importedPersonaId = importedPersona.id ?? null;
+    expect(importedPersonaId).toBeTruthy();
+    if (!importedPersonaId) throw new Error("Imported persona did not return an id");
+    const importedPersonaResponse = await request.get(`/api/characters/personas/${importedPersonaId}`);
+    expect(importedPersonaResponse.ok()).toBeTruthy();
+    const importedPersonaData = (await importedPersonaResponse.json()) as {
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: boolean;
+    };
+    expect(importedPersonaData.characterSheetImageId).toEqual(expect.any(String));
+    expect(importedPersonaData.useCharacterSheetAsReference).toBe(true);
+
+    const duplicatePersonaResponse = await request.post(`/api/characters/personas/${persona.id}/duplicate`);
+    expect(duplicatePersonaResponse.ok()).toBeTruthy();
+    const duplicatePersona = (await duplicatePersonaResponse.json()) as {
+      id: string;
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: boolean;
+    };
+    duplicatePersonaId = duplicatePersona.id;
+    expect(duplicatePersona.characterSheetImageId).toBeNull();
+    expect(duplicatePersona.useCharacterSheetAsReference).toBe(false);
+
     const deleteResponse = await request.delete(`/api/characters/${character.id}/gallery/${sheet.id}`);
     expect(deleteResponse.ok()).toBeTruthy();
     const afterDeleteResponse = await request.get(`/api/characters/${character.id}`);
@@ -2729,11 +2828,31 @@ test("Character sheets persist an explicit reference choice and fall back safely
     const afterDeleteExtensions = (JSON.parse(afterDelete.data).extensions ?? {}) as Record<string, unknown>;
     expect(afterDeleteExtensions.characterSheetImageId).toBeNull();
     expect(afterDeleteExtensions.useCharacterSheetAsReference).toBe(false);
+
+    const personaDeleteResponse = await request.delete(
+      `/api/characters/personas/${persona.id}/gallery/${personaSheet.id}`,
+    );
+    expect(personaDeleteResponse.ok()).toBeTruthy();
+    const afterPersonaDeleteResponse = await request.get(`/api/characters/personas/${persona.id}`);
+    expect(afterPersonaDeleteResponse.ok()).toBeTruthy();
+    const afterPersonaDelete = (await afterPersonaDeleteResponse.json()) as {
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: boolean;
+    };
+    expect(afterPersonaDelete.characterSheetImageId).toBeNull();
+    expect(afterPersonaDelete.useCharacterSheetAsReference).toBe(false);
   } finally {
     await Promise.all([
       request.delete(`/api/characters/${character.id}`).catch(() => undefined),
+      request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined),
       request.delete(`/api/connections/${connection.id}`).catch(() => undefined),
       duplicateId ? request.delete(`/api/characters/${duplicateId}`).catch(() => undefined) : Promise.resolve(),
+      duplicatePersonaId
+        ? request.delete(`/api/characters/personas/${duplicatePersonaId}`).catch(() => undefined)
+        : Promise.resolve(),
+      importedPersonaId
+        ? request.delete(`/api/characters/personas/${importedPersonaId}`).catch(() => undefined)
+        : Promise.resolve(),
     ]);
   }
 });

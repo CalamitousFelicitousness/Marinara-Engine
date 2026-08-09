@@ -1041,6 +1041,8 @@ export function useCreatePersona() {
       scenario?: string;
       backstory?: string;
       appearance?: string;
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: string;
       nameColor?: string;
       dialogueColor?: string;
       boxColor?: string;
@@ -1085,6 +1087,8 @@ export function useUpdatePersona() {
       scenario?: string;
       backstory?: string;
       appearance?: string;
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: string;
       nameColor?: string;
       dialogueColor?: string;
       boxColor?: string;

@@ -520,12 +520,12 @@ async function readSpritesForId(id: string): Promise<Array<{ filename: string; d
 
 // Read every gallery image for a character (metadata row + binary on disk),
 // returning a serializable list that import can rebuild the gallery from.
-async function readGalleryForCharacter(
-  characterId: string,
-  galleryStorage: { listByCharacterId: (id: string) => Promise<any[]> },
+async function readGalleryForOwner(
+  ownerId: string,
+  listImages: (id: string) => Promise<any[]>,
   characterSheetImageId?: string | null,
 ): Promise<Array<Record<string, unknown>>> {
-  const images = await galleryStorage.listByCharacterId(characterId);
+  const images = await listImages(ownerId);
   const result: Array<Record<string, unknown>> = [];
   for (const img of images) {
     // img.filePath is stored relative to data/gallery/ — usually
@@ -566,7 +566,7 @@ async function buildNativeCharacterEnvelope(
   const [avatar, sprites, gallery] = await Promise.all([
     readAvatarDataUrl(char.avatarPath),
     readSpritesForId(char.id),
-    readGalleryForCharacter(char.id, galleryStorage, characterSheetImageId),
+    readGalleryForOwner(char.id, (id) => galleryStorage.listByCharacterId(id), characterSheetImageId),
   ]);
   return {
     type: "marinara_character",
@@ -599,12 +599,28 @@ function buildCompatibleCharacterExport(data: any) {
   };
 }
 
-async function buildNativePersonaEnvelope(persona: Record<string, unknown>) {
-  const { id: _id, createdAt, updatedAt, avatarPath, isActive: _isActive, ...personaData } = persona;
+async function buildNativePersonaEnvelope(
+  persona: Record<string, unknown>,
+  galleryStorage: { listByPersonaId: (id: string) => Promise<any[]> },
+) {
+  const {
+    id: _id,
+    createdAt,
+    updatedAt,
+    avatarPath,
+    isActive: _isActive,
+    characterSheetImageId: rawCharacterSheetImageId,
+    ...personaData
+  } = persona;
   const personaId = typeof _id === "string" ? _id : "";
-  const [avatar, sprites] = await Promise.all([
+  const characterSheetImageId =
+    typeof rawCharacterSheetImageId === "string" ? rawCharacterSheetImageId : null;
+  const [avatar, sprites, gallery] = await Promise.all([
     readAvatarDataUrl(typeof avatarPath === "string" ? avatarPath : null),
     personaId ? readSpritesForId(personaId) : Promise.resolve([] as Array<{ filename: string; data: string }>),
+    personaId
+      ? readGalleryForOwner(personaId, (id) => galleryStorage.listByPersonaId(id), characterSheetImageId)
+      : Promise.resolve([] as Array<Record<string, unknown>>),
   ]);
   return {
     type: "marinara_persona",
@@ -614,6 +630,7 @@ async function buildNativePersonaEnvelope(persona: Record<string, unknown>) {
       ...personaData,
       ...(avatar ? { avatar } : {}),
       ...(sprites.length > 0 ? { sprites } : {}),
+      ...(gallery.length > 0 ? { gallery } : {}),
       metadata: {
         createdAt,
         updatedAt,
@@ -629,6 +646,8 @@ function buildCompatiblePersonaExport(persona: Record<string, unknown>) {
     updatedAt: _updatedAt,
     avatarPath: _avatarPath,
     isActive: _isActive,
+    characterSheetImageId: _characterSheetImageId,
+    useCharacterSheetAsReference: _useCharacterSheetAsReference,
     ...personaData
   } = persona;
   return {
@@ -1924,6 +1943,8 @@ export async function charactersRoutes(app: FastifyInstance) {
       scenario?: string;
       backstory?: string;
       appearance?: string;
+      characterSheetImageId?: string | null;
+      useCharacterSheetAsReference?: string;
       nameColor?: string;
       dialogueColor?: string;
       boxColor?: string;
@@ -1952,6 +1973,26 @@ export async function charactersRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Persona update must be a JSON object" });
     }
     const body = req.body as Record<string, unknown>;
+    if (Object.hasOwn(body, "characterSheetImageId")) {
+      const imageId = body.characterSheetImageId;
+      if (imageId !== null && typeof imageId !== "string") {
+        return reply.status(400).send({ error: "characterSheetImageId must be a string or null" });
+      }
+      if (typeof imageId === "string") {
+        const image = await personaGallery.getById(imageId);
+        if (!image || image.personaId !== req.params.id) {
+          body.characterSheetImageId = null;
+          body.useCharacterSheetAsReference = "false";
+        }
+      }
+    }
+    if (Object.hasOwn(body, "useCharacterSheetAsReference")) {
+      const enabled = body.useCharacterSheetAsReference;
+      if (typeof enabled === "boolean") body.useCharacterSheetAsReference = String(enabled);
+      else if (enabled !== "true" && enabled !== "false") {
+        return reply.status(400).send({ error: "useCharacterSheetAsReference must be a boolean" });
+      }
+    }
     let parsedPaint: Record<string, unknown> | null = null;
     if (typeof body.trackerCardColors === "string") {
       try {
@@ -2561,6 +2602,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     await personaGallery.remove(imageId);
+    const persona = await storage.getPersona(id);
+    if (persona?.characterSheetImageId === imageId) {
+      await enqueueUpdate(personaUpdateQueues, id, () =>
+        storage.updatePersona(
+          id,
+          { characterSheetImageId: null, useCharacterSheetAsReference: "false" },
+          { skipVersionSnapshot: true },
+        ),
+      );
+    }
     await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     return { success: true };
   });
@@ -2639,7 +2690,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       const compatible = req.query.format === "compatible";
       const payload = compatible
         ? buildCompatiblePersonaExport(persona as Record<string, unknown>)
-        : await buildNativePersonaEnvelope(persona as Record<string, unknown>);
+        : await buildNativePersonaEnvelope(persona as Record<string, unknown>, personaGallery);
       return reply
         .header(
           "Content-Disposition",
@@ -2663,7 +2714,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       const payload =
         format === "compatible"
           ? buildCompatiblePersonaExport(persona as Record<string, unknown>)
-          : await buildNativePersonaEnvelope(persona as Record<string, unknown>);
+          : await buildNativePersonaEnvelope(persona as Record<string, unknown>, personaGallery);
       zip.addFile(
         `${toSafeExportName(String(persona.name ?? "persona"), `persona-${exportedCount + 1}`)}.${format === "compatible" ? "json" : "marinara.json"}`,
         Buffer.from(JSON.stringify(payload, null, 2), "utf-8"),

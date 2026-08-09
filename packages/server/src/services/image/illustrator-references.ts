@@ -28,11 +28,17 @@ export type CharacterGalleryReferenceStore = {
   getById: (id: string) => Promise<{ characterId: string; filePath: string } | null>;
 };
 
+export type PersonaGalleryReferenceStore = {
+  getById: (id: string) => Promise<{ personaId: string; filePath: string } | null>;
+};
+
 export type IllustratorPersonaReference = {
   id: string | null;
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  characterSheetImageId?: string | null;
+  useCharacterSheetAsReference?: boolean;
 };
 
 export type IllustratorChatCharacterReference = {
@@ -339,6 +345,24 @@ async function readCharacterSheetReference(
   }
 }
 
+async function readPersonaSheetReference(
+  source: { id: string; characterSheetImageId: string | null; useCharacterSheetAsReference: boolean },
+  gallery: PersonaGalleryReferenceStore | undefined,
+): Promise<string | undefined> {
+  if (!gallery || !source.useCharacterSheetAsReference || !source.characterSheetImageId) return undefined;
+  try {
+    const image = await gallery.getById(source.characterSheetImageId);
+    if (!image || image.personaId !== source.id) return undefined;
+    const storedFile = resolveStoredGalleryFile(image.filePath);
+    if (!storedFile) return undefined;
+    const buffer = await readFile(storedFile.absolutePath);
+    if (!isAllowedImageBuffer(buffer, extname(storedFile.filename))) return undefined;
+    return buffer.toString("base64");
+  } catch {
+    return undefined;
+  }
+}
+
 async function readBestReferenceImage(
   source: Pick<
     CharacterReferenceSource,
@@ -391,6 +415,40 @@ export async function readPreferredCharacterReferenceImage(args: {
   return sprite ? { base64: sprite, source: "sprite" } : null;
 }
 
+export async function readPreferredPersonaReferenceImage(args: {
+  personaId: string;
+  avatarPath?: string | null;
+  characterSheetImageId?: string | null;
+  useCharacterSheetAsReference?: boolean;
+  personaGallery?: PersonaGalleryReferenceStore;
+  loaders?: {
+    characterSheet?: () => Promise<string | undefined>;
+    avatar?: () => string | undefined;
+    sprite?: () => string | undefined;
+  };
+}): Promise<{ base64: string; source: "character-sheet" | "avatar" | "sprite" } | null> {
+  const characterSheet =
+    args.useCharacterSheetAsReference === true
+      ? await (args.loaders?.characterSheet
+          ? args.loaders.characterSheet()
+          : readPersonaSheetReference(
+              {
+                id: args.personaId,
+                characterSheetImageId: args.characterSheetImageId ?? null,
+                useCharacterSheetAsReference: true,
+              },
+              args.personaGallery,
+            ))
+      : undefined;
+  if (characterSheet) return { base64: characterSheet, source: "character-sheet" };
+  const avatar = args.loaders?.avatar ? args.loaders.avatar() : readAvatarBase64(args.avatarPath);
+  if (avatar) return { base64: avatar, source: "avatar" };
+  const sprite = args.loaders?.sprite
+    ? args.loaders.sprite()
+    : readPreferredFullBodySpriteBase64(args.personaId)?.base64;
+  return sprite ? { base64: sprite, source: "sprite" } : null;
+}
+
 export async function resolveIllustratorCharacterReferences(args: {
   charactersStore: { list: () => Promise<CharacterRowLike[]> };
   chatCharacters: IllustratorChatCharacterReference[];
@@ -402,6 +460,7 @@ export async function resolveIllustratorCharacterReferences(args: {
   includeReferenceImages?: boolean;
   includePersonaWhenMentionedInPrompt?: boolean;
   characterGallery?: CharacterGalleryReferenceStore;
+  personaGallery?: PersonaGalleryReferenceStore;
 }): Promise<IllustratorReferenceResolution> {
   const maxReferences = Math.max(1, Math.min(args.maxReferences ?? MAX_ILLUSTRATOR_REFERENCE_IMAGES, 12));
   const allRows = await args.charactersStore.list().catch(() => []);
@@ -501,10 +560,18 @@ export async function resolveIllustratorCharacterReferences(args: {
     personaRequested &&
     referenceImages.length < maxReferences
   ) {
-    const b64 =
-      readAvatarBase64(args.persona.avatarPath ?? null) ?? readPreferredFullBodySpriteBase64(args.persona.id)?.base64;
-    if (b64) {
-      referenceImages.push(b64);
+    const preferred = args.persona.id
+      ? await readPreferredPersonaReferenceImage({
+          personaId: args.persona.id,
+          avatarPath: args.persona.avatarPath,
+          characterSheetImageId: args.persona.characterSheetImageId,
+          useCharacterSheetAsReference: args.persona.useCharacterSheetAsReference,
+          personaGallery: args.personaGallery,
+        })
+      : null;
+    const fallbackAvatar = preferred ? null : readAvatarBase64(args.persona.avatarPath ?? null);
+    if (preferred?.base64 || fallbackAvatar) {
+      referenceImages.push(preferred?.base64 ?? fallbackAvatar!);
       referenceNames.push(args.persona.name);
     }
   }

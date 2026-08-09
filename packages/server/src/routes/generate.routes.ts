@@ -8977,6 +8977,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       const referenceResolution = await resolveIllustratorCharacterReferences({
                         charactersStore: chars,
                         characterGallery,
+                        personaGallery,
                         chatCharacters: charInfo.map((character) => ({
                           id: character.id,
                           name: character.name,
@@ -8989,6 +8990,9 @@ export async function generateRoutes(app: FastifyInstance) {
                               name: personaName,
                               avatarPath: persona.avatarPath as string | null,
                               appearance: personaFields.appearance,
+                              characterSheetImageId:
+                                typeof persona.characterSheetImageId === "string" ? persona.characterSheetImageId : null,
+                              useCharacterSheetAsReference: persona.useCharacterSheetAsReference === "true",
                             }
                           : null,
                         requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),

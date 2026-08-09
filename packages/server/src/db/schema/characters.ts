@@ -60,6 +60,10 @@ export const personas = fileTable("personas", {
   backstory: text("backstory").notNull().default(""),
   appearance: text("appearance").notNull().default(""),
   avatarPath: text("avatar_path"),
+  /** Persona gallery image selected as the optional visual identity sheet. */
+  characterSheetImageId: text("character_sheet_image_id"),
+  /** Whether image generation should prefer the selected sheet over the avatar. */
+  useCharacterSheetAsReference: text("use_character_sheet_as_reference").notNull().default("false"),
   /** Avatar zoom/position settings (JSON of { zoom, offsetX, offsetY, fullImage? }). Empty string = unset. */
   avatarCrop: text("avatar_crop").notNull().default(""),
   isActive: text("is_active").notNull().default("false"),

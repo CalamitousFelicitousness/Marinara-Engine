@@ -2191,6 +2191,14 @@ const invalidLogicLorebookEntry = buildLorebookEntryCreateRow(
   "2026-07-16T00:00:00.000Z",
 );
 assert.equal(invalidLogicLorebookEntry.selectiveLogic, "and");
+// #4796 review — "or" is an accepted legacy selectiveLogic value (behaves like "and").
+const orLogicLorebookEntry = buildLorebookEntryCreateRow(
+  { name: "Or logic", content: "x", selectiveLogic: "or" },
+  "lorebook-generated",
+  "entry-or-logic",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(orLogicLorebookEntry.selectiveLogic, "or");
 
 // Issue #4135 — Markdown headings inside Lorebook Keeper content are content,
 // not approval-entry delimiters.

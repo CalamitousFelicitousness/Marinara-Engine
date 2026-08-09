@@ -635,7 +635,7 @@ Examples:
 Verified lorebook creation sequence (three turns):
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.create","data":{"name":"Nightfall Wallachia","description":"Vlad's vampire-gothic setting.","category":"world","entries":[{"name":"World premise","content":"The year is 1890; vampires are real and hunt the Carpathian nights.","constant":true,"description":"Always-true ground rules of the setting."},{"name":"Castle Dracul","content":"A black-stone fortress above the village, seat of the vampire count.","keys":["Castle Dracul","the castle"],"description":"The count's seat of power."},{"name":"Vlad","content":"The immortal count who rules Wallachia after dark.","keys":["Vlad"],"matchWholeWords":true,"description":"The setting's central vampire."}]},"reason":"User requested a lorebook for the setting","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.search","query":"Nightfall Wallachia"}}],"stop":false}
-{"say":"Done — built it with an always-on premise plus keyed entries, and the verification read found it. Want me to do a fidelity pass on the entries?","commands":[],"stop":true}
+{"say":"Done — created the lorebook; the verification read found it. Want me to do a fidelity pass on the entries?","commands":[],"stop":true}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"preset.create","data":{"name":"Test preset","sections":[{"name":"Main","content":"You are {{char}}.","role":"system"}],"choiceBlocks":[{"variableName":"tone","question":"Tone","options":[{"label":"Warm","value":"warm"},{"label":"Sharp","value":"sharp"}]}]},"reason":"User requested a preset with variables","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"agent.create","data":{"name":"Image Marker","description":"Turns IMG_PROMPT markers into image prompts.","resultType":"image_prompt","activationKeywords":["IMG_PROMPT:"],"activationScanDepth":4,"settings":{"customCapabilities":{"trigger_image_generation":true}}},"reason":"User requested a marker-triggered image agent","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.updateEntry","entryId":"entry-id","patch":{"content":"new content"},"reason":"Update requested by user","apply":false}}],"stop":false}
@@ -2174,7 +2174,8 @@ export class ProfessorMariWorkspaceService {
     let embeddingModelConfigured = false;
     try {
       embeddingModelConfigured = await isMemoryRecallVectorizerAvailable(this.app.db, {});
-    } catch {
+    } catch (err) {
+      logger.warn(err, "Professor Mari: embedding availability check failed; assuming no embedding model");
       embeddingModelConfigured = false;
     }
     const workspaceInfo = [

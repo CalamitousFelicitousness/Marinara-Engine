@@ -193,35 +193,52 @@ function firstMarkdownHeading(content: string) {
   return content.match(/^#{1,6}\s+(.+?)\s*#*\s*$/mu)?.[1]?.trim() ?? "Document overview";
 }
 
-function listMarkdownHeadings(content: string): string[] {
-  const headings: string[] = [];
-  for (const line of content.split(/\r?\n/)) {
-    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/u);
-    if (match) headings.push(match[2]!.trim());
+/**
+ * Iterate ATX headings, skipping fenced code blocks and preserving terminal '#'
+ * characters that belong to the heading text (e.g. "C#"). Shared by heading
+ * listing and lookup so the two always agree on what counts as a heading.
+ */
+function* iterateMarkdownHeadings(
+  lines: string[],
+): Generator<{ index: number; level: number; heading: string }> {
+  let fence: string | null = null;
+  for (const [index, line] of lines.entries()) {
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/u);
+    if (fenceMatch) {
+      const marker = fenceMatch[1]![0]!;
+      if (fence === null) fence = marker;
+      else if (fence === marker) fence = null;
+      continue;
+    }
+    if (fence !== null) continue;
+    // Closing '#' run is stripped only when whitespace-separated, so "C#" survives.
+    const match = line.match(/^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/u);
+    if (match) yield { index, level: match[1]!.length, heading: match[2]!.trim() };
   }
-  return headings;
+}
+
+function listMarkdownHeadings(content: string): string[] {
+  return [...iterateMarkdownHeadings(content.split(/\r?\n/))].map((entry) => entry.heading);
 }
 
 function readMarkdownHeading(path: string, content: string, requestedHeading: string): DocumentationSection | null {
   const lines = content.split(/\r?\n/);
   const normalizedHeading = requestedHeading.toLocaleLowerCase();
-  for (const [index, line] of lines.entries()) {
-    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/u);
-    if (!match || match[2]!.trim().toLocaleLowerCase() !== normalizedHeading) continue;
-    const level = match[1]!.length;
+  const headings = [...iterateMarkdownHeadings(lines)];
+  for (const [position, entry] of headings.entries()) {
+    if (entry.heading.toLocaleLowerCase() !== normalizedHeading) continue;
     let end = lines.length;
-    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
-      const nextHeading = lines[cursor]!.match(/^(#{1,6})\s+/u);
-      if (nextHeading && nextHeading[1]!.length <= level) {
-        end = cursor;
+    for (let next = position + 1; next < headings.length; next += 1) {
+      if (headings[next]!.level <= entry.level) {
+        end = headings[next]!.index;
         break;
       }
     }
     return {
       path,
-      heading: match[2]!.trim(),
-      content: lines.slice(index + 1, end).join("\n"),
-      startLine: index + 1,
+      heading: entry.heading,
+      content: lines.slice(entry.index + 1, end).join("\n"),
+      startLine: entry.index + 1,
     };
   }
   return null;
@@ -400,7 +417,7 @@ export async function readCanonicalDocumentation(
     const available = listMarkdownHeadings(content);
     let hint: string;
     if (available.length === 0) {
-      hint = " This document has no headings; omit `heading` to read the whole file.";
+      hint = " This document has no headings; omit `heading` to read the document (the result may be truncated by maxChars).";
     } else {
       const shown = available.slice(0, MAX_HEADINGS_IN_MISS);
       const more = available.length > shown.length ? `, …(+${available.length - shown.length} more)` : "";

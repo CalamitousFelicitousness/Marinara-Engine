@@ -447,6 +447,22 @@ async function addCharacterRowIllustrationAssets(
   }
 }
 
+async function addCharacterRowsIllustrationAssets(
+  maps: IllustrationCharacterAssetMaps,
+  characters: Array<{ id: string; data: string; avatarPath?: string | null }>,
+  characterGallery: ReturnType<typeof createCharacterGalleryStorage>,
+): Promise<void> {
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (nextIndex < characters.length) {
+      const character = characters[nextIndex++];
+      if (character) await addCharacterRowIllustrationAssets(maps, character, characterGallery);
+    }
+  };
+  const workerCount = Math.min(GAME_ASSET_REFERENCE_LOOKUP_CONCURRENCY, characters.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+}
+
 async function addPersonaIllustrationAssets(
   maps: IllustrationCharacterAssetMaps,
   persona:
@@ -3124,6 +3140,7 @@ const GAME_SCENE_VIDEO_GENERATION_TIMEOUT_MS = 31 * 60 * 1000;
 const GAME_ILLUSTRATION_SUMMARY_TIMEOUT_MS = 60 * 1000;
 const GAME_STORYBOARD_ILLUSTRATOR_TIMEOUT_MS = 3 * 60 * 1000;
 const GAME_ASSET_PORTRAIT_CONCURRENCY = 2;
+const GAME_ASSET_REFERENCE_LOOKUP_CONCURRENCY = 4;
 const GAME_STORYBOARD_IMAGE_FRAME_CONCURRENCY = 4;
 const GAME_STORYBOARD_VIDEO_FRAME_CONCURRENCY = 2;
 const GAME_STORYBOARD_STALE_RENDER_MS = GAME_SCENE_VIDEO_GENERATION_TIMEOUT_MS * 2;
@@ -12096,9 +12113,7 @@ export async function gameRoutes(app: FastifyInstance) {
         const charStore = createCharactersStorage(app.db);
         const allChars = await charStore.list();
         const illustrationCharacterAssets = emptyIllustrationCharacterAssetMaps();
-        for (const ch of allChars) {
-          await addCharacterRowIllustrationAssets(illustrationCharacterAssets, ch, characterGallery);
-        }
+        await addCharacterRowsIllustrationAssets(illustrationCharacterAssets, allChars, characterGallery);
         const { charReferenceByName, charReferenceSourceByName, charAvatarByName, charDescriptionByName } =
           illustrationCharacterAssets;
 
@@ -12523,9 +12538,7 @@ export async function gameRoutes(app: FastifyInstance) {
           const charStore = createCharactersStorage(app.db);
           const allChars = await charStore.list();
           const illustrationCharacterAssets = emptyIllustrationCharacterAssetMaps();
-          for (const ch of allChars) {
-            await addCharacterRowIllustrationAssets(illustrationCharacterAssets, ch, characterGallery);
-          }
+          await addCharacterRowsIllustrationAssets(illustrationCharacterAssets, allChars, characterGallery);
           const { charReferenceByName, charReferenceSourceByName, charAvatarByName, charDescriptionByName } =
             illustrationCharacterAssets;
 

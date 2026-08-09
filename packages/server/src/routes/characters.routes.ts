@@ -380,6 +380,31 @@ type AvatarGenerationBody = {
   promptOverrides?: AvatarGenerationPromptOverride[];
 };
 
+const AVATAR_GENERATION_MAX_DIMENSION = 4096;
+const AVATAR_GENERATION_MAX_PIXELS = 16_000_000;
+
+function validateAvatarGenerationDimensions(width: unknown, height: unknown) {
+  if (
+    typeof width !== "number" ||
+    typeof height !== "number" ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return { error: "width and height must be positive integers" as const };
+  }
+  if (width > AVATAR_GENERATION_MAX_DIMENSION || height > AVATAR_GENERATION_MAX_DIMENSION) {
+    return { error: `width and height must not exceed ${AVATAR_GENERATION_MAX_DIMENSION}` as const };
+  }
+  if (width * height > AVATAR_GENERATION_MAX_PIXELS) {
+    return { error: `width and height must not exceed ${AVATAR_GENERATION_MAX_PIXELS} total pixels` as const };
+  }
+  return { width, height };
+}
+
 const avatarGenerationPromptId = (name: string, purpose: AvatarGenerationBody["purpose"] = "avatar") =>
   `${purpose === "character-sheet" ? "character-sheet" : "avatar"}:${
     name
@@ -727,8 +752,12 @@ export async function charactersRoutes(app: FastifyInstance) {
 
     const imageSettings = await loadImageGenerationUserSettings(app.db);
     const isCharacterSheet = body.purpose === "character-sheet";
-    const width = body.width ?? (isCharacterSheet ? imageSettings.background.width : imageSettings.portrait.width);
-    const height = body.height ?? (isCharacterSheet ? imageSettings.background.height : imageSettings.portrait.height);
+    const dimensions = validateAvatarGenerationDimensions(
+      body.width ?? (isCharacterSheet ? imageSettings.background.width : imageSettings.portrait.width),
+      body.height ?? (isCharacterSheet ? imageSettings.background.height : imageSettings.portrait.height),
+    );
+    if ("error" in dimensions) return reply.status(400).send({ error: dimensions.error });
+    const { width, height } = dimensions;
     const imageDefaults = resolveConnectionImageDefaults(resolved.conn);
     const profileSubjectTags =
       findImageStyleProfile(
@@ -776,8 +805,12 @@ export async function charactersRoutes(app: FastifyInstance) {
     const conn = resolved.conn;
     const imageSettings = await loadImageGenerationUserSettings(app.db);
     const isCharacterSheet = body.purpose === "character-sheet";
-    const width = body.width ?? (isCharacterSheet ? imageSettings.background.width : imageSettings.portrait.width);
-    const height = body.height ?? (isCharacterSheet ? imageSettings.background.height : imageSettings.portrait.height);
+    const dimensions = validateAvatarGenerationDimensions(
+      body.width ?? (isCharacterSheet ? imageSettings.background.width : imageSettings.portrait.width),
+      body.height ?? (isCharacterSheet ? imageSettings.background.height : imageSettings.portrait.height),
+    );
+    if ("error" in dimensions) return reply.status(400).send({ error: dimensions.error });
+    const { width, height } = dimensions;
     const rawPromptOverrides: unknown[] = Array.isArray(body.promptOverrides) ? body.promptOverrides : [];
     const promptOverrideById = new Map(
       rawPromptOverrides.flatMap((item) => {
@@ -1957,6 +1990,8 @@ export async function charactersRoutes(app: FastifyInstance) {
       aboutMe?: string;
       convoBehavior?: string;
     };
+    delete extra.characterSheetImageId;
+    delete extra.useCharacterSheetAsReference;
     const created = await storage.createPersona(
       name,
       description ?? "",

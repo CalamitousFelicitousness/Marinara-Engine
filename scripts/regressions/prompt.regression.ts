@@ -4045,6 +4045,18 @@ const cases: RegressionCase[] = [
       });
       assert.deepEqual(activePersonaSheet, { base64: "persona-sheet-bytes", source: "character-sheet" });
 
+      const disabledPersonaSheet = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "persona-sheet-1",
+        useCharacterSheetAsReference: false,
+        loaders: {
+          characterSheet: async () => "persona-sheet-bytes",
+          avatar: () => "persona-avatar-bytes",
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(disabledPersonaSheet, { base64: "persona-avatar-bytes", source: "avatar" });
+
       const missingPersonaSheet = await readPreferredPersonaReferenceImage({
         personaId: "persona-mari",
         characterSheetImageId: "missing-persona-sheet",
@@ -4056,6 +4068,18 @@ const cases: RegressionCase[] = [
         },
       });
       assert.deepEqual(missingPersonaSheet, { base64: "persona-avatar-bytes", source: "avatar" });
+
+      const missingPersonaSheetAndAvatar = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "missing-persona-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => undefined,
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingPersonaSheetAndAvatar, { base64: "persona-sprite-bytes", source: "sprite" });
     },
   },
   {

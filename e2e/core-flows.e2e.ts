@@ -2633,10 +2633,21 @@ test("Character and persona sheets persist an explicit reference choice and fall
   expect(characterResponse.ok()).toBeTruthy();
   const character = (await characterResponse.json()) as { id: string; data: string };
   const personaResponse = await request.post("/api/characters/personas", {
-    data: { name: personaName, description: "A traveler with silver hair and a dark coat." },
+    data: {
+      name: personaName,
+      description: "A traveler with silver hair and a dark coat.",
+      characterSheetImageId: "not-owned-during-creation",
+      useCharacterSheetAsReference: "true",
+    },
   });
   expect(personaResponse.ok()).toBeTruthy();
-  const persona = (await personaResponse.json()) as { id: string };
+  const persona = (await personaResponse.json()) as {
+    id: string;
+    characterSheetImageId: string | null;
+    useCharacterSheetAsReference: boolean;
+  };
+  expect(persona.characterSheetImageId).toBeNull();
+  expect(persona.useCharacterSheetAsReference).toBe(false);
   let duplicateId: string | null = null;
   let duplicatePersonaId: string | null = null;
   let importedPersonaId: string | null = null;
@@ -2660,6 +2671,48 @@ test("Character and persona sheets persist an explicit reference choice and fall
       title: `Character sheet: ${characterName}`,
     });
     expect(preview.items[0]?.prompt).toContain("production character design sheet");
+
+    const fractionalSizeResponse = await request.post("/api/characters/avatar-generation/preview", {
+      data: {
+        connectionId: connection.id,
+        name: characterName,
+        appearance: "Silver hair.",
+        width: 1024.5,
+        height: 1024,
+      },
+    });
+    expect(fractionalSizeResponse.status()).toBe(400);
+    await expect(fractionalSizeResponse.json()).resolves.toEqual({
+      error: "width and height must be positive integers",
+    });
+
+    const oversizedDimensionResponse = await request.post("/api/characters/avatar-generation", {
+      data: {
+        connectionId: connection.id,
+        name: characterName,
+        appearance: "Silver hair.",
+        width: 4097,
+        height: 1024,
+      },
+    });
+    expect(oversizedDimensionResponse.status()).toBe(400);
+    await expect(oversizedDimensionResponse.json()).resolves.toEqual({
+      error: "width and height must not exceed 4096",
+    });
+
+    const oversizedAreaResponse = await request.post("/api/characters/avatar-generation", {
+      data: {
+        connectionId: connection.id,
+        name: characterName,
+        appearance: "Silver hair.",
+        width: 4096,
+        height: 4096,
+      },
+    });
+    expect(oversizedAreaResponse.status()).toBe(400);
+    await expect(oversizedAreaResponse.json()).resolves.toEqual({
+      error: "width and height must not exceed 16000000 total pixels",
+    });
 
     const uploadResponse = await request.post(`/api/characters/${character.id}/gallery/upload`, {
       multipart: {

@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added batch selection to Character and Persona image galleries so selected images can be downloaded or deleted together after confirmation (#4832).
+- Added a persisted Auto, Low, Medium, or High output-quality choice to GPT Image generation connections (#4831).
 - Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, safe selection cleanup, and an explicit generation-reference toggle that falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
 - Let Professor Mari propose safe data-only custom Home widgets for explicit confirmation, with persistent responsive cards that users can reorder, hide, restore, and delete from the Widgets manager (#4801).
 - Added the **Please Handle With Care** achievement for dragging the Home navigation Professor Mari around the screen (#4805).
@@ -30,6 +32,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept Professor Mari's Home navigator enabled by default and visible with reduced effects, reset her to the default position when re-enabled, centered her drag handle, contained compact Field Notes and Community actions, and presented iPad sidebars as full-width overlays (#4826, #4827, #4829, #4830).
 - Corrected Home and Appearance presentation regressions affecting semantic chat-mode colors, the Square avatar preview, Noodle notification placement, compact mobile Achievements, Discovery Desk spacing, mobile Bookmarks motion, and consistent widget-manager labels (#4809, #4817, #4818, #4819, #4820, #4821, #4823).
 - Restored Game party portrait file selection for Character, Persona, and NPC sheets whether or not the sheet editor is active (#4793).
 - Kept legacy reaction payloads out of rendered message content, accepted `/title <name>` in Professor Mari chats, and let her navigator open an exact saved chat title (#4782, #4794, #4800).

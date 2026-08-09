@@ -78,7 +78,10 @@ import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useUIStore } from "../../stores/ui.store";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
-import { scrollProfessorMariTranscriptToBottom } from "../../lib/professor-mari-transcript-scroll";
+import {
+  isProfessorMariTranscriptNearBottom,
+  scrollProfessorMariTranscriptToBottom,
+} from "../../lib/professor-mari-transcript-scroll";
 import {
   formatCompactTokenCount,
   resolveProfessorMariContextBudget,
@@ -1383,23 +1386,30 @@ function WorkspaceToolEvent({ tool }: { tool: WorkspaceToolCall }) {
         </span>
       }
     >
-      <div
-        className={cn(
-          "inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[0.7rem] leading-5 shadow-sm",
-          toolToneClasses(presentation.tone),
-          isError && "border-[var(--destructive)]/35 bg-[var(--destructive)]/10",
-        )}
-        title={presentation.detail ?? presentation.title}
-      >
-        <span className="shrink-0 rounded-full bg-[var(--background)]/70 px-1.5 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
-          {presentation.eyebrow}
-        </span>
-        <span className="min-w-0 truncate font-semibold text-[var(--foreground)]">{presentation.title}</span>
-        {presentation.detail && (
-          <span className="min-w-0 truncate text-[var(--muted-foreground)]">· {presentation.detail}</span>
-        )}
-        {isError && (
-          <span className="shrink-0 text-[0.65rem] font-semibold text-[var(--destructive)]">{localizeUi("ui.chat.workspacetoolevent.needsAttention")}</span>
+      <div className="min-w-0 space-y-1.5">
+        <div
+          className={cn(
+            "inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[0.7rem] leading-5 shadow-sm",
+            toolToneClasses(presentation.tone),
+            isError && "border-[var(--destructive)]/35 bg-[var(--destructive)]/10",
+          )}
+          title={presentation.detail ?? presentation.title}
+        >
+          <span className="shrink-0 rounded-full bg-[var(--background)]/70 px-1.5 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+            {presentation.eyebrow}
+          </span>
+          <span className="min-w-0 truncate font-semibold text-[var(--foreground)]">{presentation.title}</span>
+          {presentation.detail && (
+            <span className="min-w-0 truncate text-[var(--muted-foreground)]">· {presentation.detail}</span>
+          )}
+          {isError && (
+            <span className="shrink-0 text-[0.65rem] font-semibold text-[var(--destructive)]">{localizeUi("ui.chat.workspacetoolevent.needsAttention")}</span>
+          )}
+        </div>
+        {isError && tool.output?.trim() && (
+          <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/8 px-2.5 py-2 text-[0.6875rem] leading-relaxed text-[var(--destructive)]">
+            {tool.output.trim()}
+          </pre>
         )}
       </div>
     </TranscriptRow>
@@ -2339,6 +2349,7 @@ export function HomeProfessorMariChat({
   const messageLoadAbortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const transcriptScrollFrameRef = useRef<number | null>(null);
+  const transcriptFollowOutputRef = useRef(true);
   const floatingSurfaceRef = useRef<HTMLDivElement>(null);
   const floatingButtonRef = useRef<HTMLDivElement>(null);
   const floatingDragRef = useRef<FloatingDragState | null>(null);
@@ -2391,6 +2402,7 @@ export function HomeProfessorMariChat({
       }
       scrollRef.current = node;
       if (!node || loadingHistory || !chatId || loadedMessagesChatId !== chatId) return;
+      transcriptFollowOutputRef.current = true;
       transcriptScrollFrameRef.current = window.requestAnimationFrame(() => {
         transcriptScrollFrameRef.current = null;
         if (scrollRef.current === node) scrollProfessorMariTranscriptToBottom(node);
@@ -2758,9 +2770,14 @@ export function HomeProfessorMariChat({
 
   useEffect(() => {
     const node = scrollRef.current;
-    if (!node) return;
+    if (!node || !transcriptFollowOutputRef.current) return;
     scrollProfessorMariTranscriptToBottom(node);
   }, [messages, workspaceTimeline, workspaceActivity, visiblePendingChangeReviewKey, workspaceStatus?.error]);
+
+  const handleTranscriptScroll = useCallback(() => {
+    const node = scrollRef.current;
+    if (node) transcriptFollowOutputRef.current = isProfessorMariTranscriptNearBottom(node);
+  }, []);
 
   const displayMessages = useMemo(() => [createWelcomeMessage(chatId), ...messages], [chatId, messages]);
 
@@ -3296,7 +3313,15 @@ export function HomeProfessorMariChat({
     async (id: string) => {
       const item = chatHistory.find((chat) => chat.id === id);
       if (!item) return;
-      if (!window.confirm(localizeUi("ui.chat.homeprofessormarichat.deleteValue1", { value1: item.name ||localizeUi("ui.chat.homeprofessormarichat.thisProfessorMariChat") }))) return;
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.chat.homeprofessormarichat.deleteValue1", {
+          value1: item.name || localizeUi("ui.chat.homeprofessormarichat.thisProfessorMariChat"),
+        }),
+        message: localizeUi("ui.chat.homeprofessormarichat.deleteSelectedChatsConfirmation", { count: 1 }),
+        confirmLabel: localizeUi("lorebook.editor.batch.delete"),
+        tone: "destructive",
+      });
+      if (!confirmed) return;
       try {
         await api.delete(`/chats/internal/professor-mari/chats/${id}`);
         if (id === chatId) {
@@ -3799,6 +3824,7 @@ export function HomeProfessorMariChat({
     <>
       <div
         ref={setTranscriptScrollNode}
+        onScroll={handleTranscriptScroll}
         data-component="HomeProfessorMariChat.Transcript"
         className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 pb-4 text-left"
       >
@@ -4442,6 +4468,7 @@ export function HomeProfessorMariChat({
 
                       <div
                         ref={setTranscriptScrollNode}
+                        onScroll={handleTranscriptScroll}
                         data-component="HomeProfessorMariChat.Transcript"
                         className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 pb-4 text-left"
                       >

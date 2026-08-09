@@ -561,6 +561,22 @@ export function createLorebooksStorage(db: DB) {
         : ((current?.personaIds as string[] | undefined) ?? []);
       if (shouldUpdateCharacterLinks) updates.characterId = nextCharacterIds[0] ?? null;
       if (shouldUpdatePersonaLinks) updates.personaId = nextPersonaIds[0] ?? null;
+      const nextChatId = input.chatId !== undefined ? input.chatId : current?.chatId;
+      const nextIsGlobal = input.isGlobal !== undefined ? input.isGlobal : current?.isGlobal === true;
+      const hadLinkedOwner =
+        ((current?.characterIds as string[] | undefined)?.length ?? 0) > 0 ||
+        ((current?.personaIds as string[] | undefined)?.length ?? 0) > 0;
+      const lostFinalOwner =
+        (shouldUpdateCharacterLinks || shouldUpdatePersonaLinks) &&
+        hadLinkedOwner &&
+        nextCharacterIds.length === 0 &&
+        nextPersonaIds.length === 0 &&
+        !nextChatId &&
+        !nextIsGlobal;
+      if (lostFinalOwner) {
+        if (input.enabled === undefined) updates.enabled = "false";
+        if (input.hiddenFromLibrary === undefined) updates.hiddenFromLibrary = "false";
+      }
       if (input.chatId !== undefined) updates.chatId = input.chatId;
       if (input.isGlobal !== undefined) updates.isGlobal = String(input.isGlobal);
       if (input.enabled !== undefined) updates.enabled = String(input.enabled);

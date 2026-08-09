@@ -823,14 +823,17 @@ export function AppShell() {
     !hasDetailView &&
     (!shellOverlayMode || (!sidebarOpen && !rightPanelOpen && !trackerPanelVisible));
   const trackerWindowHost = trackerPanelWindowTarget?.popup ?? window;
+  const trackerPanelDockingRef = useRef(false);
 
   const dockTrackerPanel = useCallback(() => {
+    trackerPanelDockingRef.current = true;
     if (trackerPanelWindowTarget) closeTrackerPanelWindow(trackerPanelWindowTarget);
     setTrackerPanelWindowTarget(null);
   }, [trackerPanelWindowTarget]);
 
   const detachTrackerPanel = useCallback(async () => {
     if (detachTrackerPanelPendingRef.current) return;
+    trackerPanelDockingRef.current = false;
     detachTrackerPanelPendingRef.current = true;
 
     try {
@@ -852,7 +855,12 @@ export function AppShell() {
 
   const handleTrackerPanelWindowClosed = useCallback(() => {
     setTrackerPanelWindowTarget(null);
-  }, []);
+    if (trackerPanelDockingRef.current) {
+      trackerPanelDockingRef.current = false;
+      return;
+    }
+    setTrackerPanelOpen(false, activeChatId);
+  }, [activeChatId, setTrackerPanelOpen]);
 
   const professorMariFloatingActive = hasDetailView && hasProfessorMariFloatingFollowup();
 

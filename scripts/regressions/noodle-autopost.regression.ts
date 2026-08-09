@@ -21,9 +21,12 @@ import {
 } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { isNoodlerNightQuietTime } from "../../packages/server/src/services/noodle/noodle-noodler-reserve.operation.js";
 import {
+  BACKGROUND_CONNECTION_FAILURE_COOLDOWN_MS,
+  BACKGROUND_CONNECTION_FAILURE_THRESHOLD,
   beginForegroundConnection,
   resetConnectionAdmissionForTests,
   tryBackgroundConnection,
+  withConnectionAdmission,
 } from "../../packages/server/src/services/generation/connection-admission.js";
 
 assert.deepEqual(noodleAutoPostingSettingsSchema.parse({}), { enabled: false, imagesEnabled: false });
@@ -62,6 +65,27 @@ assert.equal(tryBackgroundConnection("connection-1", new Date(Date.now() + 29_99
 const admitted = tryBackgroundConnection("connection-1", new Date(Date.now() + 30_001));
 assert.equal(admitted.acquired, true);
 if (admitted.acquired) admitted.release();
+
+resetConnectionAdmissionForTests();
+for (let attempt = 0; attempt < BACKGROUND_CONNECTION_FAILURE_THRESHOLD; attempt += 1) {
+  await assert.rejects(
+    withConnectionAdmission("failing-background-connection", { kind: "background" }, async () => {
+      throw new Error("provider unavailable");
+    }),
+    /provider unavailable/u,
+  );
+}
+assert.equal(
+  tryBackgroundConnection("failing-background-connection", new Date()).acquired,
+  false,
+  "Repeated automatic provider failures must quarantine the connection",
+);
+const recoveredAdmission = tryBackgroundConnection(
+  "failing-background-connection",
+  new Date(Date.now() + BACKGROUND_CONNECTION_FAILURE_COOLDOWN_MS + 1),
+);
+assert.equal(recoveredAdmission.acquired, true, "The automatic connection must be probed again after its cooldown");
+if (recoveredAdmission.acquired) recoveredAdmission.release("completed");
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-noodler-reserve-"));
 process.env.FILE_STORAGE_DIR = storageDir;

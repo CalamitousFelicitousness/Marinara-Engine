@@ -2,7 +2,7 @@
 // Professor Mari native command workspace runtime
 // ──────────────────────────────────────────────
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -142,6 +142,9 @@ const WORKSPACE_TOOLS: MariWorkspaceToolName[] = [
   "ls",
   "edit",
   "write",
+  "copy",
+  "move",
+  "remove",
   "bash",
   "dependency",
   "app_data",
@@ -330,6 +333,33 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
     },
   },
   {
+    name: "copy",
+    description: "Copy one ordinary workspace file without overwriting an existing destination.",
+    parameters: {
+      type: "object",
+      properties: { source: { type: "string" }, destination: { type: "string" } },
+      required: ["source", "destination"],
+    },
+  },
+  {
+    name: "move",
+    description: "Move one ordinary workspace file without overwriting an existing destination.",
+    parameters: {
+      type: "object",
+      properties: { source: { type: "string" }, destination: { type: "string" } },
+      required: ["source", "destination"],
+    },
+  },
+  {
+    name: "remove",
+    description: "Delete one ordinary workspace file or one empty directory.",
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string" } },
+      required: ["path"],
+    },
+  },
+  {
     name: "bash",
     description:
       "Run a simple shell command in an OS sandbox with network access denied and filesystem writes confined to the workspace. Prefer structured tools.",
@@ -485,7 +515,7 @@ Workspace defaults:
 - Use Mari CLI commands for images, wiki reads, code/workspace tasks, agents, tools, raw DB work, or anything \`app_data\` does not cover. Only write raw files when no CLI/helper path fits.
 - You may create and update Personal Extension drafts with \`personal_extension.create\` and \`personal_extension.update\`. These actions always disable changed code and clear its approval. Browser Extensions receive active chat and Character IDs through \`marinara.context\`; request \`read_active_characters\` or \`read_active_persona\` only when the extension truly needs bounded active-record fields. Never claim to approve, enable, or run an extension: only the user can review the exact code hash and requested permissions, then choose **Review and Run** in **Settings → Addons → Personal Extensions**.
 - For user-facing Browser Extension UI, use \`marinara.ui.registerContribution(...)\`. It can add a trusted Marinara-rendered top-bar button, Extensions menu item, right-side panel, or button in the Chats, Bots, Characters, Personas, Lorebooks, Presets, Connections, Agents, and Settings surfaces. For a side-panel \`button\`, set \`surface\` to the requested surface and choose \`position: "header"\`, \`"before-content"\`, or \`"after-content"\`; omit both fields for the top bar. The \`icon\` may be any kebab-case Lucide icon name supported by Marinara. Panels may contain headings, text, preformatted output, buttons, text inputs, selects, toggles, sliders, color controls, and spacers. Use \`onActivate\` and \`onEvent\` for behavior and update the returned handle when the view changes. Never write extension code that expects \`document\`, \`window\`, \`innerHTML\`, host CSS selectors, React internals, unrestricted \`fetch\`, or direct Marinara API access; those capabilities are deliberately absent.
-- Raw \`bash\` commands run in an OS sandbox with network access denied, inherited secrets removed, and filesystem writes confined to the workspace. If the sandbox is unavailable, raw shell fails closed; use structured workspace tools.
+- Raw \`bash\` commands run in an OS sandbox with network access denied, inherited secrets removed, and filesystem writes confined to the workspace. If the sandbox is unavailable, raw shell fails closed; use structured \`read\`, \`grep\`, \`find\`, \`ls\`, \`edit\`, \`write\`, \`copy\`, \`move\`, \`remove\`, and \`app_data\` tools instead.
 - Use the \`dependency\` tool when a source change needs a public npm package. Raw package-manager installs are blocked. The tool resolves an exact version and integrity, then waits for the user to approve installation with lifecycle scripts disabled.
 - Ordinary source files can still be edited directly. Dependency manifests, lockfiles, launchers, installers, and CI workflows are staged for a separate user review instead of being changed silently. Never bypass that review through \`bash\`.
 - Inspect before claiming facts. Verify after changing anything.
@@ -1431,8 +1461,9 @@ function isReadOnlyWorkspaceCommand(command: WorkspaceCommandCall): boolean {
     command.name === "grep" ||
     command.name === "find" ||
     command.name === "ls"
-  )
+  ) {
     return true;
+  }
   if (command.name !== "app_data") return false;
   return appDataActionLooksReadOnly(command.arguments.action);
 }
@@ -1470,7 +1501,15 @@ function bashLooksMutating(command: string): boolean {
 }
 
 function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boolean {
-  if (command.name === "edit" || command.name === "write" || command.name === "dependency") return true;
+  if (
+    command.name === "edit" ||
+    command.name === "write" ||
+    command.name === "copy" ||
+    command.name === "move" ||
+    command.name === "remove" ||
+    command.name === "dependency"
+  )
+    return true;
   if (command.name === "app_data") return !isReadOnlyWorkspaceCommand(command);
   if (command.name !== "bash") return false;
   const rawCommand = command.arguments.command;
@@ -1560,6 +1599,11 @@ function workspaceCommandValidationIssue(command: WorkspaceCommandCall): string 
     }
     case "write":
       return requireString("path") ?? (typeof args.content === "string" ? null : "write requires a content string");
+    case "copy":
+    case "move":
+      return requireString("source") ?? requireString("destination");
+    case "remove":
+      return requireString("path");
     case "bash":
       return requireString("command");
     case "app_data":
@@ -2319,6 +2363,12 @@ ${sections.join("\n\n")}
         return this.commandWrite(command.arguments);
       case "edit":
         return this.commandEdit(command.arguments);
+      case "copy":
+        return this.commandCopy(command.arguments);
+      case "move":
+        return this.commandMove(command.arguments);
+      case "remove":
+        return this.commandRemove(command.arguments);
       case "dependency":
         return this.commandDependency(command.arguments);
       case "app_data":
@@ -2332,7 +2382,7 @@ ${sections.join("\n\n")}
 
   private resolveWorkspacePath(
     inputPath: string,
-    options: { allowMissing?: boolean; forbidStorageMutation?: boolean } = {},
+    options: { allowMissing?: boolean; forbidStorageMutation?: boolean; requireOrdinaryMutationPath?: boolean } = {},
   ) {
     const rawPath = inputPath.trim() || ".";
     const absolute = resolve(this.workspaceRoot, rawPath);
@@ -2354,15 +2404,17 @@ ${sections.join("\n\n")}
     // or Git internals, and reads would follow it.
     const canonicalTarget =
       existingAncestor === absolute ? canonicalAncestor : join(canonicalAncestor, relative(existingAncestor, absolute));
-    if (
-      workspacePathAccessPolicy(workspaceRoot, absolute) === "forbidden" ||
-      workspacePathAccessPolicy(canonicalRoot, canonicalTarget) === "forbidden"
-    ) {
+    const requestedPolicy = workspacePathAccessPolicy(workspaceRoot, absolute);
+    const canonicalPolicy = workspacePathAccessPolicy(canonicalRoot, canonicalTarget);
+    if (requestedPolicy === "forbidden" || canonicalPolicy === "forbidden") {
       throw new Error("Professor Mari cannot access environment-secret files or Git internals.");
+    }
+    if (options.requireOrdinaryMutationPath && (requestedPolicy !== "normal" || canonicalPolicy !== "normal")) {
+      throw new Error("This path requires a dedicated reviewed tool and cannot be changed directly.");
     }
     if (options.forbidStorageMutation) {
       const storageRoot = resolve(getFileStorageDir());
-      if (isWithin(storageRoot, absolute)) {
+      if (isWithin(storageRoot, absolute) || isWithin(storageRoot, canonicalTarget)) {
         throw new Error("DATA_DIR/storage is managed by Marinara. Use mari db for table edits instead of file writes.");
       }
     }
@@ -2550,6 +2602,45 @@ ${sections.join("\n\n")}
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content, "utf8");
     return `Wrote ${Buffer.byteLength(content, "utf8")} bytes to ${this.displayPath(filePath)}.`;
+  }
+
+  private ordinaryMutationPath(inputPath: string, options: { allowMissing?: boolean } = {}) {
+    const filePath = this.resolveWorkspacePath(inputPath, {
+      allowMissing: options.allowMissing,
+      forbidStorageMutation: true,
+      requireOrdinaryMutationPath: true,
+    });
+    if (resolve(filePath) === resolve(this.workspaceRoot)) throw new Error("The workspace root cannot be moved or removed.");
+    return filePath;
+  }
+
+  private async commandCopy(args: Record<string, unknown>): Promise<string> {
+    const source = this.ordinaryMutationPath(stringArg(args, "source"));
+    const destination = this.ordinaryMutationPath(stringArg(args, "destination"), { allowMissing: true });
+    if (!(await stat(source)).isFile()) throw new Error("copy source must be a file");
+    if (existsSync(destination)) throw new Error("copy destination already exists");
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(source, destination);
+    return `Copied ${this.displayPath(source)} to ${this.displayPath(destination)}.`;
+  }
+
+  private async commandMove(args: Record<string, unknown>): Promise<string> {
+    const source = this.ordinaryMutationPath(stringArg(args, "source"));
+    const destination = this.ordinaryMutationPath(stringArg(args, "destination"), { allowMissing: true });
+    if (!(await stat(source)).isFile()) throw new Error("move source must be a file");
+    if (existsSync(destination)) throw new Error("move destination already exists");
+    await mkdir(dirname(destination), { recursive: true });
+    await rename(source, destination);
+    return `Moved ${this.displayPath(source)} to ${this.displayPath(destination)}.`;
+  }
+
+  private async commandRemove(args: Record<string, unknown>): Promise<string> {
+    const target = this.ordinaryMutationPath(stringArg(args, "path"));
+    const targetStat = await stat(target);
+    if (targetStat.isFile()) await unlink(target);
+    else if (targetStat.isDirectory()) await rmdir(target);
+    else throw new Error("remove path must be a file or empty directory");
+    return `Removed ${this.displayPath(target)}.`;
   }
 
   private async commandEdit(args: Record<string, unknown>): Promise<string> {

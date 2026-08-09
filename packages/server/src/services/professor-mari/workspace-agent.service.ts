@@ -1527,7 +1527,18 @@ function bashLooksMutating(command: string): boolean {
   );
 }
 
-function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boolean {
+function isPreviewOnlyHomeWidgetCreate(command: WorkspaceCommandCall): boolean {
+  if (command.name !== "app_data" || typeof command.arguments.action !== "string") return false;
+  const action = command.arguments.action
+    .trim()
+    .toLowerCase()
+    .replace(/[-_\s]+/g, "");
+  if (action !== "homewidget.create") return false;
+  const apply = command.arguments.apply;
+  return apply === false || apply === "false" || apply === "0";
+}
+
+export function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boolean {
   if (
     command.name === "edit" ||
     command.name === "write" ||
@@ -1537,7 +1548,9 @@ function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boolean {
     command.name === "dependency"
   )
     return true;
-  if (command.name === "app_data") return !isReadOnlyWorkspaceCommand(command);
+  if (command.name === "app_data") {
+    return !isReadOnlyWorkspaceCommand(command) && !isPreviewOnlyHomeWidgetCreate(command);
+  }
   if (command.name !== "bash") return false;
   const rawCommand = command.arguments.command;
   return typeof rawCommand === "string" && bashLooksMutating(rawCommand);

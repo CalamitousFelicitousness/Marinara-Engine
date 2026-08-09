@@ -2723,7 +2723,7 @@ export class MariDbService {
     }
 
     const saveCatalog = (widgets: typeof catalog.widgets) => {
-      const nextCatalog = homeCustomWidgetCatalogSchema.parse({ widgets });
+      const nextCatalog = homeCustomWidgetCatalogSchema.parse({ revision: catalog.revision + 1, widgets });
       const request: ParsedMutationRequest = {
         kind: settingsRow ? "replace" : "insert",
         table: "app_settings",

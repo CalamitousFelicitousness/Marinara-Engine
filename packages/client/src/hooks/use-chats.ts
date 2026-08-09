@@ -648,6 +648,9 @@ export function useDeleteChatGroup() {
       const removedIds = new Set([
         ...(previous?.filter((chat) => chat.groupId === groupId).map((chat) => chat.id) ?? []),
         ...(previousGroup?.map((chat) => chat.id) ?? []),
+        ...(previousHomeFeed?.recentChats
+          .filter(({ chat }) => chat.groupId === groupId)
+          .map(({ chat }) => chat.id) ?? []),
       ]);
 
       qc.setQueryData<Chat[]>(chatKeys.list(), (old) => old?.filter((c) => c.groupId !== groupId));

@@ -58,7 +58,7 @@ import { useLorebooks } from "../../hooks/use-lorebooks";
 import { usePresets } from "../../hooks/use-presets";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import { achievementKeys, trackAchievementEvent } from "../../hooks/use-achievements";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { HOME_CHAT_MODE_ACCENTS } from "../../lib/home-chat-mode-style";
 import { parseCharacterDisplayData } from "../../lib/character-display";
@@ -1011,9 +1011,16 @@ function FloatingProfessorMari({
       clearTimers();
       if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
       if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current);
+      const activeDrag = dragRef.current;
+      if (activeDrag && spriteRef.current?.hasPointerCapture(activeDrag.pointerId)) {
+        spriteRef.current.releasePointerCapture(activeDrag.pointerId);
+      }
       focusFrameRef.current = null;
       dragMoveFrameRef.current = null;
       pendingDragPositionRef.current = null;
+      dragRef.current = null;
+      document.documentElement.classList.remove("mari-home-professor-drag-active");
+      setDragging(false);
       return;
     }
     if (!pageActive || !enabled) {
@@ -1515,10 +1522,26 @@ export function HomeBrowserHub({
     () => new Map(customWidgets.map((widget) => [customHomeWidgetId(widget.id), widget])),
     [customWidgets],
   );
-  const saveCustomWidgets = useMutation({
-    mutationFn: (catalog: HomeCustomWidgetCatalog) =>
-      api.put<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, catalog),
+  const deleteCustomWidgetMutation = useMutation({
+    mutationFn: async (widgetId: string) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const catalog = await api.get<HomeCustomWidgetCatalog>(
+          `/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`,
+        );
+        if (!catalog.widgets.some((widget) => widget.id === widgetId)) return catalog;
+        try {
+          return await api.put<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, {
+            ...catalog,
+            widgets: catalog.widgets.filter((widget) => widget.id !== widgetId),
+          });
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 409 || attempt > 0) throw error;
+        }
+      }
+      throw new Error("Home widget catalog changed repeatedly; try again.");
+    },
     onSuccess: (catalog) => queryClient.setQueryData(["home-custom-widgets"], catalog),
+    onError: () => queryClient.invalidateQueries({ queryKey: ["home-custom-widgets"] }),
   });
   const installed = useInstalledCapabilityPackages();
   const catalog = useCapabilityCatalog();
@@ -1880,9 +1903,7 @@ export function HomeBrowserHub({
       tone: "destructive",
     });
     if (!confirmed) return;
-    await saveCustomWidgets.mutateAsync({
-      widgets: customWidgets.filter((candidate) => candidate.id !== widget.id),
-    });
+    await deleteCustomWidgetMutation.mutateAsync(widget.id);
   };
   const beginPointerWidgetDrag = (id: HomeWidgetId, event: ReactPointerEvent<HTMLSpanElement>) => {
     event.preventDefault();
@@ -3008,7 +3029,7 @@ export function HomeBrowserHub({
                     <button
                       type="button"
                       onClick={() => void deleteCustomWidget(customWidget)}
-                      disabled={saveCustomWidgets.isPending}
+                      disabled={deleteCustomWidgetMutation.isPending}
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)] transition-[background-color,color,border-color,transform] hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-95 disabled:opacity-50"
                       aria-label={t("home.widgets.deleteLabel", { widget: label })}
                       title={t("home.widgets.deleteLabel", { widget: label })}

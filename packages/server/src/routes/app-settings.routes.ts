@@ -27,22 +27,41 @@ const ALLOWED_KEYS = new Set([
 
 export async function appSettingsRoutes(app: FastifyInstance) {
   const storage = createAppSettingsStorage(app.db);
+  let homeWidgetCatalogMutationChain: Promise<unknown> = Promise.resolve();
 
-  app.get(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async () => {
+  const readHomeWidgetCatalog = async () => {
     const value = await storage.get(HOME_CUSTOM_WIDGETS_SETTINGS_KEY);
-    if (!value) return { widgets: [] };
+    if (!value) return homeCustomWidgetCatalogSchema.parse({ widgets: [] });
     try {
       return homeCustomWidgetCatalogSchema.parse(JSON.parse(value));
     } catch (error) {
       logger.warn(error, "Ignoring invalid stored Home custom widget catalog");
-      return { widgets: [] };
+      return homeCustomWidgetCatalogSchema.parse({ widgets: [] });
     }
-  });
+  };
 
-  app.put(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async (req) => {
-    const catalog = homeCustomWidgetCatalogSchema.parse(req.body);
-    await storage.set(HOME_CUSTOM_WIDGETS_SETTINGS_KEY, JSON.stringify(catalog));
-    return catalog;
+  const withHomeWidgetCatalogMutationLock = <T>(operation: () => Promise<T>): Promise<T> => {
+    const run = homeWidgetCatalogMutationChain.then(operation, operation);
+    homeWidgetCatalogMutationChain = run.catch(() => undefined);
+    return run;
+  };
+
+  app.get(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, readHomeWidgetCatalog);
+
+  app.put(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async (req, reply) => {
+    const requestedCatalog = homeCustomWidgetCatalogSchema.parse(req.body);
+    return withHomeWidgetCatalogMutationLock(async () => {
+      const currentCatalog = await readHomeWidgetCatalog();
+      if (requestedCatalog.revision !== currentCatalog.revision) {
+        return reply.status(409).send({ error: "Home widget catalog changed; refresh it and try again." });
+      }
+      const nextCatalog = homeCustomWidgetCatalogSchema.parse({
+        ...requestedCatalog,
+        revision: currentCatalog.revision + 1,
+      });
+      await storage.set(HOME_CUSTOM_WIDGETS_SETTINGS_KEY, JSON.stringify(nextCatalog));
+      return nextCatalog;
+    });
   });
 
   app.get(`/${IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY}`, async () => {

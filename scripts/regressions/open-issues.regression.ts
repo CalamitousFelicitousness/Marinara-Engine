@@ -293,7 +293,10 @@ import {
   MariDbService,
   normalizeCharacterActionData,
 } from "../../packages/server/src/services/mari-db/mari-db.service.js";
-import { PROFESSOR_MARI_APP_DATA_ACTIONS } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
+import {
+  isMutatingWorkspaceCommand,
+  PROFESSOR_MARI_APP_DATA_ACTIONS,
+} from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
 import {
   checkAutonomousMessaging,
   clearChatActivity,
@@ -427,6 +430,12 @@ assert.deepEqual(
 assert.deepEqual(resolveProfessorMariNavigation("CHAT", [], [], [{ id: "chat-generic", name: "Chat" }]), {
   kind: "chats",
 });
+for (const name of ["Conversation", "Roleplay", "Game"]) {
+  assert.deepEqual(resolveProfessorMariNavigation(name, [], [], [{ id: `chat-${name}`, name }]), {
+    kind: "chat",
+    chatId: `chat-${name}`,
+  });
+}
 
 const localizedPackageManifest = {
   name: "Noodle",
@@ -450,6 +459,34 @@ assert.deepEqual(resolveCapabilityPackageDisplay(localizedPackageManifest, "de-D
   description: "Canonical description",
   homeBrowserTab: { label: "Noodle", ariaLabel: "Open Noodle" },
 });
+const regionalLocalizedPackageManifest = {
+  ...localizedPackageManifest,
+  localizations: {
+    pt_BR: {
+      name: "Macarrão",
+      description: "Descrição em português",
+      homeBrowserTab: { label: "Macarrão", ariaLabel: "Abrir Macarrão" },
+    },
+  },
+} as CapabilityPackageManifest;
+assert.equal(resolveCapabilityPackageDisplay(regionalLocalizedPackageManifest, "pt-BR").name, "Macarrão");
+assert.equal(homeCustomWidgetCatalogSchema.parse({ widgets: [] }).revision, 0);
+assert.equal(
+  isMutatingWorkspaceCommand({
+    id: "widget-preview",
+    name: "app_data",
+    arguments: { action: "home_widget.create", apply: false },
+  }),
+  false,
+);
+assert.equal(
+  isMutatingWorkspaceCommand({
+    id: "widget-save",
+    name: "app_data",
+    arguments: { action: "home_widget.create", apply: true },
+  }),
+  true,
+);
 
 assert.deepEqual(
   normalizeHydratedMessage({

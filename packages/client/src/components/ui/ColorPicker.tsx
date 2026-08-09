@@ -73,23 +73,119 @@ const GRADIENT_PRESETS = [
   "linear-gradient(135deg, #43e97b, #38f9d7)",
 ];
 
+function splitTopLevelCommas(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+    else if (character === "," && depth === 0) {
+      parts.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
 /** Parse gradient into stops: "linear-gradient(90deg, #ff6b6b, #ffd93d)" → ["#ff6b6b","#ffd93d"] */
 function parseGradientStops(value: string): string[] {
-  const match = value.match(/linear-gradient\([^,]+,\s*(.+)\)/);
+  const match = value.match(/^linear-gradient\((.*)\)$/i);
   if (!match) return ["#ff6b6b", "#ffd93d"];
-  return match[1].split(",").map((s) => s.trim());
+  const parts = splitTopLevelCommas(match[1]);
+  const hasDirection = /^(?:-?[\d.]+(?:deg|grad|rad|turn)|to\s+)/i.test(parts[0] ?? "");
+  const stops = hasDirection ? parts.slice(1) : parts;
+  return stops.length >= 2 ? stops : ["#ff6b6b", "#ffd93d"];
 }
 
 function buildGradient(angle: number, stops: string[]): string {
   return `linear-gradient(${angle}deg, ${stops.join(", ")})`;
 }
 
-function getNativeColorValue(value: string): string {
-  return /^#[0-9a-f]{6}$/i.test(value) ? value : "#6c5ce7";
+const resolvedCssColorCache = new Map<string, string | null>();
+const CSS_COLOR_CACHE_LIMIT = 128;
+
+function cacheResolvedCssColor(key: string, value: string | null) {
+  if (!resolvedCssColorCache.has(key) && resolvedCssColorCache.size >= CSS_COLOR_CACHE_LIMIT) {
+    const oldestKey = resolvedCssColorCache.keys().next().value;
+    if (oldestKey !== undefined) resolvedCssColorCache.delete(oldestKey);
+  }
+  resolvedCssColorCache.set(key, value);
+}
+
+function normalizeHexColor(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) return normalized;
+  const short = normalized.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+  const opaqueLong = normalized.match(/^#([0-9a-f]{6})ff$/i);
+  if (opaqueLong) return `#${opaqueLong[1]}`;
+  const opaqueShort = normalized.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])f$/i);
+  if (opaqueShort) {
+    return `#${opaqueShort[1]}${opaqueShort[1]}${opaqueShort[2]}${opaqueShort[2]}${opaqueShort[3]}${opaqueShort[3]}`;
+  }
+  return null;
+}
+
+function resolveCssColorToHex(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const directHex = normalizeHexColor(trimmed);
+  if (directHex) return directHex;
+  const cacheKey = trimmed.toLowerCase();
+  if (resolvedCssColorCache.has(cacheKey)) return resolvedCssColorCache.get(cacheKey) ?? null;
+  if (typeof document === "undefined" || (typeof CSS !== "undefined" && !CSS.supports("color", trimmed))) {
+    cacheResolvedCssColor(cacheKey, null);
+    return null;
+  }
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return null;
+  context.fillStyle = "#010203";
+  context.fillStyle = trimmed;
+  const normalized = String(context.fillStyle).trim().toLowerCase();
+  let resolved = normalizeHexColor(normalized);
+  if (!resolved) {
+    const rgb = normalized.match(
+      /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/,
+    );
+    if (rgb && (rgb[4] === undefined || Number(rgb[4]) === 1)) {
+      resolved = `#${rgb
+        .slice(1, 4)
+        .map((channel) => Math.max(0, Math.min(255, Math.round(Number(channel)))).toString(16).padStart(2, "0"))
+        .join("")}`;
+    }
+  }
+  cacheResolvedCssColor(cacheKey, resolved);
+  return resolved;
+}
+
+function parseGradientColorStop(stop: string): { color: string; suffix: string; hex: string | null } {
+  const trimmed = stop.trim();
+  const wholeHex = resolveCssColorToHex(trimmed);
+  if (wholeHex) return { color: trimmed, suffix: "", hex: wholeHex };
+  let depth = 0;
+  const boundaries: number[] = [];
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const character = trimmed[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /\s/.test(character) && index > 0 && !/\s/.test(trimmed[index - 1] ?? "")) {
+      boundaries.push(index);
+    }
+  }
+  for (const boundary of boundaries.reverse()) {
+    const color = trimmed.slice(0, boundary).trim();
+    const suffix = trimmed.slice(boundary).trim();
+    const hex = resolveCssColorToHex(color);
+    if (hex && suffix) return { color, suffix, hex };
+  }
+  return { color: trimmed, suffix: "", hex: null };
 }
 
 function hexToHsl(value: string): [number, number, number] {
-  const hex = getNativeColorValue(value).slice(1);
+  const hex = value.slice(1);
   const red = Number.parseInt(hex.slice(0, 2), 16) / 255;
   const green = Number.parseInt(hex.slice(2, 4), 16) / 255;
   const blue = Number.parseInt(hex.slice(4, 6), 16) / 255;
@@ -165,7 +261,7 @@ function MarinaraColorSliders({
     >
       <div
         className="h-20 rounded-lg border border-[var(--border)]"
-        style={{ backgroundColor: getNativeColorValue(value) }}
+        style={{ backgroundColor: value }}
       />
       {controls.map((control, index) => (
         <label
@@ -302,7 +398,11 @@ export function ColorPicker({
 
   const handleGradientStopChange = useCallback(
     (index: number, color: string, defer = false) => {
-      const updated = gradientStops.map((stop, i) => (i === index ? color : stop));
+      const updated = gradientStops.map((stop, i) => {
+        if (i !== index) return stop;
+        const { suffix } = parseGradientColorStop(stop);
+        return suffix ? `${color} ${suffix}` : color;
+      });
       setGradientStops(updated);
       commitChange(buildGradient(gradientAngle, updated), defer);
     },
@@ -339,6 +439,12 @@ export function ColorPicker({
   }, [clearValue, commitChange]);
 
   const previewValue = value || emptyPreviewValue;
+  const solidSliderColor = !isCssGradient(previewValue)
+    ? previewValue
+      ? resolveCssColorToHex(previewValue)
+      : "#6c5ce7"
+    : null;
+  const activeGradientStop = parseGradientColorStop(gradientStops[activeStop] ?? "");
   const showClear = clearValue ? value !== clearValue : !!value;
   const displayStyle = previewValue
     ? isCssGradient(previewValue)
@@ -413,7 +519,7 @@ export function ColorPicker({
                 type="button"
                 onClick={() => {
                   setMode("solid");
-                  if (gradientStops[0]) handleSolidChange(gradientStops[0]);
+                  if (gradientStops[0]) handleSolidChange(parseGradientColorStop(gradientStops[0]).color);
                 }}
                 className={cn(
                   "flex-1 rounded-md px-3 py-1.5 text-[0.6875rem] font-medium transition-all",
@@ -449,11 +555,13 @@ export function ColorPicker({
             <>
               {/* Native color picker + typed CSS value */}
               <div className="grid gap-2">
-                <MarinaraColorSliders
-                  value={!isCssGradient(previewValue) ? previewValue : "#6c5ce7"}
-                  onChange={handleSolidChange}
-                  label={localizeUi("ui.ui.colorpicker.pickValue1Color", { value1: label })}
-                />
+                {solidSliderColor ? (
+                  <MarinaraColorSliders
+                    value={solidSliderColor}
+                    onChange={handleSolidChange}
+                    label={localizeUi("ui.ui.colorpicker.pickValue1Color", { value1: label })}
+                  />
+                ) : null}
 
                 <label className="min-w-0 space-y-1">
                   <span className="block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
@@ -516,40 +624,45 @@ export function ColorPicker({
                     <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}
                   </button>
                 </div>
-                {gradientStops.map((stop, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveStop(i)}
-                      className={cn(
-                        "h-7 w-7 shrink-0 rounded-md border border-[var(--border)] transition-[transform,box-shadow] hover:scale-105",
-                        activeStop === i &&
-                          "ring-2 ring-[var(--marinara-app-accent-solid)] ring-offset-1 ring-offset-[var(--card)]",
-                      )}
-                      style={{ backgroundColor: getNativeColorValue(stop) }}
-                      aria-label={localizeUi("ui.ui.colorpicker.editColorStop", { index: i + 1 })}
-                    />
-                    <input
-                      value={stop}
-                      onChange={(e) => handleGradientStopChange(i, e.target.value)}
-                      className="flex-1 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 font-mono text-[0.6875rem] outline-none focus:border-[var(--primary)]/40"
-                    />
-                    {gradientStops.length > 2 && (
+                {gradientStops.map((stop, i) => {
+                  const parsedStop = parseGradientColorStop(stop);
+                  return (
+                    <div key={i} className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => removeStop(i)}
-                        className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
-                      >
-                        <Trash2 size="0.6875rem" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <MarinaraColorSliders
-                  value={gradientStops[activeStop] ?? "#6c5ce7"}
-                  onChange={(next) => handleGradientStopChange(activeStop, next)}
-                  label={localizeUi("ui.ui.colorpicker.editColorStop", { index: activeStop + 1 })}
-                />
+                        onClick={() => setActiveStop(i)}
+                        className={cn(
+                          "h-7 w-7 shrink-0 rounded-md border border-[var(--border)] transition-[transform,box-shadow] hover:scale-105",
+                          activeStop === i &&
+                            "ring-2 ring-[var(--marinara-app-accent-solid)] ring-offset-1 ring-offset-[var(--card)]",
+                        )}
+                        style={{ backgroundColor: parsedStop.hex ?? "transparent" }}
+                        aria-label={localizeUi("ui.ui.colorpicker.editColorStop", { index: i + 1 })}
+                      />
+                      <input
+                        value={stop}
+                        onChange={(e) => handleGradientStopChange(i, e.target.value)}
+                        className="flex-1 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 font-mono text-[0.6875rem] outline-none focus:border-[var(--primary)]/40"
+                      />
+                      {gradientStops.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removeStop(i)}
+                          className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"
+                        >
+                          <Trash2 size="0.6875rem" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {activeGradientStop.hex ? (
+                  <MarinaraColorSliders
+                    value={activeGradientStop.hex}
+                    onChange={(next) => handleGradientStopChange(activeStop, next)}
+                    label={localizeUi("ui.ui.colorpicker.editColorStop", { index: activeStop + 1 })}
+                  />
+                ) : null}
               </div>
 
               {/* Angle */}

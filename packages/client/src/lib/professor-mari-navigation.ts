@@ -329,12 +329,9 @@ export function resolveProfessorMariNavigation(
   const genericChatQueries = new Set([
     "chat",
     "chats",
-    "conversation",
     "conversations",
     "convo",
-    "roleplay",
     "rp",
-    "game",
     "games",
   ]);
   if (!genericChatQueries.has(query)) {

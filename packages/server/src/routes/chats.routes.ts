@@ -717,6 +717,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               id: chat.id,
               name: chat.name.slice(0, 160),
               mode: chat.mode,
+              groupId: chat.groupId ?? null,
               characterIds: chatCharacterIds,
               background: background.length > 0 && background.length <= 2_048 ? background : null,
               gameBackgroundTag:

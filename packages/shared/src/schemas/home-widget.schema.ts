@@ -23,7 +23,10 @@ export const homeCustomWidgetDraftSchema = homeCustomWidgetSchema
   .strict();
 
 export const homeCustomWidgetCatalogSchema = z
-  .object({ widgets: z.array(homeCustomWidgetSchema).max(HOME_CUSTOM_WIDGET_LIMIT) })
+  .object({
+    revision: z.number().int().nonnegative().default(0),
+    widgets: z.array(homeCustomWidgetSchema).max(HOME_CUSTOM_WIDGET_LIMIT),
+  })
   .strict();
 
 export type HomeCustomWidget = z.infer<typeof homeCustomWidgetSchema>;

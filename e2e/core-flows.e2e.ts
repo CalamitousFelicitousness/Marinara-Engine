@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page, type Rou
 import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
 
 const TRANSPARENT_GIF_BASE64 = "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -484,7 +485,15 @@ test("default dialogue color fills only cards without their own dialogue color",
     await dialogueColorControl.scrollIntoViewIfNeeded();
     await expect(dialogueColorControl.locator('input[type="checkbox"]')).toHaveCount(0);
     await dialogueColorControl.getByRole("button", { name: /Scheme default/ }).click();
-    await dialogueColorControl.getByLabel("Default Dialogue Color hex or CSS color").fill("#d946ef");
+    const dialogueColorInput = dialogueColorControl.getByLabel("Default Dialogue Color hex or CSS color");
+    await dialogueColorInput.fill("red");
+    const namedColorSliders = dialogueColorControl
+      .getByLabel("Pick Default Dialogue Color color")
+      .locator('input[type="range"]');
+    await expect(namedColorSliders.nth(0)).toHaveValue("0");
+    await expect(namedColorSliders.nth(1)).toHaveValue("100");
+    await expect(namedColorSliders.nth(2)).toHaveValue("50");
+    await dialogueColorInput.fill("#d946ef");
 
     await expect(uncoloredDialogue).toHaveCSS("color", "rgb(217, 70, 239)");
     await expect(coloredDialogue).toHaveCSS("color", "rgb(34, 197, 94)");
@@ -498,6 +507,21 @@ test("default dialogue color fills only cards without their own dialogue color",
         }),
       )
       .toEqual([null, "#d946ef"]);
+
+    const chatTextColorControl = page.locator("#settings-control-chat-text-color");
+    await chatTextColorControl.scrollIntoViewIfNeeded();
+    await chatTextColorControl.getByRole("button", { name: /Scheme default/ }).click();
+    await chatTextColorControl.getByRole("button", { name: "Gradient", exact: true }).click();
+    const firstGradientStop = chatTextColorControl.locator('input:not([type])').first();
+    await firstGradientStop.fill("red 20%");
+    const positionedStopSliders = chatTextColorControl
+      .locator('div[aria-label="Edit color stop 1"]')
+      .locator('input[type="range"]');
+    await expect(positionedStopSliders.nth(0)).toHaveValue("0");
+    await expect(positionedStopSliders.nth(1)).toHaveValue("100");
+    await expect(positionedStopSliders.nth(2)).toHaveValue("50");
+    await positionedStopSliders.nth(0).fill("120");
+    await expect(firstGradientStop).toHaveValue("#00ff00 20%");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
     await Promise.all([
@@ -7663,12 +7687,21 @@ test("new Professor Mari Home widgets receive a movable layout slot immediately"
     localStorage.removeItem("marinara:home:widget-layout:v2");
     localStorage.removeItem("marinara:home:widget-visibility:v2");
   });
-  const saveResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
-    data: { widgets: [widget] },
-  });
-  expect(saveResponse.ok()).toBeTruthy();
+  const originalResponse = await page.request.get("/api/app-settings/home_custom_widgets");
+  expect(originalResponse.ok()).toBeTruthy();
+  const originalCatalog = (await originalResponse.json()) as HomeCustomWidgetCatalog;
+  let savedCatalog = originalCatalog;
 
   try {
+    const saveResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...originalCatalog, widgets: [widget] },
+    });
+    expect(saveResponse.ok()).toBeTruthy();
+    savedCatalog = (await saveResponse.json()) as HomeCustomWidgetCatalog;
+    const staleResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...originalCatalog, widgets: [] },
+    });
+    expect(staleResponse.status()).toBe(409);
     await page.goto("/");
     const customWidget = page.locator(`[data-home-widget-id="custom:${widget.id}"]`);
     await expect(customWidget).toBeVisible({ timeout: 30_000 });
@@ -7681,7 +7714,14 @@ test("new Professor Mari Home widgets receive a movable layout slot immediately"
       .poll(() => customWidget.evaluate((element) => Number(getComputedStyle(element).order)))
       .toBe(initialOrder - 1);
   } finally {
-    await page.request.put("/api/app-settings/home_custom_widgets", { data: { widgets: [] } });
+    const currentResponse = await page.request.get("/api/app-settings/home_custom_widgets");
+    const currentCatalog = currentResponse.ok()
+      ? ((await currentResponse.json()) as HomeCustomWidgetCatalog)
+      : savedCatalog;
+    const restoreResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+      data: { ...currentCatalog, widgets: originalCatalog.widgets },
+    });
+    expect(restoreResponse.ok()).toBeTruthy();
   }
 });
 

@@ -241,11 +241,15 @@ export async function tieredResolveEntity(
   // match only in the description/tags is NOT confident enough to auto-open (a
   // coincidental word could open the wrong entity); it joins the pool the
   // semantic tier confirms or the degrade path offers for confirmation.
+  // Name matching uses the same normalization as Tier 1 (NFKC + collapsed
+  // whitespace), so a query that would exact-match also substring-matches; the
+  // embedText scan stays a coarse lowercase contains (the semantic tier is the
+  // precise one).
   const lowerQuery = trimmed.toLowerCase();
-  const nameMatches = candidates.filter((c) => c.name.toLowerCase().includes(lowerQuery));
+  const nameMatches = candidates.filter((c) => normalizeTextForMatch(c.name).includes(normalizedQuery));
   if (nameMatches.length === 1) return { kind: "single", candidate: nameMatches[0]! };
   const substringMatches = candidates.filter(
-    (c) => c.name.toLowerCase().includes(lowerQuery) || c.embedText.toLowerCase().includes(lowerQuery),
+    (c) => normalizeTextForMatch(c.name).includes(normalizedQuery) || c.embedText.toLowerCase().includes(lowerQuery),
   );
 
   // Tier 3 — semantic. Rank the substring survivors when there are any (cheap,

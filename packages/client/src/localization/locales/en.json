@@ -523,6 +523,7 @@
   "home.widgets.drag": "Drag {{widget}} to rearrange",
   "home.widgets.hide": "Hide {{widget}}",
   "home.widgets.learn": "Learn the Engine",
+  "home.widgets.managerLabel": "{{name}} — {{purpose}}",
   "home.widgets.professor": "Professor Mari",
   "home.widgets.recent": "Recent Chats",
   "home.widgets.show": "Show {{widget}}",

@@ -115,21 +115,21 @@ function CompactAchievementHighlight({
       : "oklch(0.79 0.16 205)";
 
   return (
-    <span data-achievement-highlight={kind} className="flex min-w-0 items-center gap-2 py-0.5">
+    <span data-achievement-highlight={kind} className="flex min-w-0 items-center gap-1.5 py-0 sm:gap-2 sm:py-0.5">
       <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[color-mix(in_srgb,var(--achievement-tone)_44%,var(--border))] bg-[color-mix(in_srgb,var(--achievement-tone)_15%,var(--card))] text-[var(--achievement-tone)]"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[color-mix(in_srgb,var(--achievement-tone)_44%,var(--border))] bg-[color-mix(in_srgb,var(--achievement-tone)_15%,var(--card))] text-[var(--achievement-tone)] sm:h-6 sm:w-6"
         style={{ "--achievement-tone": tone } as CSSProperties}
         data-achievement-icon={achievement?.icon ?? "trophy"}
         data-achievement-rank={achievement?.rank ?? "unranked"}
         aria-hidden="true"
       >
-        <Icon size="0.72rem" strokeWidth={2.35} />
+        <Icon size="0.68rem" strokeWidth={2.35} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[0.52rem] font-extrabold uppercase leading-none tracking-[0.11em] text-[var(--muted-foreground)]">
+        <span className="block text-[0.48rem] font-extrabold uppercase leading-none tracking-[0.09em] text-[var(--muted-foreground)] sm:text-[0.52rem] sm:tracking-[0.11em]">
           {label}
         </span>
-        <span className="mt-0.5 block truncate text-[0.65rem] font-bold leading-tight text-[var(--foreground)]">
+        <span className="mt-0.5 block truncate text-[0.6rem] font-bold leading-tight text-[var(--foreground)] sm:text-[0.65rem]">
           {achievement ? localizeAchievementTitle(t, achievement) : fallback}
         </span>
       </span>
@@ -283,7 +283,7 @@ export function HomeAchievements({
           className={cn(
             "group text-left",
             compact
-              ? "w-full max-w-full rounded-xl px-2 py-0 transition-colors hover:bg-[color-mix(in_srgb,var(--home-module-accent)_10%,var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
+              ? "w-full max-w-full rounded-xl px-1.5 py-0 transition-colors hover:bg-[color-mix(in_srgb,var(--home-module-accent)_10%,var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)] sm:px-2"
               : "mari-chrome-control flex w-full max-w-5xl items-center justify-start gap-2 px-3 py-2.5 shadow-lg shadow-black/10 sm:gap-3 sm:px-4 sm:py-3",
             attached ? "-mt-px !rounded-b-xl !rounded-t-none !border-t-0" : "!rounded-xl",
             className,
@@ -309,27 +309,29 @@ export function HomeAchievements({
               ) : null}
               {compact ? (
                 <span className="block w-full">
-                  <span className="flex min-h-10 w-full items-center gap-2.5 text-left">
+                  <span className="flex min-h-8 w-full items-center gap-1.5 text-left sm:min-h-10 sm:gap-2.5">
                     <img
                       src="/home/tab-icons/achievements.png"
                       alt=""
-                      className="h-7 w-7 shrink-0 object-contain"
+                      className="h-5 w-5 shrink-0 object-contain sm:h-7 sm:w-7"
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1">
                       <span
                         data-achievement-open-label
-                        className="block truncate text-xs font-bold text-[var(--foreground)]"
+                        className="block truncate text-[0.68rem] font-bold text-[var(--foreground)] sm:text-xs"
                       >
                         {t("home.achievements.title")}
                       </span>
                       <span
                         data-achievement-open-description
-                        className="block truncate text-[0.62rem] text-[var(--muted-foreground)]"
+                        className="block truncate text-[0.56rem] text-[var(--muted-foreground)] sm:text-[0.62rem]"
                       >
                         {t("home.achievements.launcherDescription")}
                       </span>
-                      <span className="mari-chrome-text-muted block truncate text-[0.56rem]">{summary}</span>
+                      <span className="mari-chrome-text-muted block truncate text-[0.52rem] sm:text-[0.56rem]">
+                        {summary}
+                      </span>
                     </span>
                   </span>
                   <span className="mt-0.5 block border-t border-[var(--border)]/55 pt-1">

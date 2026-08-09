@@ -4993,7 +4993,7 @@ function AppearanceSettings() {
                     <div
                       className={cn(
                         "h-5 w-5 shrink-0 bg-[var(--accent)]",
-                        conversationAvatarShape === "square" ? "rounded-md" : "rounded-full",
+                        conversationAvatarShape === "square" ? "rounded-[0.2rem]" : "rounded-full",
                       )}
                     />
                     <div className="mari-message-bubble texting-bubble texting-bubble-other max-w-[78%] rounded-2xl px-3 py-1.5 text-xs shadow-sm">
@@ -5006,7 +5006,7 @@ function AppearanceSettings() {
                   <div
                     className={cn(
                       "h-6 w-6 shrink-0 bg-[var(--accent)]",
-                      conversationAvatarShape === "square" ? "rounded-md" : "rounded-full",
+                      conversationAvatarShape === "square" ? "rounded-[0.2rem]" : "rounded-full",
                     )}
                   />
                   <div className="min-w-0 flex-1">
@@ -5046,7 +5046,7 @@ function AppearanceSettings() {
                   {
                     id: "square" as ConversationAvatarShape,
                     label: localizeUi("ui.panels.appearancesettings.squareAvatars"),
-                    cornerClass: "rounded-md",
+                    cornerClass: "rounded-[0.2rem]",
                   },
                 ] as const
               ).map((option) => (
@@ -5062,7 +5062,10 @@ function AppearanceSettings() {
                   )}
                   aria-pressed={conversationAvatarShape === option.id}
                 >
-                  <span className={cn("h-5 w-5 border border-current bg-[var(--accent)]", option.cornerClass)} />
+                  <span
+                    className={cn("h-5 w-5 border border-current bg-[var(--accent)]", option.cornerClass)}
+                    data-avatar-shape-preview={option.id}
+                  />
                   {option.label}
                 </button>
               ))}

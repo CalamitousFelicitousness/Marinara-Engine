@@ -899,7 +899,7 @@ export async function charactersRoutes(app: FastifyInstance) {
         prompt: compiled.prompt,
       };
     } catch (err) {
-      req.log.error(err, "%s generation failed", isCharacterSheet ? "Character sheet" : "Avatar");
+      logger.error(err, "%s generation failed", isCharacterSheet ? "Character sheet" : "Avatar");
       return reply.status(500).send({
         error:
           err instanceof Error ? err.message : `${isCharacterSheet ? "Character sheet" : "Avatar"} generation failed`,

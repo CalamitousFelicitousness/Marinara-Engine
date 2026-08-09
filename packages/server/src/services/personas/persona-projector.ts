@@ -26,6 +26,8 @@ export function projectPersona(row: PersonaStorageRow): Persona {
     backstory: stringValue(row.backstory),
     appearance: stringValue(row.appearance),
     avatarPath: typeof row.avatarPath === "string" ? row.avatarPath : null,
+    characterSheetImageId: typeof row.characterSheetImageId === "string" ? row.characterSheetImageId : null,
+    useCharacterSheetAsReference: row.useCharacterSheetAsReference === "true",
     avatarCrop: normalizeAvatarCrop(row.avatarCrop),
     isActive: row.isActive === "true",
     nameColor: stringValue(row.nameColor),

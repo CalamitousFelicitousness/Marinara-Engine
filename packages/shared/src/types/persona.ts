@@ -25,6 +25,10 @@ export interface Persona {
   appearance: string;
   /** Avatar image path */
   avatarPath: string | null;
+  /** Persona gallery image selected as the optional character sheet. */
+  characterSheetImageId?: string | null;
+  /** Prefer the selected character sheet over the avatar for likeness references. */
+  useCharacterSheetAsReference?: boolean;
   /** Avatar crop settings for the circle avatar. Accepts both the current
    *  source-rectangle shape and the legacy zoom+offset shape (kept readable so
    *  previously saved crops display unchanged until the user re-edits). */

@@ -19,6 +19,7 @@ import type {
 } from "@marinara-engine/shared";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
+import { createPersonaGalleryStorage } from "../storage/persona-gallery.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createPromptsStorage } from "../storage/prompts.storage.js";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
@@ -176,16 +177,24 @@ async function restoreSprites(sprites: unknown, id: string): Promise<void> {
 
 // Restore gallery images embedded as
 // [{ filename, data, prompt, provider, model, width, height }, ...]
-// in a native character export. Writes the binary under
-// data/gallery/characters/<id>/ and creates a matching row in
-// character_images so the gallery panel can find each shot.
-async function restoreCharacterGallery(
+// in a native character or persona export. Writes each binary under the
+// owner's gallery folder and creates a matching metadata row.
+async function restoreOwnerGallery(
   gallery: unknown,
-  characterId: string,
-  galleryStorage: ReturnType<typeof createCharacterGalleryStorage>,
-): Promise<void> {
-  if (!Array.isArray(gallery) || gallery.length === 0) return;
-  const dir = join(DATA_DIR, "gallery", "characters", characterId);
+  ownerId: string,
+  ownerFolder: "characters" | "personas",
+  createImage: (input: {
+    filePath: string;
+    prompt: string;
+    provider: string;
+    model: string;
+    width?: number;
+    height?: number;
+  }) => Promise<{ id: string } | null>,
+): Promise<string | null> {
+  if (!Array.isArray(gallery) || gallery.length === 0) return null;
+  let characterSheetImageId: string | null = null;
+  const dir = join(DATA_DIR, "gallery", ownerFolder, ownerId);
   await mkdir(dir, { recursive: true });
   for (const item of gallery) {
     if (!item || typeof item !== "object") continue;
@@ -234,19 +243,38 @@ async function restoreCharacterGallery(
     try {
       const filepath = assertInsideDir(dir, join(dir, safeFilename));
       await writeFile(filepath, decoded.buffer);
-      await galleryStorage.create({
-        characterId,
-        filePath: `characters/${characterId}/${safeFilename}`,
+      const restored = await createImage({
+        filePath: `${ownerFolder}/${ownerId}/${safeFilename}`,
         prompt: typeof entry.prompt === "string" ? entry.prompt : "",
         provider: typeof entry.provider === "string" ? entry.provider : "",
         model: typeof entry.model === "string" ? entry.model : "",
         width: typeof entry.width === "number" ? entry.width : undefined,
         height: typeof entry.height === "number" ? entry.height : undefined,
       });
+      if (entry.isCharacterSheet === true && restored) characterSheetImageId = restored.id;
     } catch {
       // skip this image
     }
   }
+  return characterSheetImageId;
+}
+
+function restoreCharacterGallery(
+  gallery: unknown,
+  characterId: string,
+  galleryStorage: ReturnType<typeof createCharacterGalleryStorage>,
+) {
+  return restoreOwnerGallery(gallery, characterId, "characters", (input) =>
+    galleryStorage.create({ characterId, ...input }),
+  );
+}
+
+function restorePersonaGallery(
+  gallery: unknown,
+  personaId: string,
+  galleryStorage: ReturnType<typeof createPersonaGalleryStorage>,
+) {
+  return restoreOwnerGallery(gallery, personaId, "personas", (input) => galleryStorage.create({ personaId, ...input }));
 }
 
 function readTimestampOverrides(value: unknown): TimestampOverrides | undefined {
@@ -370,6 +398,10 @@ async function importCharacter(data: unknown, db: DB) {
     charData.extensions && typeof charData.extensions === "object"
       ? ({ ...(charData.extensions as Record<string, unknown>) } as Record<string, unknown>)
       : {};
+  const useCharacterSheetAsReference = extensions.useCharacterSheetAsReference === true;
+  delete extensions.characterSheetImageId;
+  extensions.useCharacterSheetAsReference = false;
+  charData.extensions = extensions;
   const existingImportMetadata =
     extensions.importMetadata && typeof extensions.importMetadata === "object"
       ? ({ ...(extensions.importMetadata as Record<string, unknown>) } as Record<string, unknown>)
@@ -430,7 +462,18 @@ async function importCharacter(data: unknown, db: DB) {
       }
     }
     await restoreSprites(d.sprites, result.id);
-    await restoreCharacterGallery(d.gallery, result.id, galleryStorage);
+    const characterSheetImageId = await restoreCharacterGallery(d.gallery, result.id, galleryStorage);
+    if (characterSheetImageId) {
+      await storage.update(
+        result.id,
+        { extensions: { characterSheetImageId, useCharacterSheetAsReference } } as Partial<CharacterData>,
+        undefined,
+        {
+          skipVersionSnapshot: true,
+          mergeExtensions: true,
+        },
+      );
+    }
   }
   return {
     success: true,
@@ -444,6 +487,7 @@ async function importCharacter(data: unknown, db: DB) {
 
 async function importPersona(data: unknown, db: DB) {
   const storage = createCharactersStorage(db);
+  const galleryStorage = createPersonaGalleryStorage(db);
   const d = data as Record<string, unknown>;
   if (!d || typeof d !== "object") {
     return { success: false, type: "marinara_persona" as const, error: "Invalid persona data" };
@@ -461,6 +505,7 @@ async function importPersona(data: unknown, db: DB) {
     }
     return "";
   };
+  const useCharacterSheetAsReference = d.useCharacterSheetAsReference === true || d.useCharacterSheetAsReference === "true";
   const result = await storage.createPersona(
     String(d.name ?? "Imported Persona"),
     String(d.description ?? ""),
@@ -475,6 +520,8 @@ async function importPersona(data: unknown, db: DB) {
       scenario: String(d.scenario ?? ""),
       backstory: String(d.backstory ?? ""),
       appearance: String(d.appearance ?? ""),
+      characterSheetImageId: null,
+      useCharacterSheetAsReference: "false",
       nameColor: String(d.nameColor ?? ""),
       dialogueColor: String(d.dialogueColor ?? ""),
       boxColor: String(d.boxColor ?? ""),
@@ -516,6 +563,18 @@ async function importPersona(data: unknown, db: DB) {
       await restoreSprites(d.sprites, result.id);
     } catch (err) {
       logger.warn(err, "Skipped optional persona sprite restore for %s; persona row is already imported", result.id);
+    }
+    try {
+      const characterSheetImageId = await restorePersonaGallery(d.gallery, result.id, galleryStorage);
+      if (characterSheetImageId) {
+        await storage.updatePersona(
+          result.id,
+          { characterSheetImageId, useCharacterSheetAsReference: String(useCharacterSheetAsReference) },
+          { skipVersionSnapshot: true },
+        );
+      }
+    } catch (err) {
+      logger.warn(err, "Skipped optional persona gallery restore for %s; persona row is already imported", result.id);
     }
   }
   return {

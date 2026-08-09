@@ -218,6 +218,8 @@ function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
     scenario: persona.scenario ?? "",
     backstory: persona.backstory ?? "",
     appearance: persona.appearance ?? "",
+    characterSheetImageId: persona.characterSheetImageId ?? "",
+    useCharacterSheetAsReference: persona.useCharacterSheetAsReference ?? "false",
     avatarCrop: persona.avatarCrop ?? "",
     nameColor: persona.nameColor ?? "",
     dialogueColor: persona.dialogueColor ?? "",
@@ -255,6 +257,8 @@ function normalizePersonaSnapshot(data: PersonaCardSnapshot): PersonaCardSnapsho
     scenario: data.scenario ?? "",
     backstory: data.backstory ?? "",
     appearance: data.appearance ?? "",
+    characterSheetImageId: data.characterSheetImageId ?? "",
+    useCharacterSheetAsReference: data.useCharacterSheetAsReference ?? "false",
     avatarCrop: data.avatarCrop ?? "",
     nameColor: data.nameColor ?? "",
     dialogueColor: data.dialogueColor ?? "",
@@ -694,6 +698,13 @@ export function createCharactersStorage(db: DB) {
         const sourceData = JSON.parse(source.data) as Record<string, unknown>;
         const sourceName = typeof sourceData.name === "string" ? sourceData.name.trim() : "";
         sourceData.name = `${sourceName || "Character"} (Copy)`;
+        const sourceExtensions =
+          sourceData.extensions && typeof sourceData.extensions === "object" && !Array.isArray(sourceData.extensions)
+            ? { ...(sourceData.extensions as Record<string, unknown>) }
+            : {};
+        delete sourceExtensions.characterSheetImageId;
+        sourceExtensions.useCharacterSheetAsReference = false;
+        sourceData.extensions = sourceExtensions;
         await db.insert(characters).values({
           id: newCharId,
           data: JSON.stringify(sourceData),
@@ -824,6 +835,8 @@ export function createCharactersStorage(db: DB) {
         scenario?: string;
         backstory?: string;
         appearance?: string;
+        characterSheetImageId?: string | null;
+        useCharacterSheetAsReference?: string;
         nameColor?: string;
         dialogueColor?: string;
         boxColor?: string;
@@ -860,6 +873,8 @@ export function createCharactersStorage(db: DB) {
         backstory: extra?.backstory ?? "",
         appearance: extra?.appearance ?? "",
         avatarPath: avatarPath ?? null,
+        characterSheetImageId: extra?.characterSheetImageId ?? null,
+        useCharacterSheetAsReference: extra?.useCharacterSheetAsReference ?? "false",
         avatarCrop: extra?.avatarCrop ?? "",
         isActive: "false",
         nameColor: extra?.nameColor ?? "",
@@ -928,6 +943,8 @@ export function createCharactersStorage(db: DB) {
           backstory: source.backstory ?? "",
           appearance: source.appearance ?? "",
           avatarPath: source.avatarPath,
+          characterSheetImageId: null,
+          useCharacterSheetAsReference: "false",
           avatarCrop: source.avatarCrop ?? "",
           isActive: "false",
           nameColor: source.nameColor ?? "",
@@ -962,6 +979,8 @@ export function createCharactersStorage(db: DB) {
         backstory?: string;
         appearance?: string;
         avatarPath?: string | null;
+        characterSheetImageId?: string | null;
+        useCharacterSheetAsReference?: string;
         avatarCrop?: string;
         nameColor?: string;
         dialogueColor?: string;
@@ -1000,6 +1019,10 @@ export function createCharactersStorage(db: DB) {
       if (updates.backstory !== undefined) sets.backstory = updates.backstory;
       if (updates.appearance !== undefined) sets.appearance = updates.appearance;
       if (updates.avatarPath !== undefined) sets.avatarPath = updates.avatarPath;
+      if (updates.characterSheetImageId !== undefined) sets.characterSheetImageId = updates.characterSheetImageId;
+      if (updates.useCharacterSheetAsReference !== undefined) {
+        sets.useCharacterSheetAsReference = updates.useCharacterSheetAsReference;
+      }
       if (updates.avatarCrop !== undefined) sets.avatarCrop = updates.avatarCrop;
       if (updates.nameColor !== undefined) sets.nameColor = updates.nameColor;
       if (updates.dialogueColor !== undefined) sets.dialogueColor = updates.dialogueColor;
@@ -1027,6 +1050,12 @@ export function createCharactersStorage(db: DB) {
           ...(updates.scenario !== undefined && { scenario: updates.scenario }),
           ...(updates.backstory !== undefined && { backstory: updates.backstory }),
           ...(updates.appearance !== undefined && { appearance: updates.appearance }),
+          ...(updates.characterSheetImageId !== undefined && {
+            characterSheetImageId: updates.characterSheetImageId ?? "",
+          }),
+          ...(updates.useCharacterSheetAsReference !== undefined && {
+            useCharacterSheetAsReference: updates.useCharacterSheetAsReference,
+          }),
           ...(updates.avatarCrop !== undefined && { avatarCrop: updates.avatarCrop }),
           ...(updates.nameColor !== undefined && { nameColor: updates.nameColor }),
           ...(updates.dialogueColor !== undefined && { dialogueColor: updates.dialogueColor }),
@@ -1105,6 +1134,8 @@ export function createCharactersStorage(db: DB) {
             backstory: data.backstory,
             appearance: data.appearance,
             avatarPath: version.avatarPath ?? null,
+            characterSheetImageId: data.characterSheetImageId || null,
+            useCharacterSheetAsReference: data.useCharacterSheetAsReference,
             avatarCrop: data.avatarCrop,
             nameColor: data.nameColor,
             dialogueColor: data.dialogueColor,

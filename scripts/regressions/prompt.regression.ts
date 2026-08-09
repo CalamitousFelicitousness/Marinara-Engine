@@ -770,6 +770,8 @@ import {
   mergeIllustratorNegativePrompt,
   normalizeIllustratorAppearance,
   readIllustratorAppearance,
+  readPreferredCharacterReferenceImage,
+  readPreferredPersonaReferenceImage,
   resolveIllustratorCharacterReferences,
   suppressesReferencePromptLine,
 } from "../../packages/server/src/routes/generate/illustrator-references.js";
@@ -3969,6 +3971,115 @@ const cases: RegressionCase[] = [
       );
       assert.doesNotMatch(compiled.prompt, /readable expression|clear silhouette|face-and-shoulders/iu);
       assert.match(compiled.negativePrompt, /collage layouts/iu);
+    },
+  },
+  {
+    name: "Character and persona sheets explicitly opt in and preserve avatar then sprite fallback order",
+    async run() {
+      let sheetLoads = 0;
+      const activeSheet = await readPreferredCharacterReferenceImage({
+        characterId: "character-maukie",
+        characterSheetImageId: "sheet-1",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => {
+            sheetLoads += 1;
+            return "sheet-bytes";
+          },
+          avatar: () => "avatar-bytes",
+          sprite: () => "sprite-bytes",
+        },
+      });
+      assert.deepEqual(activeSheet, { base64: "sheet-bytes", source: "character-sheet" });
+      assert.equal(sheetLoads, 1);
+
+      const disabledSheet = await readPreferredCharacterReferenceImage({
+        characterId: "character-maukie",
+        characterSheetImageId: "sheet-1",
+        useCharacterSheetAsReference: false,
+        loaders: {
+          characterSheet: async () => {
+            sheetLoads += 1;
+            return "sheet-bytes";
+          },
+          avatar: () => "avatar-bytes",
+          sprite: () => "sprite-bytes",
+        },
+      });
+      assert.deepEqual(disabledSheet, { base64: "avatar-bytes", source: "avatar" });
+      assert.equal(sheetLoads, 1);
+
+      const missingSheetUsesAvatar = await readPreferredCharacterReferenceImage({
+        characterId: "character-maukie",
+        characterSheetImageId: "missing-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => "avatar-bytes",
+          sprite: () => "sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingSheetUsesAvatar, { base64: "avatar-bytes", source: "avatar" });
+
+      const missingSheet = await readPreferredCharacterReferenceImage({
+        characterId: "character-maukie",
+        characterSheetImageId: "missing-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => undefined,
+          sprite: () => "sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingSheet, { base64: "sprite-bytes", source: "sprite" });
+
+      const activePersonaSheet = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "persona-sheet-1",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => "persona-sheet-bytes",
+          avatar: () => "persona-avatar-bytes",
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(activePersonaSheet, { base64: "persona-sheet-bytes", source: "character-sheet" });
+
+      const disabledPersonaSheet = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "persona-sheet-1",
+        useCharacterSheetAsReference: false,
+        loaders: {
+          characterSheet: async () => "persona-sheet-bytes",
+          avatar: () => "persona-avatar-bytes",
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(disabledPersonaSheet, { base64: "persona-avatar-bytes", source: "avatar" });
+
+      const missingPersonaSheet = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "missing-persona-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => "persona-avatar-bytes",
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingPersonaSheet, { base64: "persona-avatar-bytes", source: "avatar" });
+
+      const missingPersonaSheetAndAvatar = await readPreferredPersonaReferenceImage({
+        personaId: "persona-mari",
+        characterSheetImageId: "missing-persona-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => undefined,
+          sprite: () => "persona-sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingPersonaSheetAndAvatar, { base64: "persona-sprite-bytes", source: "sprite" });
     },
   },
   {

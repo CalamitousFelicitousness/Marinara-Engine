@@ -52,6 +52,7 @@ import { useConnections } from "../../hooks/use-connections";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
+import { dataImageUrlToFile } from "../../lib/data-image-file";
 import { SpriteGenerationModal } from "../ui/SpriteGenerationModal";
 import { AvatarGenerationModal } from "../ui/AvatarGenerationModal";
 import { AvatarCropWidget } from "../ui/AvatarCropWidget";
@@ -285,6 +286,7 @@ export function CharacterEditor() {
   const duplicateCharacter = useDuplicateCharacter();
   const createPersona = useCreatePersona();
   const uploadPersonaAvatar = useUploadPersonaAvatar();
+  const uploadCharacterSheet = useUploadCharacterGalleryImage(characterId ?? "");
   const { data: connectionsList } = useConnections();
 
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -323,6 +325,7 @@ export function CharacterEditor() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
+  const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -450,6 +453,23 @@ export function CharacterEditor() {
       markDirty();
     },
     [formatQuotes, markDirty, setExtensionValue],
+  );
+
+  const handleGeneratedCharacterSheet = useCallback(
+    async (dataUrl: string) => {
+      let file: File;
+      try {
+        file = dataImageUrlToFile(dataUrl, `${formData?.name || "character"}-sheet`);
+      } catch {
+        throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      }
+      const uploaded = await uploadCharacterSheet.mutateAsync([file]);
+      const image = uploaded[0];
+      if (!image) throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      updateExtension("characterSheetImageId", image.id);
+      toast.success(localizeUi("ui.characters.charactersheet.created"));
+    },
+    [formData?.name, localizeUi, updateExtension, uploadCharacterSheet],
   );
 
   const beginAvatarUpload = useCallback(() => {
@@ -967,6 +987,18 @@ export function CharacterEditor() {
         onClose={() => setAvatarGeneratorOpen(false)}
         onUseAvatar={handleGeneratedAvatar}
       />
+      <AvatarGenerationModal
+        open={characterSheetGeneratorOpen}
+        mode="character-sheet"
+        title={localizeUi("ui.characters.charactersheet.createTitle")}
+        entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
+        defaultAppearance={
+          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
+        }
+        defaultAvatarUrl={avatarPreview}
+        onClose={() => setCharacterSheetGeneratorOpen(false)}
+        onUseAvatar={handleGeneratedCharacterSheet}
+      />
 
       {/* ── Header ── */}
       <div className="mari-editor-header">
@@ -1151,10 +1183,22 @@ export function CharacterEditor() {
                 characterName={formData.name}
                 defaultAppearance={(formData.extensions.appearance as string) ?? formData.description}
                 defaultAvatarUrl={avatarPreview}
+                characterSheetImageId={
+                  typeof formData.extensions.characterSheetImageId === "string"
+                    ? formData.extensions.characterSheetImageId
+                    : null
+                }
+                useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                updateExtension={updateExtension}
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "gallery" && characterId && (
-              <CharacterGalleryTab characterId={characterId} characterName={formData.name} />
+              <CharacterGalleryTab
+                characterId={characterId}
+                characterName={formData.name}
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
+              />
             )}
             {activeTab === "colors" && (
               <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
@@ -1669,6 +1713,7 @@ function MetadataTab({
           placeholder={localizeUi("ui.characters.metadatatab.notesAboutThisCharacterIntendedUseTipsForBest")}
         />
       </div>
+
     </div>
   );
 }
@@ -2441,7 +2486,150 @@ function characterClipTrimLabel(clip: CharacterGalleryClip) {
   return `${formatTrimSecond(start)} -> ${formatTrimSecond(end)}`;
 }
 
-function CharacterGalleryTab({ characterId, characterName }: { characterId: string; characterName?: string }) {
+function CharacterSheetSection({
+  characterId,
+  characterName,
+  characterSheetImageId,
+  useAsReference,
+  updateExtension,
+  onCreateCharacterSheet,
+}: {
+  characterId: string;
+  characterName: string;
+  characterSheetImageId: string | null;
+  useAsReference: boolean;
+  updateExtension: (key: string, value: unknown) => void;
+  onCreateCharacterSheet: () => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const { data: images, isLoading } = useCharacterGalleryImages(characterId);
+  const upload = useUploadCharacterGalleryImage(characterId);
+  const selectedImage = images?.find((image) => image.id === characterSheetImageId) ?? null;
+  const selectionMissing = Boolean(characterSheetImageId && !isLoading && !selectedImage);
+
+  const chooseImage = useCallback(
+    (imageId: string) => {
+      updateExtension("characterSheetImageId", imageId);
+    },
+    [updateExtension],
+  );
+
+  const handleUpload = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+      try {
+        const uploaded = await upload.mutateAsync([file]);
+        const image = uploaded[0];
+        if (image) chooseImage(image.id);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.charactersheet.uploadFailed"));
+      }
+    },
+    [chooseImage, localizeUi, upload],
+  );
+
+  const clearSelection = useCallback(() => {
+    updateExtension("characterSheetImageId", null);
+    updateExtension("useCharacterSheetAsReference", false);
+  }, [updateExtension]);
+
+  return (
+    <section className="space-y-6 border-t border-[var(--border)] pt-5">
+      <SectionHeader
+        title={localizeUi("ui.characters.charactersheet.title")}
+        subtitle={localizeUi("ui.characters.charactersheet.subtitle")}
+      />
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+          {selectedImage ? (
+            <img
+              src={selectedImage.url}
+              alt={localizeUi("ui.characters.charactersheet.previewAlt", { name: characterName })}
+              className="max-h-[32rem] w-full bg-[var(--secondary)] object-contain"
+            />
+          ) : (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 bg-[var(--secondary)] px-6 text-center">
+              <Image size="2rem" className="text-[var(--muted-foreground)]/50" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-semibold">{localizeUi("ui.characters.charactersheet.emptyTitle")}</p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {localizeUi("ui.characters.charactersheet.emptyDescription")}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={onCreateCharacterSheet}
+            disabled={upload.isPending}
+            className="mari-editor-action mari-editor-action--primary inline-flex w-full justify-center disabled:cursor-wait disabled:opacity-60"
+          >
+            <Wand2 size="0.875rem" />
+            {localizeUi("ui.characters.charactersheet.createWithAi")}
+          </button>
+
+          <ImageUploadDropzone
+            multiple={false}
+            label={
+              selectedImage
+                ? localizeUi("ui.characters.charactersheet.replace")
+                : localizeUi("ui.characters.charactersheet.upload")
+            }
+            pending={upload.isPending}
+            pendingLabel={localizeUi("ui.characters.charactersheet.uploading")}
+            dragLabel={localizeUi("ui.characters.charactersheet.dropImage")}
+            onFilesSelected={(files) => void handleUpload(files)}
+            icon={<Upload size="1rem" />}
+            className="w-full"
+          />
+
+          <SettingsSwitch
+            label={<span className="font-medium">{localizeUi("ui.characters.charactersheet.useAsReference")}</span>}
+            description={localizeUi("ui.characters.charactersheet.useAsReferenceDescription")}
+            checked={Boolean(selectedImage) && useAsReference}
+            disabled={!selectedImage}
+            onChange={(checked) => updateExtension("useCharacterSheetAsReference", checked)}
+            labelPosition="start"
+            className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+          />
+
+          <p className="rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--muted-foreground)]">
+            {selectedImage && useAsReference
+              ? localizeUi("ui.characters.charactersheet.activeStatus")
+              : localizeUi("ui.characters.charactersheet.avatarFallbackStatus")}
+          </p>
+
+          {(selectedImage || selectionMissing) && (
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="mari-editor-action inline-flex w-full justify-center text-red-500"
+            >
+              <X size="0.875rem" />
+              {localizeUi("ui.characters.charactersheet.remove")}
+            </button>
+          )}
+        </div>
+      </div>
+
+    </section>
+  );
+}
+
+function CharacterGalleryTab({
+  characterId,
+  characterName,
+  onCreateCharacterSheet,
+}: {
+  characterId: string;
+  characterName?: string;
+  onCreateCharacterSheet: () => void;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const [mediaTab, setMediaTab] = useState<CharacterGalleryMediaTab>("images");
   const { data: images, isLoading } = useCharacterGalleryImages(characterId);
@@ -2555,6 +2743,17 @@ function CharacterGalleryTab({ characterId, characterName }: { characterId: stri
 
       {mediaTab === "images" ? (
         <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onCreateCharacterSheet}
+              className="mari-editor-action mari-editor-action--primary inline-flex max-sm:w-full max-sm:justify-center"
+            >
+              <Wand2 size="0.875rem" />
+              {localizeUi("ui.characters.charactersheet.createWithAi")}
+            </button>
+          </div>
+
           <ImageUploadDropzone
             label={localizeUi("ui.characters.charactergallerytab.uploadCharacterImages")}
             pending={upload.isPending}
@@ -3562,11 +3761,19 @@ function SpritesTab({
   characterName,
   defaultAppearance,
   defaultAvatarUrl,
+  characterSheetImageId,
+  useCharacterSheetAsReference,
+  updateExtension,
+  onCreateCharacterSheet,
 }: {
   characterId: string;
   characterName?: string;
   defaultAppearance?: string;
   defaultAvatarUrl?: string | null;
+  characterSheetImageId: string | null;
+  useCharacterSheetAsReference: boolean;
+  updateExtension: (key: string, value: unknown) => void;
+  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   type SpriteCategory = "expressions" | "full-body" | "clips";
@@ -3931,6 +4138,17 @@ function SpritesTab({
     [characterId, displayExpression, uploadSprite, wandCleanupSprite, localizeUi],
   );
 
+  const characterSheetSection = (
+    <CharacterSheetSection
+      characterId={characterId}
+      characterName={characterName ?? ""}
+      characterSheetImageId={characterSheetImageId}
+      useAsReference={useCharacterSheetAsReference}
+      updateExtension={updateExtension}
+      onCreateCharacterSheet={onCreateCharacterSheet}
+    />
+  );
+
   if (category === "clips") {
     return (
       <div className="space-y-6">
@@ -3939,6 +4157,8 @@ function SpritesTab({
           subtitle={localizeUi("ui.characters.spritestab.uploadVnStyleSpritesAndVideoCallClipsFor")}
           helpText={CHARACTER_SPRITES_HELP}
         />
+
+        {characterSheetSection}
 
         {categoryTabs}
 
@@ -3954,6 +4174,8 @@ function SpritesTab({
         subtitle={localizeUi("ui.characters.spritestab.uploadVnStyleSpritesForDifferentExpressionsTheExpression")}
         helpText={CHARACTER_SPRITES_HELP}
       />
+
+      {characterSheetSection}
 
       {categoryTabs}
 

@@ -3770,7 +3770,7 @@
   "ui.connections.connectioneditor.apiKeyAndBaseUrlAreNotRequiredFor": "API Key and Base URL are not required for this provider.",
   "ui.connections.connectioneditor.arliMultiModelActiveHint": "Multi-model selection is active, so Arli AI randomly picks one of the selected models per request and this field is ignored.",
   "ui.connections.connectioneditor.arliMultiModelAdd": "Add",
-  "ui.connections.connectioneditor.arliMultiModelAddManually": "Add a model ID (e.g. Meta-Llama-3.3-70B-Instruct)",
+  "ui.connections.connectioneditor.arliMultiModelAddManually": "Add a model ID",
   "ui.connections.connectioneditor.arliMultiModelCustomDefaultsNote": "Selecting models also enables “Use custom defaults for this connection,” which carries the multi-model list to every request.",
   "ui.connections.connectioneditor.arliMultiModelFetchFirst": "Fetch the models available to this API key from Arli AI’s /models endpoint, or add model IDs manually below.",
   "ui.connections.connectioneditor.arliMultiModelHelp": "Select multiple models. Each chat request is randomly routed to one of the selected models by Arli AI.",

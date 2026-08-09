@@ -1594,6 +1594,9 @@ export async function generateRoutes(app: FastifyInstance) {
         swipeIndex: number;
       }> = [];
       const collectedOocMessages: string[] = [];
+      // Embed the Mari relevance-ranking query once per turn, not once per
+      // follow-up iteration (the query is invariant across the turn's passes).
+      const mariQueryEmbeddingCache = new Map<string, number[] | null>();
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -2484,6 +2487,7 @@ export async function generateRoutes(app: FastifyInstance) {
               queryText: input.userMessage ?? "",
               embeddingSource: memoryRecallEmbeddingSource,
               vectorizerAvailable: memoryRecallVectorizerAvailable,
+              queryEmbeddingCache: mariQueryEmbeddingCache,
             });
             conversationSystemPrompt += "\n\n" + stablePrompt;
             professorMariVolatileContext = volatileContext;

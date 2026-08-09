@@ -84,7 +84,9 @@ type ParsedMutationRequest = {
     | "theme-create"
     | "theme-update"
     | "theme-set-active"
-    | "character-move-folder";
+    | "character-move-folder"
+    | "preset-section-delete"
+    | "preset-group-delete";
   table: string | "all";
   id?: string;
   characterId?: string;
@@ -710,6 +712,61 @@ function hasFlag(flags: Map<string, string | boolean>, name: string): boolean {
   return flags.has(name) && flags.get(name) !== false;
 }
 
+// #4812: map `mari presets` CLI flags to the data object the preset.* app_data actions accept, so
+// the CLI delegates to executePresetAction instead of reimplementing every child edit. Extra keys
+// are harmless — each action's field list keeps only what it uses.
+function presetDataFromFlags(flags: Map<string, string | boolean>): Row {
+  const data: Row = {};
+  const setStr = (flag: string, key: string) => {
+    const value = flagString(flags, flag);
+    if (value !== undefined) data[key] = value;
+  };
+  const setNum = (flag: string, key: string) => {
+    const value = flagString(flags, flag);
+    if (value === undefined || value.trim() === "") return;
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) throw new Error(`--${flag} must be a number, got "${value}"`);
+    data[key] = parsed;
+  };
+  setStr("name", "name");
+  setStr("content", "content");
+  setStr("role", "role");
+  setStr("identifier", "identifier");
+  setStr("group-id", "groupId");
+  setStr("parent-group-id", "parentGroupId");
+  setStr("injection-position", "injectionPosition");
+  setNum("injection-depth", "injectionDepth");
+  setNum("injection-order", "injectionOrder");
+  setNum("order", "order");
+  setStr("variable-name", "variableName");
+  setStr("question", "question");
+  setStr("separator", "separator");
+  setStr("display-mode", "displayMode");
+  setStr("option-sort", "optionSort");
+  setNum("sort-order", "sortOrder");
+  if (hasFlag(flags, "enable")) data.enabled = true;
+  if (hasFlag(flags, "disable")) data.enabled = false;
+  if (hasFlag(flags, "marker")) data.isMarker = true;
+  if (hasFlag(flags, "multi-select")) data.multiSelect = true;
+  if (hasFlag(flags, "random-pick")) data.randomPick = true;
+  const options = flagString(flags, "options");
+  if (options !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(options);
+    } catch {
+      parsed = undefined;
+    }
+    data.options = Array.isArray(parsed)
+      ? parsed
+      : options
+          .split(",")
+          .map((option) => option.trim())
+          .filter(Boolean);
+  }
+  return data;
+}
+
 function normalizeAppDataActionName(action: string): string {
   let key = action
     .trim()
@@ -1277,6 +1334,159 @@ function normalizePromptPresetChildInserts(payload: Row, presetId: string): Arra
   return relatedInserts;
 }
 
+// #4812: field-by-field patch builders for granular section/group/choice-block edits. Only keys
+// present in the caller's data land in the patch; planPatch deep-merges it (arrays replace whole,
+// content strings replace, markerConfig object-merges), then serializeRow stringifies JSON columns.
+function buildPromptSectionPatch(data: Row): Row {
+  const patch: Row = {};
+  const name = firstString(data, ["name", "title", "label"]);
+  if (name !== undefined) patch.name = name;
+  const content = firstString(data, ["content", "prompt", "text"]);
+  if (content !== undefined) patch.content = content;
+  const role = firstString(data, ["role"]);
+  if (role !== undefined) {
+    if (!["system", "user", "assistant"].includes(role)) throw new Error(`role must be system, user, or assistant, got "${role}"`);
+    patch.role = role;
+  }
+  const enabled = firstBoolean(data, ["enabled"]);
+  if (enabled !== undefined) patch.enabled = boolText(enabled);
+  const isMarker = firstBoolean(data, ["isMarker", "marker"]);
+  if (isMarker !== undefined) patch.isMarker = boolText(isMarker);
+  if ("groupId" in data) patch.groupId = typeof data.groupId === "string" && data.groupId ? data.groupId : null;
+  if (isRecord(data.markerConfig)) patch.markerConfig = data.markerConfig;
+  const injectionPosition = firstString(data, ["injectionPosition"]);
+  if (injectionPosition !== undefined) {
+    if (injectionPosition !== "ordered" && injectionPosition !== "depth")
+      throw new Error(`injectionPosition must be ordered or depth, got "${injectionPosition}"`);
+    patch.injectionPosition = injectionPosition;
+  }
+  const injectionDepth = firstNumber(data, ["injectionDepth", "depth"]);
+  if (injectionDepth !== undefined) patch.injectionDepth = injectionDepth;
+  const injectionOrder = firstNumber(data, ["injectionOrder", "order", "sortOrder"]);
+  if (injectionOrder !== undefined) patch.injectionOrder = injectionOrder;
+  return patch;
+}
+
+function buildPromptGroupPatch(data: Row): Row {
+  const patch: Row = {};
+  const name = firstString(data, ["name", "title", "label"]);
+  if (name !== undefined) patch.name = name;
+  if ("parentGroupId" in data)
+    patch.parentGroupId = typeof data.parentGroupId === "string" && data.parentGroupId ? data.parentGroupId : null;
+  const order = firstNumber(data, ["order", "sortOrder"]);
+  if (order !== undefined) patch.order = order;
+  const enabled = firstBoolean(data, ["enabled"]);
+  if (enabled !== undefined) patch.enabled = boolText(enabled);
+  return patch;
+}
+
+function buildChoiceBlockPatch(data: Row, usedVariableNames: Set<string>): Row {
+  const patch: Row = {};
+  const variableName = firstString(data, ["variableName", "variable", "name", "key"]);
+  if (variableName !== undefined)
+    patch.variableName = normalizePromptVariableName(variableName, variableName, usedVariableNames);
+  const question = firstString(data, ["question", "prompt", "label", "title"]);
+  if (question !== undefined) patch.question = question;
+  if ("options" in data || "choices" in data || "values" in data) {
+    patch.options = promptOptionRows(data.options ?? data.choices ?? data.values);
+  }
+  const multiSelect = firstBoolean(data, ["multiSelect", "multi"]);
+  if (multiSelect !== undefined) patch.multiSelect = boolText(multiSelect);
+  const separator = firstString(data, ["separator"]);
+  if (separator !== undefined) patch.separator = separator;
+  const randomPick = firstBoolean(data, ["randomPick", "random"]);
+  if (randomPick !== undefined) patch.randomPick = boolText(randomPick);
+  const displayMode = firstString(data, ["displayMode"]);
+  if (displayMode !== undefined) {
+    if (!["auto", "buttons", "listbox"].includes(displayMode))
+      throw new Error(`displayMode must be auto, buttons, or listbox, got "${displayMode}"`);
+    patch.displayMode = displayMode;
+  }
+  const optionSort = firstString(data, ["optionSort"]);
+  if (optionSort !== undefined) {
+    if (optionSort !== "alphabetical" && optionSort !== "manual")
+      throw new Error(`optionSort must be alphabetical or manual, got "${optionSort}"`);
+    patch.optionSort = optionSort;
+  }
+  const sortOrder = firstNumber(data, ["sortOrder", "order"]);
+  if (sortOrder !== undefined) patch.sortOrder = sortOrder;
+  return patch;
+}
+
+// #4812: full insert rows for a single added section/group/choice-block, mirroring the per-child
+// building in normalizePromptPresetChildInserts. Always allocate a fresh id at the call site.
+// #4812: like the patch builders, the single-add insert path must reject an unsupported enum value
+// rather than silently coercing it to a default (which reports success on a typo). An absent or blank
+// value keeps the documented default.
+function requireOneOf(value: unknown, allowed: readonly string[], field: string, fallback: string): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  const text = String(value);
+  if (!allowed.includes(text)) throw new Error(`${field} must be one of ${allowed.join(", ")}, got "${text}"`);
+  return text;
+}
+
+function buildPromptSectionInsertRow(
+  data: Row,
+  presetId: string,
+  id: string,
+  index: number,
+  usedIdentifiers: Set<string>,
+): Row {
+  const name = firstString(data, ["name", "title", "label"]) ?? `Section ${index}`;
+  return {
+    id,
+    presetId,
+    identifier: normalizePromptIdentifier(firstString(data, ["identifier", "key", "slug"]) ?? name, `section_${index}`, usedIdentifiers),
+    name,
+    content: firstString(data, ["content", "prompt", "text"]) ?? "",
+    role: requireOneOf(data.role, ["system", "user", "assistant"], "role", "system"),
+    enabled: boolText(firstBoolean(data, ["enabled"]) ?? true),
+    isMarker: boolText(firstBoolean(data, ["isMarker", "marker"]) ?? false),
+    groupId: typeof data.groupId === "string" && data.groupId ? data.groupId : null,
+    markerConfig: isRecord(data.markerConfig) ? JSON.stringify(data.markerConfig) : null,
+    injectionPosition: requireOneOf(data.injectionPosition, ["ordered", "depth"], "injectionPosition", "ordered"),
+    injectionDepth: firstNumber(data, ["injectionDepth", "depth"]) ?? 0,
+    injectionOrder: firstNumber(data, ["injectionOrder", "order", "sortOrder"]) ?? index * 100,
+    wrapInXml: "false",
+    xmlTagName: "",
+    forbidOverrides: boolText(firstBoolean(data, ["forbidOverrides"]) ?? false),
+  };
+}
+
+function buildPromptGroupInsertRow(data: Row, presetId: string, id: string, order: number): Row {
+  return {
+    id,
+    presetId,
+    name: firstString(data, ["name", "title", "label"]) ?? "Group",
+    parentGroupId: typeof data.parentGroupId === "string" && data.parentGroupId ? data.parentGroupId : null,
+    order: firstNumber(data, ["order", "sortOrder"]) ?? order,
+    enabled: boolText(firstBoolean(data, ["enabled"]) ?? true),
+  };
+}
+
+function buildChoiceBlockInsertRow(
+  data: Row,
+  presetId: string,
+  id: string,
+  index: number,
+  usedVariableNames: Set<string>,
+): Row {
+  const rawVariableName = firstString(data, ["variableName", "variable", "name", "key"]) ?? `variable_${index}`;
+  return {
+    id,
+    presetId,
+    variableName: normalizePromptVariableName(rawVariableName, `variable_${index}`, usedVariableNames),
+    question: firstString(data, ["question", "prompt", "label", "title"]) ?? rawVariableName,
+    options: promptOptionRows(data.options ?? data.choices ?? data.values),
+    multiSelect: boolText(firstBoolean(data, ["multiSelect", "multi"]) ?? false),
+    separator: firstString(data, ["separator"]) ?? ", ",
+    randomPick: boolText(firstBoolean(data, ["randomPick", "random"]) ?? false),
+    displayMode: requireOneOf(data.displayMode, ["auto", "buttons", "listbox"], "displayMode", "auto"),
+    optionSort: requireOneOf(data.optionSort, ["alphabetical", "manual"], "optionSort", "manual"),
+    sortOrder: firstNumber(data, ["sortOrder", "order"]) ?? index * 100,
+  };
+}
+
 function stripPromptPresetChildPayload(row: Row): Row {
   const out = { ...row };
   delete out.groups;
@@ -1710,6 +1920,51 @@ function summarizePromptPresetRow(row: Row): Row {
   };
 }
 
+// #4812: compact index rows so Prof Mari can SEE a preset's sections/groups/choice-blocks with
+// their ids + a content preview, then read one in full and patch it — mirroring lorebook entries.
+function summarizePromptSectionRow(row: Row): Row {
+  const parsed = parseRow("prompt_sections", row);
+  return {
+    id: parsed.id,
+    presetId: parsed.presetId,
+    identifier: parsed.identifier,
+    name: parsed.name,
+    role: parsed.role,
+    enabled: parsed.enabled,
+    isMarker: parsed.isMarker,
+    groupId: parsed.groupId ?? null,
+    injectionPosition: parsed.injectionPosition,
+    injectionDepth: parsed.injectionDepth,
+    injectionOrder: parsed.injectionOrder,
+    content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
+  };
+}
+
+function summarizePromptGroupRow(row: Row): Row {
+  const parsed = parseRow("prompt_groups", row);
+  return {
+    id: parsed.id,
+    presetId: parsed.presetId,
+    name: parsed.name,
+    parentGroupId: parsed.parentGroupId ?? null,
+    order: parsed.order,
+    enabled: parsed.enabled,
+  };
+}
+
+function summarizeChoiceBlockRow(row: Row): Row {
+  const parsed = parseRow("choice_blocks", row);
+  return {
+    id: parsed.id,
+    presetId: parsed.presetId,
+    variableName: parsed.variableName,
+    question: typeof parsed.question === "string" ? truncateStr(parsed.question, 160) : "",
+    optionCount: parseJsonArrayValue(parsed.options).length,
+    multiSelect: parsed.multiSelect,
+    sortOrder: parsed.sortOrder,
+  };
+}
+
 function summarizeAgentConfigRow(row: Row): Row {
   const settings = parseJsonRecordValue(row.settings);
   return {
@@ -1984,6 +2239,9 @@ export class MariDbService {
       }
       if (group === "lorebook" || group === "lorebooks") {
         return await this.executeLorebooksCommand(argv.slice(1), { command, sessionId, cwd: envelope.cwd });
+      }
+      if (group === "preset" || group === "presets") {
+        return await this.executePresetsCommand(argv.slice(1), { command, sessionId, cwd: envelope.cwd });
       }
       if (group === "chat" || group === "chats") {
         return await this.executeChatsCommand(argv.slice(1), { command, sessionId, cwd: envelope.cwd });
@@ -3500,6 +3758,372 @@ export class MariDbService {
         };
         return this.executeMutation(request, context.command, context.sessionId);
       }
+      case "sections": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const sectionId = firstString(args, ["sectionId"]);
+        const orderIndex = new Map(
+          parseJsonArrayValue(preset.sectionOrder).map((id, index) => [String(id), index] as const),
+        );
+        const sections = (await this.rawRows("prompt_sections"))
+          .filter((section) => section.presetId === presetId)
+          .filter((section) => !sectionId || section.id === sectionId)
+          .sort(
+            (a, b) =>
+              (orderIndex.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) -
+              (orderIndex.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER),
+          )
+          .map(summarizePromptSectionRow);
+        return { ok: true, mode: "read", command: context.command, output: sections };
+      }
+      case "getsection": {
+        const sectionId = requiredString(args, ["sectionId", "id"], "prompt section id");
+        const row = await this.getRawById(getMeta("prompt_sections"), sectionId);
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("prompt_sections", row) : null,
+        };
+      }
+      case "groups": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const orderIndex = new Map(
+          parseJsonArrayValue(preset.groupOrder).map((id, index) => [String(id), index] as const),
+        );
+        const groups = (await this.rawRows("prompt_groups"))
+          .filter((group) => group.presetId === presetId)
+          .sort(
+            (a, b) =>
+              (orderIndex.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) -
+              (orderIndex.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER),
+          )
+          .map(summarizePromptGroupRow);
+        return { ok: true, mode: "read", command: context.command, output: groups };
+      }
+      case "getgroup": {
+        const groupId = requiredString(args, ["groupId", "id"], "prompt group id");
+        const row = await this.getRawById(getMeta("prompt_groups"), groupId);
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("prompt_groups", row) : null,
+        };
+      }
+      case "choiceblocks": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const blocks = (await this.rawRows("choice_blocks"))
+          .filter((block) => block.presetId === presetId)
+          .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+          .map(summarizeChoiceBlockRow);
+        return { ok: true, mode: "read", command: context.command, output: blocks };
+      }
+      case "getchoiceblock": {
+        const choiceBlockId = requiredString(args, ["choiceBlockId", "id"], "choice block id");
+        const row = await this.getRawById(getMeta("choice_blocks"), choiceBlockId);
+        return {
+          ok: Boolean(row),
+          mode: "read",
+          command: context.command,
+          output: row ? parseRow("choice_blocks", row) : null,
+        };
+      }
+      case "updatesection": {
+        const sectionId = requiredString(args, ["sectionId", "id"], "prompt section id");
+        const existing = await this.getRawById(getMeta("prompt_sections"), sectionId);
+        if (!existing) throw new Error(`Prompt section ${sectionId} not found`);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "section"],
+          ["name", "content", "role", "enabled", "isMarker", "groupId", "markerConfig", "injectionPosition", "injectionDepth", "injectionOrder"],
+        );
+        const patch = buildPromptSectionPatch(data);
+        if (Object.keys(patch).length === 0) {
+          throw new Error(
+            "preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, or injectionOrder",
+          );
+        }
+        if (String(existing.isMarker) === "true" && typeof patch.content === "string") {
+          throw new Error(
+            `Section ${sectionId} is a marker; its content is generated from markerConfig at assembly, so a content edit has no effect. Edit markerConfig instead.`,
+          );
+        }
+        // #4812: a section may only join a group in its OWN preset, or it drops out of its preset's
+        // group tree. validateTouchedRows only checks the group row exists, not its presetId.
+        if (typeof patch.groupId === "string" && patch.groupId) {
+          const group = await this.getRawById(getMeta("prompt_groups"), patch.groupId);
+          if (!group || String(group.presetId) !== String(existing.presetId)) {
+            throw new Error(`Group ${patch.groupId} is not a group in this section's preset.`);
+          }
+        }
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "prompt_sections",
+            id: sectionId,
+            patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "updategroup": {
+        const groupId = requiredString(args, ["groupId", "id"], "prompt group id");
+        const existing = await this.getRawById(getMeta("prompt_groups"), groupId);
+        if (!existing) throw new Error(`Prompt group ${groupId} not found`);
+        const data = actionDataWithTopLevel(args, ["patch", "data", "group"], ["name", "parentGroupId", "order", "enabled"]);
+        const patch = buildPromptGroupPatch(data);
+        if (Object.keys(patch).length === 0) {
+          throw new Error("preset.updateGroup needs groupId plus a field such as name, enabled, order, or parentGroupId");
+        }
+        // #4812: a parent group must live in the same preset and must not create a cycle (a group
+        // nested under itself or under one of its own descendants would loop any tree walk).
+        if (typeof patch.parentGroupId === "string" && patch.parentGroupId) {
+          const parentId = patch.parentGroupId;
+          if (parentId === groupId) throw new Error("A group cannot be its own parent.");
+          const groupsById = new Map((await this.rawRows("prompt_groups")).map((group) => [String(group.id), group]));
+          const parent = groupsById.get(parentId);
+          if (!parent || String(parent.presetId) !== String(existing.presetId)) {
+            throw new Error(`Parent group ${parentId} is not a group in this preset.`);
+          }
+          const seen = new Set<string>();
+          let cursor: Row | undefined = parent;
+          while (cursor) {
+            const cursorId = String(cursor.id);
+            if (cursorId === groupId) throw new Error("That parent would create a group cycle.");
+            if (seen.has(cursorId)) break;
+            seen.add(cursorId);
+            cursor =
+              typeof cursor.parentGroupId === "string" && cursor.parentGroupId ? groupsById.get(cursor.parentGroupId) : undefined;
+          }
+        }
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "prompt_groups",
+            id: groupId,
+            patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "updatechoiceblock": {
+        const choiceBlockId = requiredString(args, ["choiceBlockId", "id"], "choice block id");
+        const existing = await this.getRawById(getMeta("choice_blocks"), choiceBlockId);
+        if (!existing) throw new Error(`Choice block ${choiceBlockId} not found`);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "choiceBlock", "choice"],
+          ["variableName", "variable", "question", "options", "choices", "values", "multiSelect", "separator", "randomPick", "displayMode", "optionSort", "sortOrder"],
+        );
+        const usedVariableNames = new Set(
+          (await this.rawRows("choice_blocks"))
+            .filter((block) => block.presetId === existing.presetId && block.id !== choiceBlockId)
+            .map((block) => String(block.variableName)),
+        );
+        const patch = buildChoiceBlockPatch(data, usedVariableNames);
+        if (Object.keys(patch).length === 0) {
+          throw new Error(
+            "preset.updateChoiceBlock needs choiceBlockId plus a field such as question, options, variableName, or multiSelect",
+          );
+        }
+        if (Array.isArray(patch.options) && patch.options.length === 0) {
+          throw new Error("preset.updateChoiceBlock cannot set an empty options array; a choice block needs at least one option");
+        }
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "choice_blocks",
+            id: choiceBlockId,
+            patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "addsection": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "section", "row"],
+          ["name", "identifier", "content", "role", "enabled", "isMarker", "groupId", "markerConfig", "injectionPosition", "injectionDepth", "injectionOrder"],
+        );
+        requiredString(data, ["name", "title", "label"], "section name");
+        // #4812: a section may only be filed under a group in its OWN preset (same reason as
+        // updateSection) — validateTouchedRows only checks the group row exists, not its presetId.
+        if (typeof data.groupId === "string" && data.groupId) {
+          const group = await this.getRawById(getMeta("prompt_groups"), data.groupId);
+          if (!group || String(group.presetId) !== String(presetId)) {
+            throw new Error(`Group ${data.groupId} is not a group in this preset.`);
+          }
+        }
+        const sectionOrder = parseJsonArrayValue(preset.sectionOrder).map(String);
+        const sectionId = newId();
+        const usedIdentifiers = new Set(
+          (await this.rawRows("prompt_sections"))
+            .filter((section) => section.presetId === presetId)
+            .map((section) => String(section.identifier)),
+        );
+        const row = buildPromptSectionInsertRow(data, presetId, sectionId, sectionOrder.length + 1, usedIdentifiers);
+        // Insert the section AND append its id to the parent sectionOrder in one reviewable plan;
+        // a section missing from sectionOrder is never assembled (would look like the #4812 bug).
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "prompt_presets",
+            id: presetId,
+            patch: { sectionOrder: [...sectionOrder, sectionId] },
+            apply: appDataCreateApply(args),
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+            relatedInserts: [{ table: "prompt_sections", row }],
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "addgroup": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const data = actionDataWithTopLevel(args, ["data", "group", "row"], ["name", "parentGroupId", "order", "enabled"]);
+        requiredString(data, ["name", "title", "label"], "group name");
+        // #4812: a parent group must live in the same preset. A fresh group has no descendants yet,
+        // so a cycle is impossible here — only the cross-preset/existence check is needed.
+        if (typeof data.parentGroupId === "string" && data.parentGroupId) {
+          const parent = await this.getRawById(getMeta("prompt_groups"), data.parentGroupId);
+          if (!parent || String(parent.presetId) !== String(presetId)) {
+            throw new Error(`Parent group ${data.parentGroupId} is not a group in this preset.`);
+          }
+        }
+        const groupOrder = parseJsonArrayValue(preset.groupOrder).map(String);
+        const groupId = newId();
+        const row = buildPromptGroupInsertRow(data, presetId, groupId, (groupOrder.length + 1) * 100);
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "prompt_presets",
+            id: presetId,
+            patch: { groupOrder: [...groupOrder, groupId] },
+            apply: appDataCreateApply(args),
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+            relatedInserts: [{ table: "prompt_groups", row }],
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "addchoiceblock": {
+        const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
+        const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
+        if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "choiceBlock", "choice", "row"],
+          ["variableName", "variable", "question", "options", "choices", "values", "multiSelect", "separator", "randomPick", "displayMode", "optionSort", "sortOrder"],
+        );
+        const existingBlocks = (await this.rawRows("choice_blocks")).filter((block) => block.presetId === presetId);
+        const choiceBlockId = newId();
+        const usedVariableNames = new Set(existingBlocks.map((block) => String(block.variableName)));
+        const row = buildChoiceBlockInsertRow(data, presetId, choiceBlockId, existingBlocks.length + 1, usedVariableNames);
+        if ((row.options as unknown[]).length === 0) {
+          throw new Error("preset.addChoiceBlock needs a non-empty options array (each option is a label the user can pick)");
+        }
+        // choice_blocks are ordered by their own sortOrder column, not a parent order array, so a
+        // plain insert is enough — no parent patch needed.
+        return this.executeMutation(
+          {
+            kind: "insert",
+            table: "choice_blocks",
+            id: choiceBlockId,
+            row,
+            apply: appDataCreateApply(args),
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "deletesection": {
+        const sectionId = requiredString(args, ["sectionId", "id"], "prompt section id");
+        const existing = await this.getRawById(getMeta("prompt_sections"), sectionId);
+        if (!existing) throw new Error(`Prompt section ${sectionId} not found`);
+        return this.executeMutation(
+          {
+            kind: "preset-section-delete",
+            table: "prompt_sections",
+            id: sectionId,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "deletegroup": {
+        const groupId = requiredString(args, ["groupId", "id"], "prompt group id");
+        const existing = await this.getRawById(getMeta("prompt_groups"), groupId);
+        if (!existing) throw new Error(`Prompt group ${groupId} not found`);
+        return this.executeMutation(
+          {
+            kind: "preset-group-delete",
+            table: "prompt_groups",
+            id: groupId,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "deletechoiceblock": {
+        const choiceBlockId = requiredString(args, ["choiceBlockId", "id"], "choice block id");
+        const existing = await this.getRawById(getMeta("choice_blocks"), choiceBlockId);
+        if (!existing) throw new Error(`Choice block ${choiceBlockId} not found`);
+        return this.executeMutation(
+          {
+            kind: "delete",
+            table: "choice_blocks",
+            id: choiceBlockId,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
       default:
         return {
           ok: false,
@@ -4755,6 +5379,124 @@ export class MariDbService {
     }
   }
 
+  // #4812: `mari presets` CLI parity — a thin flag-parser that delegates to executePresetAction, so
+  // the granular section/group/choice-block edits are available from the shell too.
+  private async executePresetsCommand(
+    args: string[],
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const sub = args[0];
+    const parsed = parseArgs(args.slice(1));
+    const flags = parsed.flags;
+    const apply = hasFlag(flags, "apply");
+    const reason = flagString(flags, "reason") ?? null;
+    if (!sub || sub === "help" || sub === "--help" || sub === "-h" || hasFlag(flags, "help")) {
+      return { ok: true, mode: "read", command: context.command, output: this.presetsHelpText() };
+    }
+    const run = (action: string, extra: Row) => this.executePresetAction(action, extra, context);
+    const need = (index: number, usage: string) => {
+      const value = parsed.positionals[index];
+      if (!value) throw new Error(usage);
+      return value;
+    };
+    switch (sub) {
+      case "list":
+        return run("list", { limit: flagString(flags, "limit"), search: flagString(flags, "search") });
+      case "get":
+        return run("get", { id: need(0, "Usage: mari presets get <preset-id>") });
+      case "sections":
+        return run("sections", {
+          presetId: need(0, "Usage: mari presets sections <preset-id> [--section-id <id>]"),
+          sectionId: flagString(flags, "section-id"),
+        });
+      case "get-section":
+        return run("getsection", { sectionId: need(0, "Usage: mari presets get-section <section-id>") });
+      case "groups":
+        return run("groups", { presetId: need(0, "Usage: mari presets groups <preset-id>") });
+      case "get-group":
+        return run("getgroup", { groupId: need(0, "Usage: mari presets get-group <group-id>") });
+      case "choice-blocks":
+        return run("choiceblocks", { presetId: need(0, "Usage: mari presets choice-blocks <preset-id>") });
+      case "get-choice-block":
+        return run("getchoiceblock", { choiceBlockId: need(0, "Usage: mari presets get-choice-block <choice-block-id>") });
+      case "add-section":
+        return run("addsection", {
+          presetId: need(0, "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "update-section":
+        return run("updatesection", {
+          sectionId: need(0, "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "delete-section":
+        return run("deletesection", { sectionId: need(0, "Usage: mari presets delete-section <section-id> [--apply]"), apply, reason });
+      case "add-group":
+        return run("addgroup", {
+          presetId: need(0, "Usage: mari presets add-group <preset-id> --name <name> [--parent-group-id <id>] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "update-group":
+        return run("updategroup", {
+          groupId: need(0, "Usage: mari presets update-group <group-id> [--name <name>] [--enable|--disable] [--order <n>] [--parent-group-id <id>] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "delete-group":
+        return run("deletegroup", { groupId: need(0, "Usage: mari presets delete-group <group-id> [--apply]"), apply, reason });
+      case "add-choice-block":
+        return run("addchoiceblock", {
+          presetId: need(0, "Usage: mari presets add-choice-block <preset-id> --variable-name <name> --question <text> --options <a,b,c> [--multi-select] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "update-choice-block":
+        return run("updatechoiceblock", {
+          choiceBlockId: need(0, "Usage: mari presets update-choice-block <choice-block-id> [--question <text>] [--options <a,b,c>] [--variable-name <name>] [--multi-select] [--apply]"),
+          data: presetDataFromFlags(flags),
+          apply,
+          reason,
+        });
+      case "delete-choice-block":
+        return run("deletechoiceblock", { choiceBlockId: need(0, "Usage: mari presets delete-choice-block <choice-block-id> [--apply]"), apply, reason });
+      case "create": {
+        const json = await resolveJsonInput(flags, context.cwd);
+        if (!json)
+          throw new Error('Usage: mari presets create (--json \'{"name":"...","sections":[...]}\' | --json-file <path>) [--apply]');
+        return run("create", { data: parseRequiredJsonObjectInput(json, "preset json"), apply, reason });
+      }
+      case "update": {
+        const id = need(0, "Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]");
+        const json = await resolveJsonInput(flags, context.cwd);
+        if (!json)
+          throw new Error("Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]");
+        return run("update", { id, data: parseRequiredJsonObjectInput(json, "preset json"), apply, reason });
+      }
+      default:
+        return { ok: false, mode: "read", command: context.command, error: `Unknown presets command "${sub}".\n${this.presetsHelpText()}` };
+    }
+  }
+
+  private presetsHelpText() {
+    return [
+      "Usage: mari presets <command>",
+      "Reads:    list [--search <q>] [--limit <n>] | get <preset-id> | sections <preset-id> [--section-id <id>] | get-section <section-id> | groups <preset-id> | get-group <group-id> | choice-blocks <preset-id> | get-choice-block <id>",
+      "Sections: add-section <preset-id> --name <n> [--content <t>] [--role <system|user|assistant>] [--group-id <id>] | update-section <section-id> [--content <t>] [--name <n>] [--enable|--disable] [--injection-order <n>] | delete-section <section-id>",
+      "Groups:   add-group <preset-id> --name <n> [--parent-group-id <id>] | update-group <group-id> [--name <n>] [--enable|--disable] [--order <n>] | delete-group <group-id>",
+      "Choices:  add-choice-block <preset-id> --variable-name <n> --question <t> --options <a,b,c> [--multi-select] | update-choice-block <id> [--question <t>] [--options <a,b,c>] | delete-choice-block <id>",
+      "Whole:    create --json '<preset-json>' | update <preset-id> --json '<partial-json>'",
+      "Writes need --apply to commit (otherwise a dry-run preview); add [--reason <text>]. Edits show an in-chat Keep/Restore review card.",
+    ].join("\n");
+  }
+
   private async executeChatsCommand(
     args: string[],
     context: { command: string; sessionId: string; cwd?: string },
@@ -5216,6 +5958,8 @@ export class MariDbService {
     else if (request.kind === "theme-update") changes = await this.planThemeUpdate(request, timestamp, issues);
     else if (request.kind === "theme-set-active") changes = await this.planThemeSetActive(request, timestamp, issues);
     else if (request.kind === "character-move-folder") changes = await this.planCharacterMoveFolder(request, timestamp);
+    else if (request.kind === "preset-section-delete") changes = await this.planPresetSectionDelete(request, timestamp);
+    else if (request.kind === "preset-group-delete") changes = await this.planPresetGroupDelete(request, timestamp);
     else changes = await this.planTransform(request, timestamp, allocateId);
 
     const personalExtensionChanges = changes.filter((change) => change.table === "installed_extensions");
@@ -5294,7 +6038,10 @@ export class MariDbService {
         apply: true,
       },
     ];
-    changes.push(...this.planRelatedInserts(request.relatedInserts, timestamp, allocateId));
+    // Seed the collision set with the primary row's id so a related insert cannot re-claim it.
+    changes.push(
+      ...(await this.planRelatedInserts(request.relatedInserts, timestamp, allocateId, new Set([`${meta.name}:${insertPk}`]))),
+    );
     return changes;
   }
 
@@ -5318,24 +6065,44 @@ export class MariDbService {
         apply: true,
       },
     ];
-    changes.push(...this.planRelatedInserts(request.relatedInserts, timestamp, () => newId()));
+    changes.push(...(await this.planRelatedInserts(request.relatedInserts, timestamp, () => newId())));
     return changes;
   }
 
-  private planRelatedInserts(
+  private async planRelatedInserts(
     relatedInserts: ParsedMutationRequest["relatedInserts"],
     timestamp: string,
     allocateId: () => string,
-  ): PlanChange[] {
+    seenIds: Set<string> = new Set(),
+  ): Promise<PlanChange[]> {
     if (!relatedInserts?.length) return [];
-    return relatedInserts.map((insert) => {
+    const changes: PlanChange[] = [];
+    for (const insert of relatedInserts) {
       const meta = getMeta(insert.table);
       const pk = getPrimary(meta);
       const parsed = { ...insert.row };
       if (parsed[pk] == null || parsed[pk] === "") parsed[pk] = allocateId();
+      // #4813: a related insert (a preset's sections / choice-blocks, whose ids can survive from a
+      // caller payload) must also insert a NEW row. Guard it the same way planInsert guards its
+      // primary row, so the whole insert surface is symmetric and a colliding id fails early with a
+      // clear message instead of a late unique-constraint abort on a deceptively clean dry-run.
+      const insertPk = String(parsed[pk]);
+      if (await this.getRawById(meta, insertPk)) {
+        throw new Error(
+          `A ${meta.name} row with id "${insertPk}" already exists; a create cannot overwrite it. Use an update instead.`,
+        );
+      }
+      // The committed-row lookup above never sees ids that only exist inside THIS plan. A duplicate
+      // child id in one payload (or a child re-using the primary row's id) would otherwise pass a
+      // clean dry-run and abort late at apply, so reject it here too.
+      const seenKey = `${meta.name}:${insertPk}`;
+      if (seenIds.has(seenKey)) {
+        throw new Error(`A ${meta.name} row with id "${insertPk}" is used more than once in this create; each row needs a unique id.`);
+      }
+      seenIds.add(seenKey);
       this.fillTimestamps(meta, parsed, true, timestamp);
       const afterRaw = serializeRow(meta.name, parsed);
-      return {
+      changes.push({
         table: meta.name,
         id: String(afterRaw[pk]),
         action: "insert",
@@ -5344,8 +6111,9 @@ export class MariDbService {
         beforeRaw: null,
         afterRaw,
         apply: true,
-      };
-    });
+      });
+    }
+    return changes;
   }
 
   private async planReplace(request: ParsedMutationRequest, timestamp: string): Promise<PlanChange[]> {
@@ -5414,6 +6182,127 @@ export class MariDbService {
         };
       })
       .filter((change): change is PlanChange => change !== null);
+  }
+
+  // #4812: deleting a section must also prune its id from the parent's sectionOrder (a dangling id
+  // there is harmless but untidy), all in one reversible plan.
+  private async planPresetSectionDelete(request: ParsedMutationRequest, timestamp: string): Promise<PlanChange[]> {
+    const sectionMeta = getMeta("prompt_sections");
+    const sectionId = String(request.id ?? "");
+    const section = await this.getRawById(sectionMeta, sectionId);
+    if (!section) throw new Error(`Prompt section ${sectionId} not found`);
+    const changes: PlanChange[] = [];
+    const presetMeta = getMeta("prompt_presets");
+    const preset = await this.getRawById(presetMeta, String(section.presetId));
+    if (preset) {
+      const parsed = parseRow(presetMeta.name, preset);
+      const currentOrder = parseJsonArrayValue(parsed.sectionOrder).map(String);
+      const nextOrder = currentOrder.filter((id) => id !== sectionId);
+      if (nextOrder.length !== currentOrder.length) {
+        const afterRaw = serializeRow(presetMeta.name, { ...parsed, sectionOrder: nextOrder, updatedAt: timestamp });
+        changes.push({
+          table: presetMeta.name,
+          id: rowId(presetMeta, preset),
+          action: "update",
+          before: parsed,
+          after: parseRow(presetMeta.name, afterRaw),
+          beforeRaw: preset,
+          afterRaw,
+          apply: true,
+        });
+      }
+    }
+    changes.push({
+      table: sectionMeta.name,
+      id: rowId(sectionMeta, section),
+      action: "delete",
+      before: parseRow(sectionMeta.name, section),
+      after: null,
+      beforeRaw: section,
+      afterRaw: null,
+      apply: true,
+    });
+    return changes;
+  }
+
+  // #4812: deleting a group matches prompts.storage.removeGroup — prune it from groupOrder, ORPHAN
+  // its member sections (groupId -> null), un-nest its child groups (parentGroupId -> null), then
+  // delete the group. All in one reversible plan so nothing is left half-detached.
+  private async planPresetGroupDelete(request: ParsedMutationRequest, timestamp: string): Promise<PlanChange[]> {
+    const groupMeta = getMeta("prompt_groups");
+    const groupId = String(request.id ?? "");
+    const group = await this.getRawById(groupMeta, groupId);
+    if (!group) throw new Error(`Prompt group ${groupId} not found`);
+    const presetId = String(group.presetId);
+    const changes: PlanChange[] = [];
+
+    const presetMeta = getMeta("prompt_presets");
+    const preset = await this.getRawById(presetMeta, presetId);
+    if (preset) {
+      const parsed = parseRow(presetMeta.name, preset);
+      const currentOrder = parseJsonArrayValue(parsed.groupOrder).map(String);
+      const nextOrder = currentOrder.filter((id) => id !== groupId);
+      if (nextOrder.length !== currentOrder.length) {
+        const afterRaw = serializeRow(presetMeta.name, { ...parsed, groupOrder: nextOrder, updatedAt: timestamp });
+        changes.push({
+          table: presetMeta.name,
+          id: rowId(presetMeta, preset),
+          action: "update",
+          before: parsed,
+          after: parseRow(presetMeta.name, afterRaw),
+          beforeRaw: preset,
+          afterRaw,
+          apply: true,
+        });
+      }
+    }
+
+    const sectionMeta = getMeta("prompt_sections");
+    for (const section of (await this.rawRows(sectionMeta.name)).filter(
+      (row) => row.presetId === presetId && row.groupId === groupId,
+    )) {
+      const parsed = parseRow(sectionMeta.name, section);
+      const afterRaw = serializeRow(sectionMeta.name, { ...parsed, groupId: null });
+      changes.push({
+        table: sectionMeta.name,
+        id: rowId(sectionMeta, section),
+        action: "update",
+        before: parsed,
+        after: parseRow(sectionMeta.name, afterRaw),
+        beforeRaw: section,
+        afterRaw,
+        apply: true,
+      });
+    }
+
+    for (const child of (await this.rawRows(groupMeta.name)).filter(
+      (row) => row.presetId === presetId && row.parentGroupId === groupId,
+    )) {
+      const parsed = parseRow(groupMeta.name, child);
+      const afterRaw = serializeRow(groupMeta.name, { ...parsed, parentGroupId: null });
+      changes.push({
+        table: groupMeta.name,
+        id: rowId(groupMeta, child),
+        action: "update",
+        before: parsed,
+        after: parseRow(groupMeta.name, afterRaw),
+        beforeRaw: child,
+        afterRaw,
+        apply: true,
+      });
+    }
+
+    changes.push({
+      table: groupMeta.name,
+      id: rowId(groupMeta, group),
+      action: "delete",
+      before: parseRow(groupMeta.name, group),
+      after: null,
+      beforeRaw: group,
+      afterRaw: null,
+      apply: true,
+    });
+    return changes;
   }
 
   private withCharacterFolderMutationLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -6205,6 +7094,7 @@ export class MariDbService {
       "Creative data:       mari characters list|get|search|create|update|delete",
       "Creative data:       mari personas list|active|get|search|create|update|delete",
       "Creative data:       mari lorebooks list|get|get-entry <entry-id>|entries <lorebook-id>|search|create|update <lorebook-id>|add-entry <lorebook-id>|update-entry <entry-id>|delete-entry <entry-id>|link-character|unlink-character|delete",
+      "Creative data:       mari presets list|get|sections <preset-id>|get-section <id>|groups|get-group|choice-blocks|get-choice-block|add-section|update-section|delete-section|add-group|update-group|delete-group|add-choice-block|update-choice-block|delete-choice-block|create|update",
       "Chats (read-only):   mari chats list|get|messages|search",
       "Fandom/Wikipedia:    mari wiki find-wikis|search-all|search|get-page|sections|category|site-info",
       "Discovery:           mari <group> --help or mari <group> <command> --help",

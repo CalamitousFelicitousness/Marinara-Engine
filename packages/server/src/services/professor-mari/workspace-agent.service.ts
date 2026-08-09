@@ -226,6 +226,21 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "preset.search",
   "preset.create",
   "preset.update",
+  "preset.sections",
+  "preset.getSection",
+  "preset.groups",
+  "preset.getGroup",
+  "preset.choiceBlocks",
+  "preset.getChoiceBlock",
+  "preset.addSection",
+  "preset.updateSection",
+  "preset.deleteSection",
+  "preset.addGroup",
+  "preset.updateGroup",
+  "preset.deleteGroup",
+  "preset.addChoiceBlock",
+  "preset.updateChoiceBlock",
+  "preset.deleteChoiceBlock",
   "home_widget.list",
   "home_widget.get",
   "home_widget.create",
@@ -552,7 +567,7 @@ Command families:
 - \`mari characters\`: list, get, search, create, update, delete. Prefer this helper for character edits, including backstory, appearance, and About Me changes. Use \`app_data\` \`character.folder.list\` and \`character.moveToFolder\` for character folders.
 - \`mari personas\`: list, active, get, search, create, update, delete. Prefer this helper for persona edits.
 - \`mari lorebooks\`: list, get, entries <lorebook-id>, get-entry <entry-id>, search, create, update <lorebook-id>, add-entry <lorebook-id>, update-entry <entry-id>, delete-entry <entry-id>, link-character, unlink-character, delete.
-- \`mari presets\`: no dedicated shell helper — use \`app_data\` \`preset.*\` for preset reads/writes. \`preset.create\` and \`preset.update\` can include \`groups\`, \`sections\`, and \`choiceBlocks\` for preset variables. Use \`mari db\` only for advanced raw-table repairs after inspecting schemas.
+- \`mari presets\`: shell mirror of the \`preset.*\` app_data actions — \`list|get|sections|get-section|groups|get-group|choice-blocks|get-choice-block|add-section|update-section|delete-section|add-group|update-group|delete-group|add-choice-block|update-choice-block|delete-choice-block\`, plus \`create\`/\`update\` via \`--json\` (writes need \`--apply\`). For your own edits prefer the \`app_data\` \`preset.*\` actions: \`preset.create\`/\`preset.update\` handle a WHOLE preset (\`groups\`, \`sections\`, \`choiceBlocks\`), and to see or edit ONE part in place use \`preset.sections\`/\`getSection\`/\`updateSection\`/\`addSection\`/\`deleteSection\` and the parallel \`group\` and \`choiceBlock\` actions. Use \`mari db\` only for advanced raw-table repairs after inspecting schemas.
 - \`mari chats\`: read-only list/get/messages/search.
 - When the user limits chat evidence, preserve that boundary in every retrieval call. For "the last N messages", use \`mari chats messages <chat-id> --last N\`. For "after post #N", use \`mari chats messages <chat-id> --after-post N\`; post numbers are 1-indexed and match the numbers shown in chat. For a large requested range, page only inside it with \`--limit <page-size> --offset <already-read>\`. Never replace a requested recent/post-number range with an unbounded chat read.
 - \`mari agents\`: no dedicated shell helper — use \`app_data\` \`agent.*\` for agent configs.
@@ -612,8 +627,8 @@ Field rules:
 ${MARI_GUIDED_SEQUENCES}
 
 \`app_data\` quick reference:
-- Reads: \`character.list|get|search|folder.list\`, \`persona.list|active|get|search\`, \`lorebook.list|get|entries|getEntry|search\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search\`, \`home_widget.list|get\`.
-- Writes: \`character.create|update|moveToFolder\`, \`persona.create|update\`, \`lorebook.create|update|addEntry|updateEntry\`, \`theme.create|update|setActive\`, \`personal_extension.create|update\`, \`agent.create|update\`, \`preset.create|update\`, \`home_widget.create|update|delete\`.
+- Reads: \`character.list|get|search|folder.list\`, \`persona.list|active|get|search\`, \`lorebook.list|get|entries|getEntry|search\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock\`, \`home_widget.list|get\`.
+- Writes: \`character.create|update|moveToFolder\`, \`persona.create|update\`, \`lorebook.create|update|addEntry|updateEntry\`, \`theme.create|update|setActive\`, \`personal_extension.create|update\`, \`agent.create|update\`, \`preset.create|update|addSection|updateSection|deleteSection|addGroup|updateGroup|deleteGroup|addChoiceBlock|updateChoiceBlock|deleteChoiceBlock\`, \`home_widget.create|update|delete\`.
 - Character folders: call \`character.folder.list\` to resolve the destination, then \`character.moveToFolder\` with \`characterId\` and either \`folderId\` or \`folderName\`. A move removes the character from its previous folder. When the user explicitly asks for the move, set \`apply:true\`, then verify with \`character.folder.list\`.
 - Put write fields in \`data\` for creates and \`patch\` for updates. Use \`entryId\` for \`lorebook.updateEntry\`; use \`lorebookId\` only for a lorebook or for \`lorebook.addEntry\`.
 - New creates: use \`apply:true\` immediately for \`character.create\`, \`persona.create\`, \`lorebook.create\`, \`lorebook.addEntry\`, \`agent.create\`, \`preset.create\`, and non-activating \`theme.create\` when the user asked you to create it. Verify with a read before claiming success.
@@ -631,6 +646,7 @@ ${MARI_GUIDED_SEQUENCES}
 - Lorebook fidelity pass: after creating a lorebook, OFFER the user a second-pass review (do not run it unprompted). If they accept, read the entries back (\`lorebook.entries\` then \`lorebook.getEntry\`) and fix weak spots with \`lorebook.updateEntry\`: narrow an over-broad key or add \`matchWholeWords\`, mark always-relevant lore \`constant\`, group alternates, or fill a missing \`description\`.
 - Lorebook reading: \`lorebook.entries\` is a compact index with entry IDs and content previews. Call \`lorebook.getEntry\` with each relevant \`entryId\` before reviewing or rewriting its full content.
 - For \`preset.create\`, put prompt sections in \`data.sections\` and preset variables in \`data.choiceBlocks\`. Each choice block needs \`variableName\`, \`question\`, and \`options\` with \`label\`/\`value\` pairs.
+- Editing part of a preset: \`preset.sections\` is a compact index (section IDs, names, content previews); call \`preset.getSection\` before rewriting one. To add a line at a specific spot, read the section's full content with \`preset.getSection\`, splice your change into it, then \`preset.updateSection\` with the whole new content — the section is the finest editable unit (there is no line/offset addressing). \`preset.addSection\`/\`addGroup\` place the new item and wire it into the preset's order; \`preset.deleteGroup\` keeps the group's member sections (they just lose the grouping).
 - Custom image agents are supported by the live runtime. Use \`data.resultType: "image_prompt"\`, enable \`settings.customCapabilities.trigger_image_generation\`, and have the agent return \`shouldGenerate\` plus \`prompt\`. Marker-triggered agents should also set \`activationKeywords\`. Do not claim that only Illustrator can generate image prompts.
 - Custom Home widgets are constrained text cards, never executable code. Before creating one, show its exact title, description, accent, and icon in \`say\`, call \`home_widget.create\` with \`apply:false\`, and ask the user to confirm. Only after that explicit confirmation may you repeat the same action with \`apply:true\`. Use \`home_widget.update\` or \`home_widget.delete\` only when the user explicitly asks for that change.
 - Existing-data changes: use \`apply:true\` for requested \`*.update\`, \`lorebook.updateEntry\`, and \`theme.setActive\`. Marinara will save first and show the user an in-chat Keep/Restore review card for reversible changes.
@@ -652,6 +668,10 @@ Verified lorebook creation sequence (three turns):
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.search","query":"Nightfall Wallachia"}}],"stop":false}
 {"say":"Done — created the lorebook; the verification read found it. Want me to do a fidelity pass on the entries?","commands":[],"stop":true}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"preset.create","data":{"name":"Test preset","sections":[{"name":"Main","content":"You are {{char}}.","role":"system"}],"choiceBlocks":[{"variableName":"tone","question":"Tone","options":[{"label":"Warm","value":"warm"},{"label":"Sharp","value":"sharp"}]}]},"reason":"User requested a preset with variables","apply":true}}],"stop":false}
+Editing one section of a preset (read the index, read the full section, then rewrite it):
+{"say":"","commands":[{"name":"app_data","arguments":{"action":"preset.sections","presetId":"preset-id"}}],"stop":false}
+{"say":"Found the section. I'll read its full content before editing.","commands":[{"name":"app_data","arguments":{"action":"preset.getSection","sectionId":"section-id"}}],"stop":false}
+{"say":"","commands":[{"name":"app_data","arguments":{"action":"preset.updateSection","sectionId":"section-id","data":{"content":"...the full section content with the requested line spliced in..."},"reason":"User asked to add a line to this section","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"agent.create","data":{"name":"Image Marker","description":"Turns IMG_PROMPT markers into image prompts.","resultType":"image_prompt","activationKeywords":["IMG_PROMPT:"],"activationScanDepth":4,"settings":{"customCapabilities":{"trigger_image_generation":true}}},"reason":"User requested a marker-triggered image agent","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.updateEntry","entryId":"entry-id","patch":{"content":"new content"},"reason":"Update requested by user","apply":false}}],"stop":false}
 
@@ -1505,7 +1525,9 @@ function appDataActionLooksReadOnly(action: unknown): boolean {
     .trim()
     .toLowerCase()
     .replace(/[-_\s]+/g, "");
-  return /\.(list|get|getentry|search|active|entries)$/.test(normalized);
+  return /\.(list|get|getentry|search|active|entries|sections|getsection|groups|getgroup|choiceblocks|getchoiceblock)$/.test(
+    normalized,
+  );
 }
 
 function visibleTextRequestsUserApproval(text: string): boolean {

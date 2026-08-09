@@ -326,22 +326,37 @@ The strategy and worked example above show these controls in combination. This s
 **Context filters** — limit an entry to certain characters, character tags, or generation types.
 
 - Use it for: lore that applies to only some characters or only some generation types.
-- *Example:* filter a character's private backstory to that character only, so it never activates in chats they are not part of.
+- Filtering to a character does more than hide the entry from other chats: in a group chat it also keeps the entry out of *other characters'* replies, activating only when the filtered character is the one responding. That makes it ideal for private backstories, secrets, and knowledge one character holds but the others should not.
+- *Example:* filter a spy's secret allegiance to that spy, so it informs her own replies but never leaks into the responses of the characters she is deceiving.
 
 ## Using macros in entry content
 
 An entry's **Content** is expanded like any other prompt text: prompt macros resolve before the content is injected. A few that are handy inside lorebook entries:
 
 - `{{char}}` and `{{user}}` — the current character's and the user or persona's names, so a shared entry reads naturally in any chat.
-- `{{random::a::b::c}}` and `{{roll:1d6}}` — pick a random variant or roll dice, for flavor that varies each time the entry fires.
+- `{{random::a::b::c}}` and `{{roll:1d6}}` — pick a random option or roll dice, for flavor that varies each time the entry fires. Add `@` weights, as in `{{random::common@3::rare@1}}`, to make some options more likely than others.
 - `{{#if ...}}...{{else}}...{{/if}}` — change the text based on who is speaking, a variable, or the active character.
 - `{{getvar::name}}` and `{{setvar::name::value}}` — read or set a persistent variable, so an entry can react to or drive state across the chat.
+
+Weighted random pairs well with **Probability** to fold a whole table into a single entry. Instead of a group of twenty monster entries, give one "wandering encounter" entry a low **Probability** (so an encounter is only occasional) and a weighted list of what appears:
+
+`{{random::a lone wolf@5::a bandit scout@3::a wounded traveler@2::a displacer beast@1}}`
+
+The entry fires only sometimes, and when it does it picks one encounter — weighted so common foes turn up more often than rare ones — with no compendium of separate entries to maintain.
 
 Use the **comment macro** to leave a note that never reaches the AI:
 
 - `{{// draft wording, revisit later}}` — everything inside `{{// ... }}` is stripped from the output.
 
 **A note on recursion.** When **Recursive** scanning is turned on for the lorebook (see [Token Budgets and Recursion](token-budgets.md)), Marinara re-scans the *expanded* content of activated entries for more keywords. Because macros resolve first, the text a macro produces can trigger further entries — for instance, content that expands to a name can activate an entry keyed on that name. A `{{// comment}}` is the exception: it is stripped to nothing before the re-scan, so its text can never trigger anything. Comments are for notes only; if you want text to feed recursion, write it plainly.
+
+## Common pitfalls
+
+- **An entry never fires.** A **Normal** entry with no keys has nothing to match, so it never activates — make it **Constant** or give it keys. Check too that the lorebook is enabled and active in the chat.
+- **A keyword stopped working.** Keys are matched only in the last few messages — the lorebook's **Scan Depth** (default 2). Once the trigger word scrolls out of that window, the entry goes quiet. Raise **Scan Depth**, add **Sticky** so a fact lingers once it fires, or make the entry **Constant**.
+- **An entry fires in the wrong scenes.** A broad key like `home` or `king` matches too much. Tighten it with **Whole Words**, gate it with **Selective** secondary keys, or filter the entry to the right character.
+- **Important lore keeps getting dropped.** When more entries match than the budget allows, the tail is trimmed. Give the entries that matter a lower **Order**, raise the **Token Budget**, or move bulky reference lore behind the Knowledge Router agent. The **Active Context** panel shows exactly what was skipped and why (see [Token Budgets and Recursion](token-budgets.md)).
+- **The AI ignores your lore.** Confirm the entry actually activated in **Active Context** — and remember it competes with the rest of the prompt, so a fact buried far from the latest turn has less pull than one at **After chat** or, sparingly, **@ Depth**.
 
 ## The Keyword test tool
 

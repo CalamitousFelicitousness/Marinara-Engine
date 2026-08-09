@@ -363,7 +363,7 @@ Use the **comment macro** to leave a note that never reaches the AI:
 
 ## Common pitfalls
 
-- **An entry never fires.** A **Normal** entry with no keys has nothing for keyword matching to catch, so it stays silent unless semantic search recalls it by meaning — give it keys, make it **Constant**, or turn on vectorization for the lorebook. Check too that the lorebook is enabled and active in the chat.
+- **An entry never fires.** A **Normal** entry with no keys has nothing for keyword matching to catch — give it keys or make it **Constant**. (A keyless entry can still be recalled by meaning, but only with semantic search fully set up — enabled **Vectors**, a configured embedding model, and the entry vectorized; see [Semantic Search](semantic-search.md).) Check too that the lorebook is enabled and active in the chat.
 - **A keyword stopped working.** Keys are matched only in the last few messages — the lorebook's **Scan Depth** (default 2). Once the trigger word scrolls out of that window, the entry goes quiet. Raise **Scan Depth**, add **Sticky** so a fact lingers once it fires, or make the entry **Constant**.
 - **An entry fires in the wrong scenes.** A broad key like `home` or `king` matches too much. Tighten it with **Whole Words**, gate it with **Selective** secondary keys, or filter the entry to the right character.
 - **Important lore keeps getting dropped.** When more entries match than the budget allows, the tail is trimmed. Give the entries that matter a lower **Order**, raise the **Token Budget**, or move bulky reference lore behind the Knowledge Router agent. The **Active Context** panel shows exactly what was skipped and why (see [Token Budgets and Recursion](token-budgets.md)).

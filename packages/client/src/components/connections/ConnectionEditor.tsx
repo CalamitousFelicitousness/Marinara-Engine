@@ -1092,7 +1092,7 @@ export function ConnectionEditor() {
     });
   }, [connectionDetailId, dirty, handleSave, testVideoGeneration]);
 
-  const handleFetchModels = useCallback(async () => {
+  const handleFetchModels = useCallback(async (openDropdown = true) => {
     if (!connectionDetailId) return;
     setFetchError(null);
     // Save first if dirty so the server has the right baseUrl/apiKey/provider
@@ -1108,11 +1108,13 @@ export function ConnectionEditor() {
         const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
         setRemoteModels(result.models);
         setRemoteLoras(result.loras ?? []);
-        setShowModelDropdown(true);
-        requestAnimationFrame(() => {
-          modelSearchInputRef.current?.focus();
-          modelSearchInputRef.current?.select();
-        });
+        if (openDropdown) {
+          setShowModelDropdown(true);
+          requestAnimationFrame(() => {
+            modelSearchInputRef.current?.focus();
+            modelSearchInputRef.current?.select();
+          });
+        }
       },
       onError: (err) => {
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
@@ -1136,28 +1138,6 @@ export function ConnectionEditor() {
     },
     [markDirty],
   );
-
-  const handleArliFetchModels = useCallback(async () => {
-    if (!connectionDetailId) return;
-    setFetchError(null);
-    if (dirty) {
-      try {
-        await handleSave();
-      } catch {
-        return;
-      }
-    }
-    fetchModels.mutate(connectionDetailId, {
-      onSuccess: (data) => {
-        const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
-        setRemoteModels(result.models);
-        setRemoteLoras(result.loras ?? []);
-      },
-      onError: (err) => {
-        setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
-      },
-    });
-  }, [connectionDetailId, dirty, handleSave, fetchModels]);
 
   const selectModel = useCallback(
     (model: { id: string; context?: number; maxOutput?: number; isRemote?: boolean }) => {
@@ -1947,7 +1927,7 @@ export function ConnectionEditor() {
                 selected={arliMultiModels}
                 onChange={handleArliMultiModelsChange}
                 fetching={fetchModels.isPending}
-                onFetch={handleArliFetchModels}
+                onFetch={() => handleFetchModels(false)}
                 fetchError={fetchError}
                 customDefaultsEnabled={localDefaultParametersEnabled}
               />

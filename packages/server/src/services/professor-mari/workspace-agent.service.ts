@@ -2,7 +2,7 @@
 // Professor Mari native command workspace runtime
 // ──────────────────────────────────────────────
 import { constants, existsSync, realpathSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -1720,6 +1720,10 @@ export class ProfessorMariWorkspaceService {
   private lastError: string | null = null;
   private active = false;
   private abortController: AbortController | null = null;
+  // Professor Mari is the only untrusted workspace writer. Serialize all of
+  // her mutations so path validation and the operation cannot overlap another
+  // agent mutation; user and host processes remain outside this sandbox boundary.
+  private workspaceMutationTail: Promise<void> = Promise.resolve();
 
   constructor(private readonly app: FastifyInstance) {}
 
@@ -2314,9 +2318,13 @@ ${sections.join("\n\n")}
     });
     onEvent({ type: "tool_start", data: { id: command.id, name: command.name, input } });
     try {
-      const validationIssue = workspaceCommandValidationIssue(command);
-      if (validationIssue) throw new Error(validationIssue);
-      const output = await this.runWorkspaceCommand(command, signal);
+      const run = async () => {
+        signal.throwIfAborted();
+        const validationIssue = workspaceCommandValidationIssue(command);
+        if (validationIssue) throw new Error(validationIssue);
+        return this.runWorkspaceCommand(command, signal);
+      };
+      const output = isReadOnlyWorkspaceCommand(command) ? await run() : await this.serializeWorkspaceMutation(run);
       const compacted = compactOutput(output);
       upsertTraceTool(trace, {
         id: command.id,
@@ -2332,6 +2340,20 @@ ${sections.join("\n\n")}
       upsertTraceTool(trace, { id: command.id, name: command.name, status: "error", output, updatedAt: Date.now() });
       onEvent({ type: "tool_end", data: { id: command.id, name: command.name, isError: true, output } });
       return { id: command.id, name: command.name, input, output, success: false };
+    }
+  }
+
+  private async serializeWorkspaceMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.workspaceMutationTail;
+    let release!: () => void;
+    this.workspaceMutationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
     }
   }
 
@@ -2634,12 +2656,19 @@ ${sections.join("\n\n")}
     if (!(await stat(source)).isFile()) throw new Error("move source must be a file");
     await mkdir(dirname(destination), { recursive: true });
     try {
-      await copyFile(source, destination, constants.COPYFILE_EXCL);
+      // A hard link is an atomic, no-replace claim on the destination and keeps
+      // it tied to the exact source inode until the source name is removed.
+      await link(source, destination);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("move destination already exists");
       throw error;
     }
-    await unlink(source);
+    try {
+      await unlink(source);
+    } catch (error) {
+      await unlink(destination).catch(() => undefined);
+      throw error;
+    }
     return `Moved ${this.displayPath(source)} to ${this.displayPath(destination)}.`;
   }
 

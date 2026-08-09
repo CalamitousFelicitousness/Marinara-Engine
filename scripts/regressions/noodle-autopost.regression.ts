@@ -23,6 +23,7 @@ import { isNoodlerNightQuietTime } from "../../packages/server/src/services/nood
 import {
   BACKGROUND_CONNECTION_FAILURE_COOLDOWN_MS,
   BACKGROUND_CONNECTION_FAILURE_THRESHOLD,
+  BACKGROUND_CONNECTION_IDLE_MS,
   beginForegroundConnection,
   resetConnectionAdmissionForTests,
   tryBackgroundConnection,
@@ -84,19 +85,41 @@ assert.equal(beforeThreshold.acquired, true, "Releasing one attempt twice must r
 if (beforeThreshold.acquired) beforeThreshold.release("completed");
 
 resetConnectionAdmissionForTests();
-for (let attempt = 0; attempt < BACKGROUND_CONNECTION_FAILURE_THRESHOLD; attempt += 1) {
-  await assert.rejects(
-    withConnectionAdmission("failing-background-connection", { kind: "background" }, async () => {
-      throw new Error("provider unavailable");
-    }),
-    /provider unavailable/u,
-  );
-}
+const recordBackgroundFailures = async (connectionId: string) => {
+  for (let attempt = 0; attempt < BACKGROUND_CONNECTION_FAILURE_THRESHOLD; attempt += 1) {
+    await assert.rejects(
+      withConnectionAdmission(connectionId, { kind: "background" }, async () => {
+        throw new Error("provider unavailable");
+      }),
+      /provider unavailable/u,
+    );
+  }
+};
+await recordBackgroundFailures("failing-background-connection");
 assert.equal(
   tryBackgroundConnection("failing-background-connection", new Date()).acquired,
   false,
   "Repeated automatic provider failures must quarantine the connection",
 );
+const foregroundResult = await withConnectionAdmission(
+  "failing-background-connection",
+  { kind: "foreground" },
+  async () => "foreground-ok",
+);
+assert.equal(foregroundResult, "foreground-ok", "Background quarantine must not reject foreground chats");
+const admittedAfterForegroundRecovery = tryBackgroundConnection(
+  "failing-background-connection",
+  new Date(Date.now() + BACKGROUND_CONNECTION_IDLE_MS + 1),
+);
+assert.equal(
+  admittedAfterForegroundRecovery.acquired,
+  true,
+  "A successful foreground chat must clear the longer background quarantine",
+);
+if (admittedAfterForegroundRecovery.acquired) admittedAfterForegroundRecovery.release("completed");
+
+resetConnectionAdmissionForTests();
+await recordBackgroundFailures("failing-background-connection");
 const recoveredAdmission = tryBackgroundConnection(
   "failing-background-connection",
   new Date(Date.now() + BACKGROUND_CONNECTION_FAILURE_COOLDOWN_MS + 1),

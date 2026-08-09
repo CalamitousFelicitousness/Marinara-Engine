@@ -113,11 +113,11 @@ function formatProviderErrorBody(body: string): string {
 }
 
 function isOpenAICompatibleProvider(provider: string): boolean {
-  return ["openai", "openrouter", "nanogpt", "xai", "mistral", "custom", "cohere"].includes(provider);
+  return ["openai", "openrouter", "nanogpt", "xai", "mistral", "custom", "cohere", "arli"].includes(provider);
 }
 
 function usesResponsesEndpointForTestMessage(provider: string, model: string): boolean {
-  if (!isOpenAICompatibleProvider(provider) || provider === "custom") return false;
+  if (!isOpenAICompatibleProvider(provider) || provider === "custom" || provider === "arli") return false;
   const normalized = model.toLowerCase();
   return (
     normalized.startsWith("gpt-5.6") ||

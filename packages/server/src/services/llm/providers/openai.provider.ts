@@ -72,6 +72,7 @@ type OpenAIProviderKind =
   | "xai"
   | "mistral"
   | "cohere"
+  | "arli"
   | "custom"
   | "openai-chatgpt"
   | "local-sidecar";
@@ -559,6 +560,8 @@ export class OpenAIProvider extends BaseLLMProvider {
         return "Mistral API";
       case "cohere":
         return "Cohere OpenAI-compatible API";
+      case "arli":
+        return "Arli AI API";
       case "local-sidecar":
         return "Local sidecar OpenAI-compatible endpoint";
       case "openai-chatgpt":
@@ -916,7 +919,9 @@ export class OpenAIProvider extends BaseLLMProvider {
     // /responses for them, even for GPT-5.5. Reasoning-model parameter tweaks
     // (max_completion_tokens, temperature suppression) still apply via
     // isReasoningModel / isNoTemperatureModel which have their own GPT-5.5 gates.
-    if (this.isGenericCustomProvider()) return false;
+    // Arli AI is OpenAI-compatible through chat completions only, so it is
+    // treated like a custom endpoint here despite being a named provider.
+    if (this.isGenericCustomProvider() || this.providerKind === "arli") return false;
     if (this.isGpt55Model(model)) return true;
     const m = model.toLowerCase();
     return (

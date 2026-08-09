@@ -46,6 +46,7 @@ import {
   Film,
   RotateCcw,
   SlidersHorizontal,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -121,6 +122,7 @@ const API_KEY_LINKS: Partial<Record<APIProvider, { label: string; url: string }>
   openrouter: { label: "Get your OpenRouter API key", url: "https://openrouter.ai/keys" },
   nanogpt: { label: "Get your NanoGPT API key", url: "https://nano-gpt.com/api" },
   xai: { label: "Get your xAI API key", url: "https://console.x.ai" },
+  arli: { label: "Get your Arli AI API key", url: "https://www.arliai.com/account" },
   video_generation: { label: "Get your Google AI API key", url: "https://aistudio.google.com/apikey" },
 };
 
@@ -1118,6 +1120,45 @@ export function ConnectionEditor() {
     });
   }, [connectionDetailId, dirty, handleSave, fetchModels]);
 
+  // Arli AI Multi-models selection. Selections live in the connection's Custom
+  // Parameters (`multi_models`), which are merged into every request body and
+  // routed by the Arli AI backend to a random member per request.
+  const markDirty = useCallback(() => setDirty(true), []);
+
+  const arliMultiModels = useMemo(() => getArliMultiModels(localDefaultParameters), [localDefaultParameters]);
+  const arliModelDisabled = localProvider === "arli" && arliMultiModels.length > 0;
+
+  const handleArliMultiModelsChange = useCallback(
+    (selected: string[]) => {
+      setLocalDefaultParameters((current) => setArliMultiModels(current, selected));
+      if (selected.length > 0) setLocalDefaultParametersEnabled(true);
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  const handleArliFetchModels = useCallback(async () => {
+    if (!connectionDetailId) return;
+    setFetchError(null);
+    if (dirty) {
+      try {
+        await handleSave();
+      } catch {
+        return;
+      }
+    }
+    fetchModels.mutate(connectionDetailId, {
+      onSuccess: (data) => {
+        const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
+        setRemoteModels(result.models);
+        setRemoteLoras(result.loras ?? []);
+      },
+      onError: (err) => {
+        setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
+      },
+    });
+  }, [connectionDetailId, dirty, handleSave, fetchModels]);
+
   const selectModel = useCallback(
     (model: { id: string; context?: number; maxOutput?: number; isRemote?: boolean }) => {
       setLocalModel(model.id);
@@ -1136,8 +1177,6 @@ export function ConnectionEditor() {
     },
     [localBaseUrl, localProvider, localVideoGenerationSource, localVideoService],
   );
-
-  const markDirty = useCallback(() => setDirty(true), []);
 
   const handleManualModelChange = useCallback(
     (model: string) => {
@@ -1696,10 +1735,14 @@ export function ConnectionEditor() {
             {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
             <div ref={modelDropdownRef} className={cn("relative", showModelDropdown && "z-50")}>
               <div
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                onClick={() => {
+                  if (arliModelDisabled) return;
+                  setShowModelDropdown(!showModelDropdown);
+                }}
                 className={cn(
                   "relative flex cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
                   showModelDropdown && "z-50 ring-sky-400/50",
+                  arliModelDisabled && "cursor-not-allowed opacity-60",
                 )}
               >
                 <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
@@ -1856,8 +1899,15 @@ export function ConnectionEditor() {
               )}
             </div>
 
+            {arliModelDisabled && (
+              <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/90">
+                <AlertCircle size="0.625rem" className="mt-px shrink-0" />
+                <span>{localizeUi("ui.connections.connectioneditor.arliMultiModelActiveHint")}</span>
+              </p>
+            )}
+
             {/* Manual model ID input below dropdown */}
-            {localProvider !== "custom" && (
+            {localProvider !== "custom" && !arliModelDisabled && (
               <div className="mt-2 flex items-center gap-2">
                 <input
                   value={localModel}
@@ -1884,6 +1934,25 @@ export function ConnectionEditor() {
               </div>
             )}
           </FieldGroup>
+
+          {/* ── Arli AI Multi-models selection ── */}
+          {localProvider === "arli" && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.arliMultiModelSelection")}
+              icon={<Layers size="0.875rem" className="text-sky-400" />}
+              help={localizeUi("ui.connections.connectioneditor.arliMultiModelHelp")}
+            >
+              <ArliMultiModelPicker
+                models={allModels}
+                selected={arliMultiModels}
+                onChange={handleArliMultiModelsChange}
+                fetching={fetchModels.isPending}
+                onFetch={handleArliFetchModels}
+                fetchError={fetchError}
+                customDefaultsEnabled={localDefaultParametersEnabled}
+              />
+            </FieldGroup>
+          )}
 
           {/* ── RunPod Endpoint ID ── */}
           {localProvider === "image_generation" && selectedImageService === "runpod_comfyui" && (
@@ -3837,4 +3906,201 @@ function parseDefaultParametersRoot(raw: unknown): Record<string, unknown> {
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? { ...(parsed as Record<string, unknown>) }
     : {};
+}
+
+// ──────────────────────────────────────────────
+// Arli AI Multi-models selection (multi_models)
+// A multi-select list of models is stored as the connection's `customParameters.multi_models`, 
+// which Marinara merges into every chat request body. Arli AI then randomly routes
+// each request to one of the selected models.
+// ──────────────────────────────────────────────
+
+function getArliMultiModels(params: EditableGenerationParameters | null | undefined): string[] {
+  const raw = params?.customParameters?.["multi_models"];
+  return Array.isArray(raw)
+    ? raw.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+}
+
+function setArliMultiModels(
+  params: EditableGenerationParameters,
+  selected: string[],
+): EditableGenerationParameters {
+  const customParameters = { ...params.customParameters };
+  const nextIds = [...new Set(selected.map((id) => id.trim()).filter(Boolean))];
+  if (nextIds.length === 0) {
+    delete customParameters["multi_models"];
+  } else {
+    customParameters["multi_models"] = nextIds;
+  }
+  return { ...params, customParameters };
+}
+
+function ArliMultiModelPicker({
+  models,
+  selected,
+  onChange,
+  fetching,
+  onFetch,
+  fetchError,
+  customDefaultsEnabled,
+}: {
+  models: Array<{ id: string; name: string }>;
+  selected: string[];
+  onChange: (next: string[]) => void;
+  fetching: boolean;
+  onFetch: () => void;
+  fetchError: string | null;
+  customDefaultsEnabled: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const [query, setQuery] = useState("");
+  const [manualId, setManualId] = useState("");
+
+  const options = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ id: string; name: string }> = [];
+    for (const model of models) {
+      const id = model.id.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, name: model.name });
+    }
+    return out;
+  }, [models]);
+
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
+  }, [options, query]);
+
+  const toggle = useCallback(
+    (id: string) => {
+      const next = selectedSet.has(id) ? selected.filter((s) => s !== id) : [...selected, id];
+      onChange(next);
+    },
+    [onChange, selected, selectedSet],
+  );
+
+  const addManualId = useCallback(() => {
+    const id = manualId.trim();
+    setManualId("");
+    if (!id || selectedSet.has(id)) return;
+    onChange([...selected, id]);
+  }, [manualId, onChange, selected, selectedSet]);
+
+  return (
+    <div className="space-y-2">
+      {!customDefaultsEnabled && (
+        <p className="rounded-lg bg-sky-400/5 px-2.5 py-1.5 text-[0.625rem] text-sky-300 ring-1 ring-sky-400/20">
+          {localizeUi("ui.connections.connectioneditor.arliMultiModelCustomDefaultsNote")}
+        </p>
+      )}
+
+      {options.length === 0 ? (
+        <div className="flex flex-col gap-2 rounded-xl bg-[var(--secondary)]/40 p-3 ring-1 ring-[var(--border)]">
+          <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.connections.connectioneditor.arliMultiModelFetchFirst")}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onFetch}
+              disabled={fetching}
+              className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+            >
+              {fetching ? <Loader2 size="0.75rem" className="animate-spin" /> : <Globe size="0.75rem" />}
+              {fetching
+                ? localizeUi("ui.connections.connectioneditor.fetching")
+                : localizeUi("ui.connections.connectioneditor.arliMultiModelLoadModels")}
+            </button>
+            {fetchError && <p className="flex-1 text-[0.625rem] text-amber-400">{fetchError}</p>}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)] focus-within:ring-sky-400/50">
+            <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={localizeUi("ui.connections.connectioneditor.arliMultiModelSearchPlaceholder")}
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+            />
+          </div>
+
+          {selected.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selected.map((id) => {
+                const label = options.find((m) => m.id === id)?.name ?? id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggle(id)}
+                    title={label}
+                    className="inline-flex items-center gap-1 rounded-full bg-sky-400/10 px-2.5 py-1 text-[0.625rem] font-medium text-sky-300 ring-1 ring-sky-400/20 transition-all hover:bg-sky-400/20 active:scale-95"
+                  >
+                    <span className="max-w-40 truncate">{label}</span>
+                    <X size="0.625rem" className="shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)]/40">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-center text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.connections.connectioneditor.noModelsFoundTryADifferentSearchOrType")}
+              </p>
+            ) : (
+              filtered.map((m) => (
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors hover:bg-[var(--accent)]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(m.id)}
+                    onChange={() => toggle(m.id)}
+                    className="size-3.5 shrink-0 accent-sky-400"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{m.name}</span>
+                    <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addManualId();
+                }
+              }}
+              placeholder={localizeUi("ui.connections.connectioneditor.arliMultiModelAddManually")}
+              className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
+            />
+            <button
+              type="button"
+              onClick={addManualId}
+              className="rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-95"
+            >
+              {localizeUi("ui.connections.connectioneditor.arliMultiModelAdd")}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

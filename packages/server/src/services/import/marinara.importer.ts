@@ -367,6 +367,10 @@ async function importCharacter(data: unknown, db: DB) {
     charData.extensions && typeof charData.extensions === "object"
       ? ({ ...(charData.extensions as Record<string, unknown>) } as Record<string, unknown>)
       : {};
+  const useCharacterSheetAsReference = extensions.useCharacterSheetAsReference === true;
+  delete extensions.characterSheetImageId;
+  extensions.useCharacterSheetAsReference = false;
+  charData.extensions = extensions;
   const existingImportMetadata =
     extensions.importMetadata && typeof extensions.importMetadata === "object"
       ? ({ ...(extensions.importMetadata as Record<string, unknown>) } as Record<string, unknown>)
@@ -423,10 +427,15 @@ async function importCharacter(data: unknown, db: DB) {
     await restoreSprites(d.sprites, result.id);
     const characterSheetImageId = await restoreCharacterGallery(d.gallery, result.id, galleryStorage);
     if (characterSheetImageId) {
-      await storage.update(result.id, { extensions: { characterSheetImageId } } as Partial<CharacterData>, undefined, {
-        skipVersionSnapshot: true,
-        mergeExtensions: true,
-      });
+      await storage.update(
+        result.id,
+        { extensions: { characterSheetImageId, useCharacterSheetAsReference } } as Partial<CharacterData>,
+        undefined,
+        {
+          skipVersionSnapshot: true,
+          mergeExtensions: true,
+        },
+      );
     }
   }
   return {

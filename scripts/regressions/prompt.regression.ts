@@ -4008,6 +4008,18 @@ const cases: RegressionCase[] = [
       assert.deepEqual(disabledSheet, { base64: "avatar-bytes", source: "avatar" });
       assert.equal(sheetLoads, 1);
 
+      const missingSheetUsesAvatar = await readPreferredCharacterReferenceImage({
+        characterId: "character-maukie",
+        characterSheetImageId: "missing-sheet",
+        useCharacterSheetAsReference: true,
+        loaders: {
+          characterSheet: async () => undefined,
+          avatar: () => "avatar-bytes",
+          sprite: () => "sprite-bytes",
+        },
+      });
+      assert.deepEqual(missingSheetUsesAvatar, { base64: "avatar-bytes", source: "avatar" });
+
       const missingSheet = await readPreferredCharacterReferenceImage({
         characterId: "character-maukie",
         characterSheetImageId: "missing-sheet",

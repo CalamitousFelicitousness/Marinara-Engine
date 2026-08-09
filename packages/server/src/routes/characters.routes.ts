@@ -1706,7 +1706,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
     const charData = JSON.parse(char.data);
-    const v2Envelope = { spec: "chara_card_v2", spec_version: "2.0", data: charData };
+    const v2Envelope = buildCompatibleCharacterExport(charData);
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback

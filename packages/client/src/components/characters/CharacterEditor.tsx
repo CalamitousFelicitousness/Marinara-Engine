@@ -2537,6 +2537,7 @@ function CharacterSheetTab({
 
         <div className="space-y-4">
           <ImageUploadDropzone
+            multiple={false}
             label={
               selectedImage
                 ? localizeUi("ui.characters.charactersheet.replace")

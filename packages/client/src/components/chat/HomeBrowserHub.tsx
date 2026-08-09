@@ -443,7 +443,7 @@ function normalizeHomeWidgetSlots(
     slots.push(item as HomeWidgetId);
   }
 
-  for (const id of [...fallbackOrder, ...DEFAULT_HOME_WIDGET_ORDER] as HomeWidgetId[]) {
+  for (const id of [...fallbackOrder, ...DEFAULT_HOME_WIDGET_ORDER, ...visibleWidgets] as HomeWidgetId[]) {
     if (!visible.has(id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);

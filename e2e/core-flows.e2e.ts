@@ -7648,6 +7648,43 @@ test("Home feed prioritizes read-only visits and exposes current Game presentati
   }
 });
 
+test("new Professor Mari Home widgets receive a movable layout slot immediately", async ({ page }) => {
+  const widget = {
+    id: `mari-widget-${Date.now()}`,
+    title: "Mari's Field Formula",
+    description: "A safe custom note created for the Home layout regression.",
+    accent: "cyan",
+    icon: "sparkles",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await page.addInitScript(() => {
+    localStorage.removeItem("marinara:home:custom-widget-known:v1");
+    localStorage.removeItem("marinara:home:widget-layout:v2");
+    localStorage.removeItem("marinara:home:widget-visibility:v2");
+  });
+  const saveResponse = await page.request.put("/api/app-settings/home_custom_widgets", {
+    data: { widgets: [widget] },
+  });
+  expect(saveResponse.ok()).toBeTruthy();
+
+  try {
+    await page.goto("/");
+    const customWidget = page.locator(`[data-home-widget-id="custom:${widget.id}"]`);
+    await expect(customWidget).toBeVisible({ timeout: 30_000 });
+    const initialOrder = Number(await customWidget.evaluate((element) => getComputedStyle(element).order));
+    expect(initialOrder).toBeGreaterThan(0);
+
+    const handle = customWidget.locator("[data-home-drag-handle]");
+    await handle.press("ArrowUp");
+    await expect
+      .poll(() => customWidget.evaluate((element) => Number(getComputedStyle(element).order)))
+      .toBe(initialOrder - 1);
+  } finally {
+    await page.request.put("/api/app-settings/home_custom_widgets", { data: { widgets: [] } });
+  }
+});
+
 test("Professor Mari visibly arrives on Home and navigates without AI", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });

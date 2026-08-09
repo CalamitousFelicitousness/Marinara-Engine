@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, and an explicit generation-reference toggle that safely falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
+- Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, safe selection cleanup, and an explicit generation-reference toggle that falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
 - Added Arli AI as a built-in text provider for chat connections, using OpenAI-compatible chat completions with models loaded from the Arli AI `/models` endpoint.
 - Added a custom 1–40 place target to the New Game wizard's AI world-map draft options (#4783).
 - Added a compact context-budget indicator to Professor Mari Workspace when message token usage is enabled (#4752).

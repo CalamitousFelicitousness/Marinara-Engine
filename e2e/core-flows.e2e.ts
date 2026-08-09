@@ -2884,6 +2884,19 @@ test("Character and persona sheets persist an explicit reference choice and fall
     expect(duplicatePersona.characterSheetImageId).toBeNull();
     expect(duplicatePersona.useCharacterSheetAsReference).toBe(false);
 
+    const personaClearResponse = await request.patch(`/api/characters/personas/${persona.id}`, {
+      data: { characterSheetImageId: null },
+    });
+    expect(personaClearResponse.ok()).toBeTruthy();
+    await expect(personaClearResponse.json()).resolves.toMatchObject({
+      characterSheetImageId: null,
+      useCharacterSheetAsReference: false,
+    });
+    const personaRestoreResponse = await request.patch(`/api/characters/personas/${persona.id}`, {
+      data: { characterSheetImageId: personaSheet.id, useCharacterSheetAsReference: true },
+    });
+    expect(personaRestoreResponse.ok()).toBeTruthy();
+
     const deleteResponse = await request.delete(`/api/characters/${character.id}/gallery/${sheet.id}`);
     expect(deleteResponse.ok()).toBeTruthy();
     const afterDeleteResponse = await request.get(`/api/characters/${character.id}`);

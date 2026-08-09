@@ -1516,23 +1516,21 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     await characterGallery.remove(imageId);
-    const character = await storage.getById(id);
-    if (character) {
+    await enqueueUpdate(characterUpdateQueues, id, async () => {
+      const character = await storage.getById(id);
+      if (!character) return null;
       const characterData = parseCharacterDataRecord(character.data);
       const extensions = parseCharacterDataRecord(characterData.extensions);
-      if (extensions.characterSheetImageId === imageId) {
-        await enqueueUpdate(characterUpdateQueues, id, () =>
-          storage.update(
-            id,
-            {
-              extensions: { characterSheetImageId: null, useCharacterSheetAsReference: false },
-            } as Partial<CharacterData>,
-            undefined,
-            { skipVersionSnapshot: true, mergeExtensions: true },
-          ),
-        );
-      }
-    }
+      if (extensions.characterSheetImageId !== imageId) return character;
+      return storage.update(
+        id,
+        {
+          extensions: { characterSheetImageId: null, useCharacterSheetAsReference: false },
+        } as Partial<CharacterData>,
+        undefined,
+        { skipVersionSnapshot: true, mergeExtensions: true },
+      );
+    });
     await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     return { success: true };
   });
@@ -2013,12 +2011,10 @@ export async function charactersRoutes(app: FastifyInstance) {
       if (imageId !== null && typeof imageId !== "string") {
         return reply.status(400).send({ error: "characterSheetImageId must be a string or null" });
       }
-      if (typeof imageId === "string") {
-        const image = await personaGallery.getById(imageId);
-        if (!image || image.personaId !== req.params.id) {
-          body.characterSheetImageId = null;
-          body.useCharacterSheetAsReference = "false";
-        }
+      const image = typeof imageId === "string" ? await personaGallery.getById(imageId) : null;
+      if (!image || image.personaId !== req.params.id) {
+        body.characterSheetImageId = null;
+        body.useCharacterSheetAsReference = "false";
       }
     }
     if (Object.hasOwn(body, "useCharacterSheetAsReference")) {
@@ -2637,16 +2633,15 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     await personaGallery.remove(imageId);
-    const persona = await storage.getPersona(id);
-    if (persona?.characterSheetImageId === imageId) {
-      await enqueueUpdate(personaUpdateQueues, id, () =>
-        storage.updatePersona(
-          id,
-          { characterSheetImageId: null, useCharacterSheetAsReference: "false" },
-          { skipVersionSnapshot: true },
-        ),
+    await enqueueUpdate(personaUpdateQueues, id, async () => {
+      const persona = await storage.getPersona(id);
+      if (!persona || persona.characterSheetImageId !== imageId) return persona;
+      return storage.updatePersona(
+        id,
+        { characterSheetImageId: null, useCharacterSheetAsReference: "false" },
+        { skipVersionSnapshot: true },
       );
-    }
+    });
     await unlinkGalleryFileIfUnreferenced({ db: app.db, filePath: image.filePath });
     return { success: true };
   });

@@ -3486,6 +3486,7 @@ export function HomeProfessorMariChat({
             chatId: chat.id,
             message: text,
             connectionId: effectiveConnectionId,
+            debugMode: useUIStore.getState().debugMode,
             attachments,
             existingUserMessageId,
           },

@@ -45,6 +45,8 @@ assert.match(workspaceSource, /Use the dependency tool/u);
 assert.match(workspaceSource, /name: "copy"/u);
 assert.match(workspaceSource, /name: "move"/u);
 assert.match(workspaceSource, /name: "remove"/u);
+assert.match(workspaceSource, /write\|copy\|move\|remove\|bash/u);
+assert.match(workspaceSource, /Final prompt messages/u);
 assert.match(sandboxSource, /copy, move, remove/u);
 assert.doesNotMatch(workspaceSource, /spawn\(shell,\s*shellArgs/u);
 

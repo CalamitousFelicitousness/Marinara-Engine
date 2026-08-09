@@ -28,11 +28,17 @@ import {
 } from "../generation/prompt-attachments.js";
 import { resolveBaseUrl } from "../generation/connection-base-url.js";
 import { MARI_GUIDED_SEQUENCES } from "./guided-sequences.js";
-import { getFileStorageDir, getMonorepoRoot, getPort, getServerProtocol } from "../../config/runtime-config.js";
+import {
+  getFileStorageDir,
+  getMonorepoRoot,
+  getPort,
+  getServerProtocol,
+  isDebugAgentsEnabled,
+} from "../../config/runtime-config.js";
 import { apiConnections } from "../../db/schema/index.js";
 import { decryptApiKey } from "../../utils/crypto.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
-import { logger } from "../../lib/logger.js";
+import { logger, logDebugOverride } from "../../lib/logger.js";
 import { tryParseJsonRecord } from "../../lib/json-repair.js";
 import { PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE } from "./official-agent-knowledge.js";
 import {
@@ -568,7 +574,7 @@ Required schema:
 {
   "say": "visible text for the user, or empty string for silent work",
   "commands": [
-    { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|bash|dependency|app_data", "arguments": {} }
+    { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|copy|move|remove|bash|dependency|app_data", "arguments": {} }
   ],
   "suggestions": [
     { "label": "short button text", "prompt": "exact message to send if tapped", "entity": "characters|lorebooks|personas|presets|connections|agents|settings|chat", "tone": "danger|caution|success" }
@@ -1796,6 +1802,7 @@ export class ProfessorMariWorkspaceService {
     chatId: string;
     text: string;
     connectionId?: string | null;
+    debugMode?: boolean;
     attachments?: ProfessorMariPromptAttachment[];
     existingUserMessageId?: string;
     onEvent: PromptEventSink;
@@ -1895,10 +1902,14 @@ export class ProfessorMariWorkspaceService {
       const repeatedFailureCounts = new Map<string, number>();
       let protocolRepairRounds = 0;
       let verificationRepairRounds = 0;
+      const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
+      const debugLog = debugOverrideEnabled
+        ? (message: string, ...values: unknown[]) => logDebugOverride(true, message, ...values)
+        : undefined;
 
       for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
         if (controller.signal.aborted) throw new Error("aborted");
-        const result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {});
+        const result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
         latestUsage = result.usage;
         latestFinishReason = result.finishReason ?? null;
         const usage = mapUsage(result.usage);
@@ -2063,7 +2074,7 @@ export class ProfessorMariWorkspaceService {
             content:
               "You reached the workspace command round limit. Do not issue more commands. Summarize what you learned or what remains blocked.",
           });
-          const finalResult = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {});
+          const finalResult = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
           latestUsage = finalResult.usage;
           latestFinishReason = finalResult.finishReason ?? null;
           const finalUsage = mapUsage(finalResult.usage);
@@ -2250,6 +2261,7 @@ ${sections.join("\n\n")}
     messages: ChatMessage[],
     baseOptions: ChatOptions,
     onToken?: (chunk: string) => void,
+    debugLog?: (message: string, ...values: unknown[]) => void,
   ): Promise<ChatCompletionResult> {
     const options: ChatOptions = onToken
       ? {
@@ -2268,6 +2280,7 @@ ${sections.join("\n\n")}
       options.enabledParameters?.verbosity === false ? "disabled" : (options.verbosity ?? "default"),
       Object.keys(options.customParameters ?? {}).join(",") || "none",
     );
+    debugLog?.("[debug/professor-mari] Final prompt messages:\n%s", JSON.stringify(messages, null, 2));
     return provider.chatComplete(messages, options);
   }
 

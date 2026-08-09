@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added a custom 1–40 place target to the New Game wizard's AI world-map draft options (#4783).
 - Added a compact context-budget indicator to Professor Mari Workspace when message token usage is enabled (#4752).
 - Added per-chat image style overrides for custom image agents, alongside their existing connection overrides (#4718).
 - Added attributed `marinara.fetch` traffic totals and sustained-rate warnings for full-page extensions (#4720).

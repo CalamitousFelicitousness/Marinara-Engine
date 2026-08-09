@@ -3605,6 +3605,14 @@ export function HomeProfessorMariChat({
           });
         }
 
+      } catch (error) {
+        console.error("[Professor Mari] Failed to prepare attachment", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotAttachThatFile"), {
+          description:
+            error instanceof Error ? error.message : localizeUi("ui.chat.homeprofessormarichat.theFileCouldNotBeRead"),
+          duration: PROFESSOR_MARI_ERROR_TOAST_DURATION_MS,
+        });
+      } finally {
         if (prepared.length > 0) {
           setAttachments((current) => [...current, ...prepared]);
         }
@@ -3617,14 +3625,6 @@ export function HomeProfessorMariChat({
             }),
           );
         }
-      } catch (error) {
-        console.error("[Professor Mari] Failed to prepare attachment", error);
-        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotAttachThatFile"), {
-          description:
-            error instanceof Error ? error.message : localizeUi("ui.chat.homeprofessormarichat.theFileCouldNotBeRead"),
-          duration: PROFESSOR_MARI_ERROR_TOAST_DURATION_MS,
-        });
-      } finally {
         setIsReadingAttachments(false);
       }
     },
@@ -3889,9 +3889,12 @@ export function HomeProfessorMariChat({
         );
         if (!received) throw new Error("Professor Mari did not return a regenerated response");
         void refreshAfterWorkspaceRun(chatId, runId);
-      } catch {
+      } catch (error) {
+        console.error("[Professor Mari] Failed to regenerate response", error);
         void loadMessages(chatId).catch(() => undefined);
-        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRegenerateThatResponse"));
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRegenerateThatResponse"), {
+          description: describeProfessorMariError(error),
+        });
       } finally {
         regenerationInFlightRef.current = false;
         setSending(false);
@@ -3926,9 +3929,12 @@ export function HomeProfessorMariChat({
           }),
         );
         await api.patch(`/chats/${chatId}/messages/${messageId}/extra`, { attachments: updated });
-      } catch {
+      } catch (error) {
+        console.error("[Professor Mari] Failed to remove attachment", error);
         await loadMessages(chatId).catch(() => undefined);
-        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRemoveThatAttachment"));
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRemoveThatAttachment"), {
+          description: describeProfessorMariError(error),
+        });
       } finally {
         attachmentRemovalInFlightRef.current.delete(messageId);
       }

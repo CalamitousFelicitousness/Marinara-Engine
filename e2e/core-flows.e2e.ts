@@ -514,14 +514,18 @@ test("default dialogue color fills only cards without their own dialogue color",
     await chatTextColorControl.getByRole("button", { name: "Gradient", exact: true }).click();
     const firstGradientStop = chatTextColorControl.locator('input:not([type])').first();
     await firstGradientStop.fill("red 20%");
+    await firstGradientStop.fill("blue 35%");
     const positionedStopSliders = chatTextColorControl
       .locator('div[aria-label="Edit color stop 1"]')
       .locator('input[type="range"]');
-    await expect(positionedStopSliders.nth(0)).toHaveValue("0");
+    await expect(positionedStopSliders.nth(0)).toHaveValue("240");
     await expect(positionedStopSliders.nth(1)).toHaveValue("100");
     await expect(positionedStopSliders.nth(2)).toHaveValue("50");
+    await positionedStopSliders.nth(2).fill("0");
+    await positionedStopSliders.nth(2).fill("50");
+    await expect(firstGradientStop).toHaveValue("#0000ff 35%");
     await positionedStopSliders.nth(0).fill("120");
-    await expect(firstGradientStop).toHaveValue("#00ff00 20%");
+    await expect(firstGradientStop).toHaveValue("#00ff00 35%");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
     await Promise.all([

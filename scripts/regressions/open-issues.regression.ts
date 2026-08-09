@@ -548,6 +548,32 @@ assert.throws(() =>
     ],
   }),
 );
+assert.throws(
+  () =>
+    homeCustomWidgetCatalogSchema.parse({
+      widgets: [
+        {
+          id: "duplicate-widget",
+          title: "One",
+          description: "First widget",
+          accent: "cyan",
+          icon: "note",
+          createdAt: "2026-08-09T00:00:00.000Z",
+          updatedAt: "2026-08-09T00:00:00.000Z",
+        },
+        {
+          id: "duplicate-widget",
+          title: "Two",
+          description: "Second widget",
+          accent: "pink",
+          icon: "heart",
+          createdAt: "2026-08-09T00:00:00.000Z",
+          updatedAt: "2026-08-09T00:00:00.000Z",
+        },
+      ],
+    }),
+  /Widget IDs must be unique/u,
+);
 assert.deepEqual(HOME_CHAT_MODE_ACCENTS, {
   conversation: "oklch(0.79 0.16 205)",
   roleplay: "oklch(0.76 0.19 52)",

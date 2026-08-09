@@ -90,6 +90,10 @@ function splitTopLevelCommas(value: string): string[] {
   return parts.filter(Boolean);
 }
 
+function isEditableLinearGradient(value: string): boolean {
+  return /^linear-gradient\(/i.test(value.trim());
+}
+
 /** Parse gradient into stops: "linear-gradient(90deg, #ff6b6b, #ffd93d)" → ["#ff6b6b","#ffd93d"] */
 function parseGradientStops(value: string): string[] {
   const match = value.match(/^linear-gradient\((.*)\)$/i);
@@ -258,11 +262,30 @@ function MarinaraColorSliders({
   label: string;
 }) {
   const { t } = useUiTranslation();
-  const channels = hexToHsl(value);
+  const derivedChannels = hexToHsl(value);
+  const [draftChannels, setDraftChannels] = useState<[number, number, number] | null>(null);
+  const previousValueRef = useRef(value);
+  const channels = draftChannels ?? derivedChannels;
+  useEffect(() => {
+    const previousValue = previousValueRef.current;
+    previousValueRef.current = value;
+    if (
+      draftChannels &&
+      value !== previousValue &&
+      hslToHex(...draftChannels).toLowerCase() !== value.toLowerCase()
+    ) {
+      setDraftChannels(null);
+    }
+  }, [draftChannels, value]);
   const update = (index: number, nextValue: number) => {
     const next = [...channels] as [number, number, number];
     next[index] = nextValue;
+    setDraftChannels(next);
     onChange(hslToHex(...next), true);
+  };
+  const commit = () => {
+    onCommit();
+    setDraftChannels(null);
   };
   const controls = [
     { key: "hue", label: t("ui.ui.colorpicker.hue"), max: 359, value: channels[0], unit: "°" },
@@ -289,9 +312,9 @@ function MarinaraColorSliders({
             max={control.max}
             value={control.value}
             onChange={(event) => update(index, Number(event.currentTarget.value))}
-            onPointerUp={onCommit}
-            onKeyUp={onCommit}
-            onBlur={onCommit}
+            onPointerUp={commit}
+            onKeyUp={commit}
+            onBlur={commit}
             className="h-1.5 w-full cursor-pointer accent-[var(--marinara-app-accent-solid)]"
           />
           <span className="text-right font-mono tabular-nums">
@@ -319,7 +342,7 @@ export function ColorPicker({
   disabled = false,
 }: ColorPickerProps) {
   const { t: localizeUi } = useUiTranslation();
-  const isGradient = isCssGradient(value);
+  const isGradient = isEditableLinearGradient(value);
   const [mode, setMode] = useState<"solid" | "gradient">(isGradient ? "gradient" : "solid");
   const [gradientStops, setGradientStops] = useState<string[]>(
     isGradient ? parseGradientStops(value) : ["#ff6b6b", "#ffd93d"],
@@ -333,7 +356,7 @@ export function ColorPicker({
 
   // Sync value → local state when value changes externally
   useEffect(() => {
-    if (isCssGradient(value)) {
+    if (isEditableLinearGradient(value)) {
       setMode("gradient");
       setGradientStops(parseGradientStops(value));
       const angleMatch = value.match(/linear-gradient\((\d+)deg/);
@@ -422,6 +445,15 @@ export function ColorPicker({
       });
       setGradientStops(updated);
       commitChange(buildGradient(gradientAngle, updated), defer);
+    },
+    [commitChange, gradientAngle, gradientStops],
+  );
+
+  const handleGradientStopTextChange = useCallback(
+    (index: number, stop: string) => {
+      const updated = gradientStops.map((existing, currentIndex) => (currentIndex === index ? stop : existing));
+      setGradientStops(updated);
+      commitChange(buildGradient(gradientAngle, updated));
     },
     [commitChange, gradientAngle, gradientStops],
   );
@@ -587,7 +619,7 @@ export function ColorPicker({
                   </span>
                   <input
                     aria-label={localizeUi("ui.ui.colorpicker.value1HexOrCssColor", { value1: label })}
-                    value={value && !isCssGradient(value) ? value : ""}
+                    value={value && !isEditableLinearGradient(value) ? value : ""}
                     onChange={(e) => handleSolidChange(e.target.value)}
                     placeholder={localizeUi("ui.ui.colorpicker.hexOrColorName")}
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 font-mono text-xs outline-none transition-colors focus:border-[var(--primary)]/50"
@@ -659,7 +691,8 @@ export function ColorPicker({
                       />
                       <input
                         value={stop}
-                        onChange={(e) => handleGradientStopChange(i, e.target.value)}
+                        aria-label={localizeUi("ui.ui.colorpicker.editColorStop", { index: i + 1 })}
+                        onChange={(e) => handleGradientStopTextChange(i, e.target.value)}
                         className="flex-1 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 font-mono text-[0.6875rem] outline-none focus:border-[var(--primary)]/40"
                       />
                       {gradientStops.length > 2 && (

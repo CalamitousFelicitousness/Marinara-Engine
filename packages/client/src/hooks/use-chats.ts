@@ -20,6 +20,7 @@ import { useUIStore } from "../stores/ui.store";
 import { clearBrowserRuntimeCaches } from "../lib/browser-runtime";
 import { shouldRefetchMessagesOnReconnect } from "../lib/message-page-cache";
 import { normalizeHydratedMessage } from "../lib/message-hydration";
+import { isMessageHidden } from "../lib/message-visibility";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import type {
@@ -953,18 +954,6 @@ export function useRollingSummaryBackfill() {
           for (const id of entry.messageIds) summarizedIds.add(id);
         }
       }
-
-      const isMessageHidden = (msg: { extra?: unknown }) => {
-        let extra = msg.extra;
-        if (typeof extra === "string") {
-          try {
-            extra = JSON.parse(extra);
-          } catch {
-            return false;
-          }
-        }
-        return !!extra && typeof extra === "object" && (extra as any).hiddenFromAI === true;
-      };
 
       const safeBatchSize = Math.max(1, Math.min(totalMessageCount, batchSize));
       const batches: Array<{ rangeStart: number; rangeEnd: number }> = [];

@@ -27,7 +27,20 @@ export const homeCustomWidgetCatalogSchema = z
     revision: z.number().int().nonnegative().default(0),
     widgets: z.array(homeCustomWidgetSchema).max(HOME_CUSTOM_WIDGET_LIMIT),
   })
-  .strict();
+  .strict()
+  .superRefine(({ widgets }, context) => {
+    const seen = new Set<string>();
+    widgets.forEach((widget, index) => {
+      if (seen.has(widget.id)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["widgets", index, "id"],
+          message: "Widget IDs must be unique",
+        });
+      }
+      seen.add(widget.id);
+    });
+  });
 
 export type HomeCustomWidget = z.infer<typeof homeCustomWidgetSchema>;
 export type HomeCustomWidgetDraft = z.infer<typeof homeCustomWidgetDraftSchema>;

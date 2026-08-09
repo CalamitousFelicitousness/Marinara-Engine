@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { eq } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
@@ -99,7 +99,6 @@ type ParsedMutationRequest = {
   activate?: boolean;
   cwd?: string;
   apply: boolean;
-  requiresApproval?: boolean;
   personalExtensionDraftMutation?: boolean;
   cascade: boolean;
   reason: string | null;
@@ -111,7 +110,6 @@ type PendingRecord = MariDbPendingApproval & {
   command: string;
   historyId: string | null;
   journalPath: string | null;
-  timer: NodeJS.Timeout;
 };
 
 function homeWidgetCatalogFromPlanRow(row: Row | null | undefined) {
@@ -164,8 +162,12 @@ type ProcessRunResult = {
 };
 
 const PREVIEW_LIMIT = 50;
-const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const HISTORY_LIMIT = 50;
+// #4813 (durable review): applied-review undo cards are persisted to disk so a Keep/Restore
+// survives a restart instead of vanishing after a timer. Keep at most this many; prune ones past
+// the retention window on load. The cap mirrors HISTORY_LIMIT.
+const PENDING_REVIEW_LIMIT = HISTORY_LIMIT;
+const PENDING_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const COMMAND_OUTPUT_LIMIT = 32_000;
 const CODE_READ_TIMEOUT_MS = 30_000;
 const CODE_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
@@ -1946,6 +1948,7 @@ type TransformContext = {
 
 export class MariDbService {
   private pending = new Map<string, PendingRecord>();
+  private pendingHydrated = false;
   private history: MariDbHistoryEntry[] = [];
   private writeQueue: Promise<unknown> = Promise.resolve();
   private characterFolderMutationQueue: Promise<void> = Promise.resolve();
@@ -2146,7 +2149,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2351,7 +2353,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2708,7 +2709,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -2809,7 +2809,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
             cwd: context.cwd,
@@ -3011,7 +3010,6 @@ export class MariDbService {
           installedAt: firstString(data, ["installedAt", "installed_at"]) ?? now(),
           activate,
           apply: appDataCreateApply(args),
-          requiresApproval: activate ? undefined : false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -3155,7 +3153,6 @@ export class MariDbService {
             id,
             row,
             apply: appDataCreateApply(args),
-            requiresApproval: false,
             personalExtensionDraftMutation: true,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? "Professor Mari created a Personal Extension draft",
@@ -3330,7 +3327,6 @@ export class MariDbService {
           table: "agent_configs",
           row: data,
           apply: appDataCreateApply(args),
-          requiresApproval: false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -3452,7 +3448,6 @@ export class MariDbService {
           table: "prompt_presets",
           row: data,
           apply: appDataCreateApply(args),
-          requiresApproval: false,
           cascade: false,
           reason: firstString(args, ["reason"]) ?? null,
           cwd: context.cwd,
@@ -3516,6 +3511,7 @@ export class MariDbService {
   }
 
   getPendingApprovals(): MariDbPendingApproval[] {
+    this.ensurePendingHydrated();
     return Array.from(this.pending.values()).map((record) => this.pendingView(record));
   }
 
@@ -3548,6 +3544,7 @@ export class MariDbService {
   async keepAppliedReviewAndWait(
     id: string,
   ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry | null; completed: boolean } | null> {
+    this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
@@ -3556,10 +3553,11 @@ export class MariDbService {
   }
 
   async keepAppliedReview(id: string): Promise<MariDbHistoryEntry | null> {
+    this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
-    clearTimeout(record.timer);
     this.pending.delete(id);
+    await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
       plan: record.plan,
       command: record.command,
@@ -3573,12 +3571,13 @@ export class MariDbService {
   async restoreAppliedReview(
     id: string,
   ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry } | null> {
+    this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
     await this.restorePlan(record.plan);
-    clearTimeout(record.timer);
     this.pending.delete(id);
+    await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
       plan: record.plan,
       command: record.command,
@@ -5173,38 +5172,10 @@ export class MariDbService {
       };
     }
 
-    if (request.requiresApproval === false) {
-      try {
-        const journalPath = await this.applyPlan(plan);
-        await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
-        return {
-          ok: true,
-          mode: "apply",
-          command,
-          summary: plan.summary,
-          validation: plan.validation,
-          approval: { status: "not_required", operationHash: plan.operationHash },
-          journalPath,
-        };
-      } catch (err) {
-        logger.error(err, "[mari-db] approval-free apply failed");
-        await this.recordHistory({ plan, command, sessionId, status: "failed", journalPath: null });
-        return {
-          ok: false,
-          mode: "apply",
-          command,
-          summary: plan.summary,
-          validation: plan.validation,
-          approval: { status: "not_required", operationHash: plan.operationHash },
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
-
     try {
       const journalPath = await this.applyPlan(plan);
       const history = await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
-      const review = this.createAppliedReview(plan, command, sessionId, journalPath, history.id);
+      const review = await this.createAppliedReview(plan, command, sessionId, journalPath, history.id);
       return {
         ok: true,
         mode: "apply",
@@ -5300,6 +5271,15 @@ export class MariDbService {
     const pk = getPrimary(meta);
     const parsed = { ...(request.row ?? {}) };
     if (parsed[pk] == null || parsed[pk] === "") parsed[pk] = allocateId();
+    // #4813: a create must insert a NEW row. If a row with this id already exists, refuse
+    // rather than overwrite it — an insert records beforeRaw:null, so a later Restore would
+    // delete the pre-existing row too (unrecoverable). Callers changing an existing row use update.
+    const insertPk = String(parsed[pk]);
+    if (await this.getRawById(meta, insertPk)) {
+      throw new Error(
+        `A ${meta.name} row with id "${insertPk}" already exists; a create cannot overwrite it. Use an update instead.`,
+      );
+    }
     this.fillTimestamps(meta, parsed, true, timestamp);
     const afterRaw = serializeRow(meta.name, parsed);
     const changes: PlanChange[] = [
@@ -5979,20 +5959,19 @@ export class MariDbService {
     return path;
   }
 
-  private createAppliedReview(
+  private async createAppliedReview(
     plan: Plan,
     command: string,
     sessionId: string,
     journalPath: string | null,
     historyId: string | null,
-  ): MariDbPendingApproval {
+  ): Promise<MariDbPendingApproval> {
+    this.ensurePendingHydrated();
     const id = newId();
     const requestedAt = now();
-    const expiresAt = new Date(Date.now() + APPROVAL_TIMEOUT_MS).toISOString();
-    const timer = setTimeout(() => {
-      this.pending.delete(id);
-    }, APPROVAL_TIMEOUT_MS);
-    timer.unref?.();
+    // #4813: the undo card is persisted (writePendingSidecar) and no longer self-evicts on a
+    // timer, so it survives a restart. expiresAt is the retention deadline used when pruning.
+    const expiresAt = new Date(Date.now() + PENDING_REVIEW_RETENTION_MS).toISOString();
     const record: PendingRecord = {
       kind: "applied_review",
       id,
@@ -6010,15 +5989,148 @@ export class MariDbService {
       plan,
       historyId,
       journalPath,
-      timer,
     };
     this.pending.set(id, record);
+    await this.writePendingSidecar(record);
+    await this.enforcePendingRetention();
     return this.pendingView(record);
   }
 
   private pendingView(record: PendingRecord): MariDbPendingApproval {
-    const { plan: _plan, historyId: _historyId, journalPath: _journalPath, timer: _timer, ...view } = record;
+    const { plan: _plan, historyId: _historyId, journalPath: _journalPath, ...view } = record;
     return view;
+  }
+
+  private pendingDir() {
+    return join(this.journalDir(), "pending");
+  }
+
+  private pendingSidecarPath(id: string) {
+    return join(this.pendingDir(), `${id}.json`);
+  }
+
+  private async writePendingSidecar(record: PendingRecord): Promise<void> {
+    const finalPath = this.pendingSidecarPath(record.id);
+    // Write to a temp file then atomically rename into place, so a crash mid-write can't leave a
+    // partial .json that hydration would discard (losing the undo while the change stays applied).
+    // The .tmp suffix keeps an interrupted write out of the .json hydration set.
+    const tempPath = `${finalPath}.${process.pid}.tmp`;
+    try {
+      await mkdir(this.pendingDir(), { recursive: true });
+      await writeFile(tempPath, JSON.stringify(record), "utf8");
+      renameSync(tempPath, finalPath);
+    } catch (err) {
+      this.safeRm(tempPath);
+      // The change is applied and held in memory even if the sidecar write fails; only the
+      // cross-restart durability is lost. Warn rather than fail the user's action.
+      logger.warn(err, "[mari-db] failed to persist pending review %s", record.id);
+    }
+  }
+
+  // rmSync({ force: true }) only swallows ENOENT; on Windows a locked or AV-held file still
+  // throws EPERM/EBUSY/EISDIR. Sidecar cleanup is always best-effort, so never let it propagate.
+  private safeRm(path: string): void {
+    try {
+      rmSync(path, { force: true });
+    } catch (err) {
+      logger.warn(err, "[mari-db] failed to remove pending review file %s", path);
+    }
+  }
+
+  private async deletePendingSidecar(id: string): Promise<void> {
+    const finalPath = this.pendingSidecarPath(id);
+    // Atomically retire the sidecar out of the .json hydration set FIRST. If the subsequent unlink
+    // fails (Windows lock / AV), the retired file is still never rehydrated, so a resolved or
+    // evicted review can't come back and be Restored again over newer data.
+    const retiredPath = `${finalPath}.done`;
+    try {
+      renameSync(finalPath, retiredPath);
+    } catch {
+      this.safeRm(finalPath);
+      return;
+    }
+    this.safeRm(retiredPath);
+  }
+
+  // Load persisted pending reviews on first access so a Keep/Restore card survives a restart.
+  // Prune anything past its retention deadline and keep only the newest PENDING_REVIEW_LIMIT.
+  // This runs synchronously on the getPendingApprovals hot path, so it must NEVER throw: one
+  // unreadable or undeletable file must not 500 the approvals endpoint or wipe the loaded set.
+  private ensurePendingHydrated(): void {
+    if (this.pendingHydrated) return;
+    this.pendingHydrated = true;
+    try {
+      const dir = this.pendingDir();
+      if (!existsSync(dir)) return;
+      const entries = readdirSync(dir);
+      const nowMs = Date.now();
+      const loaded: PendingRecord[] = [];
+      const stale: string[] = [];
+      // Sweep leftover temp/retired files from an interrupted write or delete; they are never
+      // rehydrated (only *.json is) but shouldn't accumulate.
+      for (const file of entries) {
+        if (file.endsWith(".tmp") || file.endsWith(".done")) this.safeRm(join(dir, file));
+      }
+      for (const file of entries) {
+        if (!file.endsWith(".json")) continue;
+        const path = join(dir, file);
+        try {
+          const record = JSON.parse(readFileSync(path, "utf8")) as PendingRecord;
+          const expiresMs = Date.parse(record?.expiresAt ?? "");
+          const requestedMs = Date.parse(record?.requestedAt ?? "");
+          // Reject anything that isn't a well-formed, filename-bound, unexpired review with a usable
+          // plan — prune its sidecar rather than hydrate a record that would break a later action or,
+          // via a forged id, escape journal/pending. record.id MUST match the file it lives in, and
+          // both timestamps must parse (an unparseable requestedAt would also poison the sort).
+          if (
+            !record?.id ||
+            record.id !== basename(file, ".json") ||
+            !Array.isArray(record?.plan?.changes) ||
+            !Number.isFinite(expiresMs) ||
+            !Number.isFinite(requestedMs) ||
+            expiresMs <= nowMs
+          ) {
+            stale.push(path);
+            continue;
+          }
+          if (!this.pending.has(record.id)) loaded.push(record);
+        } catch (err) {
+          logger.warn(err, "[mari-db] discarding unreadable pending review %s", file);
+          stale.push(path);
+        }
+      }
+      // Oldest first so the in-memory Map stays insertion-ordered oldest->newest; keep the newest
+      // PENDING_REVIEW_LIMIT. Populate the Map BEFORE pruning so a failed delete can't cost the
+      // reviews we just loaded.
+      loaded.sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
+      const dropCount = Math.max(0, loaded.length - PENDING_REVIEW_LIMIT);
+      loaded.slice(dropCount).forEach((record) => this.pending.set(record.id, record));
+      for (const path of stale) this.safeRm(path);
+      loaded.slice(0, dropCount).forEach((record) => this.safeRm(this.pendingSidecarPath(record.id)));
+      if (dropCount > 0) {
+        logger.info("[mari-db] dropped %d persisted pending review(s) over the %d cap on load", dropCount, PENDING_REVIEW_LIMIT);
+      }
+    } catch (err) {
+      logger.warn(err, "[mari-db] failed to hydrate persisted pending reviews");
+    }
+  }
+
+  // After adding a review, keep the in-memory set and its sidecars within the retention cap.
+  // The oldest reviews past the cap lose their undo (their change stays applied).
+  private async enforcePendingRetention(): Promise<void> {
+    if (this.pending.size <= PENDING_REVIEW_LIMIT) return;
+    // this.pending is insertion-ordered (oldest first after hydration + appends), so the leading
+    // entries are the oldest reviews; evicting them never touches the review that was just added.
+    const evictable = Array.from(this.pending.values()).slice(0, this.pending.size - PENDING_REVIEW_LIMIT);
+    for (const record of evictable) {
+      this.pending.delete(record.id);
+      await this.deletePendingSidecar(record.id);
+      logger.info(
+        "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
+        record.id,
+        PENDING_REVIEW_LIMIT,
+      );
+    }
   }
 
   private async recordHistory(args: {

@@ -1,0 +1,309 @@
+// #4813 (durable review): Professor Mari's Keep/Restore undo card used to live only in an
+// in-memory Map that was dropped after a 10-minute timer or on restart, so an applied change
+// could quietly become permanent. These regressions drive the REAL MariDbService against a
+// file-native store and assert that:
+//   - a create's pending review is persisted to a sidecar on disk,
+//   - a fresh service instance (a "restart") rehydrates it from disk,
+//   - Restore and Keep still work after the restart and clean up the sidecar,
+//   - a sidecar past its retention deadline is pruned on load,
+//   - the persisted set is capped so it cannot grow without bound.
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
+import { MariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
+
+// Mirrors PENDING_REVIEW_LIMIT in mari-db.service.ts (module-local constant).
+const PENDING_REVIEW_LIMIT = 50;
+
+function tempStorageDir() {
+  const dir = mkdtempSync(join(tmpdir(), "marinara-mari-review-"));
+  process.env.FILE_STORAGE_DIR = dir;
+  return dir;
+}
+
+const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
+
+const sidecarPath = (dir: string, id: string) => join(dir, "journal", "pending", `${id}.json`);
+
+try {
+  // ── A pending review persists to a sidecar, rehydrates after a restart, and Restore works ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const create = await mari.executeAction({
+        action: "character.create",
+        characterId: "durable-character",
+        data: { name: "Durable Character" },
+        apply: true,
+      });
+      assert.equal(create.approval?.status, "pending", "a create registers a pending review");
+      const reviewId = create.approval?.id;
+      assert.ok(reviewId, "the pending review has an id");
+      assert.ok(existsSync(sidecarPath(dir, reviewId)), "the pending review is persisted to a sidecar file");
+
+      // A fresh service instance starts with an empty in-memory Map: the "restart".
+      const restarted = new MariDbService(db);
+      const rehydrated = restarted.getPendingApprovals().find((approval) => approval.id === reviewId);
+      assert.ok(rehydrated, "a persisted pending review is rehydrated after a restart");
+      assert.equal(
+        (await restarted.executeAction({ action: "character.get", id: "durable-character" })).ok,
+        true,
+        "the applied row is still present before the undo",
+      );
+
+      await restarted.restoreAppliedReview(reviewId);
+      assert.equal(
+        (await restarted.executeAction({ action: "character.get", id: "durable-character" })).ok,
+        false,
+        "Restore after a restart still deletes the created row",
+      );
+      assert.ok(!existsSync(sidecarPath(dir, reviewId)), "resolving a review removes its sidecar");
+      assert.equal(
+        restarted.getPendingApprovals().some((approval) => approval.id === reviewId),
+        false,
+        "a resolved review leaves the pending list",
+      );
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── Keep after a restart persists the row and removes the sidecar ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const create = await mari.executeAction({
+        action: "character.create",
+        characterId: "kept-durable",
+        data: { name: "Kept Durable" },
+        apply: true,
+      });
+      const reviewId = create.approval?.id;
+      assert.ok(reviewId);
+
+      const restarted = new MariDbService(db);
+      assert.ok(
+        restarted.getPendingApprovals().find((approval) => approval.id === reviewId),
+        "the review rehydrates after a restart",
+      );
+      await restarted.keepAppliedReview(reviewId);
+      assert.equal(
+        (await restarted.executeAction({ action: "character.get", id: "kept-durable" })).ok,
+        true,
+        "Keep leaves the row in place",
+      );
+      assert.ok(!existsSync(sidecarPath(dir, reviewId)), "Keep removes the sidecar");
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── A sidecar past its retention deadline is pruned on load, never rehydrated ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const pendingDir = join(dir, "journal", "pending");
+      mkdirSync(pendingDir, { recursive: true });
+      const staleId = "stale-review";
+      const stalePath = join(pendingDir, `${staleId}.json`);
+      writeFileSync(
+        stalePath,
+        JSON.stringify({
+          kind: "applied_review",
+          id: staleId,
+          sessionId: "test",
+          command: "app_data character.create",
+          reason: null,
+          operationHash: "hash",
+          requestedAt: "2020-01-01T00:00:00.000Z",
+          expiresAt: "2020-01-15T00:00:00.000Z", // long past the retention window
+          affectedTables: { characters: 1 },
+          affectedRows: 1,
+          validationStatus: "passed",
+          diffPreview: [],
+          diffTruncated: false,
+          plan: { changes: [] },
+          historyId: null,
+          journalPath: null,
+        }),
+        "utf8",
+      );
+      const mari = new MariDbService(db);
+      assert.equal(
+        mari.getPendingApprovals().some((approval) => approval.id === staleId),
+        false,
+        "an expired persisted review is not rehydrated",
+      );
+      assert.ok(!existsSync(stalePath), "an expired sidecar is pruned on load");
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── The persisted set is capped: creating more than the limit evicts the oldest ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      let firstReviewId = "";
+      let lastReviewId = "";
+      for (let index = 0; index <= PENDING_REVIEW_LIMIT; index += 1) {
+        const created = await mari.executeAction({
+          action: "character.create",
+          characterId: `capped-character-${index}`,
+          data: { name: `Capped ${index}` },
+          apply: true,
+        });
+        if (index === 0) firstReviewId = created.approval?.id ?? "";
+        lastReviewId = created.approval?.id ?? "";
+      }
+      assert.equal(
+        mari.getPendingApprovals().length,
+        PENDING_REVIEW_LIMIT,
+        "the in-memory pending set never exceeds the retention cap",
+      );
+      // The cap must drop the OLDEST review (insertion order), never the one just created.
+      const cappedPending = mari.getPendingApprovals();
+      assert.equal(
+        cappedPending.some((approval) => approval.id === firstReviewId),
+        false,
+        "the oldest review is the one evicted past the cap",
+      );
+      assert.equal(
+        cappedPending.some((approval) => approval.id === lastReviewId),
+        true,
+        "the newest review is retained, never evicted by its own creation",
+      );
+      assert.equal(
+        readdirSync(join(dir, "journal", "pending")).filter((file) => file.endsWith(".json")).length,
+        PENDING_REVIEW_LIMIT,
+        "the persisted sidecars are capped in lockstep with the in-memory set",
+      );
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── An update's review rehydrates after a restart and Restore reverts to the pre-update row ──
+  // This exercises the `beforeRaw` JSON round-trip, which the insert-only cases above never touch.
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "character.create",
+        characterId: "revert-durable",
+        data: { name: "Original" },
+        apply: true,
+      });
+      await mari.keepAppliedReview(created.approval?.id ?? "");
+
+      const updated = await mari.executeAction({
+        action: "character.update",
+        characterId: "revert-durable",
+        data: { name: "Changed" },
+        apply: true,
+      });
+      const reviewId = updated.approval?.id;
+      assert.ok(reviewId, "an update registers a pending review");
+      const readName = async (service: MariDbService) =>
+        ((await service.executeAction({ action: "character.get", id: "revert-durable" })).output as {
+          data?: { name?: string };
+        })?.data?.name;
+      assert.equal(await readName(mari), "Changed", "the update is applied before the undo");
+
+      const restarted = new MariDbService(db);
+      assert.ok(
+        restarted.getPendingApprovals().find((approval) => approval.id === reviewId),
+        "the update's review rehydrates after a restart",
+      );
+      await restarted.restoreAppliedReview(reviewId);
+      assert.equal(
+        await readName(restarted),
+        "Original",
+        "Restoring an update after a restart reverts to the pre-update row (beforeRaw survived the JSON round-trip)",
+      );
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── A sidecar whose id doesn't match its filename, or whose timestamps don't parse, is rejected ──
+  // (id-vs-filename binding is a path-traversal guard; unparseable timestamps would poison the sort)
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const pendingDir = join(dir, "journal", "pending");
+      mkdirSync(pendingDir, { recursive: true });
+      const baseRecord = {
+        kind: "applied_review",
+        sessionId: "test",
+        command: "app_data character.create",
+        reason: null,
+        operationHash: "hash",
+        affectedTables: { characters: 1 },
+        affectedRows: 1,
+        validationStatus: "passed",
+        diffPreview: [],
+        diffTruncated: false,
+        plan: { changes: [] },
+        historyId: null,
+        journalPath: null,
+      };
+      // Forged id (path-traversal attempt): the file is innocent.json but the record claims ../../escape.
+      writeFileSync(
+        join(pendingDir, "innocent.json"),
+        JSON.stringify({
+          ...baseRecord,
+          id: "../../escape",
+          requestedAt: "2999-01-01T00:00:00.000Z",
+          expiresAt: "2999-01-02T00:00:00.000Z",
+        }),
+        "utf8",
+      );
+      // Unparseable timestamps.
+      writeFileSync(
+        join(pendingDir, "badtime.json"),
+        JSON.stringify({ ...baseRecord, id: "badtime", requestedAt: "not-a-date", expiresAt: "also-bad" }),
+        "utf8",
+      );
+      const mari = new MariDbService(db);
+      const pending = mari.getPendingApprovals();
+      assert.equal(
+        pending.some((approval) => approval.id === "../../escape"),
+        false,
+        "a sidecar whose id doesn't match its filename is rejected (path-traversal guard)",
+      );
+      assert.equal(
+        pending.some((approval) => approval.id === "badtime"),
+        false,
+        "a sidecar with unparseable timestamps is rejected",
+      );
+      assert.ok(!existsSync(join(pendingDir, "innocent.json")), "the mismatched sidecar is pruned");
+      assert.ok(!existsSync(join(pendingDir, "badtime.json")), "the bad-timestamp sidecar is pruned");
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+} finally {
+  if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
+  else process.env.FILE_STORAGE_DIR = previousFileStorageDir;
+}
+
+console.log("Mari review durability regressions passed.");

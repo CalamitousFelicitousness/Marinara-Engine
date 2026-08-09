@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { flushSync } from "react-dom";
 import {
   ArrowLeft,
@@ -314,6 +315,17 @@ const HOME_WIDGET_LABEL_KEYS: Record<BuiltInHomeWidgetId, string> = {
   community: "home.widgets.community",
   clock: "home.widgets.clock",
   achievements: "home.widgets.achievements",
+};
+const HOME_WIDGET_MANAGER_LABEL_KEYS: Record<BuiltInHomeWidgetId, { name: string; purpose: string }> = {
+  professor: { name: "home.professorMari.eyebrow", purpose: "home.widgets.professor" },
+  recent: { name: "home.recentChats.eyebrow", purpose: "home.recentChats.title" },
+  "whats-new": { name: "home.whatsNew.eyebrow", purpose: "home.widgets.whatsNew" },
+  discovery: { name: "home.discovery.eyebrow", purpose: "home.discovery.title" },
+  character: { name: "home.characterOfDay.eyebrow", purpose: "home.characterOfDay.title" },
+  learn: { name: "home.learn.eyebrow", purpose: "home.learn.title" },
+  community: { name: "home.community.eyebrow", purpose: "home.community.title" },
+  clock: { name: "home.clock.eyebrow", purpose: "home.clock.title" },
+  achievements: { name: "home.achievements.eyebrow", purpose: "home.achievements.title" },
 };
 const HOME_WIDGET_MIN_ROW_HEIGHT = 208;
 const HOME_WIDGET_MAX_ROW_HEIGHT = 640;
@@ -1525,9 +1537,7 @@ export function HomeBrowserHub({
   const deleteCustomWidgetMutation = useMutation({
     mutationFn: async (widgetId: string) => {
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const catalog = await api.get<HomeCustomWidgetCatalog>(
-          `/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`,
-        );
+        const catalog = await api.get<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`);
         if (!catalog.widgets.some((widget) => widget.id === widgetId)) return catalog;
         try {
           return await api.put<HomeCustomWidgetCatalog>(`/app-settings/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, {
@@ -1993,6 +2003,20 @@ export function HomeBrowserHub({
     const customWidget = customWidgetsById.get(id);
     return customWidget?.title ?? t(HOME_WIDGET_LABEL_KEYS[id as BuiltInHomeWidgetId]);
   };
+  const widgetManagerLabel = (id: HomeWidgetId) => {
+    const customWidget = customWidgetsById.get(id);
+    if (customWidget) {
+      return t("home.widgets.managerLabel", {
+        name: t("home.widgets.customEyebrow"),
+        purpose: customWidget.title,
+      });
+    }
+    const labelKeys = HOME_WIDGET_MANAGER_LABEL_KEYS[id as BuiltInHomeWidgetId];
+    return t("home.widgets.managerLabel", {
+      name: t(labelKeys.name),
+      purpose: t(labelKeys.purpose),
+    });
+  };
   const widgetFrameProps = (id: HomeWidgetId) => ({
     id,
     order: activeWidgetSlots.indexOf(id),
@@ -2207,7 +2231,7 @@ export function HomeBrowserHub({
                         id={activityDescriptionId}
                         aria-label={t("home.browser.newTimelineRefresh")}
                         data-component="HomeBrowserHub.NoodleRefreshBadge"
-                        className="absolute right-0.5 top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FF7EC1] px-1 text-[0.58rem] font-black leading-none text-[#1a1025] ring-1 ring-[#7EA7FF] sm:-right-1 sm:-top-1"
+                        className="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FF7EC1] px-1 text-[0.58rem] font-black leading-none text-[#1a1025] ring-1 ring-[#7EA7FF]"
                       >
                         <span aria-hidden="true">1</span>
                       </span>
@@ -2370,99 +2394,106 @@ export function HomeBrowserHub({
               {t("home.browser.bookmarks")}
             </button>
 
-            {mobileBookmarksOpen ? (
-              <div
-                id="marinara-mobile-bookmarks"
-                className="absolute left-2 right-2 top-[calc(100%+0.35rem)] grid max-h-[calc(100dvh-8rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_96%,var(--background))] p-1.5 shadow-[0_22px_60px_-24px_rgba(0,0,0,0.72)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_7%,transparent)] sm:hidden"
-                data-component="HomeBrowserHub.MobileBookmarksMenu"
-              >
-                <MobileBrowserBookmark
-                  href="https://discord.com/invite/KdAkTg94ME"
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    trackHomeAction("discord_clicked");
-                  }}
-                  icon={<img src="/home/tab-icons/discord.svg" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#5865F2"
+            <AnimatePresence initial={false}>
+              {mobileBookmarksOpen ? (
+                <motion.div
+                  id="marinara-mobile-bookmarks"
+                  initial={reduceMotion ? false : { opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute left-2 right-2 top-[calc(100%+0.35rem)] grid max-h-[calc(100dvh-8rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_96%,var(--background))] p-1.5 shadow-[0_22px_60px_-24px_rgba(0,0,0,0.72)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_7%,transparent)] sm:hidden"
+                  data-component="HomeBrowserHub.MobileBookmarksMenu"
+                  data-bookmarks-motion="slide"
                 >
-                  {t("home.browser.bookmarks.discord")}
-                </MobileBrowserBookmark>
-                <MobileBrowserBookmark
-                  href="https://ko-fi.com/marinara_spaghetti"
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    trackHomeAction("kofi_clicked");
-                  }}
-                  icon={<img src="/home/tab-icons/kofi.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone="#ff6433"
-                >
-                  {t("home.actions.support")}
-                </MobileBrowserBookmark>
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    trackHomeAction("credits_viewed");
-                    onOpenCredits();
-                  }}
-                  icon={<img src="/home/tab-icons/credits.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone={HOME_MODULE_ACCENTS.orange}
-                >
-                  {t("home.actions.credits")}
-                </MobileBrowserBookmark>
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    useUIStore.getState().openModal("docs-viewer");
-                  }}
-                  icon={<img src="/home/tab-icons/documentation.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone={HOME_MODULE_ACCENTS.cyan}
-                >
-                  {t("home.actions.documentation")}
-                </MobileBrowserBookmark>
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    useUIStore.getState().setHasCompletedOnboarding(false);
-                  }}
-                  icon={<img src="/home/tab-icons/tutorial.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone={HOME_MODULE_ACCENTS.orange}
-                >
-                  {t("home.browser.bookmarks.tutorial")}
-                </MobileBrowserBookmark>
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    setFaqOpen(true);
-                  }}
-                  icon={<img src="/home/tab-icons/faq.png" alt="" className="h-4 w-4 object-contain" />}
-                  tone={HOME_MODULE_ACCENTS.pink}
-                >
-                  {t("home.browser.faqTab")}
-                </MobileBrowserBookmark>
-                {achievementsEnabled ? (
+                  <MobileBrowserBookmark
+                    href="https://discord.com/invite/KdAkTg94ME"
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      trackHomeAction("discord_clicked");
+                    }}
+                    icon={<img src="/home/tab-icons/discord.svg" alt="" className="h-4 w-4 object-contain" />}
+                    tone="#5865F2"
+                  >
+                    {t("home.browser.bookmarks.discord")}
+                  </MobileBrowserBookmark>
+                  <MobileBrowserBookmark
+                    href="https://ko-fi.com/marinara_spaghetti"
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      trackHomeAction("kofi_clicked");
+                    }}
+                    icon={<img src="/home/tab-icons/kofi.png" alt="" className="h-4 w-4 object-contain" />}
+                    tone="#ff6433"
+                  >
+                    {t("home.actions.support")}
+                  </MobileBrowserBookmark>
                   <MobileBrowserBookmark
                     onClick={() => {
                       setMobileBookmarksOpen(false);
-                      setAchievementsOpen(true);
+                      trackHomeAction("credits_viewed");
+                      onOpenCredits();
                     }}
-                    icon={<img src="/home/tab-icons/achievements.png" alt="" className="h-4 w-4 object-contain" />}
+                    icon={<img src="/home/tab-icons/credits.png" alt="" className="h-4 w-4 object-contain" />}
                     tone={HOME_MODULE_ACCENTS.orange}
                   >
-                    {t("home.browser.achievements")}
+                    {t("home.actions.credits")}
                   </MobileBrowserBookmark>
-                ) : null}
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setMobileBookmarksOpen(false);
-                    setWidgetManagerOpen(true);
-                  }}
-                  icon={<img src="/home/tab-icons/widgets.svg" alt="" className="h-4 w-4 object-contain" />}
-                  tone={HOME_MODULE_ACCENTS.violet}
-                >
-                  {t("home.browser.widgets")}
-                </MobileBrowserBookmark>
-              </div>
-            ) : null}
+                  <MobileBrowserBookmark
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      useUIStore.getState().openModal("docs-viewer");
+                    }}
+                    icon={<img src="/home/tab-icons/documentation.png" alt="" className="h-4 w-4 object-contain" />}
+                    tone={HOME_MODULE_ACCENTS.cyan}
+                  >
+                    {t("home.actions.documentation")}
+                  </MobileBrowserBookmark>
+                  <MobileBrowserBookmark
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      useUIStore.getState().setHasCompletedOnboarding(false);
+                    }}
+                    icon={<img src="/home/tab-icons/tutorial.png" alt="" className="h-4 w-4 object-contain" />}
+                    tone={HOME_MODULE_ACCENTS.orange}
+                  >
+                    {t("home.browser.bookmarks.tutorial")}
+                  </MobileBrowserBookmark>
+                  <MobileBrowserBookmark
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      setFaqOpen(true);
+                    }}
+                    icon={<img src="/home/tab-icons/faq.png" alt="" className="h-4 w-4 object-contain" />}
+                    tone={HOME_MODULE_ACCENTS.pink}
+                  >
+                    {t("home.browser.faqTab")}
+                  </MobileBrowserBookmark>
+                  {achievementsEnabled ? (
+                    <MobileBrowserBookmark
+                      onClick={() => {
+                        setMobileBookmarksOpen(false);
+                        setAchievementsOpen(true);
+                      }}
+                      icon={<img src="/home/tab-icons/achievements.png" alt="" className="h-4 w-4 object-contain" />}
+                      tone={HOME_MODULE_ACCENTS.orange}
+                    >
+                      {t("home.browser.achievements")}
+                    </MobileBrowserBookmark>
+                  ) : null}
+                  <MobileBrowserBookmark
+                    onClick={() => {
+                      setMobileBookmarksOpen(false);
+                      setWidgetManagerOpen(true);
+                    }}
+                    icon={<img src="/home/tab-icons/widgets.svg" alt="" className="h-4 w-4 object-contain" />}
+                    tone={HOME_MODULE_ACCENTS.violet}
+                  >
+                    {t("home.browser.widgets")}
+                  </MobileBrowserBookmark>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </nav>
         </header>
 
@@ -2543,7 +2574,7 @@ export function HomeBrowserHub({
                       ariaLabel={t("home.shortcuts.newConversation")}
                     >
                       <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.conversation}>
-                        <ChatModeIcon mode="conversation" size="1rem" />
+                        <ChatModeIcon mode="conversation" size="1rem" className="mari-rgb-static-icon" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
                         {t("home.recentChats.mode.conversation")}
@@ -2555,7 +2586,7 @@ export function HomeBrowserHub({
                       ariaLabel={t("home.shortcuts.newRoleplay")}
                     >
                       <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.roleplay}>
-                        <ChatModeIcon mode="roleplay" size="1rem" />
+                        <ChatModeIcon mode="roleplay" size="1rem" className="mari-rgb-static-icon" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
                         {t("home.recentChats.mode.roleplay")}
@@ -2567,7 +2598,7 @@ export function HomeBrowserHub({
                       ariaLabel={t("home.shortcuts.newGame")}
                     >
                       <ShortcutIcon tone={HOME_CHAT_MODE_ACCENTS.game}>
-                        <ChatModeIcon mode="game" size="1rem" />
+                        <ChatModeIcon mode="game" size="1rem" className="mari-rgb-static-icon" />
                       </ShortcutIcon>
                       <span className="text-[0.65rem] font-bold text-[var(--foreground)] sm:text-xs">
                         {t("home.recentChats.mode.game")}
@@ -2910,7 +2941,7 @@ export function HomeBrowserHub({
                         accent={HOME_MODULE_ACCENTS.orange}
                         art="/home/achievement-trophy.png"
                         artClassName={HOME_CARD_ART_CLASS}
-                        className="h-full min-h-52"
+                        className="h-full min-h-0"
                       >
                         <HomeAchievements
                           compact
@@ -2998,7 +3029,7 @@ export function HomeBrowserHub({
           <div className="grid gap-2">
             {availableWidgetIds.map((id, index) => {
               const enabled = visibleWidgets.includes(id);
-              const label = widgetLabel(id);
+              const label = widgetManagerLabel(id);
               const customWidget = customWidgetsById.get(id);
               const tones = [
                 HOME_MODULE_ACCENTS.pink,
@@ -3022,7 +3053,7 @@ export function HomeBrowserHub({
                     <i className="rounded-[0.12rem] bg-[oklch(0.73_0.21_345)]" />
                     <i className="rounded-[0.12rem] bg-[var(--widget-tone)]" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)]">
+                  <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--foreground)]">
                     {label}
                   </span>
                   {customWidget ? (

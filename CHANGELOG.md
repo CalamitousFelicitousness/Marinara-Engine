@@ -30,6 +30,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Corrected Home and Appearance presentation regressions affecting semantic chat-mode colors, the Square avatar preview, Noodle notification placement, compact mobile Achievements, Discovery Desk spacing, mobile Bookmarks motion, and consistent widget-manager labels (#4809, #4817, #4818, #4819, #4820, #4821, #4823).
 - Restored Game party portrait file selection for Character, Persona, and NPC sheets whether or not the sheet editor is active (#4793).
 - Kept legacy reaction payloads out of rendered message content, accepted `/title <name>` in Professor Mari chats, and let her navigator open an exact saved chat title (#4782, #4794, #4800).
 - Standardized gradient-stop editing on Marinara's owned color controls and tightened Home responsiveness, including Guide overflow, deleted Recent Chats, semantic mode colors, decorative browser refresh behavior, larger Mari drag targeting, and pausing Home animations while the app is unfocused (#4797, #4799, #4802, #4804, #4807, #4808, #4809).

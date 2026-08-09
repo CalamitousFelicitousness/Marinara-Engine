@@ -190,7 +190,7 @@ function markdownSections(
 }
 
 function firstMarkdownHeading(content: string) {
-  return content.match(/^#{1,6}\s+(.+?)\s*#*\s*$/mu)?.[1]?.trim() ?? "Document overview";
+  return iterateMarkdownHeadings(content.split(/\r?\n/)).next().value?.heading ?? "Document overview";
 }
 
 /**
@@ -201,13 +201,15 @@ function firstMarkdownHeading(content: string) {
 function* iterateMarkdownHeadings(
   lines: string[],
 ): Generator<{ index: number; level: number; heading: string }> {
-  let fence: string | null = null;
+  let fence: { char: string; length: number } | null = null;
   for (const [index, line] of lines.entries()) {
-    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/u);
+    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})\s*(.*)$/u);
     if (fenceMatch) {
-      const marker = fenceMatch[1]![0]!;
-      if (fence === null) fence = marker;
-      else if (fence === marker) fence = null;
+      const run = fenceMatch[1]!;
+      const marker = run[0]!;
+      // Close only on the same marker, an equal-or-longer run, and no trailing text.
+      if (fence === null) fence = { char: marker, length: run.length };
+      else if (marker === fence.char && run.length >= fence.length && fenceMatch[2]!.trim() === "") fence = null;
       continue;
     }
     if (fence !== null) continue;

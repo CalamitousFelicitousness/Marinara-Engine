@@ -60,9 +60,11 @@ try {
       "",
       "## Code sample",
       "",
-      "```",
+      "````",
       "# not a real heading",
       "```",
+      "# still not a heading",
+      "````",
       "",
       "## Real section",
       "",
@@ -139,6 +141,7 @@ try {
       assert.match(err.message, /"C#"/u);
       assert.match(err.message, /"Real section"/u);
       assert.doesNotMatch(err.message, /not a real heading/u);
+      assert.doesNotMatch(err.message, /still not a heading/u);
       return true;
     },
   );

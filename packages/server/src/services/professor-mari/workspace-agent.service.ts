@@ -2173,7 +2173,7 @@ export class ProfessorMariWorkspaceService {
     const skillsPrompt = await this.buildSkillsPrompt();
     let embeddingModelConfigured = false;
     try {
-      embeddingModelConfigured = await isMemoryRecallVectorizerAvailable(this.app.db, {});
+      embeddingModelConfigured = await isMemoryRecallVectorizerAvailable(this.app.db, { connectionId: connection.id });
     } catch (err) {
       logger.warn(err, "Professor Mari: embedding availability check failed; assuming no embedding model");
       embeddingModelConfigured = false;

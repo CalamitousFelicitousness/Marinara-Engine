@@ -69,6 +69,15 @@ try {
       "## Real section",
       "",
       "The end.",
+      "",
+      "## Indented fence",
+      "",
+      "```",
+      "    ```",
+      "# hidden heading",
+      "```",
+      "",
+      "## After indent",
     ].join("\n"),
     "utf8",
   );
@@ -142,6 +151,10 @@ try {
       assert.match(err.message, /"Real section"/u);
       assert.doesNotMatch(err.message, /not a real heading/u);
       assert.doesNotMatch(err.message, /still not a heading/u);
+      // A 4-space-indented fence marker is indented code, not a real fence, so it must not
+      // close the block early and expose the "# hidden heading" line inside it.
+      assert.doesNotMatch(err.message, /hidden heading/u);
+      assert.match(err.message, /"After indent"/u);
       return true;
     },
   );

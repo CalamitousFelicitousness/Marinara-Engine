@@ -203,7 +203,7 @@ function* iterateMarkdownHeadings(
 ): Generator<{ index: number; level: number; heading: string }> {
   let fence: { char: string; length: number } | null = null;
   for (const [index, line] of lines.entries()) {
-    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})\s*(.*)$/u);
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*(.*)$/u);
     if (fenceMatch) {
       const run = fenceMatch[1]!;
       const marker = run[0]!;

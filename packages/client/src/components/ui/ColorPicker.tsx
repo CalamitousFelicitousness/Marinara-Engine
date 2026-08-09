@@ -141,19 +141,33 @@ function resolveCssColorToHex(value: string): string | null {
     return null;
   }
   const context = document.createElement("canvas").getContext("2d");
-  if (!context) return null;
-  context.fillStyle = "#010203";
-  context.fillStyle = trimmed;
-  const normalized = String(context.fillStyle).trim().toLowerCase();
+  if (!context) {
+    cacheResolvedCssColor(cacheKey, null);
+    return null;
+  }
+  const readBack = (sentinel: string) => {
+    context.fillStyle = sentinel;
+    context.fillStyle = trimmed;
+    return String(context.fillStyle).trim().toLowerCase();
+  };
+  const first = readBack("#010203");
+  const second = readBack("#040506");
+  if (first !== second) {
+    cacheResolvedCssColor(cacheKey, null);
+    return null;
+  }
+  const normalized = first;
   let resolved = normalizeHexColor(normalized);
   if (!resolved) {
-    const rgb = normalized.match(
-      /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/,
-    );
+    const rgb = normalized.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/);
     if (rgb && (rgb[4] === undefined || Number(rgb[4]) === 1)) {
       resolved = `#${rgb
         .slice(1, 4)
-        .map((channel) => Math.max(0, Math.min(255, Math.round(Number(channel)))).toString(16).padStart(2, "0"))
+        .map((channel) =>
+          Math.max(0, Math.min(255, Math.round(Number(channel))))
+            .toString(16)
+            .padStart(2, "0"),
+        )
         .join("")}`;
     }
   }
@@ -235,10 +249,12 @@ function hslToHex(hue: number, saturation: number, lightness: number) {
 function MarinaraColorSliders({
   value,
   onChange,
+  onCommit,
   label,
 }: {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, defer?: boolean) => void;
+  onCommit: () => void;
   label: string;
 }) {
   const { t } = useUiTranslation();
@@ -246,7 +262,7 @@ function MarinaraColorSliders({
   const update = (index: number, nextValue: number) => {
     const next = [...channels] as [number, number, number];
     next[index] = nextValue;
-    onChange(hslToHex(...next));
+    onChange(hslToHex(...next), true);
   };
   const controls = [
     { key: "hue", label: t("ui.ui.colorpicker.hue"), max: 359, value: channels[0], unit: "°" },
@@ -256,13 +272,11 @@ function MarinaraColorSliders({
 
   return (
     <div
+      role="group"
       className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/55 p-2.5"
       aria-label={label}
     >
-      <div
-        className="h-20 rounded-lg border border-[var(--border)]"
-        style={{ backgroundColor: value }}
-      />
+      <div className="h-20 rounded-lg border border-[var(--border)]" style={{ backgroundColor: value }} />
       {controls.map((control, index) => (
         <label
           key={control.key}
@@ -275,6 +289,9 @@ function MarinaraColorSliders({
             max={control.max}
             value={control.value}
             onChange={(event) => update(index, Number(event.currentTarget.value))}
+            onPointerUp={onCommit}
+            onKeyUp={onCommit}
+            onBlur={onCommit}
             className="h-1.5 w-full cursor-pointer accent-[var(--marinara-app-accent-solid)]"
           />
           <span className="text-right font-mono tabular-nums">
@@ -535,7 +552,7 @@ export function ColorPicker({
                 type="button"
                 onClick={() => {
                   setMode("gradient");
-                  onChange(buildGradient(gradientAngle, gradientStops));
+                  commitChange(buildGradient(gradientAngle, gradientStops));
                 }}
                 className={cn(
                   "flex-1 rounded-md px-3 py-1.5 text-[0.6875rem] font-medium transition-all",
@@ -559,6 +576,7 @@ export function ColorPicker({
                   <MarinaraColorSliders
                     value={solidSliderColor}
                     onChange={handleSolidChange}
+                    onCommit={flushPendingChange}
                     label={localizeUi("ui.ui.colorpicker.pickValue1Color", { value1: label })}
                   />
                 ) : null}
@@ -659,7 +677,8 @@ export function ColorPicker({
                 {activeGradientStop.hex ? (
                   <MarinaraColorSliders
                     value={activeGradientStop.hex}
-                    onChange={(next) => handleGradientStopChange(activeStop, next)}
+                    onChange={(next, defer) => handleGradientStopChange(activeStop, next, defer)}
+                    onCommit={flushPendingChange}
                     label={localizeUi("ui.ui.colorpicker.editColorStop", { index: activeStop + 1 })}
                   />
                 ) : null}
@@ -703,7 +722,7 @@ export function ColorPicker({
                         setGradientStops(parseGradientStops(g));
                         const angleMatch = g.match(/linear-gradient\((\d+)deg/);
                         if (angleMatch) setGradientAngle(parseInt(angleMatch[1]));
-                        onChange(g);
+                        commitChange(g);
                       }}
                       className={cn(
                         "h-6 w-6 rounded-md ring-1 ring-[var(--border)] transition-all hover:scale-110 hover:ring-2 hover:ring-[var(--primary)]/50",

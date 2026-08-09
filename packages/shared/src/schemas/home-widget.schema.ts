@@ -13,8 +13,8 @@ export const homeCustomWidgetSchema = z
     description: z.string().trim().min(1).max(500),
     accent: z.enum(["cyan", "orange", "pink", "violet"]).default("cyan"),
     icon: z.enum(["sparkles", "note", "heart", "star", "book", "compass"]).default("sparkles"),
-    createdAt: z.string(),
-    updatedAt: z.string(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
   })
   .strict();
 

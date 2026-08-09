@@ -91,9 +91,7 @@ async function patchMessageContent(chatId: string | null, messageId: string, con
 function enqueueMessageContentUpdate(chatId: string | null, messageId: string, content: string) {
   const queueKey = `${chatId ?? ""}:${messageId}`;
   const previous = messageContentUpdateQueues.get(queueKey) ?? Promise.resolve();
-  const request = previous
-    .catch(() => undefined)
-    .then(() => patchMessageContent(chatId, messageId, content));
+  const request = previous.catch(() => undefined).then(() => patchMessageContent(chatId, messageId, content));
   const settled = request.then(
     () => undefined,
     () => undefined,
@@ -583,48 +581,76 @@ export function useDeleteChat() {
     onMutate: async (input) => {
       const id = getDeleteChatId(input);
       const providedGroupId = getDeleteChatGroupId(input);
+      const cachedList = qc.getQueryData<Chat[]>(chatKeys.list());
+      const cachedProvidedGroup = providedGroupId
+        ? qc.getQueryData<Chat[]>(chatKeys.group(providedGroupId))
+        : undefined;
+      const cachedDetail = qc.getQueryData<Chat>(chatKeys.detail(id));
+      const cachedHomeFeed = qc.getQueryData<HomeFeedSnapshot>(homeFeedKeys.snapshot());
+      const deletedChat =
+        cachedList?.find((chat) => chat.id === id) ??
+        cachedProvidedGroup?.find((chat) => chat.id === id) ??
+        cachedDetail ??
+        cachedHomeFeed?.recentChats.find(({ chat }) => chat.id === id)?.chat ??
+        null;
+      const groupId = deletedChat?.groupId ?? providedGroupId;
       await qc.cancelQueries({ queryKey: chatKeys.list() });
       await qc.cancelQueries({ queryKey: homeFeedKeys.all });
-      if (providedGroupId) {
-        await qc.cancelQueries({ queryKey: chatKeys.group(providedGroupId) });
+      await qc.cancelQueries({ queryKey: chatKeys.detail(id), exact: true });
+      const affectedGroupIds = Array.from(
+        new Set([providedGroupId, groupId].filter((value): value is string => Boolean(value))),
+      );
+      for (const affectedGroupId of affectedGroupIds) {
+        await qc.cancelQueries({ queryKey: chatKeys.group(affectedGroupId) });
       }
       const previous = qc.getQueryData<Chat[]>(chatKeys.list());
       const previousHomeFeed = qc.getQueryData<HomeFeedSnapshot>(homeFeedKeys.snapshot());
-      const previousGroup = providedGroupId ? qc.getQueryData<Chat[]>(chatKeys.group(providedGroupId)) : undefined;
-      const deletedChat = previous?.find((c) => c.id === id) ?? previousGroup?.find((c) => c.id === id) ?? null;
-      const groupId = deletedChat?.groupId ?? providedGroupId;
+      const previousGroups = affectedGroupIds.map((affectedGroupId) => ({
+        groupId: affectedGroupId,
+        chats: qc.getQueryData<Chat[]>(chatKeys.group(affectedGroupId)),
+      }));
 
       qc.setQueryData<Chat[]>(chatKeys.list(), (old) => old?.filter((c) => c.id !== id));
       qc.setQueryData<HomeFeedSnapshot>(homeFeedKeys.snapshot(), (old) => removeChatsFromHomeFeed(old, new Set([id])));
+      qc.removeQueries({ queryKey: chatKeys.detail(id), exact: true });
 
-      if (groupId) {
-        qc.setQueryData<Chat[]>(chatKeys.group(groupId), (old) => old?.filter((c) => c.id !== id));
+      for (const affectedGroupId of affectedGroupIds) {
+        qc.setQueryData<Chat[]>(chatKeys.group(affectedGroupId), (old) => old?.filter((c) => c.id !== id));
       }
 
-      return { previous, previousHomeFeed, previousGroup, groupId };
+      return { previous, previousDetail: cachedDetail, previousHomeFeed, previousGroups, affectedGroupIds };
     },
-    onError: (_err, _id, context) => {
+    onError: (_err, input, context) => {
+      const id = getDeleteChatId(input);
       if (context?.previous) {
         qc.setQueryData(chatKeys.list(), context.previous);
       } else {
         qc.invalidateQueries({ queryKey: chatKeys.list() });
       }
+      if (context?.previousDetail !== undefined) {
+        qc.setQueryData(chatKeys.detail(id), context.previousDetail);
+      }
       if (context?.previousHomeFeed) qc.setQueryData(homeFeedKeys.snapshot(), context.previousHomeFeed);
-      if (context?.groupId) {
-        if (context.previousGroup) {
-          qc.setQueryData(chatKeys.group(context.groupId), context.previousGroup);
+      for (const previousGroup of context?.previousGroups ?? []) {
+        if (previousGroup.chats !== undefined) {
+          qc.setQueryData(chatKeys.group(previousGroup.groupId), previousGroup.chats);
         } else {
-          qc.invalidateQueries({ queryKey: chatKeys.group(context.groupId) });
+          qc.removeQueries({ queryKey: chatKeys.group(previousGroup.groupId), exact: true });
         }
       }
       toast.error("Couldn't delete the conversation. It has been restored.");
     },
-    onSettled: (_data, _err, input, context) => {
-      const groupId = context?.groupId ?? getDeleteChatGroupId(input);
+    onSettled: (_data, error, input, context) => {
+      const id = getDeleteChatId(input);
+      const affectedGroupIds =
+        context?.affectedGroupIds ?? [getDeleteChatGroupId(input)].filter((value): value is string => Boolean(value));
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: homeFeedKeys.all });
-      if (groupId) {
-        qc.invalidateQueries({ queryKey: chatKeys.group(groupId) });
+      if (!error) {
+        qc.removeQueries({ queryKey: chatKeys.detail(id), exact: true });
+      }
+      for (const affectedGroupId of affectedGroupIds) {
+        qc.invalidateQueries({ queryKey: chatKeys.group(affectedGroupId) });
       }
     },
   });
@@ -642,15 +668,15 @@ export function useDeleteChatGroup() {
       const groupId = typeof input === "string" ? input : input.groupId;
       await qc.cancelQueries({ queryKey: chatKeys.list() });
       await qc.cancelQueries({ queryKey: homeFeedKeys.all });
+      await qc.cancelQueries({ queryKey: chatKeys.group(groupId) });
       const previous = qc.getQueryData<Chat[]>(chatKeys.list());
       const previousGroup = qc.getQueryData<Chat[]>(chatKeys.group(groupId));
       const previousHomeFeed = qc.getQueryData<HomeFeedSnapshot>(homeFeedKeys.snapshot());
       const removedIds = new Set([
         ...(previous?.filter((chat) => chat.groupId === groupId).map((chat) => chat.id) ?? []),
         ...(previousGroup?.map((chat) => chat.id) ?? []),
-        ...(previousHomeFeed?.recentChats
-          .filter(({ chat }) => chat.groupId === groupId)
-          .map(({ chat }) => chat.id) ?? []),
+        ...(previousHomeFeed?.recentChats.filter(({ chat }) => chat.groupId === groupId).map(({ chat }) => chat.id) ??
+          []),
       ]);
 
       qc.setQueryData<Chat[]>(chatKeys.list(), (old) => old?.filter((c) => c.groupId !== groupId));
@@ -768,7 +794,7 @@ export function useUpdateChatMetadata() {
             vars.id,
             base.metadata,
             data.metadata,
-            context?.version ?? (chatMetadataMutationVersions.get(vars.id) ?? 0),
+            context?.version ?? chatMetadataMutationVersions.get(vars.id) ?? 0,
           ),
           updatedAt: data.updatedAt,
         });
@@ -895,166 +921,169 @@ export interface RollingSummaryBackfillInput {
 export function useRollingSummaryBackfill() {
   const qc = useQueryClient();
 
-  const startBackfill = useCallback(async (input: RollingSummaryBackfillInput) => {
-    const { chatId, summaryEntries, batchSize, maxMessagesPerBatch, promptTemplateId } = input;
+  const startBackfill = useCallback(
+    async (input: RollingSummaryBackfillInput) => {
+      const { chatId, summaryEntries, batchSize, maxMessagesPerBatch, promptTemplateId } = input;
 
-    const store = useRollingBackfillStore.getState();
-    if (store.status === "running") return;
-    
-    // Flip to "running" synchronously before any await
-    store.startBackfill(chatId);
+      const store = useRollingBackfillStore.getState();
+      if (store.status === "running") return;
 
-    let allMessages: Array<{ id: string; role: string; extra?: unknown }>;
-    try {
-      allMessages = await api.get(`/chats/${chatId}/messages`);
-    } catch {
-      useRollingBackfillStore.getState().stopBackfill();
-      toast.error("Could not start backfill: failed to load messages.");
-      return;
-    }
-    if (!Array.isArray(allMessages) || allMessages.length === 0) {
-      useRollingBackfillStore.getState().stopBackfill();
-      return;
-    }
+      // Flip to "running" synchronously before any await
+      store.startBackfill(chatId);
 
-    const messageIds = allMessages.map((m) => m.id);
-    const totalMessageCount = messageIds.length;
-
-    const summarizedIds = new Set<string>();
-    for (const entry of summaryEntries) {
-      if (Array.isArray(entry.messageIds)) {
-        for (const id of entry.messageIds) summarizedIds.add(id);
-      }
-    }
-
-    const isMessageHidden = (msg: { extra?: unknown }) => {
-      let extra = msg.extra;
-      if (typeof extra === "string") {
-        try {
-          extra = JSON.parse(extra);
-        } catch {
-          return false;
-        }
-      }
-      return !!extra && typeof extra === "object" && (extra as any).hiddenFromAI === true;
-    };
-
-    const safeBatchSize = Math.max(1, Math.min(totalMessageCount, batchSize));
-    const batches: Array<{ rangeStart: number; rangeEnd: number }> = [];
-    let cursor = 0;
-    while (cursor < totalMessageCount) {
-      while (cursor < totalMessageCount) {
-        const msg = allMessages[cursor]!;
-        if (summarizedIds.has(msg.id) || isMessageHidden(msg)) {
-          cursor++;
-        } else {
-          break;
-        }
-      }
-      if (cursor >= totalMessageCount) break;
-
-      let userCount = 0;
-      let msgCount = 0;
-      let endCursor = cursor;
-      while (endCursor < totalMessageCount && userCount < safeBatchSize && msgCount < maxMessagesPerBatch) {
-        const msg = allMessages[endCursor]!;
-        if (!isMessageHidden(msg)) {
-          if (msg.role === "user") {
-            userCount++;
-          }
-          msgCount++;
-        }
-        endCursor++;
-      }
-
-      batches.push({ rangeStart: cursor + 1, rangeEnd: endCursor });
-      cursor = endCursor;
-    }
-
-    if (batches.length === 0) {
-      useRollingBackfillStore.getState().stopBackfill();
-      toast.info("Everything is already summarized.");
-      return;
-    }
-
-    const abortController = new AbortController();
-    useRollingBackfillStore.setState({ abortController });
-
-    const currentStore = useRollingBackfillStore.getState();
-    currentStore.setTotalBatches(batches.length);
-
-    const debugMode = useUIStore.getState().debugMode;
-
-    console.warn(
-      `[Backfill] Starting — ${batches.length} batch(es) covering ${totalMessageCount} messages` +
-        (debugMode ? "" : " (enable Advanced > Debug Mode for per-batch logs)"),
-    );
-
-    let failedBatches = 0;
-
-    for (let i = 0; i < batches.length; i++) {
-      if (abortController.signal.aborted) break;
-
-      const batch = batches[i]!;
-      currentStore.updateProgress(i + 1, batch.rangeStart, batch.rangeEnd);
-
-      if (debugMode) {
-        console.warn(
-          `[Backfill] Batch ${i + 1}/${batches.length}: messages ${batch.rangeStart}-${batch.rangeEnd}`,
-        );
-      }
-
+      let allMessages: Array<{ id: string; role: string; extra?: unknown }>;
       try {
-        const result = await api.post<{
-          summary: string | null;
-          entry: ChatSummaryEntry | null;
-          entries: ChatSummaryEntry[];
-          messageIds: string[];
-          hideMessageIds: string[];
-        }>(
-          `/chats/${chatId}/generate-summary`,
-          { rangeStartIndex: batch.rangeStart, rangeEndIndex: batch.rangeEnd, promptTemplateId },
-          { signal: abortController.signal },
-        );
+        allMessages = await api.get(`/chats/${chatId}/messages`);
+      } catch {
+        useRollingBackfillStore.getState().stopBackfill();
+        toast.error("Could not start backfill: failed to load messages.");
+        return;
+      }
+      if (!Array.isArray(allMessages) || allMessages.length === 0) {
+        useRollingBackfillStore.getState().stopBackfill();
+        return;
+      }
 
-        const existing = qc.getQueryData<Chat>(chatKeys.detail(chatId));
-        if (existing) {
-          syncCachedChat(qc, {
-            ...existing,
-            metadata: {
-              ...(normalizeChatMetadataValue(existing.metadata) as Record<string, unknown>),
-              summary: result.summary,
-              summaryEntries: result.entries,
-            } as Chat["metadata"],
-          });
-        }
-        qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+      const messageIds = allMessages.map((m) => m.id);
+      const totalMessageCount = messageIds.length;
 
-        if (debugMode) {
-          console.warn(`[Backfill] Batch ${i + 1} complete`);
+      const summarizedIds = new Set<string>();
+      for (const entry of summaryEntries) {
+        if (Array.isArray(entry.messageIds)) {
+          for (const id of entry.messageIds) summarizedIds.add(id);
         }
-      } catch (err) {
+      }
+
+      const isMessageHidden = (msg: { extra?: unknown }) => {
+        let extra = msg.extra;
+        if (typeof extra === "string") {
+          try {
+            extra = JSON.parse(extra);
+          } catch {
+            return false;
+          }
+        }
+        return !!extra && typeof extra === "object" && (extra as any).hiddenFromAI === true;
+      };
+
+      const safeBatchSize = Math.max(1, Math.min(totalMessageCount, batchSize));
+      const batches: Array<{ rangeStart: number; rangeEnd: number }> = [];
+      let cursor = 0;
+      while (cursor < totalMessageCount) {
+        while (cursor < totalMessageCount) {
+          const msg = allMessages[cursor]!;
+          if (summarizedIds.has(msg.id) || isMessageHidden(msg)) {
+            cursor++;
+          } else {
+            break;
+          }
+        }
+        if (cursor >= totalMessageCount) break;
+
+        let userCount = 0;
+        let msgCount = 0;
+        let endCursor = cursor;
+        while (endCursor < totalMessageCount && userCount < safeBatchSize && msgCount < maxMessagesPerBatch) {
+          const msg = allMessages[endCursor]!;
+          if (!isMessageHidden(msg)) {
+            if (msg.role === "user") {
+              userCount++;
+            }
+            msgCount++;
+          }
+          endCursor++;
+        }
+
+        batches.push({ rangeStart: cursor + 1, rangeEnd: endCursor });
+        cursor = endCursor;
+      }
+
+      if (batches.length === 0) {
+        useRollingBackfillStore.getState().stopBackfill();
+        toast.info("Everything is already summarized.");
+        return;
+      }
+
+      const abortController = new AbortController();
+      useRollingBackfillStore.setState({ abortController });
+
+      const currentStore = useRollingBackfillStore.getState();
+      currentStore.setTotalBatches(batches.length);
+
+      const debugMode = useUIStore.getState().debugMode;
+
+      console.warn(
+        `[Backfill] Starting — ${batches.length} batch(es) covering ${totalMessageCount} messages` +
+          (debugMode ? "" : " (enable Advanced > Debug Mode for per-batch logs)"),
+      );
+
+      let failedBatches = 0;
+
+      for (let i = 0; i < batches.length; i++) {
         if (abortController.signal.aborted) break;
-        failedBatches++;
+
+        const batch = batches[i]!;
+        currentStore.updateProgress(i + 1, batch.rangeStart, batch.rangeEnd);
+
         if (debugMode) {
-          console.warn(`[Backfill] Batch ${i + 1} failed:`, err);
+          console.warn(`[Backfill] Batch ${i + 1}/${batches.length}: messages ${batch.rangeStart}-${batch.rangeEnd}`);
+        }
+
+        try {
+          const result = await api.post<{
+            summary: string | null;
+            entry: ChatSummaryEntry | null;
+            entries: ChatSummaryEntry[];
+            messageIds: string[];
+            hideMessageIds: string[];
+          }>(
+            `/chats/${chatId}/generate-summary`,
+            { rangeStartIndex: batch.rangeStart, rangeEndIndex: batch.rangeEnd, promptTemplateId },
+            { signal: abortController.signal },
+          );
+
+          const existing = qc.getQueryData<Chat>(chatKeys.detail(chatId));
+          if (existing) {
+            syncCachedChat(qc, {
+              ...existing,
+              metadata: {
+                ...(normalizeChatMetadataValue(existing.metadata) as Record<string, unknown>),
+                summary: result.summary,
+                summaryEntries: result.entries,
+              } as Chat["metadata"],
+            });
+          }
+          qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+
+          if (debugMode) {
+            console.warn(`[Backfill] Batch ${i + 1} complete`);
+          }
+        } catch (err) {
+          if (abortController.signal.aborted) break;
+          failedBatches++;
+          if (debugMode) {
+            console.warn(`[Backfill] Batch ${i + 1} failed:`, err);
+          }
         }
       }
-    }
 
-    if (abortController.signal.aborted) {
-      useRollingBackfillStore.setState({ status: "idle", abortController: null });
-      console.warn(`[Backfill] Stopped`);
-    } else {
-      currentStore.stopBackfill();
-      if (failedBatches > 0) {
-        console.warn(`[Backfill] Done — ${batches.length - failedBatches}/${batches.length} batch(es) succeeded, ${failedBatches} failed`);
-        toast.error(`Backfill finished with ${failedBatches} failed batch(es).`);
+      if (abortController.signal.aborted) {
+        useRollingBackfillStore.setState({ status: "idle", abortController: null });
+        console.warn(`[Backfill] Stopped`);
       } else {
-        console.warn(`[Backfill] Done — ${batches.length} batch(es) completed`);
+        currentStore.stopBackfill();
+        if (failedBatches > 0) {
+          console.warn(
+            `[Backfill] Done — ${batches.length - failedBatches}/${batches.length} batch(es) succeeded, ${failedBatches} failed`,
+          );
+          toast.error(`Backfill finished with ${failedBatches} failed batch(es).`);
+        } else {
+          console.warn(`[Backfill] Done — ${batches.length} batch(es) completed`);
+        }
       }
-    }
-  }, [qc]);
+    },
+    [qc],
+  );
 
   const stopBackfill = useCallback(() => {
     useRollingBackfillStore.getState().stopBackfill();
@@ -1066,8 +1095,12 @@ export function useRollingSummaryBackfill() {
 export function useCreateMessage(chatId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { role: string; content: string; characterId?: string | null; extra?: Record<string, unknown> }) =>
-      api.post<Message>(`/chats/${chatId}/messages`, data),
+    mutationFn: (data: {
+      role: string;
+      content: string;
+      characterId?: string | null;
+      extra?: Record<string, unknown>;
+    }) => api.post<Message>(`/chats/${chatId}/messages`, data),
     onSuccess: () => {
       if (chatId) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
@@ -1126,10 +1159,7 @@ export function useUpdateMessage(chatId: string | null) {
       // don't overwrite the optimistic value with stale server data. Do not
       // await cancellation before painting the edit: leaving edit mode must
       // never reveal the old message while the cancellation promise settles.
-      const cancellation = qc.cancelQueries(
-        { queryKey: chatKeys.messages(chatId) },
-        { revert: false },
-      );
+      const cancellation = qc.cancelQueries({ queryKey: chatKeys.messages(chatId) }, { revert: false });
       const previous = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(chatId));
       const previousMessage = findCachedMessage(previous, messageId);
       const revision = rememberRecentMessageContentEdit(chatId, messageId, content, previousMessage?.activeSwipeIndex);

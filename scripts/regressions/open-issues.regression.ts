@@ -294,6 +294,11 @@ import {
   normalizeCharacterActionData,
 } from "../../packages/server/src/services/mari-db/mari-db.service.js";
 import {
+  HomeWidgetCatalogConflictError,
+  readHomeWidgetCatalog,
+  replaceHomeWidgetCatalog,
+} from "../../packages/server/src/services/home-widget-catalog.service.js";
+import {
   isMutatingWorkspaceCommand,
   PROFESSOR_MARI_APP_DATA_ACTIONS,
 } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
@@ -471,6 +476,21 @@ const regionalLocalizedPackageManifest = {
 } as CapabilityPackageManifest;
 assert.equal(resolveCapabilityPackageDisplay(regionalLocalizedPackageManifest, "pt-BR").name, "Macarrão");
 assert.equal(homeCustomWidgetCatalogSchema.parse({ widgets: [] }).revision, 0);
+assert.throws(() =>
+  homeCustomWidgetCatalogSchema.parse({
+    widgets: [
+      {
+        id: "bad-timestamp",
+        title: "Bad timestamp",
+        description: "Widget timestamps must use the ISO format emitted by the writer.",
+        accent: "cyan",
+        icon: "sparkles",
+        createdAt: "yesterday",
+        updatedAt: "today",
+      },
+    ],
+  }),
+);
 assert.equal(
   isMutatingWorkspaceCommand({
     id: "widget-preview",
@@ -2258,6 +2278,7 @@ try {
   assert.equal(widgetPreview.mode, "dry-run", "Professor Mari must preview a custom widget before confirmation");
   assert.deepEqual((await mariDb.executeAction({ action: "home_widget.list" })).output, []);
 
+  const approvalsBeforeWidgetCreate = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
   const widgetCreate = await mariDb.executeAction({
     action: "home_widget.create",
     data: {
@@ -2273,6 +2294,34 @@ try {
   const createdWidget = (widgetList.output as Array<{ id: string; title: string }>)[0];
   assert.equal(createdWidget?.title, "Tonight's menu");
   assert.equal((await mariDb.executeAction({ action: "home_widget.get", widgetId: createdWidget.id })).ok, true);
+  const catalogBeforeConcurrentWrites = await readHomeWidgetCatalog(db);
+  const concurrentCatalogWrites = await Promise.allSettled([
+    replaceHomeWidgetCatalog(db, catalogBeforeConcurrentWrites.revision, catalogBeforeConcurrentWrites.widgets),
+    replaceHomeWidgetCatalog(db, catalogBeforeConcurrentWrites.revision, catalogBeforeConcurrentWrites.widgets),
+  ]);
+  assert.equal(
+    concurrentCatalogWrites.filter((result) => result.status === "fulfilled").length,
+    1,
+    "Only one write may commit for a Home widget catalog revision",
+  );
+  const rejectedCatalogWrite = concurrentCatalogWrites.find((result) => result.status === "rejected");
+  assert.equal(
+    rejectedCatalogWrite?.status === "rejected" &&
+      rejectedCatalogWrite.reason instanceof HomeWidgetCatalogConflictError,
+    true,
+  );
+  const widgetApproval = mariDb.getPendingApprovals().find((approval) => !approvalsBeforeWidgetCreate.has(approval.id));
+  assert.ok(widgetApproval, "Applying a Home widget change must create a review approval");
+  await assert.rejects(
+    mariDb.restoreAppliedReview(widgetApproval.id),
+    HomeWidgetCatalogConflictError,
+    "A conflicting Home widget restore must fail safely",
+  );
+  assert.equal(
+    mariDb.getPendingApprovals().some((approval) => approval.id === widgetApproval.id),
+    true,
+    "A failed Home widget restore must remain available to retry or keep",
+  );
 
   for (const approval of mariDb.getPendingApprovals()) {
     await mariDb.keepAppliedReview(approval.id);

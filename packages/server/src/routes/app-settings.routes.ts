@@ -15,6 +15,11 @@ import {
   impersonatePromptTemplateCatalogSchema,
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
+import {
+  HomeWidgetCatalogConflictError,
+  readHomeWidgetCatalog,
+  replaceHomeWidgetCatalog,
+} from "../services/home-widget-catalog.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 
 const ALLOWED_KEYS = new Set([
@@ -27,41 +32,20 @@ const ALLOWED_KEYS = new Set([
 
 export async function appSettingsRoutes(app: FastifyInstance) {
   const storage = createAppSettingsStorage(app.db);
-  let homeWidgetCatalogMutationChain: Promise<unknown> = Promise.resolve();
 
-  const readHomeWidgetCatalog = async () => {
-    const value = await storage.get(HOME_CUSTOM_WIDGETS_SETTINGS_KEY);
-    if (!value) return homeCustomWidgetCatalogSchema.parse({ widgets: [] });
-    try {
-      return homeCustomWidgetCatalogSchema.parse(JSON.parse(value));
-    } catch (error) {
-      logger.warn(error, "Ignoring invalid stored Home custom widget catalog");
-      return homeCustomWidgetCatalogSchema.parse({ widgets: [] });
-    }
-  };
-
-  const withHomeWidgetCatalogMutationLock = <T>(operation: () => Promise<T>): Promise<T> => {
-    const run = homeWidgetCatalogMutationChain.then(operation, operation);
-    homeWidgetCatalogMutationChain = run.catch(() => undefined);
-    return run;
-  };
-
-  app.get(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, readHomeWidgetCatalog);
+  app.get(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, () => readHomeWidgetCatalog(app.db));
 
   app.put(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async (req, reply) => {
     const requestedCatalog = homeCustomWidgetCatalogSchema.parse(req.body);
-    return withHomeWidgetCatalogMutationLock(async () => {
-      const currentCatalog = await readHomeWidgetCatalog();
-      if (requestedCatalog.revision !== currentCatalog.revision) {
-        return reply.status(409).send({ error: "Home widget catalog changed; refresh it and try again." });
+    try {
+      return await replaceHomeWidgetCatalog(app.db, requestedCatalog.revision, requestedCatalog.widgets);
+    } catch (error) {
+      if (error instanceof HomeWidgetCatalogConflictError) {
+        const catalog = await readHomeWidgetCatalog(app.db);
+        return reply.status(409).send({ error: error.message, catalog });
       }
-      const nextCatalog = homeCustomWidgetCatalogSchema.parse({
-        ...requestedCatalog,
-        revision: currentCatalog.revision + 1,
-      });
-      await storage.set(HOME_CUSTOM_WIDGETS_SETTINGS_KEY, JSON.stringify(nextCatalog));
-      return nextCatalog;
-    });
+      throw error;
+    }
   });
 
   app.get(`/${IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY}`, async () => {

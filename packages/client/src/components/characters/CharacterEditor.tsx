@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Character Editor — Full-page detail view
 // Replaces the chat area when editing a character.
-// Sections: Metadata, Character Sheet, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats, Advanced
+// Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats, Advanced
 // ──────────────────────────────────────────────
 import { useState, useEffect, useRef, useCallback, type ChangeEvent, type ReactNode, type SyntheticEvent } from "react";
 import { toast } from "sonner";
@@ -52,6 +52,7 @@ import { useConnections } from "../../hooks/use-connections";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
+import { dataImageUrlToFile } from "../../lib/data-image-file";
 import { SpriteGenerationModal } from "../ui/SpriteGenerationModal";
 import { AvatarGenerationModal } from "../ui/AvatarGenerationModal";
 import { AvatarCropWidget } from "../ui/AvatarCropWidget";
@@ -143,7 +144,6 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 // ── Tabs ──
 const TABS = [
   { id: "metadata", label: "Metadata", icon: User },
-  { id: "character-sheet", label: "Character Sheet", icon: Image },
   { id: "card", label: "Card", icon: IdCard },
   { id: "convo", label: "Convo", icon: MessageCircle },
   { id: "lorebook", label: "Lorebook", icon: Library },
@@ -1099,13 +1099,7 @@ export function CharacterEditor() {
 
       {/* ── Body: Tabs + Content ── */}
       <div className="mari-editor-body @max-5xl:flex-col">
-        <EditorTabRail
-          tabs={TABS.map((tab) =>
-            tab.id === "character-sheet" ? { ...tab, label: localizeUi("ui.characters.charactersheet.tab") } : tab,
-          )}
-          activeId={activeTab}
-          onChange={setActiveTab}
-        />
+        <EditorTabRail tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
         {/* Tab Content */}
         <div className="mari-editor-content @max-5xl:p-4">
@@ -1131,23 +1125,21 @@ export function CharacterEditor() {
                 onRemoveAvatar={handleAvatarRemove}
                 removingAvatar={removeAvatar.isPending}
                 hasUnsavedChanges={dirty}
-              />
-            )}
-            {activeTab === "card" && (
-              <CharacterCardTab formData={formData} updateField={updateField} updateExtension={updateExtension} />
-            )}
-            {activeTab === "character-sheet" && characterId && (
-              <CharacterSheetTab
-                characterId={characterId}
-                characterName={formData.name}
                 characterSheetImageId={
                   typeof formData.extensions.characterSheetImageId === "string"
                     ? formData.extensions.characterSheetImageId
                     : null
                 }
-                useAsReference={formData.extensions.useCharacterSheetAsReference === true}
-                updateExtension={updateExtension}
+                useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                characterAppearance={
+                  typeof formData.extensions.appearance === "string"
+                    ? formData.extensions.appearance
+                    : formData.description
+                }
               />
+            )}
+            {activeTab === "card" && (
+              <CharacterCardTab formData={formData} updateField={updateField} updateExtension={updateExtension} />
             )}
             {activeTab === "convo" && (
               <ConvoTab
@@ -1434,6 +1426,9 @@ function MetadataTab({
   onRemoveAvatar,
   removingAvatar,
   hasUnsavedChanges,
+  characterSheetImageId,
+  useCharacterSheetAsReference,
+  characterAppearance,
 }: {
   characterId: string | null;
   formData: CharacterData;
@@ -1454,6 +1449,9 @@ function MetadataTab({
   onRemoveAvatar: () => void;
   removingAvatar: boolean;
   hasUnsavedChanges: boolean;
+  characterSheetImageId: string | null;
+  useCharacterSheetAsReference: boolean;
+  characterAppearance: string;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -1689,6 +1687,18 @@ function MetadataTab({
           placeholder={localizeUi("ui.characters.metadatatab.notesAboutThisCharacterIntendedUseTipsForBest")}
         />
       </div>
+
+      {characterId && (
+        <CharacterSheetSection
+          characterId={characterId}
+          characterName={formData.name}
+          characterSheetImageId={characterSheetImageId}
+          useAsReference={useCharacterSheetAsReference}
+          defaultAppearance={characterAppearance}
+          defaultAvatarUrl={avatarPreview}
+          updateExtension={updateExtension}
+        />
+      )}
     </div>
   );
 }
@@ -2461,20 +2471,25 @@ function characterClipTrimLabel(clip: CharacterGalleryClip) {
   return `${formatTrimSecond(start)} -> ${formatTrimSecond(end)}`;
 }
 
-function CharacterSheetTab({
+function CharacterSheetSection({
   characterId,
   characterName,
   characterSheetImageId,
   useAsReference,
+  defaultAppearance,
+  defaultAvatarUrl,
   updateExtension,
 }: {
   characterId: string;
   characterName: string;
   characterSheetImageId: string | null;
   useAsReference: boolean;
+  defaultAppearance?: string;
+  defaultAvatarUrl?: string | null;
   updateExtension: (key: string, value: unknown) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const [sheetGeneratorOpen, setSheetGeneratorOpen] = useState(false);
   const { data: images, isLoading } = useCharacterGalleryImages(characterId);
   const upload = useUploadCharacterGalleryImage(characterId);
   const selectedImage = images?.find((image) => image.id === characterSheetImageId) ?? null;
@@ -2507,8 +2522,36 @@ function CharacterSheetTab({
     updateExtension("useCharacterSheetAsReference", false);
   }, [updateExtension]);
 
+  const handleGeneratedCharacterSheet = useCallback(
+    async (dataUrl: string) => {
+      let file: File;
+      try {
+        file = dataImageUrlToFile(dataUrl, `${characterName || "character"}-sheet`);
+      } catch {
+        throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      }
+      const uploaded = await upload.mutateAsync([file]);
+      const image = uploaded[0];
+      if (!image) throw new Error(localizeUi("ui.characters.charactersheet.generatedSaveFailed"));
+      chooseImage(image.id);
+      toast.success(localizeUi("ui.characters.charactersheet.created"));
+    },
+    [characterName, chooseImage, localizeUi, upload],
+  );
+
   return (
-    <div className="space-y-6">
+    <section className="space-y-6 border-t border-[var(--border)] pt-5">
+      <AvatarGenerationModal
+        open={sheetGeneratorOpen}
+        mode="character-sheet"
+        title={localizeUi("ui.characters.charactersheet.createTitle")}
+        entityName={characterName || localizeUi("ui.characters.charactersheet.characterFallback")}
+        defaultAppearance={defaultAppearance}
+        defaultAvatarUrl={defaultAvatarUrl}
+        onClose={() => setSheetGeneratorOpen(false)}
+        onUseAvatar={handleGeneratedCharacterSheet}
+      />
+
       <SectionHeader
         title={localizeUi("ui.characters.charactersheet.title")}
         subtitle={localizeUi("ui.characters.charactersheet.subtitle")}
@@ -2536,6 +2579,16 @@ function CharacterSheetTab({
         </div>
 
         <div className="space-y-4">
+          <button
+            type="button"
+            onClick={() => setSheetGeneratorOpen(true)}
+            disabled={upload.isPending}
+            className="mari-editor-action mari-editor-action--primary inline-flex w-full justify-center disabled:cursor-wait disabled:opacity-60"
+          >
+            <Wand2 size="0.875rem" />
+            {localizeUi("ui.characters.charactersheet.createWithAi")}
+          </button>
+
           <ImageUploadDropzone
             multiple={false}
             label={
@@ -2625,7 +2678,7 @@ function CharacterSheetTab({
           </p>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 

@@ -143,7 +143,7 @@ The sections above describe what each control does. This section maps them to th
 
 A few habits keep lorebooks healthy:
 
-- **Give every entry a way to fire.** A **Normal** entry with no keys never activates — it just sits there taking up space. If a fact should always be present, make it **Constant**; otherwise give it keys.
+- **Give every entry a way to fire.** A **Normal** entry with no keys has nothing for keyword matching to catch — it activates only if semantic search recalls it by meaning, which needs a vectorized lorebook and an embedding model (see [Semantic Search](semantic-search.md)). If a fact should always be present, make it **Constant**; otherwise give it keys so it fires without relying on semantic search.
 - **Prefer specific keys.** A key like `he`, `it`, or `the city` matches almost every message and wastes budget. Reach for exact names, **Whole Words**, or **Selective** secondary keys when a key is noisy.
 - **Fill in the Description** on any entry you expect the **Knowledge Router** agent to route — it reads the description, not the content, to decide relevance (see [Knowledge Sources](../agents/knowledge-sources.md)).
 - **Leave Position, Depth, Order, and Role at their defaults** unless you have a reason. Reach for **Order** when several entries fire and the budget is tight (a lower number loads first and survives trimming); use **@ Depth** only for the rare reminder that must sit beside the latest message, as cautioned above. Keep an eye on the lorebook's **Token Budget** and **Entry Limit** (see [Token Budgets and Recursion](token-budgets.md)).
@@ -196,7 +196,7 @@ Most entries need one or two controls; a few earn several at once. Take the rule
 **The Count's weakness** — *Selective (AND Any), Whole Words on, Order 10, with a Description.*
 
 - Primary Keys: `weakness`, `kill`, `destroy`, `stake`
-- Secondary Keys: `Vlad`, `the count`, `vampire`
+- Secondary Keys: `Vlad`, `the count`
 - Description: `How Count Vlad can actually be destroyed.`
 - Content: `Vlad can only be destroyed by a blackthorn stake through the heart, driven at dawn. Sunlight alone merely weakens him.`
 
@@ -363,7 +363,7 @@ Use the **comment macro** to leave a note that never reaches the AI:
 
 ## Common pitfalls
 
-- **An entry never fires.** A **Normal** entry with no keys has nothing to match, so it never activates — make it **Constant** or give it keys. Check too that the lorebook is enabled and active in the chat.
+- **An entry never fires.** A **Normal** entry with no keys has nothing for keyword matching to catch, so it stays silent unless semantic search recalls it by meaning — give it keys, make it **Constant**, or turn on vectorization for the lorebook. Check too that the lorebook is enabled and active in the chat.
 - **A keyword stopped working.** Keys are matched only in the last few messages — the lorebook's **Scan Depth** (default 2). Once the trigger word scrolls out of that window, the entry goes quiet. Raise **Scan Depth**, add **Sticky** so a fact lingers once it fires, or make the entry **Constant**.
 - **An entry fires in the wrong scenes.** A broad key like `home` or `king` matches too much. Tighten it with **Whole Words**, gate it with **Selective** secondary keys, or filter the entry to the right character.
 - **Important lore keeps getting dropped.** When more entries match than the budget allows, the tail is trimmed. Give the entries that matter a lower **Order**, raise the **Token Budget**, or move bulky reference lore behind the Knowledge Router agent. The **Active Context** panel shows exactly what was skipped and why (see [Token Budgets and Recursion](token-budgets.md)).

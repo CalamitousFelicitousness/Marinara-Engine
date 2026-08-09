@@ -70,6 +70,12 @@ try {
     ].join("\n"),
     "utf8",
   );
+  await writeFile(join(workspaceRoot, "docs", "lang", "plain.md"), "Just a paragraph with no headings at all.\n", "utf8");
+  await writeFile(
+    join(workspaceRoot, "docs", "lang", "many.md"),
+    Array.from({ length: 45 }, (_, index) => `## Section ${index + 1}\n\nBody ${index + 1}.`).join("\n\n"),
+    "utf8",
+  );
   await writeFile(join(workspaceRoot, "outside-docs", "secret.md"), "# Internal secret\n", "utf8");
   await symlink(
     join(workspaceRoot, "outside-docs"),
@@ -133,6 +139,23 @@ try {
       assert.match(err.message, /"C#"/u);
       assert.match(err.message, /"Real section"/u);
       assert.doesNotMatch(err.message, /not a real heading/u);
+      return true;
+    },
+  );
+  // #4796 review — cover the other two missing-heading diagnostic branches.
+  await assert.rejects(
+    () => readCanonicalDocumentation(workspaceRoot, "docs/lang/plain.md", "Whatever"),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /has no headings/u);
+      return true;
+    },
+  );
+  await assert.rejects(
+    () => readCanonicalDocumentation(workspaceRoot, "docs/lang/many.md", "Missing"),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /\(\+\d+ more\)/u);
       return true;
     },
   );

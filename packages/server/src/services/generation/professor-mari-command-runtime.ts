@@ -592,7 +592,7 @@ function sendPlan(command: PlanCommand, args: Parameters<typeof handleProfessorM
 
 type FetchCandidate = { name: string; blurb: string; id: string };
 type FetchResolution =
-  | { kind: "single"; name: string; content: string }
+  | { kind: "single"; name: string; id: string; content: string }
   | { kind: "candidates"; query: string; candidates: FetchCandidate[] }
   | { kind: "none" };
 
@@ -630,7 +630,9 @@ async function fetchProfessorMariContext(
     // cached system prefix — and both trigger the fetch follow-up so Mari speaks
     // to what she just pulled (a single card, or "which of these did you mean?").
     if (resolution.kind === "single") {
-      mariContext[`${command.fetchType}:${resolution.name}`] = resolution.content;
+      // Key by name AND id so two same-named entities (the Case-C flow) can both
+      // be held in context at once instead of one overwriting the other.
+      mariContext[`${command.fetchType}:${resolution.name} [id: ${resolution.id}]`] = resolution.content;
       args.sendAssistantAction({ action: "data_fetched", fetchType: command.fetchType, name: resolution.name });
       logger.info('[commands] Assistant fetched %s: "%s"', command.fetchType, resolution.name);
     } else {
@@ -696,7 +698,7 @@ async function resolveFetchedContent(
   };
   const content = await renderSingleFetchContent(resolvedCommand, args);
   if (!content) return { kind: "none" };
-  return { kind: "single", name: resolution.candidate.name, content };
+  return { kind: "single", name: resolution.candidate.name, id: resolution.candidate.id, content };
 }
 
 async function renderSingleFetchContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {

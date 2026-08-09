@@ -6,39 +6,17 @@
 // (token overlap → real cosine separation), threaded through the same
 // embeddingSource seam production uses — no ONNX, no live model.
 import assert from "node:assert/strict";
-import type { MemoryRecallEmbeddingSource } from "../../packages/server/src/services/memory-recall.js";
 import {
   tieredResolveEntity,
   warmEntityEmbeddings,
   type EntityCandidate,
   type EntityDescriptor,
 } from "../../packages/server/src/services/entity-semantic-search.js";
+import { BOW_STUB_DIM as DIM, createBowStubEmbedder } from "./helpers/bow-stub-embedder.js";
 
-// ── Deterministic bag-of-words embedder (token overlap → cosine separation) ──
-// A stable, collision-free vocabulary map (each distinct word gets its own fixed
-// dimension) so cosine is exactly token overlap — symmetric texts tie exactly,
-// with no hash-collision artifacts. The map persists across embed() calls, so
-// every vector shares the same DIM and word→index assignment.
-const DIM = 512;
-const vocabulary = new Map<string, number>();
-function dimensionOf(token: string): number {
-  let index = vocabulary.get(token);
-  if (index === undefined) {
-    index = vocabulary.size % DIM;
-    vocabulary.set(token, index);
-  }
-  return index;
-}
-function bowEmbed(text: string): number[] {
-  const vector = new Array<number>(DIM).fill(0);
-  for (const token of text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) vector[dimensionOf(token)] += 1;
-  const magnitude = Math.sqrt(vector.reduce((sum, x) => sum + x * x, 0)) || 1;
-  return vector.map((x) => x / magnitude);
-}
-const stubEmbedder: MemoryRecallEmbeddingSource = {
-  label: "fetch-tiers regression",
-  embed: async (texts) => texts.map(bowEmbed),
-};
+// Deterministic, collision-free bag-of-words embedder (token overlap → exact
+// cosine separation); shared with the other Mari fetch regressions.
+const stubEmbedder = createBowStubEmbedder(undefined, "fetch-tiers regression");
 
 function candidate(id: string, name: string, embedText: string): EntityCandidate {
   return { id, name, embedText, embedding: null, blurb: name };

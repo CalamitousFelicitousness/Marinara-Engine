@@ -112,12 +112,16 @@ function projectCharacter(row: Row): Projection | null {
   if (row.id === PROFESSOR_MARI_ID) return null; // Mari does not fetch herself
   let data: Partial<CharacterData> = {};
   try {
-    data = typeof row.data === "string" ? (JSON.parse(row.data) as CharacterData) : {};
+    // JSON.parse can return null / a non-object (data === "null"); guard so
+    // reading data.name below cannot throw and blank a whole listCandidates call.
+    const parsed = typeof row.data === "string" ? JSON.parse(row.data) : {};
+    data = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Partial<CharacterData>) : {};
   } catch {
     data = {};
   }
   const name = typeof data.name === "string" ? data.name : "";
   if (!name.trim()) return null;
+  const comment = trimText(row.comment);
   return {
     name,
     embedText: buildText([
@@ -126,12 +130,12 @@ function projectCharacter(row: Row): Projection | null {
       ["Personality", data.personality],
       ["Scenario", data.scenario],
       ["Tags", Array.isArray(data.tags) ? data.tags : []],
-      // Prefer the user comment; fall back to the card's creator notes. Guard on
-      // emptiness, not type — `comment` is a not-null "" column, so a type check
-      // would make the fallback dead and drop notes entirely for blank comments.
-      ["Notes", typeof row.comment === "string" && row.comment.trim() ? row.comment : data.creator_notes],
+      // Prefer the user comment; fall back to the card's creator notes.
+      ["Notes", comment || data.creator_notes],
     ]),
-    blurb: blurb(name, data.description ?? ""),
+    // The comment is the user's disambiguation note — prefer it in the blurb the
+    // candidate list shows, falling back to the description.
+    blurb: blurb(name, comment || (data.description ?? "")),
   };
 }
 

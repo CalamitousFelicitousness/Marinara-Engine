@@ -33,12 +33,15 @@ await insertCharacter("c1", { name: "Dracula", description: "a brooding immortal
 await insertCharacter("c2", { name: "Bob", description: "a cheerful baker" });
 // Professor Mari must never appear as a fetch candidate.
 await insertCharacter(PROFESSOR_MARI_ID, { name: "Professor Mari", description: "the built-in assistant" });
+// A record whose data is the JSON literal "null" must be skipped, not crash the
+// whole projection (JSON.parse("null") === null).
+await db.insert(characters).values({ id: "c-null", data: "null", comment: "", createdAt: STAMP, updatedAt: STAMP });
 
-// ── Candidates project correctly; Mari is excluded; embeddings start null ──
+// ── Candidates project correctly; Mari + malformed rows excluded; embeddings null ──
 {
   const candidates = await store.listCandidates("character");
   const ids = candidates.map((c) => c.id).sort();
-  assert.deepEqual(ids, ["c1", "c2"], "Professor Mari must be excluded from candidates");
+  assert.deepEqual(ids, ["c1", "c2"], "Professor Mari and a null-data row must be excluded, without throwing");
   const dracula = candidates.find((c) => c.id === "c1")!;
   assert.equal(dracula.name, "Dracula");
   assert.match(dracula.embedText, /brooding immortal vampire/, "embed text must include the description");

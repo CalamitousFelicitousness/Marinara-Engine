@@ -7,6 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MemoryRecallEmbeddingSource } from "../../packages/server/src/services/memory-recall.js";
+import { BOW_STUB_DIM as DIM, createBowStubEmbedder } from "./helpers/bow-stub-embedder.js";
 
 process.env.FILE_STORAGE_DIR = mkdtempSync(join(tmpdir(), "marinara-relevance-"));
 
@@ -17,27 +18,9 @@ const { resolveProfessorMariPromptContext } = await import(
   "../../packages/server/src/routes/generate/professor-mari-prompt-context.js"
 );
 
-// Collision-free vocab-map bag-of-words embedder (token overlap → exact cosine).
-const DIM = 512;
-const vocabulary = new Map<string, number>();
-function bowEmbed(text: string): number[] {
-  const vector = new Array<number>(DIM).fill(0);
-  for (const token of text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
-    let index = vocabulary.get(token);
-    if (index === undefined) {
-      index = vocabulary.size % DIM;
-      vocabulary.set(token, index);
-    }
-    vector[index] += 1;
-  }
-  const magnitude = Math.sqrt(vector.reduce((sum, x) => sum + x * x, 0)) || 1;
-  return vector.map((x) => x / magnitude);
-}
-const stubSource: MemoryRecallEmbeddingSource = {
-  spaceId: "stub-space",
-  label: "relevance regression",
-  embed: async (texts) => texts.map(bowEmbed),
-};
+// Deterministic, collision-free bag-of-words embedder shared with the other Mari
+// fetch regressions (token overlap → exact cosine).
+const stubSource = createBowStubEmbedder("stub-space", "relevance regression");
 
 const db = await createFileNativeDB();
 const STAMP = "2026-01-01T00:00:00.000Z";
@@ -165,12 +148,13 @@ for (const candidate of await warmStore.listCandidates("character")) {
 // ── The query is embedded ONCE across a turn's follow-up passes (memoized) ──
 {
   let queryEmbedCalls = 0;
+  const inner = createBowStubEmbedder("stub-space", "counting");
   const countingSource: MemoryRecallEmbeddingSource = {
     spaceId: "stub-space",
     label: "counting",
     embed: async (texts) => {
       queryEmbedCalls += 1;
-      return texts.map(bowEmbed);
+      return inner.embed(texts);
     },
   };
   const cache = new Map<string, number[] | null>();

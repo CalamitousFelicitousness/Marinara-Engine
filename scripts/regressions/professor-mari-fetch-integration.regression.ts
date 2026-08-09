@@ -8,7 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PROFESSOR_MARI_ID } from "../../packages/shared/src/constants/defaults.js";
-import type { MemoryRecallEmbeddingSource } from "../../packages/server/src/services/memory-recall.js";
+import { createBowStubEmbedder } from "./helpers/bow-stub-embedder.js";
 
 process.env.FILE_STORAGE_DIR = mkdtempSync(join(tmpdir(), "marinara-fetch-int-"));
 
@@ -22,26 +22,9 @@ const { handleProfessorMariCommand } = await import(
   "../../packages/server/src/services/generation/professor-mari-command-runtime.js"
 );
 
-// Collision-free vocab-map bag-of-words embedder (token overlap → exact cosine).
-const DIM = 512;
-const vocabulary = new Map<string, number>();
-function bowEmbed(text: string): number[] {
-  const vector = new Array<number>(DIM).fill(0);
-  for (const token of text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
-    let index = vocabulary.get(token);
-    if (index === undefined) {
-      index = vocabulary.size % DIM;
-      vocabulary.set(token, index);
-    }
-    vector[index] += 1;
-  }
-  const magnitude = Math.sqrt(vector.reduce((sum, x) => sum + x * x, 0)) || 1;
-  return vector.map((x) => x / magnitude);
-}
-const embeddingSource: MemoryRecallEmbeddingSource = {
-  label: "fetch-integration regression",
-  embed: async (texts) => texts.map(bowEmbed),
-};
+// Deterministic, collision-free bag-of-words embedder shared with the other
+// Mari fetch regressions (token overlap → exact cosine).
+const embeddingSource = createBowStubEmbedder(undefined, "fetch-integration regression");
 
 const db = await createFileNativeDB();
 const chars = createCharactersStorage(db);
@@ -97,19 +80,26 @@ async function runFetch(name: string) {
   return { result, actions, mariContext: metadata.mariContext ?? {} };
 }
 
+// Single-fetch keys are "<type>:<name> [id: <id>]"; match by prefix when the id
+// doesn't matter to the assertion.
+function fetchedValue(mariContext: Record<string, string>, prefix: string): string | undefined {
+  const key = Object.keys(mariContext).find((k) => k.startsWith(prefix));
+  return key ? mariContext[key] : undefined;
+}
+
 // ── Exact name → single fetch, keyed by the resolved name, data_fetched action ──
 {
   const { result, actions, mariContext } = await runFetch("Dracula");
   assert.equal(result.fetchSucceeded, true, "a resolved fetch in the home chat triggers the follow-up");
-  assert.ok(mariContext["character:Dracula"], "the resolved item is stored under its name");
-  assert.match(mariContext["character:Dracula"]!, /brooding immortal vampire/);
+  assert.ok(fetchedValue(mariContext, "character:Dracula"), "the resolved item is stored under its name");
+  assert.match(fetchedValue(mariContext, "character:Dracula")!, /brooding immortal vampire/);
   assert.equal(actions.at(-1)?.action, "data_fetched");
 }
 
 // ── A descriptive fuzzy reference auto-opens the single strong hit ──
 {
   const { mariContext, actions } = await runFetch("immortal vampire brooding");
-  assert.ok(mariContext["character:Dracula"], "a fuzzy reference resolves to the right character");
+  assert.ok(fetchedValue(mariContext, "character:Dracula"), "a fuzzy reference resolves to the right character");
   assert.equal(actions.at(-1)?.action, "data_fetched");
 }
 
@@ -131,7 +121,7 @@ async function runFetch(name: string) {
 {
   await runFetch("vampire"); // leaves a "character options for" block
   const { mariContext } = await runFetch("Dracula"); // a resolved fetch must clear it
-  assert.ok(mariContext["character:Dracula"], "the resolved item is present");
+  assert.ok(fetchedValue(mariContext, "character:Dracula"), "the resolved item is present");
   assert.ok(
     !Object.keys(mariContext).some((k) => k.includes(' options for "')),
     "a resolved fetch evicts the stale candidate options block so it stops re-injecting",
@@ -152,9 +142,16 @@ async function runFetch(name: string) {
 
   // Fetch the impaler by its id → must render the impaler, not the first "Vlad".
   const { mariContext: after } = await runFetch("vlad-impaler");
-  const vladEntry = after["character:Vlad"]!;
-  assert.match(vladEntry, /impales his enemies/, "fetching by id must open the exact entity");
-  assert.doesNotMatch(vladEntry, /bloodsucking/, "it must NOT render the other same-named entity");
+  const impalerEntry = after["character:Vlad [id: vlad-impaler]"]!;
+  assert.ok(impalerEntry, "the single fetch is keyed by name AND id");
+  assert.match(impalerEntry, /impales his enemies/, "fetching by id must open the exact entity");
+  assert.doesNotMatch(impalerEntry, /bloodsucking/, "it must NOT render the other same-named entity");
+
+  // Then fetch the other Vlad — both namesakes are held under distinct keys, the
+  // first is not overwritten.
+  const { mariContext: both } = await runFetch("vlad-vampire");
+  assert.ok(both["character:Vlad [id: vlad-vampire]"], "the other Vlad is held under its own key");
+  assert.ok(both["character:Vlad [id: vlad-impaler]"], "the first Vlad is NOT overwritten by the second");
 }
 
 // ── No match → no context written, follow-up not triggered ──

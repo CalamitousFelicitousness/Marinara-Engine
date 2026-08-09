@@ -8,6 +8,8 @@ export interface HomeRecentChatSummary {
   id: string;
   name: string;
   mode: ChatMode;
+  /** Optional chat group used to evict an entire deleted group from cached Home previews. */
+  groupId: string | null;
   characterIds: string[];
   background: string | null;
   /** Game Mode's current scene asset tag. Resolved through the game-asset manifest by Home. */

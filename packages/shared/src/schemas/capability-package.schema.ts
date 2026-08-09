@@ -22,6 +22,25 @@ const capabilityPackageManifestBaseSchema = z
     name: z.string().min(1).max(120),
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
     description: z.string().max(2000).default(""),
+    /** Optional translated display copy. Unknown/partial locales fall back to the canonical fields above. */
+    localizations: z
+      .record(
+        z.string().min(2).max(35),
+        z
+          .object({
+            name: z.string().min(1).max(120).optional(),
+            description: z.string().max(2000).optional(),
+            homeBrowserTab: z
+              .object({
+                label: z.string().min(1).max(40).optional(),
+                ariaLabel: z.string().min(1).max(100).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     engine: z.object({ min: z.string().min(1), maxExclusive: z.string().min(1) }).strict(),
     kind: z.array(capabilityPackageKindSchema).min(1),
     entrypoints: z
@@ -71,7 +90,13 @@ const capabilityPackageManifestBaseSchema = z
             ariaLabel: z.string().min(1).max(100).optional(),
             /** One or two package-owned images rendered together as the compact browser-tab mark. */
             iconPaths: z
-              .array(z.string().min(1).max(240).regex(/\.(?:gif|jpe?g|png|webp)$/iu))
+              .array(
+                z
+                  .string()
+                  .min(1)
+                  .max(240)
+                  .regex(/\.(?:gif|jpe?g|png|webp)$/iu),
+              )
               .min(1)
               .max(2)
               .optional(),
@@ -123,7 +148,7 @@ const capabilityPackageManifestBaseSchema = z
   })
   .strict();
 
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 8 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 9 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

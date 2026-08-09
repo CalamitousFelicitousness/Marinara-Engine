@@ -8,6 +8,8 @@ import { useConversationGamesStore } from "../stores/conversation-games.store";
 import { useGalleryStore } from "../stores/gallery.store";
 import { toast } from "sonner";
 import { startSceneWithPromptPreferences } from "./scene-generation";
+import { isMessageHidden } from "./message-visibility";
+export { isMessageHidden } from "./message-visibility";
 import {
   SUPPORTED_MACROS,
   buildGuidedGenerationInstructionMessage,
@@ -546,17 +548,6 @@ function parseMessageIndices(input: string): number[] | null {
   }
 
   return indices.size > 0 ? Array.from(indices).sort((a, b) => a - b) : null;
-}
-
-/** Safely read a boolean from a message's extra field. */
-function isMessageHidden(msg: { extra?: unknown }): boolean {
-  if (!msg.extra) return false;
-  try {
-    const ex = typeof msg.extra === "string" ? JSON.parse(msg.extra) : msg.extra;
-    return (ex as Record<string, unknown>).hiddenFromAI === true;
-  } catch {
-    return false;
-  }
 }
 
 // ── Command definitions ────────────────

@@ -297,6 +297,28 @@ test("turning off the custom mouse pointer persists immediately and after reload
     .toBeNull();
 });
 
+test("Appearance distinguishes the square avatar-shape preview from the circular option", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "One visual shape proof is sufficient.");
+
+  await page.goto("/");
+  await page.locator('[data-tour="panel-settings"]').click();
+  await page.getByRole("tab", { name: "Appearance" }).click();
+
+  const circle = page.locator('[data-avatar-shape-preview="circle"]');
+  const square = page.locator('[data-avatar-shape-preview="square"]');
+  await expect(circle).toBeVisible();
+  await expect(square).toBeVisible();
+  const [circleRadius, squareRadius, squareWidth] = await Promise.all([
+    circle.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius)),
+    square.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius)),
+    square.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(circleRadius).toBeGreaterThanOrEqual(squareWidth / 2);
+  expect(squareRadius).toBeLessThan(squareWidth / 3);
+});
+
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-tour="panel-settings"]').click();
@@ -512,7 +534,7 @@ test("default dialogue color fills only cards without their own dialogue color",
     await chatTextColorControl.scrollIntoViewIfNeeded();
     await chatTextColorControl.getByRole("button", { name: /Scheme default/ }).click();
     await chatTextColorControl.getByRole("button", { name: "Gradient", exact: true }).click();
-    const firstGradientStop = chatTextColorControl.locator('input:not([type])').first();
+    const firstGradientStop = chatTextColorControl.locator("input:not([type])").first();
     await firstGradientStop.fill("red 20%");
     await firstGradientStop.fill("blue 35%");
     const positionedStopSliders = chatTextColorControl
@@ -3578,7 +3600,7 @@ test("stopped and refused generations keep sent text cleared and accept the firs
           (await readMessages()).filter(
             (message) =>
               message.role === "user" && message.content === "Provider refusal must not duplicate this sent message",
-        ).length,
+          ).length,
       )
       .toBe(1);
 
@@ -7295,11 +7317,11 @@ test("home shell and primary topbar panels open without client errors", async ({
       buttons
         .map((button) => {
           const icon = button.querySelector("svg");
-            const box = icon?.getBoundingClientRect();
-            return box ? box.x + box.width / 2 : null;
-          })
-          .filter((center): center is number => center !== null),
-      );
+          const box = icon?.getBoundingClientRect();
+          return box ? box.x + box.width / 2 : null;
+        })
+        .filter((center): center is number => center !== null),
+    );
     const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]);
     expect(iconCenters.length).toBeGreaterThan(2);
     expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
@@ -7332,7 +7354,9 @@ test("home shell and primary topbar panels open without client errors", async ({
   expect(errors).toEqual([]);
 });
 
-test("installed Home destinations appear as browser tabs without returning to the topbar", async ({ page }, testInfo) => {
+test("installed Home destinations appear as browser tabs without returning to the topbar", async ({
+  page,
+}, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   const mobile = testInfo.project.name.includes("mobile");
   const refreshMarker = "refresh-fixture:2026-08-09T16:00:00.000Z";
@@ -7412,6 +7436,16 @@ test("installed Home destinations appear as browser tabs without returning to th
   await expect(noodleTab.locator("img").last()).toHaveAttribute("src", /noodler-klusek\.png/u);
   const refreshBadge = noodleTab.locator('[data-component="HomeBrowserHub.NoodleRefreshBadge"]');
   await expect(refreshBadge).toHaveText("1");
+  const [noodleTabBounds, refreshBadgeBounds] = await Promise.all([
+    noodleTab.boundingBox(),
+    refreshBadge.boundingBox(),
+  ]);
+  expect(noodleTabBounds).not.toBeNull();
+  expect(refreshBadgeBounds).not.toBeNull();
+  expect(refreshBadgeBounds!.y).toBeGreaterThanOrEqual(noodleTabBounds!.y);
+  expect(refreshBadgeBounds!.y + refreshBadgeBounds!.height).toBeLessThanOrEqual(
+    noodleTabBounds!.y + noodleTabBounds!.height + 1,
+  );
   if (mobile) {
     const tabList = page.locator('[data-component="HomeBrowserHub.TabList"]');
     await expect(tabList.getByRole("tab")).toHaveCount(3);
@@ -7544,6 +7578,24 @@ test("Home recent chats use mode colors and show character sprites", async ({ pa
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+  for (const mode of ["conversation", "roleplay", "game"] as const) {
+    const launcher = page.locator(`[data-home-chat-mode="${mode}"]`);
+    const icon = launcher.locator(`[data-chat-mode-icon="${mode}"]`);
+    const colors = await launcher.evaluate((element, currentMode) => {
+      const modeIcon = element.querySelector<SVGElement>(`[data-chat-mode-icon="${currentMode}"]`);
+      const probe = document.createElement("span");
+      probe.style.color = "var(--home-chat-mode-accent)";
+      element.append(probe);
+      const result = {
+        icon: modeIcon ? getComputedStyle(modeIcon).color : null,
+        accent: getComputedStyle(probe).color,
+      };
+      probe.remove();
+      return result;
+    }, mode);
+    expect(colors.icon).toBe(colors.accent);
+    await expect(icon).toHaveClass(/mari-rgb-static-icon/u);
+  }
   const expectedAccents = [
     ["Cyan chat", "oklch(0.79 0.16 205)"],
     ["Orange story", "oklch(0.76 0.19 52)"],
@@ -7565,6 +7617,19 @@ test("Home recent chats use mode colors and show character sprites", async ({ pa
     expect(
       await card.evaluate((element) => getComputedStyle(element).getPropertyValue("--recent-chat-accent").trim()),
     ).toBe(accent);
+    const iconColors = await card.evaluate((element) => {
+      const icon = element.querySelector<SVGElement>("[data-chat-mode-icon]");
+      const probe = document.createElement("span");
+      probe.style.color = "var(--recent-chat-accent)";
+      element.append(probe);
+      const result = {
+        icon: icon ? getComputedStyle(icon).color : null,
+        accent: getComputedStyle(probe).color,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(iconColors.icon).toBe(iconColors.accent);
   }
   const gameCard = page.getByRole("button", { name: /Pink game/ });
   await expect(gameCard.locator('img[src*="moonlit-kitchen.svg"]')).toBeVisible();
@@ -8583,7 +8648,7 @@ test("Character and Persona panels launch card downloads and their local librari
   await expect(searchError).toHaveClass(/marinara-chat-chrome-panel-title/);
   const sourceButton = cardLibrary.getByRole("button", { name: /ChubAI/u });
   await sourceButton.evaluate((button: HTMLButtonElement) => button.click());
-  const sourceMenu = page.locator('.mari-chrome-selection-bar--opaque').filter({ hasText: "JannyAI" });
+  const sourceMenu = page.locator(".mari-chrome-selection-bar--opaque").filter({ hasText: "JannyAI" });
   await expect(sourceMenu).toBeVisible();
   const [sourceButtonBox, sourceMenuBox, browserBox] = await Promise.all([
     sourceButton.boundingBox(),
@@ -8593,7 +8658,9 @@ test("Character and Persona panels launch card downloads and their local librari
   expect(sourceButtonBox).not.toBeNull();
   expect(sourceMenuBox).not.toBeNull();
   expect(browserBox).not.toBeNull();
-  expect(Math.abs(sourceMenuBox!.x + sourceMenuBox!.width - (sourceButtonBox!.x + sourceButtonBox!.width))).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(sourceMenuBox!.x + sourceMenuBox!.width - (sourceButtonBox!.x + sourceButtonBox!.width)),
+  ).toBeLessThanOrEqual(1);
   expect(sourceMenuBox!.x + sourceMenuBox!.width).toBeLessThanOrEqual(browserBox!.x + browserBox!.width);
   await page.getByRole("button", { name: "Close provider menu" }).click();
   const closeCardLibrary = cardLibrary.getByRole("button", { name: "Close library" });
@@ -12480,8 +12547,21 @@ test("Home Community and clock widgets are useful, timezone-aware, and optional"
   await openHomeBookmark(page, "Widgets");
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager.getByRole("switch")).toHaveCount(9);
-  await widgetManager.getByRole("switch", { name: "Hide Community" }).click();
-  await widgetManager.getByRole("switch", { name: "Hide Clock & Calendar" }).click();
+  for (const label of [
+    "Your guide — Professor Mari",
+    "Continue chatting — Recent chats",
+    "From the kitchen — What's New",
+    "Discovery desk — Something new for your engine",
+    "Daily encounter — Character of the Day",
+    "Field notes — Learn the engine",
+    "Community — Around the table",
+    "Clock & calendar — Right now",
+    "Your shelf — Achievements",
+  ]) {
+    await expect(widgetManager.getByText(label, { exact: true })).toBeVisible();
+  }
+  await widgetManager.getByRole("switch", { name: "Hide Community — Around the table" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Clock & calendar — Right now" }).click();
   await expect(page.locator('[data-home-widget-id="community"]')).toHaveCount(0);
   await expect(page.locator('[data-home-widget-id="clock"]')).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -12516,6 +12596,7 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
   await trigger.click();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute("data-bookmarks-motion", "slide");
   await expect(menu.locator(":scope > a, :scope > button")).toHaveCount(8);
   await expect(menu.locator(":scope > a img, :scope > button img")).toHaveCount(8);
   expect(await menu.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
@@ -12533,8 +12614,11 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
   }
 
   await menu.getByRole("button", { name: "FAQ", exact: true }).click();
-  await expect(menu).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Professor Mari's FAQ" })).toBeVisible();
+  await expect(menu).toBeAttached();
+  await page.waitForTimeout(50);
+  await expect(menu).toBeAttached();
+  await expect(menu).toHaveCount(0);
 });
 
 test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller widgets", async ({ page }, testInfo) => {
@@ -12554,7 +12638,7 @@ test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller wid
 
   await openHomeBookmark(page, "Widgets");
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
-  await widgetManager.getByRole("switch", { name: "Show Recent Chats" }).click();
+  await widgetManager.getByRole("switch", { name: "Show Continue chatting — Recent chats" }).click();
   const recent = page.locator('[data-home-widget-id="recent"]');
   await expect(recent).toBeVisible();
   await expect
@@ -12620,7 +12704,12 @@ test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller wid
   }
 
   await openHomeBookmark(page, "Widgets");
-  for (const widget of ["Discovery Desk", "Character of the Day", "Clock & Calendar", "Achievements"]) {
+  for (const widget of [
+    "Discovery desk — Something new for your engine",
+    "Daily encounter — Character of the Day",
+    "Clock & calendar — Right now",
+    "Your shelf — Achievements",
+  ]) {
     await widgetManager.getByRole("switch", { name: `Show ${widget}` }).click();
   }
   await page.keyboard.press("Escape");
@@ -12721,7 +12810,9 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   ).toBeVisible();
   await expect(achievementsWidget.getByText("Gotta catch them all!", { exact: true })).toHaveCount(1);
   const achievementsLauncher = achievementsWidget.getByRole("button", { name: "Open Achievements" });
-  const launcherBackground = await achievementsLauncher.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const launcherBackground = await achievementsLauncher.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
   await achievementsLauncher.hover();
   await expect
     .poll(() => achievementsLauncher.evaluate((element) => getComputedStyle(element).backgroundColor))
@@ -12754,9 +12845,10 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   expect(widgetsIndex).toBeGreaterThanOrEqual(0);
   expect(faqIndex).toBeLessThan(achievementsIndex);
   expect(achievementsIndex).toBeLessThan(widgetsIndex);
-  await expect(
-    bookmarks.getByRole("button", { name: "Achievements", exact: true }).locator("img"),
-  ).toHaveAttribute("src", "/home/tab-icons/achievements.png");
+  await expect(bookmarks.getByRole("button", { name: "Achievements", exact: true }).locator("img")).toHaveAttribute(
+    "src",
+    "/home/tab-icons/achievements.png",
+  );
   await bookmarks.getByRole("button", { name: "Achievements", exact: true }).click();
   await expect(achievementsDialog).toBeVisible();
   await page.keyboard.press("Escape");
@@ -12775,6 +12867,63 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager.getByText("Achievements", { exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
+});
+
+test("mobile Achievements stays compact and preserves the gap before Discovery Desk", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Mobile-only compact widget proof.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    const order = [
+      "professor",
+      "whats-new",
+      "recent",
+      "learn",
+      "community",
+      "character",
+      "clock",
+      "achievements",
+      "discovery",
+    ];
+    localStorage.setItem("marinara:home:widget-visibility:v2", JSON.stringify(order));
+    localStorage.setItem("marinara:home:widget-order:v1", JSON.stringify(order));
+    localStorage.setItem("marinara:home:widget-layout:v2", JSON.stringify({ 1: order }));
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+  const achievements = page.locator('[data-home-widget-id="achievements"]');
+  const discovery = page.locator('[data-home-widget-id="discovery"]');
+  const achievementsSurface = achievements.locator(":scope > section");
+  const discoverySurface = discovery.locator(":scope > section");
+  const launcher = achievements.getByRole("button", { name: "Open Achievements" });
+  const closest = achievements.locator('[data-achievement-highlight="closest"]');
+  await expect(achievements).toBeVisible();
+  await expect(discovery).toBeVisible();
+
+  const layout = await page.locator('[data-component="HomeBrowserHub.Feed"]').evaluate((feed) => {
+    const bounds = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, height: rect.height };
+    };
+    return {
+      rowGap: Number.parseFloat(getComputedStyle(feed).rowGap),
+      achievements: bounds('[data-home-widget-id="achievements"]'),
+      achievementsSurface: bounds('[data-home-widget-id="achievements"] > section'),
+      launcher: bounds('[data-home-widget-id="achievements"] button[aria-label="Open Achievements"]'),
+      closest: bounds('[data-home-widget-id="achievements"] [data-achievement-highlight="closest"]'),
+      discoverySurface: bounds('[data-home-widget-id="discovery"] > section'),
+    };
+  });
+  expect(layout.achievementsSurface.bottom).toBeLessThanOrEqual(layout.achievements.bottom + 1);
+  expect(layout.launcher.bottom).toBeLessThanOrEqual(layout.achievementsSurface.bottom + 1);
+  expect(layout.closest.bottom).toBeLessThanOrEqual(layout.achievementsSurface.bottom + 1);
+  expect(layout.discoverySurface.top - layout.achievementsSurface.bottom).toBeGreaterThanOrEqual(layout.rowGap - 1);
+  await expect(achievementsSurface).toHaveClass(/min-h-0/u);
+  await expect(discoverySurface).toBeVisible();
+  await expect(launcher).toBeVisible();
+  await expect(closest).toBeVisible();
 });
 
 test("Character of the Day stays vertically centered inside its mobile widget", async ({ page }, testInfo) => {
@@ -12803,15 +12952,9 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
     const characterWidget = page.locator('[data-home-widget-id="character"]');
     await expect(characterWidget).toBeVisible({ timeout: 30_000 });
     const characterLayout = await characterWidget.evaluate((element) => {
-      const content = element.querySelector<HTMLElement>(
-        '[data-component="HomeBrowserHub.CharacterOfDayContent"]',
-      );
-      const avatar = element.querySelector<HTMLElement>(
-        '[data-component="HomeBrowserHub.CharacterOfDayAvatar"]',
-      );
-      const details = element.querySelector<HTMLElement>(
-        '[data-component="HomeBrowserHub.CharacterOfDayDetails"]',
-      );
+      const content = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayContent"]');
+      const avatar = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayAvatar"]');
+      const details = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayDetails"]');
       if (!content || !avatar || !details) return null;
       const contentBounds = content.getBoundingClientRect();
       const avatarBounds = avatar.getBoundingClientRect();
@@ -12906,7 +13049,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager).toBeVisible();
   await expect(widgetManager.getByRole("switch")).toHaveCount(9);
-  await widgetManager.getByRole("switch", { name: "Hide Achievements" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Your shelf — Achievements" }).click();
   await expect(page.locator('[data-home-widget-id="achievements"]')).toHaveCount(0);
   await expect
     .poll(() =>
@@ -12926,7 +13069,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await page.keyboard.press("Escape");
   await expect(achievementsWindow).toBeHidden();
   await openHomeBookmark(page, "Widgets");
-  await widgetManager.getByRole("switch", { name: "Show Achievements" }).click();
+  await widgetManager.getByRole("switch", { name: "Show Your shelf — Achievements" }).click();
   const restoredAchievements = page.locator('[data-home-widget-id="achievements"]');
   await expect(restoredAchievements).toBeVisible();
   await expect
@@ -12942,41 +13085,45 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   const baselineCompactHeight = await page
     .locator('[data-home-widget-id="professor"]')
     .evaluate((element) => element.getBoundingClientRect().height);
-  for (const widget of ["Recent Chats", "What's New", "Discovery Desk"]) {
+  for (const widget of [
+    "Continue chatting — Recent chats",
+    "From the kitchen — What's New",
+    "Discovery desk — Something new for your engine",
+  ]) {
     await widgetManager.getByRole("switch", { name: `Hide ${widget}` }).click();
   }
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(6);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await widgetManager.getByRole("switch", { name: "Hide Achievements" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Your shelf — Achievements" }).click();
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(5);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await widgetManager.getByRole("switch", { name: "Hide Professor Mari" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Your guide — Professor Mari" }).click();
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(4);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await widgetManager.getByRole("switch", { name: "Hide Character of the Day" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Daily encounter — Character of the Day" }).click();
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(3);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await widgetManager.getByRole("switch", { name: "Hide Community" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Community — Around the table" }).click();
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(2);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await widgetManager.getByRole("switch", { name: "Hide Clock & Calendar" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Clock & calendar — Right now" }).click();
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(1);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
   for (const widget of [
-    "Recent Chats",
-    "What's New",
-    "Discovery Desk",
-    "Achievements",
-    "Professor Mari",
-    "Character of the Day",
-    "Community",
-    "Clock & Calendar",
+    "Continue chatting — Recent chats",
+    "From the kitchen — What's New",
+    "Discovery desk — Something new for your engine",
+    "Your shelf — Achievements",
+    "Your guide — Professor Mari",
+    "Daily encounter — Character of the Day",
+    "Community — Around the table",
+    "Clock & calendar — Right now",
   ]) {
     await widgetManager.getByRole("switch", { name: `Show ${widget}` }).click();
   }
@@ -13212,8 +13359,7 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
   expect(dragScaleX / dragScaleY).toBeGreaterThan(1.03);
   expect(dragScaleX / dragScaleY).toBeLessThan(1.08);
 
-  const rightEdgeGrabX =
-    contentBounds!.x + contentBounds!.width - 16 - initialSpriteBounds!.width * (1 - 0.45);
+  const rightEdgeGrabX = contentBounds!.x + contentBounds!.width - 16 - initialSpriteBounds!.width * (1 - 0.45);
   await page.mouse.move(rightEdgeGrabX, contentBounds!.y + 220, { steps: 6 });
   await expect(bubble).toHaveAttribute("data-tail-side", "right");
   const movedDragTimeline = await dragAnimation.evaluate((element) => ({
@@ -13253,7 +13399,9 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
   await expect(assistant).toHaveAttribute("data-dragging", "true");
   await expect(dragAnimation).toBeVisible();
   expect(
-    await dragAnimation.evaluate((element) => Number(element.getAnimations()[0]?.currentTime ?? Number.POSITIVE_INFINITY)),
+    await dragAnimation.evaluate((element) =>
+      Number(element.getAnimations()[0]?.currentTime ?? Number.POSITIVE_INFINITY),
+    ),
   ).toBeLessThan(150);
 
   const dragTarget = {
@@ -13472,105 +13620,105 @@ test("Home lifecycle stays bounded across repeated tab and chat navigation", asy
   const auditChat = (await auditChatResponse.json()) as { id: string };
   try {
     await page.goto("/");
-  await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(3_000);
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(3_000);
 
-  const cdp = await page.context().newCDPSession(page);
-  const collect = async () => {
-    await cdp.send("HeapProfiler.collectGarbage");
-    await page.waitForTimeout(150);
-    const [dom, heap, runtime] = await Promise.all([
-      cdp.send("Memory.getDOMCounters"),
-      cdp.send("Runtime.getHeapUsage"),
-      page.evaluate(() => ({
-        animations: document.getAnimations().filter((animation) => animation.playState === "running").length,
-        homePages: document.querySelectorAll('[data-component="HomeBrowserHub.HomePage"]').length,
-        professorPages: document.querySelectorAll('[data-component="HomeProfessorMariChat"]').length,
-        lifecycle: (
-          window as unknown as {
-            __homeLifecycleAudit: {
-              snapshot: () => {
-                intervals: number;
-                timeouts: number;
-                homeSurfaceTimeouts: number;
-                timeoutDelays: Record<string, number>;
-                animationFrames: number;
-                resizeObservers: number;
+    const cdp = await page.context().newCDPSession(page);
+    const collect = async () => {
+      await cdp.send("HeapProfiler.collectGarbage");
+      await page.waitForTimeout(150);
+      const [dom, heap, runtime] = await Promise.all([
+        cdp.send("Memory.getDOMCounters"),
+        cdp.send("Runtime.getHeapUsage"),
+        page.evaluate(() => ({
+          animations: document.getAnimations().filter((animation) => animation.playState === "running").length,
+          homePages: document.querySelectorAll('[data-component="HomeBrowserHub.HomePage"]').length,
+          professorPages: document.querySelectorAll('[data-component="HomeProfessorMariChat"]').length,
+          lifecycle: (
+            window as unknown as {
+              __homeLifecycleAudit: {
+                snapshot: () => {
+                  intervals: number;
+                  timeouts: number;
+                  homeSurfaceTimeouts: number;
+                  timeoutDelays: Record<string, number>;
+                  animationFrames: number;
+                  resizeObservers: number;
+                };
               };
-            };
-          }
-        ).__homeLifecycleAudit.snapshot(),
-      })),
-    ]);
-    return {
-      documents: dom.documents,
-      nodes: dom.nodes,
-      listeners: dom.jsEventListeners,
-      heap: heap.usedSize,
-      ...runtime,
+            }
+          ).__homeLifecycleAudit.snapshot(),
+        })),
+      ]);
+      return {
+        documents: dom.documents,
+        nodes: dom.nodes,
+        listeners: dom.jsEventListeners,
+        heap: heap.usedSize,
+        ...runtime,
+      };
     };
-  };
 
-  const cycleInternalTabs = async (count: number) => {
-    for (let index = 0; index < count; index += 1) {
-      await page.getByRole("tab", { name: "Professor", exact: true }).click();
-      await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
-      await page.getByRole("tab", { name: "Home", exact: true }).click();
-      await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
-    }
-  };
-  const cycleHomeMount = async (count: number) => {
-    for (let index = 0; index < count; index += 1) {
-      await page.evaluate(async (chatId) => {
-        const module = await import("/src/stores/chat.store.ts");
-        module.useChatStore.getState().setActiveChatId(chatId);
-      }, auditChat.id);
-      await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toHaveCount(0);
-      await page.evaluate(async () => {
-        const module = await import("/src/stores/chat.store.ts");
-        module.useChatStore.getState().setActiveChatId(null);
-      });
-      await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
-    }
-  };
+    const cycleInternalTabs = async (count: number) => {
+      for (let index = 0; index < count; index += 1) {
+        await page.getByRole("tab", { name: "Professor", exact: true }).click();
+        await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
+        await page.getByRole("tab", { name: "Home", exact: true }).click();
+        await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+      }
+    };
+    const cycleHomeMount = async (count: number) => {
+      for (let index = 0; index < count; index += 1) {
+        await page.evaluate(async (chatId) => {
+          const module = await import("/src/stores/chat.store.ts");
+          module.useChatStore.getState().setActiveChatId(chatId);
+        }, auditChat.id);
+        await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toHaveCount(0);
+        await page.evaluate(async () => {
+          const module = await import("/src/stores/chat.store.ts");
+          module.useChatStore.getState().setActiveChatId(null);
+        });
+        await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+      }
+    };
 
-  await cycleInternalTabs(2);
-  await cycleHomeMount(2);
-  await page.waitForTimeout(1_750);
-  const baseline = await collect();
+    await cycleInternalTabs(2);
+    await cycleHomeMount(2);
+    await page.waitForTimeout(1_750);
+    const baseline = await collect();
 
-  await page.getByRole("tab", { name: "Professor", exact: true }).click();
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
-  const professorTabIntervals = await page.evaluate(
-    () =>
-      (
-        window as unknown as {
-          __homeLifecycleAudit: { snapshot: () => { intervals: number } };
-        }
-      ).__homeLifecycleAudit.snapshot().intervals,
-  );
-  expect(professorTabIntervals).toBeLessThan(baseline.lifecycle.intervals);
-  await page.getByRole("tab", { name: "Home", exact: true }).click();
-  await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
+    const professorTabIntervals = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __homeLifecycleAudit: { snapshot: () => { intervals: number } };
+          }
+        ).__homeLifecycleAudit.snapshot().intervals,
+    );
+    expect(professorTabIntervals).toBeLessThan(baseline.lifecycle.intervals);
+    await page.getByRole("tab", { name: "Home", exact: true }).click();
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
 
-  await cycleInternalTabs(10);
-  await cycleHomeMount(10);
-  await page.waitForTimeout(1_750);
-  const after = await collect();
+    await cycleInternalTabs(10);
+    await cycleHomeMount(10);
+    await page.waitForTimeout(1_750);
+    const after = await collect();
 
-  await testInfo.attach("home-lifecycle-counters", {
-    body: JSON.stringify({ baseline, after }, null, 2),
-    contentType: "application/json",
-  });
-  expect(after.documents).toBeLessThanOrEqual(baseline.documents + 1);
-  expect(after.nodes).toBeLessThanOrEqual(baseline.nodes + 80);
-  expect(after.listeners).toBeLessThanOrEqual(baseline.listeners + 8);
-  expect(after.heap).toBeLessThanOrEqual(baseline.heap + 3 * 1024 * 1024);
-  expect(after.animations).toBeLessThanOrEqual(baseline.animations + 2);
-  expect(after.lifecycle.intervals).toBe(baseline.lifecycle.intervals);
-  expect(after.lifecycle.resizeObservers).toBe(baseline.lifecycle.resizeObservers);
-  expect(after.lifecycle.homeSurfaceTimeouts).toBe(baseline.lifecycle.homeSurfaceTimeouts);
-  expect(after.lifecycle.animationFrames).toBeLessThanOrEqual(baseline.lifecycle.animationFrames + 1);
+    await testInfo.attach("home-lifecycle-counters", {
+      body: JSON.stringify({ baseline, after }, null, 2),
+      contentType: "application/json",
+    });
+    expect(after.documents).toBeLessThanOrEqual(baseline.documents + 1);
+    expect(after.nodes).toBeLessThanOrEqual(baseline.nodes + 80);
+    expect(after.listeners).toBeLessThanOrEqual(baseline.listeners + 8);
+    expect(after.heap).toBeLessThanOrEqual(baseline.heap + 3 * 1024 * 1024);
+    expect(after.animations).toBeLessThanOrEqual(baseline.animations + 2);
+    expect(after.lifecycle.intervals).toBe(baseline.lifecycle.intervals);
+    expect(after.lifecycle.resizeObservers).toBe(baseline.lifecycle.resizeObservers);
+    expect(after.lifecycle.homeSurfaceTimeouts).toBe(baseline.lifecycle.homeSurfaceTimeouts);
+    expect(after.lifecycle.animationFrames).toBeLessThanOrEqual(baseline.lifecycle.animationFrames + 1);
     expect(after.homePages).toBe(1);
     expect(after.professorPages).toBe(0);
   } finally {
@@ -13603,7 +13751,7 @@ test("Home widget order can be dragged and persists across reloads", async ({ pa
   await expect(page.locator('[data-component="HomeBrowserHub.Feed"]')).toBeVisible();
   await page.getByRole("navigation", { name: "Home bookmarks" }).getByRole("button", { name: "Widgets" }).click();
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
-  await widgetManager.getByRole("switch", { name: "Hide Clock & Calendar" }).click();
+  await widgetManager.getByRole("switch", { name: "Hide Clock & calendar — Right now" }).click();
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-home-widget-id="clock"]')).toHaveCount(0);
   await expect(page.locator("[data-home-empty-slot]")).toHaveCount(1);
@@ -13726,9 +13874,7 @@ test("chat mode tabs and new-chat actions stay reachable", async ({ page }) => {
 
     expect(errors).toEqual([]);
   } finally {
-    await Promise.allSettled(
-      characterlessChats.map((chat) => page.request.delete(`/api/chats/${chat.id}?force=true`)),
-    );
+    await Promise.allSettled(characterlessChats.map((chat) => page.request.delete(`/api/chats/${chat.id}?force=true`)));
   }
 });
 

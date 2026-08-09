@@ -148,13 +148,14 @@ for (const candidate of await warmStore.listCandidates("character")) {
 // ── The query is embedded ONCE across a turn's follow-up passes (memoized) ──
 {
   let queryEmbedCalls = 0;
-  const inner = createBowStubEmbedder("stub-space", "counting");
+  // Wrap the SAME embedder that warmed the entity vectors, so the query vector
+  // shares its token→dimension space (a fresh embedder would use different coords).
   const countingSource: MemoryRecallEmbeddingSource = {
     spaceId: "stub-space",
     label: "counting",
     embed: async (texts) => {
       queryEmbedCalls += 1;
-      return inner.embed(texts);
+      return stubSource.embed(texts);
     },
   };
   const cache = new Map<string, number[] | null>();

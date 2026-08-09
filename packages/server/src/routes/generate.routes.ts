@@ -2483,8 +2483,10 @@ export async function generateRoutes(app: FastifyInstance) {
               presets,
               // Rank the name lists by relevance to the current message (#4768 ph3);
               // degrades to the alphabetical list when the embedder is unavailable.
+              // Use the effective current input so a regeneration (no input.userMessage)
+              // still ranks against the preserved original text.
               db: app.db,
-              queryText: input.userMessage ?? "",
+              queryText: currentUserInputContent() ?? "",
               embeddingSource: memoryRecallEmbeddingSource,
               vectorizerAvailable: memoryRecallVectorizerAvailable,
               queryEmbeddingCache: mariQueryEmbeddingCache,

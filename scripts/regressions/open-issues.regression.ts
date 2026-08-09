@@ -1465,6 +1465,80 @@ try {
   assert.equal(await lorebookStorage.getById(professorMariLorebookId), null);
   assert.equal((await lorebookStorage.listEntries(professorMariLorebookId)).length, 0);
 
+  // #4791 — Professor Mari's lorebook.create + updateEntry now persist the keyword-matching and
+  // selective fields that were previously hardcoded, so her authoring + fidelity pass can set them.
+  const professorMariParamLorebookId = "professor-mari-param-lorebook-regression";
+  const professorMariParamCreate = await mariDb.executeAction({
+    action: "lorebook.create",
+    lorebookId: professorMariParamLorebookId,
+    data: {
+      name: "Professor Mari parameterized entries",
+      entries: [
+        {
+          name: "Vlad",
+          content: "The immortal count.",
+          keys: ["Vlad"],
+          secondaryKeys: ["count", "castle"],
+          selective: true,
+          selectiveLogic: "and_all",
+          matchWholeWords: true,
+          caseSensitive: true,
+        },
+      ],
+    },
+    apply: true,
+  });
+  assert.equal(professorMariParamCreate.ok, true);
+  const professorMariParamEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariParamEntry);
+  assert.equal(professorMariParamEntry.selective, true, "create must persist selective");
+  assert.equal(professorMariParamEntry.selectiveLogic, "and_all", "create must persist selectiveLogic");
+  assert.equal(professorMariParamEntry.matchWholeWords, true, "create must persist matchWholeWords");
+  assert.equal(professorMariParamEntry.caseSensitive, true, "create must persist caseSensitive");
+  assert.equal(professorMariParamEntry.useRegex, false, "unset useRegex stays default");
+
+  // updateEntry (the fidelity-pass path, via assignLorebookEntryActionFields) patches the same fields.
+  const professorMariEntryUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { matchWholeWords: false, selectiveLogic: "not", useRegex: true },
+    apply: true,
+  });
+  assert.equal(professorMariEntryUpdate.ok, true);
+  const professorMariUpdatedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariUpdatedEntry);
+  assert.equal(professorMariUpdatedEntry.matchWholeWords, false, "updateEntry must clear matchWholeWords");
+  assert.equal(professorMariUpdatedEntry.selectiveLogic, "not", "updateEntry must patch selectiveLogic");
+  assert.equal(professorMariUpdatedEntry.useRegex, true, "updateEntry must set useRegex");
+
+  // An invalid selectiveLogic is ignored; a valid sibling field in the same patch still applies.
+  const professorMariBadLogicUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { content: "Updated body.", selectiveLogic: "nonsense" },
+    apply: true,
+  });
+  assert.equal(professorMariBadLogicUpdate.ok, true);
+  const professorMariAfterBadLogic = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariAfterBadLogic);
+  assert.equal(professorMariAfterBadLogic.content, "Updated body.", "valid sibling field still applies");
+  assert.equal(professorMariAfterBadLogic.selectiveLogic, "not", "invalid selectiveLogic is ignored");
+
+  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm its path also persists a new field.
+  const professorMariAddEntry = await mariDb.executeAction({
+    action: "lorebook.addEntry",
+    lorebookId: professorMariParamLorebookId,
+    data: { name: "Regex entry", content: "Pattern-matched lore.", keys: ["\\bLycan\\b"], useRegex: true },
+    apply: true,
+  });
+  assert.equal(professorMariAddEntry.ok, true);
+  const professorMariAddedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId)).find(
+    (entry) => entry.name === "Regex entry",
+  );
+  assert.ok(professorMariAddedEntry);
+  assert.equal(professorMariAddedEntry.useRegex, true, "addEntry must persist useRegex");
+  await lorebookStorage.remove(professorMariParamLorebookId);
+
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({
     argv: [
@@ -2081,6 +2155,42 @@ assert.equal(generatedLorebookEntry.lorebookId, "lorebook-generated");
 assert.equal(generatedLorebookEntry.content, "A city made from black glass.");
 assert.deepEqual(generatedLorebookEntry.keys, ["Glass City", "black glass"]);
 assert.deepEqual(generatedLorebookEntry.secondaryKeys, ["rain"]);
+// #4791 — unset keyword-matching/selective fields fall back to the stored defaults.
+assert.equal(generatedLorebookEntry.selective, "false");
+assert.equal(generatedLorebookEntry.selectiveLogic, "and");
+assert.equal(generatedLorebookEntry.matchWholeWords, "false");
+assert.equal(generatedLorebookEntry.caseSensitive, "false");
+assert.equal(generatedLorebookEntry.useRegex, "false");
+// #4791 — Professor Mari can now set them explicitly (previously hardcoded and ignored).
+const parameterizedLorebookEntry = buildLorebookEntryCreateRow(
+  {
+    name: "Vlad",
+    content: "The immortal count.",
+    keys: ["Vlad"],
+    secondaryKeys: ["count", "castle"],
+    selective: true,
+    selectiveLogic: "and_all",
+    matchWholeWords: true,
+    caseSensitive: true,
+    useRegex: false,
+  },
+  "lorebook-generated",
+  "entry-parameterized",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(parameterizedLorebookEntry.selective, "true");
+assert.equal(parameterizedLorebookEntry.selectiveLogic, "and_all");
+assert.equal(parameterizedLorebookEntry.matchWholeWords, "true");
+assert.equal(parameterizedLorebookEntry.caseSensitive, "true");
+assert.equal(parameterizedLorebookEntry.useRegex, "false");
+// An invalid selectiveLogic is rejected and falls back to the stored default.
+const invalidLogicLorebookEntry = buildLorebookEntryCreateRow(
+  { name: "Bad logic", content: "x", selectiveLogic: "nonsense" },
+  "lorebook-generated",
+  "entry-bad-logic",
+  "2026-07-16T00:00:00.000Z",
+);
+assert.equal(invalidLogicLorebookEntry.selectiveLogic, "and");
 
 // Issue #4135 — Markdown headings inside Lorebook Keeper content are content,
 // not approval-entry delimiters.

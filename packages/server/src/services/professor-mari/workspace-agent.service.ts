@@ -18,6 +18,7 @@ import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../llm/local-sidecar.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
+import { isMemoryRecallVectorizerAvailable } from "../memory-recall-embedding.js";
 import { mergeCustomParameters, normalizeServiceTier } from "../../routes/generate/generate-route-utils.js";
 import {
   appendReadableAttachmentsToContent,
@@ -439,7 +440,7 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
         data: {
           type: "object",
           description:
-            "Entity fields. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, and an entries array whose items contain name, content, keys, secondaryKeys, tag, constant, position, depth, role, and order.",
+            "Entity fields. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, book tuning (scanDepth, tokenBudget, entryLimit, recursive, maxRecursionDepth), and an entries array whose items contain name, content, description, keys, secondaryKeys, tag, constant, selective, selectiveLogic, matchWholeWords, caseSensitive, useRegex, position, depth, order, role, and group. See the lorebook authoring guidance for what each entry field does.",
         },
         patch: { type: "object" },
       },
@@ -607,7 +608,16 @@ ${MARI_GUIDED_SEQUENCES}
 - New creates: use \`apply:true\` immediately for \`character.create\`, \`persona.create\`, \`lorebook.create\`, \`lorebook.addEntry\`, \`agent.create\`, \`preset.create\`, and non-activating \`theme.create\` when the user asked you to create it. Verify with a read before claiming success.
 - Character generation: put the full card in \`data\`; do not create a name-only placeholder. \`firstMes\` and \`firstMessage\` both map to the opening message.
 - About Me writing: read the target character or persona first, write the bio in their own voice, then put it in \`patch.aboutMe\` on the matching update action with \`apply:true\`.
-- Lorebook generation: put the complete \`entries\` array inside \`data\` on \`lorebook.create\`. Marinara saves the lorebook and its entries together, so do not create an empty lorebook and promise to fill it later.
+- Lorebook authoring: plan the entries first (premise, places, people, factions, rules), then create the whole book in one \`lorebook.create\` (Marinara saves the book and entries together, so never make an empty book to fill later). Set each entry deliberately:
+  - Always-true world premise (the setting's ground rules) -> \`constant: true\`, no keys. Everything else is keyword-triggered.
+  - Topical lore -> \`keys\` (3-8 specific trigger words). Tighten a too-broad key with \`matchWholeWords: true\`; reach for \`caseSensitive\`/\`useRegex\` only when truly needed.
+  - A shared or ambiguous word that mis-fires -> \`selective: true\` + \`secondaryKeys\` + \`selectiveLogic\` ("and" = any secondary present, "and_all" = all present, "not" = blocked if any present, "not_all" = blocked if all present). Secondary keys do nothing unless \`selective: true\`.
+  - Alternate versions of one thing where only one should load -> give them the same \`group\`.
+  - Fill \`description\` on every entry: it feeds the entry's semantic embedding and is what the Knowledge Router agent (when enabled) reads to route the entry, so an empty description weakens both.
+  - Placement (\`position\`/\`depth\`/\`order\`/\`role\`): leave at defaults unless the user asks for specific placement; \`docs_read\` the "Position, Depth, and Order" section of \`docs/lorebooks/entries.md\` for exact values.
+  - Semantic recall needs an embedding model. If \`embeddingModelConfigured: false\` (see workspace_context) there is no matching by meaning, so rely on \`keys\` and \`constant\`. If true, important but rarely-named lore may also be recalled by meaning once vectorized, so it need not be forced \`constant\`.
+  - Unsure what a field does? \`docs_read docs/lorebooks/entries.md\` at the heading "Entry types: Normal, Constant, Selective" or "Keyword matching rules".
+- Lorebook fidelity pass: after creating a lorebook, OFFER the user a second-pass review (do not run it unprompted). If they accept, read the entries back (\`lorebook.entries\` then \`lorebook.getEntry\`) and fix weak spots with \`lorebook.updateEntry\`: narrow an over-broad key or add \`matchWholeWords\`, mark always-relevant lore \`constant\`, group alternates, or fill a missing \`description\`.
 - Lorebook reading: \`lorebook.entries\` is a compact index with entry IDs and content previews. Call \`lorebook.getEntry\` with each relevant \`entryId\` before reviewing or rewriting its full content.
 - For \`preset.create\`, put prompt sections in \`data.sections\` and preset variables in \`data.choiceBlocks\`. Each choice block needs \`variableName\`, \`question\`, and \`options\` with \`label\`/\`value\` pairs.
 - Custom image agents are supported by the live runtime. Use \`data.resultType: "image_prompt"\`, enable \`settings.customCapabilities.trigger_image_generation\`, and have the agent return \`shouldGenerate\` plus \`prompt\`. Marker-triggered agents should also set \`activationKeywords\`. Do not claim that only Illustrator can generate image prompts.
@@ -623,9 +633,9 @@ Examples:
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"persona.create","data":{"name":"Dr. Marisia Voss","description":"A successful alternate version of Mari.","personality":"Confident, witty, organized, still warmly sarcastic."},"reason":"User requested a test persona","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"character.create","data":{"name":"Dr. Voss","description":"A brilliant field researcher.","personality":"Exacting, curious, dryly funny.","firstMes":"You are late. Sit down.","appearance":"Silver hair and a white laboratory coat."},"reason":"User requested a character","apply":true}}],"stop":false}
 Verified lorebook creation sequence (three turns):
-{"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.create","data":{"name":"The Glass City","description":"People and places in the setting.","entries":[{"name":"The Glass City","content":"A rain-soaked city built from black glass.","keys":["Glass City","black glass"]}]},"reason":"User requested a lorebook","apply":true}}],"stop":false}
-{"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.search","query":"The Glass City"}}],"stop":false}
-{"say":"Done — I created the lorebook and the verification read found it.","commands":[],"stop":true}
+{"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.create","data":{"name":"Nightfall Wallachia","description":"Vlad's vampire-gothic setting.","category":"world","entries":[{"name":"World premise","content":"The year is 1890; vampires are real and hunt the Carpathian nights.","constant":true,"description":"Always-true ground rules of the setting."},{"name":"Castle Dracul","content":"A black-stone fortress above the village, seat of the vampire count.","keys":["Castle Dracul","the castle"],"description":"The count's seat of power."},{"name":"Vlad","content":"The immortal count who rules Wallachia after dark.","keys":["Vlad"],"matchWholeWords":true,"description":"The setting's central vampire."}]},"reason":"User requested a lorebook for the setting","apply":true}}],"stop":false}
+{"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.search","query":"Nightfall Wallachia"}}],"stop":false}
+{"say":"Done — built it with an always-on premise plus keyed entries, and the verification read found it. Want me to do a fidelity pass on the entries?","commands":[],"stop":true}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"preset.create","data":{"name":"Test preset","sections":[{"name":"Main","content":"You are {{char}}.","role":"system"}],"choiceBlocks":[{"variableName":"tone","question":"Tone","options":[{"label":"Warm","value":"warm"},{"label":"Sharp","value":"sharp"}]}]},"reason":"User requested a preset with variables","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"agent.create","data":{"name":"Image Marker","description":"Turns IMG_PROMPT markers into image prompts.","resultType":"image_prompt","activationKeywords":["IMG_PROMPT:"],"activationScanDepth":4,"settings":{"customCapabilities":{"trigger_image_generation":true}}},"reason":"User requested a marker-triggered image agent","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.updateEntry","entryId":"entry-id","patch":{"content":"new content"},"reason":"Update requested by user","apply":false}}],"stop":false}
@@ -2161,6 +2171,12 @@ export class ProfessorMariWorkspaceService {
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
     const skillsPrompt = await this.buildSkillsPrompt();
+    let embeddingModelConfigured = false;
+    try {
+      embeddingModelConfigured = await isMemoryRecallVectorizerAvailable(this.app.db, {});
+    } catch {
+      embeddingModelConfigured = false;
+    }
     const workspaceInfo = [
       `<workspace_context>`,
       `workspaceRoot: ${this.workspaceRoot}`,
@@ -2168,6 +2184,7 @@ export class ProfessorMariWorkspaceService {
       `serverUrl: ${getServerProtocol()}://127.0.0.1:${getPort()}`,
       `connection: ${connection.name || connection.id} / ${connection.provider} / ${connection.model}`,
       `currentTime: ${new Date().toISOString()}`,
+      `embeddingModelConfigured: ${embeddingModelConfigured}`,
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [

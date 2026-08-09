@@ -88,7 +88,16 @@ try {
   await assert.rejects(() => readCanonicalDocumentation(workspaceRoot, "../outside.md"), /must be README\.md/u);
   await assert.rejects(
     () => readCanonicalDocumentation(workspaceRoot, "docs/connections/proxy.md", "Missing heading"),
-    /Heading not found/u,
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /Heading not found/u);
+      // #4791 — a heading miss lists the file's real headings so the caller can self-correct
+      // instead of hitting a dead end.
+      assert.match(err.message, /Available headings:/u);
+      assert.match(err.message, /"Proxy timeout"/u);
+      assert.match(err.message, /"API keys"/u);
+      return true;
+    },
   );
   await assert.rejects(
     () => readCanonicalDocumentation(workspaceRoot, "docs/connections/examples/nested-ignored.md"),

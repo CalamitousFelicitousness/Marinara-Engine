@@ -15,6 +15,7 @@ const MAX_SEARCH_LIMIT = 8;
 const DEFAULT_READ_CHARS = 8_000;
 const MAX_READ_CHARS = 16_000;
 const MAX_EXCERPT_CHARS = 700;
+const MAX_HEADINGS_IN_MISS = 40;
 
 interface DocumentationSection {
   path: string;
@@ -190,6 +191,15 @@ function markdownSections(
 
 function firstMarkdownHeading(content: string) {
   return content.match(/^#{1,6}\s+(.+?)\s*#*\s*$/mu)?.[1]?.trim() ?? "Document overview";
+}
+
+function listMarkdownHeadings(content: string): string[] {
+  const headings: string[] = [];
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/u);
+    if (match) headings.push(match[2]!.trim());
+  }
+  return headings;
 }
 
 function readMarkdownHeading(path: string, content: string, requestedHeading: string): DocumentationSection | null {
@@ -386,7 +396,18 @@ export async function readCanonicalDocumentation(
   if (content === null) throw new Error(`Documentation file not found or too large: ${normalized}`);
   const heading = requestedHeading?.trim();
   const section = heading ? readMarkdownHeading(normalized, content, heading) : null;
-  if (heading && !section) throw new Error(`Heading not found in ${normalized}: ${heading}`);
+  if (heading && !section) {
+    const available = listMarkdownHeadings(content);
+    let hint: string;
+    if (available.length === 0) {
+      hint = " This document has no headings; omit `heading` to read the whole file.";
+    } else {
+      const shown = available.slice(0, MAX_HEADINGS_IN_MISS);
+      const more = available.length > shown.length ? `, …(+${available.length - shown.length} more)` : "";
+      hint = ` Available headings: ${shown.map((entry) => `"${entry}"`).join(", ")}${more}.`;
+    }
+    throw new Error(`Heading not found in ${normalized}: "${heading}".${hint}`);
+  }
   const selected = section?.content ?? content;
   const maxChars = Math.max(1_000, Math.min(MAX_READ_CHARS, Math.trunc(requestedMaxChars) || DEFAULT_READ_CHARS));
   const truncated = selected.length > maxChars;

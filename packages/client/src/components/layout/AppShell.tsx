@@ -388,6 +388,8 @@ export function AppShell() {
   const trackerPanelWidth = getTrackerPanelWidthForProfile(trackerPanelSizeProfile);
   const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);
+  const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
+  const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
   const detachTrackerPanelPendingRef = useRef(false);
   const [trackerPanelHost] = useState(() => {
     const host = document.createElement("div");
@@ -825,12 +827,18 @@ export function AppShell() {
   const trackerWindowHost = trackerPanelWindowTarget?.popup ?? window;
 
   const dockTrackerPanel = useCallback(() => {
-    if (trackerPanelWindowTarget) closeTrackerPanelWindow(trackerPanelWindowTarget);
+    const target = trackerPanelWindowTargetRef.current;
+    if (target) {
+      trackerPanelDockingPopupRef.current = target.popup;
+      closeTrackerPanelWindow(target);
+      trackerPanelWindowTargetRef.current = null;
+    }
     setTrackerPanelWindowTarget(null);
-  }, [trackerPanelWindowTarget]);
+  }, []);
 
   const detachTrackerPanel = useCallback(async () => {
     if (detachTrackerPanelPendingRef.current) return;
+    trackerPanelDockingPopupRef.current = null;
     detachTrackerPanelPendingRef.current = true;
 
     try {
@@ -842,6 +850,7 @@ export function AppShell() {
         toast.error(localizeUi("ui.layout.appshell.trackerPanelPopupBlocked"));
         return;
       }
+      trackerPanelWindowTargetRef.current = target;
       setTrackerPanelWindowTarget(target);
     } catch {
       toast.error(localizeUi("ui.layout.appshell.trackerPanelWindowFailed"));
@@ -850,9 +859,16 @@ export function AppShell() {
     }
   }, [localizeUi, trackerPanelWidth]);
 
-  const handleTrackerPanelWindowClosed = useCallback(() => {
+  const handleTrackerPanelWindowClosed = useCallback((closedTarget: TrackerPanelWindowTarget) => {
+    if (trackerPanelDockingPopupRef.current === closedTarget.popup) {
+      trackerPanelDockingPopupRef.current = null;
+      return;
+    }
+    if (trackerPanelWindowTargetRef.current?.popup !== closedTarget.popup) return;
+    trackerPanelWindowTargetRef.current = null;
     setTrackerPanelWindowTarget(null);
-  }, []);
+    setTrackerPanelOpen(false, activeChatId);
+  }, [activeChatId, setTrackerPanelOpen]);
 
   const professorMariFloatingActive = hasDetailView && hasProfessorMariFloatingFollowup();
 
@@ -866,6 +882,7 @@ export function AppShell() {
   useEffect(() => {
     if (!trackerPanelWindowTarget || (trackerPanelActive && trackerPanelModeAvailable)) return;
     closeTrackerPanelWindow(trackerPanelWindowTarget);
+    trackerPanelWindowTargetRef.current = null;
     setTrackerPanelWindowTarget(null);
   }, [trackerPanelActive, trackerPanelModeAvailable, trackerPanelWindowTarget]);
   useEffect(() => {

@@ -199,6 +199,7 @@ export async function runNoodlerFanActivity(input: {
     if (!connection) return { status: "connection_not_found", created: 0 };
     const admission = tryBackgroundConnection(connection.id, at);
     if (!admission.acquired) return { status: "busy", created: 0 };
+    let admissionOutcome: "completed" | "failed" | undefined;
 
     try {
       let run: NoodleFanActivityDayPlanRun | null;
@@ -233,18 +234,20 @@ export async function runNoodlerFanActivity(input: {
           creators,
           debugMode: input.debugMode,
         });
+        admissionOutcome = "completed";
         plan = storeNoodleFanAcceptedActivities(plan, run.id, accepted);
         await writePlan(input.db, plan);
         const storedRun = plan.runs.find((candidate) => candidate.id === run!.id)!;
         const created = await applyAcceptedActivities(input.db, plan, storedRun, settings, at);
         return { status: "generated", created, runId: run.id };
       } catch (error) {
+        if (!admissionOutcome) admissionOutcome = "failed";
         plan = finishNoodleFanActivityRun(plan, run.id, "abandoned", at);
         await writePlan(input.db, plan);
         throw error;
       }
     } finally {
-      admission.release();
+      admission.release(admissionOutcome);
     }
   } finally {
     release();

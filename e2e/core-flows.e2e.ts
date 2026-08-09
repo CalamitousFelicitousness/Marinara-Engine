@@ -2720,11 +2720,16 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .getByRole("navigation", { name: "Editor sections" })
       .getByRole("button", { name: "Metadata", exact: true })
       .click();
+    await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
     await expect(
       editor
         .getByRole("navigation", { name: "Editor sections" })
         .getByRole("button", { name: "Character Sheet", exact: true }),
     ).toHaveCount(0);
+    await editor
+      .getByRole("navigation", { name: "Editor sections" })
+      .getByRole("button", { name: "Sprites", exact: true })
+      .click();
     await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
     await expect(editor.getByAltText(`${characterName} character sheet`)).toBeVisible();
     await expect(editor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
@@ -2755,6 +2760,11 @@ test("Character and persona sheets persist an explicit reference choice and fall
     await page.getByText(personaName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
     const personaEditor = page.locator(".mari-editor-shell");
     await expect(personaEditor).toBeVisible();
+    await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
+    await personaEditor
+      .getByRole("navigation", { name: "Editor sections" })
+      .getByRole("button", { name: "Sprites", exact: true })
+      .click();
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
     await expect(personaEditor.getByAltText(`${personaName} character sheet`)).toBeVisible();
     await expect(personaEditor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();

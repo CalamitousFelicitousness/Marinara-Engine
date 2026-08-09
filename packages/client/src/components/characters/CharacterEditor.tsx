@@ -1156,13 +1156,6 @@ export function CharacterEditor() {
                 onRemoveAvatar={handleAvatarRemove}
                 removingAvatar={removeAvatar.isPending}
                 hasUnsavedChanges={dirty}
-                characterSheetImageId={
-                  typeof formData.extensions.characterSheetImageId === "string"
-                    ? formData.extensions.characterSheetImageId
-                    : null
-                }
-                useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
-                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "card" && (
@@ -1190,6 +1183,14 @@ export function CharacterEditor() {
                 characterName={formData.name}
                 defaultAppearance={(formData.extensions.appearance as string) ?? formData.description}
                 defaultAvatarUrl={avatarPreview}
+                characterSheetImageId={
+                  typeof formData.extensions.characterSheetImageId === "string"
+                    ? formData.extensions.characterSheetImageId
+                    : null
+                }
+                useCharacterSheetAsReference={formData.extensions.useCharacterSheetAsReference === true}
+                updateExtension={updateExtension}
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "gallery" && characterId && (
@@ -1457,9 +1458,6 @@ function MetadataTab({
   onRemoveAvatar,
   removingAvatar,
   hasUnsavedChanges,
-  characterSheetImageId,
-  useCharacterSheetAsReference,
-  onCreateCharacterSheet,
 }: {
   characterId: string | null;
   formData: CharacterData;
@@ -1480,9 +1478,6 @@ function MetadataTab({
   onRemoveAvatar: () => void;
   removingAvatar: boolean;
   hasUnsavedChanges: boolean;
-  characterSheetImageId: string | null;
-  useCharacterSheetAsReference: boolean;
-  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -1719,16 +1714,6 @@ function MetadataTab({
         />
       </div>
 
-      {characterId && (
-        <CharacterSheetSection
-          characterId={characterId}
-          characterName={formData.name}
-          characterSheetImageId={characterSheetImageId}
-          useAsReference={useCharacterSheetAsReference}
-          updateExtension={updateExtension}
-          onCreateCharacterSheet={onCreateCharacterSheet}
-        />
-      )}
     </div>
   );
 }
@@ -3776,11 +3761,19 @@ function SpritesTab({
   characterName,
   defaultAppearance,
   defaultAvatarUrl,
+  characterSheetImageId,
+  useCharacterSheetAsReference,
+  updateExtension,
+  onCreateCharacterSheet,
 }: {
   characterId: string;
   characterName?: string;
   defaultAppearance?: string;
   defaultAvatarUrl?: string | null;
+  characterSheetImageId: string | null;
+  useCharacterSheetAsReference: boolean;
+  updateExtension: (key: string, value: unknown) => void;
+  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   type SpriteCategory = "expressions" | "full-body" | "clips";
@@ -4145,6 +4138,17 @@ function SpritesTab({
     [characterId, displayExpression, uploadSprite, wandCleanupSprite, localizeUi],
   );
 
+  const characterSheetSection = (
+    <CharacterSheetSection
+      characterId={characterId}
+      characterName={characterName ?? ""}
+      characterSheetImageId={characterSheetImageId}
+      useAsReference={useCharacterSheetAsReference}
+      updateExtension={updateExtension}
+      onCreateCharacterSheet={onCreateCharacterSheet}
+    />
+  );
+
   if (category === "clips") {
     return (
       <div className="space-y-6">
@@ -4153,6 +4157,8 @@ function SpritesTab({
           subtitle={localizeUi("ui.characters.spritestab.uploadVnStyleSpritesAndVideoCallClipsFor")}
           helpText={CHARACTER_SPRITES_HELP}
         />
+
+        {characterSheetSection}
 
         {categoryTabs}
 
@@ -4168,6 +4174,8 @@ function SpritesTab({
         subtitle={localizeUi("ui.characters.spritestab.uploadVnStyleSpritesForDifferentExpressionsTheExpression")}
         helpText={CHARACTER_SPRITES_HELP}
       />
+
+      {characterSheetSection}
 
       {categoryTabs}
 

@@ -1579,7 +1579,6 @@ export function PersonaEditor() {
                 imageGenerationAvailable={imageGenerationAvailable}
                 avatarUploading={uploadAvatar.isPending}
                 hasUnsavedChanges={dirty}
-                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "card" && (
@@ -1607,6 +1606,10 @@ export function PersonaEditor() {
                 personaName={formData.name}
                 defaultAppearance={formData.appearance || formData.description}
                 defaultAvatarUrl={avatarPreview}
+                characterSheetImageId={formData.characterSheetImageId}
+                useCharacterSheetAsReference={formData.useCharacterSheetAsReference}
+                updateField={updateField}
+                onCreateCharacterSheet={() => setCharacterSheetGeneratorOpen(true)}
               />
             )}
             {activeTab === "gallery" && personaId && (
@@ -1656,11 +1659,19 @@ function PersonaSpritesTab({
   personaName,
   defaultAppearance,
   defaultAvatarUrl,
+  characterSheetImageId,
+  useCharacterSheetAsReference,
+  updateField,
+  onCreateCharacterSheet,
 }: {
   personaId: string;
   personaName?: string;
   defaultAppearance?: string;
   defaultAvatarUrl?: string | null;
+  characterSheetImageId: string | null;
+  useCharacterSheetAsReference: boolean;
+  updateField: <K extends keyof PersonaFormData>(key: K, value: PersonaFormData[K]) => void;
+  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   type SpriteCategory = "expressions" | "full-body" | "clips";
@@ -2008,6 +2019,17 @@ function PersonaSpritesTab({
     [displayExpression, personaId, uploadSprite, wandCleanupSprite, localizeUi],
   );
 
+  const characterSheetSection = (
+    <PersonaCharacterSheetSection
+      personaId={personaId}
+      personaName={personaName ?? ""}
+      characterSheetImageId={characterSheetImageId}
+      useAsReference={useCharacterSheetAsReference}
+      updateField={updateField}
+      onCreateCharacterSheet={onCreateCharacterSheet}
+    />
+  );
+
   if (category === "clips") {
     return (
       <div className="space-y-6">
@@ -2016,6 +2038,8 @@ function PersonaSpritesTab({
           subtitle={localizeUi("ui.personas.personaspritestab.uploadVnStyleSpritesAndVideoCallClipsFor")}
           helpText={PERSONA_SPRITES_HELP}
         />
+
+        {characterSheetSection}
 
         {categoryTabs}
 
@@ -2031,6 +2055,8 @@ function PersonaSpritesTab({
         subtitle={localizeUi("ui.personas.personaspritestab.uploadVnStyleSpritesForYourPersonaTheseAre")}
         helpText={PERSONA_SPRITES_HELP}
       />
+
+      {characterSheetSection}
 
       {categoryTabs}
 
@@ -2943,7 +2969,6 @@ function PersonaMetadataTab({
   imageGenerationAvailable,
   avatarUploading,
   hasUnsavedChanges,
-  onCreateCharacterSheet,
 }: {
   personaId: string | null;
   formData: PersonaFormData;
@@ -2954,7 +2979,6 @@ function PersonaMetadataTab({
   imageGenerationAvailable: boolean;
   avatarUploading: boolean;
   hasUnsavedChanges: boolean;
-  onCreateCharacterSheet: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
@@ -3186,16 +3210,6 @@ function PersonaMetadataTab({
         />
       </div>
 
-      {personaId && (
-        <PersonaCharacterSheetSection
-          personaId={personaId}
-          personaName={formData.name}
-          characterSheetImageId={formData.characterSheetImageId}
-          useAsReference={formData.useCharacterSheetAsReference}
-          updateField={updateField}
-          onCreateCharacterSheet={onCreateCharacterSheet}
-        />
-      )}
     </div>
   );
 }

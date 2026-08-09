@@ -154,6 +154,17 @@ Big settings are easier to manage as a tree than as a flat pile of entries. Alon
 
 Leave recursion off on hubs. The lorebook's **Recursive** switch and an entry's **Recursion** toggle are both off by default, which is exactly what a hub wants: it hands the model its overview and lets each member's own entry appear only when that member is actually named. If you turn recursion on elsewhere to chain related lore, keep it off on hub entries — otherwise naming the group pulls every member's full entry into the prompt at once, thousands of tokens of detail that is not yet relevant.
 
+### Reusing lore across characters and chats
+
+Where a lorebook lives decides which chats can see it, so match the container to the kind of lore:
+
+- **Shared-world rules** — the setting everyone in your library belongs to — go in a **Global** lorebook, which is active in every chat (turn on the **Global** switch on the lorebook's **Overview** tab).
+- **A character's own lore** — backstory, secrets, relationships — goes in a lorebook **linked** to that character, so it turns on automatically in their chats and nowhere else. When several characters share one book, add a character **filter** to the entries that belong to only one of them.
+- **A card you plan to share** — **embed** the lorebook into the character card so its world info travels with the export. Embedding is for characters only, and a card holds one embedded lorebook at a time.
+- **Lore for a single story** — pin a lorebook to just that chat from its settings.
+
+See [Lorebooks Overview](overview.md) for how activation works, and [Linking Lorebooks to Characters and Personas](linking-to-characters.md) for the assign, scope, and embed controls.
+
 ## Worked example: a small setting
 
 Suppose you are running a gothic-horror roleplay set in 1890s Wallachia. A skeletal lorebook would be a pile of name-and-content entries; a well-built one uses the controls above so each fact appears exactly when it should. Here is how a handful of entries might be configured, and why.
@@ -357,6 +368,19 @@ Use the **comment macro** to leave a note that never reaches the AI:
 - **An entry fires in the wrong scenes.** A broad key like `home` or `king` matches too much. Tighten it with **Whole Words**, gate it with **Selective** secondary keys, or filter the entry to the right character.
 - **Important lore keeps getting dropped.** When more entries match than the budget allows, the tail is trimmed. Give the entries that matter a lower **Order**, raise the **Token Budget**, or move bulky reference lore behind the Knowledge Router agent. The **Active Context** panel shows exactly what was skipped and why (see [Token Budgets and Recursion](token-budgets.md)).
 - **The AI ignores your lore.** Confirm the entry actually activated in **Active Context** — and remember it competes with the rest of the prompt, so a fact buried far from the latest turn has less pull than one at **After chat** or, sparingly, **@ Depth**.
+
+## Authoring checklist
+
+A quick pass for each entry you write:
+
+1. **Name it** clearly — the name is for you and for search, not for the AI.
+2. **Decide how it fires:** an always-true fact → **Constant**; anything else → **Normal** with three to eight specific **keys**.
+3. **Tame noisy keys** with **Whole Words**, or split them across **Selective** secondary keys.
+4. **Write the content** as a plain fact, in as few tokens as it takes.
+5. **Fill the Description** if you use the Knowledge Router agent.
+6. **Leave placement at its defaults** unless the entry truly needs a custom **Position**, **Depth**, or **Order**.
+7. **Group** mutually-exclusive alternates; **filter** character-specific lore to its character.
+8. **Test** it in the **Keyword test** panel, then watch **Active Context** in a real chat to confirm it fires and fits the budget.
 
 ## The Keyword test tool
 

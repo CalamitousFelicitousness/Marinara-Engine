@@ -2765,6 +2765,30 @@ body {
   grid-row: span 1;
 
   isolation: isolate;
+  container-type: inline-size;
+}
+
+.mari-home-professor-widget .mari-professor-pixel-scene [data-part="sprite"] {
+  width: 68%;
+}
+
+.mari-home-professor-widget .mari-professor-pixel-scene [data-part="laptop"] {
+  width: 76%;
+}
+
+@container (max-width: 19rem) {
+  .mari-home-professor-widget {
+    grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 34%);
+    padding: 0.65rem;
+  }
+
+  .mari-home-professor-widget [data-home-professor-description] {
+    -webkit-line-clamp: 5;
+  }
+
+  .mari-home-professor-widget [data-home-professor-action] svg {
+    display: none;
+  }
 }
 
 [data-theme="light"] .mari-home-widget {
@@ -3255,6 +3279,21 @@ html[data-marinara-reduced-effects="true"] .mari-home-discovery-card {
 
 html[data-marinara-reduced-effects="true"] .mari-home-professor-popup__arrival-frame {
   background-position: 100% 0;
+}
+
+/* Preserve the current Mari frame while the browser tab/window is inactive.
+   App.tsx owns the single visibility/focus listener; Home only consumes it. */
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__sprite,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__bubble,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__arrival-frame,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__drag-frame,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__idle-stage,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__blink,
+html[data-marinara-effects-paused="true"] .mari-home-professor-popup__state-image,
+html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="sprite"],
+html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="screen"] span,
+html[data-marinara-effects-paused="true"] .mari-professor-pixel-scene [data-part="base"] i {
+  animation-play-state: paused !important;
 }
 
 html[data-marinara-reduced-effects="true"] .retro-card,

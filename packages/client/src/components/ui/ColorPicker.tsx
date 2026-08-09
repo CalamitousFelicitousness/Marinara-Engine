@@ -88,6 +88,109 @@ function getNativeColorValue(value: string): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : "#6c5ce7";
 }
 
+function hexToHsl(value: string): [number, number, number] {
+  const hex = getNativeColorValue(value).slice(1);
+  const red = Number.parseInt(hex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(hex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+  if (max === min) return [0, 0, Math.round(lightness * 100)];
+  const delta = max - min;
+  const saturation = delta / (1 - Math.abs(2 * lightness - 1));
+  const hue =
+    max === red
+      ? 60 * (((green - blue) / delta) % 6)
+      : max === green
+        ? 60 * ((blue - red) / delta + 2)
+        : 60 * ((red - green) / delta + 4);
+  return [Math.round((hue + 360) % 360), Math.round(saturation * 100), Math.round(lightness * 100)];
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const section = hue / 60;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  const [red, green, blue] =
+    section < 1
+      ? [chroma, x, 0]
+      : section < 2
+        ? [x, chroma, 0]
+        : section < 3
+          ? [0, chroma, x]
+          : section < 4
+            ? [0, x, chroma]
+            : section < 5
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  const match = l - chroma / 2;
+  return `#${[red, green, blue]
+    .map((channel) =>
+      Math.round((channel + match) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+function MarinaraColorSliders({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  const { t } = useUiTranslation();
+  const channels = hexToHsl(value);
+  const update = (index: number, nextValue: number) => {
+    const next = [...channels] as [number, number, number];
+    next[index] = nextValue;
+    onChange(hslToHex(...next));
+  };
+  const controls = [
+    { key: "hue", label: t("ui.ui.colorpicker.hue"), max: 359, value: channels[0], unit: "°" },
+    { key: "saturation", label: t("ui.ui.colorpicker.saturation"), max: 100, value: channels[1], unit: "%" },
+    { key: "lightness", label: t("ui.ui.colorpicker.lightness"), max: 100, value: channels[2], unit: "%" },
+  ] as const;
+
+  return (
+    <div
+      className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/55 p-2.5"
+      aria-label={label}
+    >
+      <div
+        className="h-20 rounded-lg border border-[var(--border)]"
+        style={{ backgroundColor: getNativeColorValue(value) }}
+      />
+      {controls.map((control, index) => (
+        <label
+          key={control.key}
+          className="grid grid-cols-[4.5rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-[0.625rem] text-[var(--muted-foreground)]"
+        >
+          <span>{control.label}</span>
+          <input
+            type="range"
+            min={0}
+            max={control.max}
+            value={control.value}
+            onChange={(event) => update(index, Number(event.currentTarget.value))}
+            className="h-1.5 w-full cursor-pointer accent-[var(--marinara-app-accent-solid)]"
+          />
+          <span className="text-right font-mono tabular-nums">
+            {control.value}
+            {control.unit}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function ColorPicker({
   value,
   onChange,
@@ -110,8 +213,7 @@ export function ColorPicker({
   );
   const [gradientAngle, setGradientAngle] = useState(90);
   const [expanded, setExpanded] = useState(false);
-  const nativeRef = useRef<HTMLInputElement>(null);
-  const activeStopRef = useRef<number>(0);
+  const [activeStop, setActiveStop] = useState(0);
   const onChangeRef = useRef(onChange);
   const pendingChangeRef = useRef<string | null>(null);
   const pendingFrameRef = useRef<number | null>(null);
@@ -127,6 +229,10 @@ export function ColorPicker({
       setMode("solid");
     }
   }, [value]);
+
+  useEffect(() => {
+    setActiveStop((current) => Math.min(current, Math.max(0, gradientStops.length - 1)));
+  }, [gradientStops.length]);
 
   useEffect(() => {
     if (disabled) {
@@ -165,24 +271,27 @@ export function ColorPicker({
     [flushPendingChange],
   );
 
-  const commitChange = useCallback((nextValue: string, defer = false) => {
-    if (!defer) {
-      cancelPendingChange();
-      onChangeRef.current(nextValue);
-      return;
-    }
-
-    pendingChangeRef.current = nextValue;
-    if (pendingFrameRef.current !== null) return;
-    pendingFrameRef.current = window.requestAnimationFrame(() => {
-      pendingFrameRef.current = null;
-      const pending = pendingChangeRef.current;
-      pendingChangeRef.current = null;
-      if (pending !== null) {
-        onChangeRef.current(pending);
+  const commitChange = useCallback(
+    (nextValue: string, defer = false) => {
+      if (!defer) {
+        cancelPendingChange();
+        onChangeRef.current(nextValue);
+        return;
       }
-    });
-  }, [cancelPendingChange]);
+
+      pendingChangeRef.current = nextValue;
+      if (pendingFrameRef.current !== null) return;
+      pendingFrameRef.current = window.requestAnimationFrame(() => {
+        pendingFrameRef.current = null;
+        const pending = pendingChangeRef.current;
+        pendingChangeRef.current = null;
+        if (pending !== null) {
+          onChangeRef.current(pending);
+        }
+      });
+    },
+    [cancelPendingChange],
+  );
 
   const handleSolidChange = useCallback(
     (color: string, defer = false) => {
@@ -313,7 +422,9 @@ export function ColorPicker({
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
                 )}
               >
-                <Pipette size="0.6875rem" className="mr-1 inline" />{localizeUi("ui.ui.colorpicker.solid")}</button>
+                <Pipette size="0.6875rem" className="mr-1 inline" />
+                {localizeUi("ui.ui.colorpicker.solid")}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -327,7 +438,9 @@ export function ColorPicker({
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
                 )}
               >
-                <Sparkles size="0.6875rem" className="mr-1 inline" />{localizeUi("ui.ui.colorpicker.gradient")}</button>
+                <Sparkles size="0.6875rem" className="mr-1 inline" />
+                {localizeUi("ui.ui.colorpicker.gradient")}
+              </button>
             </div>
           )}
 
@@ -336,29 +449,16 @@ export function ColorPicker({
             <>
               {/* Native color picker + typed CSS value */}
               <div className="grid gap-2">
-                <label className="group relative flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 transition-all hover:border-[var(--primary)]/35 hover:bg-[var(--accent)]/25">
-                  <span
-                    className="h-6 w-6 shrink-0 rounded-md ring-1 ring-[var(--border)]"
-                    style={{
-                      backgroundColor: previewValue && !isCssGradient(previewValue) ? previewValue : "#6c5ce7",
-                    }}
-                  />
-                  <span className="min-w-0 text-xs font-medium text-[var(--foreground)]">{localizeUi("ui.ui.colorpicker.pickColor")}</span>
-                  <Pipette size="0.75rem" className="ml-auto shrink-0 text-[var(--muted-foreground)]" />
-                  <input
-                    ref={nativeRef}
-                    type="color"
-                    aria-label={localizeUi("ui.ui.colorpicker.pickValue1Color", { value1: label })}
-                    value={!isCssGradient(previewValue) ? getNativeColorValue(previewValue) : "#6c5ce7"}
-                    onInput={(e) => handleSolidChange(e.currentTarget.value, true)}
-                    onChange={(e) => handleSolidChange(e.currentTarget.value, true)}
-                    onBlur={flushPendingChange}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  />
-                </label>
+                <MarinaraColorSliders
+                  value={!isCssGradient(previewValue) ? previewValue : "#6c5ce7"}
+                  onChange={handleSolidChange}
+                  label={localizeUi("ui.ui.colorpicker.pickValue1Color", { value1: label })}
+                />
 
                 <label className="min-w-0 space-y-1">
-                  <span className="block text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.colorpicker.hexCss")}</span>
+                  <span className="block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                    {localizeUi("ui.ui.colorpicker.hexCss")}
+                  </span>
                   <input
                     aria-label={localizeUi("ui.ui.colorpicker.value1HexOrCssColor", { value1: label })}
                     value={value && !isCssGradient(value) ? value : ""}
@@ -371,7 +471,9 @@ export function ColorPicker({
 
               {/* Preset palette */}
               <div>
-                <p className="mb-1.5 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("navigation.topbar.presets")}</p>
+                <p className="mb-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("navigation.topbar.presets")}
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {PRESETS.map((color) => (
                     <button
@@ -403,29 +505,29 @@ export function ColorPicker({
               {/* Stops */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.colorpicker.colorStops")}</p>
+                  <p className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+                    {localizeUi("ui.ui.colorpicker.colorStops")}
+                  </p>
                   <button
                     type="button"
                     onClick={addStop}
                     className="flex items-center gap-0.5 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-all hover:text-[var(--foreground)]"
                   >
-                    <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}</button>
+                    <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}
+                  </button>
                 </div>
                 {gradientStops.map((stop, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={stop}
-                      onInput={(e) => {
-                        activeStopRef.current = i;
-                        handleGradientStopChange(i, e.currentTarget.value, true);
-                      }}
-                      onChange={(e) => {
-                        activeStopRef.current = i;
-                        handleGradientStopChange(i, e.currentTarget.value, true);
-                      }}
-                      onBlur={flushPendingChange}
-                      className="h-7 w-7 cursor-pointer rounded-md border-0 bg-transparent p-0"
+                    <button
+                      type="button"
+                      onClick={() => setActiveStop(i)}
+                      className={cn(
+                        "h-7 w-7 shrink-0 rounded-md border border-[var(--border)] transition-[transform,box-shadow] hover:scale-105",
+                        activeStop === i &&
+                          "ring-2 ring-[var(--marinara-app-accent-solid)] ring-offset-1 ring-offset-[var(--card)]",
+                      )}
+                      style={{ backgroundColor: getNativeColorValue(stop) }}
+                      aria-label={localizeUi("ui.ui.colorpicker.editColorStop", { index: i + 1 })}
                     />
                     <input
                       value={stop}
@@ -443,12 +545,19 @@ export function ColorPicker({
                     )}
                   </div>
                 ))}
+                <MarinaraColorSliders
+                  value={gradientStops[activeStop] ?? "#6c5ce7"}
+                  onChange={(next) => handleGradientStopChange(activeStop, next)}
+                  label={localizeUi("ui.ui.colorpicker.editColorStop", { index: activeStop + 1 })}
+                />
               </div>
 
               {/* Angle */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.ui.colorpicker.angle")}</span>
+                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                    {localizeUi("ui.ui.colorpicker.angle")}
+                  </span>
                   <span className="min-w-[2.75rem] text-right font-mono text-[0.625rem] tabular-nums text-[var(--muted-foreground)]">
                     {gradientAngle}°
                   </span>
@@ -469,7 +578,9 @@ export function ColorPicker({
 
               {/* Gradient presets */}
               <div>
-                <p className="mb-1.5 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("navigation.topbar.presets")}</p>
+                <p className="mb-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("navigation.topbar.presets")}
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {GRADIENT_PRESETS.map((g) => (
                     <button
@@ -486,7 +597,7 @@ export function ColorPicker({
                         value === g && "ring-2 ring-[var(--primary)] scale-110",
                       )}
                       style={{ background: g }}
-                      title={g === RAINBOW_GRADIENT_PRESET ?localizeUi("ui.ui.colorpicker.gayRgbRainbow") : g}
+                      title={g === RAINBOW_GRADIENT_PRESET ? localizeUi("ui.ui.colorpicker.gayRgbRainbow") : g}
                     />
                   ))}
                 </div>

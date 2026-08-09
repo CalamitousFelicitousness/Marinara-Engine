@@ -7,6 +7,8 @@ import {
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   EMPTY_IMPERSONATE_PROMPT_TEMPLATE_CATALOG,
   IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY,
+  HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
+  homeCustomWidgetCatalogSchema,
   STORAGE_MIGRATION_NOTICE_SETTINGS_KEY,
   VIDEO_GENERATION_SETTINGS_KEY,
   appSettingsUpdateSchema,
@@ -25,6 +27,23 @@ const ALLOWED_KEYS = new Set([
 
 export async function appSettingsRoutes(app: FastifyInstance) {
   const storage = createAppSettingsStorage(app.db);
+
+  app.get(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async () => {
+    const value = await storage.get(HOME_CUSTOM_WIDGETS_SETTINGS_KEY);
+    if (!value) return { widgets: [] };
+    try {
+      return homeCustomWidgetCatalogSchema.parse(JSON.parse(value));
+    } catch (error) {
+      logger.warn(error, "Ignoring invalid stored Home custom widget catalog");
+      return { widgets: [] };
+    }
+  });
+
+  app.put(`/${HOME_CUSTOM_WIDGETS_SETTINGS_KEY}`, async (req) => {
+    const catalog = homeCustomWidgetCatalogSchema.parse(req.body);
+    await storage.set(HOME_CUSTOM_WIDGETS_SETTINGS_KEY, JSON.stringify(catalog));
+    return catalog;
+  });
 
   app.get(`/${IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY}`, async () => {
     const value = await storage.get(IMPERSONATE_PROMPT_TEMPLATES_SETTINGS_KEY);

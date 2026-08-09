@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Let Professor Mari propose safe data-only custom Home widgets for explicit confirmation, with persistent responsive cards that users can reorder, hide, restore, and delete from the Widgets manager (#4801).
+- Added the **Please Handle With Care** achievement for dragging the Home navigation Professor Mari around the screen (#4805).
 - Rebuilt Home as a full-width, Firefox-inspired Marinara browser with theme-matched chrome, generated bookmark and tab artwork, a responsive draggable and hideable widget desk with equal spatial slots, space-aware large-widget packing, fine-pointer hover lift and illumination, and a focused five-widget first-run composition, Community shortcuts, compact mobile chrome with fitted destination tabs and a Bookmarks menu, a live timezone-aware cyan-accented clock and calendar, visit-ordered mode-colored recent chats with band-free scene backgrounds, expression sprites, and a fitted three-card mobile view, latest-unlock and nearest-goal achievement previews with distinct shelf and launcher copy, a generated trophy bookmark that follows the master Achievements setting, separate FAQ and widget-manager windows, a highlighted Home onboarding tour, mobile-fitted Guide and Character of the Day cards, and an optional Professor Mari navigator that finds Engine destinations and named resource editors locally without AI, remembers its bounded desktop position, and dangles by her hoodie in a generated pixel animation while dragged (#4763).
 - Moved Noodle into an optional downloadable package that keeps its familiar interface in a Home tab with its paired Noodle/NoodleR logo, blue/pink mobile navigation, and a persistent new-refresh badge, automatically preserves availability for existing profiles, follows the staging Agent catalog during feature review, and leaves timeline data ready for reinstall after removal (#4763, Pasta-Devs/Marinara-Agents#278).
 - Added Arli AI as a built-in text provider for chat connections, using OpenAI-compatible chat completions with models loaded from the Arli AI `/models` endpoint.
@@ -21,10 +23,15 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Localized achievement definitions and official capability-package Home metadata through stable locale-aware contracts with English fallback, and refreshed Home's welcome copy (#4803, #4806).
+- Positioned Professor Mari's navigation helper at the bottom-left on her first appearance while preserving every remembered user placement.
 - Removed the standalone Browser tab and its tutorial step, moved card downloads into split Download/Open Library controls in Characters and Personas, and replaced browser-native card destination and embedded-lorebook prompts with a themed Marinara import flow.
 
 ### Fixed
 
+- Restored Game party portrait file selection for Character, Persona, and NPC sheets whether or not the sheet editor is active (#4793).
+- Kept legacy reaction payloads out of rendered message content, accepted `/title <name>` in Professor Mari chats, and let her navigator open an exact saved chat title (#4782, #4794, #4800).
+- Standardized gradient-stop editing on Marinara's owned color controls and tightened Home responsiveness, including Guide overflow, deleted Recent Chats, semantic mode colors, decorative browser refresh behavior, larger Mari drag targeting, and pausing Home animations while the app is unfocused (#4797, #4799, #4802, #4804, #4807, #4808, #4809).
 - Kept blank messages and hidden command anchors out of Home's Recent Chats previews, counted paginated chat histories without materializing every message ID, stabilized history cursors across deletions, and rejected malformed cursors.
 - Applied the selected tag-import mode when a downloaded character card is imported as a persona.
 - Matched the Character and Persona Download/Open Library launchers to the Chats segmented controls with an exact centered split, fixed icon sizing, and single-line labels.

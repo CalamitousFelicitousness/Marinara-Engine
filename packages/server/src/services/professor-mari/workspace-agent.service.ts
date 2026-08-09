@@ -225,6 +225,11 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "preset.search",
   "preset.create",
   "preset.update",
+  "home_widget.list",
+  "home_widget.get",
+  "home_widget.create",
+  "home_widget.update",
+  "home_widget.delete",
 ] as const;
 
 const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
@@ -394,7 +399,7 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
   {
     name: "app_data",
     description:
-      "Read or change live app data through structured actions, without shell commands. Use this for characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, and prompt presets. lorebook.entries returns entry summaries; call lorebook.getEntry with entryId to read one complete entry body. Single-item reads (e.g. character.get) are size-bounded: oversized fields come back elided with a note naming each one — re-read any elided field in full by passing field=\"<path>\" (e.g. field=\"data.alternate_greetings[0]\"), optionally with offset to page through a long value.",
+      'Read or change live app data through structured actions, without shell commands. Use this for characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. lorebook.entries returns entry summaries; call lorebook.getEntry with entryId to read one complete entry body. Single-item reads (e.g. character.get) are size-bounded: oversized fields come back elided with a note naming each one — re-read any elided field in full by passing field="<path>" (e.g. field="data.alternate_greetings[0]"), optionally with offset to page through a long value.',
     parameters: {
       type: "object",
       properties: {
@@ -411,6 +416,7 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
         entryId: { type: "string" },
         agentId: { type: "string" },
         presetId: { type: "string" },
+        widgetId: { type: "string" },
         extensionId: { type: "string" },
         query: { type: "string" },
         limit: { type: "integer", minimum: 1 },
@@ -419,7 +425,11 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
           description:
             'Dotted/indexed path of a single field to read in full from a get result, e.g. "data.alternate_greetings[0]". Use the paths named in an elision note.',
         },
-        offset: { type: "integer", minimum: 0, description: "Start character offset when paging through a field= read." },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "Start character offset when paging through a field= read.",
+        },
         name: { type: "string" },
         version: { type: "string" },
         description: { type: "string" },
@@ -439,7 +449,7 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
         data: {
           type: "object",
           description:
-            "Entity fields. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, and an entries array whose items contain name, content, keys, secondaryKeys, tag, constant, position, depth, role, and order.",
+            "Entity fields. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, and an entries array whose items contain name, content, keys, secondaryKeys, tag, constant, position, depth, role, and order. home_widget.create accepts title, description, accent (cyan, orange, pink, or violet), and icon (sparkles, note, heart, star, book, or compass).",
         },
         patch: { type: "object" },
       },
@@ -517,7 +527,7 @@ ${PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE}
 
 Workspace defaults:
 - Marinara's first-party agents and larger optional features are downloaded from **Agents → Download Agents**. Fresh installs start without them; maps, Conversation calls, and Conversation games are packages too. Tell users to install the desired package, enable it for the chat, and restart Marinara Engine when the catalog prompts them. Existing pre-package installs are migrated automatically without losing settings or history.
-- Use the structured \`app_data\` workspace command, not shell, for character/character-folder/persona/lorebook/lorebook-entry/theme/Personal Extension/agent/preset reads, creation, and updates.
+- Use the structured \`app_data\` workspace command, not shell, for character/character-folder/persona/lorebook/lorebook-entry/theme/Personal Extension/agent/preset/Home-widget reads, creation, and updates.
 - Use Mari CLI commands for images, wiki reads, code/workspace tasks, agents, tools, raw DB work, or anything \`app_data\` does not cover. Only write raw files when no CLI/helper path fits.
 - You may create and update Personal Extension drafts with \`personal_extension.create\` and \`personal_extension.update\`. These actions always disable changed code and clear its approval. Browser Extensions receive active chat and Character IDs through \`marinara.context\`; request \`read_active_characters\` or \`read_active_persona\` only when the extension truly needs bounded active-record fields. Never claim to approve, enable, or run an extension: only the user can review the exact code hash and requested permissions, then choose **Review and Run** in **Settings → Addons → Personal Extensions**.
 - For user-facing Browser Extension UI, use \`marinara.ui.registerContribution(...)\`. It can add a trusted Marinara-rendered top-bar button, Extensions menu item, right-side panel, or button in the Chats, Bots, Characters, Personas, Lorebooks, Presets, Connections, Agents, and Settings surfaces. For a side-panel \`button\`, set \`surface\` to the requested surface and choose \`position: "header"\`, \`"before-content"\`, or \`"after-content"\`; omit both fields for the top bar. The \`icon\` may be any kebab-case Lucide icon name supported by Marinara. Panels may contain headings, text, preformatted output, buttons, text inputs, selects, toggles, sliders, color controls, and spacers. Use \`onActivate\` and \`onEvent\` for behavior and update the returned handle when the view changes. Never write extension code that expects \`document\`, \`window\`, \`innerHTML\`, host CSS selectors, React internals, unrestricted \`fetch\`, or direct Marinara API access; those capabilities are deliberately absent.
@@ -532,7 +542,7 @@ Workspace defaults:
 - When the user asks you to write or revise a character or persona About Me, inspect that entity first, compose a short self-authored Conversation profile in their own voice, and save it to the real \`aboutMe\` field with \`character.update\` or \`persona.update\`. Do not create a separate document, put it in description, or ask for a special About Me model connection.
 
 Command families:
-- \`app_data\`: no-shell structured actions for characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, and prompt presets. Prefer this before shell commands for those objects.
+- \`app_data\`: no-shell structured actions for characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. Prefer this before shell commands for those objects.
 - \`mari db\`: generic live app data and storage-backed rows, including customization tables such as \`agent_configs\` and \`custom_tools\` when no narrower helper exists.
 - \`mari themes\`: synced custom themes and active theme state.
 - \`mari images\`: image-generation connections, HITL image prompt previews, generated/edited preview assets, and assignment/deletion for avatars, personas, lorebooks, sprites, backgrounds, and galleries.
@@ -600,8 +610,8 @@ Field rules:
 ${MARI_GUIDED_SEQUENCES}
 
 \`app_data\` quick reference:
-- Reads: \`character.list|get|search|folder.list\`, \`persona.list|active|get|search\`, \`lorebook.list|get|entries|getEntry|search\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search\`.
-- Writes: \`character.create|update|moveToFolder\`, \`persona.create|update\`, \`lorebook.create|update|addEntry|updateEntry\`, \`theme.create|update|setActive\`, \`personal_extension.create|update\`, \`agent.create|update\`, \`preset.create|update\`.
+- Reads: \`character.list|get|search|folder.list\`, \`persona.list|active|get|search\`, \`lorebook.list|get|entries|getEntry|search\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search\`, \`home_widget.list|get\`.
+- Writes: \`character.create|update|moveToFolder\`, \`persona.create|update\`, \`lorebook.create|update|addEntry|updateEntry\`, \`theme.create|update|setActive\`, \`personal_extension.create|update\`, \`agent.create|update\`, \`preset.create|update\`, \`home_widget.create|update|delete\`.
 - Character folders: call \`character.folder.list\` to resolve the destination, then \`character.moveToFolder\` with \`characterId\` and either \`folderId\` or \`folderName\`. A move removes the character from its previous folder. When the user explicitly asks for the move, set \`apply:true\`, then verify with \`character.folder.list\`.
 - Put write fields in \`data\` for creates and \`patch\` for updates. Use \`entryId\` for \`lorebook.updateEntry\`; use \`lorebookId\` only for a lorebook or for \`lorebook.addEntry\`.
 - New creates: use \`apply:true\` immediately for \`character.create\`, \`persona.create\`, \`lorebook.create\`, \`lorebook.addEntry\`, \`agent.create\`, \`preset.create\`, and non-activating \`theme.create\` when the user asked you to create it. Verify with a read before claiming success.
@@ -611,6 +621,7 @@ ${MARI_GUIDED_SEQUENCES}
 - Lorebook reading: \`lorebook.entries\` is a compact index with entry IDs and content previews. Call \`lorebook.getEntry\` with each relevant \`entryId\` before reviewing or rewriting its full content.
 - For \`preset.create\`, put prompt sections in \`data.sections\` and preset variables in \`data.choiceBlocks\`. Each choice block needs \`variableName\`, \`question\`, and \`options\` with \`label\`/\`value\` pairs.
 - Custom image agents are supported by the live runtime. Use \`data.resultType: "image_prompt"\`, enable \`settings.customCapabilities.trigger_image_generation\`, and have the agent return \`shouldGenerate\` plus \`prompt\`. Marker-triggered agents should also set \`activationKeywords\`. Do not claim that only Illustrator can generate image prompts.
+- Custom Home widgets are constrained text cards, never executable code. Before creating one, show its exact title, description, accent, and icon in \`say\`, call \`home_widget.create\` with \`apply:false\`, and ask the user to confirm. Only after that explicit confirmation may you repeat the same action with \`apply:true\`. Use \`home_widget.update\` or \`home_widget.delete\` only when the user explicitly asks for that change.
 - Existing-data changes: use \`apply:true\` for requested \`*.update\`, \`lorebook.updateEntry\`, and \`theme.setActive\`. Marinara will save first and show the user an in-chat Keep/Restore review card for reversible changes.
 - Personal Extensions: create or update the complete draft with \`apply:true\`, verify it with \`personal_extension.get\`, then tell the user the draft remains disabled until they review and run the exact hash and requested capabilities in Settings → Addons. Browser UI should use \`marinara.ui.registerContribution\` for \`button\`, \`menu-item\`, or \`panel\` slots; a button targets the top bar when \`surface\` and \`position\` are omitted. A side-panel button sets \`surface\` to \`chats\`, \`bots\`, \`characters\`, \`personas\`, \`lorebooks\`, \`presets\`, \`connections\`, \`agents\`, or \`settings\`, and sets \`position\` to \`header\`, \`before-content\`, or \`after-content\`. Panel controls are host-rendered and return values through \`onEvent\`. Use \`marinara.context\` for active IDs and request \`read_active_characters\` or \`read_active_persona\` only for bounded active-record reads. Do not offer or invent an approval action, DOM access, direct app-data access, or network access.
 - Use \`apply:false\` only for explicit preview/dry-run requests or when you need to inspect validation before making a risky change.
@@ -2645,7 +2656,8 @@ ${sections.join("\n\n")}
       forbidStorageMutation: true,
       requireOrdinaryMutationPath: true,
     });
-    if (resolve(filePath) === resolve(this.workspaceRoot)) throw new Error("The workspace root cannot be moved or removed.");
+    if (resolve(filePath) === resolve(this.workspaceRoot))
+      throw new Error("The workspace root cannot be moved or removed.");
     return filePath;
   }
 

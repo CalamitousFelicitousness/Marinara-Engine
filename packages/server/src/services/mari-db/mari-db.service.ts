@@ -23,7 +23,12 @@ import { executeWikiCli } from "../professor-mari/fandom-mediawiki/wiki-cli.js";
 import {
   LIMITS,
   PROFESSOR_MARI_ID,
+  HOME_CUSTOM_WIDGET_LIMIT,
+  HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
   createPersonalExtensionSchema,
+  homeCustomWidgetCatalogSchema,
+  homeCustomWidgetDraftSchema,
+  homeCustomWidgetSchema,
   normalizeLorebookCategory,
   normalizePersonalExtensionCapabilities,
   type MariDbCommandResult,
@@ -1928,12 +1933,13 @@ export class MariDbService {
         }
         if (key.startsWith("agent.")) return this.executeAgentAction(key.slice("agent.".length), envelope, context);
         if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
+        if (key.startsWith("homewidget.")) return this.executeHomeWidgetAction(key.slice("homewidget.".length), envelope, context);
         return {
           ok: false,
           mode: "read",
           command,
           error:
-            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, or preset.* actions for structured no-shell app-data work.",
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, or home_widget.* actions for structured no-shell app-data work.",
         };
       };
       // Field-aware bounding keeps a single read response within the workspace
@@ -2668,6 +2674,79 @@ export class MariDbService {
       }
       default:
         return { ok: false, mode: "read", command: context.command, error: "Unsupported lorebook app_data action." };
+    }
+  }
+
+  private async executeHomeWidgetAction(
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const rows = await this.rawRows("app_settings");
+    const settingsRow = rows.find((row) => row.key === HOME_CUSTOM_WIDGETS_SETTINGS_KEY) ?? null;
+    let catalog = homeCustomWidgetCatalogSchema.parse({ widgets: [] });
+    if (typeof settingsRow?.value === "string") {
+      try {
+        catalog = homeCustomWidgetCatalogSchema.parse(JSON.parse(settingsRow.value));
+      } catch {
+        throw new Error("The stored Home custom widget catalog is invalid and must be repaired before editing it.");
+      }
+    }
+
+    const saveCatalog = (widgets: typeof catalog.widgets) => {
+      const nextCatalog = homeCustomWidgetCatalogSchema.parse({ widgets });
+      const request: ParsedMutationRequest = {
+        kind: settingsRow ? "replace" : "insert",
+        table: "app_settings",
+        ...(settingsRow ? { id: HOME_CUSTOM_WIDGETS_SETTINGS_KEY } : {}),
+        row: { key: HOME_CUSTOM_WIDGETS_SETTINGS_KEY, value: JSON.stringify(nextCatalog), updatedAt: now() },
+        apply: firstBoolean(args, ["apply"]) === true,
+        cascade: false,
+        reason: firstString(args, ["reason"]) ?? null,
+        cwd: context.cwd,
+      };
+      return this.executeMutation(request, context.command, context.sessionId);
+    };
+
+    switch (sub) {
+      case "list":
+        return { ok: true, mode: "read", command: context.command, output: catalog.widgets };
+      case "get": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        const widget = catalog.widgets.find((candidate) => candidate.id === id) ?? null;
+        return { ok: Boolean(widget), mode: "read", command: context.command, output: widget };
+      }
+      case "create": {
+        if (catalog.widgets.length >= HOME_CUSTOM_WIDGET_LIMIT) throw new Error(`Home supports at most ${HOME_CUSTOM_WIDGET_LIMIT} custom widgets.`);
+        const data = actionDataWithTopLevel(args, ["data", "widget"], ["title", "description", "accent", "icon"]);
+        const draft = homeCustomWidgetDraftSchema.parse(data);
+        const slug = draft.title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "widget";
+        const suffix = newId().replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 8);
+        const timestamp = now();
+        return saveCatalog([
+          ...catalog.widgets,
+          homeCustomWidgetSchema.parse({ ...draft, id: `${slug}-${suffix}`, createdAt: timestamp, updatedAt: timestamp }),
+        ]);
+      }
+      case "update": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        const index = catalog.widgets.findIndex((candidate) => candidate.id === id);
+        if (index < 0) throw new Error(`Home widget ${id} was not found.`);
+        const patch = homeCustomWidgetDraftSchema.partial().parse(
+          actionDataWithTopLevel(args, ["patch", "data", "widget"], ["title", "description", "accent", "icon"]),
+        );
+        if (Object.keys(patch).length === 0) throw new Error("home_widget.update needs a non-empty patch.");
+        const widgets = [...catalog.widgets];
+        widgets[index] = homeCustomWidgetSchema.parse({ ...widgets[index], ...patch, updatedAt: now() });
+        return saveCatalog(widgets);
+      }
+      case "delete": {
+        const id = requiredString(args, ["id", "widgetId"], "Home widget id");
+        if (!catalog.widgets.some((candidate) => candidate.id === id)) throw new Error(`Home widget ${id} was not found.`);
+        return saveCatalog(catalog.widgets.filter((candidate) => candidate.id !== id));
+      }
+      default:
+        return { ok: false, mode: "read", command: context.command, error: "Unsupported Home widget app_data action." };
     }
   }
 

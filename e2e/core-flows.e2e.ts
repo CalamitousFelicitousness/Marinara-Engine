@@ -7160,6 +7160,48 @@ test("home shell and primary topbar panels open without client errors", async ({
   await expect(page.locator('.mari-home-browser-chrome img[src="/logo-splash.gif"]')).toBeVisible();
   await expect(page.locator('.mari-home-hero img[src="/logo-splash.gif"]')).toHaveCount(0);
   await expect(page.locator('[data-tour="noodle-tab"]')).toHaveCount(0);
+  const guideGeometry = await page.locator('[data-home-widget-id="professor"]').evaluate((guide) => {
+    const panel = guide.querySelector<HTMLElement>('[data-component="HomeBrowserHub.ProfessorWidget"]')!;
+    const content = guide.querySelector<HTMLElement>("[data-home-professor-content]")!;
+    const art = guide.querySelector<HTMLElement>("[data-home-professor-art]")!;
+    const action = guide.querySelector<HTMLElement>("[data-home-professor-action]")!;
+    const grid = guide.parentElement!;
+    const guideBounds = guide.getBoundingClientRect();
+    const panelBounds = panel.getBoundingClientRect();
+    const contentBounds = content.getBoundingClientRect();
+    const artBounds = art.getBoundingClientRect();
+    const actionBounds = action.getBoundingClientRect();
+    const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const siblingSeparations = Array.from(grid.querySelectorAll<HTMLElement>("[data-home-widget-id]"))
+      .filter((widget) => widget !== guide)
+      .map((widget) => {
+        const bounds = widget.getBoundingClientRect();
+        const horizontal = Math.max(bounds.left - guideBounds.right, guideBounds.left - bounds.right, 0);
+        const vertical = Math.max(bounds.top - guideBounds.bottom, guideBounds.top - bounds.bottom, 0);
+        return Math.max(horizontal, vertical);
+      });
+    const inside = (child: DOMRect, parent: DOMRect) =>
+      child.left >= parent.left - 1 &&
+      child.top >= parent.top - 1 &&
+      child.right <= parent.right + 1 &&
+      child.bottom <= parent.bottom + 1;
+    return {
+      panelInsideFrame: inside(panelBounds, guideBounds),
+      contentInsidePanel: inside(contentBounds, panelBounds),
+      artInsidePanel: inside(artBounds, panelBounds),
+      actionInsidePanel: inside(actionBounds, panelBounds),
+      preservesGridGap: siblingSeparations.every((separation) => separation >= gap - 1),
+      panelOverflow: getComputedStyle(panel).overflow,
+    };
+  });
+  expect(guideGeometry).toEqual({
+    panelInsideFrame: true,
+    contentInsidePanel: true,
+    artInsidePanel: true,
+    actionInsidePanel: true,
+    preservesGridGap: true,
+    panelOverflow: "hidden",
+  });
   const chromeSurfaces = await page.evaluate(() => ({
     app: getComputedStyle(document.querySelector<HTMLElement>('[data-component="TopBar"]')!).backgroundColor,
     home: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,

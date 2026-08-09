@@ -626,16 +626,18 @@ export function App() {
   useEffect(() => {
     const root = document.documentElement;
     const syncEffectsPausedState = () => {
-      if (
+      const paused = !(
         document.visibilityState === "visible" &&
         document.hasFocus() &&
         !pauseChromeEffectsForAppearance &&
         !reduceAmbientEffects
-      ) {
+      );
+      if (!paused) {
         delete root.dataset.marinaraEffectsPaused;
       } else {
         root.dataset.marinaraEffectsPaused = "true";
       }
+      window.dispatchEvent(new CustomEvent("marinara:effects-paused", { detail: { paused } }));
     };
 
     syncEffectsPausedState();

@@ -13,12 +13,14 @@ import {
   Trophy,
   UserRound,
   Gamepad2,
+  Hand,
   type LucideIcon,
 } from "lucide-react";
 import type { AchievementDefinition, AchievementProgress } from "@marinara-engine/shared";
 import { useAchievements } from "../../hooks/use-achievements";
 import { useUIStore } from "../../stores/ui.store";
 import { cn } from "../../lib/utils";
+import { localizeAchievementDescription, localizeAchievementTitle } from "../../lib/achievement-localization";
 import { Modal } from "../ui/Modal";
 import { useTranslation } from "react-i18next";
 
@@ -28,6 +30,7 @@ const ICONS: Record<AchievementDefinition["icon"], LucideIcon> = {
   heart: Heart,
   credits: List,
   mari: Bot,
+  "mari-drag": Hand,
   conversation: MessagesSquare,
   roleplay: Theater,
   game: Gamepad2,
@@ -83,10 +86,6 @@ function progressPercent(progress: AchievementProgress) {
   return Math.min(100, Math.round((progress.progress / progress.target) * 100));
 }
 
-function achievementTitle(achievement: AchievementDefinition) {
-  return achievement.rankLabel ? `${achievement.title} ${achievement.rankLabel}` : achievement.title;
-}
-
 function unlockTimestamp(progress: AchievementProgress) {
   if (!progress.unlockedAt) return Number.NEGATIVE_INFINITY;
   const timestamp = Date.parse(progress.unlockedAt);
@@ -106,6 +105,7 @@ function CompactAchievementHighlight({
   progress: AchievementProgress | null;
   fallback: string;
 }) {
+  const { t } = useTranslation();
   const Icon = achievement ? (ICONS[achievement.icon] ?? Trophy) : Trophy;
   const target = progress?.target ?? null;
   const tone = achievement
@@ -130,7 +130,7 @@ function CompactAchievementHighlight({
           {label}
         </span>
         <span className="mt-0.5 block truncate text-[0.65rem] font-bold leading-tight text-[var(--foreground)]">
-          {achievement ? achievementTitle(achievement) : fallback}
+          {achievement ? localizeAchievementTitle(t, achievement) : fallback}
         </span>
       </span>
       {target !== null && target > 0 ? (
@@ -151,8 +151,10 @@ function AchievementCard({
 }) {
   const { t } = useTranslation();
   const locked = !progress?.unlocked;
-  const title = locked ? "?????" : achievementTitle(achievement);
-  const description = locked ? t("home.achievements.lockedDescription") : achievement.description;
+  const title = locked ? "?????" : localizeAchievementTitle(t, achievement);
+  const description = locked
+    ? t("home.achievements.lockedDescription")
+    : localizeAchievementDescription(t, achievement);
   const target = progress?.target ?? null;
 
   return (
@@ -288,7 +290,9 @@ export function HomeAchievements({
           )}
           aria-label={t("home.achievements.open")}
         >
-          <span className={cn("flex min-w-0 items-center", compact ? "w-full items-start pr-[42%]" : "gap-2.5 sm:gap-3")}>
+          <span
+            className={cn("flex min-w-0 items-center", compact ? "w-full items-start pr-[42%]" : "gap-2.5 sm:gap-3")}
+          >
             {!compact ? (
               <span
                 className="mari-chrome-accent-surface mari-accent-animated flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm sm:h-10 sm:w-10"

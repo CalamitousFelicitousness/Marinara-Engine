@@ -3432,6 +3432,36 @@ export function HomeProfessorMariChat({
     [loadChatHistory, renameDraft, localizeUi],
   );
 
+  const handleTitleCommand = useCallback(
+    async (messageText: string) => {
+      const match = /^\/title(?:\s+(.*))?$/iu.exec(messageText);
+      if (!match) return false;
+      const name = match[1]?.trim() ?? "";
+      if (!name) {
+        toast.info(localizeUi("ui.chat.homeprofessormarichat.titleCommandUsage"));
+        return true;
+      }
+      if (!chatId) {
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.titleCommandNoActiveChat"));
+        return true;
+      }
+      try {
+        await api.patch(`/chats/internal/professor-mari/chats/${chatId}`, { name });
+        setDraft("");
+        await loadChatHistory();
+        toast.success(localizeUi("ui.chat.homeprofessormarichat.titleCommandRenamed", { name }));
+      } catch (error) {
+        console.error("[Professor Mari] Failed to rename chat with /title", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRenameThatChat"), {
+          description: describeProfessorMariError(error),
+          duration: 12_000,
+        });
+      }
+      return true;
+    },
+    [chatId, loadChatHistory, localizeUi],
+  );
+
   const handleDeleteProfessorChat = useCallback(
     async (id: string) => {
       const item = chatHistory.find((chat) => chat.id === id);
@@ -3894,6 +3924,8 @@ export function HomeProfessorMariChat({
       await runRestart();
       return;
     }
+
+    if (await handleTitleCommand(messageText)) return;
 
     if (!effectiveConnectionId) {
       toast.error(PROFESSOR_MARI_NO_CONNECTION_TOAST);
@@ -4477,7 +4509,7 @@ export function HomeProfessorMariChat({
                                             }}
                                             className="mari-chrome-control mari-chrome-control--small h-8 px-2 text-[0.625rem]"
                                             >
-                                              {localizeUi("ui.noodle.noodlepostcard.edit")}
+                                              {localizeUi("ui.chat.homeprofessormarichat.renameChat")}
                                             </button>
                                           <button
                                             type="button"

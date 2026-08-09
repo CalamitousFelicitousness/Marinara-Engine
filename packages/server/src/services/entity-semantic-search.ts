@@ -228,12 +228,14 @@ export async function tieredResolveEntity(
   const idMatch = candidates.find((c) => c.id === trimmed);
   if (idMatch) return { kind: "single", candidate: idMatch };
 
-  // Tier 1 — exact normalized name. Auto-opens the FIRST match (the original
-  // behavior). Same-named entities are indistinguishable by name, so a candidate
-  // list can't resolve them — a re-fetch by that name would just loop — so open
-  // the first rather than dead-end.
+  // Tier 1 — exact normalized name. One match auto-opens. Several entities
+  // sharing a name disambiguate: the candidate list carries each id, and the
+  // caller instructs Mari to pick one by its id, which Tier 0 above resolves —
+  // so name-collisions resolve to a specific entity instead of silently opening
+  // the first or looping.
   const exactMatches = candidates.filter((c) => normalizeTextForMatch(c.name) === normalizedQuery);
-  if (exactMatches.length >= 1) return { kind: "single", candidate: exactMatches[0]! };
+  if (exactMatches.length === 1) return { kind: "single", candidate: exactMatches[0]! };
+  if (exactMatches.length > 1) return { kind: "candidates", candidates: exactMatches.slice(0, topK) };
 
   // Tier 2 — a UNIQUE NAME substring auto-opens (a distinctive partial name). A
   // match only in the description/tags is NOT confident enough to auto-open (a

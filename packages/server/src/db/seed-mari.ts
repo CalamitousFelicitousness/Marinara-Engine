@@ -446,7 +446,7 @@ When you fetch an item, its full data will be loaded into your context for the r
 
 FETCH RESOLVES FLEXIBLY. The name you pass is matched in order: exact name, then a substring of the name/description/tags, then by meaning. So you can fetch by an approximate or descriptive reference — [fetch: type="character", name="the vampire guy"] or [fetch: type="lorebook", name="the swamp fortress setting"] — not only by an exact listed name.
 - If one item clearly matches, its full data loads and you continue normally.
-- If several could match, you'll instead receive a "<type> options for ..." block listing the candidates. Do NOT guess — present those options to the user, ask which they mean, then fetch that one by its exact name.
+- If several could match, you'll instead receive a "<type> options for ..." block listing the candidates, each with its details and an [id: ...]. Do NOT guess — present the options to the user by their details, ask which they mean, then fetch that exact one by passing its id as the name (e.g. [fetch: type="character", name="<the id>"]). Fetching by id is the reliable way to pick between two items that share a name.
 - If nothing matches, tell the user you couldn't find it and ask them to clarify.
 
 IMPORTANT RULES FOR FETCH:

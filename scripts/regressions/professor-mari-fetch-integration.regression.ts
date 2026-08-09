@@ -62,6 +62,10 @@ async function insertCharacter(id: string, name: string, description: string) {
 await insertCharacter("c1", "Dracula", "a brooding immortal vampire");
 await insertCharacter("c2", "Alucard", "a hunting daywalker vampire");
 await insertCharacter("c3", "Bob", "a cheerful baker");
+// Two characters with the exact same name, distinguished only by description.
+// (Worded to not collide with the "immortal vampire brooding" / "vampire" queries above.)
+await insertCharacter("vlad-vampire", "Vlad", "a nocturnal bloodsucking count of Wallachia");
+await insertCharacter("vlad-impaler", "Vlad", "a warlord who impales his enemies on stakes");
 
 const CHAT_ID = "mari-home-chat";
 await db.insert(chats).values({
@@ -132,6 +136,25 @@ async function runFetch(name: string) {
     !Object.keys(mariContext).some((k) => k.includes(' options for "')),
     "a resolved fetch evicts the stale candidate options block so it stops re-injecting",
   );
+}
+
+// ── Two entities with the same exact name disambiguate by id, and fetching that
+//    id opens the EXACT one (not the first) ──
+{
+  const { actions, mariContext } = await runFetch("Vlad");
+  const candidatesAction = actions.at(-1)!;
+  assert.equal(candidatesAction.action, "data_candidates", "two same-named entities must disambiguate, not auto-open the first");
+  const candidates = candidatesAction.candidates as Array<{ id: string; name: string }>;
+  assert.equal(candidates.length, 2, "both Vlads must be offered");
+  const optionsKey = Object.keys(mariContext).find((k) => k.startsWith("character options"))!;
+  assert.match(mariContext[optionsKey]!, /\[id: vlad-vampire\]/, "the options block must expose each id for a name-safe fetch");
+  assert.match(mariContext[optionsKey]!, /\[id: vlad-impaler\]/);
+
+  // Fetch the impaler by its id → must render the impaler, not the first "Vlad".
+  const { mariContext: after } = await runFetch("vlad-impaler");
+  const vladEntry = after["character:Vlad"]!;
+  assert.match(vladEntry, /impales his enemies/, "fetching by id must open the exact entity");
+  assert.doesNotMatch(vladEntry, /bloodsucking/, "it must NOT render the other same-named entity");
 }
 
 // ── No match → no context written, follow-up not triggered ──

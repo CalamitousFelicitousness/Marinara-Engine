@@ -590,10 +590,15 @@ function sendPlan(command: PlanCommand, args: Parameters<typeof handleProfessorM
   args.sendAssistantAction({ action: "plan", plan });
 }
 
+type FetchCandidate = { name: string; blurb: string; id: string };
 type FetchResolution =
   | { kind: "single"; name: string; content: string }
-  | { kind: "candidates"; query: string; candidates: Array<{ name: string; blurb: string }> }
+  | { kind: "candidates"; query: string; candidates: FetchCandidate[] }
   | { kind: "none" };
+
+// A fetch command carrying the id the resolver picked, so renderers open that
+// exact entity rather than re-matching by a name several entities may share.
+type ResolvedFetchCommand = FetchCommand & { resolvedId?: string };
 
 async function fetchProfessorMariContext(
   command: FetchCommand,
@@ -648,11 +653,11 @@ async function fetchProfessorMariContext(
   }
 }
 
-function renderCandidateBlock(fetchType: string, resolution: { query: string; candidates: Array<{ name: string; blurb: string }> }): string {
+function renderCandidateBlock(fetchType: string, resolution: { query: string; candidates: FetchCandidate[] }): string {
   const lines = [
-    `Several ${fetchType} matches for "${resolution.query}". Ask the user which one they mean, then fetch it by its exact name — do not guess:`,
+    `Several ${fetchType} matches for "${resolution.query}". Ask the user which one they mean — describe them by their details, do not guess. To open the specific one, fetch it by the id shown in brackets (this works even when two share a name):`,
   ];
-  for (const candidate of resolution.candidates) lines.push(`- ${candidate.blurb}`);
+  for (const candidate of resolution.candidates) lines.push(`- ${candidate.blurb} [id: ${candidate.id}]`);
   return lines.join("\n");
 }
 
@@ -679,17 +684,22 @@ async function resolveFetchedContent(
     return {
       kind: "candidates",
       query: command.name,
-      candidates: resolution.candidates.map((c) => ({ name: c.name, blurb: c.blurb })),
+      candidates: resolution.candidates.map((c) => ({ name: c.name, blurb: c.blurb, id: c.id })),
     };
   }
-  // Single confident hit: render the full content by the resolved exact name.
-  const resolvedCommand = { ...command, name: resolution.candidate.name };
+  // Single confident hit: render by the resolved id (so a name-collision opens the
+  // exact entity the resolver chose), falling back to the resolved name.
+  const resolvedCommand: ResolvedFetchCommand = {
+    ...command,
+    name: resolution.candidate.name,
+    resolvedId: resolution.candidate.id,
+  };
   const content = await renderSingleFetchContent(resolvedCommand, args);
   if (!content) return { kind: "none" };
   return { kind: "single", name: resolution.candidate.name, content };
 }
 
-async function renderSingleFetchContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function renderSingleFetchContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   if (command.fetchType === "character") return fetchCharacterContent(command, args);
   if (command.fetchType === "persona") return fetchPersonaContent(command, args);
   if (command.fetchType === "lorebook") return fetchLorebookContent(command, args);
@@ -698,9 +708,10 @@ async function renderSingleFetchContent(command: FetchCommand, args: Parameters<
   return "";
 }
 
-async function fetchCharacterContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function fetchCharacterContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   const allCharsList = await args.stores.chars.list();
   const found = allCharsList.find((character: any) => {
+    if (command.resolvedId) return character.id === command.resolvedId;
     const data = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
     return normalizeTextForMatch(data.name) === normalizeTextForMatch(command.name);
   });
@@ -721,10 +732,10 @@ async function fetchCharacterContent(command: FetchCommand, args: Parameters<typ
   return parts.join("\n");
 }
 
-async function fetchPersonaContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function fetchPersonaContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   const allPersonasList = await args.stores.chars.listPersonas();
-  const found = allPersonasList.find(
-    (persona: any) => normalizeTextForMatch(persona.name) === normalizeTextForMatch(command.name),
+  const found = allPersonasList.find((persona: any) =>
+    command.resolvedId ? persona.id === command.resolvedId : normalizeTextForMatch(persona.name) === normalizeTextForMatch(command.name),
   );
   if (!found) return "";
 
@@ -737,10 +748,10 @@ async function fetchPersonaContent(command: FetchCommand, args: Parameters<typeo
   return parts.join("\n");
 }
 
-async function fetchLorebookContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function fetchLorebookContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   const allLorebooks = await args.stores.lorebooksStore.list();
-  const found = allLorebooks.find(
-    (lorebook: any) => normalizeTextForMatch(lorebook.name) === normalizeTextForMatch(command.name),
+  const found = allLorebooks.find((lorebook: any) =>
+    command.resolvedId ? lorebook.id === command.resolvedId : normalizeTextForMatch(lorebook.name) === normalizeTextForMatch(command.name),
   );
   if (!found) return "";
 
@@ -757,9 +768,11 @@ async function fetchLorebookContent(command: FetchCommand, args: Parameters<type
   return parts.join("\n");
 }
 
-async function fetchChatContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function fetchChatContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   const allChats = await args.stores.chats.list();
-  const found = allChats.find((chat: any) => normalizeTextForMatch(chat.name) === normalizeTextForMatch(command.name));
+  const found = allChats.find((chat: any) =>
+    command.resolvedId ? chat.id === command.resolvedId : normalizeTextForMatch(chat.name) === normalizeTextForMatch(command.name),
+  );
   if (!found) return "";
 
   const parts = [`Chat: ${found.name}`, `Mode: ${found.mode}`];
@@ -774,10 +787,12 @@ async function fetchChatContent(command: FetchCommand, args: Parameters<typeof h
   return parts.join("\n");
 }
 
-async function fetchPresetContent(command: FetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
+async function fetchPresetContent(command: ResolvedFetchCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   const allPresetsList = await args.stores.presets.list();
-  const found = allPresetsList.find(
-    (preset: any) => preset.id === command.name || normalizeTextForMatch(preset.name) === normalizeTextForMatch(command.name),
+  const found = allPresetsList.find((preset: any) =>
+    command.resolvedId
+      ? preset.id === command.resolvedId
+      : preset.id === command.name || normalizeTextForMatch(preset.name) === normalizeTextForMatch(command.name),
   );
   if (!found) return "";
 

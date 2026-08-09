@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────
 // Professor Mari native command workspace runtime
 // ──────────────────────────────────────────────
-import { existsSync, realpathSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { constants, existsSync, realpathSync } from "node:fs";
+import { copyFile, mkdir, readdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -2618,9 +2618,13 @@ ${sections.join("\n\n")}
     const source = this.ordinaryMutationPath(stringArg(args, "source"));
     const destination = this.ordinaryMutationPath(stringArg(args, "destination"), { allowMissing: true });
     if (!(await stat(source)).isFile()) throw new Error("copy source must be a file");
-    if (existsSync(destination)) throw new Error("copy destination already exists");
     await mkdir(dirname(destination), { recursive: true });
-    await copyFile(source, destination);
+    try {
+      await copyFile(source, destination, constants.COPYFILE_EXCL);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("copy destination already exists");
+      throw error;
+    }
     return `Copied ${this.displayPath(source)} to ${this.displayPath(destination)}.`;
   }
 
@@ -2628,9 +2632,14 @@ ${sections.join("\n\n")}
     const source = this.ordinaryMutationPath(stringArg(args, "source"));
     const destination = this.ordinaryMutationPath(stringArg(args, "destination"), { allowMissing: true });
     if (!(await stat(source)).isFile()) throw new Error("move source must be a file");
-    if (existsSync(destination)) throw new Error("move destination already exists");
     await mkdir(dirname(destination), { recursive: true });
-    await rename(source, destination);
+    try {
+      await copyFile(source, destination, constants.COPYFILE_EXCL);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("move destination already exists");
+      throw error;
+    }
+    await unlink(source);
     return `Moved ${this.displayPath(source)} to ${this.displayPath(destination)}.`;
   }
 

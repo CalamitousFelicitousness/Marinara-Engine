@@ -4645,6 +4645,7 @@ test("desktop Tracker preserves its controls without shifting the chat column", 
     const expectedWidth = Math.min(420, Math.floor(mainBox!.width - 8));
     expect(Math.abs(trackerBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
     expect(trackerBox!.x).toBeGreaterThanOrEqual(mainBox!.x - 1);
+    expect(trackerBox!.x).toBeLessThanOrEqual(mainBox!.x + 1);
     expect(trackerBox!.x + trackerBox!.width).toBeGreaterThan(chatColumnAfter!.x);
 
     const trackerContent = tracker.locator(".mari-tracker-panel-scroll");

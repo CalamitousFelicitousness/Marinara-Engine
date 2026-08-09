@@ -922,6 +922,32 @@ try {
   assert.equal(unlinked?.enabled, false, "Unlinking the final owner must deactivate the lorebook");
   assert.equal(unlinked?.hiddenFromLibrary, false, "An unlinked lorebook must return to the manageable library");
 
+  const concurrentCharacterOwner = await characterStorage.create(
+    characterDataSchema.parse({ name: "Concurrent owner" }),
+  );
+  const concurrentPersonaOwner = await characterStorage.createPersona("Concurrent persona", "Regression fixture");
+  const concurrentlyUnlinkedLorebook = await lorebookStorage.create(
+    createLorebookSchema.parse({
+      name: "Concurrently unlinked notes",
+      characterIds: [concurrentCharacterOwner.id],
+      personaIds: [concurrentPersonaOwner.id],
+      hiddenFromLibrary: true,
+    }),
+  );
+  await Promise.all([
+    lorebookStorage.update(concurrentlyUnlinkedLorebook.id, { characterIds: [] }),
+    lorebookStorage.update(concurrentlyUnlinkedLorebook.id, { personaIds: [] }),
+  ]);
+  const concurrentlyUnlinked = await lorebookStorage.getById(concurrentlyUnlinkedLorebook.id);
+  assert.deepEqual(concurrentlyUnlinked?.characterIds, [], "Concurrent unlinking must not restore a Character owner");
+  assert.deepEqual(concurrentlyUnlinked?.personaIds, [], "Concurrent unlinking must not restore a Persona owner");
+  assert.equal(concurrentlyUnlinked?.enabled, false, "Concurrent final-owner unlinking must deactivate the lorebook");
+  assert.equal(
+    concurrentlyUnlinked?.hiddenFromLibrary,
+    false,
+    "Concurrent final-owner unlinking must leave the lorebook manageable",
+  );
+
   const referencedContext = await buildReferencedCharacterContext({
     db,
     activeCharacterIds: [storageTrimFixture.id],
@@ -5454,7 +5480,7 @@ assert.equal(
 );
 assert.match(
   appShellSource,
-  /handleTrackerPanelWindowClosed[\s\S]{0,260}setTrackerPanelOpen\(false, activeChatId\)/u,
+  /handleTrackerPanelWindowClosed[\s\S]{0,500}trackerPanelWindowTargetRef\.current\?\.popup !== closedTarget\.popup[\s\S]{0,300}setTrackerPanelOpen\(false, activeChatId\)/u,
   "Closing a detached Tracker window must close the Tracker instead of silently docking it",
 );
 const backgroundSeedRoot = mkdtempSync(join(tmpdir(), "marinara-default-background-"));

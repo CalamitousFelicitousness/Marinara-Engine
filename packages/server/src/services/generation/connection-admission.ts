@@ -128,9 +128,12 @@ export function tryBackgroundConnection(
     return { acquired: false };
   }
   state.backgroundActive = true;
+  let released = false;
   return {
     acquired: true,
     release: (outcome) => {
+      if (released) return;
+      released = true;
       state.backgroundActive = false;
       recordConnectionOutcome(state, outcome);
     },

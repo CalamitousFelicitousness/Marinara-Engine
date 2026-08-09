@@ -67,6 +67,23 @@ assert.equal(admitted.acquired, true);
 if (admitted.acquired) admitted.release();
 
 resetConnectionAdmissionForTests();
+const duplicateRelease = tryBackgroundConnection("duplicate-release-connection", new Date());
+assert.equal(duplicateRelease.acquired, true);
+if (duplicateRelease.acquired) {
+  duplicateRelease.release("failed");
+  duplicateRelease.release("failed");
+}
+await assert.rejects(
+  withConnectionAdmission("duplicate-release-connection", { kind: "background" }, async () => {
+    throw new Error("second provider failure");
+  }),
+  /second provider failure/u,
+);
+const beforeThreshold = tryBackgroundConnection("duplicate-release-connection", new Date());
+assert.equal(beforeThreshold.acquired, true, "Releasing one attempt twice must record only one provider failure");
+if (beforeThreshold.acquired) beforeThreshold.release("completed");
+
+resetConnectionAdmissionForTests();
 for (let attempt = 0; attempt < BACKGROUND_CONNECTION_FAILURE_THRESHOLD; attempt += 1) {
   await assert.rejects(
     withConnectionAdmission("failing-background-connection", { kind: "background" }, async () => {

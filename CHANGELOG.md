@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Added Arli AI as a built-in text provider for chat connections, using OpenAI-compatible chat completions with models loaded from the Arli AI `/models` endpoint.
+- Added a custom 1–40 place target to the New Game wizard's AI world-map draft options (#4783).
 - Added a compact context-budget indicator to Professor Mari Workspace when message token usage is enabled (#4752).
 - Added per-chat image style overrides for custom image agents, alongside their existing connection overrides (#4718).
 - Added attributed `marinara.fetch` traffic totals and sustained-rate warnings for full-page extensions (#4720).
@@ -18,6 +19,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept NovelAI V4.5 style-plate file selection inside the Connection editor across Chromium platforms (#4777).
+- Deactivated and revealed lorebooks that lose their final owner, replaced Lorebook Keeper entry bodies without stacking duplicates, and added sandbox-safe structured file copy, move, and removal tools for Android/Termux (#4775).
+- Let readers scroll through Professor Mari history while her response is still streaming (#4774).
+- Replaced the browser-native single-chat deletion prompt in Professor Mari with Marinara's confirmation dialog (#4773).
+- Preserved Tracker panel controls at their configured width, kept the panel aligned beside the right sidebar, and made closing its detached window close the panel (#4772).
+- Displayed the actual error output beneath failed Professor Mari workspace tool events (#4770).
+- Quarantined an automatic-generation connection for six hours after three consecutive provider failures while keeping foreground chats available (#4769).
+- Moved smart group responder selection to the default Agent connection with Agent fallback and the connection's saved generation parameters instead of a fixed 512-token chat-connection call (#4765).
 - Shared Professor Mari's robust JSON repair waterfall with structured agents so repairable malformed or truncated output no longer wastes retries (#4753).
 - Revalidated replaceable user backgrounds so re-importing a different image under a deleted filename no longer displays stale browser-cached pixels (#4757).
 - Kept NovelAI V4.5 style-plate uploads inside the Connection editor by decoding oversized images directly to a bounded preview and avoiding redundant copies of their encoded data (#4748).

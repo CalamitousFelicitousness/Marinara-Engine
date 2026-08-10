@@ -85,7 +85,7 @@ try {
     /\$\{StrTrimNewLines\} \$CURRENT_PNPM_VERSION "\$CURRENT_PNPM_VERSION"/g,
   );
   const exactVersionChecks = pnpmChecks.match(/\$\{If\} \$CURRENT_PNPM_VERSION == "\$\{PNPM_VERSION\}"/g);
-  if (pnpmChecks.toLowerCase().includes("findstr.exe")) {
+  if (/\bfindstr(?:\.exe)?\b/i.test(pnpmChecks)) {
     failures.push({
       message: "pnpm version checks must not use findstr; LF-only output can make exact-line matching fail.",
     });

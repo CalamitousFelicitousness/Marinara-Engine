@@ -419,6 +419,52 @@ export function StoryboardAgentSettingsPanel({
 
         <div className="space-y-0.5">
           <h4 className="text-sm font-semibold text-[var(--foreground)]">
+            {localizeUi("ui.agents.storyboard.imageAwareShotPlanner")}
+          </h4>
+          <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+            {localizeUi("ui.agents.storyboard.imageAwareShotPlannerDescription")}
+          </p>
+        </div>
+
+        <ToggleRow
+          label={localizeUi("ui.agents.storyboard.enableImageAwareShotPlanning")}
+          description={localizeUi("ui.agents.storyboard.enableImageAwareShotPlanningDescription")}
+          checked={settings.imageAwareShotPlanningEnabled}
+          onChange={(checked) => update({ imageAwareShotPlanningEnabled: checked })}
+        />
+
+        <label className="block max-w-sm space-y-1.5">
+          <span className="text-[0.6875rem] font-medium">
+            {localizeUi("ui.agents.storyboard.defaultShotPlannerPrompt")}
+          </span>
+          <select
+            value={settings.animationRefinementTemplateId ?? ""}
+            onChange={(event) => update({ animationRefinementTemplateId: event.target.value || null })}
+            className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)]"
+          >
+            {settings.animationRefinementTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <TemplateCollectionEditor
+          title={localizeUi("ui.agents.storyboard.shotPlannerPrompts")}
+          description={localizeUi("ui.agents.storyboard.shotPlannerPromptsDescription")}
+          templates={settings.animationRefinementTemplates}
+          defaults={defaults.animationRefinementTemplates}
+          prefix="storyboard-shot-planner"
+          required
+          onChange={(templates) => {
+            const selected = preserveTemplateSelection(templates, settings.animationRefinementTemplateId);
+            update({ animationRefinementTemplates: templates, animationRefinementTemplateId: selected });
+          }}
+        />
+
+        <div className="space-y-0.5">
+          <h4 className="text-sm font-semibold text-[var(--foreground)]">
             {localizeUi("ui.agents.storyboard.sharedProviderFormatters")}
           </h4>
           <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">

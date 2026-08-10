@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- Grounded Storyboard animation prompts in each generated keyframe illustration before video generation, while preserving the planned motion as a fallback when image-aware refinement is unavailable (#4839).
+- Added an editable Storyboard Agent shot-planner stage that inspects each generated keyframe before video generation, persists its suitability classification, and falls back to the planned motion when image-aware refinement is unavailable or invalid (#4839, Pasta-Devs/Marinara-Agents#296).
 - Added batch selection to Character and Persona image galleries so selected images can be downloaded or deleted together after confirmation (#4832).
 - Added a persisted Auto, Low, Medium, or High output-quality choice to GPT Image generation connections (#4831).
 - Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, safe selection cleanup, and an explicit generation-reference toggle that falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).

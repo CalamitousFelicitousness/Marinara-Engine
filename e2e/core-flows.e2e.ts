@@ -8433,6 +8433,15 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
             videoTemplates: [
               { id: "video-default", name: "Video default", promptTemplate: "Format the video prompt." },
             ],
+            animationRefinementTemplates: [
+              {
+                id: "shot-default",
+                name: "Image-aware shot default",
+                promptTemplate: "Inspect ${motionIntent} against the attached image.",
+              },
+            ],
+            animationRefinementTemplateId: "shot-default",
+            imageAwareShotPlanningEnabled: true,
             roleplayEpisodeTemplates: [
               { id: "episode-default", name: "Episode default", promptTemplate: "Plan the episode." },
             ],
@@ -8470,6 +8479,13 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
     await expect(shared).toBeVisible();
     await expect(roleplay).toBeVisible();
     await expect(game).toBeVisible();
+    await expect(shared.getByText("Image-aware shot planner", { exact: true })).toBeVisible();
+    await expect(shared.getByRole("combobox", { name: "Default shot planner prompt" })).toHaveValue("shot-default");
+    const imageAwareToggle = shared.getByRole("checkbox", { name: "Image-aware shot planning" });
+    await expect(imageAwareToggle).toBeChecked();
+    await imageAwareToggle.uncheck();
+    await expect(imageAwareToggle).not.toBeChecked();
+    await imageAwareToggle.check();
     await expect
       .poll(() =>
         settingsPanel.evaluate((panel) =>

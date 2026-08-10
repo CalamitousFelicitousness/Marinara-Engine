@@ -561,6 +561,7 @@ function storyboardSettingsForStorage(settings: StoryboardAgentSettings): Record
     animationPlannerTemplateIds: settings.animationPlannerTemplateIds,
     illustrationTemplates: settings.illustrationTemplates,
     videoTemplates: settings.videoTemplates,
+    animationRefinementTemplates: settings.animationRefinementTemplates,
     roleplayEpisodeTemplates: settings.roleplayEpisodeTemplates,
     roleplayStyleTemplates: settings.roleplayStyleTemplates,
     roleplayAnimationTemplates: settings.roleplayAnimationTemplates,
@@ -569,6 +570,7 @@ function storyboardSettingsForStorage(settings: StoryboardAgentSettings): Record
     animationPlannerTemplateId: settings.animationPlannerTemplateId,
     illustrationTemplateId: settings.illustrationTemplateId,
     videoTemplateId: settings.videoTemplateId,
+    animationRefinementTemplateId: settings.animationRefinementTemplateId,
     roleplayEpisodeTemplateId: settings.roleplayEpisodeTemplateId,
     roleplayStyleTemplateId: settings.roleplayStyleTemplateId,
     roleplayAnimationTemplateId: settings.roleplayAnimationTemplateId,
@@ -583,6 +585,7 @@ function storyboardSettingsForStorage(settings: StoryboardAgentSettings): Record
     useAvatarReferences: settings.useAvatarReferences,
     useNovelAiCharacterPrompts: settings.useNovelAiCharacterPrompts,
     usePromptTemplate: settings.usePromptTemplate,
+    imageAwareShotPlanningEnabled: settings.imageAwareShotPlanningEnabled,
     runInterval: settings.runInterval,
   };
 }

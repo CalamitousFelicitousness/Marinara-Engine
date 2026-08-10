@@ -1,8 +1,29 @@
+import {
+  normalizeAgentPromptTemplateOptions,
+  type StoryboardAnimationSuitability,
+} from "@marinara-engine/shared";
 import type { ChatMessage } from "../llm/base-provider.js";
+import { renderTemplate } from "../prompt-overrides/index.js";
 import { compactVideoPromptText } from "./prompt-context.js";
 import type { VideoReferenceImage } from "./video-generation.js";
 
 const MAX_REFINEMENT_CHARS = 6_000;
+const MAX_RENDERED_PROMPT_CHARS = 18_000;
+
+const STORYBOARD_ANIMATION_REFINEMENT_VARIABLES = [
+  "title",
+  "motionIntent",
+  "imagePrompt",
+  "sourceSections",
+  "characters",
+  "durationSeconds",
+  "aspectRatio",
+] as const;
+
+export interface StoryboardAnimationRefinement {
+  classification: StoryboardAnimationSuitability;
+  narrationBeat: string;
+}
 
 function imageDataUrl(image: VideoReferenceImage): string {
   const base64 = image.base64.replace(/^data:[^,]+,/iu, "");
@@ -15,62 +36,114 @@ function unwrapJsonFence(value: string): string {
   return fenced?.[1]?.trim() ?? trimmed;
 }
 
+function resolveTemplate(rawTemplates: unknown, selectedId: unknown): string {
+  const templates = normalizeAgentPromptTemplateOptions(rawTemplates);
+  const requestedId = typeof selectedId === "string" ? selectedId.trim() : "";
+  const selected = (requestedId ? templates.find((template) => template.id === requestedId) : null) ?? templates[0];
+  return selected?.promptTemplate.trim() ?? "";
+}
+
+function segmentCount(value: string): number | null {
+  const segments = value.split("|").map((segment) => segment.trim());
+  return segments.every(Boolean) ? segments.length : null;
+}
+
 export function buildStoryboardAnimationRefinementMessages(args: {
+  templates: unknown;
+  templateId: unknown;
   title: string;
   motionIntent: string;
-  illustrationPrompt: string;
-  plannerPrompt: string;
+  imagePrompt: string;
+  sourceSections: string;
+  characters: string[];
   durationSeconds: number;
   aspectRatio: "16:9" | "9:16";
   referenceImage: VideoReferenceImage;
 }): ChatMessage[] {
-  const systemPrompt = [
-    "Refine one storyboard motion beat using the attached generated illustration as the exact first frame at T=0.",
-    "Follow the active Storyboard Agent animation preset below for its motion and storytelling priorities. These single-beat output instructions take precedence over any multi-keyframe or JSON output instructions in that preset.",
-    `<active_storyboard_animation_preset>\n${compactVideoPromptText(args.plannerPrompt, 8_000)}\n</active_storyboard_animation_preset>`,
-    "The image is authoritative for visible subjects, pose, crop, camera angle, object placement, and feasible movement.",
-    "Preserve the intended action and emotion, but simplify motion that conflicts with the actual frame.",
-    "Describe subject motion, camera motion, continuity, and the ending beat. Do not repeat a static image description or invent unseen characters.",
-    "If the motion intent uses | separators for timed segments, return the same number of | separated segments in the same order.",
-    "Return only the refined motion beat with no label, Markdown, or commentary.",
-  ].join("\n");
-  const userPrompt = [
-    `<storyboard_title>${compactVideoPromptText(args.title, 300)}</storyboard_title>`,
-    `<duration_seconds>${args.durationSeconds}</duration_seconds>`,
-    `<aspect_ratio>${args.aspectRatio}</aspect_ratio>`,
-    `<motion_intent>\n${compactVideoPromptText(args.motionIntent, 4_000)}\n</motion_intent>`,
-    args.illustrationPrompt
-      ? `<intended_first_frame_context>\n${compactVideoPromptText(args.illustrationPrompt, 2_000)}\n</intended_first_frame_context>`
-      : "",
-    "Inspect the attached generated illustration, then refine the motion intent for what is actually visible.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  return [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt, images: [imageDataUrl(args.referenceImage)] },
-  ];
+  const template = resolveTemplate(args.templates, args.templateId);
+  if (!template) throw new Error("The Storyboard Agent has no image-aware shot planner prompt configured.");
+  const prompt = compactVideoPromptText(
+    renderTemplate(
+      template,
+      {
+        title: compactVideoPromptText(args.title, 300),
+        motionIntent: compactVideoPromptText(args.motionIntent, 4_000),
+        imagePrompt: compactVideoPromptText(args.imagePrompt, 2_000),
+        sourceSections: compactVideoPromptText(args.sourceSections, 6_000),
+        characters: compactVideoPromptText(args.characters.join(", "), 1_200),
+        durationSeconds: args.durationSeconds,
+        aspectRatio: args.aspectRatio,
+      },
+      [...STORYBOARD_ANIMATION_REFINEMENT_VARIABLES],
+    ),
+    MAX_RENDERED_PROMPT_CHARS,
+  );
+  if (!prompt) throw new Error("The Storyboard Agent image-aware shot planner prompt rendered empty.");
+  return [{ role: "user", content: prompt, images: [imageDataUrl(args.referenceImage)] }];
 }
 
-export function resolveStoryboardAnimationRefinement(value: unknown, maxLength: number): string {
-  if (typeof value !== "string") return "";
-  const unwrapped = unwrapJsonFence(value);
-  let refined = unwrapped;
+export function resolveStoryboardAnimationRefinement(
+  value: unknown,
+  motionIntent: string,
+  maxLength: number,
+): StoryboardAnimationRefinement | null {
+  if (typeof value !== "string") return null;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(unwrapped) as unknown;
-    if (typeof parsed === "string") {
-      refined = parsed;
-    } else if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const record = parsed as Record<string, unknown>;
-      const candidate = record.narrationBeat ?? record.videoPrompt ?? record.prompt;
-      refined = typeof candidate === "string" ? candidate : "";
-    } else {
-      refined = "";
-    }
+    parsed = JSON.parse(unwrapJsonFence(value));
   } catch {
-    refined = unwrapped.replace(/^(?:refined\s+)?(?:motion|narration)\s*beat\s*:\s*/iu, "");
+    return null;
   }
-  return compactVideoPromptText(refined, Math.min(Math.max(1, maxLength), MAX_REFINEMENT_CHARS));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  const classification = record.classification;
+  if (
+    classification !== "suitable" &&
+    classification !== "simplify" &&
+    classification !== "subtle" &&
+    classification !== "regenerate"
+  ) {
+    return null;
+  }
+  const candidate = record.narrationBeat ?? record.animationPrompt ?? record.videoPrompt ?? record.prompt;
+  const narrationBeat =
+    typeof candidate === "string"
+      ? compactVideoPromptText(candidate, Math.min(Math.max(1, maxLength), MAX_REFINEMENT_CHARS))
+      : "";
+  const expectedSegments = segmentCount(motionIntent);
+  if (!narrationBeat || expectedSegments === null || segmentCount(narrationBeat) !== expectedSegments) return null;
+  return { classification, narrationBeat };
+}
+
+export async function executeStoryboardImageAwareAnimation<T>(args: {
+  referenceImage: VideoReferenceImage;
+  motionIntent: string;
+  refinementEnabled?: boolean;
+  refine: (referenceImage: VideoReferenceImage) => Promise<StoryboardAnimationRefinement>;
+  formatPrompt: (narrationBeat: string) => Promise<string>;
+  persistPrompt: (value: { prompt: string; classification: StoryboardAnimationSuitability | "" }) => Promise<void>;
+  generateVideo: (value: { prompt: string; referenceImage: VideoReferenceImage }) => Promise<T>;
+  onRefinementError?: (error: unknown) => void;
+}): Promise<{
+  generated: T;
+  prompt: string;
+  narrationBeat: string;
+  classification: StoryboardAnimationSuitability | "";
+}> {
+  let refinement: StoryboardAnimationRefinement | null = null;
+  if (args.refinementEnabled !== false) {
+    try {
+      refinement = await args.refine(args.referenceImage);
+    } catch (error) {
+      args.onRefinementError?.(error);
+    }
+  }
+  const narrationBeat = refinement?.narrationBeat ?? args.motionIntent;
+  const classification = refinement?.classification ?? "";
+  const prompt = await args.formatPrompt(narrationBeat);
+  await args.persistPrompt({ prompt, classification });
+  const generated = await args.generateVideo({ prompt, referenceImage: args.referenceImage });
+  return { generated, prompt, narrationBeat, classification };
 }
 
 export function redactStoryboardAnimationRefinementMessages(messages: readonly ChatMessage[]) {

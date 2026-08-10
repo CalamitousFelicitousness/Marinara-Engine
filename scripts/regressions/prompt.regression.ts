@@ -583,6 +583,7 @@ import {
 } from "../../packages/server/src/services/video/roleplay-video-direction.js";
 import {
   buildStoryboardAnimationRefinementMessages,
+  executeStoryboardImageAwareAnimation,
   redactStoryboardAnimationRefinementMessages,
   resolveStoryboardAnimationRefinement,
 } from "../../packages/server/src/services/video/storyboard-animation-refinement.js";
@@ -902,6 +903,11 @@ const cases: RegressionCase[] = [
             ],
             illustrationPlannerTemplateIds: ["shared-planner", "agent-planner"],
             animationPlannerTemplateIds: ["shared-planner", "agent-planner"],
+            animationRefinementTemplates: [
+              { id: "shot-planner", name: "Shot planner", promptTemplate: "AGENT SHOT PLANNER" },
+            ],
+            animationRefinementTemplateId: "shot-planner",
+            imageAwareShotPlanningEnabled: true,
             roleplayEpisodeTemplates: [
               { id: "shared-episode", name: "Agent episode", promptTemplate: "AGENT EPISODE" },
               { id: "agent-episode", name: "Agent fallback", promptTemplate: "AGENT EPISODE FALLBACK" },
@@ -935,6 +941,13 @@ const cases: RegressionCase[] = [
       assert.equal(roleplay.storyboardAgentPromptConnectionId, "chat-prompt-connection");
       assert.equal(roleplay.storyboardAgentImageConnectionId, "chat-image-connection");
       assert.equal(roleplay.storyboardAgentVideoConnectionId, "chat-video-connection");
+      assert.equal(roleplay.storyboardAgentAnimationRefinementTemplateId, "shot-planner");
+      assert.equal(roleplay.storyboardAgentImageAwareShotPlanningEnabled, true);
+      assert.equal(
+        (roleplay.storyboardAgentAnimationRefinementTemplates as Array<{ promptTemplate: string }>)[0]
+          ?.promptTemplate,
+        "AGENT SHOT PLANNER",
+      );
       assert.deepEqual(
         (roleplay.roleplayStoryboardEpisodeTemplates as Array<{ id: string; promptTemplate: string }>).map(
           (template) => [template.id, template.promptTemplate],
@@ -958,6 +971,7 @@ const cases: RegressionCase[] = [
         "game",
       );
       assert.equal(game.gameStoryboardKeyframeCount, 6);
+      assert.equal(game.storyboardAgentAnimationRefinementTemplateId, "shot-planner");
       assert.deepEqual(
         (game.gameStoryboardPromptTemplates as Array<{ id: string; promptTemplate: string }>).map((template) => [
           template.id,
@@ -4542,62 +4556,143 @@ const cases: RegressionCase[] = [
   },
   {
     name: "Storyboard animation refinement sees the generated illustration after image generation",
-    run() {
+    async run() {
       const motionIntent =
         "She lifts the sword as the camera pushes in | Her coat settles while she looks toward the doorway";
+      const referenceImage = { base64: "cGl4ZWxz", mimeType: "image/png" };
+      const templates = [
+        {
+          id: "image-aware-shot",
+          name: "Image-aware shot",
+          promptTemplate:
+            "Inspect the attached generated illustration for ${title}. Motion intent: ${motionIntent}. First-frame plan: ${imagePrompt}. Sources: ${sourceSections}. Characters: ${characters}. Duration: ${durationSeconds}. Ratio: ${aspectRatio}. Return classification and narrationBeat as JSON.",
+        },
+      ];
       const messages = buildStoryboardAnimationRefinementMessages({
+        templates,
+        templateId: "image-aware-shot",
         title: "The doorway",
         motionIntent,
-        illustrationPrompt: "Waist-up profile of Mira holding a lowered sword beside a doorway.",
-        plannerPrompt: "Favor restrained character motion and a slow dramatic camera.",
+        imagePrompt: "Waist-up profile of Mira holding a lowered sword beside a doorway.",
+        sourceSections: '<section index="2">Mira reaches the doorway.</section>',
+        characters: ["Mira"],
         durationSeconds: 6,
         aspectRatio: "16:9",
-        referenceImage: { base64: "cGl4ZWxz", mimeType: "image/png" },
+        referenceImage,
       });
-      assert.equal(messages[1]?.role, "user");
-      assert.deepEqual(messages[1]?.images, ["data:image/png;base64,cGl4ZWxz"]);
-      assert.match(messages[0]?.content ?? "", /exact first frame at T=0/u);
-      assert.match(messages[0]?.content ?? "", /active_storyboard_animation_preset/u);
-      assert.match(messages[0]?.content ?? "", /Favor restrained character motion/u);
-      assert.match(messages[0]?.content ?? "", /same number of \| separated segments/u);
-      assert.match(messages[1]?.content ?? "", /She lifts the sword/u);
-      assert.match(messages[1]?.content ?? "", /attached generated illustration/u);
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0]?.role, "user");
+      assert.deepEqual(messages[0]?.images, ["data:image/png;base64,cGl4ZWxz"]);
+      assert.match(messages[0]?.content ?? "", /Mira reaches the doorway/u);
+      assert.match(messages[0]?.content ?? "", /She lifts the sword/u);
 
       const redactedMessages = redactStoryboardAnimationRefinementMessages(messages);
       assert.doesNotMatch(JSON.stringify(redactedMessages), /cGl4ZWxz/u);
       assert.match(JSON.stringify(redactedMessages), /"mediaType":"image\/png"/u);
-      assert.equal(
+      assert.deepEqual(
         resolveStoryboardAnimationRefinement(
-          '```json\n{"narrationBeat":"Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer"}\n```',
+          '```json\n{"classification":"simplify","narrationBeat":"Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer"}\n```',
+          motionIntent,
           650,
         ),
-        "Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer",
+        {
+          classification: "simplify",
+          narrationBeat:
+            "Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer",
+        },
       );
       assert.equal(
-        resolveStoryboardAnimationRefinement("Motion beat: Mira turns her head while the camera stays locked.", 650),
-        "Mira turns her head while the camera stays locked.",
+        resolveStoryboardAnimationRefinement(
+          '{"classification":"subtle","narrationBeat":"Mira only turns her head."}',
+          motionIntent,
+          650,
+        ),
+        null,
       );
-      assert.equal(resolveStoryboardAnimationRefinement('{"wrongField":"do not use"}', 650), "");
+      assert.equal(
+        resolveStoryboardAnimationRefinement(
+          '{"classification":"unknown","narrationBeat":"One | Two"}',
+          motionIntent,
+          650,
+        ),
+        null,
+      );
+      assert.equal(
+        resolveStoryboardAnimationRefinement(
+          '{"classification":"subtle","narrationBeat":"One |"}',
+          "Original |",
+          650,
+        ),
+        null,
+      );
 
-      const gameRouteSource = readFileSync(
-        new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url),
-        "utf8",
-      );
-      const renderStart = gameRouteSource.indexOf("const renderStoryboardFrame = async");
-      assert.notEqual(renderStart, -1);
-      const renderSource = gameRouteSource.slice(renderStart);
-      const referenceImageIndex = renderSource.indexOf("const referenceImage = readOmniReferenceImage");
-      const refinementIndex = renderSource.indexOf("buildStoryboardAnimationRefinementMessages");
-      const truncationGuardIndex = renderSource.indexOf(
-        "isLikelyTruncatedJsonResponse(refinementContent, refinementResult.finishReason)",
-      );
-      const formatterIndex = renderSource.indexOf("buildStoryboardGalleryAnimatePrompt");
-      assert.ok(referenceImageIndex >= 0 && referenceImageIndex < refinementIndex);
-      assert.ok(refinementIndex < truncationGuardIndex);
-      assert.ok(truncationGuardIndex < formatterIndex);
-      assert.match(renderSource, /plannerPrompt: illustratorMessages\.systemPrompt/u);
-      assert.match(renderSource, /plannedFrame: animationPlannedFrame/u);
-      assert.match(renderSource, /fallback=planned-motion-beat/u);
+      const persisted: Array<{ prompt: string; classification: string }> = [];
+      const videoCalls: Array<{ prompt: string; referenceImage: typeof referenceImage }> = [];
+      const execution = await executeStoryboardImageAwareAnimation({
+        referenceImage,
+        motionIntent,
+        refine: async (actualImage) => {
+          assert.strictEqual(actualImage, referenceImage);
+          const response =
+            '{"classification":"simplify","narrationBeat":"Mira raises the lowered sword carefully | She holds while the camera eases closer"}';
+          const refinement = resolveStoryboardAnimationRefinement(response, motionIntent, 650);
+          assert.ok(refinement);
+          return refinement;
+        },
+        formatPrompt: async (narrationBeat) => `FINAL VIDEO PROMPT: ${narrationBeat}`,
+        persistPrompt: async (value) => {
+          persisted.push(value);
+        },
+        generateVideo: async (value) => {
+          videoCalls.push(value);
+          return { id: "generated-video" };
+        },
+      });
+      assert.equal(execution.classification, "simplify");
+      assert.deepEqual(persisted, [
+        {
+          classification: "simplify",
+          prompt:
+            "FINAL VIDEO PROMPT: Mira raises the lowered sword carefully | She holds while the camera eases closer",
+        },
+      ]);
+      assert.equal(videoCalls.length, 1);
+      assert.equal(videoCalls[0]?.prompt, persisted[0]?.prompt);
+      assert.strictEqual(videoCalls[0]?.referenceImage, referenceImage);
+
+      const fallbackVideoCalls: string[] = [];
+      await executeStoryboardImageAwareAnimation({
+        referenceImage,
+        motionIntent,
+        refine: async () => {
+          throw new Error("vision unavailable");
+        },
+        formatPrompt: async (narrationBeat) => `FALLBACK VIDEO PROMPT: ${narrationBeat}`,
+        persistPrompt: async ({ classification }) => assert.equal(classification, ""),
+        generateVideo: async ({ prompt }) => {
+          fallbackVideoCalls.push(prompt);
+          return { id: "fallback-video" };
+        },
+      });
+      assert.deepEqual(fallbackVideoCalls, [`FALLBACK VIDEO PROMPT: ${motionIntent}`]);
+
+      let disabledPlannerCalls = 0;
+      await executeStoryboardImageAwareAnimation({
+        referenceImage,
+        motionIntent,
+        refinementEnabled: false,
+        refine: async () => {
+          disabledPlannerCalls += 1;
+          throw new Error("disabled planner should not run");
+        },
+        formatPrompt: async (narrationBeat) => narrationBeat,
+        persistPrompt: async ({ classification }) => assert.equal(classification, ""),
+        generateVideo: async ({ prompt }) => {
+          assert.equal(prompt, motionIntent);
+          return { id: "disabled-refinement-video" };
+        },
+      });
+      assert.equal(disabledPlannerCalls, 0);
     },
   },
   {

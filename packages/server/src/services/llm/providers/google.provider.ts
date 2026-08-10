@@ -93,6 +93,11 @@ function normalizeGoogleBaseUrl(baseUrl: string): string {
   }
 }
 
+export function normalizeGoogleGenerativeLanguageBaseUrl(baseUrl: string): string {
+  const normalized = normalizeGoogleBaseUrl(baseUrl).replace(/\/v1(?=\/|$)/i, "/v1beta");
+  return /\/v\d/i.test(normalized) ? normalized : `${normalized}/v1beta`;
+}
+
 function base64UrlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -532,8 +537,10 @@ export class GoogleProvider extends BaseLLMProvider {
         ? resolveGeminiThinkingConfig(model, options, maxTokens ?? 4096)
         : undefined;
 
-    let base = normalizeGoogleBaseUrl(this.baseUrl);
-    if (this.providerKind === "google" && !/\/v\d/.test(base)) base += "/v1beta";
+    const base =
+      this.providerKind === "google"
+        ? normalizeGoogleGenerativeLanguageBaseUrl(this.baseUrl)
+        : normalizeGoogleBaseUrl(this.baseUrl);
     const url =
       this.providerKind === "google_vertex"
         ? buildGoogleVertexModelUrl(base, model, "generateContent")
@@ -642,8 +649,10 @@ export class GoogleProvider extends BaseLLMProvider {
 
     // Ensure the base URL includes the /v1beta path segment required by the Gemini API.
     // Proxies like api.linkapi.ai need this appended (SillyTavern does it automatically).
-    let base = normalizeGoogleBaseUrl(this.baseUrl);
-    if (this.providerKind === "google" && !/\/v\d/.test(base)) base += "/v1beta";
+    const base =
+      this.providerKind === "google"
+        ? normalizeGoogleGenerativeLanguageBaseUrl(this.baseUrl)
+        : normalizeGoogleBaseUrl(this.baseUrl);
 
     // When thinking is enabled, force non-streaming (generateContent) because
     // proxies like linkapi.ai strip thought parts from SSE streams but return
@@ -904,8 +913,10 @@ export class GoogleProvider extends BaseLLMProvider {
     const label = this.providerKind === "google_vertex" ? "Vertex AI Gemini" : "Gemini API";
     const requestModel = model.replace(/^models\//, "") || "gemini-embedding-001";
     const timeoutMs = getEmbeddingRequestTimeoutMs();
-    let base = normalizeGoogleBaseUrl(this.baseUrl);
-    if (this.providerKind === "google" && !/\/v\d/.test(base)) base += "/v1beta";
+    const base =
+      this.providerKind === "google"
+        ? normalizeGoogleGenerativeLanguageBaseUrl(this.baseUrl)
+        : normalizeGoogleBaseUrl(this.baseUrl);
     const url =
       this.providerKind === "google_vertex"
         ? buildGoogleVertexModelUrl(base, requestModel, "embedContent")

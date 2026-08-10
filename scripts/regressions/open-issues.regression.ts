@@ -230,6 +230,7 @@ import { createLorebooksStorage } from "../../packages/server/src/services/stora
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { createChatPresetsStorage } from "../../packages/server/src/services/storage/chat-presets.storage.js";
 import { buildGoogleModelsPageUrl } from "../../packages/server/src/routes/connections.routes.js";
+import { normalizeGoogleGenerativeLanguageBaseUrl } from "../../packages/server/src/services/llm/providers/google.provider.js";
 import {
   buildReferencedCharacterContext,
   MAX_REFERENCED_CHARACTERS,
@@ -2548,6 +2549,19 @@ const googleModelsPageUrl = buildGoogleModelsPageUrl(
   "https://gemini-proxy.example.test/v1beta",
   "/models",
   "next page/token",
+);
+assert.equal(
+  normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1"),
+  "https://generativelanguage.googleapis.com/v1beta",
+  "Legacy Gemini v1 connection URLs must use the supported v1beta endpoint",
+);
+assert.equal(
+  normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com"),
+  "https://generativelanguage.googleapis.com/v1beta",
+);
+assert.equal(
+  normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1beta"),
+  "https://generativelanguage.googleapis.com/v1beta",
 );
 assert.equal(
   googleModelsPageUrl,

@@ -4737,15 +4737,17 @@ export function HomeProfessorMariChat({
                                 {localizeUi("ui.chat.homeprofessormarichat.restart")}
                               </span>
                             </button>
-                            <button
-                              type="button"
-                              onClick={closeChatWindow}
-                              className="mari-chrome-control mari-chrome-control--small mari-accent-animated inline-flex h-8 w-8 items-center justify-center rounded-md p-0"
-                              aria-label={t("home.professorMari.close")}
-                              title={t("home.professorMari.close")}
-                            >
-                              <X size="0.9rem" />
-                            </button>
+                            {!embeddedTab && (
+                              <button
+                                type="button"
+                                onClick={closeChatWindow}
+                                className="mari-chrome-control mari-chrome-control--small mari-accent-animated inline-flex h-8 w-8 items-center justify-center rounded-md p-0"
+                                aria-label={t("home.professorMari.close")}
+                                title={t("home.professorMari.close")}
+                              >
+                                <X size="0.9rem" />
+                              </button>
+                            )}
                           </div>
                         </div>
 

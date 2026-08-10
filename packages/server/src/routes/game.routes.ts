@@ -11527,7 +11527,6 @@ export async function gameRoutes(app: FastifyInstance) {
                     {
                       stream: false,
                       maxTokens: 800,
-                      temperature: 0.2,
                       signal: backgroundSignal,
                     },
                     parameters,

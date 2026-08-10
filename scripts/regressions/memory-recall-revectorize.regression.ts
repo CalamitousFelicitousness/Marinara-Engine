@@ -110,17 +110,24 @@ try {
     claudeFastMode: false,
   };
   await connections.create({ ...connectionDefaults, name: "Random without embeddings", embeddingModel: "" });
-  await connections.create({
+  const firstEligible = await connections.create({
     ...connectionDefaults,
-    name: "Random with embeddings",
+    name: "Random embeddings A",
     embeddingModel: "text-embedding-3-small",
   });
+  const secondEligible = await connections.create({
+    ...connectionDefaults,
+    name: "Random embeddings B",
+    embeddingModel: "text-embedding-3-small",
+  });
+  assert.ok(firstEligible && secondEligible, "the deterministic random-pool fixture creates two eligible sources");
+  const expectedSource = [firstEligible, secondEligible].sort((a, b) => a.id.localeCompare(b.id))[0]!;
 
   const randomPoolSource = await resolveMemoryRecallEmbeddingSource(db, { connectionId: "random" });
   assert.match(
     randomPoolSource?.label ?? "",
-    /Random with embeddings \(text-embedding-3-small\)/u,
-    "random chats resolve an embedding-capable pool member instead of falling back to the local embedder",
+    new RegExp(`${expectedSource.name} \\(text-embedding-3-small\\)`, "u"),
+    "random chats deterministically resolve the first embedding-capable pool member by ID",
   );
 } finally {
   await db._fileStore.close();

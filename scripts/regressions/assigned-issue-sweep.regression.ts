@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INLINE_MD_RE } from "../../packages/client/src/lib/inline-markdown-regex.js";
 import { mergeUndatedSyncedSettings } from "../../packages/client/src/hooks/use-settings-sync.js";
-import { isStockMarinaraUniversalPreset } from "../../packages/shared/src/types/prompt.js";
+import {
+  isStockMarinaraUniversalPreset,
+  MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
+} from "../../packages/shared/src/types/prompt.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -22,14 +25,18 @@ assert.equal(mergedSettings.accentColor, "server", "server-present settings win 
 assert.equal(mergedSettings.homeGreetingEnabled, true, "local settings fill only fields absent from the server");
 
 assert.equal(
-  isStockMarinaraUniversalPreset({ name: "Marinara's Universal Preset", author: "Marinara" }),
+  isStockMarinaraUniversalPreset({ systemKey: MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY }),
   true,
   "the bundled universal preset is recognized as stock",
 );
 assert.equal(
-  isStockMarinaraUniversalPreset({ name: "Marinara's Universal Preset (Copy)", author: "Marinara" }),
+  isStockMarinaraUniversalPreset({
+    name: "Marinara's Universal Preset",
+    author: "Marinara",
+    systemKey: "",
+  }),
   false,
-  "an editable copy is not treated as stock",
+  "editable name and author fields cannot make a user preset protected stock",
 );
 
 const agentsPanelSource = readFileSync(

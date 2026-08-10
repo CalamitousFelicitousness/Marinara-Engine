@@ -30,8 +30,15 @@ try {
     "My customized universal preset",
     "startup preserves attempted stock edits in an editable copy",
   );
+  assert.equal(editableCopy?.systemKey, "", "editable copies do not inherit the reserved stock identity");
 
   assert.ok(restored && editableCopy, "both the restored stock preset and editable copy exist");
+  const matchingUserPreset = await storage.create({
+    name: "Marinara's Universal Preset",
+    author: "Marinara",
+    description: "User-owned matching preset",
+  });
+  assert.ok(matchingUserPreset, "the matching-name user preset fixture is created");
   await storage.setDefault(editableCopy.id);
   await storage.remove(restored.id);
   await seedDefaultPreset(db);
@@ -41,6 +48,11 @@ try {
     afterDeletion.filter(isStockMarinaraUniversalPreset).length,
     1,
     "startup recovers a deleted stock preset",
+  );
+  assert.equal(
+    afterDeletion.find((preset) => preset.id === matchingUserPreset.id)?.systemKey,
+    "",
+    "a user preset with matching editable fields is never claimed as stock",
   );
   assert.equal(
     afterDeletion.find((preset) => preset.id === editableCopy.id)?.isDefault,

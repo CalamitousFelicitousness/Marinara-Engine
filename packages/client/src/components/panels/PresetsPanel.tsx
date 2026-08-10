@@ -108,6 +108,7 @@ type PresetRow = {
   wrapFormat?: string;
   isDefault?: string | boolean;
   author?: string;
+  systemKey?: string;
   sectionOrder?: string | string[];
   createdAt?: string;
   updatedAt?: string;

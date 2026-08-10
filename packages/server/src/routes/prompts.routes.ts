@@ -109,6 +109,7 @@ async function buildPresetExportEnvelope(storage: ReturnType<typeof createPrompt
   if (!preset) return null;
   const exportedPreset = { ...preset } as Record<string, unknown>;
   delete exportedPreset.parameters;
+  delete exportedPreset.systemKey;
   const [sections, groups, choiceBlocks] = await Promise.all([
     storage.listSections(id),
     storage.listGroups(id),
@@ -315,14 +316,22 @@ export async function promptsRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { presetId: string; groupId: string } }>("/:presetId/groups/:groupId", async (req, reply) => {
-    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
+    const group = await storage.getGroup(req.params.groupId);
+    if (!group || group.presetId !== req.params.presetId) {
+      return reply.status(404).send({ error: "Prompt group not found" });
+    }
+    if (await rejectStockPresetMutation(storage, group.presetId, reply)) return;
     const input = updatePromptGroupSchema.parse(req.body);
-    return storage.updateGroup(req.params.groupId, input);
+    return storage.updateGroup(group.id, input);
   });
 
   app.delete<{ Params: { presetId: string; groupId: string } }>("/:presetId/groups/:groupId", async (req, reply) => {
-    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
-    await storage.removeGroup(req.params.groupId);
+    const group = await storage.getGroup(req.params.groupId);
+    if (!group || group.presetId !== req.params.presetId) {
+      return reply.status(404).send({ error: "Prompt group not found" });
+    }
+    if (await rejectStockPresetMutation(storage, group.presetId, reply)) return;
+    await storage.removeGroup(group.id);
     return reply.status(204).send();
   });
 
@@ -351,16 +360,24 @@ export async function promptsRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { presetId: string; sectionId: string } }>("/:presetId/sections/:sectionId", async (req, reply) => {
-    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
+    const section = await storage.getSection(req.params.sectionId);
+    if (!section || section.presetId !== req.params.presetId) {
+      return reply.status(404).send({ error: "Prompt section not found" });
+    }
+    if (await rejectStockPresetMutation(storage, section.presetId, reply)) return;
     const input = updatePromptSectionSchema.parse(req.body);
-    return storage.updateSection(req.params.sectionId, input);
+    return storage.updateSection(section.id, input);
   });
 
   app.delete<{ Params: { presetId: string; sectionId: string } }>(
     "/:presetId/sections/:sectionId",
     async (req, reply) => {
-      if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
-      await storage.removeSection(req.params.sectionId);
+      const section = await storage.getSection(req.params.sectionId);
+      if (!section || section.presetId !== req.params.presetId) {
+        return reply.status(404).send({ error: "Prompt section not found" });
+      }
+      if (await rejectStockPresetMutation(storage, section.presetId, reply)) return;
+      await storage.removeSection(section.id);
       return reply.status(204).send();
     },
   );
@@ -390,16 +407,24 @@ export async function promptsRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { presetId: string; variableId: string } }>("/:presetId/variables/:variableId", async (req, reply) => {
-    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
+    const variable = await storage.getChoiceBlock(req.params.variableId);
+    if (!variable || variable.presetId !== req.params.presetId) {
+      return reply.status(404).send({ error: "Preset variable not found" });
+    }
+    if (await rejectStockPresetMutation(storage, variable.presetId, reply)) return;
     const input = updateChoiceBlockSchema.parse(req.body);
-    return storage.updateChoiceBlock(req.params.variableId, input);
+    return storage.updateChoiceBlock(variable.id, input);
   });
 
   app.delete<{ Params: { presetId: string; variableId: string } }>(
     "/:presetId/variables/:variableId",
     async (req, reply) => {
-      if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
-      await storage.removeChoiceBlock(req.params.variableId);
+      const variable = await storage.getChoiceBlock(req.params.variableId);
+      if (!variable || variable.presetId !== req.params.presetId) {
+        return reply.status(404).send({ error: "Preset variable not found" });
+      }
+      if (await rejectStockPresetMutation(storage, variable.presetId, reply)) return;
+      await storage.removeChoiceBlock(variable.id);
       return reply.status(204).send();
     },
   );

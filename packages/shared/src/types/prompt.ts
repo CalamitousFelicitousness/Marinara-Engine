@@ -6,9 +6,10 @@ import type { ThinkingTagPair } from "../utils/thinking-tags.js";
 
 export const MARINARA_UNIVERSAL_PRESET_NAME = "Marinara's Universal Preset";
 export const MARINARA_UNIVERSAL_PRESET_AUTHOR = "Marinara";
+export const MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY = "marinara-universal-preset";
 
-export function isStockMarinaraUniversalPreset(preset: { name?: unknown; author?: unknown }): boolean {
-  return preset.name === MARINARA_UNIVERSAL_PRESET_NAME && preset.author === MARINARA_UNIVERSAL_PRESET_AUTHOR;
+export function isStockMarinaraUniversalPreset(preset: { systemKey?: unknown }): boolean {
+  return preset.systemKey === MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY;
 }
 
 /** Role for a prompt section. */
@@ -82,6 +83,8 @@ export interface PromptPreset {
   isDefault: boolean;
   /** Author of this preset */
   author: string;
+  /** Reserved identifier for Engine-owned presets. Empty for user presets. */
+  systemKey: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -39,6 +39,11 @@ export interface AgentInjection {
   text: string;
 }
 
+export type AgentContextResolver = (
+  agent: AgentExecConfig,
+  context: AgentContext,
+) => AgentContext | Promise<AgentContext>;
+
 /** Callback fired whenever an agent produces a result. */
 export type AgentResultCallback = (result: AgentResult) => void;
 
@@ -165,8 +170,11 @@ async function executeGroup(
   group: AgentGroup,
   context: AgentContext,
   onResult?: AgentResultCallback,
+  resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentResult[]> {
-  const groupContext = buildAgentContext(group.agents[0]!, context);
+  const groupContext = resolveAgentContext
+    ? await resolveAgentContext(group.agents[0]!, buildAgentContext(group.agents[0]!, context))
+    : buildAgentContext(group.agents[0]!, context);
   // Separate tool-using agents (can't be batched) from regular agents. Spotify always
   // returns one JSON intent; deterministic host-side playback runs after parsing.
   const toolAgents = group.agents.filter((a) => shouldUseToolsDuringAgentExecution(a));
@@ -189,7 +197,7 @@ async function executeGroup(
 
   const batchResultsPromise =
     batchAgents.length > 0
-      ? executeAgentBatch(batchAgents, groupContext, group.provider, group.model).then((results) => {
+      ? executeAgentBatch(batchAgents, groupContext, group.provider, group.model, resolveAgentContext).then((results) => {
           for (const result of results) {
             safeOnResult(result);
           }
@@ -207,7 +215,10 @@ async function executeGroup(
     toolAgents,
     AGENT_GROUP_MAX_CONCURRENT_TOOL_CALLS,
     (agent) =>
-      executeAgent(agent, buildAgentContext(agent, context), agent.provider, agent.model, agent.toolContext).then((result) => {
+      (resolveAgentContext
+        ? Promise.resolve(resolveAgentContext(agent, buildAgentContext(agent, context)))
+        : Promise.resolve(buildAgentContext(agent, context))
+      ).then((agentContext) => executeAgent(agent, agentContext, agent.provider, agent.model, agent.toolContext)).then((result) => {
         safeOnResult(result);
         return result;
       }),
@@ -249,6 +260,7 @@ async function executePhase(
   phase: string,
   context: AgentContext,
   onResult?: AgentResultCallback,
+  resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentResult[]> {
   const phaseAgents = agents.filter((a) => a.phase === phase);
   if (phaseAgents.length === 0) return [];
@@ -275,7 +287,7 @@ async function executePhase(
   const settled = await settleAgentJobsWithConcurrencyLimit(
     groups,
     AGENT_PHASE_MAX_CONCURRENT_GROUPS,
-    (group) => executeGroup(group, context, onResult),
+    (group) => executeGroup(group, context, onResult, resolveAgentContext),
   );
 
   const results: AgentResult[] = [];
@@ -337,9 +349,10 @@ export async function runPreGenerationAgents(
   context: AgentContext,
   onResult?: AgentResultCallback,
   agentTypeFilter?: (agentType: string) => boolean,
+  resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentInjection[]> {
   const filtered = agentTypeFilter ? agents.filter((a) => agentTypeFilter(a.type)) : agents;
-  const results = await executePhase(filtered, "pre_generation", context, onResult);
+  const results = await executePhase(filtered, "pre_generation", context, onResult, resolveAgentContext);
 
   const injections: AgentInjection[] = [];
   for (const result of results) {
@@ -378,8 +391,9 @@ export async function runPostProcessingAgents(
   agents: ResolvedAgent[],
   context: AgentContext,
   onResult?: AgentResultCallback,
+  resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentResult[]> {
-  return executePhase(agents, "post_processing", context, onResult);
+  return executePhase(agents, "post_processing", context, onResult, resolveAgentContext);
 }
 
 /**
@@ -389,8 +403,9 @@ export async function runParallelAgents(
   agents: ResolvedAgent[],
   context: AgentContext,
   onResult?: AgentResultCallback,
+  resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentResult[]> {
-  return executePhase(agents, "parallel", context, onResult);
+  return executePhase(agents, "parallel", context, onResult, resolveAgentContext);
 }
 
 // ──────────────────────────────────────────────
@@ -417,6 +432,7 @@ export function createAgentPipeline(
   agents: ResolvedAgent[],
   baseContext: AgentContext,
   onResult?: AgentResultCallback,
+  resolveAgentContext?: AgentContextResolver,
 ) {
   const allResults: AgentResult[] = [];
   const preGenerationInjections: AgentInjection[] = [];
@@ -433,7 +449,13 @@ export function createAgentPipeline(
      * Returns context injection strings to prepend to the prompt.
      */
     async preGenerate(agentTypeFilter?: (agentType: string) => boolean): Promise<AgentInjection[]> {
-      const injections = await runPreGenerationAgents(agents, baseContext, wrappedOnResult, agentTypeFilter);
+      const injections = await runPreGenerationAgents(
+        agents,
+        baseContext,
+        wrappedOnResult,
+        agentTypeFilter,
+        resolveAgentContext,
+      );
       preGenerationInjections.push(...injections);
       return injections;
     },
@@ -444,7 +466,7 @@ export function createAgentPipeline(
      * base context without mainResponse (since it doesn't exist yet).
      */
     async runParallel(): Promise<AgentResult[]> {
-      const results = await runParallelAgents(agents, baseContext, wrappedOnResult);
+      const results = await runParallelAgents(agents, baseContext, wrappedOnResult, resolveAgentContext);
       parallelPhaseResults.push(...results);
       return results;
     },
@@ -464,7 +486,7 @@ export function createAgentPipeline(
         parallelResults: options.parallelResults ?? parallelPhaseResults,
       };
 
-      return runPostProcessingAgents(agents, fullContext, wrappedOnResult);
+      return runPostProcessingAgents(agents, fullContext, wrappedOnResult, resolveAgentContext);
     },
 
     /** All results collected so far. */

@@ -69,6 +69,8 @@ export interface APIConnection {
   imageService: string | null;
   /** For endpoint-based image services (e.g. RunPod Serverless): the endpoint ID sent alongside the base URL. */
   imageEndpointId: string | null;
+  /** Instructions applied by an extra default-language-model call before image generation. */
+  imagePromptInstructions: string | null;
   /** OpenAI GPT Image quality saved for this connection. */
   imageGenerationQuality: ImageGenerationQuality;
   /** Explicit video backend selection for video-generation connections (e.g. Gemini Omni). */

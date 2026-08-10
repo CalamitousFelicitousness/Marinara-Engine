@@ -66,6 +66,7 @@ import {
 import { resolveIllustratorPromptRuntime } from "../services/generation/illustrator-prompt-runtime.js";
 import { resolveIllustratorImageConnectionId } from "../services/generation/illustrator-background-generation.js";
 import { resolveConversationSelfieSystemPrompt } from "../services/conversation/selfie-prompt.js";
+import { appendImagePromptInstructions } from "../services/generation/image-prompt-instructions.js";
 import {
   suppressesReferencePromptLine,
   resolveIllustratorCharacterReferences,
@@ -1255,6 +1256,10 @@ export async function galleryRoutes(app: FastifyInstance) {
     const selfieSystemPrompt = styleGuidance
       ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
       : baseSelfieSystemPrompt;
+    const selfieSystemPromptWithImageInstructions = appendImagePromptInstructions(
+      selfieSystemPrompt,
+      imageConn.imagePromptInstructions,
+    );
 
     const selfieAbortSignal = createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Selfie generation");
     let promptRuntime;
@@ -1276,7 +1281,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       : `Generate a casual selfie of ${characterName} based on the current conversation context.`;
 
     if (debugLogsEnabled) {
-      debugLog("[debug/gallery/selfie] prompt-builder system:\n%s", selfieSystemPrompt);
+      debugLog("[debug/gallery/selfie] prompt-builder system:\n%s", selfieSystemPromptWithImageInstructions);
       debugLog("[debug/gallery/selfie] prompt-builder user:\n%s", promptContext);
     }
 
@@ -1285,7 +1290,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       try {
         const promptResult = await promptBuilder.chatComplete(
           [
-            { role: "system", content: selfieSystemPrompt },
+            { role: "system", content: selfieSystemPromptWithImageInstructions },
             { role: "user", content: promptContext },
           ],
           {

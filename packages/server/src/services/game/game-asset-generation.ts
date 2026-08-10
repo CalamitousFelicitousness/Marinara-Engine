@@ -33,6 +33,7 @@ import type { ImageGenerationSize } from "../image/image-generation-settings.js"
 import { compileImagePrompt } from "../image/image-prompt-compiler.js";
 import { loadGameStoryboardImagePrompt } from "../image/game-storyboard-image-prompt.js";
 import { SPATIAL_LOCATION_REFERENCE_PROMPT_LINE } from "../image/spatial-location-reference.js";
+import { compactImagePromptInstructions } from "../sidecar/scene-analyzer.js";
 
 const NPC_AVATAR_DIR = join(DATA_DIR, "avatars", "npc");
 const CHAT_BACKGROUND_DIR = join(DATA_DIR, "backgrounds");
@@ -990,7 +991,7 @@ async function buildBackgroundRawPrompt(req: BackgroundGenRequest): Promise<stri
     ? await loadPrompt(req.promptOverridesStorage, GAME_BACKGROUND, backgroundVars)
     : GAME_BACKGROUND.defaultBuilder(backgroundVars);
   const imagePromptInstructionsLine = req.imagePromptInstructions?.trim()
-    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, 5000)}`
+    ? `User image instructions: ${compactImagePromptInstructions(req.imagePromptInstructions)}`
     : "";
   return imagePromptInstructionsLine && !rawPrompt.includes(imagePromptInstructionsLine)
     ? `${rawPrompt}\n${imagePromptInstructionsLine}`
@@ -1124,7 +1125,7 @@ async function buildSceneIllustrationRawPrompt(req: SceneIllustrationGenRequest)
   const referenceImages = sceneIllustrationReferenceImagesForProvider(req);
   const characterReferenceImagesAttached = referenceImages.length > (req.locationReferenceImageAttached ? 1 : 0);
   const imagePromptInstructionsLine = req.imagePromptInstructions?.trim()
-    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, 5000)}`
+    ? `User image instructions: ${compactImagePromptInstructions(req.imagePromptInstructions)}`
     : "";
   const useGamePromptTemplate = req.useGamePromptTemplate !== false;
   const scopedScenePrompt = req.prompt.trim();

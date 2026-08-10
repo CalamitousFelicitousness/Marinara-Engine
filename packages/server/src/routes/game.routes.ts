@@ -63,6 +63,7 @@ import { listPartySprites, readPreferredFullBodySpriteBase64 } from "../services
 import {
   buildSceneAnalyzerSystemPrompt,
   buildSceneAnalyzerUserPrompt,
+  compactImagePromptInstructions,
   type SceneAnalyzerContext,
 } from "../services/sidecar/scene-analyzer.js";
 import { postProcessSceneResult, type PostProcessContext } from "../services/sidecar/scene-postprocess.js";
@@ -10316,7 +10317,7 @@ export async function gameRoutes(app: FastifyInstance) {
       .catch(() => null);
     const imagePromptInstructions =
       typeof meta.gameImagePromptInstructions === "string"
-        ? meta.gameImagePromptInstructions.trim().slice(0, 5000)
+        ? compactImagePromptInstructions(meta.gameImagePromptInstructions)
         : "";
 
     // Compute approximate turn number: count user messages + 1 (current turn)
@@ -11199,7 +11200,7 @@ export async function gameRoutes(app: FastifyInstance) {
         null;
       const imagePromptInstructions =
         ownerMode === "game" && typeof meta.gameImagePromptInstructions === "string"
-          ? meta.gameImagePromptInstructions.trim().slice(0, 5000)
+          ? compactImagePromptInstructions(meta.gameImagePromptInstructions)
           : "";
       const useAvatarReferences = meta.storyboardAgentUseAvatarReferences !== false;
       const useStoryboardPromptTemplate =
@@ -12153,7 +12154,7 @@ export async function gameRoutes(app: FastifyInstance) {
       null;
     const imagePromptInstructions =
       typeof meta.gameImagePromptInstructions === "string"
-        ? meta.gameImagePromptInstructions.trim().slice(0, 5000)
+        ? compactImagePromptInstructions(meta.gameImagePromptInstructions)
         : "";
     const useAvatarReferences = input.useAvatarReferences ?? meta.gameImageUseAvatarReferences !== false;
     const includeCharacterAppearance =
@@ -12566,7 +12567,7 @@ export async function gameRoutes(app: FastifyInstance) {
         null;
       const imagePromptInstructions =
         typeof meta.gameImagePromptInstructions === "string"
-          ? meta.gameImagePromptInstructions.trim().slice(0, 5000)
+          ? compactImagePromptInstructions(meta.gameImagePromptInstructions)
           : "";
       const useAvatarReferences = input.useAvatarReferences ?? meta.gameImageUseAvatarReferences !== false;
       const includeCharacterAppearance =

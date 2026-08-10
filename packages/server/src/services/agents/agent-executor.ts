@@ -18,6 +18,7 @@ import type {
 import {
   characterTrackerLockKey,
   compactQuestProgressForContext,
+  customAgentHasCapability,
   DEFAULT_AGENT_CONTEXT_SIZE,
   DEFAULT_AGENT_MAX_TOKENS,
   DEFAULT_CUSTOM_AGENT_CONTEXT_SOURCES,
@@ -1056,6 +1057,7 @@ export async function executeAgentBatch(
   context: AgentContext,
   provider: BaseLLMProvider,
   model: string,
+  resolveAgentContext?: (config: AgentExecConfig, context: AgentContext) => AgentContext | Promise<AgentContext>,
 ): Promise<AgentResult[]> {
   if (configs.length === 0) return [];
   const isolatedConfigs = configs.filter(shouldRunAgentIndividually);
@@ -1075,7 +1077,7 @@ export async function executeAgentBatch(
     const isolatedSettled = await settleAgentJobsWithConcurrencyLimit(
       isolatedConfigs,
       AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-      (config) => executeAgent(config, context, provider, model),
+      async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
     );
     return isolatedSettled.map((entry, index) =>
       entry.status === "fulfilled"
@@ -1095,9 +1097,13 @@ export async function executeAgentBatch(
     );
     const batchedConfigs = configs.filter((config) => !shouldRunAgentIndividually(config));
     const [batchedResults, isolatedSettled] = await Promise.all([
-      executeAgentBatch(batchedConfigs, context, provider, model),
+      executeAgentBatch(batchedConfigs, context, provider, model, resolveAgentContext),
       settleAgentJobsWithConcurrencyLimit(isolatedConfigs, AGENT_BATCH_FALLBACK_MAX_CONCURRENT, (config) =>
-        executeAgent(config, context, provider, model),
+        resolveAgentContext
+          ? Promise.resolve(resolveAgentContext(config, context)).then((agentContext) =>
+              executeAgent(config, agentContext, provider, model),
+            )
+          : executeAgent(config, context, provider, model),
       ),
     ]);
     const isolatedResults = isolatedSettled.map((entry, index) =>
@@ -1113,7 +1119,8 @@ export async function executeAgentBatch(
   }
   if (configs.length === 1) {
     logger.info(`[agent-batch] Only 1 agent (${configs[0]!.type}), running individually`);
-    return [await executeAgent(configs[0]!, context, provider, model)];
+    const agentContext = resolveAgentContext ? await resolveAgentContext(configs[0]!, context) : context;
+    return [await executeAgent(configs[0]!, agentContext, provider, model)];
   }
 
   const requestOptionGroups = new Map<string, AgentExecConfig[]>();
@@ -1131,7 +1138,7 @@ export async function executeAgentBatch(
     );
     const groupedResults: AgentResult[] = [];
     for (const group of requestOptionGroups.values()) {
-      groupedResults.push(...(await executeAgentBatch(group, context, provider, model)));
+      groupedResults.push(...(await executeAgentBatch(group, context, provider, model, resolveAgentContext)));
     }
     return groupedResults;
   }
@@ -1282,7 +1289,7 @@ export async function executeAgentBatch(
       const retrySettled = await settleAgentJobsWithConcurrencyLimit(
         failed,
         AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-        (config) => executeAgent(config, context, provider, model),
+        async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
       );
       const retries: AgentResult[] = [];
       for (let i = 0; i < retrySettled.length; i++) {
@@ -1627,6 +1634,7 @@ function shouldRunAgentIndividually(config: Pick<AgentExecConfig, "type" | "sett
   // must not be merged into unrelated batched agent requests.
   return (
     config.type === "illustrator" ||
+    customAgentHasCapability(config.settings, "trigger_image_generation") ||
     config.type === "lorebook-keeper" ||
     resolveAgentResultType(config) === "text_rewrite" ||
     musicDjUsesJsonOnlyProvider(config) ||
@@ -1811,6 +1819,8 @@ function buildStandardAgentMessages(config: AgentExecConfig, template: string, c
     includeTrackerData: contextSources.trackerData,
     preserveAssistantResponseMarkup: resultType === "text_rewrite",
     outputFormatBlock: buildAgentOutputFormatBlock([config], context, renderedTemplates),
+    includeImagePromptInstructions:
+      config.type === "illustrator" || customAgentHasCapability(config.settings, "trigger_image_generation"),
   });
 }
 
@@ -2280,6 +2290,7 @@ function buildAgentMessages(
     includeTrackerData?: boolean;
     preserveAssistantResponseMarkup?: boolean;
     outputFormatBlock?: string;
+    includeImagePromptInstructions?: boolean;
   } = {},
 ): ChatMessage[] {
   // ── 1. System message — already contains <role>, <lore>, <agents>, and extras ──
@@ -2366,7 +2377,21 @@ function buildAgentMessages(
   // some models, so add a terminal user instruction for that agent type too.
   const outputFormatBlock = options.outputFormatBlock?.trim() ?? "";
   const requiresTerminalUserInstruction =
-    finalParts.length > 0 || contextAgentTypes.includes("echo-chamber") || !!outputFormatBlock;
+    finalParts.length > 0 ||
+    contextAgentTypes.includes("echo-chamber") ||
+    !!outputFormatBlock ||
+    (options.includeImagePromptInstructions === true &&
+      typeof context.memory._imagePromptInstructions === "string" &&
+      context.memory._imagePromptInstructions.trim().length > 0);
+
+  const lateImagePromptInstructions =
+    typeof context.memory._imagePromptInstructions === "string" ? context.memory._imagePromptInstructions.trim() : "";
+  if (options.includeImagePromptInstructions === true && lateImagePromptInstructions) {
+    finalParts.push("\n<image_prompting_instructions>");
+    finalParts.push("Apply these image-backend instructions when writing the provider-ready image prompt. Do not copy the instructions as prompt content.");
+    finalParts.push(lateImagePromptInstructions);
+    finalParts.push("</image_prompting_instructions>");
+  }
 
   if (requiresTerminalUserInstruction) {
     const instruction = "Now return the requested format(s).";

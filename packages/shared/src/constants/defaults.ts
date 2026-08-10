@@ -18,6 +18,15 @@ export const DEFAULT_CONNECTION_ID = "__default_openrouter__";
 /** Shared width for cached background thumbnails used by compact client surfaces. */
 export const BACKGROUND_THUMBNAIL_WIDTH = 320;
 
+/** Maximum length for image-backend instructions stored on an image connection. */
+export const MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH = 20_000;
+
+export function normalizeImagePromptInstructions(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH);
+  return trimmed || null;
+}
+
 /** Default system prompt for AI-backed translation. */
 export const DEFAULT_TRANSLATION_SYSTEM_PROMPT =
   "You are a translator. Translate the given text accurately into {{targetLanguage}}, preserving formatting, markdown, and any special characters like *asterisks* for actions. Output ONLY the translated text, nothing else -- no explanations, no extra commentary.";

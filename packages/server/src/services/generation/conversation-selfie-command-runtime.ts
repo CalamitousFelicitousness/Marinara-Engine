@@ -16,6 +16,7 @@ import { generateImage, saveImageToDisk } from "../image/image-generation.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../image/illustrator-image-variants.js";
 import { resolveConversationSelfieSystemPrompt } from "../conversation/selfie-prompt.js";
+import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 import type { CharacterCommand, SelfieCommand } from "../conversation/character-commands.js";
 import { createGalleryStorage } from "../storage/gallery.storage.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
@@ -201,6 +202,10 @@ async function generateSelfie(
   const selfieSystemPrompt = styleGuidance
     ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
     : baseSelfieSystemPrompt;
+  const selfieSystemPromptWithImageInstructions = appendImagePromptInstructions(
+    selfieSystemPrompt,
+    imgConnFull.imagePromptInstructions,
+  );
   const userPrompt = args.command.context
     ? `Context for the selfie: ${args.command.context}`
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;
@@ -213,7 +218,7 @@ async function generateSelfie(
     [
       {
         role: "system",
-        content: selfieSystemPrompt,
+        content: selfieSystemPromptWithImageInstructions,
       },
       {
         role: "user",

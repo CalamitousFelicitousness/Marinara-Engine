@@ -4056,7 +4056,7 @@
   "ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected": "If your proxy or local server isn't detected, Windows Defender Firewall may be blocking the connection. Open",
   "ui.connections.connectioneditor.imageCaptioning": "Image Captioning",
   "ui.connections.connectioneditor.imagePromptingInstructions": "Image Prompting Instructions",
-  "ui.connections.connectioneditor.imagePromptingInstructionsHelp": "When set, these instructions are added to the existing prompt-writer system message and processed by the configured Illustrator provider and model before the prompt is sent to this image backend. Some flows, including Noodle, use an additional prompt-writing call to apply them. Useful for tags, quality tokens, negative-prompt conventions, or local/ComfyUI syntax. An invalid-JSON retry may trigger another call.",
+  "ui.connections.connectioneditor.imagePromptingInstructionsHelp": "When set, these instructions are added to the existing prompt-writer system message and processed by the configured Illustrator provider and model in selfie and Illustrator flows before the prompt is sent to this image backend. Useful for tags, quality tokens, negative-prompt conventions, or local/ComfyUI syntax. An invalid-JSON retry may trigger another call.",
   "ui.connections.connectioneditor.imagePromptingInstructionsPlaceholder": "Example: use comma-separated tags, add quality tokens, and keep negative terms separate.",
   "ui.connections.connectioneditor.imageQualityAuto": "Auto",
   "ui.connections.connectioneditor.imageQualityHigh": "High",

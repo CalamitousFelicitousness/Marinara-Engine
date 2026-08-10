@@ -489,6 +489,7 @@ export function LorebookEditor() {
   );
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [lorebookDirty, setLorebookDirty] = useState(false);
+  const formRevisionRef = useRef(0);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
   useEffect(() => {
@@ -796,7 +797,10 @@ export function LorebookEditor() {
   const previewMatchCount = previewMatches.size;
 
   // ── Handlers ──
-  const markLorebookDirty = useCallback(() => setLorebookDirty(true), []);
+  const markLorebookDirty = useCallback(() => {
+    formRevisionRef.current += 1;
+    setLorebookDirty(true);
+  }, []);
 
   const handleAddTags = useCallback(() => {
     const nextTags = appendNewTags(formTags, newTag);
@@ -1466,6 +1470,7 @@ export function LorebookEditor() {
 
   const handleSaveLorebook = useCallback(async () => {
     if (!lorebookId) return false;
+    const formRevision = formRevisionRef.current;
     setSaving(true);
     try {
       await updateLorebook.mutateAsync({
@@ -1488,6 +1493,7 @@ export function LorebookEditor() {
         personaIds: formIsGlobal ? [] : formPersonaIds,
         tags: formTags,
       });
+      if (formRevisionRef.current !== formRevision) return false;
       setLorebookDirty(false);
       toast.success(localizeUi("ui.lorebooks.lorebookeditor.lorebookSaved"));
       return true;

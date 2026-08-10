@@ -34,7 +34,7 @@ export function useCapabilityCatalog(enabled = true) {
   });
 }
 
-export function useCapabilityAgentRegistry() {
+export function useCapabilityAgentRegistry(enabled = true) {
   const query = useQuery({
     queryKey: capabilityPackageKeys.agents(),
     queryFn: async () => {
@@ -45,6 +45,7 @@ export function useCapabilityAgentRegistry() {
       replaceBuiltInAgentDefinitions(agents);
       return agents;
     },
+    enabled,
   });
   return query;
 }

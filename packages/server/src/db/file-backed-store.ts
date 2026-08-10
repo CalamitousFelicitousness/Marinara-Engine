@@ -1242,7 +1242,11 @@ class FileTableStore {
             })(),
           )
         : [];
-      const expectedRowCount = expectedTableCounts[table] ?? 0;
+      const manifestRowCount = expectedTableCounts[table];
+      const expectedRowCount =
+        typeof manifestRowCount === "number" && Number.isSafeInteger(manifestRowCount) && manifestRowCount > 0
+          ? manifestRowCount
+          : 0;
 
       // A copied/restored profile can retain the byte-for-byte pre-shard
       // backup while losing the shard directory itself. Recover only when the

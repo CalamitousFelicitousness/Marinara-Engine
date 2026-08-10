@@ -117,6 +117,7 @@ export function ChatGallery({
   const [activeTab, setActiveTab] = useState<GalleryTab>("images");
   const [selectedSelfieCharacterId, setSelectedSelfieCharacterId] = useState("");
   const [illustrateMenuOpen, setIllustrateMenuOpen] = useState(false);
+  const illustrateMenuRef = useRef<HTMLDivElement | null>(null);
   const copyResetTimerRef = useRef<number | null>(null);
   const isIllustrating = useGalleryStore((s) => s.illustratingChatIds.has(chatId));
   const isGeneratingSelfie = useGalleryStore((s) => s.selfieGeneratingChatIds.has(chatId));
@@ -145,6 +146,19 @@ export function ChatGallery({
       ),
     );
   }, [assetItems, assetSearch]);
+  useEffect(() => {
+    if (!illustrateMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && illustrateMenuRef.current?.contains(target)) return;
+      setIllustrateMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [illustrateMenuOpen]);
+
   useEffect(() => {
     return () => {
       if (copyResetTimerRef.current !== null) {
@@ -404,7 +418,7 @@ export function ChatGallery({
           onGenerateBackground) && (
           <div className={actionGridClass}>
             {canIllustrate && (
-              <div className="relative min-w-0">
+              <div ref={illustrateMenuRef} className="relative min-w-0">
                 <button
                   type="button"
                   onClick={() => {

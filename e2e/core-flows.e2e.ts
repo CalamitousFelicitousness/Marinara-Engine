@@ -5758,6 +5758,10 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
     await expect(menu.getByRole("menuitem", { name: "Illustrator", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: activeAgentName, exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: inactiveAgentName, exact: true })).toHaveCount(0);
+    await drawer
+      .getByRole("searchbox", { name: "Search gallery images", exact: true })
+      .dispatchEvent("pointerdown");
+    await expect(menu).toHaveCount(0);
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
     await Promise.all(createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)));
@@ -12520,6 +12524,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
   let lorebookId: string | null = null;
   let connectionId: string | null = null;
   let excludedAtVectorization: boolean | null = null;
+  let vectorizeRequestCount = 0;
 
   try {
     const connectionResponse = await request.post("/api/connections", {
@@ -12552,7 +12557,20 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     });
     expect(entryResponse.ok()).toBeTruthy();
 
+    const firstSaveStarted = createDeferred();
+    const releaseFirstSave = createDeferred();
+    let delayFirstSave = true;
+    await page.route(`**/api/lorebooks/${lorebook.id}`, async (route) => {
+      if (route.request().method() === "PATCH" && delayFirstSave) {
+        delayFirstSave = false;
+        firstSaveStarted.resolve();
+        await releaseFirstSave.promise;
+      }
+      await route.continue();
+    });
+
     await page.route(`**/api/lorebooks/${lorebook.id}/vectorize`, async (route) => {
+      vectorizeRequestCount += 1;
       const savedResponse = await request.get(`/api/lorebooks/${lorebook.id}`);
       expect(savedResponse.ok()).toBeTruthy();
       excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
@@ -12573,9 +12591,19 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
 
     const vectorPanel = page.locator(".mari-editor-panel").filter({ hasText: "Semantic Search (Embeddings)" });
     await vectorPanel.locator("select").selectOption(connection.id);
-    await vectorPanel.getByRole("button", { name: "Vectorize 1 missing", exact: true }).click();
+    const vectorizeButton = vectorPanel.getByRole("button", { name: "Vectorize 1 missing", exact: true });
+    const firstVectorizeAttempt = vectorizeButton.click();
+    await firstSaveStarted.promise;
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("7");
+    releaseFirstSave.resolve();
+    await firstVectorizeAttempt;
+    await expect(vectorizeButton).toBeEnabled();
+    expect(vectorizeRequestCount).toBe(0);
+
+    await vectorizeButton.click();
 
     await expect.poll(() => excludedAtVectorization).toBe(false);
+    expect(vectorizeRequestCount).toBe(1);
     await expect(vectorPanel.getByText("Vectorized 1 missing entries", { exact: true })).toBeVisible();
   } finally {
     if (lorebookId) await request.delete(`/api/lorebooks/${lorebookId}`).catch(() => undefined);

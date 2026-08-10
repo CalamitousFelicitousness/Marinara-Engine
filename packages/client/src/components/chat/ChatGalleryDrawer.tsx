@@ -83,7 +83,7 @@ export function ChatGalleryDrawer({
     [chat.metadata],
   );
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(open);
-  const { data: capabilityAgents = [] } = useCapabilityAgentRegistry();
+  const { data: capabilityAgents = [] } = useCapabilityAgentRegistry(open);
   const { data: agentConfigs = [] } = useAgentConfigs(open);
   const illustratorInstalled = installedCapabilities.some(
     (item) => item.id === "illustrator" && item.status === "active",

@@ -268,6 +268,39 @@ assert.equal(
   }
 }
 
+// Malformed manifest counts are not proof that a restored profile expects
+// rows. Strings and fractions must not revive a stale pre-shard backup.
+for (const invalidExpectedCount of ["1", 1.5]) {
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "messages.json.pre-shard"),
+    JSON.stringify([messageRow("m-stale", "chat-stale", "must not be restored")]),
+  );
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      version: STORAGE_VERSION,
+      savedAt: "2026-08-10T00:00:00.000Z",
+      backend: "file-native",
+      tables: { messages: invalidExpectedCount },
+      shards: { messages: 0 },
+    }),
+  );
+
+  const db = await createFileNativeDB();
+  try {
+    assert.equal(
+      (await db.select().from(messages)).length,
+      0,
+      `invalid expected row count ${JSON.stringify(invalidExpectedCount)} never revives the old backup`,
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Crashed migration: sentinel present -> retry from the monolith ──
 
 {

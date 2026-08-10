@@ -581,6 +581,11 @@ import {
   buildRoleplayVideoDirectionUserPrompt,
   resolveRoleplayVideoDirection,
 } from "../../packages/server/src/services/video/roleplay-video-direction.js";
+import {
+  buildStoryboardAnimationRefinementMessages,
+  redactStoryboardAnimationRefinementMessages,
+  resolveStoryboardAnimationRefinement,
+} from "../../packages/server/src/services/video/storyboard-animation-refinement.js";
 import { resolveGameGmPromptTemplate } from "../../packages/server/src/services/generation/game-gm-prompt-runtime.js";
 import { countConversationMessagesAfterSummaryAnchor } from "../../packages/server/src/services/conversation/auto-summary.service.js";
 import {
@@ -4533,6 +4538,58 @@ const cases: RegressionCase[] = [
       assert.equal(compactVideoPromptText(direction, omniLimits.narrationSummary), direction.trim());
       assert.ok(compactVideoPromptText(direction, defaultLimits.narrationSummary).endsWith("..."));
       assert.equal(xaiLimits.finalPrompt, 3800);
+    },
+  },
+  {
+    name: "Storyboard animation refinement sees the generated illustration after image generation",
+    run() {
+      const motionIntent =
+        "She lifts the sword as the camera pushes in | Her coat settles while she looks toward the doorway";
+      const messages = buildStoryboardAnimationRefinementMessages({
+        title: "The doorway",
+        motionIntent,
+        illustrationPrompt: "Waist-up profile of Mira holding a lowered sword beside a doorway.",
+        durationSeconds: 6,
+        aspectRatio: "16:9",
+        referenceImage: { base64: "cGl4ZWxz", mimeType: "image/png" },
+      });
+      assert.equal(messages[1]?.role, "user");
+      assert.deepEqual(messages[1]?.images, ["data:image/png;base64,cGl4ZWxz"]);
+      assert.match(messages[0]?.content ?? "", /exact first frame at T=0/u);
+      assert.match(messages[0]?.content ?? "", /same number of \| separated segments/u);
+      assert.match(messages[1]?.content ?? "", /She lifts the sword/u);
+      assert.match(messages[1]?.content ?? "", /attached generated illustration/u);
+
+      const redactedMessages = redactStoryboardAnimationRefinementMessages(messages);
+      assert.doesNotMatch(JSON.stringify(redactedMessages), /cGl4ZWxz/u);
+      assert.match(JSON.stringify(redactedMessages), /"mediaType":"image\/png"/u);
+      assert.equal(
+        resolveStoryboardAnimationRefinement(
+          '```json\n{"narrationBeat":"Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer"}\n```',
+          650,
+        ),
+        "Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer",
+      );
+      assert.equal(
+        resolveStoryboardAnimationRefinement("Motion beat: Mira turns her head while the camera stays locked.", 650),
+        "Mira turns her head while the camera stays locked.",
+      );
+      assert.equal(resolveStoryboardAnimationRefinement('{"wrongField":"do not use"}', 650), "");
+
+      const gameRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url),
+        "utf8",
+      );
+      const renderStart = gameRouteSource.indexOf("const renderStoryboardFrame = async");
+      assert.notEqual(renderStart, -1);
+      const renderSource = gameRouteSource.slice(renderStart);
+      const referenceImageIndex = renderSource.indexOf("const referenceImage = readOmniReferenceImage");
+      const refinementIndex = renderSource.indexOf("buildStoryboardAnimationRefinementMessages");
+      const formatterIndex = renderSource.indexOf("buildStoryboardGalleryAnimatePrompt");
+      assert.ok(referenceImageIndex >= 0 && referenceImageIndex < refinementIndex);
+      assert.ok(refinementIndex < formatterIndex);
+      assert.match(renderSource, /plannedFrame: animationPlannedFrame/u);
+      assert.match(renderSource, /fallback=planned-motion-beat/u);
     },
   },
   {

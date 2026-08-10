@@ -233,6 +233,11 @@ import {
 } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime, type GameVideoRuntime } from "../services/video/game-video-runtime.js";
 import {
+  buildStoryboardAnimationRefinementMessages,
+  redactStoryboardAnimationRefinementMessages,
+  resolveStoryboardAnimationRefinement,
+} from "../services/video/storyboard-animation-refinement.js";
+import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
@@ -3142,6 +3147,7 @@ const GAME_ASSET_GENERATION_TIMEOUT_MS = 45 * 60 * 1000;
 const GAME_SCENE_VIDEO_GENERATION_TIMEOUT_MS = 31 * 60 * 1000;
 const GAME_ILLUSTRATION_SUMMARY_TIMEOUT_MS = 60 * 1000;
 const GAME_STORYBOARD_ILLUSTRATOR_TIMEOUT_MS = 3 * 60 * 1000;
+const GAME_STORYBOARD_ANIMATION_REFINEMENT_TIMEOUT_MS = 60 * 1000;
 const GAME_ASSET_PORTRAIT_CONCURRENCY = 2;
 const GAME_ASSET_REFERENCE_LOOKUP_CONCURRENCY = 4;
 const GAME_STORYBOARD_IMAGE_FRAME_CONCURRENCY = 4;
@@ -11495,10 +11501,80 @@ export async function gameRoutes(app: FastifyInstance) {
                 galleryImagePath,
                 sourceGalleryImagePathForMetadata(galleryImage),
               );
+              let animationPlannedFrame = plannedFrame;
+              try {
+                const refinementMessages = buildStoryboardAnimationRefinementMessages({
+                  title: plannedFrame.title,
+                  motionIntent: plannedFrame.narrationBeat,
+                  illustrationPrompt: galleryImage.prompt || plannedFrame.imagePrompt,
+                  durationSeconds: plannedFrame.durationSeconds,
+                  aspectRatio: plannedFrame.aspectRatio,
+                  referenceImage,
+                });
+                if (debugLogsEnabled) {
+                  debugLog(
+                    "[debug/%s/storyboard-animation-refinement] frame=%d messages:\n%s",
+                    ownerMode,
+                    frame.index + 1,
+                    JSON.stringify(redactStoryboardAnimationRefinementMessages(refinementMessages), null, 2),
+                  );
+                }
+                const refinementResult = await runGameChatComplete(
+                  provider,
+                  refinementMessages,
+                  gameGenOptions(
+                    conn.model ?? "",
+                    {
+                      stream: false,
+                      maxTokens: 800,
+                      temperature: 0.2,
+                      signal: backgroundSignal,
+                    },
+                    parameters,
+                    conn.provider,
+                  ),
+                  "Storyboard illustration-aware animation planner",
+                  GAME_STORYBOARD_ANIMATION_REFINEMENT_TIMEOUT_MS,
+                );
+                const extraction = extractLeadingThinkingBlocks(
+                  refinementResult.content || "",
+                  parameters?.customThinkingTags,
+                );
+                const refinedMotion = resolveStoryboardAnimationRefinement(
+                  extraction.content,
+                  videoRuntime.promptLimits.narrationSummary,
+                );
+                if (!refinedMotion) throw new Error("Animation Planner returned no usable image-aware motion beat");
+                animationPlannedFrame = { ...plannedFrame, narrationBeat: refinedMotion };
+                if (debugLogsEnabled) {
+                  debugLog(
+                    "[debug/%s/storyboard-animation-refinement] frame=%d refined motion:\n%s",
+                    ownerMode,
+                    frame.index + 1,
+                    refinedMotion,
+                  );
+                }
+              } catch (err) {
+                if (backgroundSignal.aborted) {
+                  throw abortReasonAsError(backgroundSignal, "Storyboard animation refinement cancelled");
+                }
+                logger.warn(
+                  err,
+                  "[game/storyboard] illustration-aware animation refinement failed for frame %s; using planned motion beat",
+                  frame.id,
+                );
+                if (debugLogsEnabled) {
+                  debugLog(
+                    "[debug/%s/storyboard-animation-refinement] frame=%d fallback=planned-motion-beat",
+                    ownerMode,
+                    frame.index + 1,
+                  );
+                }
+              }
               const promptBuild = await buildStoryboardGalleryAnimatePrompt({
                 promptOverridesStorage,
                 galleryImage,
-                plannedFrame,
+                plannedFrame: animationPlannedFrame,
                 frameIndex: frame.index,
                 setupConfig: setupCfg,
                 latestState: fallbackState,

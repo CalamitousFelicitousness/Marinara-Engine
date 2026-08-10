@@ -116,7 +116,7 @@ function buildBackgroundOptions(ctx?: SceneAnalyzerContext): string[] {
   return options;
 }
 
-function compactImagePromptInstructions(value: string | null | undefined): string {
+export function compactImagePromptInstructions(value: string | null | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH);
 }
 

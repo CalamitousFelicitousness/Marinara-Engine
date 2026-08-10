@@ -1138,7 +1138,7 @@ export async function executeAgentBatch(
     );
     const groupedResults: AgentResult[] = [];
     for (const group of requestOptionGroups.values()) {
-      groupedResults.push(...(await executeAgentBatch(group, context, provider, model)));
+      groupedResults.push(...(await executeAgentBatch(group, context, provider, model, resolveAgentContext)));
     }
     return groupedResults;
   }

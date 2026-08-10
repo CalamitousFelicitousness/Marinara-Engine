@@ -7653,9 +7653,10 @@ export async function generateRoutes(app: FastifyInstance) {
                       historicalLorebookTarget.id,
                     ) ?? phaseRetryContext)
                   : phaseRetryContext;
+                const resolvedRetryContext = await resolveImagePromptAgentContext(agentCfg, retryCtx);
                 const retried = await executeAgent(
                   agentCfg,
-                  retryCtx,
+                  resolvedRetryContext,
                   agentCfg.provider,
                   agentCfg.model,
                   agentCfg.type === "spotify" ? undefined : agentCfg.toolContext,

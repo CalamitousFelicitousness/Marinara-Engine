@@ -34,7 +34,6 @@ import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "../services/llm/connection-fallback-provider.js";
-import { extractLeadingThinkingBlocks } from "../services/llm/inline-thinking.js";
 import {
   withLlmRequestTimeout,
   type ChatCompletionResult,
@@ -165,6 +164,7 @@ import {
   runEnemyPhase as runTacticalEnemyPhase,
   isTerminal as isTacticalTerminal,
   TERRAIN_DATA,
+  extractLeadingThinkingBlocks,
   type RPGStatsConfig,
 } from "@marinara-engine/shared";
 import { mergeCustomParameters, parseGameStateRow, resolveBaseUrl } from "./generate/generate-route-utils.js";

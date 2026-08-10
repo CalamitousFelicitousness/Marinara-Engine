@@ -4,7 +4,6 @@ import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   resolveProviderReasoningEffort,
   resolveMacros,
-  stripMacroComments,
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
   normalizeGameStoryboardKeyframeCount,
@@ -41,6 +40,7 @@ import {
   resolvePromptMessageMacros,
   type AssemblerInput,
 } from "../../services/prompt/index.js";
+import { cardPromptText } from "../../services/prompt/card-text.js";
 import { mergeAdjacentMessages } from "../../services/prompt/merger.js";
 import { wrapContent } from "../../services/prompt/format-engine.js";
 import {
@@ -109,10 +109,6 @@ type DryRunPromptMessage = {
   personaSnapshotName?: string | null;
   providerMetadata?: Record<string, unknown>;
 };
-
-function cardPromptText(value: unknown): string {
-  return typeof value === "string" ? stripMacroComments(value).trim() : "";
-}
 
 function presetStringField(preset: Record<string, unknown> | null | undefined, field: string): string {
   const value = preset?.[field];

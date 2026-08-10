@@ -25,7 +25,6 @@ import {
   resolveMacros,
   resolveGameSetupArtStylePrompt,
   resolveAgentPromptTemplate,
-  stripMacroComments,
   findKnownModel,
   shouldSuppressUnknownModelParameters,
   type AgentCallDebugEvent,
@@ -63,6 +62,7 @@ import {
   resolvePromptIdleDuration,
   resolvePromptMessageMacros,
 } from "../../services/prompt/index.js";
+import { cardPromptText } from "../../services/prompt/card-text.js";
 import { getAssetManifest } from "../../services/game/asset-manifest.service.js";
 import { createAgentsStorage } from "../../services/storage/agents.storage.js";
 import { getCustomAgentImportPolicy } from "../../services/agents/custom-agent-import-policy.service.js";
@@ -212,10 +212,6 @@ type PersonaContext = {
   personaStats: any;
   rpgStats: any;
 };
-
-function cardPromptText(value: unknown): string {
-  return typeof value === "string" ? stripMacroComments(value).trim() : "";
-}
 
 type ResolvedRetryAgent = {
   cfg: any;

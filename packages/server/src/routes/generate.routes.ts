@@ -40,6 +40,7 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GENERATION_PARAMS,
+  extractLeadingThinkingBlocks,
   unwrapConversationInstructions,
   findKnownModel,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -133,7 +134,6 @@ import {
 import { persistGeneratedImageToEntityGalleries } from "../services/image/generated-image-entity-gallery.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import { resolveCustomAgentStyleProfileId } from "../services/generation/custom-agent-image-settings.js";
-import { extractLeadingThinkingBlocks } from "../services/llm/inline-thinking.js";
 import { buildSpotifyDjConstraints } from "../services/spotify/spotify-dj-constraints.js";
 import {
   assemblePrompt,
@@ -437,8 +437,8 @@ import {
   replaceRoleplayDmCommandText,
   resolveRoleplayDmTarget,
 } from "../services/generation/roleplay-dm-utils.js";
+import { cardPromptText } from "../services/prompt/card-text.js";
 import {
-  cardPromptText,
   getHiddenCompletionTokens,
   getVisibleCompletionTokens,
   stripSpacesBeforeLineBreaks,

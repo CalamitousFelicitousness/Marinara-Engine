@@ -1057,6 +1057,7 @@ export async function executeAgentBatch(
   context: AgentContext,
   provider: BaseLLMProvider,
   model: string,
+  resolveAgentContext?: (config: AgentExecConfig, context: AgentContext) => AgentContext | Promise<AgentContext>,
 ): Promise<AgentResult[]> {
   if (configs.length === 0) return [];
   const isolatedConfigs = configs.filter(shouldRunAgentIndividually);
@@ -1076,7 +1077,7 @@ export async function executeAgentBatch(
     const isolatedSettled = await settleAgentJobsWithConcurrencyLimit(
       isolatedConfigs,
       AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-      (config) => executeAgent(config, context, provider, model),
+      async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
     );
     return isolatedSettled.map((entry, index) =>
       entry.status === "fulfilled"
@@ -1096,9 +1097,13 @@ export async function executeAgentBatch(
     );
     const batchedConfigs = configs.filter((config) => !shouldRunAgentIndividually(config));
     const [batchedResults, isolatedSettled] = await Promise.all([
-      executeAgentBatch(batchedConfigs, context, provider, model),
+      executeAgentBatch(batchedConfigs, context, provider, model, resolveAgentContext),
       settleAgentJobsWithConcurrencyLimit(isolatedConfigs, AGENT_BATCH_FALLBACK_MAX_CONCURRENT, (config) =>
-        executeAgent(config, context, provider, model),
+        resolveAgentContext
+          ? Promise.resolve(resolveAgentContext(config, context)).then((agentContext) =>
+              executeAgent(config, agentContext, provider, model),
+            )
+          : executeAgent(config, context, provider, model),
       ),
     ]);
     const isolatedResults = isolatedSettled.map((entry, index) =>
@@ -1114,7 +1119,8 @@ export async function executeAgentBatch(
   }
   if (configs.length === 1) {
     logger.info(`[agent-batch] Only 1 agent (${configs[0]!.type}), running individually`);
-    return [await executeAgent(configs[0]!, context, provider, model)];
+    const agentContext = resolveAgentContext ? await resolveAgentContext(configs[0]!, context) : context;
+    return [await executeAgent(configs[0]!, agentContext, provider, model)];
   }
 
   const requestOptionGroups = new Map<string, AgentExecConfig[]>();
@@ -1283,7 +1289,7 @@ export async function executeAgentBatch(
       const retrySettled = await settleAgentJobsWithConcurrencyLimit(
         failed,
         AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-        (config) => executeAgent(config, context, provider, model),
+        async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
       );
       const retries: AgentResult[] = [];
       for (let i = 0; i < retrySettled.length; i++) {

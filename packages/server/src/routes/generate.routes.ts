@@ -158,7 +158,12 @@ import {
 import { executeToolCalls, formatToolExecutionResultForModel } from "../services/tools/tool-executor.js";
 import { createAgentPipeline, type ResolvedAgent, type AgentInjection } from "../services/agents/agent-pipeline.js";
 import { DATA_DIR } from "../utils/data-dir.js";
-import { executeAgent, normalizeAgentContextSize, resolveAgentResultType } from "../services/agents/agent-executor.js";
+import {
+  executeAgent,
+  normalizeAgentContextSize,
+  resolveAgentResultType,
+  type AgentExecConfig,
+} from "../services/agents/agent-executor.js";
 import { matchCustomAgentActivation } from "./generate/agent-activation.js";
 import { listCharacterSprites } from "../services/game/sprite.service.js";
 import {
@@ -3632,31 +3637,6 @@ export async function generateRoutes(app: FastifyInstance) {
           agentContext.memory._personaAvatarPath =
             persona && typeof persona.avatarPath === "string" ? persona.avatarPath : null;
         }
-        const imagePromptAgentForInstructions = resolvedAgents.find(
-          (entry) =>
-            entry.type === "illustrator" ||
-            (entry.isCustomAgent === true && customAgentHasCapability(entry.settings, "trigger_image_generation")),
-        );
-        if (imagePromptAgentForInstructions) {
-          const imageConnectionId =
-            imagePromptAgentForInstructions.type === "illustrator"
-              ? resolveIllustratorImageConnectionId(
-                  requestChatMode,
-                  chatMeta,
-                  imagePromptAgentForInstructions.settings?.imageConnectionId,
-                )
-              : typeof imagePromptAgentForInstructions.settings?.imageConnectionId === "string"
-                ? imagePromptAgentForInstructions.settings.imageConnectionId.trim()
-                : "";
-          let imageConnectionForInstructions = imageConnectionId
-            ? await connections.getById(imageConnectionId).catch(() => null)
-            : null;
-          imageConnectionForInstructions ??= await connections.getDefaultForImageGeneration().catch(() => null);
-          const imagePromptInstructions = normalizeImagePromptInstructions(
-            imageConnectionForInstructions?.imagePromptInstructions,
-          );
-          if (imagePromptInstructions) agentContext.memory._imagePromptInstructions = imagePromptInstructions;
-        }
         const getLatestUserExpressionSource = () =>
           (
             [...agentContext.recentMessages]
@@ -4362,7 +4342,32 @@ export async function generateRoutes(app: FastifyInstance) {
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
         agentContext.memory._mainPromptPreview = promptPreviewForAgents(finalMessages);
-        const pipeline = createAgentPipeline(pipelineAgents, agentContext, sendAgentEventAfterMainStream);
+        const resolveImagePromptAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
+          const isImagePromptAgent =
+            agent.type === "illustrator" ||
+            (agent.isCustomAgent === true && customAgentHasCapability(agent.settings, "trigger_image_generation"));
+          if (!isImagePromptAgent) return context;
+
+          const memory = { ...context.memory };
+          delete memory._imagePromptInstructions;
+          const imageConnectionId =
+            agent.type === "illustrator"
+              ? resolveIllustratorImageConnectionId(chatMode, chatMeta, agent.settings.imageConnectionId)
+              : typeof agent.settings.imageConnectionId === "string"
+                ? agent.settings.imageConnectionId.trim()
+                : "";
+          let imageConnection = imageConnectionId ? await connections.getWithKey(imageConnectionId) : null;
+          imageConnection ??= await connections.getDefaultForImageGeneration();
+          const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
+          if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
+          return { ...context, memory };
+        };
+        const pipeline = createAgentPipeline(
+          pipelineAgents,
+          agentContext,
+          sendAgentEventAfterMainStream,
+          resolveImagePromptAgentContext,
+        );
         let directorSecretPlotResults: AgentResult[] = [];
         let directorSecretPlotArcForPrompt: unknown = directorSecretPlotMemory.overarchingArc;
 

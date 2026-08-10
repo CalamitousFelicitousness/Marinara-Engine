@@ -9,6 +9,12 @@ import { getProfessorMariWorkspaceService } from "../services/professor-mari/wor
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
+import {
+  createMariInstructionsStorage,
+  MAX_INSTRUCTION_CONTENT_LENGTH,
+  MAX_INSTRUCTION_DESCRIPTION_LENGTH,
+  MAX_INSTRUCTION_NAME_LENGTH,
+} from "../services/storage/mari-instructions.storage.js";
 
 const promptSchema = z.object({
   chatId: z.string().min(1),
@@ -53,6 +59,30 @@ const skillUpdateSchema = z.object({
   description: z.string().max(1024).optional().nullable(),
   content: z.string().max(200_000).optional().nullable(),
   enabled: z.boolean().optional(),
+});
+
+// #4851: memories are edited directly by the user in the Memories panel (the user is
+// the reviewer of their own memory), so these routes deliberately do NOT call
+// workspaceService.reset(); a reset aborts Mari's in-flight turn, and the memory
+// injection is re-read live per turn, so no agent rebuild is needed.
+const instructionCreateSchema = z.object({
+  name: z.string().min(1).max(MAX_INSTRUCTION_NAME_LENGTH),
+  description: z.string().max(MAX_INSTRUCTION_DESCRIPTION_LENGTH).optional().default(""),
+  content: z.string().min(1).max(MAX_INSTRUCTION_CONTENT_LENGTH),
+  persistent: z.boolean().optional().default(false),
+  enabled: z.boolean().optional().default(false),
+});
+
+const instructionUpdateSchema = z.object({
+  name: z.string().min(1).max(MAX_INSTRUCTION_NAME_LENGTH).optional(),
+  description: z.string().max(MAX_INSTRUCTION_DESCRIPTION_LENGTH).optional(),
+  content: z.string().min(1).max(MAX_INSTRUCTION_CONTENT_LENGTH).optional(),
+  persistent: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+
+const approveSchema = z.object({
+  enable: z.boolean().optional(),
 });
 
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
@@ -107,6 +137,34 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     if (!privileged(req, reply)) return;
     await getProfessorMariWorkspaceSkillsService().delete(req.params.id);
     await getProfessorMariWorkspaceService(app).reset();
+    return { ok: true };
+  });
+
+  // #4851: Memories management panel. Direct, reset-free writes (see instructionCreateSchema note).
+  app.get("/instructions", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return { instructions: await createMariInstructionsStorage(app.db).list() };
+  });
+
+  app.post("/instructions", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = instructionCreateSchema.parse(req.body);
+    const instruction = await createMariInstructionsStorage(app.db).create(input);
+    return { ok: true, instruction };
+  });
+
+  app.put<{ Params: { id: string } }>("/instructions/:id", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = instructionUpdateSchema.parse(req.body);
+    const instruction = await createMariInstructionsStorage(app.db).update(req.params.id, input);
+    if (!instruction) return reply.status(404).send({ error: "Memory not found" });
+    return { ok: true, instruction };
+  });
+
+  app.delete<{ Params: { id: string } }>("/instructions/:id", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const removed = await createMariInstructionsStorage(app.db).remove(req.params.id);
+    if (!removed) return reply.status(404).send({ error: "Memory not found" });
     return { ok: true };
   });
 
@@ -170,7 +228,10 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
       if (!securityResult.ok) return reply.status(409).send(securityResult);
       return securityResult;
     }
-    const result = await getMariDbService(app.db).keepAppliedReviewAndWait(req.params.id);
+    // #4851: "Keep & Enable" for a memory insert passes { enable: true } so the kept row
+    // is switched on in the same action (memories land disabled by default).
+    const { enable } = approveSchema.parse(req.body ?? {});
+    const result = await getMariDbService(app.db).keepAppliedReviewAndWait(req.params.id, { enable });
     if (!result) return reply.status(404).send({ error: "Applied change review not found" });
     if (result.approval.affectedTables.installed_extensions) await personalServerExtensionRuntime.reloadAll();
     return { ok: true, ...result };
@@ -185,6 +246,13 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     }
     const result = await getMariDbService(app.db).restoreAppliedReview(req.params.id);
     if (!result) return reply.status(404).send({ error: "Applied change review not found" });
+    if ("outcome" in result && result.outcome === "state_changed") {
+      // #4852 F2: the row changed after Mari staged this review, so the restore was a no-op that
+      // left the newer data intact. Return 200 with ok:false (a non-2xx would land in the client's
+      // generic "could not restore" catch instead of rendering the state_changed notice), and skip
+      // the extension reload below since nothing was reverted.
+      return { ok: false, completed: true, ...result };
+    }
     if (result.approval.affectedTables.installed_extensions) await personalServerExtensionRuntime.reloadAll();
     return { ok: true, ...result, completed: true };
   });

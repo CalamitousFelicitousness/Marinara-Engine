@@ -16,6 +16,12 @@ import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import {
+  createMariInstructionsStorage,
+  MAX_INSTRUCTION_CONTENT_LENGTH,
+  MAX_INSTRUCTION_DESCRIPTION_LENGTH,
+  MAX_INSTRUCTION_NAME_LENGTH,
+} from "../storage/mari-instructions.storage.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { normalizeThemeCss } from "../../utils/theme-css.js";
 import { getMariImagesService } from "./mari-images.service.js";
@@ -102,6 +108,7 @@ type ParsedMutationRequest = {
   cwd?: string;
   apply: boolean;
   personalExtensionDraftMutation?: boolean;
+  instructionMutation?: boolean;
   cascade: boolean;
   reason: string | null;
   generatedIds?: string[];
@@ -588,6 +595,31 @@ function knownColumnPatch(meta: TableMeta, row: Row): Row {
   return out;
 }
 
+// Thrown by restorePlan (#4852 F2) when a row a Restore would revert was changed by a newer
+// write after this review applied. Caught in restoreAppliedReview so the newer data is left
+// untouched and the pending review survives instead of silently clobbering it.
+class RestoreStateChangedError extends Error {}
+
+// Optimistic-concurrency check for Restore. `afterRaw` is the exact serialized row this review
+// wrote at apply time (a full row, or null for a delete); `current` is the live row read inside
+// the restore transaction. Returns true when the live state has diverged from what this review
+// applied, meaning restoring would overwrite a newer edit.
+//
+// Compared ONLY over the columns present in this review's afterRaw snapshot (via
+// knownColumnPatch(meta, afterRaw), NOT knownColumnPatch(current), which the file-native store
+// can pad with extra null columns the review never wrote, producing false conflicts). applyPlan
+// writes knownColumnPatch(meta, afterRaw) verbatim, so immediately post-apply the stored row's
+// known columns equal afterRaw's; any later divergence is a real newer write.
+function restoreRowSuperseded(meta: TableMeta, current: Row | null, afterRaw: Row | null): boolean {
+  if (afterRaw == null) return current != null; // delete-undo: a newer write re-created the row
+  if (current == null) return true; // a newer write deleted the row this review left in place
+  const expected = knownColumnPatch(meta, afterRaw);
+  for (const key of Object.keys(expected)) {
+    if ((current[key] ?? null) !== (expected[key] ?? null)) return true;
+  }
+  return false;
+}
+
 function deepMerge(base: unknown, patch: unknown): unknown {
   if (!isRecord(base) || !isRecord(patch) || Array.isArray(base) || Array.isArray(patch)) return clone(patch);
   const out: Row = { ...clone(base) };
@@ -830,6 +862,71 @@ function firstBoolean(source: Row, keys: string[]): boolean | undefined {
 
 function appDataCreateApply(source: Row): boolean {
   return firstBoolean(source, ["apply"]) !== false;
+}
+
+// #4851: Mari-authored memory rows. Writes flow through executeMutation so each
+// gets a Keep/Restore card showing the exact text before it becomes a standing
+// instruction. Over-cap fields are REJECTED, not silently truncated, so a long
+// file the user asks Mari to remember never lands half-saved without anyone knowing.
+function requireInstructionLength(value: string, max: number, field: string): string {
+  if (value.length > max) {
+    throw new Error(`That memory's ${field} is ${value.length} characters; the maximum is ${max}. Trim it or split it into two memories.`);
+  }
+  return value;
+}
+
+function buildInstructionInsertRow(data: Row, id: string, timestamp: string): Row {
+  const name = requireInstructionLength((firstString(data, ["name", "title", "label"]) ?? "").trim(), MAX_INSTRUCTION_NAME_LENGTH, "name");
+  if (!name) throw new Error("A memory needs a name.");
+  const content = requireInstructionLength(
+    (firstString(data, ["content", "text", "body", "memory"]) ?? "").trim(),
+    MAX_INSTRUCTION_CONTENT_LENGTH,
+    "content",
+  );
+  if (!content) throw new Error("A memory needs content: the thing to remember.");
+  return {
+    id,
+    name,
+    description: requireInstructionLength(
+      (firstString(data, ["description", "summary"]) ?? "").trim(),
+      MAX_INSTRUCTION_DESCRIPTION_LENGTH,
+      "description",
+    ),
+    content,
+    persistent: firstBoolean(data, ["persistent", "pinned", "always", "alwaysInject", "always_inject"]) === true ? 1 : 0,
+    // Disabled, ALWAYS: a Mari-authored memory is inert until the USER enables it (via the
+    // Memories panel or "Keep & Enable" on the review card). Mari never sets `enabled` herself,
+    // so a prompt-injection cannot induce a self-activating memory. Defense-in-depth.
+    enabled: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function buildInstructionPatch(data: Row): Row {
+  const patch: Row = { updatedAt: now() };
+  const name = firstString(data, ["name", "title", "label"]);
+  if (name !== undefined) {
+    const trimmed = requireInstructionLength(name.trim(), MAX_INSTRUCTION_NAME_LENGTH, "name");
+    if (trimmed) patch.name = trimmed;
+  }
+  // Description is optional and clearable: detect the key's presence directly (firstString skips
+  // "") so a supplied "" reaches the always-injected index instead of leaving the stale value.
+  const descriptionKey = ["description", "summary"].find((key) => typeof data[key] === "string");
+  if (descriptionKey !== undefined) {
+    patch.description = requireInstructionLength((data[descriptionKey] as string).trim(), MAX_INSTRUCTION_DESCRIPTION_LENGTH, "description");
+  }
+  const content = firstString(data, ["content", "text", "body", "memory"]);
+  if (content !== undefined) {
+    const trimmed = requireInstructionLength(content.trim(), MAX_INSTRUCTION_CONTENT_LENGTH, "content");
+    if (trimmed) patch.content = trimmed;
+  }
+  const persistent = firstBoolean(data, ["persistent", "pinned", "always", "alwaysInject", "always_inject"]);
+  if (persistent !== undefined) patch.persistent = persistent ? 1 : 0;
+  // Intentionally no `enabled`: Mari never sets a memory's enabled state (create OR update).
+  // Only the user enables/disables, via "Keep & Enable" or the Memories panel, so an injected
+  // instruction.update cannot silently activate a standing directive behind a small field diff.
+  return patch;
 }
 
 function firstNumber(source: Row, keys: string[]): number | undefined {
@@ -2294,12 +2391,16 @@ export class MariDbService {
         if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
         if (key.startsWith("homewidget."))
           return this.executeHomeWidgetAction(key.slice("homewidget.".length), envelope, context);
+        // #4851: the user's saved memories. Canonical surface is `instruction.*` (the code
+        // namespace stays instruction_/mari_); those are the entries in the tool catalog enum.
+        if (key.startsWith("instruction."))
+          return this.executeInstructionAction(key.slice("instruction.".length), envelope, context);
         return {
           ok: false,
           mode: "read",
           command,
           error:
-            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, or home_widget.* actions for structured no-shell app-data work.",
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, home_widget.*, or instruction.* actions for structured no-shell app-data work.",
         };
       };
       // Field-aware bounding keeps a single read response within the workspace
@@ -2834,6 +2935,140 @@ export class MariDbService {
     changed = assignBooleanTextField(target, source, ["caseSensitive", "case_sensitive"], "caseSensitive") || changed;
     changed = assignBooleanTextField(target, source, ["useRegex", "use_regex"], "useRegex") || changed;
     return changed;
+  }
+
+  // #4851: Professor Mari's persistent standing instructions ("memories").
+  // Reads (list/get) back the index-and-fetch injection; writes (remember/update/
+  // forget) run through executeMutation so each surfaces a Keep/Restore card.
+  private async executeInstructionAction(
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const storage = createMariInstructionsStorage(this.db);
+    switch (sub) {
+      case "list": {
+        // The lean index Mari also sees injected each turn: title + one-liner, NO
+        // content (she fetches a body with instruction.get only when it's relevant).
+        //
+        // Paged, because an unbounded list overflows the read budget: the envelope is
+        // an object, so it runs through boundReadObject (MARI_READ_OUTPUT_BUDGET = 24k),
+        // which elides an oversized `items` array AS A UNIT, hiding every id and making
+        // the tail unfetchable. Descriptions are truncated here (Mari fetches the full
+        // memory with instruction.get before acting on it), and the page is capped so the
+        // worst case stays well under budget by construction: 50 rows x ~434 pretty chars
+        // (120-char name + 120-char truncated description + flags/ts) ≈ 21.8k < 24k.
+        const offset = normalizeOffset(firstNumber(args, ["offset"]));
+        const limit = normalizeLimit(firstNumber(args, ["limit"]), 40, 50);
+        const rows = await storage.list();
+        const total = rows.length;
+        const items = rows.slice(offset, offset + limit).map((row) => ({
+          id: row.id,
+          name: row.name,
+          description: truncateStr(row.description, 120),
+          persistent: row.persistent,
+          enabled: row.enabled,
+          updatedAt: row.updatedAt,
+        }));
+        // items.length (not limit), so a short final page reports nextOffset: null and an
+        // offset past the end returns { items: [], nextOffset: null }.
+        const nextOffset = offset + items.length < total ? offset + items.length : null;
+        return {
+          ok: true,
+          mode: "read",
+          command: context.command,
+          output: { items, total, offset, nextOffset },
+        };
+      }
+      case "get": {
+        const id = requiredString(args, ["id", "instructionId", "memoryId"], "memory id");
+        const row = await storage.get(id);
+        return { ok: Boolean(row), mode: "read", command: context.command, output: row };
+      }
+      case "remember": {
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "instruction", "memory", "row"],
+          // NB: no "enabled"; Mari never sets a memory's enabled state (see buildInstructionInsertRow).
+          ["name", "title", "label", "description", "summary", "content", "text", "body", "memory", "persistent", "pinned", "always", "alwaysInject", "always_inject"],
+        );
+        const timestamp = now();
+        const id = firstString(args, ["id", "instructionId", "memoryId"]) ?? newId();
+        const row = buildInstructionInsertRow(data, id, timestamp);
+        return this.executeMutation(
+          {
+            kind: "insert",
+            table: "mari_instructions",
+            id,
+            row,
+            apply: appDataCreateApply(args),
+            instructionMutation: true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "update": {
+        const id = requiredString(args, ["id", "instructionId", "memoryId"], "memory id");
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "instruction", "memory"],
+          // NB: no "enabled"; only the user toggles a memory's enabled state (see buildInstructionPatch).
+          ["name", "title", "label", "description", "summary", "content", "text", "body", "memory", "persistent", "pinned", "always", "alwaysInject", "always_inject"],
+        );
+        const patch = buildInstructionPatch(data);
+        if (Object.keys(patch).length <= 1) {
+          throw new Error("instruction.update needs a field to change: name, description, content, or persistent.");
+        }
+        return this.executeMutation(
+          {
+            kind: "patch",
+            table: "mari_instructions",
+            id,
+            patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            instructionMutation: true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "forget": {
+        const id = requiredString(args, ["id", "instructionId", "memoryId"], "memory id");
+        // Fail loudly on a missing id instead of a no-op delete that reports success (which would
+        // make Mari tell the user a memory was forgotten when nothing changed).
+        if (!(await this.getRawById(getMeta("mari_instructions"), id))) {
+          throw new Error(`Memory ${id} not found.`);
+        }
+        return this.executeMutation(
+          {
+            kind: "delete",
+            table: "mari_instructions",
+            id,
+            apply: firstBoolean(args, ["apply"]) === true,
+            instructionMutation: true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      default:
+        return {
+          ok: false,
+          mode: "read",
+          command: context.command,
+          error: `Unsupported instruction action "${sub}". Use list, get, remember, update, or forget.`,
+        };
+    }
   }
 
   private async executeLorebookAction(
@@ -4167,19 +4402,39 @@ export class MariDbService {
 
   async keepAppliedReviewAndWait(
     id: string,
+    opts?: { enable?: boolean },
   ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry | null; completed: boolean } | null> {
     this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
-    const history = await this.keepAppliedReview(id);
+    const history = await this.keepAppliedReview(id, opts);
     return { approval, history, completed: true };
   }
 
-  async keepAppliedReview(id: string): Promise<MariDbHistoryEntry | null> {
+  async keepAppliedReview(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
+    // #4851 "Keep & Enable": a Mari-authored memory lands disabled; flip it on when the
+    // user chooses that action, before we drop the pending record. Strictly gated to
+    // mari_instructions inserts (deliberately never touches installed_extensions.enabled
+    // or any other table).
+    if (opts?.enable) {
+      // Enabling a kept memory is a convenience, not part of the Keep contract. Isolate its
+      // failure (e.g. the row was deleted from the panel between insert and approval) so the
+      // Keep always completes and never strands the pending review with the change applied.
+      try {
+        const instructionsStore = createMariInstructionsStorage(this.db);
+        for (const change of record.plan.changes) {
+          if (change.action === "insert" && change.table === "mari_instructions") {
+            await instructionsStore.update(String(change.id), { enabled: true });
+          }
+        }
+      } catch (err) {
+        logger.warn(err, "[mari-db] Keep & Enable: could not enable the kept memory");
+      }
+    }
     this.pending.delete(id);
     await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
@@ -4194,12 +4449,32 @@ export class MariDbService {
 
   async restoreAppliedReview(
     id: string,
-  ): Promise<{ approval: MariDbPendingApproval; history: MariDbHistoryEntry } | null> {
+  ): Promise<
+    | { approval: MariDbPendingApproval; history: MariDbHistoryEntry }
+    | { approval: MariDbPendingApproval; outcome: "state_changed"; error: string }
+    | null
+  > {
     this.ensurePendingHydrated();
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
-    await this.restorePlan(record.plan);
+    try {
+      await this.restorePlan(record.plan);
+    } catch (err) {
+      if (err instanceof RestoreStateChangedError) {
+        // #4852 F2: a newer edit landed after Mari staged this change, so reverting would
+        // overwrite it. Leave the live data AND the pending review in place (do not delete the
+        // pending record, drop the sidecar, or record a "restored" history entry) so the user can
+        // re-review against current state instead of silently losing the newer edit.
+        return {
+          approval,
+          outcome: "state_changed",
+          error:
+            "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
+        };
+      }
+      throw err;
+    }
     this.pending.delete(id);
     await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
@@ -5989,6 +6264,21 @@ export class MariDbService {
       }
     }
 
+    // Memories (mari_instructions) are a normal file-backed table, so the generic raw path would
+    // otherwise reach them and skip the length caps + enabled=0 forcing that only the instruction.*
+    // builders enforce. Deny raw writes so every memory mutation goes through instruction.remember /
+    // instruction.update / instruction.forget. Filters on change.table (not request.table) so a
+    // transform-all that emits a mari_instructions change is caught too. Mirrors installed_extensions.
+    const instructionChanges = changes.filter((change) => change.table === "mari_instructions");
+    if (instructionChanges.length > 0 && !request.instructionMutation) {
+      issues.push({
+        level: "error",
+        table: "mari_instructions",
+        message:
+          "Professor Mari cannot mutate memories through raw DB actions. Use instruction.remember, instruction.update, or instruction.forget so length limits and flag rules apply.",
+      });
+    }
+
     const touchedTables = [...new Set(changes.map((change) => change.table))];
     const validation = await this.validateTouchedRows(changes, touchedTables, issues);
     const summary = summaryForChanges(changes);
@@ -6778,6 +7068,26 @@ export class MariDbService {
       await replaceHomeWidgetCatalog(this.db, after.revision, before.widgets);
     } else {
       await this.db.transaction(async (tx) => {
+        // #4852 F2: abort the whole restore if any row it would revert was changed by a newer
+        // write after this review applied. Read inside the tx, because restore is NOT serialized against
+        // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
+        // not this direct-service path), so reading here is what closes the race. The throw rolls
+        // the tx back before any write, and restoreAppliedReview catches it and leaves the newer
+        // data plus the pending review intact. Only applied changes were written, so skip the rest.
+        for (const change of plan.changes) {
+          if (!change.apply) continue;
+          const meta = getMeta(change.table);
+          const pk = getPrimary(meta);
+          const rows = (await tx
+            .select()
+            .from(meta.table as any)
+            .where(eq(meta.byKey.get(pk)!.column as any, change.id))) as Row[];
+          const current = rows[0] ? { ...rows[0] } : null;
+          if (restoreRowSuperseded(meta, current, change.afterRaw ?? null)) {
+            throw new RestoreStateChangedError();
+          }
+        }
+
         const insertedRows = [...plan.changes].reverse().filter((change) => change.action === "insert");
         for (const change of insertedRows) {
           const meta = getMeta(change.table);

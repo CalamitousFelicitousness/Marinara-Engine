@@ -109,6 +109,25 @@ Click the **Skills** button in her chat header to open the **Professor Mari Skil
 
 When you have no Skills yet, the panel reads **No custom skills yet**.
 
+## Saved memories
+
+Professor Mari can remember your standing preferences so you do not have to repeat them every conversation: how you like your lorebooks or character cards formatted, your naming conventions, or how you want her to behave.
+
+There are two ways to give her a memory:
+
+- **Tell her.** Say something like "remember that I always key lorebook entries on the character's name and their nickname." She saves it and shows you a **Keep/Restore** review card with the exact wording. A memory she saves starts **disabled** (off) so it does not change anything until you turn it on. The card offers a third button, **Keep & Enable**, to save it and switch it on right away.
+- **Add it yourself.** Click the **Memories** button in her chat header to open the **Memories** panel, where you can create, edit, enable or disable, and delete your memories. You can also **Upload** a `.md` or text file to turn its contents into a memory.
+
+She only saves or changes a memory when **you** ask her to, never because something she read (a character, lorebook, or file) told her to.
+
+How she uses them, and why it stays efficient:
+
+- Every turn she sees a short **index** of your *enabled* memories (just their titles and one-line descriptions), which costs almost nothing. When a memory is relevant to what you are doing, she looks up its full text and follows it. This keeps her prompt small as you add memories, since only the short index is always present. The exception is a memory you mark **Persistent** (below): its full text is injected on every turn, so those are the ones to keep few and small. A disabled memory is kept but ignored, so you can switch one off to try something different and switch it back on later.
+- Saved memories **take precedence over her default behavior** when they conflict. For example, a memory that says "when I ask how to do something, just do it" opts you back into edit-without-asking, overriding her usual habit of confirming first.
+- A rare directive that must apply on *every* turn can be made **Persistent** so its full text is always in front of her. Keep persistent memories few and small, since each one is always in her prompt, and use them only to describe behavior you want to be always true.
+
+To manage your memories, use the **Memories** panel, or just ask her: "what do you remember?", "update my lorebook-formatting memory to also include titles," or "forget that."
+
 ## Chat history and Restart
 
 Professor Mari keeps her own separate chats. They do not appear in your normal chat list.

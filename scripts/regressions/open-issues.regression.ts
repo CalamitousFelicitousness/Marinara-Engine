@@ -4150,6 +4150,11 @@ assert.match(chatGallerySource, /handleBatchDownload/u);
 assert.match(chatGallerySource, /handleBatchDelete/u);
 assert.match(chatGallerySource, /ui\.gallery\.batch\.deletePartial/u);
 assert.match(chatGallerySource, /batchOperationPendingRef\.current/u);
+assert.equal(
+  chatGallerySource.match(/disabled=\{selectedImages\.length === 0 \|\| batchOperationPending\}/gu)?.length,
+  2,
+  "both chat Gallery batch actions remain disabled while an operation is pending",
+);
 assert.match(chatGallerySource, /ui\.gallery\.batch\.toggleImageNamed/u);
 assert.match(chatGallerySource, /asset\.id\.startsWith\("chat-gallery:"\)[\s\S]{0,120}: asset\.id/u);
 assert.match(recentChatsSource, /data-narrow-desktop-limit="4"/u);

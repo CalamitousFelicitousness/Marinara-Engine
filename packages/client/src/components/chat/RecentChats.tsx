@@ -179,7 +179,7 @@ export function RecentChats() {
 
   return (
     <div
-      className="grid h-full min-h-0 grid-rows-3 gap-1.5 md:grid-cols-2 md:grid-rows-2 md:gap-2.5"
+      className="grid h-full min-h-0 grid-rows-3 gap-1.5 md:auto-rows-fr md:grid-rows-none md:grid-cols-2 md:gap-2.5"
       data-component="RecentChats"
       data-mobile-limit="3"
       data-narrow-desktop-limit="4"

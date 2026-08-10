@@ -4368,6 +4368,7 @@
   "ui.gallery.batch.selected_other": "{{count}} selected",
   "ui.gallery.batch.selectImages": "Select images",
   "ui.gallery.batch.toggleImage": "Toggle image selection",
+  "ui.gallery.batch.toggleImageNamed": "Toggle selection for {{name}}",
   "ui.game.combatantcard.dismissDialogue": "Dismiss dialogue",
   "ui.game.combatantcard.lv": "Lv.",
   "ui.game.combatantcard.value1AuraGaugeValue2": "{{value1}} aura (gauge: {{value2}})",

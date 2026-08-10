@@ -89,7 +89,7 @@ function getAssetMeta(asset: ChatAssetBrowserItem) {
 
 function getChatGalleryImageId(asset: ChatAssetBrowserItem, chatId: string) {
   if (asset.kind !== "chat-gallery" || asset.ownerId !== chatId) return null;
-  return asset.id.startsWith("chat-gallery:") ? asset.id.slice("chat-gallery:".length) : null;
+  return asset.id.startsWith("chat-gallery:") ? asset.id.slice("chat-gallery:".length) : asset.id;
 }
 
 export function ChatGallery({
@@ -118,6 +118,7 @@ export function ChatGallery({
   const [videoLightbox, setVideoLightbox] = useState<GeneratedSceneVideo | null>(null);
   const [selectingImages, setSelectingImages] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(() => new Set());
+  const [batchOperationPending, setBatchOperationPending] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [assetSearch, setAssetSearch] = useState("");
@@ -127,6 +128,7 @@ export function ChatGallery({
   const [illustrateMenuOpen, setIllustrateMenuOpen] = useState(false);
   const illustrateMenuRef = useRef<HTMLDivElement | null>(null);
   const copyResetTimerRef = useRef<number | null>(null);
+  const batchOperationPendingRef = useRef(false);
   const previousAssetSearchRef = useRef(assetSearch);
   const isIllustrating = useGalleryStore((s) => s.illustratingChatIds.has(chatId));
   const isGeneratingSelfie = useGalleryStore((s) => s.selfieGeneratingChatIds.has(chatId));
@@ -267,78 +269,92 @@ export function ChatGallery({
   };
 
   const handleBatchDownload = useCallback(async () => {
-    if (selectedImages.length === 0) return;
-    if (
-      !(await showConfirmDialog({
-        title: localizeUi("ui.gallery.batch.downloadTitle"),
-        message: localizeUi("ui.gallery.batch.downloadMessage", { count: selectedImages.length }),
-        confirmLabel: localizeUi("ui.gallery.batch.download"),
-      }))
-    ) {
-      return;
-    }
-
-    let failedDownloads = 0;
-    for (const image of selectedImages) {
-      try {
-        await downloadUrlToDevice(image.url, getChatImageDownloadName(image));
-      } catch {
-        failedDownloads += 1;
+    if (selectedImages.length === 0 || batchOperationPendingRef.current) return;
+    batchOperationPendingRef.current = true;
+    setBatchOperationPending(true);
+    try {
+      if (
+        !(await showConfirmDialog({
+          title: localizeUi("ui.gallery.batch.downloadTitle"),
+          message: localizeUi("ui.gallery.batch.downloadMessage", { count: selectedImages.length }),
+          confirmLabel: localizeUi("ui.gallery.batch.download"),
+        }))
+      ) {
+        return;
       }
-    }
 
-    if (failedDownloads > 0) {
-      toast.error(
-        localizeUi("ui.gallery.batch.downloadPartial", {
-          completed: selectedImages.length - failedDownloads,
-          count: selectedImages.length,
-          failed: failedDownloads,
-        }),
-      );
-    } else {
-      toast.success(localizeUi("ui.gallery.batch.downloadStarted", { count: selectedImages.length }));
+      let failedDownloads = 0;
+      for (const image of selectedImages) {
+        try {
+          await downloadUrlToDevice(image.url, getChatImageDownloadName(image));
+        } catch {
+          failedDownloads += 1;
+        }
+      }
+
+      if (failedDownloads > 0) {
+        toast.error(
+          localizeUi("ui.gallery.batch.downloadPartial", {
+            completed: selectedImages.length - failedDownloads,
+            count: selectedImages.length,
+            failed: failedDownloads,
+          }),
+        );
+      } else {
+        toast.success(localizeUi("ui.gallery.batch.downloadStarted", { count: selectedImages.length }));
+      }
+      leaveImageSelection();
+    } finally {
+      batchOperationPendingRef.current = false;
+      setBatchOperationPending(false);
     }
-    leaveImageSelection();
   }, [leaveImageSelection, localizeUi, selectedImages]);
 
   const handleBatchDelete = useCallback(async () => {
-    if (selectedImages.length === 0) return;
-    if (
-      !(await showConfirmDialog({
-        title: localizeUi("ui.gallery.batch.deleteTitle"),
-        message: localizeUi("ui.gallery.batch.deleteMessage", { count: selectedImages.length }),
-        confirmLabel: localizeUi("ui.gallery.batch.delete"),
-        tone: "destructive",
-      }))
-    ) {
-      return;
-    }
-
-    let failedDeletes = 0;
-    for (const image of selectedImages) {
-      const wasPinned = useGalleryStore.getState().pinnedImages.some((item) => item.id === image.id);
-      unpinImage(image.id);
-      try {
-        await remove.mutateAsync(image.id);
-      } catch {
-        failedDeletes += 1;
-        if (wasPinned) pinImage({ ...image, chatId });
+    if (selectedImages.length === 0 || batchOperationPendingRef.current) return;
+    batchOperationPendingRef.current = true;
+    setBatchOperationPending(true);
+    try {
+      if (
+        !(await showConfirmDialog({
+          title: localizeUi("ui.gallery.batch.deleteTitle"),
+          message: localizeUi("ui.gallery.batch.deleteMessage", { count: selectedImages.length }),
+          confirmLabel: localizeUi("ui.gallery.batch.delete"),
+          tone: "destructive",
+        }))
+      ) {
+        return;
       }
-    }
 
-    if (lightbox && selectedImageIds.has(lightbox.id)) setLightbox(null);
-    if (failedDeletes > 0) {
-      toast.error(
-        localizeUi("ui.gallery.batch.deletePartial", {
-          completed: selectedImages.length - failedDeletes,
-          count: selectedImages.length,
-          failed: failedDeletes,
-        }),
-      );
-    } else {
-      toast.success(localizeUi("ui.gallery.batch.deleted", { count: selectedImages.length }));
+      let failedDeletes = 0;
+      for (const image of selectedImages) {
+        const wasPinned = useGalleryStore.getState().pinnedImages.some((item) => item.id === image.id);
+        unpinImage(image.id);
+        try {
+          await remove.mutateAsync(image.id);
+        } catch {
+          failedDeletes += 1;
+          if (wasPinned) pinImage({ ...image, chatId });
+        }
+      }
+
+      if (lightbox && selectedImageIds.has(lightbox.id)) setLightbox(null);
+      if (failedDeletes > 0) {
+        toast.error(
+          localizeUi("ui.gallery.batch.deletePartial", {
+            completed: selectedImages.length - failedDeletes,
+            count: selectedImages.length,
+            failed: failedDeletes,
+          }),
+        );
+      } else {
+        toast.success(localizeUi("ui.gallery.batch.deleted", { count: selectedImages.length }));
+      }
+      leaveImageSelection();
+    } finally {
+      batchOperationPendingRef.current = false;
+      setBatchOperationPending(false);
     }
-    leaveImageSelection();
   }, [
     chatId,
     leaveImageSelection,
@@ -788,7 +804,7 @@ export function ChatGallery({
             <div className="flex gap-2">
               <button
                 type="button"
-                disabled={selectedImages.length === 0}
+                disabled={selectedImages.length === 0 || batchOperationPending}
                 onClick={() => void handleBatchDownload()}
                 className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -797,7 +813,7 @@ export function ChatGallery({
               </button>
               <button
                 type="button"
-                disabled={selectedImages.length === 0 || remove.isPending}
+                disabled={selectedImages.length === 0 || batchOperationPending}
                 onClick={() => void handleBatchDelete()}
                 className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -885,7 +901,9 @@ export function ChatGallery({
                       )}
                       aria-label={
                         selectingImages
-                          ? localizeUi("ui.gallery.batch.toggleImage")
+                          ? localizeUi("ui.gallery.batch.toggleImageNamed", {
+                              name: asset.prompt || asset.name,
+                            })
                           : localizeUi("ui.chat.chatgallery.insertValue1", { value1: asset.name })
                       }
                     >
@@ -1019,11 +1037,8 @@ export function ChatGallery({
                     )}
                   >
                     {selectingImages ? (
-                      <button
-                        type="button"
-                        aria-pressed={selectedImageIds.has(img.id)}
-                        aria-label={localizeUi("ui.gallery.batch.toggleImage")}
-                        onClick={() => toggleImageSelection(img.id)}
+                      <span
+                        aria-hidden="true"
                         className={cn(
                           "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
                           selectedImageIds.has(img.id)
@@ -1032,15 +1047,20 @@ export function ChatGallery({
                         )}
                       >
                         <Check size="0.9rem" />
-                      </button>
+                      </span>
                     ) : null}
                     <button
                       type="button"
                       onClick={() => (selectingImages ? toggleImageSelection(img.id) : setLightbox(img))}
                       className="block w-full"
-                      aria-label={localizeUi(
-                        selectingImages ? "ui.gallery.batch.toggleImage" : "ui.chat.chatgallery.openGalleryImage",
-                      )}
+                      aria-pressed={selectingImages ? selectedImageIds.has(img.id) : undefined}
+                      aria-label={
+                        selectingImages
+                          ? localizeUi("ui.gallery.batch.toggleImageNamed", {
+                              name: img.prompt || localizeUi("ui.chat.pinnedmediaviewer.galleryImage"),
+                            })
+                          : localizeUi("ui.chat.chatgallery.openGalleryImage")
+                      }
                     >
                       <img
                         src={img.url}

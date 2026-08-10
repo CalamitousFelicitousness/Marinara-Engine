@@ -4,6 +4,7 @@
 import type { FastifyInstance } from "fastify";
 import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
+import { cardPromptText } from "../services/prompt/card-text.js";
 import {
   PROFESSOR_MARI_ID,
   createChatSchema,
@@ -20,7 +21,6 @@ import {
   nameToXmlTag,
   normalizeChatSummaryEntries,
   resolveMacros,
-  stripMacroComments,
   summariesPatchSchema,
   coerceGameStateTextValue,
   normalizeWorldCustomFields,
@@ -372,10 +372,6 @@ function toPeekPromptMessages(
     role: message.role,
     content: message.content,
   }));
-}
-
-function cardPromptText(value: unknown): string {
-  return typeof value === "string" ? stripMacroComments(value).trim() : "";
 }
 
 async function buildPersonaSnapshotForChat(

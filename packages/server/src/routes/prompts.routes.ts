@@ -14,12 +14,12 @@ import {
   createChoiceBlockSchema,
   updateChoiceBlockSchema,
   createFolderEntry,
-  stripMacroComments,
   type LorebookEntryTimingState,
 } from "@marinara-engine/shared";
 import type { ExportEnvelope } from "@marinara-engine/shared";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { assemblePrompt, type AssemblerInput } from "../services/prompt/index.js";
+import { cardPromptText } from "../services/prompt/card-text.js";
 import { resolveLorebookScopeExclusions } from "../services/lorebook/game-lorebook-scope.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -77,10 +77,6 @@ async function removePromptImageIfUnreferenced(
       logger.warn(error, "Could not remove unreferenced preset image %s", filepath);
     }
   }
-}
-
-function cardPromptText(value: unknown): string {
-  return typeof value === "string" ? stripMacroComments(value).trim() : "";
 }
 
 function safeAsciiDownloadName(value: string): string {

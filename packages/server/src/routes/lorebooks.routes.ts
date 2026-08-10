@@ -15,7 +15,6 @@ import {
   createLorebookFolderSchema,
   updateLorebookFolderSchema,
   LOCAL_SIDECAR_CONNECTION_ID,
-  stripMacroComments,
   canReparentFolder,
   type CreateLorebookEntryInput,
   type LorebookEntryTimingState,
@@ -39,6 +38,7 @@ import {
   resolvePromptIdleDuration,
 } from "../services/prompt/index.js";
 import { parseGameStateRow, resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
+import { cardPromptText } from "../services/prompt/card-text.js";
 import {
   syncCharacterBookFromLorebook,
   clearCharacterEmbeddedLorebook,
@@ -69,10 +69,6 @@ function toSafeExportName(name: string, fallback: string) {
     .replace(/\s+/g, " ")
     .trim();
   return sanitized || fallback;
-}
-
-function cardPromptText(value: unknown): string {
-  return typeof value === "string" ? stripMacroComments(value).trim() : "";
 }
 
 type ExportFormat = "native" | "compatible";

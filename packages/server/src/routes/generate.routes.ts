@@ -437,8 +437,8 @@ import {
   replaceRoleplayDmCommandText,
   resolveRoleplayDmTarget,
 } from "../services/generation/roleplay-dm-utils.js";
+import { cardPromptText } from "../services/prompt/card-text.js";
 import {
-  cardPromptText,
   getHiddenCompletionTokens,
   getVisibleCompletionTokens,
   stripSpacesBeforeLineBreaks,

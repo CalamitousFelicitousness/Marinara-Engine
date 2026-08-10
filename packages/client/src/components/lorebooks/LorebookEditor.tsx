@@ -490,6 +490,7 @@ export function LorebookEditor() {
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [lorebookDirty, setLorebookDirty] = useState(false);
   const formRevisionRef = useRef(0);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
   useEffect(() => {
@@ -1468,41 +1469,47 @@ export function LorebookEditor() {
     });
   }, [lorebookId, createFolder, localizeUi]);
 
-  const handleSaveLorebook = useCallback(async () => {
-    if (!lorebookId) return false;
+  const handleSaveLorebook = useCallback((): Promise<boolean> => {
+    if (!lorebookId) return Promise.resolve(false);
+    if (saveInFlightRef.current) return saveInFlightRef.current;
     const formRevision = formRevisionRef.current;
     setSaving(true);
-    try {
-      await updateLorebook.mutateAsync({
-        id: lorebookId,
-        name: formName,
-        description: formDescription,
-        category: formCategory,
-        enabled: formEnabled,
-        isGlobal: formIsGlobal,
-        scanDepth: formScanDepth,
-        tokenBudget: formTokenBudget,
-        entryLimit: formEntryLimit,
-        recursiveScanning: formRecursive,
-        maxRecursionDepth: formMaxRecursionDepth,
-        excludeFromVectorization: formExcludeFromVectorization,
-        vectorQueryDepth: formVectorQueryDepth,
-        vectorScoreThreshold: formVectorScoreThreshold,
-        vectorMaxResults: formVectorMaxResults,
-        characterIds: formIsGlobal ? [] : formCharacterIds,
-        personaIds: formIsGlobal ? [] : formPersonaIds,
-        tags: formTags,
-      });
-      if (formRevisionRef.current !== formRevision) return false;
-      setLorebookDirty(false);
-      toast.success(localizeUi("ui.lorebooks.lorebookeditor.lorebookSaved"));
-      return true;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message :localizeUi("ui.lorebooks.lorebookeditor.failedToSaveLorebook"));
-      return false;
-    } finally {
-      setSaving(false);
-    }
+    const savePromise = (async () => {
+      try {
+        await updateLorebook.mutateAsync({
+          id: lorebookId,
+          name: formName,
+          description: formDescription,
+          category: formCategory,
+          enabled: formEnabled,
+          isGlobal: formIsGlobal,
+          scanDepth: formScanDepth,
+          tokenBudget: formTokenBudget,
+          entryLimit: formEntryLimit,
+          recursiveScanning: formRecursive,
+          maxRecursionDepth: formMaxRecursionDepth,
+          excludeFromVectorization: formExcludeFromVectorization,
+          vectorQueryDepth: formVectorQueryDepth,
+          vectorScoreThreshold: formVectorScoreThreshold,
+          vectorMaxResults: formVectorMaxResults,
+          characterIds: formIsGlobal ? [] : formCharacterIds,
+          personaIds: formIsGlobal ? [] : formPersonaIds,
+          tags: formTags,
+        });
+        if (formRevisionRef.current !== formRevision) return false;
+        setLorebookDirty(false);
+        toast.success(localizeUi("ui.lorebooks.lorebookeditor.lorebookSaved"));
+        return true;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message :localizeUi("ui.lorebooks.lorebookeditor.failedToSaveLorebook"));
+        return false;
+      } finally {
+        setSaving(false);
+        saveInFlightRef.current = null;
+      }
+    })();
+    saveInFlightRef.current = savePromise;
+    return savePromise;
   }, [
     lorebookId,
     formName,
@@ -1542,12 +1549,13 @@ export function LorebookEditor() {
   }, [lorebookId, createEntry]);
 
   const handleClose = useCallback(() => {
+    if (saving) return;
     if (lorebookDirty) {
       setShowUnsavedWarning(true);
     } else {
       closeDetail();
     }
-  }, [lorebookDirty, closeDetail]);
+  }, [lorebookDirty, saving, closeDetail]);
 
   // If the editor is opened with a `lorebookId` that no longer resolves on
   // the server (a stale pointer carried over from another Marinara
@@ -1849,7 +1857,8 @@ export function LorebookEditor() {
               setLorebookDirty(false);
               closeDetail();
             }}
-            className="rounded-lg px-3 py-1 text-[0.6875rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)]"
+            disabled={saving}
+            className="rounded-lg px-3 py-1 text-[0.6875rem] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
           >{localizeUi("ui.lorebooks.lorebookeditor.discardClose")}</button>
           <button
             onClick={async () => {
@@ -1858,14 +1867,15 @@ export function LorebookEditor() {
               setShowUnsavedWarning(false);
               closeDetail();
             }}
-            className="mari-editor-action mari-editor-action--primary mari-editor-action--compact px-3 py-1 text-[0.6875rem]"
+            disabled={saving}
+            className="mari-editor-action mari-editor-action--primary mari-editor-action--compact px-3 py-1 text-[0.6875rem] disabled:opacity-50"
           >{localizeUi("ui.lorebooks.lorebookeditor.saveClose")}</button>
         </div>
       )}
 
       {/* Header */}
       <div className="mari-editor-header">
-        <button onClick={handleClose} className="mari-editor-action inline-flex">
+        <button onClick={handleClose} disabled={saving} className="mari-editor-action inline-flex disabled:opacity-50">
           <ArrowLeft size="1rem" />
         </button>
         <div className="mari-editor-icon-tile">
@@ -2882,7 +2892,6 @@ function VectorizeSection({
   const handleVectorize = async (mode: "missing" | "all") => {
     if (!selectedConnectionId) return;
     if (mode === "missing" && missingCount === 0) return;
-    if (hasUnsavedChanges && !(await onBeforeVectorize())) return;
     const conn = embeddingConnections.find((c) => c.id === selectedConnectionId);
     if (mode === "all" && storedVectorCount > 0) {
       const confirmed = await showConfirmDialog({
@@ -2897,6 +2906,7 @@ function VectorizeSection({
       });
       if (!confirmed) return;
     }
+    if (hasUnsavedChanges && !(await onBeforeVectorize())) return;
 
     setVectorizingMode(mode);
     setResult(null);

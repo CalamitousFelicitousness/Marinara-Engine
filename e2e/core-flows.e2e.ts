@@ -12556,14 +12556,26 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       data: { name: "Vector entry", content: "A vector-ready archive entry.", keys: ["archive"] },
     });
     expect(entryResponse.ok()).toBeTruthy();
+    const entry = (await entryResponse.json()) as { id: string };
 
     const firstSaveStarted = createDeferred();
     const releaseFirstSave = createDeferred();
+    const closeSaveStarted = createDeferred();
+    const releaseCloseSave = createDeferred();
     let delayFirstSave = true;
-    let rejectNextSave = false;
+    let delayCloseSave = false;
+    let saveRequestCount = 0;
+    let reportStoredVector = false;
     await page.route(`**/api/lorebooks/${lorebook.id}`, async (route) => {
-      if (route.request().method() === "PATCH" && rejectNextSave) {
-        rejectNextSave = false;
+      if (route.request().method() !== "PATCH") {
+        await route.continue();
+        return;
+      }
+      saveRequestCount += 1;
+      if (delayCloseSave) {
+        delayCloseSave = false;
+        closeSaveStarted.resolve();
+        await releaseCloseSave.promise;
         await route.fulfill({
           status: 500,
           contentType: "application/json",
@@ -12571,12 +12583,25 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
         });
         return;
       }
-      if (route.request().method() === "PATCH" && delayFirstSave) {
+      if (delayFirstSave) {
         delayFirstSave = false;
         firstSaveStarted.resolve();
         await releaseFirstSave.promise;
       }
       await route.continue();
+    });
+
+    await page.route(`**/api/lorebooks/${lorebook.id}/entries`, async (route) => {
+      if (route.request().method() !== "GET" || !reportStoredVector) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const entries = (await response.json()) as Array<Record<string, unknown>>;
+      await route.fulfill({
+        response,
+        json: entries.map((candidate) => (candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate)),
+      });
     });
 
     await page.route(`**/api/lorebooks/${lorebook.id}/vectorize`, async (route) => {
@@ -12585,6 +12610,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       expect(savedResponse.ok()).toBeTruthy();
       excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
         .excludeFromVectorization ?? null;
+      reportStoredVector = true;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -12616,12 +12642,30 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     expect(vectorizeRequestCount).toBe(1);
     await expect(vectorPanel.getByText("Vectorized 1 missing entries", { exact: true })).toBeVisible();
 
+    const revectorizeButton = vectorPanel.getByRole("button", { name: "Re-vectorize 1 entries", exact: true });
+    await expect(revectorizeButton).toBeVisible();
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("9");
+    const saveCountBeforeCancel = saveRequestCount;
+    await revectorizeButton.click();
+    const revectorizeDialog = page.getByRole("dialog").filter({ hasText: "Re-vectorize All Entries" });
+    await expect(revectorizeDialog).toBeVisible();
+    await revectorizeDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(saveRequestCount).toBe(saveCountBeforeCancel);
+
     await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("8");
-    rejectNextSave = true;
     await page.locator(".mari-editor-header").getByRole("button").first().click();
     const unsavedWarning = page.getByText("You have unsaved changes", { exact: true });
     await expect(unsavedWarning).toBeVisible();
-    await page.getByRole("button", { name: "Save & close", exact: true }).click();
+    const discardCloseButton = page.getByRole("button", { name: "Discard & close", exact: true });
+    const saveCloseButton = page.getByRole("button", { name: "Save & close", exact: true });
+    const backButton = page.locator(".mari-editor-header").getByRole("button").first();
+    delayCloseSave = true;
+    await saveCloseButton.click();
+    await closeSaveStarted.promise;
+    await expect(discardCloseButton).toBeDisabled();
+    await expect(saveCloseButton).toBeDisabled();
+    await expect(backButton).toBeDisabled();
+    releaseCloseSave.resolve();
     await expect(unsavedWarning).toBeVisible();
     await expect(page.locator(".mari-editor-header").getByText(lorebookName, { exact: true })).toBeVisible();
   } finally {

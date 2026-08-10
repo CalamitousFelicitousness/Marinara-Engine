@@ -398,11 +398,27 @@ function PersonaGalleryTab({
       return;
     }
     try {
-      await Promise.all(
-        selectedImages.map((image, index) =>
-          downloadUrlToDevice(image.url, image.filePath.split("/").pop() || `persona-gallery-${index + 1}.png`),
-        ),
-      );
+      let failedDownloads = 0;
+      for (const [index, image] of selectedImages.entries()) {
+        try {
+          await downloadUrlToDevice(
+            image.url,
+            image.filePath.split("/").pop() || `persona-gallery-${index + 1}.png`,
+          );
+        } catch {
+          failedDownloads += 1;
+        }
+      }
+      if (failedDownloads > 0) {
+        toast.error(
+          localizeUi("ui.gallery.batch.downloadPartial", {
+            completed: selectedImages.length - failedDownloads,
+            count: selectedImages.length,
+            failed: failedDownloads,
+          }),
+        );
+        return;
+      }
       toast.success(localizeUi("ui.gallery.batch.downloadStarted", { count: selectedImages.length }));
     } catch {
       toast.error(localizeUi("ui.gallery.batch.downloadFailed"));

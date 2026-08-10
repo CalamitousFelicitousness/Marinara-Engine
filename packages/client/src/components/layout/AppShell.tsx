@@ -13,6 +13,7 @@ import { ChatResourceMobileDropDock } from "../chat/ChatResourceMobileDropDock";
 import { hasProfessorMariFloatingFollowup } from "../chat/professor-mari-floating-events";
 import {
   getTrackerPanelWidthForProfile,
+  MOBILE_SHELL_MEDIA_QUERY,
   RIGHT_PANEL_WIDTH_MAX,
   RIGHT_PANEL_WIDTH_MIN,
   SIDEBAR_WIDTH_MAX,
@@ -118,7 +119,6 @@ const TRACKER_PANEL_CHAT_GAP = 8;
 const TRACKER_PANEL_DESKTOP_MOTION_MS = 260;
 const TRACKER_PANEL_DESKTOP_EXIT_MS = 240;
 const TRACKER_PANEL_DESKTOP_EASE = [0.16, 1, 0.3, 1] as const;
-const MOBILE_SHELL_MEDIA_QUERY = "(max-width: 767px), (max-width: 1366px) and (pointer: coarse)";
 const TRACKER_PANEL_DESKTOP_EXIT_EASE = [0.4, 0, 1, 1] as const;
 const TRACKER_PANEL_TOGGLE_SELECTOR = '[data-tracker-panel-toggle="roleplay-hud"]';
 const TRACKER_PANEL_ANCHOR_SELECTOR = '[data-tracker-panel-anchor="roleplay-hud"]';
@@ -1263,7 +1263,8 @@ export function AppShell() {
         aria-hidden={!sidebarOpen}
         inert={!sidebarOpen}
         className={cn(
-          "mari-shell-panel-slot flex-shrink-0 overflow-hidden md:relative",
+          "mari-shell-panel-slot flex-shrink-0 overflow-hidden",
+          !shellOverlayMode && "md:relative",
           sidebarDragWidth != null && "!transition-none",
           !sidebarOpen && "pointer-events-none",
           shellOverlayMode &&

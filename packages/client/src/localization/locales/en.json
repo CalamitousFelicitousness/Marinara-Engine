@@ -4327,6 +4327,7 @@
   "ui.gallery.batch.downloadFailed": "Failed to download the selected images.",
   "ui.gallery.batch.downloadMessage_one": "Download the selected image?",
   "ui.gallery.batch.downloadMessage_other": "Download all {{count}} selected images?",
+  "ui.gallery.batch.downloadPartial": "Started {{completed}} of {{count}} downloads; {{failed}} failed.",
   "ui.gallery.batch.downloadStarted_one": "Downloading the selected image.",
   "ui.gallery.batch.downloadStarted_other": "Downloading {{count}} selected images.",
   "ui.gallery.batch.downloadTitle": "Download selected images",

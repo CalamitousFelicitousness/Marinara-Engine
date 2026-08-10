@@ -541,7 +541,7 @@ export function ConnectionEditor() {
   const supportsGptImageQuality =
     localProvider === "image_generation" &&
     selectedImageService === "openai" &&
-    (/^gpt-image-/i.test(localModel.trim()) || localModel.trim().toLowerCase() === "chatgpt-image-latest");
+    /^gpt-image-(?:1|1\.5|2)(?:$|-)/i.test(localModel.trim());
   const selectedVideoService =
     localProvider === "video_generation"
       ? localVideoGenerationSource || localVideoService || effectiveVideoGenerationSource

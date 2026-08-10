@@ -13,7 +13,7 @@ export interface ImageDefaultsConnection {
   model?: string | null;
   imageGenerationSource?: string | null;
   imageService?: string | null;
-  imageGenerationQuality?: unknown;
+  imageGenerationQuality?: string | null;
   defaultParameters?: string | Record<string, unknown> | null;
 }
 

@@ -1174,6 +1174,7 @@ export function ConversationView({
       {/* ── Messages scroll area ── */}
       <div
         ref={scrollRef}
+        data-chat-scroll
         data-chat-resource-drop-surface
         className="mari-messages-scroll flex-1 overflow-y-auto overflow-x-hidden"
       >

@@ -1465,7 +1465,7 @@ export function LorebookEditor() {
   }, [lorebookId, createFolder, localizeUi]);
 
   const handleSaveLorebook = useCallback(async () => {
-    if (!lorebookId) return;
+    if (!lorebookId) return false;
     setSaving(true);
     try {
       await updateLorebook.mutateAsync({
@@ -1490,8 +1490,10 @@ export function LorebookEditor() {
       });
       setLorebookDirty(false);
       toast.success(localizeUi("ui.lorebooks.lorebookeditor.lorebookSaved"));
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message :localizeUi("ui.lorebooks.lorebookeditor.failedToSaveLorebook"));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -2281,6 +2283,8 @@ export function LorebookEditor() {
                   vectorQueryDepth={formVectorQueryDepth}
                   vectorScoreThreshold={formVectorScoreThreshold}
                   vectorMaxResults={formVectorMaxResults}
+                  hasUnsavedChanges={lorebookDirty}
+                  onBeforeVectorize={handleSaveLorebook}
                   onVectorQueryDepthChange={(value) => {
                     setFormVectorQueryDepth(value);
                     markLorebookDirty();
@@ -2760,6 +2764,8 @@ function VectorizeSection({
   vectorQueryDepth,
   vectorScoreThreshold,
   vectorMaxResults,
+  hasUnsavedChanges,
+  onBeforeVectorize,
   onVectorQueryDepthChange,
   onVectorScoreThresholdChange,
   onVectorMaxResultsChange,
@@ -2770,6 +2776,8 @@ function VectorizeSection({
   vectorQueryDepth: number;
   vectorScoreThreshold: number;
   vectorMaxResults: number;
+  hasUnsavedChanges: boolean;
+  onBeforeVectorize: () => Promise<boolean>;
   onVectorQueryDepthChange: (value: number) => void;
   onVectorScoreThresholdChange: (value: number) => void;
   onVectorMaxResultsChange: (value: number) => void;
@@ -2867,6 +2875,7 @@ function VectorizeSection({
   const handleVectorize = async (mode: "missing" | "all") => {
     if (!selectedConnectionId) return;
     if (mode === "missing" && missingCount === 0) return;
+    if (hasUnsavedChanges && !(await onBeforeVectorize())) return;
     const conn = embeddingConnections.find((c) => c.id === selectedConnectionId);
     if (mode === "all" && storedVectorCount > 0) {
       const confirmed = await showConfirmDialog({

@@ -201,6 +201,73 @@ assert.equal(
   }
 }
 
+// ── Restored profile: expected rows + no shards -> recover pre-shard backup ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "messages.json.pre-shard"),
+    JSON.stringify([messageRow("m-restored", "chat-restored", "history survives reinstall")]),
+  );
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      version: STORAGE_VERSION,
+      savedAt: "2026-08-10T00:00:00.000Z",
+      backend: "file-native",
+      tables: { messages: 1 },
+      shards: { messages: 1 },
+    }),
+  );
+
+  const db = await createFileNativeDB();
+  try {
+    const restored = await db.select().from(messages);
+    assert.equal(restored.length, 1, "an expected history is recovered when every message shard is absent");
+    assert.equal(restored[0]!.content, "history survives reinstall");
+    assert.ok(
+      existsSync(join(dir, "tables", "messages.json.pre-shard")),
+      "the preserved source remains available after recovery",
+    );
+    assert.ok(
+      existsSync(join(dir, "tables", "messages", `${encodeShardKey("chat-restored")}.json`)),
+      "recovered history is written back into the current shard layout",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// An intentionally empty current manifest must not resurrect stale history.
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "messages.json.pre-shard"),
+    JSON.stringify([messageRow("m-deleted", "chat-deleted", "must stay deleted")]),
+  );
+  writeFileSync(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      version: STORAGE_VERSION,
+      savedAt: "2026-08-10T00:00:00.000Z",
+      backend: "file-native",
+      tables: { messages: 0 },
+      shards: { messages: 0 },
+    }),
+  );
+
+  const db = await createFileNativeDB();
+  try {
+    assert.equal((await db.select().from(messages)).length, 0, "zero expected rows never revive the old backup");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Crashed migration: sentinel present -> retry from the monolith ──
 
 {

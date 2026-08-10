@@ -1216,14 +1216,52 @@ class FileTableStore {
     // migrated message shards when only the swipes migration remains (a crash
     // exactly between the two tables).
     const migrationIndex = new Map<string, string>();
+    let expectedTableCounts: Record<string, number> = {};
+    try {
+      expectedTableCounts = parseJsonFile<TableSnapshotManifest | null>(manifestPath(this.rootDir), null).value?.tables ?? {};
+    } catch {
+      // The full loader reports manifest corruption later. Recovery here is
+      // intentionally limited to a trustworthy positive row count.
+    }
     for (const table of SHARDED_TABLES) {
       const monolithPath = tableFilePath(this.rootDir, table);
       const monolithBak = `${monolithPath}.bak`;
-      const monolithPresent = existsSync(monolithPath) || existsSync(monolithBak);
+      let monolithPresent = existsSync(monolithPath) || existsSync(monolithBak);
       const dir = shardDirPath(this.rootDir, table);
       const shardDirPresent = existsSync(dir);
       const sentinelPath = join(dir, SHARD_MIGRATION_SENTINEL);
       const sentinelPresent = shardDirPresent && existsSync(sentinelPath);
+      const shardPrimaries = shardDirPresent
+        ? discoverShardPrimaries(
+            (() => {
+              try {
+                return readdirSync(dir);
+              } catch {
+                return [] as string[];
+              }
+            })(),
+          )
+        : [];
+      const expectedRowCount = expectedTableCounts[table] ?? 0;
+
+      // A copied/restored profile can retain the byte-for-byte pre-shard
+      // backup while losing the shard directory itself. Recover only when the
+      // manifest proves rows are expected and there are zero shard files;
+      // partial shard sets are ambiguous and must never be auto-merged.
+      if (!monolithPresent && shardPrimaries.length === 0 && expectedRowCount > 0) {
+        const preservedSource = [`${monolithPath}.pre-shard`, `${monolithBak}.pre-shard`].find((path) =>
+          existsSync(path),
+        );
+        if (preservedSource) {
+          await copyFile(preservedSource, monolithPath);
+          monolithPresent = true;
+          logger.warn(
+            "[file-storage] Restoring %s from its preserved pre-shard backup because the manifest expects %d rows but no shard files exist",
+            table,
+            expectedRowCount,
+          );
+        }
+      }
 
       if (!monolithPresent) {
         if (sentinelPresent) {
@@ -1247,15 +1285,7 @@ class FileTableStore {
         // (mkdir before the sentinel write) — a crash there must classify as
         // a crashed migration, or the monolith would be quarantined in favor
         // of an EMPTY shard dir.
-        const hasShardData = discoverShardPrimaries(
-          (() => {
-            try {
-              return readdirSync(dir);
-            } catch {
-              return [] as string[];
-            }
-          })(),
-        ).length > 0;
+        const hasShardData = shardPrimaries.length > 0;
         if (sentinelPresent || !hasShardData) {
           logger.warn(
             "[file-storage] A previous %s shard migration did not complete; retrying from the untouched monolith",

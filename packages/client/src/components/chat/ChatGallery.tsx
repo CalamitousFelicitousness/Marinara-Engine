@@ -20,6 +20,8 @@ import {
   PanelsTopLeft,
   Copy,
   Check,
+  Bot,
+  ChevronDown,
 } from "lucide-react";
 import {
   useChatAssetBrowser,
@@ -51,6 +53,8 @@ interface ChatGalleryProps {
   mode?: string;
   /** Manually trigger the Illustrator agent */
   onIllustrate?: () => void | Promise<void>;
+  illustrateAgents?: Array<{ id: string; name: string }>;
+  onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   /** Generate an on-demand Conversation selfie. */
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
   selfieCharacters?: Array<{ id: string; name: string }>;
@@ -86,6 +90,8 @@ export function ChatGallery({
   chatId,
   mode,
   onIllustrate,
+  illustrateAgents = [],
+  onIllustrateWithAgent,
   onGenerateSelfie,
   selfieCharacters = [],
   onGenerateBackground,
@@ -110,6 +116,7 @@ export function ChatGallery({
   const [copiedPromptImageId, setCopiedPromptImageId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<GalleryTab>("images");
   const [selectedSelfieCharacterId, setSelectedSelfieCharacterId] = useState("");
+  const [illustrateMenuOpen, setIllustrateMenuOpen] = useState(false);
   const copyResetTimerRef = useRef<number | null>(null);
   const isIllustrating = useGalleryStore((s) => s.illustratingChatIds.has(chatId));
   const isGeneratingSelfie = useGalleryStore((s) => s.selfieGeneratingChatIds.has(chatId));
@@ -184,12 +191,14 @@ export function ChatGallery({
     });
   };
 
-  const handleIllustrate = async () => {
-    if (!onIllustrate || useGalleryStore.getState().illustratingChatIds.has(chatId)) return;
+  const handleIllustrate = async (agentType?: string) => {
+    const illustrate = agentType ? () => onIllustrateWithAgent?.(agentType) : onIllustrate;
+    if (!illustrate || useGalleryStore.getState().illustratingChatIds.has(chatId)) return;
 
+    setIllustrateMenuOpen(false);
     setChatIllustrating(chatId, true);
     try {
-      await onIllustrate();
+      await illustrate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message :localizeUi("ui.chat.chatgallery.imageGenerationFailed"));
     } finally {
@@ -357,8 +366,9 @@ export function ChatGallery({
     [chatId, localizeUi],
   );
 
+  const canIllustrate = Boolean(onIllustrate || (onIllustrateWithAgent && illustrateAgents.length > 0));
   const actionCount = [
-    onIllustrate,
+    canIllustrate,
     onGenerateSelfie,
     onGenerateStoryboard,
     sceneVideosEnabled && onGenerateVideo,
@@ -387,27 +397,68 @@ export function ChatGallery({
   return (
     <>
       <div className="flex flex-col gap-3 p-4">
-        {(onIllustrate ||
+        {(canIllustrate ||
           onGenerateSelfie ||
           onGenerateStoryboard ||
           (sceneVideosEnabled && onGenerateVideo) ||
           onGenerateBackground) && (
           <div className={actionGridClass}>
-            {onIllustrate && (
-              <button
-                type="button"
-                onClick={() => void handleIllustrate()}
-                disabled={isIllustrating}
-                aria-busy={isIllustrating}
-                className="flex min-w-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-3 py-3 text-xs font-medium text-[var(--primary)] transition-all hover:bg-[var(--primary)]/25 disabled:cursor-wait disabled:opacity-75"
-              >
-                {isIllustrating ? (
-                  <Loader2 size="1rem" className="shrink-0 animate-spin" />
-                ) : (
-                  <Paintbrush size="1rem" className="shrink-0" />
+            {canIllustrate && (
+              <div className="relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (illustrateAgents.length > 0) setIllustrateMenuOpen((current) => !current);
+                    else void handleIllustrate();
+                  }}
+                  disabled={isIllustrating}
+                  aria-busy={isIllustrating}
+                  aria-haspopup={illustrateAgents.length > 0 ? "menu" : undefined}
+                  aria-expanded={illustrateAgents.length > 0 ? illustrateMenuOpen : undefined}
+                  className="flex w-full min-w-0 items-center justify-center gap-2 rounded-xl bg-[var(--primary)]/15 px-3 py-3 text-xs font-medium text-[var(--primary)] transition-all hover:bg-[var(--primary)]/25 disabled:cursor-wait disabled:opacity-75"
+                >
+                  {isIllustrating ? (
+                    <Loader2 size="1rem" className="shrink-0 animate-spin" />
+                  ) : (
+                    <Paintbrush size="1rem" className="shrink-0" />
+                  )}
+                  <span className="min-w-0 truncate">{isIllustrating ?localizeUi("ui.chat.summarypopover.generating") :localizeUi("ui.chat.chatgallery.illustrate")}</span>
+                  {illustrateAgents.length > 0 && !isIllustrating ? (
+                    <ChevronDown size="0.875rem" className="shrink-0" />
+                  ) : null}
+                </button>
+                {illustrateMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label={localizeUi("ui.chat.chatgallery.chooseImageAgent")}
+                    className="absolute left-0 top-full z-30 mt-1.5 w-full min-w-52 overflow-hidden rounded-xl bg-[var(--popover)] p-1.5 text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]"
+                  >
+                    {onIllustrate ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleIllustrate()}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-[var(--accent)]"
+                      >
+                        <Paintbrush size="0.875rem" className="shrink-0 text-[var(--primary)]" />
+                        <span className="truncate">{localizeUi("ui.chat.chatgallery.baseIllustrator")}</span>
+                      </button>
+                    ) : null}
+                    {illustrateAgents.map((agent) => (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleIllustrate(agent.id)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-[var(--accent)]"
+                      >
+                        <Bot size="0.875rem" className="shrink-0 text-[var(--primary)]" />
+                        <span className="truncate">{agent.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-                <span className="min-w-0 truncate">{isIllustrating ?localizeUi("ui.chat.summarypopover.generating") :localizeUi("ui.chat.chatgallery.illustrate")}</span>
-              </button>
+              </div>
             )}
             {onGenerateSelfie && (
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -672,7 +723,7 @@ export function ChatGallery({
                 <Sparkles size="1.5rem" className="opacity-40" />
                 <p className="text-xs">{localizeUi("ui.chat.chatgallery.noImagesYet")}</p>
                 <p className="text-[0.625rem] opacity-60">
-                  {onIllustrate
+                  {canIllustrate
                     ?localizeUi("ui.chat.chatgallery.uploadImagesOrGenerateIllustrationsToBuildYourGallery")
                     :localizeUi("ui.chat.chatgallery.uploadImagesToBuildYourGallery")}
                 </p>

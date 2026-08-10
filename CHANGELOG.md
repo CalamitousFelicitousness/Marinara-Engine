@@ -50,6 +50,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made Game combat use character-sheet levels, resource pools, and typed abilities instead of deriving levels from HP and treating every ability as an attack (#4881).
 - Recorded the fallback provider and model on messages it actually generated instead of displaying the failed primary model (#4879).
 - Remembered the Echo Chamber corner independently for each chat and flushes position changes immediately so they survive tab changes and app restarts (#4882).
 - Made chat generation-parameter send toggles authoritative, so disabling Verbosity omits it from provider requests even when a preset still has a selected verbosity value (#4883).

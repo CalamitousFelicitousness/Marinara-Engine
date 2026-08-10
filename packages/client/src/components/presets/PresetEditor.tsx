@@ -24,6 +24,7 @@ import {
   usePresetFull,
   useUpdatePreset,
   useDeletePreset,
+  useDuplicatePreset,
   useCreateSection,
   useUpdateSection,
   useDeleteSection,
@@ -67,6 +68,7 @@ import {
   Shuffle,
   Copy,
   Camera,
+  Loader2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -75,7 +77,13 @@ import { MacroTextarea } from "../ui/MacroTextarea";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { api } from "../../lib/api-client";
 import { useAgentConfigs, type AgentConfigRow } from "../../hooks/use-agents";
-import { type MarkerType, type PromptPreset, type PromptSection, type WrapFormat } from "@marinara-engine/shared";
+import {
+  isStockMarinaraUniversalPreset,
+  type MarkerType,
+  type PromptPreset,
+  type PromptSection,
+  type WrapFormat,
+} from "@marinara-engine/shared";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useQuoteFormatter } from "../../hooks/use-quote-formatter";
 import { EditorTabRail } from "../ui/EditorTabRail";
@@ -251,12 +259,14 @@ export function PresetEditor() {
   const presetDetailId = useUIStore((s) => s.presetDetailId);
   const presetDetailInitialTab = useUIStore((s) => s.presetDetailInitialTab) as TabId | null;
   const closePresetDetail = useUIStore((s) => s.closePresetDetail);
+  const openPresetDetail = useUIStore((s) => s.openPresetDetail);
   const activeChatId = useChatStore((s) => s.activeChatId);
 
   const { data, isLoading } = usePresetFull(presetDetailId);
   const { data: activeChat } = useChat(activeChatId);
   const updatePreset = useUpdatePreset();
   const deletePreset = useDeletePreset();
+  const { mutateAsync: duplicatePreset } = useDuplicatePreset();
   const createSection = useCreateSection();
   const updateSection = useUpdateSection();
   const deleteSection = useDeleteSection();
@@ -280,6 +290,8 @@ export function PresetEditor() {
   }, [dirty, setEditorDirty]);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
+  const [stockCopyError, setStockCopyError] = useState<string | null>(null);
+  const stockCopyAttemptRef = useRef<string | null>(null);
 
   // Local editable state
   const [localName, setLocalName] = useState("");
@@ -309,6 +321,37 @@ export function PresetEditor() {
     setLocalConversationPrompt(p.conversationPrompt ?? "");
     setLocalGamePrompt(p.gamePrompt ?? "");
   }, [data, presetDetailId]);
+
+  useEffect(() => {
+    if (stockCopyAttemptRef.current && stockCopyAttemptRef.current !== presetDetailId) {
+      stockCopyAttemptRef.current = null;
+      setStockCopyError(null);
+    }
+  }, [presetDetailId]);
+
+  useEffect(() => {
+    const preset = data?.preset;
+    if (!presetDetailId || !preset || !isStockMarinaraUniversalPreset(preset)) return;
+    if (stockCopyAttemptRef.current === presetDetailId) return;
+
+    stockCopyAttemptRef.current = presetDetailId;
+    setStockCopyError(null);
+    void duplicatePreset(presetDetailId)
+      .then((copy) => {
+        if (useUIStore.getState().presetDetailId !== presetDetailId) return;
+        if (!copy?.id) throw new Error(localizeUi("ui.presets.preseteditor.couldNotCreateEditableCopy"));
+        toast.success(localizeUi("ui.presets.preseteditor.createdEditableCopy"));
+        openPresetDetail(copy.id, { initialTab: presetDetailInitialTab ?? undefined });
+      })
+      .catch((error) => {
+        if (useUIStore.getState().presetDetailId !== presetDetailId) return;
+        setStockCopyError(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.presets.preseteditor.couldNotCreateEditableCopy"),
+        );
+      });
+  }, [data?.preset, duplicatePreset, localizeUi, openPresetDetail, presetDetailId, presetDetailInitialTab]);
 
   const handleClose = useCallback(() => {
     if (dirty) {
@@ -454,6 +497,31 @@ export function PresetEditor() {
     return (
       <div className="mari-editor-shell flex flex-1 items-center justify-center">
         <p className="mari-editor-empty px-4 py-3 text-sm">{localizeUi("ui.presets.preseteditor.presetNotFound")}</p>
+      </div>
+    );
+  }
+
+  if (isStockMarinaraUniversalPreset(data.preset)) {
+    return (
+      <div className="mari-editor-shell flex flex-1 items-center justify-center p-6">
+        <div className="mari-editor-panel flex max-w-md flex-col items-center gap-3 p-5 text-center">
+          {stockCopyError ? (
+            <>
+              <p className="text-sm text-[var(--destructive)]">{stockCopyError}</p>
+              <button type="button" onClick={closePresetDetail} className="mari-editor-action inline-flex px-3 py-2">
+                <ArrowLeft size="0.875rem" />
+                {localizeUi("ui.presets.preseteditor.backToPresets")}
+              </button>
+            </>
+          ) : (
+            <>
+              <Loader2 size="1.25rem" className="animate-spin text-[var(--primary)]" />
+              <p className="text-sm text-[var(--marinara-editor-muted)]">
+                {localizeUi("ui.presets.preseteditor.preparingEditableCopy")}
+              </p>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -637,12 +705,15 @@ export function PresetEditor() {
 export function QuickPresetSectionsEditor({
   presetId,
   parentChatHasLorebook = false,
+  onEditableCopyCreated,
 }: {
   presetId: string;
   parentChatHasLorebook?: boolean;
+  onEditableCopyCreated: (presetId: string) => void;
 }) {
   const { t } = useTranslation();
   const { data, isLoading } = usePresetFull(presetId);
+  const { mutateAsync: duplicatePreset } = useDuplicatePreset();
   const createSection = useCreateSection();
   const updateSection = useUpdateSection();
   const deleteSection = useDeleteSection();
@@ -654,6 +725,42 @@ export function QuickPresetSectionsEditor({
   const updateVariable = useUpdateVariable();
   const deleteVariable = useDeleteVariable();
   const reorderVariables = useReorderVariables();
+  const quickCopyAttemptRef = useRef<string | null>(null);
+  const quickEditorMountedRef = useRef(true);
+  const [quickCopyError, setQuickCopyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    quickEditorMountedRef.current = true;
+    return () => {
+      quickEditorMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const preset = data?.preset;
+    if (!preset || !isStockMarinaraUniversalPreset(preset)) {
+      quickCopyAttemptRef.current = null;
+      setQuickCopyError(null);
+      return;
+    }
+    if (quickCopyAttemptRef.current === presetId) return;
+
+    quickCopyAttemptRef.current = presetId;
+    setQuickCopyError(null);
+    void duplicatePreset(presetId)
+      .then((copy) => {
+        if (!quickEditorMountedRef.current) return;
+        if (!copy?.id) throw new Error(t("ui.presets.preseteditor.couldNotCreateEditableCopy"));
+        toast.success(t("ui.presets.preseteditor.createdEditableCopy"));
+        onEditableCopyCreated(copy.id);
+      })
+      .catch((error) => {
+        if (!quickEditorMountedRef.current) return;
+        setQuickCopyError(
+          error instanceof Error ? error.message : t("ui.presets.preseteditor.couldNotCreateEditableCopy"),
+        );
+      });
+  }, [data?.preset, duplicatePreset, onEditableCopyCreated, presetId, t]);
 
   const sectionOrder = useMemo<string[]>(() => {
     const rawOrder = data?.preset?.sectionOrder;
@@ -698,6 +805,21 @@ export function QuickPresetSectionsEditor({
     return (
       <div className="mari-editor-empty flex min-h-24 items-center justify-center px-3 py-6 text-xs">
         {t("chat.settings.promptPreset.quickEdit.missing")}
+      </div>
+    );
+  }
+
+  if (isStockMarinaraUniversalPreset(data.preset)) {
+    return (
+      <div className="mari-editor-empty flex min-h-24 items-center justify-center gap-2 px-3 py-6 text-xs">
+        {quickCopyError ? (
+          <span className="text-[var(--destructive)]">{quickCopyError}</span>
+        ) : (
+          <>
+            <Loader2 size="0.875rem" className="animate-spin text-[var(--primary)]" />
+            <span>{t("ui.presets.preseteditor.preparingEditableCopy")}</span>
+          </>
+        )}
       </div>
     );
   }

@@ -50,6 +50,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept Random Model chats on a stable configured embedding source during Memory Recall refreshes instead of falling back to the local embedder (#4864).
+- Restored installed feature-only packages such as Noodle to the Agents management pane while keeping them out of ordinary chat-agent pickers (#4865).
+- Preserved bold formatting nested inside italic user messages (#4866).
+- Made server-present UI settings authoritative when an older browser cache has no trustworthy timestamp, while retaining local values only for settings absent from the server (#4867).
+- Protected Marinara's stock Universal Preset from deletion and direct edits, restored it when missing or changed, and preserved requested edits in a separate editable copy (#4871).
+- Re-enabled Character card lorebook embedding immediately after an embedded lorebook is removed (#4872).
 - Preserved Game Send-on-Enter and tutorial-dismissal preferences across their sync and local-storage boundaries, and made Session Logs honor persisted token counts and current-session markers after message metadata hydration (#4869).
 - Kept Recent Chats previews separate on narrow desktop windows by limiting the constrained two-column layout to the four newest chats while preserving the existing mobile and wide-screen counts (#4858).
 - Scoped image-connection prompt instructions to image-producing agents, bounded stored instructions to 20,000 characters, and kept each retry agent on its own configured image connection.

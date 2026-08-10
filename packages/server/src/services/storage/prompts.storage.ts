@@ -95,6 +95,7 @@ export function createPromptsStorage(db: DB) {
         wrapFormat: input.wrapFormat ?? "xml",
         isDefault: String(input.isDefault ?? false),
         author: input.author ?? "",
+        systemKey: "",
         createdAt: timestamp.createdAt,
         updatedAt: timestamp.updatedAt,
       });
@@ -141,6 +142,11 @@ export function createPromptsStorage(db: DB) {
       // Clear all existing defaults, then set the one
       await db.update(promptPresets).set({ isDefault: "false", updatedAt: now() });
       await db.update(promptPresets).set({ isDefault: "true", updatedAt: now() }).where(eq(promptPresets.id, id));
+      return this.getById(id);
+    },
+
+    async setSystemKey(id: string, systemKey: string) {
+      await db.update(promptPresets).set({ systemKey, updatedAt: now() }).where(eq(promptPresets.id, id));
       return this.getById(id);
     },
 
@@ -312,7 +318,7 @@ export function createPromptsStorage(db: DB) {
         await db
           .update(promptGroups)
           .set({ order: i * 100 })
-          .where(eq(promptGroups.id, groupIds[i]!));
+          .where(and(eq(promptGroups.id, groupIds[i]!), eq(promptGroups.presetId, presetId)));
       }
     },
 
@@ -396,7 +402,7 @@ export function createPromptsStorage(db: DB) {
         await db
           .update(promptSections)
           .set({ injectionOrder: i * 100 })
-          .where(eq(promptSections.id, sectionIds[i]!));
+          .where(and(eq(promptSections.id, sectionIds[i]!), eq(promptSections.presetId, presetId)));
       }
     },
 

@@ -16,6 +16,7 @@ import { generateImage, saveImageToDisk } from "../image/image-generation.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { generateIllustratorImageVariants } from "../image/illustrator-image-variants.js";
 import { resolveConversationSelfieSystemPrompt } from "../conversation/selfie-prompt.js";
+import { appendImagePromptInstructions } from "./image-prompt-instructions.js";
 import type { CharacterCommand, SelfieCommand } from "../conversation/character-commands.js";
 import { createGalleryStorage } from "../storage/gallery.storage.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
@@ -201,10 +202,10 @@ async function generateSelfie(
   const selfieSystemPrompt = styleGuidance
     ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
     : baseSelfieSystemPrompt;
-  const imagePromptInstructions = imgConnFull.imagePromptInstructions?.trim();
-  const selfieSystemPromptWithImageInstructions = imagePromptInstructions
-    ? `${selfieSystemPrompt}\n\n<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${imagePromptInstructions}\n</image_prompting_instructions>`
-    : selfieSystemPrompt;
+  const selfieSystemPromptWithImageInstructions = appendImagePromptInstructions(
+    selfieSystemPrompt,
+    imgConnFull.imagePromptInstructions,
+  );
   const userPrompt = args.command.context
     ? `Context for the selfie: ${args.command.context}`
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;

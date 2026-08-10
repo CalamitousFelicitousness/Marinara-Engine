@@ -21,6 +21,7 @@ import {
   normalizeWorldCustomFields,
   normalizeAgentPhaseValue,
   normalizeAgentPromptTemplateSelectionMap,
+  normalizeImagePromptInstructions,
   resolveMacros,
   resolveGameSetupArtStylePrompt,
   resolveAgentPromptTemplate,
@@ -558,7 +559,7 @@ async function executeManualIllustratorPromptRequest(args: {
       illustratorAgent: args.illustratorEntry.resolved,
       context: args.agentContext,
       styleInstruction,
-      imagePromptInstructions: imageConnection?.imagePromptInstructions?.trim() || undefined,
+      imagePromptInstructions: normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions) ?? undefined,
       signal: args.agentContext.signal,
       debugLog: (message, ...values) => logDebugOverride(args.debugMode || isDebugAgentsEnabled(), message, ...values),
     });
@@ -2448,10 +2449,48 @@ async function validateSpotifyRetryPlayback(
   };
 }
 
+function isImagePromptRetryAgent(entry: ResolvedRetryAgent): boolean {
+  return (
+    entry.resolved.type === "illustrator" ||
+    (entry.resolved.isCustomAgent === true &&
+      customAgentHasCapability(entry.resolved.settings, "trigger_image_generation"))
+  );
+}
+
+async function resolveRetryImagePromptContext(args: {
+  entry: ResolvedRetryAgent;
+  context: AgentContext;
+  conns?: ReturnType<typeof createConnectionsStorage>;
+  chatMode?: ChatMode;
+  chatMeta?: Record<string, unknown>;
+}): Promise<AgentContext> {
+  const memory = { ...args.context.memory };
+  delete memory._imagePromptInstructions;
+
+  if (!args.conns || !args.chatMode || !args.chatMeta) {
+    return { ...args.context, memory };
+  }
+
+  const imageConnectionId =
+    args.entry.resolved.type === "illustrator"
+      ? resolveIllustratorImageConnectionId(args.chatMode, args.chatMeta, args.entry.resolved.settings.imageConnectionId)
+      : typeof args.entry.resolved.settings.imageConnectionId === "string"
+        ? args.entry.resolved.settings.imageConnectionId.trim()
+        : "";
+  let imageConnection = imageConnectionId ? await args.conns.getById(imageConnectionId).catch(() => null) : null;
+  imageConnection ??= await args.conns.getDefaultForImageGeneration().catch(() => null);
+  const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
+  if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
+  return { ...args.context, memory };
+}
+
 async function executeRetryBatches(
   agentContext: AgentContext,
   resolvedAgents: ResolvedRetryAgent[],
   preGenerationContext?: AgentContext | null,
+  conns?: ReturnType<typeof createConnectionsStorage>,
+  chatMode?: ChatMode,
+  chatMeta?: Record<string, unknown>,
 ) {
   const retryAgents = mergeRetryPairedBuiltInRewriteAgents(resolvedAgents);
   const providerModelGroups = new Map<
@@ -2512,13 +2551,15 @@ async function executeRetryBatches(
     async (group) => {
       const toolAgents = group.agents.filter((agent) => shouldUseToolsDuringAgentExecution(agent.resolved));
       const batchAgents = group.agents.filter((agent) => !shouldUseToolsDuringAgentExecution(agent.resolved));
+      const imagePromptAgents = batchAgents.filter(isImagePromptRetryAgent);
+      const regularBatchAgents = batchAgents.filter((agent) => !isImagePromptRetryAgent(agent));
       const groupResults: AgentResult[] = [];
 
-      if (batchAgents.length > 0) {
-        const configs = batchAgents.map((agent) => agent.resolved);
+      if (regularBatchAgents.length > 0) {
+        const configs = regularBatchAgents.map((agent) => agent.resolved);
         const batchResults = await executeAgentBatch(configs, group.context, group.provider, group.model);
         for (const result of batchResults) {
-          const entry = batchAgents.find(
+          const entry = regularBatchAgents.find(
             (agent) => agent.resolved.id === result.agentId || agent.resolved.type === result.agentType,
           );
           groupResults.push(
@@ -2529,10 +2570,26 @@ async function executeRetryBatches(
         }
       }
 
+      for (const entry of imagePromptAgents) {
+        const imagePromptContext = await resolveRetryImagePromptContext({
+          entry,
+          context: group.context,
+          conns,
+          chatMode,
+          chatMeta,
+        });
+        groupResults.push(
+          await executeAgent(entry.resolved, imagePromptContext, group.provider, group.model, entry.resolved.toolContext),
+        );
+      }
+
       for (const entry of toolAgents) {
+        const toolContext = isImagePromptRetryAgent(entry)
+          ? await resolveRetryImagePromptContext({ entry, context: group.context, conns, chatMode, chatMeta })
+          : group.context;
         const result = await executeAgent(
           entry.resolved,
-          group.context,
+          toolContext,
           group.provider,
           group.model,
           entry.resolved.toolContext,
@@ -4189,22 +4246,6 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           logger.warn(error, "[retry-agents] Failed to resolve image style instruction for the prompt writer");
         }
       }
-      {
-        const imageConnectionId = resolveIllustratorImageConnectionId(
-          chatMode,
-          chatMeta,
-          retryIllustratorPromptAgent?.resolved.settings?.imageConnectionId,
-        );
-        let imageConnectionForInstructions = imageConnectionId
-          ? await conns.getById(imageConnectionId).catch(() => null)
-          : null;
-        imageConnectionForInstructions ??= await conns.getDefaultForImageGeneration().catch(() => null);
-        const imagePromptInstructions = imageConnectionForInstructions?.imagePromptInstructions?.trim() ?? "";
-        if (imagePromptInstructions) {
-          agentContext.memory._imagePromptInstructions = imagePromptInstructions;
-          if (preGenerationAgentContext) preGenerationAgentContext.memory._imagePromptInstructions = imagePromptInstructions;
-        }
-      }
       if (preGenerationAgentContext) preGenerationAgentContext.signal = abortController.signal;
       if (debugMode) {
         const emitRetryAgentDebug = (event: AgentCallDebugEvent) => {
@@ -4309,7 +4350,14 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
                 }),
               ]
             : nonLorebookAgents.length > 0
-              ? await executeRetryBatches(agentContext, nonLorebookAgents, preGenerationAgentContext)
+              ? await executeRetryBatches(
+                  agentContext,
+                  nonLorebookAgents,
+                  preGenerationAgentContext,
+                  conns,
+                  chatMode,
+                  chatMeta,
+                )
               : [];
       const results = rawResults
         .map(markInvalidJsonAgentResult)

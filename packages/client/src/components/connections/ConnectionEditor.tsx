@@ -95,6 +95,8 @@ import {
   sanitizeImageGenerationProfile,
   sanitizeVideoGenerationProfile,
   suggestImageStyleProfileIdForModel,
+  MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
+  normalizeImagePromptInstructions,
   parseConnectionImageCaptioningDefaults,
   type APIProvider,
   type ComfyUiLoraSetting,
@@ -721,7 +723,7 @@ export function ConnectionEditor() {
       imageService: isImageProvider ? localImageGenerationSource || localImageService || null : null,
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
-      imagePromptInstructions: isImageProvider ? localImagePromptInstructions.trim() || null : null,
+      imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? localImageGenerationQuality : "auto",
       videoGenerationSource: isVideoProvider ? selectedVideoProvider || null : null,
       videoService: isVideoProvider ? selectedVideoDefaultsService : null,
@@ -927,7 +929,7 @@ export function ConnectionEditor() {
       videoService,
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
-      imagePromptInstructions: isImageProvider ? localImagePromptInstructions.trim() || null : null,
+      imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? localImageGenerationQuality : "auto",
       comfyuiWorkflow:
         isImageProvider || (isVideoProvider && videoProvider === "comfyui") ? localComfyuiWorkflow || null : null,
@@ -2022,6 +2024,7 @@ export function ConnectionEditor() {
             >
               <textarea
                 value={localImagePromptInstructions}
+                maxLength={MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH}
                 onChange={(event) => {
                   setLocalImagePromptInstructions(event.target.value);
                   markDirty();

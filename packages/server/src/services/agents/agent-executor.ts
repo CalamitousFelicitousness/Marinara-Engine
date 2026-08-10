@@ -18,6 +18,7 @@ import type {
 import {
   characterTrackerLockKey,
   compactQuestProgressForContext,
+  customAgentHasCapability,
   DEFAULT_AGENT_CONTEXT_SIZE,
   DEFAULT_AGENT_MAX_TOKENS,
   DEFAULT_CUSTOM_AGENT_CONTEXT_SOURCES,
@@ -1627,6 +1628,7 @@ function shouldRunAgentIndividually(config: Pick<AgentExecConfig, "type" | "sett
   // must not be merged into unrelated batched agent requests.
   return (
     config.type === "illustrator" ||
+    customAgentHasCapability(config.settings, "trigger_image_generation") ||
     config.type === "lorebook-keeper" ||
     resolveAgentResultType(config) === "text_rewrite" ||
     musicDjUsesJsonOnlyProvider(config) ||
@@ -1811,6 +1813,8 @@ function buildStandardAgentMessages(config: AgentExecConfig, template: string, c
     includeTrackerData: contextSources.trackerData,
     preserveAssistantResponseMarkup: resultType === "text_rewrite",
     outputFormatBlock: buildAgentOutputFormatBlock([config], context, renderedTemplates),
+    includeImagePromptInstructions:
+      config.type === "illustrator" || customAgentHasCapability(config.settings, "trigger_image_generation"),
   });
 }
 
@@ -2280,6 +2284,7 @@ function buildAgentMessages(
     includeTrackerData?: boolean;
     preserveAssistantResponseMarkup?: boolean;
     outputFormatBlock?: string;
+    includeImagePromptInstructions?: boolean;
   } = {},
 ): ChatMessage[] {
   // ── 1. System message — already contains <role>, <lore>, <agents>, and extras ──
@@ -2369,11 +2374,13 @@ function buildAgentMessages(
     finalParts.length > 0 ||
     contextAgentTypes.includes("echo-chamber") ||
     !!outputFormatBlock ||
-    (typeof context.memory._imagePromptInstructions === "string" && context.memory._imagePromptInstructions.trim().length > 0);
+    (options.includeImagePromptInstructions === true &&
+      typeof context.memory._imagePromptInstructions === "string" &&
+      context.memory._imagePromptInstructions.trim().length > 0);
 
   const lateImagePromptInstructions =
     typeof context.memory._imagePromptInstructions === "string" ? context.memory._imagePromptInstructions.trim() : "";
-  if (lateImagePromptInstructions) {
+  if (options.includeImagePromptInstructions === true && lateImagePromptInstructions) {
     finalParts.push("\n<image_prompting_instructions>");
     finalParts.push("Apply these image-backend instructions when writing the provider-ready image prompt. Do not copy the instructions as prompt content.");
     finalParts.push(lateImagePromptInstructions);

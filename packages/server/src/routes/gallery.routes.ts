@@ -66,6 +66,7 @@ import {
 import { resolveIllustratorPromptRuntime } from "../services/generation/illustrator-prompt-runtime.js";
 import { resolveIllustratorImageConnectionId } from "../services/generation/illustrator-background-generation.js";
 import { resolveConversationSelfieSystemPrompt } from "../services/conversation/selfie-prompt.js";
+import { appendImagePromptInstructions } from "../services/generation/image-prompt-instructions.js";
 import {
   suppressesReferencePromptLine,
   resolveIllustratorCharacterReferences,
@@ -1255,10 +1256,10 @@ export async function galleryRoutes(app: FastifyInstance) {
     const selfieSystemPrompt = styleGuidance
       ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
       : baseSelfieSystemPrompt;
-    const imagePromptInstructions = imageConn.imagePromptInstructions?.trim();
-    const selfieSystemPromptWithImageInstructions = imagePromptInstructions
-      ? `${selfieSystemPrompt}\n\n<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${imagePromptInstructions}\n</image_prompting_instructions>`
-      : selfieSystemPrompt;
+    const selfieSystemPromptWithImageInstructions = appendImagePromptInstructions(
+      selfieSystemPrompt,
+      imageConn.imagePromptInstructions,
+    );
 
     const selfieAbortSignal = createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Selfie generation");
     let promptRuntime;

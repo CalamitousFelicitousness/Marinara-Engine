@@ -43,6 +43,7 @@ import {
   unwrapConversationInstructions,
   findKnownModel,
   LOCAL_SIDECAR_CONNECTION_ID,
+  normalizeImagePromptInstructions,
   normalizeTextForMatch,
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
@@ -3631,7 +3632,7 @@ export async function generateRoutes(app: FastifyInstance) {
           agentContext.memory._personaAvatarPath =
             persona && typeof persona.avatarPath === "string" ? persona.avatarPath : null;
         }
-        {
+        if (resolvedAgents.some((entry) => entry.type === "illustrator")) {
           const illustratorAgentForInstructions = resolvedAgents.find((a) => a.type === "illustrator");
           const imageConnectionId = resolveIllustratorImageConnectionId(
             requestChatMode,
@@ -3642,7 +3643,9 @@ export async function generateRoutes(app: FastifyInstance) {
             ? await connections.getById(imageConnectionId).catch(() => null)
             : null;
           imageConnectionForInstructions ??= await connections.getDefaultForImageGeneration().catch(() => null);
-          const imagePromptInstructions = imageConnectionForInstructions?.imagePromptInstructions?.trim() ?? "";
+          const imagePromptInstructions = normalizeImagePromptInstructions(
+            imageConnectionForInstructions?.imagePromptInstructions,
+          );
           if (imagePromptInstructions) agentContext.memory._imagePromptInstructions = imagePromptInstructions;
         }
         const getLatestUserExpressionSource = () =>

@@ -46,6 +46,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Scoped image-connection prompt instructions to image-producing agents, bounded stored instructions to 5,000 characters, and kept each retry agent on its own configured image connection.
 - Kept Professor Mari's Home navigator enabled by default and visible with reduced effects, reset her to the default position when re-enabled, centered her drag handle, contained compact Field Notes and Community actions, and presented iPad sidebars as full-width overlays (#4826, #4827, #4829, #4830).
 - Sharpened Professor Mari's read-only guardrail so a "how do I…" question is answered or offered rather than performed, even when it names the change as its goal (for example "how do I make X have Y") — while a plainly-worded request to make that change, including a polite question form like "can you set X to Y", is still carried out — so she keys on intent rather than grammar and no longer edits without a clear instruction (#4838).
 - Reduced background autonomous-message polling to a lightweight candidate-id lookup instead of re-fetching the full chat list every 30 seconds (#4715).

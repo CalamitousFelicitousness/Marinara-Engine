@@ -56,7 +56,7 @@ try {
     "npm config get prefix",
     '${StrTrimNewLines} $NPM_PREFIX "$NPM_PREFIX"',
     't "$NPM_PREFIX;$1"',
-    "cmd /c pnpm --version",
+    "cmd /d /c pnpm --version",
   ];
   let previousFallbackStep = -1;
   const npmFallbackIsOrdered = npmFallbackSequence.every((step) => {
@@ -74,6 +74,25 @@ try {
   if (npmFallback.includes('t "$APPDATA\\npm;$1"')) {
     failures.push({
       message: "The Windows installer must not assume the default npm prefix; custom global prefixes must work.",
+    });
+  }
+
+  const pnpmCheckStart = code.indexOf('DetailPrint "Ensuring pnpm ${PNPM_VERSION}..."');
+  const pnpmCheckEnd = code.indexOf('DetailPrint "pnpm ready."', pnpmCheckStart);
+  const pnpmChecks =
+    pnpmCheckStart >= 0 && pnpmCheckEnd > pnpmCheckStart ? code.slice(pnpmCheckStart, pnpmCheckEnd) : "";
+  const normalizedVersionChecks = pnpmChecks.match(
+    /\$\{StrTrimNewLines\} \$CURRENT_PNPM_VERSION "\$CURRENT_PNPM_VERSION"/g,
+  );
+  const exactVersionChecks = pnpmChecks.match(/\$\{If\} \$CURRENT_PNPM_VERSION == "\$\{PNPM_VERSION\}"/g);
+  if (pnpmChecks.toLowerCase().includes("findstr.exe")) {
+    failures.push({
+      message: "pnpm version checks must not use findstr; LF-only output can make exact-line matching fail.",
+    });
+  }
+  if (normalizedVersionChecks?.length !== 4 || exactVersionChecks?.length !== 4) {
+    failures.push({
+      message: "Every Windows installer pnpm runner must capture, trim, and compare its reported version exactly.",
     });
   }
 

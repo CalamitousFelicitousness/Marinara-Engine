@@ -112,6 +112,7 @@ Var GIT_OK
 Var NODE_OK
 Var PNPM_OK
 Var PNPM_RUNNER
+Var CURRENT_PNPM_VERSION
 Var NPM_PREFIX
 Var CLONE_DIR
 Var CLONE_DIR_CREATED
@@ -353,29 +354,41 @@ Please restart your computer and run this installer again."
   Pop $1
   ${If} $0 == 0
     DetailPrint "Trying pinned pnpm ${PNPM_VERSION} via Corepack..."
-    nsExec::ExecToStack 'cmd /c corepack pnpm@${PNPM_DESCRIPTOR} --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+    StrCpy $CURRENT_PNPM_VERSION ""
+    nsExec::ExecToStack 'cmd /d /c corepack pnpm@${PNPM_DESCRIPTOR} --version 2>nul'
     Pop $PNPM_OK
-    Pop $1
+    Pop $CURRENT_PNPM_VERSION
     ${If} $PNPM_OK == 0
-      StrCpy $PNPM_RUNNER "corepack"
+      ${StrTrimNewLines} $CURRENT_PNPM_VERSION "$CURRENT_PNPM_VERSION"
+      ${If} $CURRENT_PNPM_VERSION == "${PNPM_VERSION}"
+        StrCpy $PNPM_RUNNER "corepack"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
   ${If} $PNPM_RUNNER == ""
     DetailPrint "Corepack pnpm ${PNPM_VERSION} unavailable; trying installed pnpm..."
-    nsExec::ExecToStack 'cmd /c pnpm --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+    StrCpy $CURRENT_PNPM_VERSION ""
+    nsExec::ExecToStack 'cmd /d /c pnpm --version 2>nul'
     Pop $PNPM_OK
-    Pop $1
+    Pop $CURRENT_PNPM_VERSION
     ${If} $PNPM_OK == 0
-      StrCpy $PNPM_RUNNER "pnpm"
+      ${StrTrimNewLines} $CURRENT_PNPM_VERSION "$CURRENT_PNPM_VERSION"
+      ${If} $CURRENT_PNPM_VERSION == "${PNPM_VERSION}"
+        StrCpy $PNPM_RUNNER "pnpm"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
   ${If} $PNPM_RUNNER == ""
     DetailPrint "Installed pnpm unavailable; trying temporary pnpm ${PNPM_VERSION} via npx..."
-    nsExec::ExecToStack 'cmd /c npx --yes pnpm@${PNPM_VERSION} --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+    StrCpy $CURRENT_PNPM_VERSION ""
+    nsExec::ExecToStack 'cmd /d /c npx --yes pnpm@${PNPM_VERSION} --version 2>nul'
     Pop $PNPM_OK
-    Pop $1
+    Pop $CURRENT_PNPM_VERSION
     ${If} $PNPM_OK == 0
-      StrCpy $PNPM_RUNNER "npx"
+      ${StrTrimNewLines} $CURRENT_PNPM_VERSION "$CURRENT_PNPM_VERSION"
+      ${If} $CURRENT_PNPM_VERSION == "${PNPM_VERSION}"
+        StrCpy $PNPM_RUNNER "npx"
+      ${EndIf}
     ${EndIf}
   ${EndIf}
   ${If} $PNPM_RUNNER == ""
@@ -393,11 +406,15 @@ Please restart your computer and run this installer again."
       ${If} $NPM_PREFIX != ""
         ReadEnvStr $1 "PATH"
         System::Call 'Kernel32::SetEnvironmentVariable(t "PATH", t "$NPM_PREFIX;$1")i'
-        nsExec::ExecToStack 'cmd /c pnpm --version | %SystemRoot%\System32\findstr.exe /x /l /c:${PNPM_VERSION}'
+        StrCpy $CURRENT_PNPM_VERSION ""
+        nsExec::ExecToStack 'cmd /d /c pnpm --version 2>nul'
         Pop $PNPM_OK
-        Pop $1
+        Pop $CURRENT_PNPM_VERSION
         ${If} $PNPM_OK == 0
-          StrCpy $PNPM_RUNNER "pnpm"
+          ${StrTrimNewLines} $CURRENT_PNPM_VERSION "$CURRENT_PNPM_VERSION"
+          ${If} $CURRENT_PNPM_VERSION == "${PNPM_VERSION}"
+            StrCpy $PNPM_RUNNER "pnpm"
+          ${EndIf}
         ${EndIf}
       ${EndIf}
     ${EndIf}

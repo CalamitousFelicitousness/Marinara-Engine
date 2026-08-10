@@ -1307,9 +1307,10 @@ async function createDynamicGameImagePromptGenerator(args: {
   try {
     const illustratorPrompt = await resolveGameIllustratorPromptTemplate(args.meta, args.agents);
     const promptDirectorOverride = await args.promptOverridesStorage?.get(GAME_IMAGE_PROMPT_DIRECTOR.key);
+    const explicitlyEnabled = args.meta.gameImageDynamicPromptEnabled === true;
     if (
       !shouldUseDynamicGameImagePromptGenerator({
-        enabled: args.meta.gameImageDynamicPromptEnabled === true,
+        enabled: explicitlyEnabled,
         hasCustomizedIllustratorPrompt: illustratorPrompt.customized,
         hasEnabledPromptDirectorOverride: promptDirectorOverride?.enabled === true,
       })
@@ -1317,12 +1318,23 @@ async function createDynamicGameImagePromptGenerator(args: {
       return undefined;
     }
 
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveDynamicGameImagePromptConnection({
-      connections: args.connections,
-      meta: args.meta,
-      setupConfig: args.setupConfig,
-      chatConnectionId: args.chat.connectionId,
-    });
+    let resolvedConnection;
+    try {
+      resolvedConnection = await resolveDynamicGameImagePromptConnection({
+        connections: args.connections,
+        meta: args.meta,
+        setupConfig: args.setupConfig,
+        chatConnectionId: args.chat.connectionId,
+      });
+    } catch (err) {
+      if (explicitlyEnabled) throw err;
+      logger.warn(
+        err,
+        "[game/dynamic-image-prompt] No text connection available for implicit prompt rewriting; continuing without it",
+      );
+      return undefined;
+    }
+    const { conn, baseUrl, defaultGenerationParameters } = resolvedConnection;
     const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
 

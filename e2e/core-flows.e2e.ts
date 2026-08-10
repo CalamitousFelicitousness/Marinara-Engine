@@ -6975,6 +6975,82 @@ test("game widget edits preserve their live numeric values", async ({ request },
   }
 });
 
+test("Game combat sheet helpers preserve ability types, card matches, and zero HP", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Pure Game combat hydration coverage only needs one browser.");
+
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const module = (await import("/src/components/game/GameSurface.tsx")) as unknown as {
+      combatSkillsFromSheet(value: unknown):
+        | Array<{ name: string; type: string; description?: string }>
+        | undefined;
+      findGameCombatCard(
+        cards: Array<{ name?: string }>,
+        targetName: string,
+      ): { name?: string } | undefined;
+      generatedPartyMemberToCombatant(
+        member: Record<string, unknown>,
+        index: number,
+        avatarCandidates: unknown[],
+        fallbackLevel: number,
+      ): { hp: number; maxHp: number };
+      generatedEnemyToCombatant(
+        enemy: Record<string, unknown>,
+        index: number,
+        fallbackLevel: number,
+      ): { hp: number; maxHp: number };
+    };
+    const skills = module.combatSkillsFromSheet([
+      "[attack] Solar Slash: A searing arc.",
+      "[heal] Gentle Mend — Restores HP.",
+      "[buff] Healing Aura - Raises defense.",
+      "[debuff] Slow: Reduces speed.",
+      "Shield Wall: Protects allies.",
+      "Field Cure: Restores an ally.",
+      "Quick Jab: A fast strike.",
+      "solar slash: Duplicate should be ignored.",
+      null,
+      false,
+      {},
+    ]);
+    const cards = [{ name: "Mika" }, { name: "Éowyn" }];
+    return {
+      skills: skills?.map(({ name, type, description }) => ({ name, type, description })),
+      empty: module.combatSkillsFromSheet([]),
+      invalid: module.combatSkillsFromSheet([null, false, {}]),
+      suffixMatch: module.findGameCombatCard(cards, "Mika (Mage)")?.name,
+      diacriticMatch: module.findGameCombatCard(cards, "Eowyn")?.name,
+      party: module.generatedPartyMemberToCombatant(
+        { name: "Mika", hp: 0, maxHp: 12, attacks: [], statuses: [] },
+        0,
+        [],
+        1,
+      ),
+      enemy: module.generatedEnemyToCombatant(
+        { name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] },
+        0,
+        1,
+      ),
+    };
+  });
+
+  expect(result.skills).toEqual([
+    { name: "Solar Slash", type: "attack", description: "A searing arc." },
+    { name: "Gentle Mend", type: "heal", description: "Restores HP." },
+    { name: "Healing Aura", type: "buff", description: "Raises defense." },
+    { name: "Slow", type: "debuff", description: "Reduces speed." },
+    { name: "Shield Wall", type: "buff", description: "Protects allies." },
+    { name: "Field Cure", type: "heal", description: "Restores an ally." },
+    { name: "Quick Jab", type: "attack", description: "A fast strike." },
+  ]);
+  expect(result.empty).toBeUndefined();
+  expect(result.invalid).toBeUndefined();
+  expect(result.suffixMatch).toBe("Mika");
+  expect(result.diacriticMatch).toBe("Éowyn");
+  expect(result.party).toMatchObject({ hp: 0, maxHp: 12 });
+  expect(result.enemy).toMatchObject({ hp: 0, maxHp: 9 });
+});
+
 test("Game character sheet Retry remains a draft until Save", async ({ page, request }, testInfo) => {
   const suffix = Date.now().toString(36);
   const characterName = `Retry Sheet Character ${suffix}`;

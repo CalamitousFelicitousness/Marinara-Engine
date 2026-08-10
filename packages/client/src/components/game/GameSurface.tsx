@@ -741,6 +741,7 @@ type StoredGameCombatCard = {
 };
 
 function readCombatNumber(value: unknown): number | null {
+  if (value == null || (typeof value === "string" && !value.trim())) return null;
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
 }
@@ -794,13 +795,14 @@ function inferCombatSkillType(value: string): NonNullable<Combatant["skills"]>[n
   return "attack";
 }
 
-function combatSkillsFromSheet(value: unknown): Combatant["skills"] {
+export function combatSkillsFromSheet(value: unknown): Combatant["skills"] {
   if (!Array.isArray(value)) return undefined;
   const seen = new Set<string>();
   const skills: NonNullable<Combatant["skills"]> = [];
 
   for (const [index, entry] of value.entries()) {
-    const raw = String(entry).trim();
+    if (typeof entry !== "string") continue;
+    const raw = entry.trim();
     if (!raw) continue;
     const declaredType = raw.match(/^\s*\[?(attack|heal(?:ing)?|buff|debuff)\]?/i)?.[1]?.toLowerCase();
     const withoutTypePrefix = raw
@@ -832,6 +834,13 @@ function combatSkillsFromSheet(value: unknown): Combatant["skills"] {
   }
 
   return skills.length > 0 ? skills : undefined;
+}
+
+export function findGameCombatCard(
+  cards: StoredGameCombatCard[],
+  targetName: string,
+): StoredGameCombatCard | undefined {
+  return findNamedEntry(cards, targetName, (card) => (typeof card.name === "string" ? card.name : null));
 }
 
 function combatStatusEffectsFromGenerated(
@@ -915,7 +924,7 @@ function isValidCombatant(value: unknown): value is Combatant {
   );
 }
 
-function generatedPartyMemberToCombatant(
+export function generatedPartyMemberToCombatant(
   member: CombatPartyMember,
   index: number,
   avatarCandidates: GamePartyMemberInfo[],
@@ -924,9 +933,9 @@ function generatedPartyMemberToCombatant(
 ): Combatant {
   const matchedAvatar = findNamedEntry(avatarCandidates, member.name, (entry) => entry.name);
   const cardHp = gameCard?.rpgStats?.hp;
-  const generatedMaxHp = Number(member.maxHp) || Number(member.hp) || 1;
+  const generatedMaxHp = readCombatNumber(member.maxHp) ?? readCombatNumber(member.hp) ?? 1;
   const maxHp = Math.max(1, readCombatNumber(cardHp?.max) ?? generatedMaxHp);
-  const generatedHp = Number(member.hp) || maxHp;
+  const generatedHp = readCombatNumber(member.hp) ?? maxHp;
   const hp = Math.max(0, Math.min(maxHp, readCombatNumber(cardHp?.value) ?? generatedHp));
   const level = Math.max(
     1,
@@ -971,9 +980,9 @@ function hydrateCombatPartyAvatars(party: Combatant[], avatarCandidates: GamePar
   return changed ? nextParty : party;
 }
 
-function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fallbackLevel: number): Combatant {
-  const maxHp = Math.max(1, Number(enemy.maxHp) || Number(enemy.hp) || 1);
-  const hp = Math.max(0, Math.min(maxHp, Number(enemy.hp) || maxHp));
+export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fallbackLevel: number): Combatant {
+  const maxHp = Math.max(1, readCombatNumber(enemy.maxHp) ?? readCombatNumber(enemy.hp) ?? 1);
+  const hp = Math.max(0, Math.min(maxHp, readCombatNumber(enemy.hp) ?? maxHp));
   const level = combatLevelFromHp(maxHp, fallbackLevel);
   const element = enemy.attacks?.find((attack) => attack.element)?.element;
   const combatClass = typeof enemy.class === "string" && enemy.class.trim() ? enemy.class.trim() : undefined;
@@ -8087,9 +8096,7 @@ function GameSurfaceComponent({
               index,
               combatAvatarCandidates,
               fallbackLevel,
-              findNamedEntry(gameCharacterCards, member.name, (card) =>
-                typeof card.name === "string" ? card.name : null,
-              ),
+              findGameCombatCard(gameCharacterCards, member.name),
             ),
           )
         : [];
@@ -8558,15 +8565,9 @@ function GameSurfaceComponent({
       const numericValue = Number(value);
       return Number.isFinite(numericValue) ? numericValue : null;
     };
-    const gameCardByName = new Map<string, StoredGameCombatCard>();
     const gameCharacterCards = Array.isArray(chatMeta.gameCharacterCards)
       ? (chatMeta.gameCharacterCards as Array<Record<string, unknown>>)
       : [];
-    for (const card of gameCharacterCards as StoredGameCombatCard[]) {
-      if (typeof card?.name === "string" && card.name.trim()) {
-        gameCardByName.set(normalizeTextForMatch(card.name), card);
-      }
-    }
 
     const playerBarStats = [
       ...((gameSnapshot?.playerStats?.stats ?? []) as CombatStatLike[]),
@@ -8670,7 +8671,7 @@ function GameSurfaceComponent({
               (pc) => pc.characterId === m.id || normalizeTextForMatch(pc.name) === normalizeTextForMatch(m.name),
             );
         const stats = (isPlayerMember ? playerBarStats : (snap?.stats ?? [])) as CombatStatLike[];
-        const gameCard = gameCardByName.get(normalizeTextForMatch(m.name));
+        const gameCard = findGameCombatCard(gameCharacterCards as StoredGameCombatCard[], m.name);
         const cardRpgStats = gameCard?.rpgStats ?? null;
         const cardAttributes = new Map(
           Array.isArray(cardRpgStats?.attributes)

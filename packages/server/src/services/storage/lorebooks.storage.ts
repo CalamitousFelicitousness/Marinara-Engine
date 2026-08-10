@@ -27,7 +27,6 @@ import {
 } from "@marinara-engine/shared";
 import { collectEffectivelyDisabledFolderIds, collectFolderSubtreeIds } from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
-import { GAME_LOREBOOK_KEEPER_SOURCE_ID } from "../lorebook/game-lorebook-scope.js";
 import { toPaginatedList } from "../../utils/list-pagination.js";
 
 function normalizeLorebookEntryLimit(value: unknown): number {
@@ -127,26 +126,10 @@ type LorebookScopeFilters = {
 
 type LinkedLorebook = {
   id: string;
-  characterId?: string | null;
-  characterIds?: string[];
-  personaId?: string | null;
-  personaIds?: string[];
-  chatId?: string | null;
-  sourceAgentId?: string | null;
 };
 
 function activeLorebookMatchesFilters(book: LinkedLorebook, filters: LorebookScopeFilters): boolean {
-  if (!filters.activeLorebookIds?.includes(book.id)) return false;
-  if (book.sourceAgentId === GAME_LOREBOOK_KEEPER_SOURCE_ID) return true;
-
-  const characterIds = resolveLinkIds(book.characterIds, book.characterId);
-  if (characterIds.length > 0) return characterIds.some((id) => filters.characterIds?.includes(id));
-
-  const personaIds = resolveLinkIds(book.personaIds, book.personaId);
-  if (personaIds.length > 0) return !!filters.personaId && personaIds.includes(filters.personaId);
-
-  if (book.chatId) return book.chatId === filters.chatId;
-  return true;
+  return filters.activeLorebookIds?.includes(book.id) === true;
 }
 
 /** Parse DB row booleans ("true"/"false") → real booleans and JSON strings → objects. */
@@ -720,7 +703,7 @@ export function createLorebooksStorage(db: DB) {
      * Get all enabled entries from lorebooks that are relevant for a given context.
      * A lorebook is relevant if it's enabled AND one of:
      *  - `isGlobal` is true
-     *  - Its ID is in `activeLorebookIds`, while any character/persona/chat owner link still matches this context
+     *  - Its ID is in `activeLorebookIds`
      *  - Its `characterId` matches one of the chat's active characters
      *  - Its `personaId` matches the chat's active persona
      *  - Its `chatId` matches the current chat
@@ -763,7 +746,7 @@ export function createLorebooksStorage(db: DB) {
           if (b.sourceAgentId && excludedSourceAgentIds.has(b.sourceAgentId)) return false;
           // Globally active lorebooks bypass all scope filters
           if (b.isGlobal) return true;
-          // Explicitly added to this chat, while still respecting owner links.
+          // Explicitly added to this chat.
           if (activeLorebookMatchesFilters(b, filters)) return true;
           // Belongs to one of the active characters
           if ((b.characterIds ?? []).some((id) => filters.characterIds?.includes(id))) return true;

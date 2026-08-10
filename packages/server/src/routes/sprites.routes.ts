@@ -358,15 +358,18 @@ function resolveVideoConnection(connection: VideoGenerationConnection) {
       : inferVideoSource(connection.model || "", connection.baseUrl || ""));
   const rawServiceHint = connection.videoService || source;
   const serviceHint =
-    rawServiceHint === "google_ai_studio"
-      ? inferVideoSource(connection.model || "", connection.baseUrl || "")
-      : rawServiceHint;
+    source === "swarmui"
+      ? "swarmui"
+      : rawServiceHint === "google_ai_studio"
+        ? inferVideoSource(connection.model || "", connection.baseUrl || "")
+        : rawServiceHint;
   const isXaiVideo = source === "xai" || serviceHint === "xai";
   const isGoogleVeoVideo = source === "google_veo" || serviceHint === "google_veo";
   const isOpenRouterVideo = source === "openrouter" || serviceHint === "openrouter";
   const isAtlasVideo = source === "atlas" || serviceHint === "atlas";
   const isSeedanceVideo = source === "seedance" || serviceHint === "seedance";
-  const isComfyUiVideo = source === "comfyui" || serviceHint === "comfyui";
+  const isSwarmUiVideo = source === "swarmui" || serviceHint === "swarmui";
+  const isComfyUiVideo = source === "comfyui" || serviceHint === "comfyui" || isSwarmUiVideo;
   return {
     source,
     serviceHint,
@@ -382,9 +385,11 @@ function resolveVideoConnection(connection: VideoGenerationConnection) {
               ? "https://api.atlascloud.ai/api/v1"
               : isSeedanceVideo
                 ? "https://api.seedance2.ai"
-                : isComfyUiVideo
-                  ? "http://127.0.0.1:8188"
-                  : "https://generativelanguage.googleapis.com/v1beta"),
+                : isSwarmUiVideo
+                  ? "http://127.0.0.1:7801"
+                  : isComfyUiVideo
+                    ? "http://127.0.0.1:8188"
+                    : "https://generativelanguage.googleapis.com/v1beta"),
     model:
       connection.model ||
       (isXaiVideo

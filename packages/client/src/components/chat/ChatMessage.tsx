@@ -2662,7 +2662,7 @@ export const ChatMessage = memo(function ChatMessage({
 
             {/* Conversation start marker */}
             {isConversationStart && (
-              <div className="mb-1 px-1">
+              <div className="mb-1 w-full px-1">
                 <div
                   aria-hidden="true"
                   className="mari-chrome-accent-progress mari-accent-animated mb-1.5 h-0.5 w-full rounded-full"

@@ -80,7 +80,10 @@ export async function resolveVideoConnectionFallback(
     source,
     baseUrl,
     apiKey: connection.apiKey || "",
-    serviceHint: String(connection.videoService ?? connection.videoGenerationSource ?? source),
+    serviceHint:
+      source === "swarmui"
+        ? "swarmui"
+        : String(connection.videoService ?? connection.videoGenerationSource ?? source),
     model,
     comfyWorkflow: connection.comfyuiWorkflow || undefined,
     comfyLoras: comfyDefaults?.loras ?? [],

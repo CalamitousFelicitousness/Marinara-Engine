@@ -719,6 +719,7 @@ import {
   lorebookSimilarityBaseline,
 } from "../../packages/server/src/services/lorebook/embeddings.js";
 import {
+  filterRelevantLorebooks,
   resolveAndBudgetActivatedLorebookEntries,
   scopeLorebookScanResultToCharacterContext,
 } from "../../packages/server/src/services/lorebook/index.js";
@@ -884,6 +885,49 @@ const keywordOptions = {
 };
 
 const cases: RegressionCase[] = [
+  {
+    name: "explicitly selected persona lorebooks remain usable outside their owner persona",
+    run() {
+      const personaLinkedBook = {
+        id: "persona-lorebook",
+        name: "Persona lorebook",
+        enabled: true,
+        scanDepth: 2,
+        tokenBudget: 2048,
+        entryLimit: 0,
+        recursiveScanning: false,
+        maxRecursionDepth: 3,
+        vectorScoreThreshold: 0.35,
+        vectorMaxResults: 8,
+        isGlobal: false,
+        characterId: null,
+        characterIds: [],
+        personaId: "owner-persona",
+        personaIds: ["owner-persona"],
+        chatId: null,
+        scope: { mode: "all" as const, chatIds: [] },
+        sourceAgentId: null,
+      } satisfies Parameters<typeof filterRelevantLorebooks>[0][number];
+
+      assert.deepEqual(
+        filterRelevantLorebooks([personaLinkedBook], {
+          personaId: "different-persona",
+          activeLorebookIds: [personaLinkedBook.id],
+        }),
+        [personaLinkedBook],
+      );
+      assert.deepEqual(filterRelevantLorebooks([personaLinkedBook], { personaId: "different-persona" }), []);
+      assert.deepEqual(filterRelevantLorebooks([personaLinkedBook], { personaId: "owner-persona" }), [personaLinkedBook]);
+      const lorebookStorageSource = readFileSync(
+        new URL("../../packages/server/src/services/storage/lorebooks.storage.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(
+        lorebookStorageSource,
+        /function activeLorebookMatchesFilters[\s\S]{0,220}return filters\.activeLorebookIds\?\.includes\(book\.id\) === true;/u,
+      );
+    },
+  },
   {
     name: "Storyboard chat settings override agent defaults for Game and Roleplay",
     async run() {

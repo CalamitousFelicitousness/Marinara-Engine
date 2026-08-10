@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added SwarmUI as a video-generation backend, including authenticated distributed ComfyUI workflow submission, base64 reference images, model discovery, and MP4 retrieval (#4885).
 - Added responsive batch selection to chat Galleries, with filtered Select All, confirmed multi-image downloads and deletes, and selection cleanup between chats (#4859).
 - Added optional image prompting instructions to image connections, applying them inside existing selfie and Illustrator prompt-writing calls before provider review or generation.
 - Added a Gallery image-agent picker that can run any active custom image-producing agent alongside the base Illustrator (#4846).
@@ -50,6 +51,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept explicitly selected persona-linked lorebooks usable outside their owner persona while preserving automatic owner matching and chat exclusions (#4887).
+- Extended the Roleplay New Start divider across the full message body for user messages as well as assistant messages (#4886).
 - Applied Game image prompt overrides and the selected Illustrator prompt template to Game prompt-director requests, including manual portraits that use the Illustrator agent's image connection and explicitly customized prompt settings when the general dynamic-prompt toggle is off (#4880).
 - Made Game combat use character-sheet levels, resource pools, and typed abilities instead of deriving levels from HP and treating every ability as an attack (#4881).
 - Recorded the fallback provider and model on messages it actually generated instead of displaying the failed primary model (#4879).

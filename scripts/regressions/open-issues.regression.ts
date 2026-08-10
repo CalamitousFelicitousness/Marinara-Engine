@@ -284,11 +284,16 @@ import {
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
   IMAGE_GENERATION_SOURCES,
+  VIDEO_GENERATION_SOURCES,
   ZAI_IMAGE_MODELS,
   inferImageSource,
   inferVideoSource,
 } from "../../packages/shared/src/constants/model-lists.js";
 import { resolveSceneVideoPrompt } from "../../packages/server/src/services/video/scene-video-prompt-review.js";
+import {
+  buildSwarmUiVideoGenerationBody,
+  parseSwarmUiVideoReference,
+} from "../../packages/server/src/services/video/video-generation.js";
 import {
   buildLorebookEntryCreateRow,
   buildPersonaCreateRow,
@@ -3018,6 +3023,63 @@ assert.deepEqual(JSON.parse(String(swarmUiBody.comfyworkflowraw)), {
 });
 assert.equal(parseSwarmUiImageReference({ images: ["View/local/raw/output.png"] }), "View/local/raw/output.png");
 assert.throws(() => parseSwarmUiImageReference({ error: "queue unavailable" }), /queue unavailable/u);
+assert.equal(inferVideoSource("", "http://127.0.0.1:7801"), "swarmui");
+assert.ok(VIDEO_GENERATION_SOURCES.some((source) => source.id === "swarmui"));
+const swarmUiVideoBody = buildSwarmUiVideoGenerationBody(
+  {
+    prompt: "a blue fox waves",
+    durationSeconds: 5,
+    aspectRatio: "9:16",
+    resolution: "720p",
+    model: "wan-video.safetensors",
+    referenceImage: { base64: "data:image/png;base64,cG5n", mimeType: "image/png" },
+    comfyWorkflow: JSON.stringify({
+      "1": {
+        class_type: "VideoNode",
+        inputs: {
+          prompt: "%prompt%",
+          width: "%width%",
+          height: "%height%",
+          frames: "%length%",
+          fps: "%fps%",
+          image: "%reference_image%",
+        },
+      },
+    }),
+    fps: 16,
+  },
+  "video-session",
+  42,
+);
+assert.equal(swarmUiVideoBody.session_id, "video-session");
+assert.equal(swarmUiVideoBody.width, 720);
+assert.equal(swarmUiVideoBody.height, 1280);
+assert.deepEqual(JSON.parse(String(swarmUiVideoBody.comfyworkflowraw)), {
+  "1": {
+    class_type: "VideoNode",
+    inputs: {
+      prompt: "a blue fox waves",
+      width: 720,
+      height: 1280,
+      frames: 80,
+      fps: 16,
+      image: "cG5n",
+    },
+  },
+});
+assert.equal(parseSwarmUiVideoReference({ images: ["View/local/raw/output.mp4"] }), "View/local/raw/output.mp4");
+assert.throws(
+  () => buildSwarmUiVideoGenerationBody(
+    {
+      prompt: "video",
+      durationSeconds: 5,
+      aspectRatio: "16:9",
+      comfyWorkflow: '{"image":"%reference_image_name%"}',
+    },
+    "video-session",
+  ),
+  /must use %reference_image%/u,
+);
 assert.deepEqual(
   ZAI_IMAGE_MODELS.map((model) => model.id),
   ["glm-image", "cogview-4-250304"],
@@ -3628,6 +3690,11 @@ const chatRowPeekSource = readFileSync(
 assert.match(assignedSweepChatAreaSource, /export const ChatArea = memo\(function ChatArea/u);
 assert.doesNotMatch(assignedSweepChatAreaSource, /updateMessage(?:Extra)?\.mutate/u);
 assert.match(chatMessageSource, /mari-chrome-accent-progress mari-accent-animated mb-1\.5 h-0\.5/u);
+assert.match(
+  chatMessageSource,
+  /isConversationStart && \(\s*<div className="mb-1 w-full px-1">/u,
+  "Roleplay New Start dividers must span user and assistant message bodies",
+);
 assert.match(chatMessageSource, /pointer-events-auto relative z-30 flex h-11 w-11/u);
 assert.match(chatRowPeekSource, /mari-chrome-accent-text-muted mari-accent-animated text-\[0\.6875rem\]/u);
 assert.match(assignedSweepChatAreaSource, /mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs/u);
@@ -6634,7 +6701,7 @@ try {
   );
   assert.match(
     connectionEditorSource,
-    /const swarmUiWorkflowError =\s*selectedImageService === "swarmui"[\s\S]{0,180}%reference_image_name/u,
+    /const swarmUiWorkflowError =\s*\(selectedImageService === "swarmui" \|\| selectedVideoProvider === "swarmui"\)[\s\S]{0,180}%reference_image_name/u,
     "SwarmUI workflow validation must reject backend-local reference-image filenames before save",
   );
   assert.match(connectionEditorSource, /if \(swarmUiWorkflowError\) \{[\s\S]{0,180}throw new Error/u);

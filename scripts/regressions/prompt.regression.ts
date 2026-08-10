@@ -3456,12 +3456,18 @@ const cases: RegressionCase[] = [
       assert.match(sharedScopeSource, /settings\.imageConnectionId/u);
       assert.match(sharedScopeSource, /settings\.autoGenerateMode/u);
       assert.match(sharedScopeSource, /settings\.illustrationTemplateId/u);
+      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.sharedProductionPrompts/u);
+      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.defaultImagePrompt/u);
       assert.match(roleplayScopeSource, /settings\.runInterval/u);
       assert.match(roleplayScopeSource, /settings\.roleplayEpisodeTemplateId/u);
       assert.match(gameScopeSource, /settings\.illustrationPlannerTemplateId/u);
       assert.match(gameScopeSource, /settings\.viewerDisplayMode/u);
       assert.ok(
-        sharedProductionIndex < roleplayLibraryIndex && defaultImagePromptIndex < roleplayLibraryIndex,
+        sharedProductionIndex > sharedScopeIndex &&
+          sharedProductionIndex < roleplayScopeIndex &&
+          defaultImagePromptIndex > sharedScopeIndex &&
+          defaultImagePromptIndex < roleplayScopeIndex &&
+          sharedProductionIndex < roleplayLibraryIndex,
         "Shared production prompts should stay inside Shared before Roleplay prompts",
       );
       assert.match(editorSource, /includeCharacterAppearance:\s*settings\.includeCharacterAppearance/u);

@@ -4100,6 +4100,10 @@ const chatGallerySource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatGallery.tsx", import.meta.url),
   "utf8",
 );
+const recentChatsSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/RecentChats.tsx", import.meta.url),
+  "utf8",
+);
 const galleryHooksSource = readFileSync(
   new URL("../../packages/client/src/hooks/use-gallery.ts", import.meta.url),
   "utf8",
@@ -4140,6 +4144,24 @@ assert.match(
 assert.match(galleryHooksSource, /api\.delete\(`\/gallery\/scene-videos\/\$\{chatId\}\/\$\{videoId\}`\)/u);
 assert.match(chatGallerySource, /handleDeleteVideo\(video\)/u);
 assert.match(chatGallerySource, /ui\.chat\.chatgallery\.deleteSceneVideo/u);
+assert.match(chatGallerySource, /const \[selectingImages, setSelectingImages\] = useState\(false\)/u);
+assert.match(chatGallerySource, /const selectableImageIds = useMemo/u);
+assert.match(chatGallerySource, /handleBatchDownload/u);
+assert.match(chatGallerySource, /handleBatchDelete/u);
+assert.match(chatGallerySource, /ui\.gallery\.batch\.deletePartial/u);
+assert.match(chatGallerySource, /batchOperationPendingRef\.current/u);
+assert.equal(
+  chatGallerySource.match(/disabled=\{selectedImages\.length === 0 \|\| batchOperationPending\}/gu)?.length,
+  2,
+  "both chat Gallery batch actions remain disabled while an operation is pending",
+);
+assert.match(chatGallerySource, /ui\.gallery\.batch\.toggleImageNamed/u);
+assert.match(chatGallerySource, /asset\.id\.startsWith\("chat-gallery:"\)[\s\S]{0,120}: asset\.id/u);
+assert.match(recentChatsSource, /data-narrow-desktop-limit="4"/u);
+assert.match(recentChatsSource, /md:auto-rows-fr md:grid-rows-none/u);
+assert.match(recentChatsSource, /index === 3 && "hidden md:block"/u);
+assert.match(recentChatsSource, /index >= 4 && "hidden"/u);
+assert.match(globalStyles, /@container \(min-width: 36rem\)[\s\S]*data-component="RecentChats"/u);
 for (const editorSource of [characterEditorSource, personaEditorSource]) {
   assert.match(editorSource, /grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4/u);
   assert.match(editorSource, /onClick=\{\(\) => void handleDelete\(lightbox\)\}/u);

@@ -2881,6 +2881,19 @@ body {
   grid-row: span 2;
 }
 
+@media (min-width: 48rem) {
+  @container (min-width: 36rem) {
+    .mari-home-widget--recent [data-component="RecentChats"] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mari-home-widget--recent [data-recent-chat-index="4"],
+    .mari-home-widget--recent [data-recent-chat-index="5"] {
+      display: block;
+    }
+  }
+}
+
 .mari-home-empty-slot {
   pointer-events: none;
   min-width: 0;

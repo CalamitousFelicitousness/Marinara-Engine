@@ -4056,7 +4056,7 @@
   "ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected": "If your proxy or local server isn't detected, Windows Defender Firewall may be blocking the connection. Open",
   "ui.connections.connectioneditor.imageCaptioning": "Image Captioning",
   "ui.connections.connectioneditor.imagePromptingInstructions": "Image Prompting Instructions",
-  "ui.connections.connectioneditor.imagePromptingInstructionsHelp": "When set, Marinara makes one extra call to your default language model to apply these instructions, then sends the resulting prompt to this image backend. Useful for tags, quality tokens, negative-prompt conventions, or local/ComfyUI syntax.",
+  "ui.connections.connectioneditor.imagePromptingInstructionsHelp": "When set, Marinara makes UP TO (but not always) one extra call to your default language model to apply these instructions, then sends the resulting prompt to this image backend. Useful for tags, quality tokens, negative-prompt conventions, or local/ComfyUI syntax.",
   "ui.connections.connectioneditor.imagePromptingInstructionsPlaceholder": "Example: use comma-separated tags, add quality tokens, and keep negative terms separate.",
   "ui.connections.connectioneditor.imageQualityAuto": "Auto",
   "ui.connections.connectioneditor.imageQualityHigh": "High",

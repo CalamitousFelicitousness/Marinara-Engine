@@ -301,6 +301,69 @@ try {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+
+  // ── F2: Restoring a stale review whose row a newer write already changed is refused ──
+  // A→B (review R1, left pending), then B→C (kept). Restoring R1 would write B over C, so it must
+  // abort with outcome "state_changed", leave C in place, and keep R1 pending for a fresh review,
+  // instead of the old behavior, which unconditionally clobbered C back to B.
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const readName = async (service: MariDbService) =>
+        ((await service.executeAction({ action: "character.get", id: "sc-durable" })).output as {
+          data?: { name?: string };
+        })?.data?.name;
+
+      const created = await mari.executeAction({
+        action: "character.create",
+        characterId: "sc-durable",
+        data: { name: "Original" },
+        apply: true,
+      });
+      const createdReviewId = created.approval?.id;
+      assert.ok(createdReviewId, "the create registers a pending review");
+      await mari.keepAppliedReview(createdReviewId);
+
+      // R1: Original → Changed, left PENDING (the stale review we will try to restore).
+      const staleUpdate = await mari.executeAction({
+        action: "character.update",
+        characterId: "sc-durable",
+        data: { name: "Changed" },
+        apply: true,
+      });
+      const staleReviewId = staleUpdate.approval?.id;
+      assert.ok(staleReviewId, "the first update registers a pending review");
+
+      // A NEWER write diverges the row from what R1 applied: Changed → Newer, kept.
+      const newerUpdate = await mari.executeAction({
+        action: "character.update",
+        characterId: "sc-durable",
+        data: { name: "Newer" },
+        apply: true,
+      });
+      const newerReviewId = newerUpdate.approval?.id;
+      assert.ok(newerReviewId, "the newer update registers a pending review");
+      await mari.keepAppliedReview(newerReviewId);
+      assert.equal(await readName(mari), "Newer", "the newer write is the live state before the stale Restore");
+
+      const outcome = await mari.restoreAppliedReview(staleReviewId);
+      assert.ok(
+        outcome && "outcome" in outcome && outcome.outcome === "state_changed",
+        "Restoring a superseded review reports state_changed instead of clobbering",
+      );
+      assert.equal(await readName(mari), "Newer", "the newer write is left untouched (the stale Restore did not clobber it)");
+      assert.ok(
+        mari.getPendingApprovals().some((approval) => approval.id === staleReviewId),
+        "a refused (state_changed) Restore leaves its pending review in place for a fresh review",
+      );
+      assert.ok(existsSync(sidecarPath(dir, staleReviewId)), "a refused Restore keeps the pending sidecar on disk");
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
 } finally {
   if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
   else process.env.FILE_STORAGE_DIR = previousFileStorageDir;

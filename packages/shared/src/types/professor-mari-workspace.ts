@@ -252,6 +252,32 @@ export interface MariWorkspaceSkillsResponse {
   diagnostics: string[];
 }
 
+// #4851: Professor Mari's saved memories (the mari_instructions store). The list
+// surfaces full detail (content included) so the Memories management panel can edit
+// in place, mirroring the Skills panel.
+export interface MariInstructionSummary {
+  id: string;
+  name: string;
+  description: string;
+  persistent: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MariInstructionDetail extends MariInstructionSummary {
+  content: string;
+}
+
+export interface MariInstructionsResponse {
+  instructions: MariInstructionDetail[];
+}
+
+export interface MariInstructionMutationResponse {
+  ok: boolean;
+  instruction: MariInstructionDetail;
+}
+
 export interface MariDbValidationIssue {
   level: "error" | "notice" | "info";
   table?: string;

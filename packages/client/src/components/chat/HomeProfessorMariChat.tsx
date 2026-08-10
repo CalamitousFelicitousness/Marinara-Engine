@@ -60,6 +60,9 @@ import {
   type MariSuggestionChip,
   type MariWorkspaceSkillDetail,
   type MariWorkspaceSkillsResponse,
+  type MariInstructionDetail,
+  type MariInstructionsResponse,
+  type MariInstructionMutationResponse,
   type MariWorkspaceStatus,
   type MariWorkspacePendingApproval,
   type MariSensitiveFileApproval,
@@ -206,6 +209,14 @@ type WorkspaceSkillMutationResponse = {
 };
 
 type SkillDraftState = {
+  name: string;
+  description: string;
+  content: string;
+};
+
+// #4851: draft for the Memories panel. `enabled` and `persistent` are toggled directly
+// on the row/editor (not staged in the draft); name/description/content save together.
+type MemoryDraftState = {
   name: string;
   description: string;
   content: string;
@@ -1844,17 +1855,28 @@ function DatabaseWorkspaceApprovalCard({
   busy,
   disabled,
   onKeep,
+  onKeepEnable,
   onRestore,
 }: {
   approval: MariDbPendingApproval;
   busy: boolean;
   disabled: boolean;
   onKeep: (id: string) => void;
+  onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const deletedRows = approval.diffPreview.filter((change) => change.action === "delete");
   const insertedRows = approval.diffPreview.filter((change) => change.action === "insert");
+  // #4851: a saved memory lands disabled; offer "Keep & Enable" to keep AND switch it on.
+  // Gated to mari_instructions inserts (matches the server-side guard), and only for
+  // NON-persistent ones, because enabling a Persistent memory injects its full body every turn, a
+  // heavier commitment, so route that through the Memories panel where Persistent is visible.
+  const enableableMemoryInsert = insertedRows.some((change) => {
+    if (change.table !== "mari_instructions") return false;
+    const after = change.after as { enabled?: unknown; persistent?: unknown } | null;
+    return Number(after?.enabled) !== 1 && Number(after?.persistent) !== 1;
+  });
 
   return (
     <TranscriptRow marker={<ShieldAlert size="0.85rem" className="mt-1 text-[var(--primary)]" />}>
@@ -1951,6 +1973,19 @@ function DatabaseWorkspaceApprovalCard({
               {localizeUi("ui.chat.databaseworkspaceapprovalcard.restore")}
             </span>
           </button>
+          {enableableMemoryInsert && onKeepEnable && (
+            <button
+              type="button"
+              onClick={() => onKeepEnable(approval.id)}
+              disabled={busy || disabled}
+              className="rounded-md border border-[var(--primary)]/50 bg-[var(--primary)]/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/20 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <span className="inline-flex items-center gap-1">
+                <Check size="0.7rem" />
+                {localizeUi("ui.chat.databaseworkspaceapprovalcard.keepAndEnable")}
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onKeep(approval.id)}
@@ -2138,12 +2173,14 @@ function WorkspaceApprovalCard({
   busy,
   disabled,
   onKeep,
+  onKeepEnable,
   onRestore,
 }: {
   approval: MariWorkspacePendingApproval;
   busy: boolean;
   disabled: boolean;
   onKeep: (id: string) => void;
+  onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
 }) {
   if (approval.kind === "dependency_install") {
@@ -2174,6 +2211,7 @@ function WorkspaceApprovalCard({
       busy={busy}
       disabled={disabled}
       onKeep={onKeep}
+      onKeepEnable={onKeepEnable}
       onRestore={onRestore}
     />
   );
@@ -2413,6 +2451,255 @@ function ProfessorMariSkillsMenu({
   );
 }
 
+// #4851: the Memories management panel, next to Skills. Mirrors ProfessorMariSkillsMenu;
+// adds a Persistent toggle (with a "keep it small" tooltip) and drops file diagnostics
+// (memories are DB-backed). Enable + Persistent are direct toggles; name/description/
+// content save together.
+function ProfessorMariMemoriesMenu({
+  memories,
+  selectedMemory,
+  draft,
+  loading,
+  saving,
+  fileInputRef,
+  onClose,
+  onNew,
+  onUploadClick,
+  onFileChange,
+  onSelect,
+  onDraftChange,
+  onSave,
+  onDelete,
+  onToggleEnabled,
+  onTogglePersistent,
+  className,
+}: {
+  memories: MariInstructionDetail[];
+  selectedMemory: MariInstructionDetail | null;
+  draft: MemoryDraftState;
+  loading: boolean;
+  saving: boolean;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  onClose: () => void;
+  onNew: () => void;
+  onUploadClick: () => void;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onSelect: (id: string) => void;
+  onDraftChange: (draft: MemoryDraftState) => void;
+  onSave: () => void;
+  onDelete: (id: string) => void;
+  onToggleEnabled: (memory: MariInstructionDetail) => void;
+  onTogglePersistent: (memory: MariInstructionDetail) => void;
+  className?: string;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const enabledCount = memories.filter((memory) => memory.enabled).length;
+  const hasMemories = memories.length > 0;
+
+  return (
+    <section
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-[var(--border)]/70 bg-[var(--background)]/70",
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)]/60 px-3 py-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <Brain size="0.9rem" className="shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]" />
+            <span className="truncate text-xs font-semibold text-[var(--foreground)]">
+              {localizeUi("ui.chat.professormarimemoriesmenu.professorMariMemories")}
+            </span>
+          </div>
+          {hasMemories && (
+            <div className="mt-0.5 truncate text-[0.6875rem] text-[var(--muted-foreground)]">
+              {enabledCount} {localizeUi("ui.chat.professormariskillsmenu.active")} {memories.length}{" "}
+              {localizeUi("ui.chat.professormariskillsmenu.total")}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          aria-label={localizeUi("ui.chat.professormarimemoriesmenu.close")}
+          title={localizeUi("ui.chat.professormarimemoriesmenu.close")}
+        >
+          <X size="0.95rem" />
+        </button>
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--border)]/50 px-2.5 py-2">
+        <button
+          type="button"
+          onClick={onNew}
+          disabled={saving}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 text-[0.6875rem] font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus size="0.78rem" />
+          {localizeUi("ui.lorebooks.lorebookassignmentsection.new")}
+        </button>
+        <button
+          type="button"
+          onClick={onUploadClick}
+          disabled={saving}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 text-[0.6875rem] font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <FileUp size="0.78rem" />
+          {localizeUi("ui.characters.characterclipcard.upload")}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={onFileChange} />
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-1 p-2">
+          {loading ? (
+            <div className="space-y-1.5">
+              <div className="h-10 animate-pulse rounded-lg bg-[var(--muted)]/30" />
+              <div className="h-10 animate-pulse rounded-lg bg-[var(--muted)]/20" />
+            </div>
+          ) : hasMemories ? (
+            memories.map((memory) => {
+              const active = selectedMemory?.id === memory.id;
+              return (
+                <div
+                  key={memory.id}
+                  className={cn(
+                    "group flex w-full min-w-0 items-stretch gap-1 rounded-lg border transition-colors",
+                    active
+                      ? "border-[var(--primary)]/45 bg-[var(--primary)]/10"
+                      : "border-[var(--border)]/70 bg-[var(--card)]/70 hover:bg-[var(--accent)]/70",
+                  )}
+                >
+                  <button type="button" onClick={() => onSelect(memory.id)} className="flex min-w-0 flex-1 items-center px-2 py-2 text-left">
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[0.75rem] font-semibold text-[var(--foreground)]">{memory.name}</span>
+                        {memory.persistent && (
+                          <span className="shrink-0 rounded bg-[var(--primary)]/15 px-1 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-[var(--primary)]">
+                            {localizeUi("ui.chat.professormarimemoriesmenu.persistent")}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[0.65rem] text-[var(--muted-foreground)]">{memory.description}</span>
+                    </span>
+                  </button>
+                  <span className="flex shrink-0 items-center pr-1">
+                    <SettingsSwitch
+                      ariaLabel={
+                        memory.enabled
+                          ? "ui.chat.professormarimemoriesmenu.disableMemory"
+                          : "ui.chat.professormarimemoriesmenu.enableMemory"
+                      }
+                      title={
+                        memory.enabled ? localizeUi("ui.noodle.noodlehome.enabled") : localizeUi("ui.agents.agenteditor.disabled")
+                      }
+                      checked={memory.enabled}
+                      onChange={() => onToggleEnabled(memory)}
+                      disabled={saving}
+                      className="p-0 hover:bg-transparent"
+                    />
+                  </span>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.professormarimemoriesmenu.noMemoriesYet")}
+            </div>
+          )}
+        </div>
+
+        {hasMemories && (
+          <div className="border-t border-[var(--border)]/50 p-2.5">
+            {selectedMemory ? (
+              <div className="space-y-2">
+                {!selectedMemory.enabled && (
+                  <div className="rounded-md border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5 text-[0.65rem] text-amber-200">
+                    {localizeUi("ui.chat.professormarimemoriesmenu.disabledHint")}
+                  </div>
+                )}
+                <label className="block text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                  {localizeUi("ui.characters.metadatatab.name")}
+                  <input
+                    value={draft.name}
+                    onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
+                    disabled={saving}
+                    className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55 disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </label>
+                <label className="block text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                  {localizeUi("chat.settings.inlineEditor.fields.description")}
+                  <input
+                    value={draft.description}
+                    onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
+                    disabled={saving}
+                    className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55 disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </label>
+                <label className="block text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
+                  {localizeUi("ui.chat.professormarimemoriesmenu.memory")}
+                  <textarea
+                    value={draft.content}
+                    onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+                    disabled={saving}
+                    rows={9}
+                    className="mt-1 min-h-40 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-2 font-mono text-[0.6875rem] leading-relaxed text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55 disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                </label>
+                <div
+                  className="flex items-center justify-between gap-2 rounded-md border border-[var(--border)]/60 bg-[var(--card)]/60 px-2.5 py-1.5"
+                  title={localizeUi("ui.chat.professormarimemoriesmenu.persistentHint")}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                      {localizeUi("ui.chat.professormarimemoriesmenu.persistent")}
+                    </span>
+                    <span className="mt-0.5 block text-[0.6rem] leading-snug text-[var(--muted-foreground)]">
+                      {localizeUi("ui.chat.professormarimemoriesmenu.persistentHint")}
+                    </span>
+                  </span>
+                  <SettingsSwitch
+                    ariaLabel="ui.chat.professormarimemoriesmenu.persistent"
+                    checked={selectedMemory.persistent}
+                    onChange={() => onTogglePersistent(selectedMemory)}
+                    disabled={saving}
+                    className="shrink-0 p-0 hover:bg-transparent"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onDelete(selectedMemory.id)}
+                    disabled={saving}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[0.6875rem] font-semibold text-[var(--destructive)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Trash2 size="0.75rem" />
+                    {localizeUi("lorebook.editor.batch.delete")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={saving}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--primary)] px-2.5 text-[0.6875rem] font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {saving ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
+                    {localizeUi("ui.noodle.noodlehome.save")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.chat.professormarimemoriesmenu.noMemorySelected")}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 type HomeProfessorMariChatProps = {
   pageActive?: boolean;
   attachedFooter?: boolean;
@@ -2470,6 +2757,12 @@ export function HomeProfessorMariChat({
   const [skillsSaving, setSkillsSaving] = useState(false);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState<SkillDraftState>({ name: "", description: "", content: "" });
+  const [memoriesMenuOpen, setMemoriesMenuOpen] = useState(false);
+  const [memories, setMemories] = useState<MariInstructionDetail[]>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [memoriesSaving, setMemoriesSaving] = useState(false);
+  const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState<MemoryDraftState>({ name: "", description: "", content: "" });
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadedMessagesChatId, setLoadedMessagesChatId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -2497,6 +2790,9 @@ export function HomeProfessorMariChat({
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const connectionMenuRef = useRef<HTMLDivElement>(null);
   const skillFileInputRef = useRef<HTMLInputElement>(null);
+  const memoryFileInputRef = useRef<HTMLInputElement>(null);
+  const lastSyncedMemoryIdRef = useRef<string | null>(null);
+  const memoriesLoadSeqRef = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const embeddedTextareaRef = useRef<HTMLTextAreaElement>(null);
   const floatingTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2647,6 +2943,11 @@ export function HomeProfessorMariChat({
     [selectedSkillId, skills],
   );
   const activeSkillCount = skills.filter((skill) => skill.enabled).length;
+  const selectedMemory = useMemo(
+    () => memories.find((memory) => memory.id === selectedMemoryId) ?? null,
+    [selectedMemoryId, memories],
+  );
+  const activeMemoryCount = memories.filter((memory) => memory.enabled).length;
   const desktopChatWindowOpen = controlledChatWindowOpen ?? internalChatWindowOpen;
   const chatWindowOpen = desktopChatWindowOpen || mobileFocusMode;
   const setChatWindowOpen = useCallback(
@@ -2744,6 +3045,24 @@ export function HomeProfessorMariChat({
       });
     } finally {
       setSkillsLoading(false);
+    }
+  }, []);
+
+  const loadMemories = useCallback(async () => {
+    const seq = ++memoriesLoadSeqRef.current;
+    setMemoriesLoading(true);
+    try {
+      const response = await api.get<MariInstructionsResponse>("/professor-mari/workspace/instructions");
+      // Ignore a stale response that resolved after a newer load (mount load vs post-write refresh),
+      // so an older list can't overwrite the newer one or reset the selection.
+      if (seq !== memoriesLoadSeqRef.current) return;
+      setMemories(response.instructions);
+      setSelectedMemoryId((current) => {
+        if (current && response.instructions.some((memory) => memory.id === current)) return current;
+        return response.instructions[0]?.id ?? null;
+      });
+    } finally {
+      if (seq === memoriesLoadSeqRef.current) setMemoriesLoading(false);
     }
   }, []);
 
@@ -2904,6 +3223,34 @@ export function HomeProfessorMariChat({
     });
   }, [selectedSkill]);
 
+  useEffect(() => {
+    void loadMemories().catch((error) => {
+      console.error("[Professor Mari] Failed to load memories", error);
+      toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariMemoriesAreUnavailable"), {
+        description: describeProfessorMariError(error),
+        duration: 12_000,
+      });
+    });
+  }, [loadMemories, localizeUi]);
+
+  useEffect(() => {
+    const id = selectedMemory?.id ?? null;
+    // Only reload the draft when the SELECTED memory changes, not when the same memory's row
+    // ref changes because a flag toggle (enable/Persistent) refetched it, which would silently
+    // clobber unsaved name/description/content edits, since the Persistent toggle sits in the pane.
+    if (id === lastSyncedMemoryIdRef.current) return;
+    lastSyncedMemoryIdRef.current = id;
+    if (!selectedMemory) {
+      setMemoryDraft({ name: "", description: "", content: "" });
+      return;
+    }
+    setMemoryDraft({
+      name: selectedMemory.name,
+      description: selectedMemory.description,
+      content: selectedMemory.content,
+    });
+  }, [selectedMemory]);
+
   const pendingChangeReviews = useMemo(
     () => workspaceStatus?.pendingApprovals ?? [],
     [workspaceStatus?.pendingApprovals],
@@ -3022,6 +3369,7 @@ export function HomeProfessorMariChat({
     }
     setConnectionMenuOpen(false);
     setSkillsMenuOpen(false);
+    setMemoriesMenuOpen(false);
     setChatHistoryOpen(false);
     setMobileFocusMode(false);
     setChatWindowOpen(false);
@@ -3034,6 +3382,7 @@ export function HomeProfessorMariChat({
       rememberProfessorMariFloatingEnabled(true);
     }
     setSkillsMenuOpen(false);
+    setMemoriesMenuOpen(false);
     setChatHistoryOpen(false);
     setConnectionMenuOpen(false);
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -3049,10 +3398,22 @@ export function HomeProfessorMariChat({
     if (next) {
       setConnectionMenuOpen(false);
       setChatHistoryOpen(false);
+      setMemoriesMenuOpen(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     }
     setSkillsMenuOpen(next);
   }, [skillsMenuOpen]);
+
+  const toggleMemoriesMenu = useCallback(() => {
+    const next = !memoriesMenuOpen;
+    if (next) {
+      setConnectionMenuOpen(false);
+      setChatHistoryOpen(false);
+      setSkillsMenuOpen(false);
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    }
+    setMemoriesMenuOpen(next);
+  }, [memoriesMenuOpen]);
 
   const toggleChatHistory = useCallback(() => {
     if (!chatHistoryOpen && isBusy) {
@@ -3063,6 +3424,7 @@ export function HomeProfessorMariChat({
     if (next) {
       setConnectionMenuOpen(false);
       setSkillsMenuOpen(false);
+      setMemoriesMenuOpen(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     }
     setChatHistoryOpen(next);
@@ -3224,12 +3586,18 @@ export function HomeProfessorMariChat({
   }, [clearMariPlan, handleRestart, isBusy, localizeUi]);
 
   const keepWorkspaceChange = useCallback(
-    async (id: string) => {
+    async (id: string, opts?: { enable?: boolean }) => {
       if (workspaceReviewActionId) return;
       setWorkspaceReviewActionId(id);
       try {
-        const result = await api.post<WorkspaceApprovalResponse>(`/professor-mari/workspace/approvals/${id}/approve`);
+        // #4851 "Keep & Enable": pass { enable: true } so a kept memory insert is switched on.
+        const result = await api.post<WorkspaceApprovalResponse>(
+          `/professor-mari/workspace/approvals/${id}/approve`,
+          opts?.enable ? { enable: true } : undefined,
+        );
         await refreshWorkspaceStatus().catch(() => undefined);
+        // Refresh the Memories panel after any keep so a kept memory (enabled or not) shows up.
+        await loadMemories().catch(() => undefined);
         if (result.outcome === "applied") {
           await invalidateWorkspaceData();
           toast.success(
@@ -3260,7 +3628,7 @@ export function HomeProfessorMariChat({
         setWorkspaceReviewActionId((current) => (current === id ? null : current));
       }
     },
-    [invalidateWorkspaceData, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
+    [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
   );
 
   const restoreWorkspaceChange = useCallback(
@@ -3270,6 +3638,9 @@ export function HomeProfessorMariChat({
       try {
         const result = await api.post<WorkspaceApprovalResponse>(`/professor-mari/workspace/approvals/${id}/reject`);
         await refreshWorkspaceStatus().catch(() => undefined);
+        // Refresh the Memories panel after a restore: reverting a Mari memory insert deletes the
+        // row, so the panel would otherwise keep rendering a stale client-side entry.
+        await loadMemories().catch(() => undefined);
         if (result.outcome === "discarded") {
           toast.success(localizeUi("ui.chat.homeprofessormarichat.discardedProfessorMariSProposedChange"));
         } else if (result.history?.status === "restored") {
@@ -3293,7 +3664,7 @@ export function HomeProfessorMariChat({
         setWorkspaceReviewActionId((current) => (current === id ? null : current));
       }
     },
-    [invalidateWorkspaceData, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
+    [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
   );
 
   const stopWorkspace = useCallback(async () => {
@@ -3425,6 +3796,136 @@ export function HomeProfessorMariChat({
     [loadSkills, refreshWorkspaceStatus, skills, localizeUi],
   );
 
+  // #4851: Memories panel handlers. Direct writes to /instructions (reset-free); new
+  // memories default disabled (the user enables them from the row switch).
+  const createMemory = useCallback(
+    async (input: { content: string; name?: string; description?: string }) => {
+      setMemoriesSaving(true);
+      try {
+        const result = await api.post<MariInstructionMutationResponse>("/professor-mari/workspace/instructions", {
+          name: input.name?.trim() || "New memory",
+          description: input.description ?? "",
+          content: input.content,
+        });
+        await loadMemories();
+        setSelectedMemoryId(result.instruction.id);
+        setMemoriesMenuOpen(true);
+        toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariMemoryAdded"));
+      } finally {
+        setMemoriesSaving(false);
+      }
+    },
+    [loadMemories, localizeUi],
+  );
+
+  const handleNewMemory = useCallback(() => {
+    void createMemory({ name: "New memory", content: "Describe a preference or instruction for Professor Mari." }).catch((error) => {
+      console.error("[Professor Mari] Failed to create memory", error);
+      toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotAddThatMemory"));
+    });
+  }, [createMemory, localizeUi]);
+
+  const handleMemoryUploadClick = useCallback(() => {
+    memoryFileInputRef.current?.click();
+  }, []);
+
+  const handleMemoryFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0] ?? null;
+      event.currentTarget.value = "";
+      if (!file) return;
+      // A memory's content is capped server-side at 20k CHARS. UTF-8 chars are up to 4 bytes, so use a
+      // generous byte ceiling just to avoid reading a huge file, then validate the exact character
+      // length after reading (so a valid multibyte memory, e.g. emoji, is not wrongly rejected).
+      const MEMORY_CONTENT_CHAR_CAP = 20_000;
+      if (file.size > 4 * MEMORY_CONTENT_CHAR_CAP) {
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.thatMemoryFileIsTooLarge"));
+        return;
+      }
+      const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+      void file
+        .text()
+        .then((content) => {
+          if (content.trim().length > MEMORY_CONTENT_CHAR_CAP) {
+            toast.error(localizeUi("ui.chat.homeprofessormarichat.thatMemoryFileIsTooLarge"));
+            return undefined;
+          }
+          return createMemory({ content, name: baseName || undefined });
+        })
+        .catch((error) => {
+          console.error("[Professor Mari] Failed to upload memory", error);
+          toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotUploadThatMemory"));
+        });
+    },
+    [createMemory, localizeUi],
+  );
+
+  const handleSaveMemory = useCallback(async () => {
+    if (!selectedMemory) return;
+    setMemoriesSaving(true);
+    try {
+      const result = await api.put<MariInstructionMutationResponse>(
+        `/professor-mari/workspace/instructions/${selectedMemory.id}`,
+        { name: memoryDraft.name, description: memoryDraft.description, content: memoryDraft.content },
+      );
+      await loadMemories();
+      setSelectedMemoryId(result.instruction.id);
+      toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariMemorySaved"));
+    } catch (error) {
+      console.error("[Professor Mari] Failed to save memory", error);
+      toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotSaveThatMemory"));
+    } finally {
+      setMemoriesSaving(false);
+    }
+  }, [loadMemories, selectedMemory, memoryDraft, localizeUi]);
+
+  const patchMemoryFlag = useCallback(
+    async (memory: MariInstructionDetail, patch: { enabled?: boolean; persistent?: boolean }) => {
+      setMemoriesSaving(true);
+      try {
+        await api.put<MariInstructionMutationResponse>(`/professor-mari/workspace/instructions/${memory.id}`, patch);
+        await loadMemories();
+      } catch (error) {
+        console.error("[Professor Mari] Failed to update memory", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotUpdateThatMemory"));
+      } finally {
+        setMemoriesSaving(false);
+      }
+    },
+    [loadMemories, localizeUi],
+  );
+
+  const handleToggleMemoryEnabled = useCallback(
+    (memory: MariInstructionDetail) => void patchMemoryFlag(memory, { enabled: !memory.enabled }),
+    [patchMemoryFlag],
+  );
+
+  const handleToggleMemoryPersistent = useCallback(
+    (memory: MariInstructionDetail) => void patchMemoryFlag(memory, { persistent: !memory.persistent }),
+    [patchMemoryFlag],
+  );
+
+  const handleDeleteMemory = useCallback(
+    async (id: string) => {
+      const memory = memories.find((entry) => entry.id === id);
+      if (!memory) return;
+      if (!window.confirm(localizeUi("ui.chat.homeprofessormarichat.deleteValue1", { value1: memory.name }))) return;
+      setMemoriesSaving(true);
+      try {
+        await api.delete(`/professor-mari/workspace/instructions/${id}`);
+        setSelectedMemoryId((current) => (current === id ? null : current));
+        await loadMemories();
+        toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariMemoryDeleted"));
+      } catch (error) {
+        console.error("[Professor Mari] Failed to delete memory", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotDeleteThatMemory"));
+      } finally {
+        setMemoriesSaving(false);
+      }
+    },
+    [loadMemories, memories, localizeUi],
+  );
+
   const handleSelectProfessorChat = useCallback(
     async (id: string) => {
       if (isBusy) {
@@ -3436,6 +3937,7 @@ export function HomeProfessorMariChat({
         setActiveChatId(chat.id);
         qc.setQueryData(chatKeys.detail(chat.id), chat);
         setSkillsMenuOpen(false);
+        setMemoriesMenuOpen(false);
         setChatHistoryOpen(false);
         setWorkspaceTimeline([]);
         useChatStore.getState().clearStreamBuffer(chat.id);
@@ -4078,6 +4580,7 @@ export function HomeProfessorMariChat({
                 busy={workspaceReviewActionId === approval.id}
                 disabled={workspaceReviewActionId !== null}
                 onKeep={(id) => void keepWorkspaceChange(id)}
+                onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                 onRestore={(id) => void restoreWorkspaceChange(id)}
               />
             ))}
@@ -4617,6 +5120,35 @@ export function HomeProfessorMariChat({
                         )}
                       </section>
                     </motion.div>
+                  ) : memoriesMenuOpen ? (
+                    <motion.div
+                      key="professor-mari-memories"
+                      initial={{ opacity: 0, y: -14, rotateX: -10, transformOrigin: "top center" }}
+                      animate={{ opacity: 1, y: 0, rotateX: 0, transformOrigin: "top center" }}
+                      exit={{ opacity: 0, y: 12, rotateX: 8, transformOrigin: "bottom center" }}
+                      transition={PROFESSOR_MARI_PANE_TRANSITION}
+                      className="h-full min-w-0"
+                    >
+                      <ProfessorMariMemoriesMenu
+                        memories={memories}
+                        selectedMemory={selectedMemory}
+                        draft={memoryDraft}
+                        loading={memoriesLoading}
+                        saving={memoriesSaving}
+                        fileInputRef={memoryFileInputRef}
+                        onClose={() => setMemoriesMenuOpen(false)}
+                        onNew={handleNewMemory}
+                        onUploadClick={handleMemoryUploadClick}
+                        onFileChange={handleMemoryFileChange}
+                        onSelect={setSelectedMemoryId}
+                        onDraftChange={setMemoryDraft}
+                        onSave={() => void handleSaveMemory()}
+                        onDelete={(id) => void handleDeleteMemory(id)}
+                        onToggleEnabled={handleToggleMemoryEnabled}
+                        onTogglePersistent={handleToggleMemoryPersistent}
+                        className="h-full rounded-none border-0 bg-[var(--background)] sm:rounded-xl sm:border sm:bg-[var(--background)] sm:shadow-2xl"
+                      />
+                    </motion.div>
                   ) : skillsMenuOpen ? (
                     <motion.div
                       key="professor-mari-skills"
@@ -4714,6 +5246,26 @@ export function HomeProfessorMariChat({
                                 </span>
                               )}
                             </button>
+                            <button
+                              type="button"
+                              onClick={toggleMemoriesMenu}
+                              className={cn(
+                                "inline-flex h-8 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
+                                "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
+                              )}
+                              title={localizeUi("ui.chat.homeprofessormarichat.openMemories")}
+                              aria-expanded={memoriesMenuOpen}
+                            >
+                              <Brain size="0.75rem" />
+                              <span className="max-[360px]:hidden">
+                                {localizeUi("ui.chat.homeprofessormarichat.memories")}
+                              </span>
+                              {memories.length > 0 && (
+                                <span className="mari-chrome-muted-badge px-1.5 py-0.5 text-[0.56rem]">
+                                  {activeMemoryCount}
+                                </span>
+                              )}
+                            </button>
                             {(workspaceActive || hasActiveGeneration) && (
                               <button
                                 type="button"
@@ -4783,6 +5335,7 @@ export function HomeProfessorMariChat({
                                   busy={workspaceReviewActionId === approval.id}
                                   disabled={workspaceReviewActionId !== null}
                                   onKeep={(id) => void keepWorkspaceChange(id)}
+                                  onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                                   onRestore={(id) => void restoreWorkspaceChange(id)}
                                 />
                               ))}

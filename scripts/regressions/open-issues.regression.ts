@@ -300,6 +300,7 @@ import {
   replaceHomeWidgetCatalog,
 } from "../../packages/server/src/services/home-widget-catalog.service.js";
 import {
+  isAppDataActionName,
   isMutatingWorkspaceCommand,
   PROFESSOR_MARI_APP_DATA_ACTIONS,
 } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
@@ -508,6 +509,33 @@ assert.equal(
   }),
   true,
 );
+
+// F6: the direct-JSON compatibility recovery parser (isAppDataActionName) must recognize the
+// instruction.* family, or a small/custom model's bare {"action":"instruction.get",...} is dropped
+// instead of normalized to app_data. Pin the regex directly (isMutatingWorkspaceCommand bypasses
+// the recovery path, so it can't catch a regression at that anchor).
+assert.equal(isAppDataActionName("instruction.get"), true, "the recovery parser recognizes instruction.get");
+assert.equal(isAppDataActionName("instruction.list"), true, "the recovery parser recognizes instruction.list");
+assert.equal(isAppDataActionName("instructions.remember"), true, "the recovery parser tolerates the lenient plural instructions.*");
+assert.equal(isAppDataActionName("post_history_instructions"), false, "a field name that merely contains 'instructions' is not an action (anchored match)");
+// And read/write classification (suffix-based) is correct for the new family.
+assert.equal(
+  isMutatingWorkspaceCommand({ id: "i-get", name: "app_data", arguments: { action: "instruction.get" } }),
+  false,
+  "instruction.get classifies as a read",
+);
+assert.equal(
+  isMutatingWorkspaceCommand({ id: "i-list", name: "app_data", arguments: { action: "instruction.list" } }),
+  false,
+  "instruction.list classifies as a read",
+);
+for (const action of ["instruction.remember", "instruction.update", "instruction.forget"]) {
+  assert.equal(
+    isMutatingWorkspaceCommand({ id: `i-${action}`, name: "app_data", arguments: { action, apply: true } }),
+    true,
+    `${action} classifies as a mutation`,
+  );
+}
 
 assert.deepEqual(
   normalizeHydratedMessage({

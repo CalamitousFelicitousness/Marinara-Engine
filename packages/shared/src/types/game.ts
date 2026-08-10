@@ -715,6 +715,8 @@ export type GameStoryboardKeyframeStatus =
   | "complete"
   | "failed";
 
+export type StoryboardAnimationSuitability = "suitable" | "simplify" | "subtle" | "regenerate";
+
 export interface GameStoryboardMediaRef {
   id: string;
   url: string;
@@ -737,6 +739,7 @@ export interface GameTurnStoryboardKeyframe {
   mangaPanelPrompt: string;
   imagePrompt: string;
   videoPrompt: string;
+  animationSuitability: StoryboardAnimationSuitability | "";
   characters: string[];
   continuityNotes: string;
   cameraMotion: string;

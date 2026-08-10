@@ -8433,6 +8433,15 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
             videoTemplates: [
               { id: "video-default", name: "Video default", promptTemplate: "Format the video prompt." },
             ],
+            animationRefinementTemplates: [
+              {
+                id: "shot-default",
+                name: "Image-aware shot default",
+                promptTemplate: "Inspect ${motionIntent} against the attached image.",
+              },
+            ],
+            animationRefinementTemplateId: "shot-default",
+            imageAwareShotPlanningEnabled: true,
             roleplayEpisodeTemplates: [
               { id: "episode-default", name: "Episode default", promptTemplate: "Plan the episode." },
             ],
@@ -8465,11 +8474,33 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
     const shared = settingsPanel.locator('[data-storyboard-settings-scope="shared"]');
     const roleplay = settingsPanel.locator('[data-storyboard-settings-scope="roleplay"]');
     const game = settingsPanel.locator('[data-storyboard-settings-scope="game"]');
+    const promptGuide = settingsPanel.locator("[data-storyboard-prompt-guide]");
 
     await expect(settingsPanel).toBeVisible();
+    await expect(promptGuide.getByText("How Storyboard prompts run", { exact: true })).toBeVisible();
+    await expect(promptGuide.getByRole("listitem")).toContainText([
+      "Plan the storyboard",
+      "Generate the first frame",
+      "Ground motion in the image",
+      "Generate the video",
+    ]);
     await expect(shared).toBeVisible();
     await expect(roleplay).toBeVisible();
     await expect(game).toBeVisible();
+    await expect
+      .poll(() =>
+        shared
+          .locator("[data-storyboard-prompt-stage]")
+          .evaluateAll((stages) => stages.map((stage) => stage.getAttribute("data-storyboard-prompt-stage"))),
+      )
+      .toEqual(["2", "3", "4"]);
+    await expect(shared.getByText("Ground motion in the image", { exact: true })).toBeVisible();
+    await expect(shared.getByRole("combobox", { name: "Default shot planner prompt" })).toHaveValue("shot-default");
+    const imageAwareToggle = shared.getByRole("checkbox", { name: "Image-aware shot planning" });
+    await expect(imageAwareToggle).toBeChecked();
+    await imageAwareToggle.uncheck();
+    await expect(imageAwareToggle).not.toBeChecked();
+    await imageAwareToggle.check();
     await expect
       .poll(() =>
         settingsPanel.evaluate((panel) =>

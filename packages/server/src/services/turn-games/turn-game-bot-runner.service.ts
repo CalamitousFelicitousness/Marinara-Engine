@@ -14,13 +14,12 @@
 // Invoked from the /api/generate handler ONLY when input.turnGameBots is set,
 // so it can never affect a normal conversation/roleplay generation.
 import type { FastifyReply } from "fastify";
-import { BUILT_IN_THINKING_TAG_PAIRS } from "@marinara-engine/shared";
+import { BUILT_IN_THINKING_TAG_PAIRS, extractLeadingThinkingBlocks } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logDebugOverride, logger } from "../../lib/logger.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import type { BaseLLMProvider, ChatMessage, LLMToolDefinition } from "../llm/base-provider.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
-import { extractLeadingThinkingBlocks } from "../llm/inline-thinking.js";
 import { trySendSseEvent } from "../../routes/generate/sse.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createChatsStorage } from "../storage/chats.storage.js";

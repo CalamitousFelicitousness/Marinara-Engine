@@ -160,8 +160,15 @@ function normalizeEchoChamberSides(value: unknown): Record<string, EchoChamberSi
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const normalized: Record<string, EchoChamberSide> = {};
   for (const [chatId, side] of Object.entries(value)) {
-    if (!chatId.trim() || !["top-left", "top-right", "bottom-left", "bottom-right"].includes(String(side))) continue;
-    normalized[chatId] = side as EchoChamberSide;
+    const normalizedChatId = chatId.trim();
+    if (
+      !normalizedChatId ||
+      typeof side !== "string" ||
+      !["top-left", "top-right", "bottom-left", "bottom-right"].includes(side)
+    ) {
+      continue;
+    }
+    normalized[normalizedChatId] = side as EchoChamberSide;
   }
   return normalized;
 }

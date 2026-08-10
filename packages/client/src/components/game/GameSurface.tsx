@@ -802,6 +802,7 @@ function combatSkillsFromSheet(value: unknown): Combatant["skills"] {
   for (const [index, entry] of value.entries()) {
     const raw = String(entry).trim();
     if (!raw) continue;
+    const declaredType = raw.match(/^\s*\[?(attack|heal(?:ing)?|buff|debuff)\]?/i)?.[1]?.toLowerCase();
     const withoutTypePrefix = raw
       .replace(/^\s*\[(?:attack|heal|healing|buff|debuff)]\s*/i, "")
       .replace(/^\s*(?:attack|heal|healing|buff|debuff)\s*[:|-]\s*/i, "");
@@ -811,9 +812,15 @@ function combatSkillsFromSheet(value: unknown): Combatant["skills"] {
       ? withoutTypePrefix.slice((separator.index ?? 0) + separator[0].length).trim()
       : withoutTypePrefix;
     const id = slugifyCombatantId(`${name}-${index}`);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const type = inferCombatSkillType(raw);
+    const dedupeKey = slugifyCombatantId(name);
+    if (!id || !dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const type =
+      declaredType === "heal" || declaredType === "healing"
+        ? "heal"
+        : declaredType === "buff" || declaredType === "debuff" || declaredType === "attack"
+          ? declaredType
+          : inferCombatSkillType(withoutTypePrefix);
     skills.push({
       id,
       name,
@@ -2246,9 +2253,7 @@ function GameSurfaceComponent({
    *  package to actually be there. */
   const experienceOwnsGame =
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
-  const { data: agentConfigs } = useAgentConfigs(
-    storyboardAgentActive || chatMeta.enableSpriteGeneration === true,
-  );
+  const { data: agentConfigs } = useAgentConfigs(storyboardAgentActive || chatMeta.enableSpriteGeneration === true);
   const storyboardAgentConfig = useMemo(
     () => agentConfigs?.find((config) => config.type === STORYBOARD_AGENT_ID) ?? null,
     [agentConfigs],

@@ -1284,6 +1284,14 @@ export function dynamicGameImagePromptRequestOptions(kind: GameDynamicImagePromp
   };
 }
 
+export function shouldUseDynamicGameImagePromptGenerator(args: {
+  enabled: boolean;
+  hasCustomizedIllustratorPrompt: boolean;
+  hasEnabledPromptDirectorOverride: boolean;
+}): boolean {
+  return args.enabled || args.hasCustomizedIllustratorPrompt || args.hasEnabledPromptDirectorOverride;
+}
+
 async function createDynamicGameImagePromptGenerator(args: {
   connections: ReturnType<typeof createConnectionsStorage>;
   agents: ReturnType<typeof createAgentsStorage>;
@@ -1296,9 +1304,19 @@ async function createDynamicGameImagePromptGenerator(args: {
   debugLog?: (message: string, ...args: any[]) => void;
   signal?: AbortSignal;
 }): Promise<GameDynamicImagePromptGenerator | undefined> {
-  if (args.meta.gameImageDynamicPromptEnabled !== true) return undefined;
-
   try {
+    const illustratorPrompt = await resolveGameIllustratorPromptTemplate(args.meta, args.agents);
+    const promptDirectorOverride = await args.promptOverridesStorage?.get(GAME_IMAGE_PROMPT_DIRECTOR.key);
+    if (
+      !shouldUseDynamicGameImagePromptGenerator({
+        enabled: args.meta.gameImageDynamicPromptEnabled === true,
+        hasCustomizedIllustratorPrompt: illustratorPrompt.customized,
+        hasEnabledPromptDirectorOverride: promptDirectorOverride?.enabled === true,
+      })
+    ) {
+      return undefined;
+    }
+
     const { conn, baseUrl, defaultGenerationParameters } = await resolveDynamicGameImagePromptConnection({
       connections: args.connections,
       meta: args.meta,
@@ -1307,12 +1325,11 @@ async function createDynamicGameImagePromptGenerator(args: {
     });
     const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
-    const illustratorPromptTemplate = await resolveGameIllustratorPromptTemplate(args.meta, args.agents);
 
     return async (request) => {
       const messages = await buildDynamicGameImagePromptMessages({
         promptOverridesStorage: args.promptOverridesStorage,
-        illustratorPromptTemplate,
+        illustratorPromptTemplate: illustratorPrompt.promptTemplate,
         request,
         meta: args.meta,
         setupConfig: args.setupConfig,
@@ -1949,10 +1966,10 @@ async function resolveGameImageConnectionId(
 async function resolveGameIllustratorPromptTemplate(
   meta: Record<string, unknown>,
   agents: ReturnType<typeof createAgentsStorage>,
-): Promise<string | null> {
+): Promise<{ promptTemplate: string | null; customized: boolean }> {
   try {
     const illustrator = await agents.getByType("illustrator");
-    if (!illustrator) return null;
+    if (!illustrator) return { promptTemplate: null, customized: false };
     const selections =
       meta.agentPromptTemplateIds &&
       typeof meta.agentPromptTemplateIds === "object" &&
@@ -1960,16 +1977,21 @@ async function resolveGameIllustratorPromptTemplate(
         ? (meta.agentPromptTemplateIds as Record<string, unknown>)
         : {};
     const selectedPromptTemplateId = readTrimmedString(selections.illustrator);
+    const fallbackPromptTemplate = getDefaultAgentPrompt("illustrator").trim();
     const promptTemplate = resolveAgentPromptTemplate({
       promptTemplate: illustrator.promptTemplate,
-      fallbackPromptTemplate: getDefaultAgentPrompt("illustrator"),
+      fallbackPromptTemplate,
       settings: illustrator.settings,
       selectedPromptTemplateId,
     }).trim();
-    return promptTemplate || null;
+    return {
+      promptTemplate: promptTemplate || null,
+      customized:
+        selectedPromptTemplateId !== null || (promptTemplate.length > 0 && promptTemplate !== fallbackPromptTemplate),
+    };
   } catch (err) {
     logger.warn(err, "[game.routes] Failed to resolve the selected Illustrator prompt template");
-    return null;
+    return { promptTemplate: null, customized: false };
   }
 }
 
@@ -11615,10 +11637,7 @@ export async function gameRoutes(app: FastifyInstance) {
                   if (isLikelyTruncatedJsonResponse(refinementContent, refinementResult.finishReason)) {
                     throw new Error("Animation Planner returned a truncated image-aware motion beat");
                   }
-                  const extraction = extractLeadingThinkingBlocks(
-                    refinementContent,
-                    parameters?.customThinkingTags,
-                  );
+                  const extraction = extractLeadingThinkingBlocks(refinementContent, parameters?.customThinkingTags);
                   const refinement = resolveStoryboardAnimationRefinement(
                     extraction.content,
                     plannedFrame.narrationBeat,

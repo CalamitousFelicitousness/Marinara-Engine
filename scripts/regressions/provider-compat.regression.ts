@@ -34,6 +34,7 @@ import {
   ConnectionFallbackProvider,
   withConnectionFallbackProvider,
   type FallbackConnection,
+  type GenerationProviderOrigin,
 } from "../../packages/server/src/services/llm/connection-fallback-provider.js";
 import {
   BaseLLMProvider,
@@ -1416,7 +1417,16 @@ for (const drive of [
 
 const primaryFailure = new RegressionProvider([], new Error("primary unavailable"));
 const successfulFallback = new RegressionProvider(["fallback response"]);
-const fallbackProvider = new ConnectionFallbackProvider(primaryFailure, successfulFallback, fallbackConnection, "main");
+const usedProviderOrigins: GenerationProviderOrigin[] = [];
+const fallbackProvider = new ConnectionFallbackProvider(
+  primaryFailure,
+  successfulFallback,
+  fallbackConnection,
+  "main",
+  undefined,
+  undefined,
+  (origin) => usedProviderOrigins.push(origin),
+);
 assert.equal(
   await collectProviderOutput(fallbackProvider, {
     model: "primary-model",
@@ -1428,6 +1438,7 @@ assert.equal(
 );
 assert.equal(primaryFailure.calls, 1);
 assert.equal(successfulFallback.calls, 1);
+assert.deepEqual(usedProviderOrigins, [{ kind: "fallback", provider: "custom", model: "fallback-model" }]);
 assert.equal(successfulFallback.lastOptions?.model, "fallback-model");
 assert.equal(successfulFallback.lastOptions?.temperature, 0.35);
 assert.equal(successfulFallback.lastOptions?.maxTokens, 512);

@@ -642,6 +642,7 @@ import {
   sanitizeNpcPortraitAppearanceText,
   selectLatestGameTurnNarration,
   selectStoryboardAppearanceCharacterNames,
+  shouldUseDynamicGameImagePromptGenerator,
 } from "../../packages/server/src/routes/game.routes.js";
 import { buildLegacyDefaultAgentConfigUpdate } from "../../packages/server/src/services/agents/default-prompt-migration.js";
 import { buildMemoryRecallBlock } from "../../packages/server/src/services/generation/memory-recall-context.js";
@@ -6603,6 +6604,30 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       const requestOptions = dynamicGameImagePromptRequestOptions("portrait");
       assert.equal("responseFormat" in requestOptions, false);
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: true,
+          hasEnabledPromptDirectorOverride: false,
+        }),
+        true,
+      );
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: false,
+          hasEnabledPromptDirectorOverride: true,
+        }),
+        true,
+      );
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: false,
+          hasEnabledPromptDirectorOverride: false,
+        }),
+        false,
+      );
     },
   },
   {

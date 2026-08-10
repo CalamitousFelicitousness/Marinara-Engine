@@ -1279,6 +1279,7 @@ export function pickSyncedSettings(state: UIState) {
     convoGradient: state.convoGradient,
     enterToSendRP: state.enterToSendRP,
     enterToSendConvo: state.enterToSendConvo,
+    enterToSendGame: state.enterToSendGame,
     weatherEffects: state.weatherEffects,
     hasCompletedOnboarding: state.hasCompletedOnboarding,
     gameTutorialDisabled: state.gameTutorialDisabled,
@@ -2670,25 +2671,11 @@ export const useUIStore = create<UIState>()(
         if (version <= 22) {
           persisted.trackerPanelWidth = clampTrackerPanelWidth(persisted.trackerPanelWidth);
         }
-        // v23 -> v24: remember collapsed tracker data panels.
-        if (version <= 23) {
-          persisted.trackerPanelCollapsedSections = normalizeTrackerPanelCollapsedSections(
-            persisted.trackerPanelCollapsedSections,
-          );
-        }
         persisted.trackerPanelCollapsedSections = normalizeTrackerPanelCollapsedSections(
           persisted.trackerPanelCollapsedSections,
         );
-        // v24 -> v25: require an explicit tracker-panel opt-in before expression sprites replace portraits.
-        if (version <= 24 && persisted.trackerPanelUseExpressionSprites === undefined) {
-          persisted.trackerPanelUseExpressionSprites = false;
-        }
         if (persisted.trackerPanelUseExpressionSprites === undefined) {
           persisted.trackerPanelUseExpressionSprites = false;
-        }
-        // v25 -> v26: allow users to reorder tracker panel cards.
-        if (version <= 25) {
-          persisted.trackerPanelSectionOrder = normalizeTrackerPanelSectionOrder(persisted.trackerPanelSectionOrder);
         }
         persisted.trackerPanelSectionOrder = normalizeTrackerPanelSectionOrder(persisted.trackerPanelSectionOrder);
         // v26 -> v27: add Roleplay avatar and default sprite scale controls.
@@ -2722,50 +2709,21 @@ export const useUIStore = create<UIState>()(
         if (version <= 29 && persisted.chibiProfessorMariEnabled === undefined) {
           persisted.chibiProfessorMariEnabled = true;
         }
-        // v30 -> v31: persist Chat Summary popover source and display controls.
-        if (version <= 30) {
-          persisted.summaryPopoverSettings = normalizeSummaryPopoverSettings(persisted.summaryPopoverSettings);
-        }
         persisted.summaryPopoverSettings = normalizeSummaryPopoverSettings(persisted.summaryPopoverSettings);
         // v31 -> v32: add native chat/game background blur.
         if (version <= 31 && persisted.chatBackgroundBlur === undefined) {
           persisted.chatBackgroundBlur = 0;
         }
-        // v32 -> v33: make tracker character thought placement an explicit user preference.
-        if (version <= 32) {
-          persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
-            persisted.trackerPanelThoughtBubbleDisplay,
-          );
-        }
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
-        // v33 -> v34: replace arbitrary tracker desktop widths with curated size profiles.
-        if (version <= 33) {
-          persisted.trackerPanelSizeProfile = normalizeTrackerPanelSizeProfile(
-            persisted.trackerPanelSizeProfile,
-            persisted.trackerPanelWidth,
-          );
-        }
         persisted.trackerPanelSizeProfile = normalizeTrackerPanelSizeProfile(
           persisted.trackerPanelSizeProfile,
           persisted.trackerPanelWidth,
         );
-        // v34 -> v35: tracker-only temperature display unit.
-        if (version <= 34) {
-          persisted.trackerTemperatureUnit = normalizeTrackerTemperatureUnit(persisted.trackerTemperatureUnit);
-        }
         persisted.trackerTemperatureUnit = normalizeTrackerTemperatureUnit(persisted.trackerTemperatureUnit);
-        // v35 -> v36: optional always-visible docked tracker thoughts.
-        if (version <= 35 && persisted.trackerPanelDockedThoughtsAlwaysVisible === undefined) {
-          persisted.trackerPanelDockedThoughtsAlwaysVisible = false;
-        }
         if (persisted.trackerPanelDockedThoughtsAlwaysVisible === undefined) {
           persisted.trackerPanelDockedThoughtsAlwaysVisible = false;
-        }
-        // v36 -> v37: user-selectable straight or typographic quote formatting.
-        if (version <= 36) {
-          persisted.quoteFormat = normalizeQuoteFormat(persisted.quoteFormat);
         }
         persisted.quoteFormat = normalizeQuoteFormat(persisted.quoteFormat);
         // v37 -> v38: customizable image style profiles.
@@ -2841,12 +2799,6 @@ export const useUIStore = create<UIState>()(
         persisted.ttsLineVolume = Math.max(0, Math.min(100, Math.round(persisted.ttsLineVolume)));
         // v69 -> v70: remember scene prompt setup choices.
         persisted.scenePromptPreferences = normalizeScenePromptPreferences(persisted.scenePromptPreferences);
-        // v42 -> v44: reconcile parallel v43 UI preference additions.
-        if (version <= 43) {
-          persisted.trackerPanelBackgroundColor = normalizeTrackerPanelBackgroundColor(
-            persisted.trackerPanelBackgroundColor,
-          );
-        }
         persisted.trackerPanelBackgroundColor = normalizeTrackerPanelBackgroundColor(
           persisted.trackerPanelBackgroundColor,
         );
@@ -3231,6 +3183,7 @@ export const useUIStore = create<UIState>()(
         activeCustomTheme: state.activeCustomTheme,
         customThemes: state.customThemes,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
+        gameTutorialDisabled: state.gameTutorialDisabled,
         linkApiBannerDismissed: state.linkApiBannerDismissed,
         echoChamberOpen: state.echoChamberOpen,
         echoChamberSide: state.echoChamberSide,

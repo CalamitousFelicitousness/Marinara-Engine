@@ -4970,6 +4970,27 @@ assert.equal(
   "the latest JSON-string conversation-start marker must determine session history",
 );
 
+const falseStringObjectGameHistoryMarker = [
+  gameHistoryMessage("ignored", { tokenCount: 23, isConversationStart: true }),
+  gameHistoryMessage("ignored", { tokenCount: 19 }),
+  gameHistoryMessage("ignored", { tokenCount: 7, isConversationStart: "false" }),
+];
+const falseStringJsonGameHistoryMarker = [
+  gameHistoryMessage("ignored", '{"tokenCount":23,"isConversationStart":true}'),
+  gameHistoryMessage("ignored", '{"tokenCount":19}'),
+  gameHistoryMessage("ignored", '{"tokenCount":7,"isConversationStart":"false"}'),
+];
+assert.equal(
+  estimateGameSessionHistoryTokens(falseStringObjectGameHistoryMarker),
+  49,
+  "a string false-valued object marker must not start a Game session",
+);
+assert.equal(
+  estimateGameSessionHistoryTokens(falseStringJsonGameHistoryMarker),
+  49,
+  "a string false-valued JSON marker must not start a Game session",
+);
+
 const fallbackGameHistoryMessages = [
   gameHistoryMessage("one two", "{not valid JSON"),
   gameHistoryMessage("three four"),

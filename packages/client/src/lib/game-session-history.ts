@@ -26,7 +26,7 @@ function estimateMessageTokenCount(message: GameSessionHistoryMessage): number {
 export function estimateGameSessionHistoryTokens(messages: GameSessionHistoryMessage[]): number {
   let startIndex = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (parseMessageExtraRecord(messages[i]?.extra).isConversationStart) {
+    if (parseMessageExtraRecord(messages[i]?.extra).isConversationStart === true) {
       startIndex = i;
       break;
     }

@@ -76,7 +76,10 @@ export function redactStoryboardAnimationRefinementMessages(messages: readonly C
     ...(message.images
       ? {
           images: message.images.map((image) => ({
-            mediaType: image.startsWith("data:") ? image.slice(5, image.indexOf(";")) : "unknown",
+            mediaType:
+              image.startsWith("data:") && image.indexOf(",") > 5
+                ? image.slice(5, image.indexOf(",")).split(";")[0]
+                : "unknown",
             encodedCharacters: image.length,
           })),
         }

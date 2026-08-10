@@ -404,8 +404,8 @@ function PersonaGalleryTab({
         ),
       );
       toast.success(localizeUi("ui.gallery.batch.downloadStarted", { count: selectedImages.length }));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.gallery.batch.downloadFailed"));
+    } catch {
+      toast.error(localizeUi("ui.gallery.batch.downloadFailed"));
     }
   }, [localizeUi, selectedImages]);
 
@@ -425,10 +425,8 @@ function PersonaGalleryTab({
       for (const image of selectedImages) await remove.mutateAsync(image.id);
       toast.success(localizeUi("ui.gallery.batch.deleted", { count: selectedImages.length }));
       leaveImageSelection();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : localizeUi("ui.personas.personagallerytab.failedToDeletePersonaImage"),
-      );
+    } catch {
+      toast.error(localizeUi("ui.personas.personagallerytab.failedToDeletePersonaImage"));
     }
   }, [leaveImageSelection, localizeUi, remove, selectedImages]);
 

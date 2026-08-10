@@ -19,6 +19,7 @@ import { isCssGradient, RAINBOW_GRADIENT_PRESET } from "../lib/css-colors";
 import { announceChatFloatingUiDismiss } from "../lib/chat-floating-ui-events";
 import { detectConversationTimeZone, normalizeConversationTimeZone } from "../lib/conversation-time-zone";
 import { BASIC_PANEL_SORT_OPTIONS, normalizeBasicPanelSort, type BasicPanelSort } from "../lib/panel-sort";
+import { resetProfessorMariNavigator } from "../lib/professor-mari-navigation";
 import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-types";
 
 export type Panel =
@@ -2226,7 +2227,11 @@ export const useUIStore = create<UIState>()(
       setTTSLineVolume: (v) => set({ ttsLineVolume: Math.max(0, Math.min(100, Math.round(v))) }),
       setChibiProfessorMariEnabled: (v) => set({ chibiProfessorMariEnabled: v }),
       setProfessorMariSuggestionsEnabled: (v) => set({ professorMariSuggestionsEnabled: v }),
-      setProfessorMariNavigationEnabled: (v) => set({ professorMariNavigationEnabled: v }),
+      setProfessorMariNavigationEnabled: (v) => {
+        const wasEnabled = get().professorMariNavigationEnabled;
+        set({ professorMariNavigationEnabled: v });
+        if (v && !wasEnabled) resetProfessorMariNavigator();
+      },
       setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
       setMusicPlayerEnabled: (v) => set({ musicPlayerEnabled: v }),
       setMusicPlayerSource: (v) =>

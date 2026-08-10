@@ -65,6 +65,9 @@ import { HOME_CHAT_MODE_ACCENTS } from "../../lib/home-chat-mode-style";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { resolveCapabilityPackageDisplay } from "../../lib/capability-package-localization";
 import {
+  PROFESSOR_MARI_NAVIGATOR_POSITION_STORAGE_KEY,
+  PROFESSOR_MARI_NAVIGATOR_RESET_EVENT,
+  professorMariNavigatorRuntime,
   resolveProfessorMariNavigation,
   type ProfessorMariBrowserTab,
   type ProfessorMariNavigationResource,
@@ -113,9 +116,6 @@ function homeBrowserTabId(tabId: string) {
   return `marinara-home-tab-${tabId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 const HOME_CARD_ART_CLASS = "-right-5 -top-5 h-36 w-44 object-contain object-right-top opacity-30 sm:h-40 sm:w-48";
-let professorAssistantMinimizedForRuntime = false;
-let professorAssistantHasAppearedForRuntime = false;
-const PROFESSOR_ASSISTANT_POSITION_STORAGE_KEY = "marinara:home:professor-position:v1";
 const NOODLE_REFRESH_SEEN_STORAGE_KEY = "marinara:home:noodle-refresh-seen:v1";
 const PROFESSOR_ASSISTANT_EDGE_MARGIN = 16;
 const PROFESSOR_ASSISTANT_HANDLE_CLEARANCE = 12;
@@ -192,7 +192,7 @@ function clampProfessorAssistantPosition(value: number) {
 function readProfessorAssistantPosition(): ProfessorAssistantPosition | null {
   if (typeof window === "undefined") return null;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(PROFESSOR_ASSISTANT_POSITION_STORAGE_KEY) ?? "null") as {
+    const parsed = JSON.parse(window.localStorage.getItem(PROFESSOR_MARI_NAVIGATOR_POSITION_STORAGE_KEY) ?? "null") as {
       x?: unknown;
       y?: unknown;
     } | null;
@@ -215,7 +215,7 @@ function readProfessorAssistantPosition(): ProfessorAssistantPosition | null {
 
 function rememberProfessorAssistantPosition(position: ProfessorAssistantPosition) {
   try {
-    window.localStorage.setItem(PROFESSOR_ASSISTANT_POSITION_STORAGE_KEY, JSON.stringify(position));
+    window.localStorage.setItem(PROFESSOR_MARI_NAVIGATOR_POSITION_STORAGE_KEY, JSON.stringify(position));
   } catch {
     /* Local storage is optional; dragging still works for the current mount. */
   }
@@ -707,13 +707,15 @@ function HomeWidgetShortcut({
   description: string;
 }) {
   const className =
-    "flex min-h-10 w-full items-center gap-2.5 rounded-xl px-2 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--home-module-accent)_10%,var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]";
+    "mari-home-widget-shortcut flex min-h-10 w-full items-center gap-2.5 rounded-xl px-2 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--home-module-accent)_10%,var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]";
   const content = (
     <>
-      <img src={icon} alt="" className="h-7 w-7 shrink-0 object-contain" />
+      <img src={icon} alt="" className="mari-home-widget-shortcut__icon h-7 w-7 shrink-0 object-contain" />
       <span className="min-w-0">
-        <span className="block text-xs font-bold">{title}</span>
-        <span className="line-clamp-1 text-[0.65rem] text-[var(--muted-foreground)]">{description}</span>
+        <span className="mari-home-widget-shortcut__title block truncate text-xs font-bold">{title}</span>
+        <span className="mari-home-widget-shortcut__description line-clamp-1 text-[0.65rem] text-[var(--muted-foreground)]">
+          {description}
+        </span>
       </span>
     </>
   );
@@ -842,11 +844,12 @@ function FloatingProfessorMari({
   const reduceMotion = useReducedAmbientEffects();
   const effectsPaused = useMarinaraEffectsPaused();
   const [visible, setVisible] = useState(
-    () => pageActive && enabled && professorAssistantHasAppearedForRuntime && !professorAssistantMinimizedForRuntime,
+    () =>
+      pageActive && enabled && professorMariNavigatorRuntime.hasAppeared && !professorMariNavigatorRuntime.minimized,
   );
-  const [minimized, setMinimized] = useState(professorAssistantMinimizedForRuntime);
+  const [minimized, setMinimized] = useState(professorMariNavigatorRuntime.minimized);
   const [phase, setPhase] = useState<"arriving" | "idle" | "map" | "shrug">(
-    professorAssistantHasAppearedForRuntime ? "idle" : "arriving",
+    professorMariNavigatorRuntime.hasAppeared ? "idle" : "arriving",
   );
   const [mode, setMode] = useState<"prompt" | "input" | "success" | "failure">("prompt");
   const [query, setQuery] = useState("");
@@ -902,6 +905,26 @@ function FloatingProfessorMari({
     setPhase("idle");
     setQuery("");
   }, [clearTimers]);
+
+  useEffect(() => {
+    const reset = () => {
+      clearTimers();
+      pendingNavigationTargetRef.current = null;
+      normalizedPositionRef.current = null;
+      positionRef.current = null;
+      dragLayoutRef.current = null;
+      setDragPosition(null);
+      setDragLayout(null);
+      setDragging(false);
+      setMinimized(false);
+      setMode("prompt");
+      setPhase("idle");
+      setQuery("");
+      setVisible(pageActive);
+    };
+    window.addEventListener(PROFESSOR_MARI_NAVIGATOR_RESET_EVENT, reset);
+    return () => window.removeEventListener(PROFESSOR_MARI_NAVIGATOR_RESET_EVENT, reset);
+  }, [clearTimers, pageActive]);
 
   const queueInputFocus = useCallback(() => {
     if (focusFrameRef.current !== null) window.cancelAnimationFrame(focusFrameRef.current);
@@ -1033,6 +1056,12 @@ function FloatingProfessorMari({
       dragRef.current = null;
       document.documentElement.classList.remove("mari-home-professor-drag-active");
       setDragging(false);
+      if (reduceMotion && pageActive && enabled && !professorMariNavigatorRuntime.minimized) {
+        professorMariNavigatorRuntime.hasAppeared = true;
+        setMinimized(false);
+        setPhase("idle");
+        setVisible(true);
+      }
       return;
     }
     if (!pageActive || !enabled) {
@@ -1046,12 +1075,12 @@ function FloatingProfessorMari({
       setVisible(false);
       return;
     }
-    if (professorAssistantMinimizedForRuntime) {
+    if (professorMariNavigatorRuntime.minimized) {
       setMinimized(true);
       setVisible(false);
       return;
     }
-    if (professorAssistantHasAppearedForRuntime) {
+    if (professorMariNavigatorRuntime.hasAppeared) {
       setMinimized(false);
       setVisible(true);
       if (phase === "arriving" && !reduceMotion) {
@@ -1065,7 +1094,7 @@ function FloatingProfessorMari({
     appearanceTimerRef.current = window.setTimeout(
       () => {
         appearanceTimerRef.current = null;
-        professorAssistantHasAppearedForRuntime = true;
+        professorMariNavigatorRuntime.hasAppeared = true;
         setPhase(reduceMotion ? "idle" : "arriving");
         setVisible(true);
         if (!reduceMotion) {
@@ -1248,7 +1277,7 @@ function FloatingProfessorMari({
         data-tour="home-navigation"
         onClick={() => {
           clearTimers();
-          professorAssistantMinimizedForRuntime = false;
+          professorMariNavigatorRuntime.minimized = false;
           setMinimized(false);
           setMode("input");
           setPhase("idle");
@@ -1273,7 +1302,7 @@ function FloatingProfessorMari({
   const minimize = () => {
     clearTimers();
     pendingNavigationTargetRef.current = null;
-    professorAssistantMinimizedForRuntime = true;
+    professorMariNavigatorRuntime.minimized = true;
     setMinimized(true);
     setVisible(false);
   };
@@ -1342,7 +1371,7 @@ function FloatingProfessorMari({
             title={t("home.assistant.drag")}
             data-component="HomeBrowserHub.ProfessorDragHandle"
             className={cn(
-              "pointer-events-auto absolute left-1/2 top-[-0.45rem] z-[8] flex h-7 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center text-[var(--muted-foreground)] opacity-0 drop-shadow-[0_2px_4px_var(--background)] transition-[opacity,color,transform] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:text-[var(--marinara-app-accent-solid)] focus-visible:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100",
+              "pointer-events-auto absolute left-[45%] top-[-0.45rem] z-[8] flex h-7 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center text-[var(--muted-foreground)] opacity-0 drop-shadow-[0_2px_4px_var(--background)] transition-[opacity,color,transform] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:text-[var(--marinara-app-accent-solid)] focus-visible:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100",
               dragging && "!cursor-grabbing !text-[var(--marinara-app-accent-solid)] !opacity-100",
             )}
             onKeyDown={nudgeProfessor}
@@ -2861,7 +2890,7 @@ export function HomeBrowserHub({
                         accent={HOME_MODULE_ACCENTS.cyan}
                         className="h-full"
                       >
-                        <div className="grid content-center gap-1">
+                        <div className="mari-home-widget-shortcut-list grid content-center gap-1">
                           {[
                             {
                               icon: "/home/tab-icons/documentation.png",
@@ -2901,7 +2930,7 @@ export function HomeBrowserHub({
                         accent={HOME_MODULE_ACCENTS.pink}
                         className="h-full"
                       >
-                        <div className="grid content-center gap-1">
+                        <div className="mari-home-widget-shortcut-list grid content-center gap-1">
                           <HomeWidgetShortcut
                             href="https://discord.com/invite/KdAkTg94ME"
                             onClick={() => trackHomeAction("discord_clicked")}

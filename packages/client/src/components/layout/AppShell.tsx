@@ -118,6 +118,7 @@ const TRACKER_PANEL_CHAT_GAP = 8;
 const TRACKER_PANEL_DESKTOP_MOTION_MS = 260;
 const TRACKER_PANEL_DESKTOP_EXIT_MS = 240;
 const TRACKER_PANEL_DESKTOP_EASE = [0.16, 1, 0.3, 1] as const;
+const MOBILE_SHELL_MEDIA_QUERY = "(max-width: 767px), (max-width: 1366px) and (pointer: coarse)";
 const TRACKER_PANEL_DESKTOP_EXIT_EASE = [0.4, 0, 1, 1] as const;
 const TRACKER_PANEL_TOGGLE_SELECTOR = '[data-tracker-panel-toggle="roleplay-hud"]';
 const TRACKER_PANEL_ANCHOR_SELECTOR = '[data-tracker-panel-anchor="roleplay-hud"]';
@@ -403,9 +404,11 @@ export function AppShell() {
     : undefined;
 
   // Track mobile breakpoint for right-panel animation strategy
-  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(MOBILE_SHELL_MEDIA_QUERY).matches,
+  );
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
+    const mq = window.matchMedia(MOBILE_SHELL_MEDIA_QUERY);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);

@@ -63,6 +63,8 @@ export const apiConnections = fileTable("api_connections", {
   imageService: text("image_service"),
   /** For endpoint-based image services (e.g. RunPod Serverless ComfyUI): the endpoint ID. */
   imageEndpointId: text("image_endpoint_id"),
+  /** OpenAI GPT Image quality for this connection. */
+  imageGenerationQuality: text("image_generation_quality").notNull().default("auto"),
   /** Explicit video backend selection for video-generation connections. */
   videoGenerationSource: text("video_generation_source"),
   /** Video generation: explicitly selected service ID. */

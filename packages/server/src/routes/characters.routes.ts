@@ -25,7 +25,10 @@ import { createConnectionsStorage } from "../services/storage/connections.storag
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../services/storage/noodle.storage.js";
 import { generateImage } from "../services/image/image-generation.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../services/image/image-generation-settings.js";
 import { compileImagePrompt } from "../services/image/image-prompt-compiler.js";
 import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
@@ -882,6 +885,7 @@ export async function charactersRoutes(app: FastifyInstance) {
         imageEndpointId: conn.imageEndpointId || undefined,
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
         imageDefaults,
+        quality: resolveConnectionImageQuality(conn),
         fallback: imageFallback,
         onFallback: createReplyFallbackNotifier(reply),
       });

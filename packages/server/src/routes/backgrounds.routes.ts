@@ -25,7 +25,10 @@ import { createConnectionsStorage } from "../services/storage/connections.storag
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
 import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
 import { buildBackgroundProviderPrompt, generateChatBackground } from "../services/game/game-asset-generation.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../services/image/image-generation-settings.js";
 import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
 import { parseThumbnailWidth, resolveThumbPath } from "../services/image/image-thumbnail.js";
@@ -502,6 +505,7 @@ export async function backgroundsRoutes(app: FastifyInstance) {
       imgEndpointId: context.imgConn.imageEndpointId || undefined,
       imgComfyWorkflow: context.imgConn.comfyuiWorkflow || undefined,
       imgDefaults: resolveConnectionImageDefaults(context.imgConn),
+      imgQuality: resolveConnectionImageQuality(context.imgConn),
       imgFallback: context.imageFallback,
       styleProfiles: context.imageSettings.styleProfiles,
       styleProfileId: context.styleProfileId,
@@ -560,6 +564,7 @@ export async function backgroundsRoutes(app: FastifyInstance) {
       imgEndpointId: context.imgConn.imageEndpointId || undefined,
       imgComfyWorkflow: context.imgConn.comfyuiWorkflow || undefined,
       imgDefaults: resolveConnectionImageDefaults(context.imgConn),
+      imgQuality: resolveConnectionImageQuality(context.imgConn),
       imgFallback: context.imageFallback,
       styleProfiles: context.imageSettings.styleProfiles,
       styleProfileId: context.styleProfileId,

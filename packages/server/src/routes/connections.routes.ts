@@ -28,7 +28,10 @@ import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
 import { buildGoogleVertexModelUrl, googleAuthHeadersForVertex } from "../services/llm/providers/google.provider.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { buildVeniceApiUrl, normalizeVeniceImageModels } from "../services/image/venice-image.js";
 import { isImageLocalUrlsEnabled, isProviderLocalUrlsEnabled } from "../config/runtime-config.js";
 import { logDebugOverride } from "../lib/logger.js";
@@ -1163,6 +1166,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         height: 1024,
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
         imageDefaults,
+        quality: resolveConnectionImageQuality(conn),
         debugMode: readDebugMode(req.body),
       });
       return {

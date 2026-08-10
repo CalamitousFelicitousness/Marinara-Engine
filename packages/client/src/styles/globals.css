@@ -2754,12 +2754,7 @@ body {
   --mari-home-widget-hover-transform: translate3d(0, -0.18rem, 0) scale(1.015);
   --mari-home-widget-hover-filter: brightness(1.055) saturate(1.045)
     drop-shadow(
-      0 0.7rem 0.9rem
-        color-mix(
-          in srgb,
-          var(--home-module-accent, var(--marinara-app-accent-solid)) 22%,
-          transparent
-        )
+      0 0.7rem 0.9rem color-mix(in srgb, var(--home-module-accent, var(--marinara-app-accent-solid)) 22%, transparent)
     );
   grid-column: span 1;
   grid-row: span 1;
@@ -2789,17 +2784,70 @@ body {
   .mari-home-professor-widget [data-home-professor-action] svg {
     display: none;
   }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut,
+  .mari-home-widget--community .mari-home-widget-shortcut {
+    min-height: 2rem;
+    gap: 0.45rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__icon,
+  .mari-home-widget--community .mari-home-widget-shortcut__icon {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__title,
+  .mari-home-widget--community .mari-home-widget-shortcut__title {
+    font-size: 0.6875rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__description,
+  .mari-home-widget--community .mari-home-widget-shortcut__description {
+    font-size: 0.5625rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut-list,
+  .mari-home-widget--community .mari-home-widget-shortcut-list {
+    gap: 0.125rem;
+  }
+}
+
+@media (max-height: 52rem) {
+  .mari-home-widget--learn .mari-home-widget-shortcut,
+  .mari-home-widget--community .mari-home-widget-shortcut {
+    min-height: 2rem;
+    gap: 0.45rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__icon,
+  .mari-home-widget--community .mari-home-widget-shortcut__icon {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__title,
+  .mari-home-widget--community .mari-home-widget-shortcut__title {
+    font-size: 0.6875rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut__description,
+  .mari-home-widget--community .mari-home-widget-shortcut__description {
+    font-size: 0.5625rem;
+  }
+
+  .mari-home-widget--learn .mari-home-widget-shortcut-list,
+  .mari-home-widget--community .mari-home-widget-shortcut-list {
+    gap: 0.125rem;
+  }
 }
 
 [data-theme="light"] .mari-home-widget {
   --mari-home-widget-hover-filter: brightness(1.012) saturate(1.035)
     drop-shadow(
-      0 0.7rem 0.9rem
-        color-mix(
-          in srgb,
-          var(--home-module-accent, var(--marinara-app-accent-solid)) 16%,
-          transparent
-        )
+      0 0.7rem 0.9rem color-mix(in srgb, var(--home-module-accent, var(--marinara-app-accent-solid)) 16%, transparent)
     );
 }
 
@@ -2971,8 +3019,7 @@ html.mari-home-widget-drag-active * {
   background: var(--card);
 }
 
-.mari-home-professor-popup__bubble[data-tail-side="right"]
-  .mari-home-professor-popup__bubble-tail {
+.mari-home-professor-popup__bubble[data-tail-side="right"] .mari-home-professor-popup__bubble-tail {
   right: -0.82rem;
   left: auto;
   transform: scaleX(-1);
@@ -3253,12 +3300,8 @@ html[data-marinara-effects-paused="true"] .mari-home-widget {
   --mari-home-widget-hover-transform: none;
 }
 
-html[data-marinara-reduced-effects="true"]
-  .mari-home-widget
-  > :not(.mari-home-widget__drag-handle),
-html[data-marinara-effects-paused="true"]
-  .mari-home-widget
-  > :not(.mari-home-widget__drag-handle) {
+html[data-marinara-reduced-effects="true"] .mari-home-widget > :not(.mari-home-widget__drag-handle),
+html[data-marinara-effects-paused="true"] .mari-home-widget > :not(.mari-home-widget__drag-handle) {
   transition: none;
 }
 

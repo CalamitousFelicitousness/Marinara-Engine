@@ -22,6 +22,7 @@ import {
   type Automatic1111Defaults,
   type ComfyUiDefaults,
   type ImageGenerationDefaultsProfile,
+  type ImageGenerationQuality,
   type NovelAiDefaults,
   type SceneIllustrationCharacterPrompt,
 } from "@marinara-engine/shared";
@@ -96,6 +97,8 @@ function sanitizeErrorText(text: string): string {
 
 export interface ImageGenRequest {
   prompt: string;
+  /** OpenAI GPT Image generation quality. Ignored by unsupported services and models. */
+  quality?: ImageGenerationQuality;
   negativePrompt?: string;
   width?: number;
   height?: number;
@@ -139,6 +142,7 @@ export interface ImageGenRequest {
     imageEndpointId?: string;
     comfyWorkflow?: string;
     imageDefaults?: ImageGenerationDefaultsProfile | null;
+    quality?: ImageGenerationQuality;
     imageGenerationSource?: string;
     imageService?: string;
     /** Prompt compiled for this fallback connection's provider and defaults. */
@@ -367,6 +371,7 @@ export async function generateImage(
       imageEndpointId: fallback.imageEndpointId,
       comfyWorkflow: fallback.comfyWorkflow,
       imageDefaults: fallback.imageDefaults,
+      quality: fallback.quality,
       allowLocalUrls: undefined,
     });
     outcome = "completed";
@@ -1056,6 +1061,7 @@ async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGen
     formData.append("n", "1");
     formData.append("size", openAIImageSize(request));
     formData.append("output_format", "png");
+    if (request.quality) formData.append("quality", request.quality);
     if (request.transparentBackground && supportsOpenAITransparentBackground(request.model)) {
       formData.append("background", "transparent");
     }
@@ -1097,6 +1103,7 @@ async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGen
     // GPT Image models return base64 image data from the Images API without the
     // legacy DALL-E `response_format` toggle. `output_format` controls PNG/JPEG/WebP.
     body.output_format = "png";
+    if (request.quality) body.quality = request.quality;
     if (request.transparentBackground && supportsOpenAITransparentBackground(request.model)) {
       body.background = "transparent";
     }

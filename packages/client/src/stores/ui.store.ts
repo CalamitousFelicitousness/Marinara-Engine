@@ -156,8 +156,19 @@ function normalizeEchoChamberSizes(value: unknown): Record<string, EchoChamberSi
   return normalized;
 }
 
+function normalizeEchoChamberSides(value: unknown): Record<string, EchoChamberSide> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const normalized: Record<string, EchoChamberSide> = {};
+  for (const [chatId, side] of Object.entries(value)) {
+    if (!chatId.trim() || !["top-left", "top-right", "bottom-left", "bottom-right"].includes(String(side))) continue;
+    normalized[chatId] = side as EchoChamberSide;
+  }
+  return normalized;
+}
+
 interface ImmediateUiStorageSnapshot {
   customCursorEnabled: boolean | undefined;
+  echoChamberSides: string;
   echoChamberSizes: string;
 }
 
@@ -165,6 +176,7 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
   if (!value) {
     return {
       customCursorEnabled: undefined,
+      echoChamberSides: "{}",
       echoChamberSizes: "{}",
     };
   }
@@ -173,17 +185,20 @@ function readImmediateUiStorageSnapshot(value: string | null): ImmediateUiStorag
     const parsed = JSON.parse(value) as {
       state?: {
         customCursorEnabled?: unknown;
+        echoChamberSideByChatId?: unknown;
         echoChamberSizeByChatId?: unknown;
       };
     };
     return {
       customCursorEnabled:
         typeof parsed.state?.customCursorEnabled === "boolean" ? parsed.state.customCursorEnabled : undefined,
+      echoChamberSides: JSON.stringify(normalizeEchoChamberSides(parsed.state?.echoChamberSideByChatId)),
       echoChamberSizes: JSON.stringify(normalizeEchoChamberSizes(parsed.state?.echoChamberSizeByChatId)),
     };
   } catch {
     return {
       customCursorEnabled: undefined,
+      echoChamberSides: "{}",
       echoChamberSizes: "{}",
     };
   }
@@ -193,7 +208,9 @@ function shouldFlushUiStorageImmediately(previousValue: string | null, nextValue
   const previous = readImmediateUiStorageSnapshot(previousValue);
   const next = readImmediateUiStorageSnapshot(nextValue);
   return (
-    previous.customCursorEnabled !== next.customCursorEnabled || previous.echoChamberSizes !== next.echoChamberSizes
+    previous.customCursorEnabled !== next.customCursorEnabled ||
+    previous.echoChamberSides !== next.echoChamberSides ||
+    previous.echoChamberSizes !== next.echoChamberSizes
   );
 }
 export const TRACKER_PANEL_WIDTH_DEFAULT = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard;
@@ -851,6 +868,7 @@ interface UIState {
   // ── EchoChamber ──
   echoChamberOpen: boolean;
   echoChamberSide: EchoChamberSide;
+  echoChamberSideByChatId: Record<string, EchoChamberSide>;
   echoChamberSizeByChatId: Record<string, EchoChamberSize>;
 
   // ── User Status ──
@@ -1108,6 +1126,7 @@ interface UIState {
   dismissLinkApiBanner: () => void;
   toggleEchoChamber: () => void;
   setEchoChamberSide: (side: EchoChamberSide) => void;
+  setEchoChamberSideForChat: (chatId: string, side: EchoChamberSide) => void;
   setEchoChamberSizeForChat: (chatId: string, size: EchoChamberSize) => void;
   setUserStatus: (status: UserStatus) => void;
   setUserStatusManual: (status: UserStatus) => void;
@@ -1508,6 +1527,7 @@ export const useUIStore = create<UIState>()(
       linkApiBannerDismissed: false,
       echoChamberOpen: true,
       echoChamberSide: "bottom-right" as EchoChamberSide,
+      echoChamberSideByChatId: {},
       echoChamberSizeByChatId: {},
       userStatusManual: "active" as const,
       userStatus: "active" as UserStatus,
@@ -2417,6 +2437,17 @@ export const useUIStore = create<UIState>()(
       dismissLinkApiBanner: () => set({ linkApiBannerDismissed: true }),
       toggleEchoChamber: () => set((s) => ({ echoChamberOpen: !s.echoChamberOpen })),
       setEchoChamberSide: (side) => set({ echoChamberSide: side }),
+      setEchoChamberSideForChat: (chatId, side) => {
+        const normalizedChatId = chatId.trim();
+        if (!normalizedChatId) return;
+        set((state) => ({
+          echoChamberSide: side,
+          echoChamberSideByChatId: {
+            ...state.echoChamberSideByChatId,
+            [normalizedChatId]: side,
+          },
+        }));
+      },
       setEchoChamberSizeForChat: (chatId, size) => {
         const normalizedChatId = chatId.trim();
         const normalizedSize = normalizeEchoChamberSize(size);
@@ -2445,7 +2476,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      version: 92,
+      version: 93,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2987,6 +3018,11 @@ export const useUIStore = create<UIState>()(
           persisted.echoChamberSizeByChatId = {};
         }
         persisted.echoChamberSizeByChatId = normalizeEchoChamberSizes(persisted.echoChamberSizeByChatId);
+        // v92 -> v93: remember the Echo Chamber corner independently for each chat.
+        if (version <= 92) {
+          persisted.echoChamberSideByChatId = {};
+        }
+        persisted.echoChamberSideByChatId = normalizeEchoChamberSides(persisted.echoChamberSideByChatId);
         // v87 -> v88: enable Narrator avatar cycling by default for older stores.
         if (version <= 87 && persisted.roleplayNarratorAvatarCycling === undefined) {
           persisted.roleplayNarratorAvatarCycling = true;
@@ -3187,6 +3223,7 @@ export const useUIStore = create<UIState>()(
         linkApiBannerDismissed: state.linkApiBannerDismissed,
         echoChamberOpen: state.echoChamberOpen,
         echoChamberSide: state.echoChamberSide,
+        echoChamberSideByChatId: state.echoChamberSideByChatId,
         echoChamberSizeByChatId: state.echoChamberSizeByChatId,
         userStatusManual: state.userStatusManual,
         userStatus: state.userStatus,

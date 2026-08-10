@@ -3441,11 +3441,11 @@ const cases: RegressionCase[] = [
       const roleplayScopeIndex = storyboardEditorSource.indexOf('id="roleplay"');
       const gameScopeIndex = storyboardEditorSource.indexOf('id="game"');
       const roleplayLibraryIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.roleplayPromptLibrary");
-      const sharedFormatterIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.sharedProviderFormatters");
+      const sharedProductionIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.sharedProductionPrompts");
       const defaultImagePromptIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.defaultImagePrompt");
       assert.ok(defaultImagePromptIndex >= 0, "Storyboard editor should expose a default image prompt selector");
       assert.ok(roleplayLibraryIndex >= 0, "Storyboard editor should expose a separate Roleplay prompt library");
-      assert.ok(sharedFormatterIndex >= 0, "Storyboard editor should identify shared provider formatters");
+      assert.ok(sharedProductionIndex >= 0, "Storyboard editor should identify shared production prompt stages");
       assert.ok(
         sharedScopeIndex >= 0 && sharedScopeIndex < roleplayScopeIndex && roleplayScopeIndex < gameScopeIndex,
         "Storyboard editor should present Shared, Roleplay, and Game Mode scopes in that order",
@@ -3461,8 +3461,8 @@ const cases: RegressionCase[] = [
       assert.match(gameScopeSource, /settings\.illustrationPlannerTemplateId/u);
       assert.match(gameScopeSource, /settings\.viewerDisplayMode/u);
       assert.ok(
-        sharedFormatterIndex < roleplayLibraryIndex && defaultImagePromptIndex < roleplayLibraryIndex,
-        "Shared provider formatters should stay inside Shared before Roleplay prompts",
+        sharedProductionIndex < roleplayLibraryIndex && defaultImagePromptIndex < roleplayLibraryIndex,
+        "Shared production prompts should stay inside Shared before Roleplay prompts",
       );
       assert.match(editorSource, /includeCharacterAppearance:\s*settings\.includeCharacterAppearance/u);
       assert.match(editorSource, /useAvatarReferences:\s*settings\.useAvatarReferences/u);

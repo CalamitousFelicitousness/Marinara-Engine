@@ -338,6 +338,10 @@ export async function promptsRoutes(app: FastifyInstance) {
   app.put<{ Params: { id: string } }>("/:id/groups/reorder", async (req, reply) => {
     if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const { groupIds } = req.body as { groupIds: string[] };
+    const ownedGroupIds = new Set((await storage.listGroups(req.params.id)).map((group) => group.id));
+    if (groupIds.some((groupId) => !ownedGroupIds.has(groupId))) {
+      return reply.status(400).send({ error: "Prompt group does not belong to this preset" });
+    }
     await storage.reorderGroups(req.params.id, groupIds);
     return { success: true };
   });
@@ -385,6 +389,10 @@ export async function promptsRoutes(app: FastifyInstance) {
   app.put<{ Params: { id: string } }>("/:id/sections/reorder", async (req, reply) => {
     if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const { sectionIds } = req.body as { sectionIds: string[] };
+    const ownedSectionIds = new Set((await storage.listSections(req.params.id)).map((section) => section.id));
+    if (sectionIds.some((sectionId) => !ownedSectionIds.has(sectionId))) {
+      return reply.status(400).send({ error: "Prompt section does not belong to this preset" });
+    }
     await storage.reorderSections(req.params.id, sectionIds);
     return { success: true };
   });

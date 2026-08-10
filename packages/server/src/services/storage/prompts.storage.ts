@@ -318,7 +318,7 @@ export function createPromptsStorage(db: DB) {
         await db
           .update(promptGroups)
           .set({ order: i * 100 })
-          .where(eq(promptGroups.id, groupIds[i]!));
+          .where(and(eq(promptGroups.id, groupIds[i]!), eq(promptGroups.presetId, presetId)));
       }
     },
 
@@ -402,7 +402,7 @@ export function createPromptsStorage(db: DB) {
         await db
           .update(promptSections)
           .set({ injectionOrder: i * 100 })
-          .where(eq(promptSections.id, sectionIds[i]!));
+          .where(and(eq(promptSections.id, sectionIds[i]!), eq(promptSections.presetId, presetId)));
       }
     },
 

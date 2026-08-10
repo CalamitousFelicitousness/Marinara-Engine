@@ -25,6 +25,7 @@ import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lore
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
 import { APP_VERSION, resetTurnGameRegistry } from "@marinara-engine/shared";
 import { existsSync } from "fs";
+import { readFile } from "fs/promises";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { getBuildCommit, getBuildLabel } from "./config/build-info.js";
@@ -252,7 +253,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
       reply.header("Cache-Control", "no-cache, must-revalidate");
       reply.header("Pragma", "no-cache");
       reply.header("Expires", "0");
-      return reply.sendFile("index.html", clientDist);
+      return reply.type("text/html; charset=utf-8").send(await readFile(clientIndex));
     });
   } else {
     app.log.warn(

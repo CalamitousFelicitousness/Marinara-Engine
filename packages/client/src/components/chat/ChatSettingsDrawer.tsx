@@ -3929,7 +3929,9 @@ export function ChatSettingsDrawer({
       const text = await file.text();
       const envelope = JSON.parse(text);
       const created = await importChatPreset.mutateAsync(envelope);
-      if (created?.id) applyChatPreset.mutate({ presetId: created.id, chatId: chat.id });
+      if (created?.id && created.mode === chat.mode) {
+        applyChatPreset.mutate({ presetId: created.id, chatId: chat.id });
+      }
     } catch (err) {
       await showAlertDialog({
         title: localizeUi("chat.settingsProfile.import.failedTitle"),

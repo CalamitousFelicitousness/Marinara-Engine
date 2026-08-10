@@ -285,6 +285,7 @@ export function createChatPresetsStorage(db: DB) {
         const rows = await db.select().from(chats).where(eq(chats.id, chatId));
         const chatRow = rows[0];
         if (!chatRow) return null;
+        if (preset.mode !== chatRow.mode) return null;
 
         const currentMetadata: Record<string, unknown> = (() => {
           try {
@@ -294,7 +295,7 @@ export function createChatPresetsStorage(db: DB) {
           }
         })();
 
-        const presetMetadata = (preset.settings.metadata ?? {}) as Record<string, unknown>;
+        const presetMetadata = (sanitizePresetSettings(preset.settings).metadata ?? {}) as Record<string, unknown>;
 
         // Preserve only chat-specific (non-profile) metadata keys.
         const preserved: Record<string, unknown> = {};

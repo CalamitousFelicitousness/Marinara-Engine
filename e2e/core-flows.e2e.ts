@@ -849,12 +849,13 @@ test("settings profile exports use the new identity and legacy exports still imp
       data: {
         ...envelope,
         type: "marinara_chat_preset",
-        data: { ...envelope.data, name: `Legacy Profile Import ${suffix}` },
+        data: { ...envelope.data, name: `Legacy Profile Import ${suffix}`, mode: "visual_novel" },
       },
     });
     expect(legacyImportResponse.ok()).toBeTruthy();
-    const legacyImport = (await legacyImportResponse.json()) as { id: string };
+    const legacyImport = (await legacyImportResponse.json()) as { id: string; mode: string };
     createdIds.add(legacyImport.id);
+    expect(legacyImport.mode).toBe("roleplay");
 
     const invalidSettingsResponse = await request.post("/api/chat-presets/import", {
       data: {
@@ -995,6 +996,79 @@ test("settings profiles cannot carry Hierarchical Maps state into another chat",
     await Promise.allSettled([
       chatId ? request.delete(`/api/chats/${chatId}`) : Promise.resolve(),
       profileId ? request.delete(`/api/chat-presets/${profileId}`) : Promise.resolve(),
+    ]);
+  }
+});
+
+test("settings profiles enforce chat modes and preserve branch identity", async ({ request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Settings profile boundaries are covered once.");
+
+  const suffix = Date.now().toString(36);
+  const createdIds: { profiles: string[]; chats: string[] } = { profiles: [], chats: [] };
+  try {
+    const profileResponse = await request.post("/api/chat-presets", {
+      data: {
+        name: `Branch-safe profile ${suffix}`,
+        mode: "roleplay",
+        settings: {
+          metadata: {
+            enableAgents: false,
+            branchName: "Foreign branch",
+            branchParentChatId: "foreign-chat",
+            branchParentMessageId: "foreign-message",
+            branchMessageId: "foreign-copy",
+          },
+        },
+      },
+    });
+    expect(profileResponse.ok(), await profileResponse.text()).toBeTruthy();
+    const profile = (await profileResponse.json()) as {
+      id: string;
+      settings: { metadata?: Record<string, unknown> };
+    };
+    createdIds.profiles.push(profile.id);
+    expect(profile.settings.metadata).toMatchObject({ enableAgents: false });
+    for (const key of ["branchName", "branchParentChatId", "branchParentMessageId", "branchMessageId"]) {
+      expect(profile.settings.metadata).not.toHaveProperty(key);
+    }
+
+    const createChat = async (mode: "conversation" | "roleplay") => {
+      const response = await request.post("/api/chats", {
+        data: { name: `${mode} profile boundary ${suffix}`, mode, characterIds: [] },
+      });
+      expect(response.ok(), await response.text()).toBeTruthy();
+      const chat = (await response.json()) as { id: string };
+      createdIds.chats.push(chat.id);
+      return chat;
+    };
+
+    const conversation = await createChat("conversation");
+    const conversationBeforeResponse = await request.get(`/api/chats/${conversation.id}`);
+    const conversationBefore = await conversationBeforeResponse.json();
+    const mismatchResponse = await request.post(`/api/chat-presets/${profile.id}/apply/${conversation.id}`);
+    expect(mismatchResponse.status()).toBe(409);
+    expect(await mismatchResponse.json()).toEqual({ error: "Settings profile mode does not match chat mode" });
+    const conversationAfterResponse = await request.get(`/api/chats/${conversation.id}`);
+    expect(await conversationAfterResponse.json()).toEqual(conversationBefore);
+
+    const roleplay = await createChat("roleplay");
+    const branchIdentity = {
+      branchName: "Keep this branch",
+      branchParentChatId: "parent-chat",
+      branchParentMessageId: "parent-message",
+      branchMessageId: "copied-message",
+    };
+    const metadataResponse = await request.patch(`/api/chats/${roleplay.id}/metadata`, { data: branchIdentity });
+    expect(metadataResponse.ok(), await metadataResponse.text()).toBeTruthy();
+    const applyResponse = await request.post(`/api/chat-presets/${profile.id}/apply/${roleplay.id}`);
+    expect(applyResponse.ok(), await applyResponse.text()).toBeTruthy();
+    const appliedResponse = await request.get(`/api/chats/${roleplay.id}`);
+    const applied = (await appliedResponse.json()) as { metadata: Record<string, unknown> };
+    expect(applied.metadata).toMatchObject({ enableAgents: false, ...branchIdentity });
+  } finally {
+    await Promise.allSettled([
+      ...createdIds.chats.map((id) => request.delete(`/api/chats/${id}?force=true`)),
+      ...createdIds.profiles.map((id) => request.delete(`/api/chat-presets/${id}`)),
     ]);
   }
 });
@@ -8400,6 +8474,9 @@ test("Professor Mari visibly arrives on Home and navigates without AI", async ({
   );
   await expect(assistant.locator(".mari-home-professor-popup__idle-stage")).toHaveCSS("opacity", "0");
   await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
+  await expect(
+    page.locator('[data-component="HomeProfessorMariChat.Window"]').getByRole("button", { name: "Close", exact: true }),
+  ).toHaveCount(0);
   await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");
   await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
   await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
@@ -13322,7 +13399,8 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
   const trigger = bookmarks.getByRole("button", { name: "Bookmarks", exact: true });
   const menu = page.locator('[data-component="HomeBrowserHub.MobileBookmarksMenu"]');
   const addressRow = page.locator('[data-component="HomeBrowserHub.AddressRow"]');
-  expect((await addressRow.boundingBox())?.height).toBeLessThanOrEqual(35);
+  await expect(addressRow).toBeHidden();
+  expect(await addressRow.boundingBox()).toBeNull();
   expect((await bookmarks.boundingBox())?.height).toBeLessThanOrEqual(35);
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");

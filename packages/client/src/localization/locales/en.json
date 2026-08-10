@@ -4352,6 +4352,7 @@
   "ui.gallery.batch.deleted_other": "Deleted {{count}} selected images.",
   "ui.gallery.batch.deleteMessage_one": "Delete the selected image? This cannot be undone.",
   "ui.gallery.batch.deleteMessage_other": "Delete all {{count}} selected images? This cannot be undone.",
+  "ui.gallery.batch.deletePartial": "Deleted {{completed}} of {{count}} selected images; {{failed}} failed.",
   "ui.gallery.batch.deleteTitle": "Delete selected images",
   "ui.gallery.batch.download": "Download selected",
   "ui.gallery.batch.downloadFailed": "Failed to download the selected images.",

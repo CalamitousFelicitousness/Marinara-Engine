@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added responsive batch selection to chat Galleries, with filtered Select All, confirmed multi-image downloads and deletes, and selection cleanup between chats (#4859).
 - Added optional image prompting instructions to image connections, applying them inside existing selfie and Illustrator prompt-writing calls before provider review or generation.
 - Added a Gallery image-agent picker that can run any active custom image-producing agent alongside the base Illustrator (#4846).
 - Added an editable Storyboard Agent shot-planner stage that inspects each generated keyframe before video generation, persists its suitability classification, and falls back to the planned motion when image-aware refinement is unavailable or invalid. The Storyboard Agent page now explains the four-stage prompt workflow and orders its shared prompt editors from illustration through image-aware grounding to video generation (#4839, Pasta-Devs/Marinara-Agents#296).
@@ -48,6 +49,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept Recent Chats previews separate on narrow desktop windows by limiting the constrained two-column layout to the four newest chats while preserving the existing mobile and wide-screen counts (#4858).
 - Scoped image-connection prompt instructions to image-producing agents, bounded stored instructions to 20,000 characters, and kept each retry agent on its own configured image connection.
 - Kept chat settings profiles within their saved chat mode, migrated legacy Visual Novel profiles to Roleplay on import, and prevented reusable profiles from overwriting branch identity (#4849).
 - Served the Home shell directly for unknown routes so Termux mobile launches cannot recurse through the server's 404 handler (#4850).

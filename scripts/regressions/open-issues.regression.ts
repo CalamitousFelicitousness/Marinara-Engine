@@ -1054,6 +1054,48 @@ try {
     1,
     "Default settings profile repair must be idempotent",
   );
+  await db.insert(chatPresets).values({
+    id: "legacy-branch-profile",
+    name: "Legacy branch profile",
+    mode: "roleplay",
+    isDefault: "false",
+    isActive: "false",
+    settings: JSON.stringify({
+      metadata: {
+        enableAgents: false,
+        branchName: "Foreign branch",
+        branchParentChatId: "foreign-chat",
+        branchParentMessageId: "foreign-message",
+        branchMessageId: "foreign-copy",
+      },
+    }),
+    createdAt: "2026-08-10T09:00:00.000Z",
+    updatedAt: "2026-08-10T09:00:00.000Z",
+  });
+  await db.insert(chats).values({
+    id: "legacy-profile-target-chat",
+    name: "Legacy profile target",
+    mode: "roleplay",
+    characterIds: "[]",
+    metadata: JSON.stringify({ enableAgents: true }),
+    sortOrder: 0,
+    createdAt: "2026-08-10T09:00:00.000Z",
+    updatedAt: "2026-08-10T09:00:00.000Z",
+  });
+  const legacyProfileTarget = await chatPresetStorage.applyToChat(
+    "legacy-branch-profile",
+    "legacy-profile-target-chat",
+  );
+  assert.ok(legacyProfileTarget, "A same-mode legacy profile must remain applicable");
+  const legacyProfileTargetMetadata = JSON.parse(legacyProfileTarget.metadata) as Record<string, unknown>;
+  assert.equal(legacyProfileTargetMetadata.enableAgents, false);
+  for (const key of ["branchName", "branchParentChatId", "branchParentMessageId", "branchMessageId"]) {
+    assert.equal(
+      Object.hasOwn(legacyProfileTargetMetadata, key),
+      false,
+      `Legacy profile application must strip ${key}`,
+    );
+  }
   const storageTrimFixture = await characterStorage.create({
     ...characterDataSchema.parse({ name: "Storage trim fixture" }),
     name: "  Storage trim fixture  ",
@@ -2562,6 +2604,11 @@ assert.equal(
 assert.equal(
   normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1beta"),
   "https://generativelanguage.googleapis.com/v1beta",
+);
+assert.equal(
+  normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1?key=legacy#models"),
+  "https://generativelanguage.googleapis.com/v1beta",
+  "Gemini base URL query and fragment text must not become part of appended model paths",
 );
 assert.equal(
   googleModelsPageUrl,

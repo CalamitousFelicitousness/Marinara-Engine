@@ -94,8 +94,22 @@ function normalizeGoogleBaseUrl(baseUrl: string): string {
 }
 
 export function normalizeGoogleGenerativeLanguageBaseUrl(baseUrl: string): string {
-  const normalized = normalizeGoogleBaseUrl(baseUrl).replace(/\/v1(?=\/|$)/i, "/v1beta");
-  return /\/v\d/i.test(normalized) ? normalized : `${normalized}/v1beta`;
+  const normalized = normalizeGoogleBaseUrl(baseUrl);
+  try {
+    const url = new URL(normalized);
+    const pathname = url.pathname.replace(/\/+$/, "").replace(/\/v1(?=\/|$)/i, "/v1beta");
+    url.pathname = /\/v\d/i.test(pathname) ? pathname : `${pathname}/v1beta`;
+    // Base-URL query or fragment text cannot safely precede model endpoint suffixes.
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    const clean = normalized
+      .split(/[?#]/, 1)[0]!
+      .replace(/\/+$/, "")
+      .replace(/\/v1(?=\/|$)/i, "/v1beta");
+    return /\/v\d/i.test(clean) ? clean : `${clean}/v1beta`;
+  }
 }
 
 function base64UrlJson(value: unknown): string {

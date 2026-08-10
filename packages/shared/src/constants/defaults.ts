@@ -19,7 +19,7 @@ export const DEFAULT_CONNECTION_ID = "__default_openrouter__";
 export const BACKGROUND_THUMBNAIL_WIDTH = 320;
 
 /** Maximum length for image-backend instructions stored on an image connection. */
-export const MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH = 5_000;
+export const MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH = 20_000;
 
 export function normalizeImagePromptInstructions(value: unknown): string | null {
   if (typeof value !== "string") return null;

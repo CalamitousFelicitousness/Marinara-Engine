@@ -24,6 +24,7 @@ import {
 } from "../prompt-overrides/index.js";
 import {
   inferImageSource,
+  MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
   type ImageGenerationDefaultsProfile,
   type ImageGenerationQuality,
   type ImageStyleProfileSettings,
@@ -990,7 +991,7 @@ async function buildBackgroundRawPrompt(req: BackgroundGenRequest): Promise<stri
     ? await loadPrompt(req.promptOverridesStorage, GAME_BACKGROUND, backgroundVars)
     : GAME_BACKGROUND.defaultBuilder(backgroundVars);
   const imagePromptInstructionsLine = req.imagePromptInstructions?.trim()
-    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, 5000)}`
+    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH)}`
     : "";
   return imagePromptInstructionsLine && !rawPrompt.includes(imagePromptInstructionsLine)
     ? `${rawPrompt}\n${imagePromptInstructionsLine}`
@@ -1124,7 +1125,7 @@ async function buildSceneIllustrationRawPrompt(req: SceneIllustrationGenRequest)
   const referenceImages = sceneIllustrationReferenceImagesForProvider(req);
   const characterReferenceImagesAttached = referenceImages.length > (req.locationReferenceImageAttached ? 1 : 0);
   const imagePromptInstructionsLine = req.imagePromptInstructions?.trim()
-    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, 5000)}`
+    ? `User image instructions: ${req.imagePromptInstructions.trim().replace(/\s+/g, " ").slice(0, MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH)}`
     : "";
   const useGamePromptTemplate = req.useGamePromptTemplate !== false;
   const scopedScenePrompt = req.prompt.trim();

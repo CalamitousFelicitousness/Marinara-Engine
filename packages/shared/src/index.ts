@@ -41,6 +41,7 @@ export * from "./types/home-feed.js";
 export * from "./schemas/chat.schema.js";
 export * from "./schemas/chat-preset.schema.js";
 export * from "./schemas/character.schema.js";
+export * from "./schemas/persona.schema.js";
 export * from "./schemas/lorebook.schema.js";
 export * from "./schemas/prompt.schema.js";
 export * from "./schemas/connection.schema.js";

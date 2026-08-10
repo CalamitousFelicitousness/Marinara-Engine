@@ -8,6 +8,13 @@ import {
   getFolderManifestConfig,
   isJsonRecord,
   characterDataSchema,
+  canonicalizeLegacyPersonaInput,
+  normalizeAvatarCrop,
+  normalizeConvoBehavior,
+  normalizePersonaStats,
+  normalizePersonaStringArray,
+  normalizeTrackerCardColorConfig,
+  personaCreateInputSchema,
   lorebookFilterModeSchema,
 } from "@marinara-engine/shared";
 import type {
@@ -30,6 +37,7 @@ import { DATA_DIR } from "../../utils/data-dir.js";
 import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../../utils/security.js";
 import { logger } from "../../lib/logger.js";
 import { removeUnattachedAvatarFile } from "../image/avatar-file-lifecycle.js";
+import { encodePersonaCreate } from "../personas/persona-projector.js";
 
 function resolveNativeSelectiveLogic(value: unknown): "and" | "and_all" | "or" | "not" | "not_all" {
   return value === "and_all" || value === "or" || value === "not" || value === "not_all" ? value : "and";
@@ -485,67 +493,116 @@ async function importCharacter(data: unknown, db: DB) {
 
 // ── Persona ──────────────────────────────────
 
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+function issueField(issue: { path: PropertyKey[] }): string | undefined {
+  return typeof issue.path[0] === "string" ? issue.path[0] : undefined;
+}
+
+/**
+ * Native Persona files are a compatibility boundary: preserve valid fields
+ * while dropping malformed ones before the same strict create boundary used by
+ * direct writes. The tolerant normalizers are deliberately limited to known
+ * structured fields; direct values remain strict or are omitted here.
+ */
+function parseNativePersonaInput(input: Record<string, unknown>) {
+  const candidate = canonicalizeLegacyPersonaInput(input) as Record<string, unknown>;
+  const strict = personaCreateInputSchema.safeParse(candidate);
+  if (strict.success) return strict.data;
+
+  const invalidFields = new Set(strict.error.issues.map(issueField));
+  for (const field of invalidFields) {
+    switch (field) {
+      case "avatarCrop":
+        candidate.avatarCrop = normalizeAvatarCrop(candidate.avatarCrop);
+        break;
+      case "trackerCardColors":
+        candidate.trackerCardColors = normalizeTrackerCardColorConfig(candidate.trackerCardColors);
+        break;
+      case "personaStats":
+        candidate.personaStats = normalizePersonaStats(candidate.personaStats) ?? null;
+        break;
+      case "tags":
+      case "savedStatusOptions":
+        candidate[field] = normalizePersonaStringArray(candidate[field]);
+        break;
+      case "convoBehavior":
+        candidate.convoBehavior = normalizeConvoBehavior(candidate.convoBehavior) ?? null;
+        break;
+    }
+  }
+
+  const salvaged = personaCreateInputSchema.safeParse(candidate);
+  if (salvaged.success) return salvaged.data;
+
+  // Normalizers intentionally leave extension keys alone, so a normalized
+  // structured value can still violate a strict known-field rule (for example
+  // unsafe tracker paint). Drop each remaining invalid top-level field; an
+  // empty native name receives the import default instead.
+  for (const issue of salvaged.error.issues) {
+    const field = issueField(issue);
+    if (field === "name") candidate.name = "Imported Persona";
+    else if (field) delete candidate[field];
+  }
+  return personaCreateInputSchema.parse(candidate);
+}
+
 async function importPersona(data: unknown, db: DB) {
   const storage = createCharactersStorage(db);
   const galleryStorage = createPersonaGalleryStorage(db);
-  const d = data as Record<string, unknown>;
-  if (!d || typeof d !== "object") {
+  if (!isJsonRecord(data)) {
     return { success: false, type: "marinara_persona" as const, error: "Invalid persona data" };
   }
-  // Stringify JSON-array DB fields if the exporter sent them as parsed arrays;
-  // the table stores them as strings ("[]" when empty).
-  const stringifyJsonField = (value: unknown, fallback: string): string => {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value) || (value && typeof value === "object")) return JSON.stringify(value);
-    return fallback;
+  const d = data as Record<string, unknown>;
+  const timestampOverrides = readTimestampOverrides(d);
+  // Alias selection and native-import defaults stay local; the shared adapter
+  // owns the legacy structured-field inventory and its decoding policy.
+  const personaInput: Record<string, unknown> = {
+    name: typeof d.name === "string" ? d.name : "Imported Persona",
+    ...(d.avatarCrop === undefined ? {} : { avatarCrop: d.avatarCrop }),
+    ...(d.trackerCardColors === undefined ? {} : { trackerCardColors: d.trackerCardColors }),
+    ...(d.personaStats === undefined ? {} : { personaStats: d.personaStats }),
+    ...(d.tags === undefined ? {} : { tags: d.tags }),
+    ...(d.savedStatusOptions === undefined ? {} : { savedStatusOptions: d.savedStatusOptions }),
+    ...(d.convoBehavior === undefined ? {} : { convoBehavior: d.convoBehavior }),
   };
-  const firstStringField = (...values: unknown[]) => {
-    for (const value of values) {
-      if (typeof value === "string") return value;
-    }
-    return "";
-  };
+  for (const field of [
+    "comment",
+    "creator",
+    "phoneticName",
+    "description",
+    "personality",
+    "scenario",
+    "backstory",
+    "appearance",
+    "nameColor",
+    "dialogueColor",
+    "boxColor",
+    "convoDisplayName",
+    "aboutMe",
+  ] as const) {
+    const value = d[field];
+    if (typeof value === "string") personaInput[field] = value;
+  }
+  const personaVersion = firstString(d.personaVersion, d.persona_version, d.character_version);
+  if (personaVersion !== undefined) personaInput.personaVersion = personaVersion;
+  const creatorNotes = firstString(d.creatorNotes, d.creator_notes);
+  if (creatorNotes !== undefined) personaInput.creatorNotes = creatorNotes;
+
+  const parsed = parseNativePersonaInput(personaInput);
+  const { name, description, extra } = encodePersonaCreate(parsed);
   const useCharacterSheetAsReference = d.useCharacterSheetAsReference === true || d.useCharacterSheetAsReference === "true";
   const result = await storage.createPersona(
-    String(d.name ?? "Imported Persona"),
-    String(d.description ?? ""),
+    name,
+    description,
     undefined,
-    {
-      comment: typeof d.comment === "string" ? d.comment : "",
-      creator: firstStringField(d.creator),
-      personaVersion: firstStringField(d.personaVersion, d.persona_version, d.character_version),
-      creatorNotes: firstStringField(d.creatorNotes, d.creator_notes),
-      phoneticName: firstStringField(d.phoneticName),
-      personality: String(d.personality ?? ""),
-      scenario: String(d.scenario ?? ""),
-      backstory: String(d.backstory ?? ""),
-      appearance: String(d.appearance ?? ""),
-      characterSheetImageId: null,
-      useCharacterSheetAsReference: "false",
-      nameColor: String(d.nameColor ?? ""),
-      dialogueColor: String(d.dialogueColor ?? ""),
-      boxColor: String(d.boxColor ?? ""),
-      trackerCardColors:
-        typeof d.trackerCardColors === "string"
-          ? d.trackerCardColors
-          : JSON.stringify(d.trackerCardColors ?? { mode: "chat" }),
-      personaStats: typeof d.personaStats === "string" ? d.personaStats : "",
-      tags: stringifyJsonField(d.tags, "[]"),
-      savedStatusOptions: stringifyJsonField(d.savedStatusOptions, "[]"),
-      convoDisplayName: firstStringField(d.convoDisplayName),
-      aboutMe: firstStringField(d.aboutMe),
-      // convoBehavior is stored as a JSON string; re-stringify objects on import.
-      convoBehavior: stringifyJsonField(d.convoBehavior, ""),
-      // avatarCrop is stored as a JSON string in the DB; the export round-trips it
-      // as either an object or the empty string. Re-stringify objects on import.
-      avatarCrop:
-        typeof d.avatarCrop === "string"
-          ? d.avatarCrop
-          : d.avatarCrop && typeof d.avatarCrop === "object"
-            ? JSON.stringify(d.avatarCrop)
-            : "",
-    },
-    readTimestampOverrides(d),
+    { ...extra, characterSheetImageId: null, useCharacterSheetAsReference: "false" },
+    timestampOverrides,
   );
   if (result?.id) {
     let avatar: SavedAvatar | null = null;
@@ -577,12 +634,7 @@ async function importPersona(data: unknown, db: DB) {
       logger.warn(err, "Skipped optional persona gallery restore for %s; persona row is already imported", result.id);
     }
   }
-  return {
-    success: true,
-    type: "marinara_persona" as const,
-    id: result?.id,
-    name: String(d.name ?? "Imported Persona"),
-  };
+  return { success: true, type: "marinara_persona" as const, id: result?.id, name: parsed.name };
 }
 
 // ── Lorebook ─────────────────────────────────

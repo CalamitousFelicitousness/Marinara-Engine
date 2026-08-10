@@ -380,6 +380,16 @@ export async function seedDefaultPreset(db: DB) {
     }
   }
 
+  // Normalize the old display name before any reconciliation branch can
+  // return, including profiles without a prior snapshot marker.
+  if (existingMarinaraPreset?.name === LEGACY_MARINARA_PRESET_NAME) {
+    const renamedPreset = await storage.update(existingMarinaraPreset.id, {
+      name: MARINARA_UNIVERSAL_PRESET_NAME,
+      description: bundledPresetDescription(bundled.envelope),
+    });
+    if (renamedPreset) existingMarinaraPreset = renamedPreset;
+  }
+
   const bundledConversationPromptValue = bundledConversationPrompt(bundled.envelope.data.preset);
   if (existingMarinaraPreset && appliedSnapshotHash) {
     const currentSnapshotHash = await computePresetSnapshotHash(storage, existingMarinaraPreset.id);
@@ -441,17 +451,6 @@ export async function seedDefaultPreset(db: DB) {
 
   if (existingMarinaraPreset && !appliedSnapshotHash) {
     await appSettings.set(MARINARA_PRESET_SNAPSHOT_KEY, computeBundledPresetSnapshotHash(bundled.envelope));
-  }
-
-  // Older builds named the bundled preset "Default"; keep the display name tidy
-  // even when its bundled body already matches the current seed hash.
-  const legacyMarinaraPreset =
-    existingMarinaraPreset?.name === LEGACY_MARINARA_PRESET_NAME ? existingMarinaraPreset : null;
-  if (legacyMarinaraPreset) {
-    await storage.update(legacyMarinaraPreset.id, {
-      name: MARINARA_UNIVERSAL_PRESET_NAME,
-      description: bundledPresetDescription(bundled.envelope),
-    });
   }
 
   if (existingMarinaraPreset) return;

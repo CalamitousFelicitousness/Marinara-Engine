@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedDefaultPreset } from "../../packages/server/src/db/seed.js";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
+import { createAppSettingsStorage } from "../../packages/server/src/services/storage/app-settings.storage.js";
 import { createPromptsStorage } from "../../packages/server/src/services/storage/prompts.storage.js";
 import { isStockMarinaraUniversalPreset } from "../../packages/shared/src/types/prompt.js";
 
@@ -13,6 +14,7 @@ const db = await createFileNativeDB();
 
 try {
   const storage = createPromptsStorage(db);
+  const appSettings = createAppSettingsStorage(db);
   await seedDefaultPreset(db);
   const original = (await storage.list()).find(isStockMarinaraUniversalPreset);
   assert.ok(original, "a fresh profile receives the stock Marinara universal preset");
@@ -23,6 +25,16 @@ try {
     (await storage.list()).find(isStockMarinaraUniversalPreset)?.id,
     original.id,
     "snapshot evidence migrates a genuine legacy stock preset to the reserved identity",
+  );
+
+  await storage.update(original.id, { name: "Default" });
+  await appSettings.remove("seed:marinara-universal-preset:snapshot-sha256");
+  await appSettings.set("seed:marinara-universal-preset:sha256", "outdated-seed-hash");
+  await seedDefaultPreset(db);
+  assert.equal(
+    (await storage.getById(original.id))?.name,
+    "Marinara's Universal Preset",
+    "legacy display names are normalized before no-snapshot reconciliation returns",
   );
 
   const originalDescription = original.description;

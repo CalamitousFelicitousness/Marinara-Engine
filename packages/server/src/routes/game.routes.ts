@@ -11507,6 +11507,7 @@ export async function gameRoutes(app: FastifyInstance) {
                   title: plannedFrame.title,
                   motionIntent: plannedFrame.narrationBeat,
                   illustrationPrompt: galleryImage.prompt || plannedFrame.imagePrompt,
+                  plannerPrompt: illustratorMessages.systemPrompt,
                   durationSeconds: plannedFrame.durationSeconds,
                   aspectRatio: plannedFrame.aspectRatio,
                   referenceImage,

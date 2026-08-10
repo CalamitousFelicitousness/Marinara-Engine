@@ -19,12 +19,15 @@ export function buildStoryboardAnimationRefinementMessages(args: {
   title: string;
   motionIntent: string;
   illustrationPrompt: string;
+  plannerPrompt: string;
   durationSeconds: number;
   aspectRatio: "16:9" | "9:16";
   referenceImage: VideoReferenceImage;
 }): ChatMessage[] {
   const systemPrompt = [
     "Refine one storyboard motion beat using the attached generated illustration as the exact first frame at T=0.",
+    "Follow the active Storyboard Agent animation preset below for its motion and storytelling priorities. These single-beat output instructions take precedence over any multi-keyframe or JSON output instructions in that preset.",
+    `<active_storyboard_animation_preset>\n${compactVideoPromptText(args.plannerPrompt, 8_000)}\n</active_storyboard_animation_preset>`,
     "The image is authoritative for visible subjects, pose, crop, camera angle, object placement, and feasible movement.",
     "Preserve the intended action and emotion, but simplify motion that conflicts with the actual frame.",
     "Describe subject motion, camera motion, continuity, and the ending beat. Do not repeat a static image description or invent unseen characters.",

@@ -4549,6 +4549,7 @@ const cases: RegressionCase[] = [
         title: "The doorway",
         motionIntent,
         illustrationPrompt: "Waist-up profile of Mira holding a lowered sword beside a doorway.",
+        plannerPrompt: "Favor restrained character motion and a slow dramatic camera.",
         durationSeconds: 6,
         aspectRatio: "16:9",
         referenceImage: { base64: "cGl4ZWxz", mimeType: "image/png" },
@@ -4556,6 +4557,8 @@ const cases: RegressionCase[] = [
       assert.equal(messages[1]?.role, "user");
       assert.deepEqual(messages[1]?.images, ["data:image/png;base64,cGl4ZWxz"]);
       assert.match(messages[0]?.content ?? "", /exact first frame at T=0/u);
+      assert.match(messages[0]?.content ?? "", /active_storyboard_animation_preset/u);
+      assert.match(messages[0]?.content ?? "", /Favor restrained character motion/u);
       assert.match(messages[0]?.content ?? "", /same number of \| separated segments/u);
       assert.match(messages[1]?.content ?? "", /She lifts the sword/u);
       assert.match(messages[1]?.content ?? "", /attached generated illustration/u);
@@ -4592,6 +4595,7 @@ const cases: RegressionCase[] = [
       assert.ok(referenceImageIndex >= 0 && referenceImageIndex < refinementIndex);
       assert.ok(refinementIndex < truncationGuardIndex);
       assert.ok(truncationGuardIndex < formatterIndex);
+      assert.match(renderSource, /plannerPrompt: illustratorMessages\.systemPrompt/u);
       assert.match(renderSource, /plannedFrame: animationPlannedFrame/u);
       assert.match(renderSource, /fallback=planned-motion-beat/u);
     },

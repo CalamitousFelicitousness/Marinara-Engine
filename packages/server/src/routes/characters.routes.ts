@@ -12,7 +12,7 @@ import {
   createPersonaGroupSchema,
   updatePersonaGroupSchema,
   personaCreateInputSchema,
-  personaNameColorPaintSchema,
+  personaLocalPaintSchema,
   personaUpdateInputSchema,
   normalizeTrackerCardColorConfig,
   trackerCardColorConfigSchema,
@@ -129,6 +129,7 @@ function applyTrackerCardPaint(
   return next;
 }
 
+// Exactly { mode: "chat" } is the bare-chat clear sentinel: it clears paint/stat-icon state while preserving stored portrait framing.
 function isTrackerCardClear(value: unknown): boolean {
   return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && (value as Record<string, unknown>).mode === "chat";
 }
@@ -735,20 +736,26 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   const usesFallbackName = typeof validationFields.name !== "string" || !validationFields.name.trim();
 
   if (usesFallbackName) validationFields.name = "Unnamed Persona";
-  if (!personaNameColorPaintSchema.safeParse(validationFields.nameColor).success) {
-    delete validationFields.nameColor;
+  const topLevelPaintFields = ["nameColor", "dialogueColor", "boxColor"] as const;
+  for (const field of topLevelPaintFields) {
+    if (typeof validationFields[field] === "string" && !personaLocalPaintSchema.safeParse(validationFields[field]).success) {
+      delete validationFields[field];
+    }
   }
   const trackerCardColors = validationFields.trackerCardColors;
-  if (
-    trackerCardColors &&
-    typeof trackerCardColors === "object" &&
-    !Array.isArray(trackerCardColors) &&
-    typeof (trackerCardColors as Record<string, unknown>).nameColor === "string" &&
-    !personaNameColorPaintSchema.safeParse((trackerCardColors as Record<string, unknown>).nameColor).success
-  ) {
+  if (trackerCardColors && typeof trackerCardColors === "object" && !Array.isArray(trackerCardColors)) {
     const repairedTrackerCardColors = { ...(trackerCardColors as Record<string, unknown>) };
-    delete repairedTrackerCardColors.nameColor;
-    validationFields.trackerCardColors = repairedTrackerCardColors;
+    let removedTrackerPaint = false;
+    for (const field of topLevelPaintFields) {
+      if (
+        typeof repairedTrackerCardColors[field] === "string" &&
+        !personaLocalPaintSchema.safeParse(repairedTrackerCardColors[field]).success
+      ) {
+        delete repairedTrackerCardColors[field];
+        removedTrackerPaint = true;
+      }
+    }
+    if (removedTrackerPaint) validationFields.trackerCardColors = repairedTrackerCardColors;
   }
 
   const parsed = personaCreateInputSchema.safeParse(validationFields);
@@ -757,7 +764,7 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   const { name, description, extra } = encodePersonaCreate(parsed.data);
   const row = { ...persona, ...extra, name, description };
   // Never restore raw rejected top-level paint over the repaired export copy.
-  if (!Object.hasOwn(parsed.data, "nameColor")) delete row.nameColor;
+  for (const field of topLevelPaintFields) if (!Object.hasOwn(parsed.data, field)) delete row[field];
   return { row, usesFallbackName };
 }
 

@@ -11,13 +11,13 @@ const trackerCardPortraitStageBackgroundSchema = z.enum(["ambient", "spotlight",
 const finiteNumberSchema = z.number().finite();
 const personaNameSchema = z.string().trim().min(1);
 const gradientMarkerPattern = /gradient\s*\(/i;
-const supportedPersonaNameGradientPattern = /^\s*(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
-const unsafePersonaNamePaintPattern = /\\|(?:url|(?:-\w+-)?image(?:-set)?|expression)\s*\(|[;{}]/i;
+const supportedLocalPaintGradientPattern = /^\s*(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/i;
+const unsafeLocalPaintPattern = /\\|(?:url|(?:-\w+-)?image(?:-set)?|expression)\s*\(|[;{}]/i;
 
-function isSafePersonaNameColorPaint(value: string): boolean {
-  if (unsafePersonaNamePaintPattern.test(value)) return false;
+function isSafePersonaLocalPaint(value: string): boolean {
+  if (unsafeLocalPaintPattern.test(value)) return false;
   if (!gradientMarkerPattern.test(value)) return true;
-  if (!supportedPersonaNameGradientPattern.test(value) || !value.trimEnd().endsWith(")")) {
+  if (!supportedLocalPaintGradientPattern.test(value) || !value.trimEnd().endsWith(")")) {
     return false;
   }
 
@@ -38,10 +38,10 @@ function isSafePersonaNameColorPaint(value: string): boolean {
   return depth === 0 && outerGradientClosed;
 }
 
-/** CSS paint values used for Persona names must remain a single, local paint value. */
-export const personaNameColorPaintSchema = z
+/** Persona CSS paint values must remain a single, local paint value. */
+export const personaLocalPaintSchema = z
   .string()
-  .refine(isSafePersonaNameColorPaint, "Name color must be a solid color or one local gradient");
+  .refine(isSafePersonaLocalPaint, "Paint must be a solid color or one local gradient");
 
 const personaTimestampSchema = z.union([
   z.string().datetime(),
@@ -208,13 +208,13 @@ export const trackerCardColorConfigSchema = z
     mode: trackerCardColorModeSchema.optional(),
     statIcons: z.array(trackerStatIconAssignmentSchema).optional(),
     displayEnabled: z.boolean().optional(),
-    nameColor: personaNameColorPaintSchema.optional(),
+    nameColor: personaLocalPaintSchema.optional(),
     nameColorOpacity: trackerPercentageSchema.optional(),
     accentEnabled: z.boolean().optional(),
-    dialogueColor: z.string().optional(),
+    dialogueColor: personaLocalPaintSchema.optional(),
     dialogueColorOpacity: trackerPercentageSchema.optional(),
     surfaceEnabled: z.boolean().optional(),
-    boxColor: z.string().optional(),
+    boxColor: personaLocalPaintSchema.optional(),
     boxColorOpacity: trackerPercentageSchema.optional(),
     tintIntensity: trackerPercentageSchema.optional(),
     materialBrightness: trackerPercentageSchema.optional(),
@@ -273,9 +273,9 @@ const personaFields = {
   backstory: z.string().optional(),
   appearance: z.string().optional(),
   avatarCrop: avatarCropSchema.nullable().optional(),
-  nameColor: personaNameColorPaintSchema.optional(),
-  dialogueColor: z.string().optional(),
-  boxColor: z.string().optional(),
+  nameColor: personaLocalPaintSchema.optional(),
+  dialogueColor: personaLocalPaintSchema.optional(),
+  boxColor: personaLocalPaintSchema.optional(),
   trackerCardColors: trackerCardColorConfigSchema.optional(),
   personaStats: personaStatsSchema.nullable().optional(),
   tags: z.array(z.string()).optional(),

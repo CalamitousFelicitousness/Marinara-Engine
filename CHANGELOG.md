@@ -83,7 +83,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Stopped hidden Home and Professor surfaces from retaining navigation timers, pending focus frames, message-history requests, Discovery rotation, and workspace-status polling after their lifecycle ended.
 - Kept Professor Mari's navigation dialog controls clickable when her draggable sprite overlaps the dialog.
 - Kept Professor Mari suggestion chips visible after entering her Home tab instead of briefly showing them before loaded chat history made the composer jump.
-- Improved Persona reliability and compatibility.
+- Rejected malformed Persona create/edit fields and normalized downloaded Persona copies with fallback names plus unsafe-paint cleanup without changing saved Personas (#4857).
 - Kept NovelAI V4.5 style-plate file selection inside the Connection editor across Chromium platforms (#4777).
 - Deactivated and revealed lorebooks that lose their final owner, replaced Lorebook Keeper entry bodies without stacking duplicates, and added sandbox-safe structured file copy, move, and removal tools for Android/Termux (#4775).
 - Let readers scroll through Professor Mari history while her response is still streaming (#4774).

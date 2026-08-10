@@ -43,6 +43,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Sharpened Professor Mari's read-only guardrail so a "how do I…" question is answered or offered rather than performed, even when it names the change as its goal (for example "how do I make X have Y") — while a plainly-worded request to make that change, including a polite question form like "can you set X to Y", is still carried out — so she keys on intent rather than grammar and no longer edits without a clear instruction (#4838).
 - Reduced background autonomous-message polling to a lightweight candidate-id lookup instead of re-fetching the full chat list every 30 seconds (#4715).
 - Stopped the server's autonomous-messaging scheduler from sweeping every 60 seconds when no chats had changed, cutting idle load on self-hosted installs (#4716).
 - Stopped chat message history from being fully re-downloaded on reconnects, background generations, and Professor Mari workspace changes (#4719).

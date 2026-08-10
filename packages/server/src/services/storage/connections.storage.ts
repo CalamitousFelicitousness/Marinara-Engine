@@ -141,6 +141,7 @@ export function createConnectionsStorage(db: DB) {
         comfyuiWorkflow: input.comfyuiWorkflow ?? null,
         imageService: input.imageService ?? null,
         imageEndpointId: input.imageEndpointId ?? null,
+        imageGenerationQuality: input.imageGenerationQuality ?? "auto",
         videoGenerationSource: input.videoGenerationSource ?? null,
         videoService: input.videoService ?? null,
         promptPresetId: input.promptPresetId ?? null,
@@ -282,6 +283,9 @@ export function createConnectionsStorage(db: DB) {
       if (data.imageEndpointId !== undefined) {
         updateFields.imageEndpointId = data.imageEndpointId;
       }
+      if (data.imageGenerationQuality !== undefined) {
+        updateFields.imageGenerationQuality = data.imageGenerationQuality;
+      }
       if (data.videoGenerationSource !== undefined) {
         updateFields.videoGenerationSource = data.videoGenerationSource;
       }
@@ -414,6 +418,7 @@ export function createConnectionsStorage(db: DB) {
         comfyuiWorkflow: source.comfyuiWorkflow,
         imageService: source.imageService,
         imageEndpointId: source.imageEndpointId,
+        imageGenerationQuality: source.imageGenerationQuality,
         videoGenerationSource: source.videoGenerationSource,
         videoService: source.videoService,
         promptPresetId: source.promptPresetId,

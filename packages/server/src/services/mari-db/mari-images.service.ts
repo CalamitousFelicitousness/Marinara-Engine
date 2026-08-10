@@ -11,7 +11,7 @@ import { DATA_DIR } from "../../utils/data-dir.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../../utils/security.js";
 import { generateImage, type ImageGenResult } from "../image/image-generation.js";
-import { resolveConnectionImageDefaults } from "../image/image-generation-defaults.js";
+import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from "../image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../image/image-generation-settings.js";
 import { compileImagePrompt } from "../image/image-prompt-compiler.js";
 import { resolveImageConnectionFallback } from "../generation/media-connection-fallback.js";
@@ -726,6 +726,7 @@ export class MariImagesService {
       imageEndpointId: connection.imageEndpointId || undefined,
       comfyWorkflow: connection.comfyuiWorkflow || undefined,
       imageDefaults,
+      quality: resolveConnectionImageQuality(connection),
       fallback,
     });
 

@@ -113,7 +113,10 @@ import {
   resolveChatSummaryConnection,
   resolveChatSummaryTemperatureOptions,
 } from "../services/chat-summary/connection-resolution.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { generateIllustratorImageVariants } from "../services/image/illustrator-image-variants.js";
 import {
   loadImageGenerationUserSettings,
@@ -8224,6 +8227,7 @@ export async function generateRoutes(app: FastifyInstance) {
                               imageEndpointId: imgConnFull.imageEndpointId || undefined,
                               comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                               imageDefaults,
+                              quality: resolveConnectionImageQuality(imgConnFull),
                               debugMode: input.debugMode,
                               fallback: imageFallback,
                               onFallback,
@@ -9007,7 +9011,9 @@ export async function generateRoutes(app: FastifyInstance) {
                               avatarPath: persona.avatarPath as string | null,
                               appearance: personaFields.appearance,
                               characterSheetImageId:
-                                typeof persona.characterSheetImageId === "string" ? persona.characterSheetImageId : null,
+                                typeof persona.characterSheetImageId === "string"
+                                  ? persona.characterSheetImageId
+                                  : null,
                               useCharacterSheetAsReference: persona.useCharacterSheetAsReference === "true",
                             }
                           : null,
@@ -9116,6 +9122,7 @@ export async function generateRoutes(app: FastifyInstance) {
                             imageEndpointId: imgConnFull.imageEndpointId || undefined,
                             comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                             imageDefaults,
+                            quality: resolveConnectionImageQuality(imgConnFull),
                             referenceImages: illustratorRefImages,
                             debugMode: input.debugMode,
                             fallback: providerAwareImageFallback,

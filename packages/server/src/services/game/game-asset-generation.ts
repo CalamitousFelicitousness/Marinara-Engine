@@ -25,6 +25,7 @@ import {
 import {
   inferImageSource,
   type ImageGenerationDefaultsProfile,
+  type ImageGenerationQuality,
   type ImageStyleProfileSettings,
   type SceneIllustrationCharacterPrompt,
 } from "@marinara-engine/shared";
@@ -514,6 +515,7 @@ export interface NpcPortraitRequest {
   imgEndpointId?: string | null;
   imgComfyWorkflow?: string | undefined;
   imgDefaults?: ImageGenerationDefaultsProfile | null;
+  imgQuality?: ImageGenerationQuality;
   imgFallback?: ImageGenRequest["fallback"];
   styleProfiles?: ImageStyleProfileSettings;
   styleProfileId?: string | null;
@@ -784,6 +786,7 @@ export async function generateNpcPortrait(req: NpcPortraitRequest): Promise<stri
         imageEndpointId: req.imgEndpointId || undefined,
         comfyWorkflow: req.imgComfyWorkflow || undefined,
         imageDefaults: req.imgDefaults ?? undefined,
+        quality: req.imgQuality,
         fallback: req.imgFallback,
         signal: req.signal,
       },
@@ -850,6 +853,7 @@ export interface BackgroundGenRequest {
   imgEndpointId?: string | null;
   imgComfyWorkflow?: string | undefined;
   imgDefaults?: ImageGenerationDefaultsProfile | null;
+  imgQuality?: ImageGenerationQuality;
   imgFallback?: ImageGenRequest["fallback"];
   styleProfiles?: ImageStyleProfileSettings;
   styleProfileId?: string | null;
@@ -928,6 +932,7 @@ export interface SceneIllustrationGenRequest {
   imgEndpointId?: string | null;
   imgComfyWorkflow?: string | undefined;
   imgDefaults?: ImageGenerationDefaultsProfile | null;
+  imgQuality?: ImageGenerationQuality;
   imgFallback?: ImageGenRequest["fallback"];
   styleProfiles?: ImageStyleProfileSettings;
   styleProfileId?: string | null;
@@ -1299,6 +1304,7 @@ export async function generateBackground(req: BackgroundGenRequest): Promise<str
         imageEndpointId: req.imgEndpointId || undefined,
         comfyWorkflow: req.imgComfyWorkflow || undefined,
         imageDefaults: req.imgDefaults ?? undefined,
+        quality: req.imgQuality,
         fallback: req.imgFallback,
         signal: req.signal,
       },
@@ -1369,6 +1375,7 @@ export async function generateChatBackground(req: ChatBackgroundGenRequest): Pro
         imageEndpointId: req.imgEndpointId || undefined,
         comfyWorkflow: req.imgComfyWorkflow || undefined,
         imageDefaults: req.imgDefaults ?? undefined,
+        quality: req.imgQuality,
         fallback: req.imgFallback,
         signal: req.signal,
       },
@@ -1437,6 +1444,7 @@ export async function generateSceneIllustration(req: SceneIllustrationGenRequest
         imageEndpointId: req.imgEndpointId || undefined,
         comfyWorkflow: req.imgComfyWorkflow || undefined,
         imageDefaults: req.imgDefaults ?? undefined,
+        quality: req.imgQuality,
         fallback: req.imgFallback,
         signal: req.signal,
         referenceImages: referenceImages.length ? referenceImages : undefined,

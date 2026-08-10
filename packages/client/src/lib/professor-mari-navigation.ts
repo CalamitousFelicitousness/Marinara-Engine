@@ -40,6 +40,26 @@ export interface ProfessorMariNavigationChat {
   name: string;
 }
 
+export const PROFESSOR_MARI_NAVIGATOR_POSITION_STORAGE_KEY = "marinara:home:professor-position:v1";
+export const PROFESSOR_MARI_NAVIGATOR_RESET_EVENT = "marinara:home:professor-navigation-reset";
+
+export const professorMariNavigatorRuntime = {
+  minimized: false,
+  hasAppeared: false,
+};
+
+export function resetProfessorMariNavigator() {
+  professorMariNavigatorRuntime.minimized = false;
+  professorMariNavigatorRuntime.hasAppeared = true;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PROFESSOR_MARI_NAVIGATOR_POSITION_STORAGE_KEY);
+  } catch {
+    /* Local storage is optional; the current session still resets. */
+  }
+  window.dispatchEvent(new Event(PROFESSOR_MARI_NAVIGATOR_RESET_EVENT));
+}
+
 interface NavigationRule {
   target: ProfessorMariNavigationTarget;
   priority: number;
@@ -326,14 +346,7 @@ export function resolveProfessorMariNavigation(
 
   // Exact chat titles outrank keyword routing, except for the generic words
   // users naturally use to ask for the Chats surface itself.
-  const genericChatQueries = new Set([
-    "chat",
-    "chats",
-    "conversations",
-    "convo",
-    "rp",
-    "games",
-  ]);
+  const genericChatQueries = new Set(["chat", "chats", "conversations", "convo", "rp", "games"]);
   if (!genericChatQueries.has(query)) {
     const exactChat = chats.find((chat) => normalizeProfessorMariNavigationQuery(chat.name) === query);
     if (exactChat) return { kind: "chat", chatId: exactChat.id };

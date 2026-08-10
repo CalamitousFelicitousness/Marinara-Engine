@@ -3,7 +3,7 @@
 // Replaces the chat area when editing a persona.
 // Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, type ChangeEvent, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   useCreateCharacter,
@@ -65,6 +65,7 @@ import {
   Library,
   MessageCircle,
   Pencil,
+  Check,
 } from "lucide-react";
 import type { AvatarCrop } from "@marinara-engine/shared";
 import { normalizeAvatarCrop } from "@marinara-engine/shared";
@@ -82,6 +83,7 @@ import { CustomEmojiTagButton } from "../ui/CustomEmojiTagButton";
 import { CallClipGenerationModal } from "../ui/CallClipGenerationModal";
 import { api } from "../../lib/api-client";
 import { downloadSpriteFile } from "../../lib/sprite-download";
+import { downloadUrlToDevice } from "../../lib/file-download";
 import { parseTrackerCardColorConfig, serializeTrackerCardColorConfig } from "../../lib/tracker-card-colors";
 import {
   getStatNameOccurrence,
@@ -307,6 +309,34 @@ function PersonaGalleryTab({
   const setAvatar = useSetPersonaGalleryImageAsAvatar(personaId);
   const tag = useTagPersonaGalleryImage(personaId);
   const [lightbox, setLightbox] = useState<PersonaGalleryImage | null>(null);
+  const [selectingImages, setSelectingImages] = useState(false);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(() => new Set());
+  const selectedImages = useMemo(
+    () => images?.filter((image) => selectedImageIds.has(image.id)) ?? [],
+    [images, selectedImageIds],
+  );
+
+  useEffect(() => {
+    const availableIds = new Set(images?.map((image) => image.id) ?? []);
+    setSelectedImageIds((current) => {
+      const next = new Set([...current].filter((id) => availableIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [images]);
+
+  const leaveImageSelection = useCallback(() => {
+    setSelectingImages(false);
+    setSelectedImageIds(new Set());
+  }, []);
+
+  const toggleImageSelection = useCallback((imageId: string) => {
+    setSelectedImageIds((current) => {
+      const next = new Set(current);
+      if (next.has(imageId)) next.delete(imageId);
+      else next.add(imageId);
+      return next;
+    });
+  }, []);
 
   const handleUpload = useCallback(
     (files: File[]) => {
@@ -356,6 +386,66 @@ function PersonaGalleryTab({
     [setAvatar, localizeUi],
   );
 
+  const handleBatchDownload = useCallback(async () => {
+    if (selectedImages.length === 0) return;
+    if (
+      !(await showConfirmDialog({
+        title: localizeUi("ui.gallery.batch.downloadTitle"),
+        message: localizeUi("ui.gallery.batch.downloadMessage", { count: selectedImages.length }),
+        confirmLabel: localizeUi("ui.gallery.batch.download"),
+      }))
+    ) {
+      return;
+    }
+    try {
+      let failedDownloads = 0;
+      for (const [index, image] of selectedImages.entries()) {
+        try {
+          await downloadUrlToDevice(
+            image.url,
+            image.filePath.split("/").pop() || `persona-gallery-${index + 1}.png`,
+          );
+        } catch {
+          failedDownloads += 1;
+        }
+      }
+      if (failedDownloads > 0) {
+        toast.error(
+          localizeUi("ui.gallery.batch.downloadPartial", {
+            completed: selectedImages.length - failedDownloads,
+            count: selectedImages.length,
+            failed: failedDownloads,
+          }),
+        );
+        return;
+      }
+      toast.success(localizeUi("ui.gallery.batch.downloadStarted", { count: selectedImages.length }));
+    } catch {
+      toast.error(localizeUi("ui.gallery.batch.downloadFailed"));
+    }
+  }, [localizeUi, selectedImages]);
+
+  const handleBatchDelete = useCallback(async () => {
+    if (selectedImages.length === 0) return;
+    if (
+      !(await showConfirmDialog({
+        title: localizeUi("ui.gallery.batch.deleteTitle"),
+        message: localizeUi("ui.gallery.batch.deleteMessage", { count: selectedImages.length }),
+        confirmLabel: localizeUi("ui.gallery.batch.delete"),
+        tone: "destructive",
+      }))
+    ) {
+      return;
+    }
+    try {
+      for (const image of selectedImages) await remove.mutateAsync(image.id);
+      toast.success(localizeUi("ui.gallery.batch.deleted", { count: selectedImages.length }));
+      leaveImageSelection();
+    } catch {
+      toast.error(localizeUi("ui.personas.personagallerytab.failedToDeletePersonaImage"));
+    }
+  }, [leaveImageSelection, localizeUi, remove, selectedImages]);
+
   return (
     <div className="space-y-6">
       <div className="mb-4">
@@ -394,7 +484,37 @@ function PersonaGalleryTab({
 
       {mediaTab === "images" ? (
         <>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectingImages) leaveImageSelection();
+                  else setSelectingImages(true);
+                }}
+                className="mari-editor-action inline-flex"
+              >
+                {selectingImages ? <X size="0.875rem" /> : <Check size="0.875rem" />}
+                {localizeUi(selectingImages ? "ui.gallery.batch.cancel" : "ui.gallery.batch.selectImages")}
+              </button>
+              <button
+                type="button"
+                disabled={!images?.length}
+                onClick={() => {
+                  setSelectingImages(true);
+                  setSelectedImageIds(new Set(images?.map((image) => image.id) ?? []));
+                }}
+                className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Check size="0.875rem" />
+                {localizeUi("ui.gallery.batch.selectAll")}
+              </button>
+              {selectingImages ? (
+                <span className="text-xs font-semibold text-[var(--muted-foreground)]">
+                  {localizeUi("ui.gallery.batch.selected", { count: selectedImages.length })}
+                </span>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={onCreateCharacterSheet}
@@ -404,6 +524,10 @@ function PersonaGalleryTab({
               {localizeUi("ui.characters.charactersheet.createWithAi")}
             </button>
           </div>
+
+          <p className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+            {localizeUi("ui.gallery.batch.hint")}
+          </p>
 
           <ImageUploadDropzone
             label={localizeUi("ui.personas.personagallerytab.uploadPersonaImages")}
@@ -426,13 +550,35 @@ function PersonaGalleryTab({
               {images.map((image) => (
                 <div
                   key={image.id}
-                  className="mari-gallery-card group relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] transition-all hover:border-[var(--primary)]/30 hover:shadow-md"
+                  className={cn(
+                    "mari-gallery-card group relative overflow-hidden rounded-xl border bg-[var(--card)] transition-all hover:shadow-md",
+                    selectedImageIds.has(image.id)
+                      ? "border-[var(--primary)] ring-2 ring-[var(--primary)]/45"
+                      : "border-[var(--border)] hover:border-[var(--primary)]/30",
+                  )}
                 >
-                  <CustomEmojiTagButton image={image} onApply={(patch) => tag.mutate({ imageId: image.id, patch })} />
+                  {!selectingImages ? (
+                    <CustomEmojiTagButton image={image} onApply={(patch) => tag.mutate({ imageId: image.id, patch })} />
+                  ) : (
+                    <button
+                      type="button"
+                      aria-pressed={selectedImageIds.has(image.id)}
+                      aria-label={localizeUi("ui.gallery.batch.toggleImage")}
+                      onClick={() => toggleImageSelection(image.id)}
+                      className={cn(
+                        "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors",
+                        selectedImageIds.has(image.id)
+                          ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                          : "border-white/65 bg-black/55 text-transparent hover:bg-black/75",
+                      )}
+                    >
+                      <Check size="0.9rem" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="block aspect-square w-full bg-[var(--secondary)]"
-                    onClick={() => setLightbox(image)}
+                    onClick={() => (selectingImages ? toggleImageSelection(image.id) : setLightbox(image))}
                   >
                     <img
                       src={image.url}
@@ -442,38 +588,59 @@ function PersonaGalleryTab({
                       className="h-full w-full object-cover"
                     />
                   </button>
-                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/75 via-black/25 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100 group-[&:focus-within]:opacity-100 max-md:opacity-100">
+                  <div
+                    className={cn(
+                      "absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/75 via-black/25 to-transparent p-2 transition-opacity",
+                      selectingImages && !selectedImageIds.has(image.id)
+                        ? "pointer-events-none opacity-0"
+                        : "opacity-0 group-hover:opacity-100 group-[&:focus-within]:opacity-100 max-md:opacity-100",
+                    )}
+                  >
                     <span className="max-w-[8rem] truncate text-[0.6875rem] font-medium text-white/85 max-md:hidden">
                       {new Date(image.createdAt).toLocaleDateString()}
                     </span>
                     <div className="ml-auto flex gap-1">
+                      {!selectingImages ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleSetAvatar(image)}
+                          disabled={setAvatar.isPending}
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
+                          title={localizeUi("ui.personas.personagallerytab.setAsAvatar")}
+                        >
+                          {setAvatar.isPending ? (
+                            <Loader2 size="0.75rem" className="animate-spin" />
+                          ) : (
+                            <User size="0.75rem" />
+                          )}
+                        </button>
+                      ) : null}
+                      {selectingImages ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleBatchDownload()}
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
+                          title={localizeUi("ui.gallery.batch.download")}
+                        >
+                          <Download size="0.75rem" />
+                        </button>
+                      ) : (
+                        <a
+                          href={image.url}
+                          download
+                          className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
+                          title={localizeUi("ui.personas.personagallerytab.download")}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Download size="0.75rem" />
+                        </a>
+                      )}
                       <button
                         type="button"
-                        onClick={() => void handleSetAvatar(image)}
-                        disabled={setAvatar.isPending}
+                        onClick={() => void (selectingImages ? handleBatchDelete() : handleDelete(image))}
+                        disabled={remove.isPending}
                         className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25 disabled:opacity-50"
-                        title={localizeUi("ui.personas.personagallerytab.setAsAvatar")}
-                      >
-                        {setAvatar.isPending ? (
-                          <Loader2 size="0.75rem" className="animate-spin" />
-                        ) : (
-                          <User size="0.75rem" />
-                        )}
-                      </button>
-                      <a
-                        href={image.url}
-                        download
-                        className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
-                        title={localizeUi("ui.personas.personagallerytab.download")}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Download size="0.75rem" />
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => void handleDelete(image)}
-                        className="rounded-lg bg-[var(--secondary)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-                        title={localizeUi("lorebook.editor.batch.delete")}
+                        title={localizeUi(selectingImages ? "ui.gallery.batch.delete" : "lorebook.editor.batch.delete")}
                       >
                         <Trash2 size="0.75rem" />
                       </button>
@@ -3209,7 +3376,6 @@ function PersonaMetadataTab({
           placeholder={localizeUi("ui.personas.personametadatatab.notesAboutThisPersonaIntendedUseTipsForBest")}
         />
       </div>
-
     </div>
   );
 }

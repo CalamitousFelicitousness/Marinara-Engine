@@ -45,7 +45,10 @@ async function getSpriteCapabilities() {
   }
 }
 import { generateImage } from "../services/image/image-generation.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { loadImageGenerationUserSettings } from "../services/image/image-generation-settings.js";
 import { compileImagePrompt } from "../services/image/image-prompt-compiler.js";
 import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
@@ -2137,6 +2140,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   imageEndpointId: conn.imageEndpointId || undefined,
                   comfyWorkflow: conn.comfyuiWorkflow || undefined,
                   imageDefaults,
+                  quality: resolveConnectionImageQuality(conn),
                   fallback: imageFallback,
                 });
 
@@ -2232,6 +2236,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   imageEndpointId: conn.imageEndpointId || undefined,
                   comfyWorkflow: conn.comfyuiWorkflow || undefined,
                   imageDefaults,
+                  quality: resolveConnectionImageQuality(conn),
                   fallback: imageFallback,
                 });
 
@@ -2299,6 +2304,7 @@ export async function spritesRoutes(app: FastifyInstance) {
             imageEndpointId: conn.imageEndpointId || undefined,
             comfyWorkflow: conn.comfyuiWorkflow || undefined,
             imageDefaults,
+            quality: resolveConnectionImageQuality(conn),
             fallback: imageFallback,
           });
 

@@ -1162,11 +1162,18 @@ export async function lorebooksRoutes(app: FastifyInstance) {
     if (!allEntries.length) return { vectorized: 0, total: 0, skipped: 0 };
     const lorebook = (await storage.getById(req.params.id)) as Record<string, unknown> | null;
     if (lorebook?.excludeFromVectorization === true) {
-      return { vectorized: 0, total: allEntries.length, skipped: allEntries.length };
+      return reply.status(409).send({
+        error: "Enable Lorebook vectors and save the Lorebook before vectorizing its entries.",
+      });
     }
     const vectorizableEntries = allEntries.filter(
       (entry) => !(entry as Record<string, unknown>).excludeFromVectorization,
     );
+    if (vectorizableEntries.length === 0) {
+      return reply.status(409).send({
+        error: "Every entry is excluded from vectorization. Include at least one entry before vectorizing.",
+      });
+    }
     const entries = body.onlyMissing
       ? vectorizableEntries.filter((entry) => {
           const embedding = (entry as Record<string, unknown>).embedding;

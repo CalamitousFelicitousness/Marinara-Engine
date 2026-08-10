@@ -4033,6 +4033,89 @@ test("empty focused chat composers keep keyboard swipe navigation", async ({ pag
   }
 });
 
+test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch swipe navigation is covered on mobile.");
+
+  const fixtures: Array<{ chatId: string; messageId: string; first: string; second: string }> = [];
+  for (const mode of ["conversation", "roleplay"] as const) {
+    const chatResponse = await request.post("/api/chats", {
+      data: { name: `${mode} Touch Swipe Navigation`, mode, characterIds: [] },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    const first = `${mode} first touch swipe.`;
+    const second = `${mode} second touch swipe.`;
+    const messageResponse = await request.post(`/api/chats/${chat.id}/messages`, {
+      data: { role: "assistant", content: first },
+    });
+    expect(messageResponse.ok()).toBeTruthy();
+    const message = (await messageResponse.json()) as { id: string };
+    const swipeResponse = await request.post(`/api/chats/${chat.id}/messages/${message.id}/swipes`, {
+      data: { content: second, silent: true },
+    });
+    expect(swipeResponse.ok()).toBeTruthy();
+    fixtures.push({ chatId: chat.id, messageId: message.id, first, second });
+  }
+
+  const dispatchSwipe = async (target: Locator, direction: "left" | "right") => {
+    await target.evaluate((element, swipeDirection) => {
+      const startX = swipeDirection === "left" ? 180 : 40;
+      const endX = swipeDirection === "left" ? 40 : 180;
+      const touch = (clientX: number) => ({ identifier: 1, target: element, clientX, clientY: 120 });
+      const touchList = (items: ReturnType<typeof touch>[]) =>
+        Object.assign(items, { item: (index: number) => items[index] ?? null });
+      const start = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperties(start, {
+        touches: { value: touchList([touch(startX)]) },
+        changedTouches: { value: touchList([touch(startX)]) },
+      });
+      element.dispatchEvent(start);
+      const end = new Event("touchend", { bubbles: true, cancelable: true });
+      Object.defineProperties(end, {
+        touches: { value: touchList([]) },
+        changedTouches: { value: touchList([touch(endX)]) },
+      });
+      window.dispatchEvent(end);
+    }, direction);
+  };
+
+  try {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "marinara-engine-ui",
+        JSON.stringify({
+          state: {
+            intuitiveSwipeNavigation: true,
+            intuitiveSwipeRerollLatest: false,
+          },
+          version: 87,
+        }),
+      );
+    });
+
+    for (const fixture of fixtures) {
+      await page.goto("/");
+      await page.evaluate((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), fixture.chatId);
+      await page.reload();
+
+      const messageRow = page.locator(`[data-message-id="${fixture.messageId}"]`);
+      await expect(messageRow).toContainText(fixture.first);
+      await dispatchSwipe(messageRow, "left");
+      await expect(messageRow).toContainText(fixture.second);
+
+      const composer = page.locator('[data-chat-composer="true"]:visible');
+      await composer.fill("Touching the composer must not navigate");
+      await dispatchSwipe(composer, "right");
+      await expect(messageRow).toContainText(fixture.second);
+
+      await dispatchSwipe(messageRow, "right");
+      await expect(messageRow).toContainText(fixture.first);
+    }
+  } finally {
+    await Promise.allSettled(fixtures.map((fixture) => request.delete(`/api/chats/${fixture.chatId}`)));
+  }
+});
+
 test("typographic quotes do not pull the Roleplay caret behind later text", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Roleplay quote caret behavior is covered on desktop.");
 
@@ -5557,6 +5640,131 @@ test("Roleplay Active Context shows rich lorebook activation provenance", async 
     });
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`, { timeout: 5_000 }).catch(() => undefined);
+  }
+});
+
+test("Gallery Illustrate offers active custom image agents", async ({ page, request }, testInfo) => {
+  const mobile = testInfo.project.name.includes("mobile");
+  const suffix = Date.now().toString(36);
+  const activeAgentName = `Gallery Image Agent ${suffix}`;
+  const inactiveAgentName = `Inactive Gallery Agent ${suffix}`;
+  const createdAgentIds: string[] = [];
+  let chatId: string | null = null;
+
+  try {
+    const agents: Array<{ id: string; type: string; name: string }> = [];
+    for (const [name, type] of [
+      [activeAgentName, `gallery-image-agent-${suffix}`],
+      [inactiveAgentName, `gallery-inactive-agent-${suffix}`],
+    ] as const) {
+      const response = await request.post("/api/agents", {
+        data: {
+          type,
+          name,
+          description: "Gallery image-agent selector regression fixture.",
+          phase: "post_processing",
+          connectionId: null,
+          promptTemplate: "Return an image prompt.",
+          settings: {
+            resultType: "image_prompt",
+            customCapabilities: { trigger_image_generation: true },
+          },
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+      const agent = (await response.json()) as { id: string; type: string; name: string };
+      createdAgentIds.push(agent.id);
+      agents.push(agent);
+    }
+
+    const chatResponse = await request.post("/api/chats", {
+      data: { name: `Gallery Image Agent Smoke ${suffix}`, mode: "roleplay", characterIds: [] },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    chatId = chat.id;
+    const metadataResponse = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: { enableAgents: true, activeAgentIds: ["illustrator", agents[0]!.type] },
+    });
+    expect(metadataResponse.ok()).toBeTruthy();
+
+    await page.route("**/api/capability-packages/installed", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "illustrator",
+            version: "1.0.0",
+            manifest: {
+              schemaVersion: 1,
+              id: "illustrator",
+              name: "Illustrator",
+              version: "1.0.0",
+              description: "Gallery image generation fixture.",
+              engine: { min: "2.0.0", maxExclusive: "3.0.0" },
+              kind: ["agent"],
+              entrypoints: { agents: "agents.json" },
+              files: [{ path: "agents.json", sha256: "0".repeat(64), bytes: 1 }],
+              permissions: ["agent-runtime"],
+              restartRequired: false,
+            },
+            installedAt: "2026-01-01T00:00:00.000Z",
+            status: "active",
+            error: null,
+            readiness: "ready",
+            readinessError: null,
+            legacy: false,
+          },
+        ]),
+      });
+    });
+    await page.route("**/api/capability-packages/agents", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "illustrator",
+            name: "Illustrator",
+            description: "Generates visual scene prompts and images.",
+            author: "Pasta Devs",
+            phase: "post_processing",
+            execution: "feature",
+            enabledByDefault: false,
+            category: "misc",
+            modeAllowlist: ["roleplay", "game"],
+            defaultPromptTemplate: "Return a scene image prompt.",
+          },
+        ]),
+      });
+    });
+
+    await page.addInitScript((activeChatId) => {
+      localStorage.setItem("marinara-active-chat-id", activeChatId);
+    }, chat.id);
+    await page.goto("/");
+    if (mobile) await page.getByRole("button", { name: "More options", exact: true }).click();
+
+    const galleryButton = page.getByRole("button", { name: "Gallery", exact: true }).filter({ visible: true });
+    await galleryButton.click();
+    const drawer = page.locator(".mari-chat-gallery-drawer");
+    const illustrateButton = drawer.getByRole("button", { name: "Illustrate", exact: true });
+    await expect(illustrateButton).toBeVisible();
+    await expect(illustrateButton).toHaveAttribute("aria-haspopup", "menu");
+    await illustrateButton.click();
+
+    const menu = drawer.getByRole("menu", { name: "Choose an image agent" });
+    await expect(menu.getByRole("menuitem", { name: "Illustrator", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: activeAgentName, exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: inactiveAgentName, exact: true })).toHaveCount(0);
+    await drawer
+      .getByRole("searchbox", { name: "Search gallery images", exact: true })
+      .dispatchEvent("pointerdown");
+    await expect(menu).toHaveCount(0);
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    await Promise.all(createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)));
   }
 });
 
@@ -12305,6 +12513,167 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
   await expect(window.getByRole("button", { name: "Apply change" })).toBeVisible();
   await expect(window.getByRole("button", { name: "Discard" })).toBeVisible();
   await expect.poll(() => window.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});
+
+test("Lorebook vectorization saves pending eligibility settings first", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "Desktop Lorebook vector controls are covered here.");
+
+  const suffix = Date.now().toString(36);
+  const lorebookName = `Lorebook vector save ${suffix}`;
+  const connectionName = `Lorebook embedding ${suffix}`;
+  let lorebookId: string | null = null;
+  let connectionId: string | null = null;
+  let excludedAtVectorization: boolean | null = null;
+  let vectorizeRequestCount = 0;
+
+  try {
+    const connectionResponse = await request.post("/api/connections", {
+      data: {
+        name: connectionName,
+        provider: "custom",
+        baseUrl: "http://127.0.0.1:1/v1",
+        embeddingModel: "e2e-embedding-model",
+      },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    const connection = (await connectionResponse.json()) as { id: string };
+    connectionId = connection.id;
+
+    const lorebookResponse = await request.post("/api/lorebooks", {
+      data: {
+        name: lorebookName,
+        description: "Pending vector eligibility regression fixture.",
+        category: "world",
+        enabled: true,
+        excludeFromVectorization: true,
+      },
+    });
+    expect(lorebookResponse.ok()).toBeTruthy();
+    const lorebook = (await lorebookResponse.json()) as { id: string };
+    lorebookId = lorebook.id;
+
+    const entryResponse = await request.post(`/api/lorebooks/${lorebook.id}/entries`, {
+      data: { name: "Vector entry", content: "A vector-ready archive entry.", keys: ["archive"] },
+    });
+    expect(entryResponse.ok()).toBeTruthy();
+    const entry = (await entryResponse.json()) as { id: string };
+
+    const firstSaveStarted = createDeferred();
+    const releaseFirstSave = createDeferred();
+    const closeSaveStarted = createDeferred();
+    const releaseCloseSave = createDeferred();
+    let delayFirstSave = true;
+    let delayCloseSave = false;
+    let saveRequestCount = 0;
+    let reportStoredVector = false;
+    await page.route(`**/api/lorebooks/${lorebook.id}`, async (route) => {
+      if (route.request().method() !== "PATCH") {
+        await route.continue();
+        return;
+      }
+      saveRequestCount += 1;
+      if (delayCloseSave) {
+        delayCloseSave = false;
+        closeSaveStarted.resolve();
+        await releaseCloseSave.promise;
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Deliberate save failure" }),
+        });
+        return;
+      }
+      if (delayFirstSave) {
+        delayFirstSave = false;
+        firstSaveStarted.resolve();
+        await releaseFirstSave.promise;
+      }
+      await route.continue();
+    });
+
+    await page.route(`**/api/lorebooks/${lorebook.id}/entries`, async (route) => {
+      if (route.request().method() !== "GET" || !reportStoredVector) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const entries = (await response.json()) as Array<Record<string, unknown>>;
+      await route.fulfill({
+        response,
+        json: entries.map((candidate) => (candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate)),
+      });
+    });
+
+    await page.route(`**/api/lorebooks/${lorebook.id}/vectorize`, async (route) => {
+      vectorizeRequestCount += 1;
+      const savedResponse = await request.get(`/api/lorebooks/${lorebook.id}`);
+      expect(savedResponse.ok()).toBeTruthy();
+      excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
+        .excludeFromVectorization ?? null;
+      reportStoredVector = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ vectorized: 1, total: 1, skipped: 0 }),
+      });
+    });
+
+    await page.goto("/");
+    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await page.getByText(lorebookName, { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Enable lorebook vectors" }).evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+
+    const vectorPanel = page.locator(".mari-editor-panel").filter({ hasText: "Semantic Search (Embeddings)" });
+    await vectorPanel.locator("select").selectOption(connection.id);
+    const vectorizeButton = vectorPanel.getByRole("button", { name: "Vectorize 1 missing", exact: true });
+    const firstVectorizeAttempt = vectorizeButton.click();
+    await firstSaveStarted.promise;
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("7");
+    releaseFirstSave.resolve();
+    await firstVectorizeAttempt;
+    await expect(vectorizeButton).toBeEnabled();
+    expect(vectorizeRequestCount).toBe(0);
+
+    await vectorizeButton.click();
+
+    await expect.poll(() => excludedAtVectorization).toBe(false);
+    expect(vectorizeRequestCount).toBe(1);
+    await expect(vectorPanel.getByText("Vectorized 1 missing entries", { exact: true })).toBeVisible();
+
+    const revectorizeButton = vectorPanel.getByRole("button", { name: "Re-vectorize 1 entries", exact: true });
+    await expect(revectorizeButton).toBeVisible();
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("9");
+    const saveCountBeforeCancel = saveRequestCount;
+    const vectorizeCountBeforeCancel = vectorizeRequestCount;
+    await revectorizeButton.click();
+    const revectorizeDialog = page.getByRole("dialog").filter({ hasText: "Re-vectorize All Entries" });
+    await expect(revectorizeDialog).toBeVisible();
+    await revectorizeDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(saveRequestCount).toBe(saveCountBeforeCancel);
+    expect(vectorizeRequestCount).toBe(vectorizeCountBeforeCancel);
+
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("8");
+    await page.locator(".mari-editor-header").getByRole("button").first().click();
+    const unsavedWarning = page.getByText("You have unsaved changes", { exact: true });
+    await expect(unsavedWarning).toBeVisible();
+    const discardCloseButton = page.getByRole("button", { name: "Discard & close", exact: true });
+    const saveCloseButton = page.getByRole("button", { name: "Save & close", exact: true });
+    const backButton = page.locator(".mari-editor-header").getByRole("button").first();
+    delayCloseSave = true;
+    await saveCloseButton.click();
+    await closeSaveStarted.promise;
+    await expect(discardCloseButton).toBeDisabled();
+    await expect(saveCloseButton).toBeDisabled();
+    await expect(backButton).toBeDisabled();
+    releaseCloseSave.resolve();
+    await expect(unsavedWarning).toBeVisible();
+    await expect(page.locator(".mari-editor-header").getByText(lorebookName, { exact: true })).toBeVisible();
+  } finally {
+    if (lorebookId) await request.delete(`/api/lorebooks/${lorebookId}`).catch(() => undefined);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+  }
 });
 
 test("Lorebook Save keeps Overview stable while the updated detail cache settles", async ({ page }, testInfo) => {

@@ -50,6 +50,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made chat generation-parameter send toggles authoritative, so disabling Verbosity omits it from provider requests even when a preset still has a selected verbosity value (#4883).
 - Fixed the Windows installer falsely rejecting the required pnpm version when its version command emits LF-only output, while continuing to reject failed commands and mismatched versions (#4875).
 - Kept Random Model chats on a stable configured embedding source during Memory Recall refreshes instead of falling back to the local embedder (#4864).
 - Restored installed feature-only packages such as Noodle to the Agents management pane while keeping them out of ordinary chat-agent pickers (#4865).

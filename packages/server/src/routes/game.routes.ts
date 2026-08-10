@@ -142,6 +142,8 @@ import {
   GAME_STORYBOARD_PROMPT_TEMPLATE_VARIABLES,
   normalizeVideoGenerationUserSettings,
   normalizeAgentPromptTemplateOptions,
+  getDefaultAgentPrompt,
+  resolveAgentPromptTemplate,
   isClaudeAdaptiveOnlyNoSamplingModel,
   localAuthProviderBaseUrl,
   sceneAnalysisRequestSchema,
@@ -1143,6 +1145,7 @@ function sanitizeDynamicGameImagePromptResponse(raw: string, maxCharacters: numb
 
 export async function buildDynamicGameImagePromptMessages(args: {
   promptOverridesStorage?: PromptOverridesStorage;
+  illustratorPromptTemplate?: string | null;
   request: GameDynamicImagePromptRequest;
   meta: Record<string, unknown>;
   setupConfig: Record<string, unknown> | null;
@@ -1189,9 +1192,21 @@ export async function buildDynamicGameImagePromptMessages(args: {
     sourcePrompt,
     maxCharacters: args.request.maxCharacters,
   };
-  const systemPrompt = args.promptOverridesStorage
+  const directorPrompt = args.promptOverridesStorage
     ? await loadPrompt(args.promptOverridesStorage, GAME_IMAGE_PROMPT_DIRECTOR, vars)
     : GAME_IMAGE_PROMPT_DIRECTOR.defaultBuilder(vars);
+  const illustratorPromptTemplate = compactDynamicPromptText(args.illustratorPromptTemplate ?? "", 6000);
+  const systemPrompt = illustratorPromptTemplate
+    ? [
+        directorPrompt,
+        [
+          "<selected_illustrator_prompt_template>",
+          "Apply the relevant visual, content, and provider-format requirements from this selected Illustrator template. The Game Prompt Director output contract remains authoritative.",
+          illustratorPromptTemplate,
+          "</selected_illustrator_prompt_template>",
+        ].join("\n"),
+      ].join("\n\n")
+    : directorPrompt;
   return [
     { role: "system", content: systemPrompt },
     {
@@ -1269,8 +1284,17 @@ export function dynamicGameImagePromptRequestOptions(kind: GameDynamicImagePromp
   };
 }
 
+export function shouldUseDynamicGameImagePromptGenerator(args: {
+  enabled: boolean;
+  hasCustomizedIllustratorPrompt: boolean;
+  hasEnabledPromptDirectorOverride: boolean;
+}): boolean {
+  return args.enabled || args.hasCustomizedIllustratorPrompt || args.hasEnabledPromptDirectorOverride;
+}
+
 async function createDynamicGameImagePromptGenerator(args: {
   connections: ReturnType<typeof createConnectionsStorage>;
+  agents: ReturnType<typeof createAgentsStorage>;
   promptOverridesStorage?: PromptOverridesStorage;
   chat: NonNullable<StoredChatRecord>;
   meta: Record<string, unknown>;
@@ -1280,21 +1304,44 @@ async function createDynamicGameImagePromptGenerator(args: {
   debugLog?: (message: string, ...args: any[]) => void;
   signal?: AbortSignal;
 }): Promise<GameDynamicImagePromptGenerator | undefined> {
-  if (args.meta.gameImageDynamicPromptEnabled !== true) return undefined;
-
   try {
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveDynamicGameImagePromptConnection({
-      connections: args.connections,
-      meta: args.meta,
-      setupConfig: args.setupConfig,
-      chatConnectionId: args.chat.connectionId,
-    });
+    const illustratorPrompt = await resolveGameIllustratorPromptTemplate(args.meta, args.agents);
+    const promptDirectorOverride = await args.promptOverridesStorage?.get(GAME_IMAGE_PROMPT_DIRECTOR.key);
+    const explicitlyEnabled = args.meta.gameImageDynamicPromptEnabled === true;
+    if (
+      !shouldUseDynamicGameImagePromptGenerator({
+        enabled: explicitlyEnabled,
+        hasCustomizedIllustratorPrompt: illustratorPrompt.customized,
+        hasEnabledPromptDirectorOverride: promptDirectorOverride?.enabled === true,
+      })
+    ) {
+      return undefined;
+    }
+
+    let resolvedConnection;
+    try {
+      resolvedConnection = await resolveDynamicGameImagePromptConnection({
+        connections: args.connections,
+        meta: args.meta,
+        setupConfig: args.setupConfig,
+        chatConnectionId: args.chat.connectionId,
+      });
+    } catch (err) {
+      if (explicitlyEnabled) throw err;
+      logger.warn(
+        err,
+        "[game/dynamic-image-prompt] No text connection available for implicit prompt rewriting; continuing without it",
+      );
+      return undefined;
+    }
+    const { conn, baseUrl, defaultGenerationParameters } = resolvedConnection;
     const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
 
     return async (request) => {
       const messages = await buildDynamicGameImagePromptMessages({
         promptOverridesStorage: args.promptOverridesStorage,
+        illustratorPromptTemplate: illustratorPrompt.promptTemplate,
         request,
         meta: args.meta,
         setupConfig: args.setupConfig,
@@ -1925,6 +1972,38 @@ async function resolveGameImageConnectionId(
   } catch (err) {
     logger.warn(err, "[game.routes] Failed to resolve Illustrator image connection fallback");
     return null;
+  }
+}
+
+async function resolveGameIllustratorPromptTemplate(
+  meta: Record<string, unknown>,
+  agents: ReturnType<typeof createAgentsStorage>,
+): Promise<{ promptTemplate: string | null; customized: boolean }> {
+  try {
+    const illustrator = await agents.getByType("illustrator");
+    if (!illustrator) return { promptTemplate: null, customized: false };
+    const selections =
+      meta.agentPromptTemplateIds &&
+      typeof meta.agentPromptTemplateIds === "object" &&
+      !Array.isArray(meta.agentPromptTemplateIds)
+        ? (meta.agentPromptTemplateIds as Record<string, unknown>)
+        : {};
+    const selectedPromptTemplateId = readTrimmedString(selections.illustrator);
+    const fallbackPromptTemplate = getDefaultAgentPrompt("illustrator").trim();
+    const promptTemplate = resolveAgentPromptTemplate({
+      promptTemplate: illustrator.promptTemplate,
+      fallbackPromptTemplate,
+      settings: illustrator.settings,
+      selectedPromptTemplateId,
+    }).trim();
+    return {
+      promptTemplate: promptTemplate || null,
+      customized:
+        selectedPromptTemplateId !== null || (promptTemplate.length > 0 && promptTemplate !== fallbackPromptTemplate),
+    };
+  } catch (err) {
+    logger.warn(err, "[game.routes] Failed to resolve the selected Illustrator prompt template");
+    return { promptTemplate: null, customized: false };
   }
 }
 
@@ -11570,10 +11649,7 @@ export async function gameRoutes(app: FastifyInstance) {
                   if (isLikelyTruncatedJsonResponse(refinementContent, refinementResult.finishReason)) {
                     throw new Error("Animation Planner returned a truncated image-aware motion beat");
                   }
-                  const extraction = extractLeadingThinkingBlocks(
-                    refinementContent,
-                    parameters?.customThinkingTags,
-                  );
+                  const extraction = extractLeadingThinkingBlocks(refinementContent, parameters?.customThinkingTags);
                   const refinement = resolveStoryboardAnimationRefinement(
                     extraction.content,
                     plannedFrame.narrationBeat,
@@ -12174,6 +12250,7 @@ export async function gameRoutes(app: FastifyInstance) {
         : null;
     const dynamicPromptGenerator = await createDynamicGameImagePromptGenerator({
       connections,
+      agents,
       promptOverridesStorage,
       chat,
       meta,
@@ -12592,6 +12669,7 @@ export async function gameRoutes(app: FastifyInstance) {
       );
       const dynamicPromptGenerator = await createDynamicGameImagePromptGenerator({
         connections,
+        agents,
         promptOverridesStorage,
         chat,
         meta,

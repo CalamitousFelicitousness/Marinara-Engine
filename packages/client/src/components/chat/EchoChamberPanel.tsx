@@ -170,14 +170,22 @@ function CornerPicker({ current, onChange }: { current: EchoChamberSide; onChang
 export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelProps) {
   const { t: localizeUi } = useUiTranslation();
   const activeChatId = useChatStore((s) => s.activeChatId);
-  const echoChamberSide = useUIStore((s) => s.echoChamberSide);
-  const setEchoChamberSide = useUIStore((s) => s.setEchoChamberSide);
+  const echoChamberSide = useUIStore((s) =>
+    activeChatId ? (s.echoChamberSideByChatId[activeChatId] ?? s.echoChamberSide) : s.echoChamberSide,
+  );
+  const setEchoChamberSideForChat = useUIStore((s) => s.setEchoChamberSideForChat);
   const echoChamberOpen = useUIStore((s) => s.echoChamberOpen);
   const toggleEchoChamber = useUIStore((s) => s.toggleEchoChamber);
   const rememberedPanelSize = useUIStore((s) =>
     activeChatId ? (s.echoChamberSizeByChatId[activeChatId] ?? null) : null,
   );
   const setEchoChamberSizeForChat = useUIStore((s) => s.setEchoChamberSizeForChat);
+  const setEchoChamberSide = useCallback(
+    (side: EchoChamberSide) => {
+      if (activeChatId) setEchoChamberSideForChat(activeChatId, side);
+    },
+    [activeChatId, setEchoChamberSideForChat],
+  );
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);

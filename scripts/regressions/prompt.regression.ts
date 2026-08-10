@@ -642,6 +642,7 @@ import {
   sanitizeNpcPortraitAppearanceText,
   selectLatestGameTurnNarration,
   selectStoryboardAppearanceCharacterNames,
+  shouldUseDynamicGameImagePromptGenerator,
 } from "../../packages/server/src/routes/game.routes.js";
 import { buildLegacyDefaultAgentConfigUpdate } from "../../packages/server/src/services/agents/default-prompt-migration.js";
 import { buildMemoryRecallBlock } from "../../packages/server/src/services/generation/memory-recall-context.js";
@@ -6580,6 +6581,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       } satisfies PromptOverridesStorage;
       const messages = await buildDynamicGameImagePromptMessages({
         promptOverridesStorage,
+        illustratorPromptTemplate: "Always include the distinctive tag chromatic_aberration_test.",
         request: {
           kind: "portrait",
           title: "Sentinel",
@@ -6593,7 +6595,8 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         latestTurnNarration: "This must not be added to a portrait prompt.",
       });
 
-      assert.equal(messages[0]?.content, override);
+      assert.match(messages[0]?.content ?? "", new RegExp(override));
+      assert.match(messages[0]?.content ?? "", /chromatic_aberration_test/);
       assert.match(messages[1]?.content ?? "", /Appearance traits: towering alien/);
       assert.doesNotMatch(messages[1]?.content ?? "", /latest_gm_turn|must not be added/i);
       assert.doesNotMatch(messages[1]?.content ?? "", /copy the Required canonical NPC visual profile/i);
@@ -6601,6 +6604,30 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       const requestOptions = dynamicGameImagePromptRequestOptions("portrait");
       assert.equal("responseFormat" in requestOptions, false);
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: true,
+          hasEnabledPromptDirectorOverride: false,
+        }),
+        true,
+      );
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: false,
+          hasEnabledPromptDirectorOverride: true,
+        }),
+        true,
+      );
+      assert.equal(
+        shouldUseDynamicGameImagePromptGenerator({
+          enabled: false,
+          hasCustomizedIllustratorPrompt: false,
+          hasEnabledPromptDirectorOverride: false,
+        }),
+        false,
+      );
     },
   },
   {

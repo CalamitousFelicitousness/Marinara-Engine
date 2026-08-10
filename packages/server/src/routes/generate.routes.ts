@@ -2816,6 +2816,10 @@ export async function generateRoutes(app: FastifyInstance) {
           });
         }
 
+        let generationProviderOrigin: { model: string; provider: string } = {
+          model: conn.model,
+          provider: conn.provider,
+        };
         const providerRuntime = resolveGenerationProviderRuntime({
           connectionId: connId ?? "",
           connection: conn,
@@ -2823,6 +2827,12 @@ export async function generateRoutes(app: FastifyInstance) {
           fallbackConnection: mainFallbackConnection,
           fallbackBaseUrl: mainFallbackBaseUrl,
           onFallback,
+          onProviderUsed: (origin) => {
+            generationProviderOrigin =
+              origin.kind === "fallback"
+                ? { model: origin.model, provider: origin.provider }
+                : { model: conn.model, provider: conn.provider };
+          },
           chatMode,
           isSceneChat,
           chatParameters: chatMeta.chatParameters,
@@ -5406,6 +5416,7 @@ export async function generateRoutes(app: FastifyInstance) {
           oocMessages: string[];
           characterId: string | null;
         } | null> => {
+          generationProviderOrigin = { model: conn.model, provider: conn.provider };
           let recoveredAlreadyAppliedSpatialTurn = false;
           const targetCharacterProfile = targetCharId ? characterMacroProfilesById.get(targetCharId) : undefined;
           const deferredTargetCharacterProfile = deferCharacterMacros ? targetCharacterProfile : undefined;
@@ -6826,8 +6837,8 @@ export async function generateRoutes(app: FastifyInstance) {
           } else if (savedMsg?.id) {
             const extraUpdate: Record<string, unknown> = {
               generationInfo: {
-                model: conn.model,
-                provider: conn.provider,
+                model: generationProviderOrigin.model,
+                provider: generationProviderOrigin.provider,
                 temperature: temperature ?? null,
                 maxTokens: effectiveMaxTokensForSend ?? null,
                 maxContext: suppressModelParameters ? null : (effectiveMaxContext ?? connectionMaxContext ?? null),

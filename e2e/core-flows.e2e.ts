@@ -12560,7 +12560,17 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     const firstSaveStarted = createDeferred();
     const releaseFirstSave = createDeferred();
     let delayFirstSave = true;
+    let rejectNextSave = false;
     await page.route(`**/api/lorebooks/${lorebook.id}`, async (route) => {
+      if (route.request().method() === "PATCH" && rejectNextSave) {
+        rejectNextSave = false;
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Deliberate save failure" }),
+        });
+        return;
+      }
       if (route.request().method() === "PATCH" && delayFirstSave) {
         delayFirstSave = false;
         firstSaveStarted.resolve();
@@ -12605,6 +12615,15 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     await expect.poll(() => excludedAtVectorization).toBe(false);
     expect(vectorizeRequestCount).toBe(1);
     await expect(vectorPanel.getByText("Vectorized 1 missing entries", { exact: true })).toBeVisible();
+
+    await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("8");
+    rejectNextSave = true;
+    await page.locator(".mari-editor-header").getByRole("button").first().click();
+    const unsavedWarning = page.getByText("You have unsaved changes", { exact: true });
+    await expect(unsavedWarning).toBeVisible();
+    await page.getByRole("button", { name: "Save & close", exact: true }).click();
+    await expect(unsavedWarning).toBeVisible();
+    await expect(page.locator(".mari-editor-header").getByText(lorebookName, { exact: true })).toBeVisible();
   } finally {
     if (lorebookId) await request.delete(`/api/lorebooks/${lorebookId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);

@@ -1853,7 +1853,8 @@ export function LorebookEditor() {
           >{localizeUi("ui.lorebooks.lorebookeditor.discardClose")}</button>
           <button
             onClick={async () => {
-              await handleSaveLorebook();
+              const saved = await handleSaveLorebook();
+              if (!saved) return;
               setShowUnsavedWarning(false);
               closeDetail();
             }}

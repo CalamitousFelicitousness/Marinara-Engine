@@ -147,6 +147,7 @@ import {
   STORYBOARD_AGENT_ID,
   formatTextQuotes,
   mergeBuiltInAgentSettings,
+  parseAgentSettingsRecord,
   normalizeAvatarCrop,
   normalizeStoryboardAgentSettings,
   normalizeRpgStatPools,
@@ -2245,7 +2246,9 @@ function GameSurfaceComponent({
    *  package to actually be there. */
   const experienceOwnsGame =
     experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
-  const { data: agentConfigs } = useAgentConfigs(storyboardAgentActive);
+  const { data: agentConfigs } = useAgentConfigs(
+    storyboardAgentActive || chatMeta.enableSpriteGeneration === true,
+  );
   const storyboardAgentConfig = useMemo(
     () => agentConfigs?.find((config) => config.type === STORYBOARD_AGENT_ID) ?? null,
     [agentConfigs],
@@ -2255,6 +2258,11 @@ function GameSurfaceComponent({
       normalizeStoryboardAgentSettings(mergeBuiltInAgentSettings(STORYBOARD_AGENT_ID, storyboardAgentConfig?.settings)),
     [storyboardAgentConfig?.settings],
   );
+  const illustratorImageConnectionId = useMemo(() => {
+    const illustrator = agentConfigs?.find((config) => config.type === "illustrator");
+    const connectionId = parseAgentSettingsRecord(illustrator?.settings).imageConnectionId;
+    return typeof connectionId === "string" ? connectionId.trim() : "";
+  }, [agentConfigs]);
 
   useEffect(() => {
     return () => {
@@ -3922,8 +3930,8 @@ function GameSurfaceComponent({
 
   const gameImageGenerationEnabled =
     chatMeta.enableSpriteGeneration === true &&
-    typeof chatMeta.gameImageConnectionId === "string" &&
-    chatMeta.gameImageConnectionId.trim().length > 0;
+    ((typeof chatMeta.gameImageConnectionId === "string" && chatMeta.gameImageConnectionId.trim().length > 0) ||
+      illustratorImageConnectionId.length > 0);
   const storyboardImageGenerationEnabled =
     storyboardAgentActive && (gameImageGenerationEnabled || Boolean(storyboardAgentSettings.imageConnectionId));
   const gameSceneVideosEnabled = chatMeta.gameSceneVideosEnabled !== false;
@@ -7083,7 +7091,7 @@ function GameSurfaceComponent({
       const normalizedName = normalizeNpcAvatarName(displayName);
       if (!normalizedName) return;
 
-      if (!chatMeta.enableSpriteGeneration || !chatMeta.gameImageConnectionId) {
+      if (!gameImageGenerationEnabled) {
         toast.error(localizeUi("ui.game.gamesurfacecomponent.enableGameImageGenerationAndChooseAnImageConnection"));
         return;
       }
@@ -7156,10 +7164,9 @@ function GameSurfaceComponent({
     [
       activeChatId,
       applyGeneratedAssets,
-      chatMeta.enableSpriteGeneration,
-      chatMeta.gameImageConnectionId,
       chatMeta.gameNpcs,
       clearFailedNpcAvatars,
+      gameImageGenerationEnabled,
       runGameAssetGeneration,
       localizeUi,
     ],
@@ -10782,9 +10789,7 @@ function GameSurfaceComponent({
                 onClose={() => setSessionPanelOpen(false)}
                 onNpcPortraitClick={handleNpcPortraitClick}
                 onNpcPortraitGenerate={handleNpcPortraitGenerate}
-                npcPortraitGenerationEnabled={
-                  chatMeta.enableSpriteGeneration === true && typeof chatMeta.gameImageConnectionId === "string"
-                }
+                npcPortraitGenerationEnabled={gameImageGenerationEnabled}
                 generatingNpcPortraitNames={generatingNpcPortraitNames}
                 onNpcRemove={handleRemoveNpcFromJournal}
                 embedded
@@ -12046,10 +12051,7 @@ function GameSurfaceComponent({
                           onNpcPortraitClick={handleNpcPortraitClick}
                           onNpcPortraitGenerate={handleNpcPortraitGenerate}
                           onNpcPortraitLoadError={handleNpcPortraitLoadError}
-                          npcPortraitGenerationEnabled={
-                            chatMeta.enableSpriteGeneration === true &&
-                            typeof chatMeta.gameImageConnectionId === "string"
-                          }
+                          npcPortraitGenerationEnabled={gameImageGenerationEnabled}
                           generatingNpcPortraitNames={generatingNpcPortraitNames}
                           autoPlayBlocked={narrationAutoPlayBlocked || storyboardBackgroundAnimationPlaying}
                           voicePlaybackBlocked={narrationVoicePlaybackBlocked}
@@ -12138,9 +12140,7 @@ function GameSurfaceComponent({
                       onNpcPortraitClick={handleNpcPortraitClick}
                       onNpcPortraitGenerate={handleNpcPortraitGenerate}
                       onNpcPortraitLoadError={handleNpcPortraitLoadError}
-                      npcPortraitGenerationEnabled={
-                        chatMeta.enableSpriteGeneration === true && typeof chatMeta.gameImageConnectionId === "string"
-                      }
+                      npcPortraitGenerationEnabled={gameImageGenerationEnabled}
                       generatingNpcPortraitNames={generatingNpcPortraitNames}
                       autoPlayBlocked={narrationAutoPlayBlocked || storyboardBackgroundAnimationPlaying}
                       voicePlaybackBlocked={narrationVoicePlaybackBlocked}

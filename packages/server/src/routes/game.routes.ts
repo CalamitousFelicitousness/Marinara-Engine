@@ -142,6 +142,8 @@ import {
   GAME_STORYBOARD_PROMPT_TEMPLATE_VARIABLES,
   normalizeVideoGenerationUserSettings,
   normalizeAgentPromptTemplateOptions,
+  getDefaultAgentPrompt,
+  resolveAgentPromptTemplate,
   isClaudeAdaptiveOnlyNoSamplingModel,
   localAuthProviderBaseUrl,
   sceneAnalysisRequestSchema,
@@ -1143,6 +1145,7 @@ function sanitizeDynamicGameImagePromptResponse(raw: string, maxCharacters: numb
 
 export async function buildDynamicGameImagePromptMessages(args: {
   promptOverridesStorage?: PromptOverridesStorage;
+  illustratorPromptTemplate?: string | null;
   request: GameDynamicImagePromptRequest;
   meta: Record<string, unknown>;
   setupConfig: Record<string, unknown> | null;
@@ -1189,9 +1192,21 @@ export async function buildDynamicGameImagePromptMessages(args: {
     sourcePrompt,
     maxCharacters: args.request.maxCharacters,
   };
-  const systemPrompt = args.promptOverridesStorage
+  const directorPrompt = args.promptOverridesStorage
     ? await loadPrompt(args.promptOverridesStorage, GAME_IMAGE_PROMPT_DIRECTOR, vars)
     : GAME_IMAGE_PROMPT_DIRECTOR.defaultBuilder(vars);
+  const illustratorPromptTemplate = compactDynamicPromptText(args.illustratorPromptTemplate ?? "", 6000);
+  const systemPrompt = illustratorPromptTemplate
+    ? [
+        directorPrompt,
+        [
+          "<selected_illustrator_prompt_template>",
+          "Apply the relevant visual, content, and provider-format requirements from this selected Illustrator template. The Game Prompt Director output contract remains authoritative.",
+          illustratorPromptTemplate,
+          "</selected_illustrator_prompt_template>",
+        ].join("\n"),
+      ].join("\n\n")
+    : directorPrompt;
   return [
     { role: "system", content: systemPrompt },
     {
@@ -1271,6 +1286,7 @@ export function dynamicGameImagePromptRequestOptions(kind: GameDynamicImagePromp
 
 async function createDynamicGameImagePromptGenerator(args: {
   connections: ReturnType<typeof createConnectionsStorage>;
+  agents: ReturnType<typeof createAgentsStorage>;
   promptOverridesStorage?: PromptOverridesStorage;
   chat: NonNullable<StoredChatRecord>;
   meta: Record<string, unknown>;
@@ -1291,10 +1307,12 @@ async function createDynamicGameImagePromptGenerator(args: {
     });
     const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
+    const illustratorPromptTemplate = await resolveGameIllustratorPromptTemplate(args.meta, args.agents);
 
     return async (request) => {
       const messages = await buildDynamicGameImagePromptMessages({
         promptOverridesStorage: args.promptOverridesStorage,
+        illustratorPromptTemplate,
         request,
         meta: args.meta,
         setupConfig: args.setupConfig,
@@ -1924,6 +1942,33 @@ async function resolveGameImageConnectionId(
     return readTrimmedString(parseSettingsRecord(illustrator?.settings).imageConnectionId);
   } catch (err) {
     logger.warn(err, "[game.routes] Failed to resolve Illustrator image connection fallback");
+    return null;
+  }
+}
+
+async function resolveGameIllustratorPromptTemplate(
+  meta: Record<string, unknown>,
+  agents: ReturnType<typeof createAgentsStorage>,
+): Promise<string | null> {
+  try {
+    const illustrator = await agents.getByType("illustrator");
+    if (!illustrator) return null;
+    const selections =
+      meta.agentPromptTemplateIds &&
+      typeof meta.agentPromptTemplateIds === "object" &&
+      !Array.isArray(meta.agentPromptTemplateIds)
+        ? (meta.agentPromptTemplateIds as Record<string, unknown>)
+        : {};
+    const selectedPromptTemplateId = readTrimmedString(selections.illustrator);
+    const promptTemplate = resolveAgentPromptTemplate({
+      promptTemplate: illustrator.promptTemplate,
+      fallbackPromptTemplate: getDefaultAgentPrompt("illustrator"),
+      settings: illustrator.settings,
+      selectedPromptTemplateId,
+    }).trim();
+    return promptTemplate || null;
+  } catch (err) {
+    logger.warn(err, "[game.routes] Failed to resolve the selected Illustrator prompt template");
     return null;
   }
 }
@@ -12174,6 +12219,7 @@ export async function gameRoutes(app: FastifyInstance) {
         : null;
     const dynamicPromptGenerator = await createDynamicGameImagePromptGenerator({
       connections,
+      agents,
       promptOverridesStorage,
       chat,
       meta,
@@ -12592,6 +12638,7 @@ export async function gameRoutes(app: FastifyInstance) {
       );
       const dynamicPromptGenerator = await createDynamicGameImagePromptGenerator({
         connections,
+        agents,
         promptOverridesStorage,
         chat,
         meta,

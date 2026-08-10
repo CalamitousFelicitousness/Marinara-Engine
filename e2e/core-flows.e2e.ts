@@ -5644,8 +5644,7 @@ test("Roleplay Active Context shows rich lorebook activation provenance", async 
 });
 
 test("Gallery Illustrate offers active custom image agents", async ({ page, request }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("desktop"), "Gallery image-agent selection is covered on desktop.");
-
+  const mobile = testInfo.project.name.includes("mobile");
   const suffix = Date.now().toString(36);
   const activeAgentName = `Gallery Image Agent ${suffix}`;
   const inactiveAgentName = `Inactive Gallery Agent ${suffix}`;
@@ -5745,6 +5744,7 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
       localStorage.setItem("marinara-active-chat-id", activeChatId);
     }, chat.id);
     await page.goto("/");
+    if (mobile) await page.getByRole("button", { name: "More options", exact: true }).click();
 
     const galleryButton = page.getByRole("button", { name: "Gallery", exact: true }).filter({ visible: true });
     await galleryButton.click();

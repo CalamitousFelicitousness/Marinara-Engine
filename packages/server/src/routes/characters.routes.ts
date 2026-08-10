@@ -4,19 +4,25 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
+  canonicalizeLegacyPersonaInput,
   createCharacterSchema,
   updateCharacterSchema,
   createGroupSchema,
   updateGroupSchema,
   createPersonaGroupSchema,
   updatePersonaGroupSchema,
+  personaCreateInputSchema,
+  personaNameColorPaintSchema,
+  personaUpdateInputSchema,
+  normalizeTrackerCardColorConfig,
+  trackerCardColorConfigSchema,
   PROFESSOR_MARI_ID,
   CONVERSATION_CALL_CHARACTER_VIDEO_CLIP_KINDS,
   findImageStyleProfile,
 } from "@marinara-engine/shared";
 import type { CharacterData, ConversationCallCharacterVideoClipKind, ExportEnvelope } from "@marinara-engine/shared";
-import { createCharactersStorage } from "../services/storage/characters.storage.js";
-import { projectPersona } from "../services/personas/persona-projector.js";
+import { createCharactersStorage, type PersonaStorageRow } from "../services/storage/characters.storage.js";
+import { encodePersonaCreate, encodePersonaUpdate, projectPersona } from "../services/personas/persona-projector.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -121,6 +127,38 @@ function applyTrackerCardPaint(
     else delete next[key];
   }
   return next;
+}
+
+function isTrackerCardClear(value: unknown): boolean {
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && (value as Record<string, unknown>).mode === "chat";
+}
+
+const TRACKER_CARD_PAINT_FIELDS = ["mode", "displayEnabled", "nameColor", "nameColorOpacity", "accentEnabled", "dialogueColor", "dialogueColorOpacity", "surfaceEnabled", "boxColor", "boxColorOpacity", "tintIntensity", "materialBrightness", "glowIntensity", "contrastIntensity", "portraitStageBackground"] as const;
+
+function applyPersonaTrackerCardPaint(currentValue: unknown, paint: Record<string, unknown>) {
+  const current = normalizeTrackerCardColorConfig(parseCharacterDataRecord(currentValue));
+  const next: Record<string, unknown> = { ...current, ...paint };
+  for (const key of TRACKER_CARD_PAINT_FIELDS) if (!Object.hasOwn(paint, key)) delete next[key];
+  for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom", "statIcons"] as const) {
+    if (Object.hasOwn(current, key)) next[key] = current[key];
+    else delete next[key];
+  }
+  return normalizeTrackerCardColorConfig(next);
+}
+
+function mergePersonaTrackerCardColors(currentValue: unknown, patch: Record<string, unknown>) {
+  const current = parseCharacterDataRecord(currentValue), next = { ...current, ...patch };
+  for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom"] as const) {
+    if (Object.hasOwn(current, key)) next[key] = current[key];
+    else delete next[key];
+  }
+  return next;
+}
+
+function buildTrackerCardPortraitClear(currentValue: unknown): Record<string, unknown> {
+  const current = normalizeTrackerCardColorConfig(currentValue), result: Record<string, unknown> = { mode: "chat" };
+  for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom"] as const) if (Object.hasOwn(current, key)) result[key] = current[key];
+  return result;
 }
 
 type GalleryVideoEntry = {
@@ -678,6 +716,49 @@ function buildCompatiblePersonaExport(persona: Record<string, unknown>) {
       },
     },
   };
+}
+
+function canonicalizePersonaForExport(persona: Record<string, unknown>): {
+  row: Record<string, unknown>;
+  usesFallbackName: boolean;
+} {
+  const projected = projectPersona(persona as PersonaStorageRow);
+  const {
+    id: _id,
+    avatarPath: _avatarPath,
+    isActive: _isActive,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...projectedFields
+  } = projected;
+  const validationFields: Record<string, unknown> = { ...projectedFields };
+  const usesFallbackName = typeof validationFields.name !== "string" || !validationFields.name.trim();
+
+  if (usesFallbackName) validationFields.name = "Unnamed Persona";
+  if (!personaNameColorPaintSchema.safeParse(validationFields.nameColor).success) {
+    delete validationFields.nameColor;
+  }
+  const trackerCardColors = validationFields.trackerCardColors;
+  if (
+    trackerCardColors &&
+    typeof trackerCardColors === "object" &&
+    !Array.isArray(trackerCardColors) &&
+    typeof (trackerCardColors as Record<string, unknown>).nameColor === "string" &&
+    !personaNameColorPaintSchema.safeParse((trackerCardColors as Record<string, unknown>).nameColor).success
+  ) {
+    const repairedTrackerCardColors = { ...(trackerCardColors as Record<string, unknown>) };
+    delete repairedTrackerCardColors.nameColor;
+    validationFields.trackerCardColors = repairedTrackerCardColors;
+  }
+
+  const parsed = personaCreateInputSchema.safeParse(validationFields);
+  if (!parsed.success) throw new Error("Persona export invariant failed after salvage");
+
+  const { name, description, extra } = encodePersonaCreate(parsed.data);
+  const row = { ...persona, ...extra, name, description };
+  // Never restore raw rejected top-level paint over the repaired export copy.
+  if (!Object.hasOwn(parsed.data, "nameColor")) delete row.nameColor;
+  return { row, usesFallbackName };
 }
 
 export async function charactersRoutes(app: FastifyInstance) {
@@ -1962,37 +2043,14 @@ export async function charactersRoutes(app: FastifyInstance) {
   });
 
   app.post("/personas", async (req, reply) => {
-    const { name, description, createdAt, updatedAt, ...extra } = req.body as {
-      name: string;
-      description?: string;
-      comment?: string;
-      creator?: string;
-      personaVersion?: string;
-      creatorNotes?: string;
-      phoneticName?: string;
-      personality?: string;
-      scenario?: string;
-      backstory?: string;
-      appearance?: string;
-      characterSheetImageId?: string | null;
-      useCharacterSheetAsReference?: string;
-      nameColor?: string;
-      dialogueColor?: string;
-      boxColor?: string;
-      trackerCardColors?: string;
-      avatarCrop?: string;
-      createdAt?: string;
-      updatedAt?: string;
-      savedStatusOptions?: string;
-      convoDisplayName?: string;
-      aboutMe?: string;
-      convoBehavior?: string;
-    };
-    delete extra.characterSheetImageId;
-    delete extra.useCharacterSheetAsReference;
+    const parsed = personaCreateInputSchema.safeParse(canonicalizeLegacyPersonaInput(req.body));
+    if (!parsed.success)
+      return reply.status(400).send({ error: "Invalid persona payload", issues: parsed.error.issues });
+    const { createdAt, updatedAt, ...input } = parsed.data;
+    const { name, description, extra } = encodePersonaCreate(input);
     const created = await storage.createPersona(
       name,
-      description ?? "",
+      description,
       undefined,
       extra,
       normalizeTimestampOverrides({ createdAt, updatedAt }),
@@ -2005,53 +2063,57 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
       return reply.status(400).send({ error: "Persona update must be a JSON object" });
     }
-    const body = req.body as Record<string, unknown>;
-    if (Object.hasOwn(body, "characterSheetImageId")) {
-      const imageId = body.characterSheetImageId;
-      if (imageId !== null && typeof imageId !== "string") {
-        return reply.status(400).send({ error: "characterSheetImageId must be a string or null" });
-      }
+    const rawBody = req.body as Record<string, unknown>;
+    const rawTrackerCardColors = rawBody.trackerCardColors;
+    const completeReset = rawTrackerCardColors === "";
+    const hasCharacterSheetImageId = Object.hasOwn(rawBody, "characterSheetImageId");
+    const hasUseCharacterSheetAsReference = Object.hasOwn(rawBody, "useCharacterSheetAsReference");
+    const characterSheetImageId = rawBody.characterSheetImageId;
+    if (hasCharacterSheetImageId && characterSheetImageId !== null && typeof characterSheetImageId !== "string") {
+      return reply.status(400).send({ error: "characterSheetImageId must be a string or null" });
     }
-    if (Object.hasOwn(body, "useCharacterSheetAsReference")) {
-      const enabled = body.useCharacterSheetAsReference;
-      if (typeof enabled === "boolean") body.useCharacterSheetAsReference = String(enabled);
-      else if (enabled !== "true" && enabled !== "false") {
-        return reply.status(400).send({ error: "useCharacterSheetAsReference must be a boolean" });
-      }
+    let useCharacterSheetAsReference: "true" | "false" | undefined;
+    if (hasUseCharacterSheetAsReference) {
+      const enabled = rawBody.useCharacterSheetAsReference;
+      if (typeof enabled === "boolean") useCharacterSheetAsReference = String(enabled) as "true" | "false";
+      else if (enabled === "true" || enabled === "false") useCharacterSheetAsReference = enabled;
+      else return reply.status(400).send({ error: "useCharacterSheetAsReference must be a boolean" });
     }
-    let parsedPaint: Record<string, unknown> | null = null;
-    if (typeof body.trackerCardColors === "string") {
-      try {
-        const parsed = JSON.parse(body.trackerCardColors) as unknown;
-        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-          parsedPaint = parsed as Record<string, unknown>;
-        }
-      } catch {
-        // Preserve generic PATCH behavior for malformed tracker-card colors.
-      }
+
+    const parsed = personaUpdateInputSchema.safeParse(canonicalizeLegacyPersonaInput(rawBody));
+    if (!parsed.success)
+      return reply.status(400).send({ error: "Invalid persona update", issues: parsed.error.issues });
+    const body = parsed.data;
+    if (Object.keys(body).length === 0 && !hasCharacterSheetImageId && !hasUseCharacterSheetAsReference) {
+      const current = await storage.getPersona(req.params.id);
+      if (!current) return reply.status(404).send({ error: "Persona not found" });
+      return projectPersona(current);
     }
 
     const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, async () => {
-      let validatedBody = body;
-      if (Object.hasOwn(body, "characterSheetImageId")) {
-        const imageId = body.characterSheetImageId;
-        const image = typeof imageId === "string" ? await personaGallery.getById(imageId) : null;
-        if (!image || image.personaId !== req.params.id) {
-          validatedBody = {
-            ...body,
-            characterSheetImageId: null,
-            useCharacterSheetAsReference: "false",
-          };
-        }
+      let galleryFields: {
+        characterSheetImageId?: string | null;
+        useCharacterSheetAsReference?: "true" | "false";
+      } = hasUseCharacterSheetAsReference ? { useCharacterSheetAsReference } : {};
+      if (hasCharacterSheetImageId) {
+        const imageId = typeof characterSheetImageId === "string" ? characterSheetImageId : null;
+        const image = imageId ? await personaGallery.getById(imageId) : null;
+        galleryFields =
+          image && image.personaId === req.params.id
+            ? { ...galleryFields, characterSheetImageId: imageId }
+            : { characterSheetImageId: null, useCharacterSheetAsReference: "false" };
       }
-      if (!parsedPaint) return storage.updatePersona(req.params.id, validatedBody);
-      const currentPersona = await storage.getPersona(req.params.id);
-      if (!currentPersona) return null;
+      if (!Object.hasOwn(body, "trackerCardColors") || completeReset) {
+        return storage.updatePersona(req.params.id, { ...encodePersonaUpdate(body), ...galleryFields });
+      }
+      const current = await storage.getPersona(req.params.id);
+      if (!current) return null;
+      const trackerCardColors = isTrackerCardClear(body.trackerCardColors)
+        ? buildTrackerCardPortraitClear(current.trackerCardColors)
+        : mergePersonaTrackerCardColors(current.trackerCardColors, body.trackerCardColors as Record<string, unknown>);
       return storage.updatePersona(req.params.id, {
-        ...validatedBody,
-        trackerCardColors: JSON.stringify(
-          applyTrackerCardPaint(currentPersona.trackerCardColors, parsedPaint, false),
-        ),
+        ...encodePersonaUpdate({ ...body, trackerCardColors }),
+        ...galleryFields,
       });
     });
     if (!updated) return reply.status(404).send({ error: "Persona not found" });
@@ -2059,63 +2121,51 @@ export async function charactersRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>("/personas/:id/tracker-card-colors", async (req, reply) => {
-    const body = (req.body ?? {}) as {
-      paint?: unknown;
-      portrait?: unknown;
-    };
-    const hasPaint = body.paint !== undefined;
-    const portrait = body.portrait;
-    const hasPortrait = portrait !== undefined;
-    if (hasPaint === hasPortrait) {
+    const body = (req.body ?? {}) as { paint?: unknown; portrait?: unknown };
+    const hasPaint = body.paint !== undefined,
+      hasPortrait = body.portrait !== undefined;
+    if (hasPaint === hasPortrait)
       return reply.status(400).send({ error: "Provide exactly one tracker-card paint or portrait update" });
-    }
-    const portraitRecord =
-      portrait !== null && typeof portrait === "object" && !Array.isArray(portrait)
-        ? (portrait as Record<string, unknown>)
-        : null;
-    const hasValidPortrait =
-      hasPortrait &&
-      portraitRecord !== null &&
-      typeof portraitRecord.portraitFocusX === "number" &&
-      Number.isFinite(portraitRecord.portraitFocusX) &&
-      typeof portraitRecord.portraitFocusY === "number" &&
-      Number.isFinite(portraitRecord.portraitFocusY) &&
-      typeof portraitRecord.portraitZoom === "number" &&
-      Number.isFinite(portraitRecord.portraitZoom);
-    if (hasPortrait && !hasValidPortrait) {
-      return reply.status(400).send({ error: "Tracker-card portrait values must be finite numbers" });
-    }
-
     let paint: Record<string, unknown> | null = null;
+    let portrait: Record<string, unknown> | null = null;
     if (hasPaint) {
-      if (body.paint === null || typeof body.paint !== "object" || Array.isArray(body.paint)) {
+      if (!body.paint || typeof body.paint !== "object" || Array.isArray(body.paint))
         return reply.status(400).send({ error: "Tracker-card paint must be a JSON object" });
+      const parsed = trackerCardColorConfigSchema.safeParse(body.paint);
+      if (!parsed.success)
+        return reply
+          .status(400)
+          .send({ error: "Tracker-card paint contains invalid values", issues: parsed.error.issues });
+      paint = parsed.data as Record<string, unknown>;
+    } else {
+      if (!body.portrait || typeof body.portrait !== "object" || Array.isArray(body.portrait))
+        return reply.status(400).send({ error: "Tracker-card portrait values must be finite numbers" });
+      const parsed = trackerCardColorConfigSchema.safeParse(body.portrait);
+      if (
+        !parsed.success ||
+        parsed.data.portraitFocusX === undefined ||
+        parsed.data.portraitFocusY === undefined ||
+        parsed.data.portraitZoom === undefined
+      ) {
+        return reply
+          .status(400)
+          .send({
+            error: "Tracker-card portrait contains invalid values",
+            ...(parsed.success ? {} : { issues: parsed.error.issues }),
+          });
       }
-      paint = body.paint as Record<string, unknown>;
+      portrait = {
+        portraitFocusX: parsed.data.portraitFocusX,
+        portraitFocusY: parsed.data.portraitFocusY,
+        portraitZoom: parsed.data.portraitZoom,
+      };
     }
-
     const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, async () => {
-      const currentPersona = await storage.getPersona(req.params.id);
-      if (!currentPersona) return null;
-
-      let current: Record<string, unknown> = { mode: "chat" };
-      try {
-        const parsed = JSON.parse(currentPersona.trackerCardColors) as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          current = parsed as Record<string, unknown>;
-        }
-      } catch {
-        // Preserve the storage default when legacy data is malformed.
-      }
-
+      const current = await storage.getPersona(req.params.id);
+      if (!current) return null;
       const next = paint
-        ? applyTrackerCardPaint(current, paint)
-        : {
-            ...current,
-            portraitFocusX: portraitRecord!.portraitFocusX,
-            portraitFocusY: portraitRecord!.portraitFocusY,
-            portraitZoom: portraitRecord!.portraitZoom,
-          };
+        ? applyPersonaTrackerCardPaint(current.trackerCardColors, paint)
+        : normalizeTrackerCardColorConfig({ ...parseCharacterDataRecord(current.trackerCardColors), ...portrait! });
       return storage.updatePersona(
         req.params.id,
         { trackerCardColors: JSON.stringify(next) },
@@ -2733,13 +2783,14 @@ export async function charactersRoutes(app: FastifyInstance) {
       const persona = await storage.getPersona(req.params.id);
       if (!persona) return reply.status(404).send({ error: "Persona not found" });
       const compatible = req.query.format === "compatible";
+      const canonical = canonicalizePersonaForExport(persona as Record<string, unknown>);
       const payload = compatible
-        ? buildCompatiblePersonaExport(persona as Record<string, unknown>)
-        : await buildNativePersonaEnvelope(persona as Record<string, unknown>, personaGallery);
+        ? buildCompatiblePersonaExport(canonical.row)
+        : await buildNativePersonaEnvelope(canonical.row, personaGallery);
       return reply
         .header(
           "Content-Disposition",
-          `attachment; filename="${encodeURIComponent(String(persona.name || "persona"))}.${compatible ? "json" : "marinara.json"}"`,
+          `attachment; filename="${encodeURIComponent(toSafeExportName(canonical.usesFallbackName ? "" : String(canonical.row.name), "unnamed-persona"))}.${compatible ? "json" : "marinara.json"}"`,
         )
         .send(payload);
     },
@@ -2756,12 +2807,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     for (const id of ids) {
       const persona = await storage.getPersona(id);
       if (!persona) continue;
+      const canonical = canonicalizePersonaForExport(persona as Record<string, unknown>);
       const payload =
         format === "compatible"
-          ? buildCompatiblePersonaExport(persona as Record<string, unknown>)
-          : await buildNativePersonaEnvelope(persona as Record<string, unknown>, personaGallery);
+          ? buildCompatiblePersonaExport(canonical.row)
+          : await buildNativePersonaEnvelope(canonical.row, personaGallery);
       zip.addFile(
-        `${toSafeExportName(String(persona.name ?? "persona"), `persona-${exportedCount + 1}`)}.${format === "compatible" ? "json" : "marinara.json"}`,
+        `${toSafeExportName(
+          canonical.usesFallbackName ? "" : String(canonical.row.name),
+          `unnamed-persona-${exportedCount + 1}`,
+        )}.${format === "compatible" ? "json" : "marinara.json"}`,
         Buffer.from(JSON.stringify(payload, null, 2), "utf-8"),
       );
       exportedCount++;

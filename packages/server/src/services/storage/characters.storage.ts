@@ -108,6 +108,34 @@ type CharacterListRow = {
 };
 /** Serialized row shape used by the file-table persistence layer. */
 export type PersonaStorageRow = typeof personas.$inferSelect;
+/** Serialized Persona fields accepted by the normal create and update paths. */
+export type PersonaStorageWriteFields = Pick<
+  PersonaStorageRow,
+  | "name"
+  | "comment"
+  | "creator"
+  | "personaVersion"
+  | "creatorNotes"
+  | "phoneticName"
+  | "description"
+  | "personality"
+  | "scenario"
+  | "backstory"
+  | "appearance"
+  | "characterSheetImageId"
+  | "useCharacterSheetAsReference"
+  | "avatarCrop"
+  | "nameColor"
+  | "dialogueColor"
+  | "boxColor"
+  | "trackerCardColors"
+  | "personaStats"
+  | "tags"
+  | "savedStatusOptions"
+  | "convoDisplayName"
+  | "aboutMe"
+  | "convoBehavior"
+>;
 type CharacterListPageOptions = {
   includeBuiltIn?: boolean;
   limit: number;
@@ -822,33 +850,10 @@ export function createCharactersStorage(db: DB) {
     },
 
     async createPersona(
-      name: string,
-      description: string,
+      name: PersonaStorageWriteFields["name"],
+      description: PersonaStorageWriteFields["description"],
       avatarPath?: string,
-      extra?: {
-        comment?: string;
-        creator?: string;
-        personaVersion?: string;
-        creatorNotes?: string;
-        phoneticName?: string;
-        personality?: string;
-        scenario?: string;
-        backstory?: string;
-        appearance?: string;
-        characterSheetImageId?: string | null;
-        useCharacterSheetAsReference?: string;
-        nameColor?: string;
-        dialogueColor?: string;
-        boxColor?: string;
-        trackerCardColors?: string;
-        personaStats?: string;
-        tags?: string;
-        savedStatusOptions?: string;
-        convoDisplayName?: string;
-        aboutMe?: string;
-        convoBehavior?: string;
-        avatarCrop?: string;
-      },
+      extra?: Partial<Omit<PersonaStorageWriteFields, "name" | "description">>,
       timestampOverrides?: TimestampOverrides | null,
       _avatarLifecycleLocked = false,
     ): Promise<PersonaStorageRow | null> {
@@ -966,33 +971,7 @@ export function createCharactersStorage(db: DB) {
 
     async updatePersona(
       id: string,
-      updates: {
-        name?: string;
-        comment?: string;
-        creator?: string;
-        personaVersion?: string;
-        creatorNotes?: string;
-        phoneticName?: string;
-        description?: string;
-        personality?: string;
-        scenario?: string;
-        backstory?: string;
-        appearance?: string;
-        avatarPath?: string | null;
-        characterSheetImageId?: string | null;
-        useCharacterSheetAsReference?: string;
-        avatarCrop?: string;
-        nameColor?: string;
-        dialogueColor?: string;
-        boxColor?: string;
-        trackerCardColors?: string;
-        personaStats?: string;
-        tags?: string;
-        savedStatusOptions?: string;
-        convoDisplayName?: string;
-        aboutMe?: string;
-        convoBehavior?: string;
-      },
+      updates: Partial<PersonaStorageWriteFields> & { avatarPath?: PersonaStorageRow["avatarPath"] },
       options?: {
         versionSource?: string | null;
         versionReason?: string | null;

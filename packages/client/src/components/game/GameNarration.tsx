@@ -74,6 +74,7 @@ import { getDefaultChatTextColor, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
+import { estimateGameSessionHistoryTokens } from "../../lib/game-session-history";
 import { createMessageMacroResolver, findCharacterByName } from "../../lib/chat-macros";
 import { animateTextHtml } from "./AnimatedText";
 import { ttsService } from "../../lib/tts-service";
@@ -214,33 +215,6 @@ type NarrationMessage = Pick<Message, "id" | "chatId" | "role" | "content" | "ch
   characterName?: string;
 };
 
-const APPROX_MESSAGE_TOKEN_OVERHEAD = 4;
-
-function estimateTextTokenCount(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  const wordEstimate = trimmed.split(/\s+/).filter(Boolean).length * 1.3;
-  const charEstimate = trimmed.length / 4;
-  return Math.ceil(Math.max(wordEstimate, charEstimate));
-}
-
-function estimateMessageTokenCount(message: NarrationMessage): number {
-  const stored = message.extra?.tokenCount;
-  if (typeof stored === "number" && Number.isFinite(stored) && stored > 0) return stored;
-  const textTokens = estimateTextTokenCount(message.content);
-  return textTokens > 0 ? textTokens + APPROX_MESSAGE_TOKEN_OVERHEAD : 0;
-}
-
-function estimateSessionHistoryTokens(messages: NarrationMessage[]): number {
-  let startIndex = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.extra?.isConversationStart) {
-      startIndex = i;
-      break;
-    }
-  }
-  return messages.slice(startIndex).reduce((total, message) => total + estimateMessageTokenCount(message), 0);
-}
 
 function formatTokenEstimate(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m`;
@@ -2711,7 +2685,7 @@ export function GameNarration({
           }
         : { key: "", offsetTop: 0, scrollTop: container.scrollTop };
   }, []);
-  const sessionHistoryTokens = useMemo(() => estimateSessionHistoryTokens(messages), [messages]);
+  const sessionHistoryTokens = useMemo(() => estimateGameSessionHistoryTokens(messages), [messages]);
   const loadOlderLogs = useCallback(() => {
     setVisibleLogCount((current) => Math.min(logEntries.length, current + logPageSize));
   }, [logEntries.length, logPageSize]);

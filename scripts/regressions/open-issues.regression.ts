@@ -27,6 +27,7 @@ import {
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
+import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -4939,6 +4940,169 @@ assert.match(
   /hadMissingSyncedSettings[\s\S]*pickSyncedSettings\(useUIStore\.getState\(\)\)/u,
   "Incomplete server settings blobs must be rewritten with newly synced preferences",
 );
+
+const gameHistoryMessage = (content: string, extra?: unknown) => ({ content, extra });
+const objectGameHistoryMetadata = [gameHistoryMessage("ignored", { tokenCount: 37 })];
+const jsonGameHistoryMetadata = [gameHistoryMessage("ignored", '{"tokenCount":37}')];
+assert.equal(estimateGameSessionHistoryTokens(objectGameHistoryMetadata), 37);
+assert.equal(
+  estimateGameSessionHistoryTokens(jsonGameHistoryMetadata),
+  estimateGameSessionHistoryTokens(objectGameHistoryMetadata),
+  "JSON-string metadata must use the same valid token count as object metadata",
+);
+
+const latestObjectGameHistoryMarker = [
+  gameHistoryMessage("ignored", { tokenCount: 101 }),
+  gameHistoryMessage("ignored", { tokenCount: 23, isConversationStart: true }),
+  gameHistoryMessage("ignored", { tokenCount: 19 }),
+  gameHistoryMessage("ignored", { tokenCount: 7, isConversationStart: true }),
+];
+const latestJsonGameHistoryMarker = [
+  gameHistoryMessage("ignored", '{"tokenCount":101}'),
+  gameHistoryMessage("ignored", '{"tokenCount":23,"isConversationStart":true}'),
+  gameHistoryMessage("ignored", '{"tokenCount":19}'),
+  gameHistoryMessage("ignored", '{"tokenCount":7,"isConversationStart":true}'),
+];
+assert.equal(estimateGameSessionHistoryTokens(latestObjectGameHistoryMarker), 7);
+assert.equal(
+  estimateGameSessionHistoryTokens(latestJsonGameHistoryMarker),
+  estimateGameSessionHistoryTokens(latestObjectGameHistoryMarker),
+  "the latest JSON-string conversation-start marker must determine session history",
+);
+
+const falseStringObjectGameHistoryMarker = [
+  gameHistoryMessage("ignored", { tokenCount: 23, isConversationStart: true }),
+  gameHistoryMessage("ignored", { tokenCount: 19 }),
+  gameHistoryMessage("ignored", { tokenCount: 7, isConversationStart: "false" }),
+];
+const falseStringJsonGameHistoryMarker = [
+  gameHistoryMessage("ignored", '{"tokenCount":23,"isConversationStart":true}'),
+  gameHistoryMessage("ignored", '{"tokenCount":19}'),
+  gameHistoryMessage("ignored", '{"tokenCount":7,"isConversationStart":"false"}'),
+];
+assert.equal(
+  estimateGameSessionHistoryTokens(falseStringObjectGameHistoryMarker),
+  49,
+  "a string false-valued object marker must not start a Game session",
+);
+assert.equal(
+  estimateGameSessionHistoryTokens(falseStringJsonGameHistoryMarker),
+  49,
+  "a string false-valued JSON marker must not start a Game session",
+);
+
+const fallbackGameHistoryMessages = [
+  gameHistoryMessage("one two", "{not valid JSON"),
+  gameHistoryMessage("three four"),
+];
+assert.equal(
+  estimateGameSessionHistoryTokens(fallbackGameHistoryMessages),
+  14,
+  "malformed and absent metadata must retain the full history with text estimates",
+);
+
+// The UI store needs browser storage while Zustand initializes its persisted state.
+// Supply an isolated in-memory implementation so these checks exercise its real
+// migration and projection functions in this Node-based regression lane.
+const uiStorage = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    getItem: (key: string) => uiStorage.get(key) ?? null,
+    setItem: (key: string, value: string) => uiStorage.set(key, value),
+    removeItem: (key: string) => uiStorage.delete(key),
+  },
+});
+const { pickSyncedSettings, useUIStore } = await import("../../packages/client/src/stores/ui.store.js");
+const migrateUiSettings = useUIStore.persist.getOptions().migrate;
+assert.ok(migrateUiSettings, "The UI store must retain its persisted-state migration");
+
+const representativeTrackerSettings = {
+  trackerPanelCollapsedSections: { world: true, invalid: true },
+  trackerPanelUseExpressionSprites: undefined,
+  trackerPanelSectionOrder: ["quests", "world", "world", "invalid"],
+  summaryPopoverSettings: {
+    sourceMode: "range",
+    contextSize: 11.8,
+    rangeStart: 4.2,
+    rangeEnd: 9.7,
+    hideSummarisedMessages: true,
+    collapseHiddenMessages: false,
+  },
+  trackerPanelThoughtBubbleDisplay: "floating",
+  trackerPanelSizeProfile: "invalid",
+  trackerPanelWidth: 280,
+  trackerTemperatureUnit: "kelvin",
+  trackerPanelDockedThoughtsAlwaysVisible: undefined,
+  quoteFormat: "invalid",
+  trackerPanelBackgroundColor: "  #123456  ",
+};
+const migrateRepresentativeTrackerSettings = async (version: number) =>
+  (await migrateUiSettings(structuredClone(representativeTrackerSettings), version)) as Record<string, unknown>;
+const oldTrackerSettings = await migrateRepresentativeTrackerSettings(0);
+const currentTrackerSettings = await migrateRepresentativeTrackerSettings(92);
+const trackerMigrationProjection = (settings: Record<string, unknown>) => ({
+  trackerPanelCollapsedSections: settings.trackerPanelCollapsedSections,
+  trackerPanelUseExpressionSprites: settings.trackerPanelUseExpressionSprites,
+  trackerPanelSectionOrder: settings.trackerPanelSectionOrder,
+  summaryPopoverSettings: settings.summaryPopoverSettings,
+  trackerPanelThoughtBubbleDisplay: settings.trackerPanelThoughtBubbleDisplay,
+  trackerPanelSizeProfile: settings.trackerPanelSizeProfile,
+  trackerTemperatureUnit: settings.trackerTemperatureUnit,
+  trackerPanelDockedThoughtsAlwaysVisible: settings.trackerPanelDockedThoughtsAlwaysVisible,
+  quoteFormat: settings.quoteFormat,
+  trackerPanelBackgroundColor: settings.trackerPanelBackgroundColor,
+});
+assert.deepEqual(
+  trackerMigrationProjection(oldTrackerSettings),
+  trackerMigrationProjection(currentTrackerSettings),
+  "Old and current persisted tracker settings must share the unconditional canonicalizers",
+);
+assert.deepEqual(trackerMigrationProjection(currentTrackerSettings), {
+  trackerPanelCollapsedSections: { world: true },
+  trackerPanelUseExpressionSprites: false,
+  trackerPanelSectionOrder: ["quests", "world", "persona", "characters", "custom"],
+  summaryPopoverSettings: {
+    sourceMode: "range",
+    contextSize: 12,
+    rangeStart: 4,
+    rangeEnd: 10,
+    hideSummarisedMessages: true,
+    collapseHiddenMessages: false,
+  },
+  trackerPanelThoughtBubbleDisplay: "floating",
+  trackerPanelSizeProfile: "compact",
+  trackerTemperatureUnit: "celsius",
+  trackerPanelDockedThoughtsAlwaysVisible: false,
+  quoteFormat: "straight",
+  trackerPanelBackgroundColor: "#123456",
+});
+assert.match(
+  uiStoreSource,
+  /if \(version <= 37\) \{[\s\S]*IMAGE_STYLE_PROFILES_STORAGE_KEY\] \?\? persisted\.imageStyleProfiles/u,
+  "The image-style legacy-key fallback must remain version-specific",
+);
+const projectionState = { ...useUIStore.getState(), enterToSendGame: false, gameTutorialDisabled: true };
+assert.equal(
+  pickSyncedSettings(projectionState).enterToSendGame,
+  false,
+  "Game's Send on Enter preference must be server-synced",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).gameTutorialDisabled,
+  true,
+  "The tutorial dismissal must be server-synced",
+);
+const localProjection = useUIStore.persist.getOptions().partialize(projectionState) as Record<string, unknown>;
+const syncedSettingsMissingFromLocalPersistence = Object.keys(pickSyncedSettings(projectionState)).filter(
+  (key) => !Object.prototype.hasOwnProperty.call(localProjection, key),
+);
+assert.deepEqual(
+  syncedSettingsMissingFromLocalPersistence,
+  [],
+  "Every server-synced setting must also be browser-local persisted",
+);
+assert.equal(localProjection.gameTutorialDisabled, true, "The tutorial dismissal must be browser-local persisted");
 assert.match(chatAreaPromptReviewSource, /MEDIA_PROMPT_PREVIEW_TIMEOUT_MS/);
 assert.match(chatAreaPromptReviewSource, /confirmRoleplayVideoPromptReview/);
 assert.match(chatAreaPromptReviewSource, /confirmConversationSelfiePromptReview/);

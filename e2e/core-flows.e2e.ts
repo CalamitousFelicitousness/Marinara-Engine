@@ -12646,11 +12646,13 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     await expect(revectorizeButton).toBeVisible();
     await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("9");
     const saveCountBeforeCancel = saveRequestCount;
+    const vectorizeCountBeforeCancel = vectorizeRequestCount;
     await revectorizeButton.click();
     const revectorizeDialog = page.getByRole("dialog").filter({ hasText: "Re-vectorize All Entries" });
     await expect(revectorizeDialog).toBeVisible();
     await revectorizeDialog.getByRole("button", { name: "Cancel", exact: true }).click();
     expect(saveRequestCount).toBe(saveCountBeforeCancel);
+    expect(vectorizeRequestCount).toBe(vectorizeCountBeforeCancel);
 
     await vectorPanel.locator("label").filter({ hasText: "Query Messages" }).locator("input").fill("8");
     await page.locator(".mari-editor-header").getByRole("button").first().click();

@@ -2828,6 +2828,7 @@ function VectorizeSection({
   );
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
   const [vectorizingMode, setVectorizingMode] = useState<"missing" | "all" | null>(null);
+  const vectorizeInFlightRef = useRef(false);
   const [clearingVectors, setClearingVectors] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const excludedCount = excludeFromVectorization
@@ -2892,41 +2893,49 @@ function VectorizeSection({
   const handleVectorize = async (mode: "missing" | "all") => {
     if (!selectedConnectionId) return;
     if (mode === "missing" && missingCount === 0) return;
-    const conn = embeddingConnections.find((c) => c.id === selectedConnectionId);
-    if (mode === "all" && storedVectorCount > 0) {
-      const confirmed = await showConfirmDialog({
-        title:localizeUi("ui.lorebooks.vectorizesection.reVectorizeAllEntries"),
-        message: localizeUi("ui.lorebooks.vectorizesection.reVectorizeAllEntriesWithConnection", {
-          count: vectorizableEntryCount,
-          connection: conn?.name ?? localizeUi("ui.lorebooks.vectorizesection.theSelectedConnection"),
-        }),
-        confirmLabel:localizeUi("ui.lorebooks.vectorizesection.reVectorizeAll"),
-        cancelLabel: "Cancel",
-        tone: "default",
-      });
-      if (!confirmed) return;
-    }
-    if (hasUnsavedChanges && !(await onBeforeVectorize())) return;
-
-    setVectorizingMode(mode);
-    setResult(null);
+    if (vectorizeInFlightRef.current) return;
+    vectorizeInFlightRef.current = true;
     try {
-      const res = await api.post(`/lorebooks/${lorebookId}/vectorize`, {
-        connectionId: selectedConnectionId,
-        model: conn?.embeddingModel ?? "",
-        onlyMissing: mode === "missing",
-      });
-      const data = res as { vectorized: number; total?: number; skipped?: number };
-      await queryClient.invalidateQueries({ queryKey: lorebookKeys.entries(lorebookId) });
-      setResult({
-        success: true,
-        message:
-          mode === "all" ? `Re-vectorized ${data.vectorized} entries` : `Vectorized ${data.vectorized} missing entries`,
-      });
-    } catch (err) {
-      setResult({ success: false, message: err instanceof Error ? err.message : "Vectorization failed" });
+      const conn = embeddingConnections.find((c) => c.id === selectedConnectionId);
+      if (mode === "all" && storedVectorCount > 0) {
+        const confirmed = await showConfirmDialog({
+          title:localizeUi("ui.lorebooks.vectorizesection.reVectorizeAllEntries"),
+          message: localizeUi("ui.lorebooks.vectorizesection.reVectorizeAllEntriesWithConnection", {
+            count: vectorizableEntryCount,
+            connection: conn?.name ?? localizeUi("ui.lorebooks.vectorizesection.theSelectedConnection"),
+          }),
+          confirmLabel:localizeUi("ui.lorebooks.vectorizesection.reVectorizeAll"),
+          cancelLabel: "Cancel",
+          tone: "default",
+        });
+        if (!confirmed) return;
+      }
+      if (hasUnsavedChanges && !(await onBeforeVectorize())) return;
+
+      setVectorizingMode(mode);
+      setResult(null);
+      try {
+        const res = await api.post(`/lorebooks/${lorebookId}/vectorize`, {
+          connectionId: selectedConnectionId,
+          model: conn?.embeddingModel ?? "",
+          onlyMissing: mode === "missing",
+        });
+        const data = res as { vectorized: number; total?: number; skipped?: number };
+        await queryClient.invalidateQueries({ queryKey: lorebookKeys.entries(lorebookId) });
+        setResult({
+          success: true,
+          message:
+            mode === "all"
+              ? `Re-vectorized ${data.vectorized} entries`
+              : `Vectorized ${data.vectorized} missing entries`,
+        });
+      } catch (err) {
+        setResult({ success: false, message: err instanceof Error ? err.message : "Vectorization failed" });
+      } finally {
+        setVectorizingMode(null);
+      }
     } finally {
-      setVectorizingMode(null);
+      vectorizeInFlightRef.current = false;
     }
   };
 

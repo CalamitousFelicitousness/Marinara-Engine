@@ -27,7 +27,11 @@ import { resetMemoryRecallVectorizerCache } from "../services/memory-recall-embe
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
-import { buildGoogleVertexModelUrl, googleAuthHeadersForVertex } from "../services/llm/providers/google.provider.js";
+import {
+  buildGoogleVertexModelUrl,
+  googleAuthHeadersForVertex,
+  normalizeGoogleGenerativeLanguageBaseUrl,
+} from "../services/llm/providers/google.provider.js";
 import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
@@ -247,6 +251,7 @@ export function buildGoogleModelsPageUrl(baseUrl: string, modelsEndpoint: string
 }
 
 function normalizeConnectionTestBaseUrl(baseUrl: string, provider: string): string {
+  if (provider === "google") return normalizeGoogleGenerativeLanguageBaseUrl(baseUrl);
   if (provider !== "image_generation") return baseUrl.replace(/\/+$/, "");
   try {
     return normalizeLoopbackUrl(baseUrl).replace(/\/+$/, "");

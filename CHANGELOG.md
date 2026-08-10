@@ -49,6 +49,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Scoped image-connection prompt instructions to image-producing agents, bounded stored instructions to 20,000 characters, and kept each retry agent on its own configured image connection.
+- Kept chat settings profiles within their saved chat mode, migrated legacy Visual Novel profiles to Roleplay on import, and prevented reusable profiles from overwriting branch identity (#4849).
+- Served the Home shell directly for unknown routes so Termux mobile launches cannot recurse through the server's 404 handler (#4850).
+- Corrected legacy Google Gemini `/v1` connection URLs to `/v1beta` for connection checks, model discovery, chat generation, and embeddings (#4854).
+- Removed the decorative address bar from mobile Home and the obsolete close action from Professor Mari's Home tab while retaining the full desktop browser frame (#4855).
 - Restored intuitive mobile swipe navigation for Conversation transcripts while preserving Roleplay swipes and interactive controls (#4841).
 - Made Memory Recall re-vectorization exclusive with background chunking so embedding-model changes cannot leave mixed vector dimensions (#4843).
 - Saved pending Lorebook vector settings before vectorization and surfaced provider or eligibility failures instead of reporting a misleading zero-vector success (#4844).

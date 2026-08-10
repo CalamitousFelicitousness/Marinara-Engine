@@ -2272,7 +2272,7 @@ export function HomeBrowserHub({
           </div>
 
           <div
-            className="mari-home-browser-address-row flex h-8 shrink-0 items-center gap-1.5 px-2 py-0.5 sm:h-10 sm:gap-2 sm:px-3"
+            className="mari-home-browser-address-row hidden h-8 shrink-0 items-center gap-1.5 px-2 py-0.5 sm:flex sm:h-10 sm:gap-2 sm:px-3"
             data-component="HomeBrowserHub.AddressRow"
           >
             <div className="hidden shrink-0 items-center gap-0.5 sm:flex">

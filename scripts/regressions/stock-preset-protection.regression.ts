@@ -17,6 +17,14 @@ try {
   const original = (await storage.list()).find(isStockMarinaraUniversalPreset);
   assert.ok(original, "a fresh profile receives the stock Marinara universal preset");
 
+  await storage.setSystemKey(original.id, "");
+  await seedDefaultPreset(db);
+  assert.equal(
+    (await storage.list()).find(isStockMarinaraUniversalPreset)?.id,
+    original.id,
+    "snapshot evidence migrates a genuine legacy stock preset to the reserved identity",
+  );
+
   const originalDescription = original.description;
   await storage.update(original.id, { description: "My customized universal preset" });
   await seedDefaultPreset(db);
@@ -33,11 +41,14 @@ try {
   assert.equal(editableCopy?.systemKey, "", "editable copies do not inherit the reserved stock identity");
 
   assert.ok(restored && editableCopy, "both the restored stock preset and editable copy exist");
-  const matchingUserPreset = await storage.create({
-    name: "Marinara's Universal Preset",
-    author: "Marinara",
-    description: "User-owned matching preset",
-  });
+  const matchingUserPreset = await storage.create(
+    {
+      name: "Marinara's Universal Preset",
+      author: "Marinara",
+      description: "User-owned matching preset",
+    },
+    { createdAt: "2026-03-04T14:46:18.499Z", updatedAt: "2026-03-04T14:46:18.499Z" },
+  );
   assert.ok(matchingUserPreset, "the matching-name user preset fixture is created");
   await storage.setDefault(editableCopy.id);
   await storage.remove(restored.id);

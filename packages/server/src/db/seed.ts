@@ -363,7 +363,6 @@ export async function seedDefaultPreset(db: DB) {
   // existed. Match immutable seed evidence rather than editable name/author
   // alone so a user preset cannot accidentally become protected stock.
   if (!existingMarinaraPreset) {
-    const bundledCreatedAt = String(bundled.envelope.data.preset.createdAt ?? "");
     const legacyCandidates = existing.filter(
       (preset) =>
         (preset.name === MARINARA_UNIVERSAL_PRESET_NAME || preset.name === LEGACY_MARINARA_PRESET_NAME) &&
@@ -374,8 +373,7 @@ export async function seedDefaultPreset(db: DB) {
       const matchesKnownSnapshot =
         candidateSnapshotHash === bundledSnapshotHash ||
         (appliedSnapshotHash !== null && candidateSnapshotHash === appliedSnapshotHash);
-      const matchesBundledCreation = Boolean(bundledCreatedAt) && candidate.createdAt === bundledCreatedAt;
-      if (!matchesKnownSnapshot && !matchesBundledCreation) continue;
+      if (!matchesKnownSnapshot) continue;
       const taggedPreset = await storage.setSystemKey(candidate.id, MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY);
       if (taggedPreset) existingMarinaraPreset = taggedPreset;
       break;

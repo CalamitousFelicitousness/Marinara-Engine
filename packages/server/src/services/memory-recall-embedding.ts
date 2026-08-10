@@ -107,6 +107,23 @@ export async function resolveMemoryRecallEmbeddingSource(
   },
 ): Promise<MemoryRecallEmbeddingSource | null> {
   const connections = createConnectionsStorage(db);
+  if (options.connectionId === "random") {
+    // A random chat stores a sentinel rather than a persisted connection id.
+    // Use one stable, embedding-capable member of its pool so rebuilding and
+    // later recall queries stay in the same vector space.
+    const pool = (await connections.listRandomPool()).sort((left, right) => left.id.localeCompare(right.id));
+    for (const connection of pool) {
+      const source = await resolveMemoryRecallEmbeddingSource(db, {
+        chatMetadata: options.chatMetadata,
+        connectionId: connection.id,
+        activeConnection: connection,
+        activeBaseUrl: resolveBaseUrl(connection),
+      });
+      if (source) return source;
+    }
+    return null;
+  }
+
   let activeConnection =
     options.activeConnection ?? (options.connectionId ? await connections.getWithKey(options.connectionId) : null);
   if (!activeConnection && !options.connectionId) {

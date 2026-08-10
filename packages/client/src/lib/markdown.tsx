@@ -5,6 +5,7 @@ import { type ReactNode } from "react";
 import { normalizeCardAssetImageSyntax, resolveCardAssetUrl } from "./card-asset-links";
 import { convertBasicLatexSymbols, convertBasicLatexSymbolsInHtml } from "./latex-symbols";
 import { useUIStore } from "../stores/ui.store";
+import { INLINE_MD_RE, MD_LINK_TARGET_SOURCE } from "./inline-markdown-regex";
 
 // ─── Inline Markdown ────────────────────────────────────────────────────────
 
@@ -23,14 +24,6 @@ import { useUIStore } from "../stores/ui.store";
  *   11    Italic (*)        *text*
  *   12    Italic (_)        _text_   (not inside a word)
  */
-const MD_LINK_TARGET_SOURCE = String.raw`(?:https?:\/\/[^)\s]+|card:\/\/[^)\s]+|\/api\/[^)\s]+)`;
-const INLINE_MD_RE = new RegExp(
-  "\\\\([-\\\\*_~`#|>!=\\[\\]{}])|(!?\\[([^\\]]*)\\]\\((" +
-    MD_LINK_TARGET_SOURCE +
-    ")\\))|`([^`\\n]+)`|==(.+?)==|~~(.+?)~~|\\*\\*\\*(.+?)\\*\\*\\*|\\*\\*(.+?)\\*\\*|__(.+?)__|\\*(.+?)\\*|(?<![_\\w])_([^_]+?)_(?![_\\w])",
-  "g",
-);
-
 /** Maximum recursion depth for nested inline markdown. */
 const MAX_INLINE_DEPTH = 6;
 const CHAT_TEXT_HTML_ENTITY_RE = /&(amp|lt|gt|quot|apos|#\d{1,7}|#x[0-9a-f]{1,6});/gi;

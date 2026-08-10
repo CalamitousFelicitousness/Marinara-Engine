@@ -4,6 +4,13 @@
 
 import type { ThinkingTagPair } from "../utils/thinking-tags.js";
 
+export const MARINARA_UNIVERSAL_PRESET_NAME = "Marinara's Universal Preset";
+export const MARINARA_UNIVERSAL_PRESET_AUTHOR = "Marinara";
+
+export function isStockMarinaraUniversalPreset(preset: { name?: unknown; author?: unknown }): boolean {
+  return preset.name === MARINARA_UNIVERSAL_PRESET_NAME && preset.author === MARINARA_UNIVERSAL_PRESET_AUTHOR;
+}
+
 /** Role for a prompt section. */
 export type PromptRole = "system" | "user" | "assistant";
 

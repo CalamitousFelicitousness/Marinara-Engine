@@ -1134,6 +1134,7 @@ export async function generateRoutes(app: FastifyInstance) {
     try {
       memoryRecallEmbeddingSource = await resolveMemoryRecallEmbeddingSource(app.db, {
         chatMetadata: chatMeta,
+        connectionId: (impersonateConnectionOverride || fallbackConnectionId) === "random" ? "random" : undefined,
         activeConnection: conn,
         activeBaseUrl: baseUrl,
       });
@@ -1145,6 +1146,7 @@ export async function generateRoutes(app: FastifyInstance) {
       try {
         memoryRecallVectorizerAvailable = await isMemoryRecallVectorizerAvailable(app.db, {
           chatMetadata: chatMeta,
+          connectionId: (impersonateConnectionOverride || fallbackConnectionId) === "random" ? "random" : undefined,
           activeConnection: conn,
           activeBaseUrl: baseUrl,
         });

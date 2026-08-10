@@ -71,7 +71,7 @@ import { cn } from "../../lib/utils";
 import { sortBasicPanelItems } from "../../lib/panel-sort";
 import { downloadJsonFile } from "../../lib/download-json";
 import { downloadZipFile } from "../../lib/download-zip";
-import { getFolderImportEntries } from "@marinara-engine/shared";
+import { getFolderImportEntries, isStockMarinaraUniversalPreset } from "@marinara-engine/shared";
 import {
   createCustomToolFolderPackageFiles,
   importCustomToolEntries,
@@ -871,6 +871,7 @@ export function PresetsPanel() {
       const sectionCount = getSectionCount(preset);
       const wrapFormat = (preset.wrapFormat ?? "xml") as string;
       const isDefault = String(preset.isDefault) === "true";
+      const isStock = isStockMarinaraUniversalPreset(preset);
       const artwork = resolvePresetArtwork(preset);
       const pictureLabel = artwork
         ? localizeUi("ui.panels.presetspanel.replacePresetPicture")
@@ -946,6 +947,8 @@ export function PresetsPanel() {
               </div>
             )}
             {selectionMode ? (
+              <div className={cn(imageClasses, "overflow-hidden")}>{imageContent}</div>
+            ) : isStock ? (
               <div className={cn(imageClasses, "overflow-hidden")}>{imageContent}</div>
             ) : (
               <button
@@ -1083,27 +1086,29 @@ export function PresetsPanel() {
               >
                 <Copy size="0.75rem" />
               </button>
-              <button
-                type="button"
-                onClick={async (event) => {
-                  event.stopPropagation();
-                  if (
-                    await showConfirmDialog({
-                      title: localizeUi("ui.panels.presetspanel.deletePreset_a513ba6"),
-                      message: localizeUi("ui.panels.agentspanel.deleteValue1", { value1: preset.name }),
-                      confirmLabel: localizeUi("lorebook.editor.batch.delete"),
-                      tone: "destructive",
-                    })
-                  ) {
-                    deletePreset.mutate(preset.id);
-                  }
-                }}
-                className="mari-chrome-control mari-chrome-control--small p-1.5"
-                title={localizeUi("lorebook.editor.batch.delete")}
-                aria-label={localizeUi("ui.panels.presetspanel.deletePreset")}
-              >
-                <Trash2 size="0.75rem" />
-              </button>
+              {!isStock && (
+                <button
+                  type="button"
+                  onClick={async (event) => {
+                    event.stopPropagation();
+                    if (
+                      await showConfirmDialog({
+                        title: localizeUi("ui.panels.presetspanel.deletePreset_a513ba6"),
+                        message: localizeUi("ui.panels.agentspanel.deleteValue1", { value1: preset.name }),
+                        confirmLabel: localizeUi("lorebook.editor.batch.delete"),
+                        tone: "destructive",
+                      })
+                    ) {
+                      deletePreset.mutate(preset.id);
+                    }
+                  }}
+                  className="mari-chrome-control mari-chrome-control--small p-1.5"
+                  title={localizeUi("lorebook.editor.batch.delete")}
+                  aria-label={localizeUi("ui.panels.presetspanel.deletePreset")}
+                >
+                  <Trash2 size="0.75rem" />
+                </button>
+              )}
             </div>
           )}
         </div>

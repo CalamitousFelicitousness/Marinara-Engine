@@ -3126,6 +3126,12 @@ export function ChatSettingsDrawer({
     },
     [chat.id, isRoleplayMode, updateChat],
   );
+  const assignEditablePresetCopy = useCallback(
+    (presetId: string) => {
+      updateChat.mutate({ id: chat.id, promptPresetId: presetId });
+    },
+    [chat.id, updateChat],
+  );
 
   const setConnection = (connectionId: string | null) => {
     updateChat.mutate({ id: chat.id, connectionId });
@@ -4511,6 +4517,7 @@ export function ChatSettingsDrawer({
                       <QuickPresetSectionsEditor
                         presetId={chat.promptPresetId}
                         parentChatHasLorebook={activeLorebooks.length > 0}
+                        onEditableCopyCreated={assignEditablePresetCopy}
                       />
                     </Suspense>
                   ) : null

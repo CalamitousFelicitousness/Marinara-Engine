@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Routes: Prompts (Presets, Groups, Sections, Choices)
 // ──────────────────────────────────────────────
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { mkdir, readFile, unlink, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import {
@@ -14,6 +14,7 @@ import {
   createChoiceBlockSchema,
   updateChoiceBlockSchema,
   createFolderEntry,
+  isStockMarinaraUniversalPreset,
   type LorebookEntryTimingState,
 } from "@marinara-engine/shared";
 import type { ExportEnvelope } from "@marinara-engine/shared";
@@ -32,6 +33,19 @@ import { logger } from "../lib/logger.js";
 
 const PROMPT_IMAGES_DIR = join(DATA_DIR, "prompts", "images");
 const PROMPT_IMAGE_URL_PREFIX = "/api/prompts/images/file/";
+const STOCK_PRESET_READ_ONLY_ERROR =
+  "The stock Marinara Universal preset is read-only. Open it to create an editable copy.";
+
+async function rejectStockPresetMutation(
+  storage: ReturnType<typeof createPromptsStorage>,
+  presetId: string,
+  reply: FastifyReply,
+): Promise<boolean> {
+  const preset = await storage.getById(presetId);
+  if (!preset || !isStockMarinaraUniversalPreset(preset)) return false;
+  reply.status(409).send({ error: STOCK_PRESET_READ_ONLY_ERROR });
+  return true;
+}
 
 function parseImageUpload(image: string): { buffer: Buffer; hintedExt: string } {
   let base64 = image;
@@ -176,7 +190,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     );
   });
 
-  app.patch<{ Params: { id: string } }>("/:id", async (req) => {
+  app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const input = updatePromptPresetSchema.parse(req.body);
     return storage.update(req.params.id, input);
   });
@@ -184,6 +199,9 @@ export async function promptsRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/:id/image", async (req, reply) => {
     const preset = await storage.getById(req.params.id);
     if (!preset) return reply.status(404).send({ error: "Preset not found" });
+    if (isStockMarinaraUniversalPreset(preset)) {
+      return reply.status(409).send({ error: STOCK_PRESET_READ_ONLY_ERROR });
+    }
 
     const body = req.body as { image?: string };
     if (!body.image) return reply.status(400).send({ error: "No image data provided" });
@@ -211,6 +229,9 @@ export async function promptsRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const preset = await storage.getById(req.params.id);
+    if (preset && isStockMarinaraUniversalPreset(preset)) {
+      return reply.status(409).send({ error: STOCK_PRESET_READ_ONLY_ERROR });
+    }
     await storage.remove(req.params.id);
     await removePromptImageIfUnreferenced(storage, preset?.imagePath ?? null);
     return reply.status(204).send();
@@ -284,7 +305,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.listGroups(req.params.id);
   });
 
-  app.post<{ Params: { id: string } }>("/:id/groups", async (req) => {
+  app.post<{ Params: { id: string } }>("/:id/groups", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const input = createPromptGroupSchema.parse({
       ...(req.body as Record<string, unknown>),
       presetId: req.params.id,
@@ -292,17 +314,20 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.createGroup(input);
   });
 
-  app.patch<{ Params: { presetId: string; groupId: string } }>("/:presetId/groups/:groupId", async (req) => {
+  app.patch<{ Params: { presetId: string; groupId: string } }>("/:presetId/groups/:groupId", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     const input = updatePromptGroupSchema.parse(req.body);
     return storage.updateGroup(req.params.groupId, input);
   });
 
   app.delete<{ Params: { presetId: string; groupId: string } }>("/:presetId/groups/:groupId", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     await storage.removeGroup(req.params.groupId);
     return reply.status(204).send();
   });
 
-  app.put<{ Params: { id: string } }>("/:id/groups/reorder", async (req) => {
+  app.put<{ Params: { id: string } }>("/:id/groups/reorder", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const { groupIds } = req.body as { groupIds: string[] };
     await storage.reorderGroups(req.params.id, groupIds);
     return { success: true };
@@ -316,7 +341,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.listSections(req.params.id);
   });
 
-  app.post<{ Params: { id: string } }>("/:id/sections", async (req) => {
+  app.post<{ Params: { id: string } }>("/:id/sections", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const input = createPromptSectionSchema.parse({
       ...(req.body as Record<string, unknown>),
       presetId: req.params.id,
@@ -324,7 +350,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.createSection(input);
   });
 
-  app.patch<{ Params: { presetId: string; sectionId: string } }>("/:presetId/sections/:sectionId", async (req) => {
+  app.patch<{ Params: { presetId: string; sectionId: string } }>("/:presetId/sections/:sectionId", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     const input = updatePromptSectionSchema.parse(req.body);
     return storage.updateSection(req.params.sectionId, input);
   });
@@ -332,12 +359,14 @@ export async function promptsRoutes(app: FastifyInstance) {
   app.delete<{ Params: { presetId: string; sectionId: string } }>(
     "/:presetId/sections/:sectionId",
     async (req, reply) => {
+      if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
       await storage.removeSection(req.params.sectionId);
       return reply.status(204).send();
     },
   );
 
-  app.put<{ Params: { id: string } }>("/:id/sections/reorder", async (req) => {
+  app.put<{ Params: { id: string } }>("/:id/sections/reorder", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.id, reply)) return;
     const { sectionIds } = req.body as { sectionIds: string[] };
     await storage.reorderSections(req.params.id, sectionIds);
     return { success: true };
@@ -351,7 +380,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.listChoiceBlocksForPreset(req.params.presetId);
   });
 
-  app.post<{ Params: { presetId: string } }>("/:presetId/variables", async (req) => {
+  app.post<{ Params: { presetId: string } }>("/:presetId/variables", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     const input = createChoiceBlockSchema.parse({
       ...(req.body as Record<string, unknown>),
       presetId: req.params.presetId,
@@ -359,7 +389,8 @@ export async function promptsRoutes(app: FastifyInstance) {
     return storage.createChoiceBlock(input);
   });
 
-  app.patch<{ Params: { presetId: string; variableId: string } }>("/:presetId/variables/:variableId", async (req) => {
+  app.patch<{ Params: { presetId: string; variableId: string } }>("/:presetId/variables/:variableId", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     const input = updateChoiceBlockSchema.parse(req.body);
     return storage.updateChoiceBlock(req.params.variableId, input);
   });
@@ -367,12 +398,14 @@ export async function promptsRoutes(app: FastifyInstance) {
   app.delete<{ Params: { presetId: string; variableId: string } }>(
     "/:presetId/variables/:variableId",
     async (req, reply) => {
+      if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
       await storage.removeChoiceBlock(req.params.variableId);
       return reply.status(204).send();
     },
   );
 
-  app.put<{ Params: { presetId: string } }>("/:presetId/variables/reorder", async (req) => {
+  app.put<{ Params: { presetId: string } }>("/:presetId/variables/reorder", async (req, reply) => {
+    if (await rejectStockPresetMutation(storage, req.params.presetId, reply)) return;
     const { variableIds } = req.body as { variableIds: string[] };
     await storage.reorderVariables(req.params.presetId, variableIds);
     return { success: true };

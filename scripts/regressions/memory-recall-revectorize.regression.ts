@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
 import { chats, memoryChunks, messages } from "../../packages/server/src/db/schema/index.js";
+import { resolveMemoryRecallEmbeddingSource } from "../../packages/server/src/services/memory-recall-embedding.js";
 import { chunkAndEmbedMessages, rebuildMemoryChunks } from "../../packages/server/src/services/memory-recall.js";
+import { createConnectionsStorage } from "../../packages/server/src/services/storage/connections.storage.js";
 
 const dir = mkdtempSync(join(tmpdir(), "marinara-memory-revectorize-"));
 process.env.FILE_STORAGE_DIR = dir;
@@ -73,6 +75,53 @@ try {
   const stored = await db.select().from(memoryChunks).where(eq(memoryChunks.chatId, "chat-memory"));
   assert.equal(stored.length, 1, "re-vectorization replaces the prior native chunk exactly once");
   assert.equal(JSON.parse(stored[0]!.embedding ?? "[]").length, 768, "only vectors from the new model remain");
+
+  const connections = createConnectionsStorage(db);
+  const connectionDefaults = {
+    provider: "openai" as const,
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "test-key",
+    model: "gpt-5-mini",
+    imagePath: null,
+    maxContext: 128_000,
+    isDefault: false,
+    fallbackForMain: false,
+    useForRandom: true,
+    defaultForAgents: false,
+    fallbackForAgents: false,
+    enableCaching: false,
+    anthropicExtendedCacheTtl: false,
+    cachingAtDepth: 5,
+    embeddingBaseUrl: "",
+    embeddingConnectionId: null,
+    openrouterProvider: null,
+    imageGenerationSource: null,
+    comfyuiWorkflow: null,
+    imageService: null,
+    imageEndpointId: null,
+    imagePromptInstructions: null,
+    imageGenerationQuality: "auto" as const,
+    videoGenerationSource: null,
+    videoService: null,
+    promptPresetId: null,
+    maxTokensOverride: null,
+    maxParallelJobs: 1,
+    treatAsLocalEndpoint: false,
+    claudeFastMode: false,
+  };
+  await connections.create({ ...connectionDefaults, name: "Random without embeddings", embeddingModel: "" });
+  await connections.create({
+    ...connectionDefaults,
+    name: "Random with embeddings",
+    embeddingModel: "text-embedding-3-small",
+  });
+
+  const randomPoolSource = await resolveMemoryRecallEmbeddingSource(db, { connectionId: "random" });
+  assert.match(
+    randomPoolSource?.label ?? "",
+    /Random with embeddings \(text-embedding-3-small\)/u,
+    "random chats resolve an embedding-capable pool member instead of falling back to the local embedder",
+  );
 } finally {
   await db._fileStore.close();
   rmSync(dir, { recursive: true, force: true });

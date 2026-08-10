@@ -405,12 +405,10 @@ export function CharacterEditor() {
   }, []);
 
   // Embedding a lorebook into the card mutates the character server-side
-  // (data.character_book + the embeddedLorebook pointer). When the editor is
-  // clean, the detail-query refetch re-syncs formData for us; when it is dirty
-  // the parse effect skips that re-sync, so patch formData directly — otherwise
-  // a later Save would send the stale pre-embed data and silently revert it.
+  // (data.character_book + the embeddedLorebook pointer). Mirror that mutation
+  // in local formData immediately. Besides preserving dirty edits, this lets
+  // the Embed action react before the query refetch.
   const handleLorebookEmbedded = useCallback((lorebookId: string, characterBook: unknown) => {
-    if (!dirtyRef.current) return;
     setFormData((prev) => {
       if (!prev) return prev;
       const extensions = { ...(prev.extensions ?? {}) } as Record<string, unknown>;
@@ -428,17 +426,14 @@ export function CharacterEditor() {
 
   // "Remove from card" clears the embedded lorebook server-side
   // (data.character_book + the embeddedLorebook pointer) immediately. Mirror
-  // handleLorebookEmbedded's reconciliation: when the editor is clean the
-  // detail-query refetch re-syncs formData for us; when it is dirty the parse
-  // effect skips that re-sync, so patch formData directly — otherwise a later
-  // Save would resend the stale pre-remove data and silently re-embed it. The
-  // linked standalone lorebook, if any, is left untouched.
+  // handleLorebookEmbedded's reconciliation immediately so the Embed action
+  // becomes available again without waiting for a query refetch. The linked
+  // standalone lorebook, if any, is left untouched.
   const handleLorebookUnembedded = useCallback(() => {
     if (lorebookEmbedInFlightRef.current) {
       toast.error(localizeUi("ui.characters.charactereditor.waitForTheEmbeddedLorebookUpdateToFinishBefore"));
       return;
     }
-    if (!dirtyRef.current) return;
     setFormData((prev) => {
       if (!prev) return prev;
       const extensions = { ...(prev.extensions ?? {}) } as Record<string, unknown>;

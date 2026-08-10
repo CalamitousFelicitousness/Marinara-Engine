@@ -52,6 +52,7 @@ const CONNECTION_TEST_ERROR_PREVIEW_CHARS = 2000;
 const CONNECTION_IMAGES_DIR = join(DATA_DIR, "connections", "images");
 const SWARMUI_CONTROL_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_COMFYUI_VIDEO_BASE_URL = "http://127.0.0.1:8188";
+const DEFAULT_SWARMUI_VIDEO_BASE_URL = "http://127.0.0.1:7801";
 const DEFAULT_GEMINI_OMNI_VIDEO_MODEL = "gemini-omni-flash-preview";
 const DEFAULT_GEMINI_OMNI_VIDEO_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_GOOGLE_VEO_VIDEO_MODEL = "veo-3.1-generate-preview";
@@ -187,14 +188,17 @@ function localUrlPolicyForProvider(provider: string, imageSource: string) {
     (imageSource === "comfyui" || imageSource === "swarmui" || imageSource === "automatic1111");
   const isImage = provider === "image_generation";
   const isVideo = provider === "video_generation";
+  const isLocalVideoBackend = isVideo && (imageSource === "comfyui" || imageSource === "swarmui");
   return {
     allowLocal: isVideo
-      ? false
+      ? isLocalVideoBackend
       : isLocalImageBackend || (isImage && isImageLocalUrlsEnabled())
         ? true
         : isProviderLocalUrlsEnabled(),
     allowLoopback: true,
-    allowMdns: !isVideo && (provider !== "image_generation" || isLocalImageBackend || isImageLocalUrlsEnabled()),
+    allowMdns:
+      isLocalVideoBackend ||
+      (!isVideo && (provider !== "image_generation" || isLocalImageBackend || isImageLocalUrlsEnabled())),
     allowedProtocols: ["https:", "http:"],
     flagName: isImage ? "IMAGE_LOCAL_URLS_ENABLED" : "PROVIDER_LOCAL_URLS_ENABLED",
   };
@@ -743,7 +747,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         if (videoSource === "atlas") {
           return { models: ATLAS_CLOUD_VIDEO_MODELS.map((model) => ({ id: model.id, name: model.name })) };
         }
-        if (videoSource !== "comfyui") {
+        if (videoSource !== "comfyui" && videoSource !== "swarmui") {
           const models = MODEL_LISTS.video_generation.map((m) => ({ id: m.id, name: m.name }));
           return { models };
         }
@@ -855,7 +859,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: knownStabilityImageModels() };
       }
 
-      if (conn.provider === "image_generation" && imageSource === "swarmui") {
+      if ((conn.provider === "image_generation" || conn.provider === "video_generation") && mediaSource === "swarmui") {
         const sessionId = await createSwarmUiSession(baseUrl, conn.apiKey || "");
         const result = await postSwarmUiJson(baseUrl, conn.apiKey || "", "ListT2IParams", { session_id: sessionId });
         const modelGroups = isRecord(result) && isRecord(result.models) ? result.models : {};
@@ -1213,15 +1217,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
       explicitVideoSource || (inferredVideoSource !== "gemini_omni" ? inferredVideoSource : defaults.service);
     const rawVideoServiceHint = conn.videoService || videoSource;
     const videoServiceHint =
-      rawVideoServiceHint === "google_ai_studio"
-        ? inferVideoSource(conn.model || "", conn.baseUrl || "")
-        : rawVideoServiceHint;
+      videoSource === "swarmui"
+        ? "swarmui"
+        : rawVideoServiceHint === "google_ai_studio"
+          ? inferVideoSource(conn.model || "", conn.baseUrl || "")
+          : rawVideoServiceHint;
     const isXaiVideo = videoSource === "xai" || videoServiceHint === "xai";
     const isGoogleVeoVideo = videoSource === "google_veo" || videoServiceHint === "google_veo";
     const isOpenRouterVideo = videoSource === "openrouter" || videoServiceHint === "openrouter";
     const isAtlasVideo = videoSource === "atlas" || videoServiceHint === "atlas";
     const isSeedanceVideo = videoSource === "seedance" || videoServiceHint === "seedance";
-    const isComfyUiVideo = videoSource === "comfyui" || videoServiceHint === "comfyui";
+    const isSwarmUiVideo = videoSource === "swarmui" || videoServiceHint === "swarmui";
+    const isComfyUiVideo = videoSource === "comfyui" || videoServiceHint === "comfyui" || isSwarmUiVideo;
     const baseUrl = (
       conn.baseUrl ||
       (isXaiVideo
@@ -1234,9 +1241,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
               ? DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL
               : isSeedanceVideo
                 ? DEFAULT_SEEDANCE_VIDEO_BASE_URL
-                : isComfyUiVideo
-                  ? DEFAULT_COMFYUI_VIDEO_BASE_URL
-                  : providerDef?.defaultBaseUrl || DEFAULT_GEMINI_OMNI_VIDEO_BASE_URL)
+                : isSwarmUiVideo
+                  ? DEFAULT_SWARMUI_VIDEO_BASE_URL
+                  : isComfyUiVideo
+                    ? DEFAULT_COMFYUI_VIDEO_BASE_URL
+                    : providerDef?.defaultBaseUrl || DEFAULT_GEMINI_OMNI_VIDEO_BASE_URL)
     ).replace(/\/+$/, "");
     const videoModel =
       conn.model ||

@@ -640,6 +640,13 @@ export const VIDEO_GENERATION_SOURCES: VideoGenSource[] = [
     defaultBaseUrl: "http://127.0.0.1:8188",
     requiresApiKey: false,
   },
+  {
+    id: "swarmui",
+    name: "SwarmUI",
+    description: "Swarm-managed video generation through distributed ComfyUI workflows.",
+    defaultBaseUrl: "http://127.0.0.1:7801",
+    requiresApiKey: false,
+  },
 ];
 
 export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
@@ -895,6 +902,7 @@ const VIDEO_GEN_MODELS: KnownModel[] = [
 export function inferVideoSource(model: string, baseUrl: string): string {
   const m = model.toLowerCase();
   const u = baseUrl.toLowerCase();
+  if (m === "swarmui" || u.includes(":7801") || u.includes("swarmui")) return "swarmui";
   if (m === "comfyui" || u.includes(":8188") || u.includes("comfyui")) return "comfyui";
   if (m === "atlas" || u.includes("atlascloud.ai")) return "atlas";
   if (m === "seedance" || m.startsWith("seedance-") || u.includes("seedance2.ai")) return "seedance";

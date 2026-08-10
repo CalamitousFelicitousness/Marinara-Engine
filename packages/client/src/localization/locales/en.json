@@ -286,6 +286,8 @@
   "connections.mediaSources.swarmui.authHelp": "If this SwarmUI server requires an account, paste a Swarm Auth Token into the API Key field. Leave it empty for an unauthenticated local server.",
   "connections.mediaSources.swarmui.imageDescription": "Generate images through SwarmUI, including ComfyUI workflows distributed across its backend queue.",
   "connections.mediaSources.swarmui.name": "SwarmUI",
+  "connections.mediaSources.swarmui.videoDescription": "Generate videos through SwarmUI using ComfyUI workflows distributed across its backend queue.",
+  "connections.mediaSources.swarmui.videoWorkflowHelp": "Paste a required ComfyUI API-format video workflow for SwarmUI. Marinara resolves prompt, model, dimensions, duration, FPS, seed, LoRA, and base64 reference-image placeholders before submitting it through SwarmUI's distributed queue.",
   "connections.mediaSources.zai.apiKeyLink": "Get your Z.AI API key",
   "connections.mediaSources.zai.imageDescription": "Generate images with GLM-Image and CogView through Z.AI's native API.",
   "connections.mediaSources.zai.name": "Z.AI",

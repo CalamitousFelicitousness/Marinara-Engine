@@ -156,6 +156,7 @@ const VIDEO_REFERENCE_UPLOAD_EXPIRY_OPTIONS: Array<{ value: VideoReferenceUpload
 ];
 
 function videoSourceToDefaultsService(value: string | null | undefined): VideoDefaultsService {
+  if (value === "swarmui") return "comfyui";
   return value === "xai" ||
     value === "openrouter" ||
     value === "atlas" ||
@@ -179,6 +180,7 @@ function videoSelectionToDefaultsService(
 }
 
 function videoSourceToProviderOption(value: string | null | undefined): string {
+  if (value?.trim() === "swarmui") return "swarmui";
   const service = videoSourceToDefaultsService(value);
   return service === "gemini_omni" || service === "google_veo" ? "google_ai_studio" : service;
 }
@@ -488,6 +490,8 @@ export function ConnectionEditor() {
       const label = labelMsg + ": " + msg.split("\n")[0];
       return { parseError: true as const, label, charPos };
     }
+    const isSwarmUiVideoWorkflow =
+      (localVideoGenerationSource || localVideoService || inferVideoSource(localModel, localBaseUrl)) === "swarmui";
     const KNOWN_SUBS =
       localProvider === "video_generation"
         ? [
@@ -499,7 +503,11 @@ export function ConnectionEditor() {
             { token: "%length_s%", label: "%length_s%", critical: false },
             { token: "%fps%", label: "%fps%", critical: false },
             { token: "%duration_seconds%", label: "%duration_seconds%", critical: false },
-            { token: "%reference_image_name%", label: "%reference_image_name%", critical: false },
+            {
+              token: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
+              label: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
+              critical: false,
+            },
           ]
         : [
             { token: "%prompt%", label: "%prompt%", critical: true },
@@ -519,7 +527,7 @@ export function ConnectionEditor() {
       return !wf.includes(token);
     });
     return { parseError: false as const, missing };
-  }, [localComfyuiWorkflow, localProvider]);
+  }, [localBaseUrl, localComfyuiWorkflow, localModel, localProvider, localVideoGenerationSource, localVideoService]);
 
   const effectiveImageGenerationSource = useMemo(() => {
     if (localProvider !== "image_generation") return "";
@@ -537,10 +545,6 @@ export function ConnectionEditor() {
     localProvider === "image_generation"
       ? localImageGenerationSource || localImageService || effectiveImageGenerationSource
       : "";
-  const swarmUiWorkflowError =
-    selectedImageService === "swarmui" && /%reference_image_name(?:_0[1-4])?%/.test(localComfyuiWorkflow)
-      ? localizeUi("ui.connections.connectioneditor.swarmuiDoesNotSupportReferenceImageName")
-      : null;
   const selectedImageDefaultsService = imageSourceToDefaultsService(selectedImageService);
   const supportsGptImageQuality =
     localProvider === "image_generation" &&
@@ -552,12 +556,18 @@ export function ConnectionEditor() {
       : "";
   const selectedVideoProvider = videoSourceToProviderOption(selectedVideoService);
   const selectedVideoDefaultsService = videoSelectionToDefaultsService(selectedVideoService, localModel, localBaseUrl);
+  const swarmUiWorkflowError =
+    (selectedImageService === "swarmui" || selectedVideoProvider === "swarmui") &&
+    /%reference_image_name(?:_0[1-4])?%/.test(localComfyuiWorkflow)
+      ? localizeUi("ui.connections.connectioneditor.swarmuiDoesNotSupportReferenceImageName")
+      : null;
   const usesComfyUiWorkflow =
     (localProvider === "image_generation" &&
       (selectedImageService === "comfyui" ||
         selectedImageService === "swarmui" ||
         selectedImageService === "runpod_comfyui")) ||
-    (localProvider === "video_generation" && selectedVideoProvider === "comfyui");
+    (localProvider === "video_generation" &&
+      (selectedVideoProvider === "comfyui" || selectedVideoProvider === "swarmui"));
   const apiKeyLink =
     localProvider === "image_generation" && selectedImageService === "arli"
       ? { label: t("connections.mediaSources.arli.apiKeyLink"), url: "https://www.arliai.com/docs/api?lang=en" }
@@ -577,7 +587,8 @@ export function ConnectionEditor() {
             ? API_KEY_LINKS.openrouter
             : localProvider === "video_generation" && selectedVideoDefaultsService === "seedance"
               ? { label: "Open Seedance API docs", url: "https://seedance2.ai/api-docs" }
-              : localProvider === "video_generation" && selectedVideoDefaultsService === "comfyui"
+              : localProvider === "video_generation" &&
+                  (selectedVideoProvider === "comfyui" || selectedVideoProvider === "swarmui")
                 ? undefined
                 : API_KEY_LINKS[localProvider];
 
@@ -717,7 +728,8 @@ export function ConnectionEditor() {
       openrouterProvider: localOpenrouterProvider || null,
       imageGenerationSource: isImageProvider ? localImageGenerationSource || localImageService || null : null,
       comfyuiWorkflow:
-        isImageProvider || (isVideoProvider && selectedVideoProvider === "comfyui")
+        isImageProvider ||
+        (isVideoProvider && (selectedVideoProvider === "comfyui" || selectedVideoProvider === "swarmui"))
           ? localComfyuiWorkflow || null
           : null,
       imageService: isImageProvider ? localImageGenerationSource || localImageService || null : null,
@@ -726,7 +738,11 @@ export function ConnectionEditor() {
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? localImageGenerationQuality : "auto",
       videoGenerationSource: isVideoProvider ? selectedVideoProvider || null : null,
-      videoService: isVideoProvider ? selectedVideoDefaultsService : null,
+      videoService: isVideoProvider
+        ? selectedVideoProvider === "swarmui"
+          ? "swarmui"
+          : selectedVideoDefaultsService
+        : null,
       maxTokensOverride: localMaxTokensOverride ?? null,
       claudeFastMode: localClaudeFastMode,
       treatAsLocalEndpoint: canTreatAsLocalEndpoint ? localTreatAsLocalEndpoint : false,
@@ -899,7 +915,11 @@ export function ConnectionEditor() {
           : null;
     const imageService = isImageProvider ? localImageGenerationSource || localImageService || null : null;
     const videoProvider = isVideoProvider ? selectedVideoProvider || null : null;
-    const videoService = isVideoProvider ? selectedVideoDefaultsService : null;
+    const videoService = isVideoProvider
+      ? videoProvider === "swarmui"
+        ? "swarmui"
+        : selectedVideoDefaultsService
+      : null;
     const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
     const supportsDirectEmbeddings = providerSupportsDirectEmbeddingConfig(localProvider);
     const existingEmbeddingModel = (conn as { embeddingModel?: string | null } | undefined)?.embeddingModel ?? "";
@@ -932,7 +952,9 @@ export function ConnectionEditor() {
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
       imageGenerationQuality: isImageProvider ? localImageGenerationQuality : "auto",
       comfyuiWorkflow:
-        isImageProvider || (isVideoProvider && videoProvider === "comfyui") ? localComfyuiWorkflow || null : null,
+        isImageProvider || (isVideoProvider && (videoProvider === "comfyui" || videoProvider === "swarmui"))
+          ? localComfyuiWorkflow || null
+          : null,
       claudeFastMode: localClaudeFastMode,
     };
 
@@ -1661,9 +1683,18 @@ export function ConnectionEditor() {
               <div className="grid grid-cols-2 gap-1.5">
                 {VIDEO_GENERATION_SOURCES.map((src) => {
                   const isActive = selectedVideoProvider === src.id;
-                  const sourceName = src.id === "atlas" ? t("connections.mediaSources.atlas.name") : src.name;
+                  const sourceName =
+                    src.id === "atlas"
+                      ? t("connections.mediaSources.atlas.name")
+                      : src.id === "swarmui"
+                        ? t("connections.mediaSources.swarmui.name")
+                        : src.name;
                   const sourceDescription =
-                    src.id === "atlas" ? t("connections.mediaSources.atlas.videoDescription") : src.description;
+                    src.id === "atlas"
+                      ? t("connections.mediaSources.atlas.videoDescription")
+                      : src.id === "swarmui"
+                        ? t("connections.mediaSources.swarmui.videoDescription")
+                        : src.description;
                   return (
                     <button
                       key={src.id}
@@ -1707,6 +1738,11 @@ export function ConnectionEditor() {
                   );
                 })}
               </div>
+              {selectedVideoProvider === "swarmui" && (
+                <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                  {t("connections.mediaSources.swarmui.authHelp")}
+                </p>
+              )}
               <p className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.connections.connectioneditor.sceneVideosAreGeneratedFromTheCurrentGameIllustration")}</p>
             </FieldGroup>
           )}
@@ -1939,7 +1975,9 @@ export function ConnectionEditor() {
               icon={<Zap size="0.875rem" className="text-sky-400" />}
               help={
                 localProvider === "video_generation"
-                  ?localizeUi("ui.connections.connectioneditor.pasteAComfyuiVideoWorkflowInApiFormatUse")
+                  ? selectedVideoProvider === "swarmui"
+                    ? t("connections.mediaSources.swarmui.videoWorkflowHelp")
+                    : localizeUi("ui.connections.connectioneditor.pasteAComfyuiVideoWorkflowInApiFormatUse")
                   : selectedImageService === "runpod_comfyui"
                     ?localizeUi("ui.connections.connectioneditor.pasteYourComfyuiWorkflowJsonApiFormatRunpodNeeds")
                     : selectedImageService === "swarmui"

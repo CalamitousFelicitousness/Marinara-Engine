@@ -741,7 +741,8 @@ type StoredGameCombatCard = {
 };
 
 function readCombatNumber(value: unknown): number | null {
-  if (value == null || (typeof value === "string" && !value.trim())) return null;
+  if (value == null || (typeof value !== "number" && typeof value !== "string")) return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
 }

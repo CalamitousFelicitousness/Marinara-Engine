@@ -7031,6 +7031,17 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
         0,
         1,
       ),
+      invalidPartyHp: module.generatedPartyMemberToCombatant(
+        { name: "Mika", hp: false, maxHp: 12, attacks: [], statuses: [] },
+        0,
+        [],
+        1,
+      ).hp,
+      invalidEnemyHp: module.generatedEnemyToCombatant(
+        { name: "Slime", hp: false, maxHp: 9, attacks: [], statuses: [] },
+        0,
+        1,
+      ).hp,
     };
   });
 
@@ -7049,6 +7060,8 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   expect(result.diacriticMatch).toBe("Éowyn");
   expect(result.party).toMatchObject({ hp: 0, maxHp: 12 });
   expect(result.enemy).toMatchObject({ hp: 0, maxHp: 9 });
+  expect(result.invalidPartyHp).toBe(12);
+  expect(result.invalidEnemyHp).toBe(9);
 });
 
 test("Game character sheet Retry remains a draft until Save", async ({ page, request }, testInfo) => {

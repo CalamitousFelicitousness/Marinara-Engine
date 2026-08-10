@@ -4585,9 +4585,13 @@ const cases: RegressionCase[] = [
       const renderSource = gameRouteSource.slice(renderStart);
       const referenceImageIndex = renderSource.indexOf("const referenceImage = readOmniReferenceImage");
       const refinementIndex = renderSource.indexOf("buildStoryboardAnimationRefinementMessages");
+      const truncationGuardIndex = renderSource.indexOf(
+        "isLikelyTruncatedJsonResponse(refinementContent, refinementResult.finishReason)",
+      );
       const formatterIndex = renderSource.indexOf("buildStoryboardGalleryAnimatePrompt");
       assert.ok(referenceImageIndex >= 0 && referenceImageIndex < refinementIndex);
-      assert.ok(refinementIndex < formatterIndex);
+      assert.ok(refinementIndex < truncationGuardIndex);
+      assert.ok(truncationGuardIndex < formatterIndex);
       assert.match(renderSource, /plannedFrame: animationPlannedFrame/u);
       assert.match(renderSource, /fallback=planned-motion-beat/u);
     },

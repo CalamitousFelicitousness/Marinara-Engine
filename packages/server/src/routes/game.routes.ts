@@ -11535,8 +11535,12 @@ export async function gameRoutes(app: FastifyInstance) {
                   "Storyboard illustration-aware animation planner",
                   GAME_STORYBOARD_ANIMATION_REFINEMENT_TIMEOUT_MS,
                 );
+                const refinementContent = refinementResult.content || "";
+                if (isLikelyTruncatedJsonResponse(refinementContent, refinementResult.finishReason)) {
+                  throw new Error("Animation Planner returned a truncated image-aware motion beat");
+                }
                 const extraction = extractLeadingThinkingBlocks(
-                  refinementResult.content || "",
+                  refinementContent,
                   parameters?.customThinkingTags,
                 );
                 const refinedMotion = resolveStoryboardAnimationRefinement(

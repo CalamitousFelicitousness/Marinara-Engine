@@ -29,6 +29,7 @@ export type ConnectionTransferRow = {
   videoService?: unknown;
   service?: unknown;
   imageEndpointId?: unknown;
+  imagePromptInstructions?: unknown;
   imageGenerationQuality?: unknown;
   comfyuiWorkflow?: unknown;
   treatAsLocalEndpoint?: unknown;
@@ -62,6 +63,7 @@ export type SafeConnectionExport = {
   videoGenerationSource: string | null;
   videoService: string | null;
   imageEndpointId: string | null;
+  imagePromptInstructions: string | null;
   imageGenerationQuality: ImageGenerationQuality;
   comfyuiWorkflow: string | null;
   treatAsLocalEndpoint: boolean;
@@ -133,6 +135,7 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       comfyuiWorkflow: asNullableString(value.comfyuiWorkflow),
       imageService,
       imageEndpointId: asNullableString(value.imageEndpointId),
+      imagePromptInstructions: asNullableString(value.imagePromptInstructions),
       imageGenerationQuality: asImageGenerationQuality(value.imageGenerationQuality),
       videoGenerationSource: provider === "video_generation" ? asNullableString(value.videoGenerationSource) : null,
       videoService,
@@ -177,6 +180,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     videoGenerationSource: isVideoProvider ? asNullableString(connection.videoGenerationSource) : null,
     videoService: isVideoProvider ? asNullableString(connection.videoService ?? connection.service) : null,
     imageEndpointId: asNullableString(connection.imageEndpointId),
+    imagePromptInstructions: asNullableString(connection.imagePromptInstructions),
     imageGenerationQuality: asImageGenerationQuality(connection.imageGenerationQuality),
     comfyuiWorkflow: asNullableString(connection.comfyuiWorkflow),
     treatAsLocalEndpoint: asBoolean(connection.treatAsLocalEndpoint),

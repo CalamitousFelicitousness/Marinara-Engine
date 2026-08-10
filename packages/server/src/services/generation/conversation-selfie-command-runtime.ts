@@ -201,6 +201,10 @@ async function generateSelfie(
   const selfieSystemPrompt = styleGuidance
     ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
     : baseSelfieSystemPrompt;
+  const imagePromptInstructions = imgConnFull.imagePromptInstructions?.trim();
+  const selfieSystemPromptWithImageInstructions = imagePromptInstructions
+    ? `${selfieSystemPrompt}\n\n<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${imagePromptInstructions}\n</image_prompting_instructions>`
+    : selfieSystemPrompt;
   const userPrompt = args.command.context
     ? `Context for the selfie: ${args.command.context}`
     : `Generate a casual selfie of ${args.charName} based on the current conversation context.`;
@@ -213,7 +217,7 @@ async function generateSelfie(
     [
       {
         role: "system",
-        content: selfieSystemPrompt,
+        content: selfieSystemPromptWithImageInstructions,
       },
       {
         role: "user",

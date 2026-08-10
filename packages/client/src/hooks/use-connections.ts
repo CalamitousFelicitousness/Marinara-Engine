@@ -54,6 +54,7 @@ export type CreateConnectionPayload = {
   comfyuiWorkflow?: string | null;
   imageService?: string | null;
   imageEndpointId?: string | null;
+  imagePromptInstructions?: string | null;
   imageGenerationQuality?: ImageGenerationQuality;
   videoGenerationSource?: string | null;
   videoService?: string | null;

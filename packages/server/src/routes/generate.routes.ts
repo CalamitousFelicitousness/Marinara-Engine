@@ -3631,6 +3631,20 @@ export async function generateRoutes(app: FastifyInstance) {
           agentContext.memory._personaAvatarPath =
             persona && typeof persona.avatarPath === "string" ? persona.avatarPath : null;
         }
+        {
+          const illustratorAgentForInstructions = resolvedAgents.find((a) => a.type === "illustrator");
+          const imageConnectionId = resolveIllustratorImageConnectionId(
+            requestChatMode,
+            chatMeta,
+            illustratorAgentForInstructions?.settings?.imageConnectionId,
+          );
+          let imageConnectionForInstructions = imageConnectionId
+            ? await connections.getById(imageConnectionId).catch(() => null)
+            : null;
+          imageConnectionForInstructions ??= await connections.getDefaultForImageGeneration().catch(() => null);
+          const imagePromptInstructions = imageConnectionForInstructions?.imagePromptInstructions?.trim() ?? "";
+          if (imagePromptInstructions) agentContext.memory._imagePromptInstructions = imagePromptInstructions;
+        }
         const getLatestUserExpressionSource = () =>
           (
             [...agentContext.recentMessages]

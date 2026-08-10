@@ -2366,7 +2366,19 @@ function buildAgentMessages(
   // some models, so add a terminal user instruction for that agent type too.
   const outputFormatBlock = options.outputFormatBlock?.trim() ?? "";
   const requiresTerminalUserInstruction =
-    finalParts.length > 0 || contextAgentTypes.includes("echo-chamber") || !!outputFormatBlock;
+    finalParts.length > 0 ||
+    contextAgentTypes.includes("echo-chamber") ||
+    !!outputFormatBlock ||
+    (typeof context.memory._imagePromptInstructions === "string" && context.memory._imagePromptInstructions.trim().length > 0);
+
+  const lateImagePromptInstructions =
+    typeof context.memory._imagePromptInstructions === "string" ? context.memory._imagePromptInstructions.trim() : "";
+  if (lateImagePromptInstructions) {
+    finalParts.push("\n<image_prompting_instructions>");
+    finalParts.push("Apply these image-backend instructions when writing the provider-ready image prompt. Do not copy the instructions as prompt content.");
+    finalParts.push(lateImagePromptInstructions);
+    finalParts.push("</image_prompting_instructions>");
+  }
 
   if (requiresTerminalUserInstruction) {
     const instruction = "Now return the requested format(s).";

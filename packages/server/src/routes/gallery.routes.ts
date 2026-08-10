@@ -1255,6 +1255,10 @@ export async function galleryRoutes(app: FastifyInstance) {
     const selfieSystemPrompt = styleGuidance
       ? `${baseSelfieSystemPrompt}${formatImageStylePromptGuidance(styleGuidance)}`
       : baseSelfieSystemPrompt;
+    const imagePromptInstructions = imageConn.imagePromptInstructions?.trim();
+    const selfieSystemPromptWithImageInstructions = imagePromptInstructions
+      ? `${selfieSystemPrompt}\n\n<image_prompting_instructions>\nApply these image-backend instructions when writing the provider-ready prompt. They are instructions, not text to copy into the prompt:\n${imagePromptInstructions}\n</image_prompting_instructions>`
+      : selfieSystemPrompt;
 
     const selfieAbortSignal = createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Selfie generation");
     let promptRuntime;
@@ -1276,7 +1280,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       : `Generate a casual selfie of ${characterName} based on the current conversation context.`;
 
     if (debugLogsEnabled) {
-      debugLog("[debug/gallery/selfie] prompt-builder system:\n%s", selfieSystemPrompt);
+      debugLog("[debug/gallery/selfie] prompt-builder system:\n%s", selfieSystemPromptWithImageInstructions);
       debugLog("[debug/gallery/selfie] prompt-builder user:\n%s", promptContext);
     }
 
@@ -1285,7 +1289,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       try {
         const promptResult = await promptBuilder.chatComplete(
           [
-            { role: "system", content: selfieSystemPrompt },
+            { role: "system", content: selfieSystemPromptWithImageInstructions },
             { role: "user", content: promptContext },
           ],
           {

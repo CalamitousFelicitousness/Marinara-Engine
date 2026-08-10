@@ -547,10 +547,18 @@ async function executeManualIllustratorPromptRequest(args: {
             conns: args.conns,
             illustratorAgent: args.illustratorEntry.resolved,
           });
+    const imageConnectionId = resolveIllustratorImageConnectionId(
+      args.chat.mode,
+      args.chatMeta,
+      args.illustratorEntry.resolved.settings.imageConnectionId,
+    );
+    let imageConnection = imageConnectionId ? await args.conns.getById(imageConnectionId).catch(() => null) : null;
+    imageConnection ??= await args.conns.getDefaultForImageGeneration().catch(() => null);
     const generated = await writeManualIllustratorPromptPlan({
       illustratorAgent: args.illustratorEntry.resolved,
       context: args.agentContext,
       styleInstruction,
+      imagePromptInstructions: imageConnection?.imagePromptInstructions?.trim() || undefined,
       signal: args.agentContext.signal,
       debugLog: (message, ...values) => logDebugOverride(args.debugMode || isDebugAgentsEnabled(), message, ...values),
     });
@@ -4179,6 +4187,22 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           }
         } catch (error) {
           logger.warn(error, "[retry-agents] Failed to resolve image style instruction for the prompt writer");
+        }
+      }
+      {
+        const imageConnectionId = resolveIllustratorImageConnectionId(
+          chatMode,
+          chatMeta,
+          retryIllustratorPromptAgent?.resolved.settings?.imageConnectionId,
+        );
+        let imageConnectionForInstructions = imageConnectionId
+          ? await conns.getById(imageConnectionId).catch(() => null)
+          : null;
+        imageConnectionForInstructions ??= await conns.getDefaultForImageGeneration().catch(() => null);
+        const imagePromptInstructions = imageConnectionForInstructions?.imagePromptInstructions?.trim() ?? "";
+        if (imagePromptInstructions) {
+          agentContext.memory._imagePromptInstructions = imagePromptInstructions;
+          if (preGenerationAgentContext) preGenerationAgentContext.memory._imagePromptInstructions = imagePromptInstructions;
         }
       }
       if (preGenerationAgentContext) preGenerationAgentContext.signal = abortController.signal;

@@ -232,7 +232,10 @@ import {
   type VideoReferenceImage,
 } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime, type GameVideoRuntime } from "../services/video/game-video-runtime.js";
-import { resolveConnectionImageDefaults } from "../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../services/image/image-generation-defaults.js";
 import { resolveImagePromptReviewSize } from "../services/image/image-prompt-review.js";
 import {
   mergeSpatialLocationReferenceImages,
@@ -11162,6 +11165,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const imgServiceHint = imgConn.imageService || imgSource;
       const imgEndpointId = imgConn.imageEndpointId || undefined;
       const imgDefaults = resolveConnectionImageDefaults(imgConn);
+      const imgQuality = resolveConnectionImageQuality(imgConn);
       const imgFallback = await resolveImageConnectionFallback(connections, imgConn.id);
       const imageSettings = await loadImageGenerationUserSettings(app.db);
       const backgroundSize = ownerMode === "game" ? imageSettings.game : imageSettings.illustration;
@@ -11272,6 +11276,7 @@ export async function gameRoutes(app: FastifyInstance) {
               imgEndpointId,
               imgComfyWorkflow,
               imgDefaults,
+              imgQuality,
               styleProfiles,
               styleProfileId,
               promptOverridesStorage,
@@ -11448,6 +11453,7 @@ export async function gameRoutes(app: FastifyInstance) {
             imgEndpointId,
             imgComfyWorkflow,
             imgDefaults,
+            imgQuality,
             imgFallback,
             styleProfiles,
             styleProfileId,
@@ -11996,6 +12002,7 @@ export async function gameRoutes(app: FastifyInstance) {
     const imgServiceHint = imgConn.imageService || imgSource;
     const imgEndpointId = imgConn.imageEndpointId || undefined;
     const imgDefaults = resolveConnectionImageDefaults(imgConn);
+    const imgQuality = resolveConnectionImageQuality(imgConn);
     const previewSizeFor = (prompt: string, size: ImageGenerationSize) =>
       resolveImagePromptReviewSize({
         connection: imgConn,
@@ -12085,6 +12092,7 @@ export async function gameRoutes(app: FastifyInstance) {
         imgEndpointId,
         imgComfyWorkflow,
         imgDefaults,
+        imgQuality,
         styleProfiles,
         styleProfileId,
         promptOverridesStorage,
@@ -12208,6 +12216,7 @@ export async function gameRoutes(app: FastifyInstance) {
           imgEndpointId,
           imgComfyWorkflow,
           imgDefaults,
+          imgQuality,
           styleProfiles,
           styleProfileId,
           promptOverridesStorage,
@@ -12300,6 +12309,7 @@ export async function gameRoutes(app: FastifyInstance) {
             imgEndpointId,
             imgComfyWorkflow,
             imgDefaults,
+            imgQuality,
             styleProfiles,
             styleProfileId,
             promptOverridesStorage,
@@ -12419,6 +12429,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const imgServiceHint = imgConn.imageService || imgSource;
       const imgEndpointId = imgConn.imageEndpointId || undefined;
       const imgDefaults = resolveConnectionImageDefaults(imgConn);
+      const imgQuality = resolveConnectionImageQuality(imgConn);
       const imgFallback = await resolveImageConnectionFallback(connections, imgConn.id);
 
       const setupCfg = meta.gameSetupConfig as Record<string, unknown> | null;
@@ -12496,6 +12507,7 @@ export async function gameRoutes(app: FastifyInstance) {
           imgEndpointId,
           imgComfyWorkflow,
           imgDefaults,
+          imgQuality,
           imgFallback,
           styleProfiles,
           styleProfileId,
@@ -12647,6 +12659,7 @@ export async function gameRoutes(app: FastifyInstance) {
               imgEndpointId,
               imgComfyWorkflow,
               imgDefaults,
+              imgQuality,
               imgFallback,
               styleProfiles,
               styleProfileId,
@@ -12773,6 +12786,7 @@ export async function gameRoutes(app: FastifyInstance) {
                 imgEndpointId,
                 imgComfyWorkflow,
                 imgDefaults,
+                imgQuality,
                 imgFallback,
                 styleProfiles,
                 styleProfileId,

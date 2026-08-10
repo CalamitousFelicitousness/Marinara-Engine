@@ -13,6 +13,7 @@ import { ChatResourceMobileDropDock } from "../chat/ChatResourceMobileDropDock";
 import { hasProfessorMariFloatingFollowup } from "../chat/professor-mari-floating-events";
 import {
   getTrackerPanelWidthForProfile,
+  MOBILE_SHELL_MEDIA_QUERY,
   RIGHT_PANEL_WIDTH_MAX,
   RIGHT_PANEL_WIDTH_MIN,
   SIDEBAR_WIDTH_MAX,
@@ -403,9 +404,11 @@ export function AppShell() {
     : undefined;
 
   // Track mobile breakpoint for right-panel animation strategy
-  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(MOBILE_SHELL_MEDIA_QUERY).matches,
+  );
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
+    const mq = window.matchMedia(MOBILE_SHELL_MEDIA_QUERY);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
@@ -1260,7 +1263,8 @@ export function AppShell() {
         aria-hidden={!sidebarOpen}
         inert={!sidebarOpen}
         className={cn(
-          "mari-shell-panel-slot flex-shrink-0 overflow-hidden md:relative",
+          "mari-shell-panel-slot flex-shrink-0 overflow-hidden",
+          !shellOverlayMode && "md:relative",
           sidebarDragWidth != null && "!transition-none",
           !sidebarOpen && "pointer-events-none",
           shellOverlayMode &&

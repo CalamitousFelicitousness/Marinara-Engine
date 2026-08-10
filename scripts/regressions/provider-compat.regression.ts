@@ -58,6 +58,7 @@ import {
 } from "../../packages/server/src/services/image/image-generation.js";
 import { resolveImageCaptioningRuntime } from "../../packages/server/src/services/generation/image-captioning-runtime.js";
 import { resolveImageConnectionFallback } from "../../packages/server/src/services/generation/media-connection-fallback.js";
+import { resolveConnectionImageQuality } from "../../packages/server/src/services/image/image-generation-defaults.js";
 import {
   BACKGROUND_CONNECTION_IDLE_MS,
   ConnectionAttemptRejectedError,
@@ -1172,6 +1173,62 @@ try {
   assert.deepEqual(arliRequest?.body.init_images, [onePixelPng]);
 } finally {
   await new Promise<void>((resolve, reject) => arliImageServer.close((error) => (error ? reject(error) : resolve())));
+}
+
+assert.equal(resolveConnectionImageQuality({ imageGenerationQuality: "high" }), "high");
+assert.equal(resolveConnectionImageQuality({ imageGenerationQuality: "unsupported" }), "auto");
+assert.equal(resolveConnectionImageQuality({}), "auto");
+
+const openAIImageRequests: Array<{ contentType: string; body: string }> = [];
+const openAIImageServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  openAIImageRequests.push({
+    contentType: request.headers["content-type"] ?? "",
+    body: Buffer.concat(chunks).toString("utf8"),
+  });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ data: [{ b64_json: onePixelPng }] }));
+});
+await new Promise<void>((resolve) => openAIImageServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = openAIImageServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+
+  await generateImage("openai", baseUrl, "openai-secret", "openai", {
+    prompt: "a careful experiment",
+    model: "gpt-image-2",
+    quality: "high",
+    allowLocalUrls: true,
+  });
+  const generationBody = JSON.parse(openAIImageRequests[0]?.body ?? "{}") as Record<string, unknown>;
+  assert.equal(generationBody.quality, "high", "GPT Image generations must send the connection quality");
+
+  await generateImage("openai", baseUrl, "openai-secret", "openai", {
+    prompt: "add cyan lighting",
+    model: "gpt-image-2",
+    quality: "medium",
+    referenceImage: `data:image/png;base64,${onePixelPng}`,
+    allowLocalUrls: true,
+  });
+  assert.match(openAIImageRequests[1]?.contentType ?? "", /^multipart\/form-data;/u);
+  assert.match(
+    openAIImageRequests[1]?.body ?? "",
+    /name="quality"\r\n\r\nmedium/u,
+    "GPT Image edits must send the connection quality",
+  );
+
+  await generateImage("openai", baseUrl, "openai-secret", "openai", {
+    prompt: "a legacy illustration",
+    model: "dall-e-3",
+    quality: "high",
+    allowLocalUrls: true,
+  });
+  const legacyBody = JSON.parse(openAIImageRequests[2]?.body ?? "{}") as Record<string, unknown>;
+  assert.equal(legacyBody.quality, undefined, "non-GPT Image models must not receive GPT Image quality");
+} finally {
+  await new Promise<void>((resolve, reject) => openAIImageServer.close((error) => (error ? reject(error) : resolve())));
 }
 
 const failingImageServer = createServer((_request, response) => {

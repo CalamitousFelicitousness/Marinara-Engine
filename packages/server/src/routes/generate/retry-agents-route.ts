@@ -73,7 +73,10 @@ import { createPersonaGalleryStorage } from "../../services/storage/persona-gall
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { findLastUserMessageIdBefore } from "../../services/generation/message-history.js";
 import { textRewriteDropsProtectedMarkup } from "../../services/generation/text-rewrite-safety.js";
-import { resolveConnectionImageDefaults } from "../../services/image/image-generation-defaults.js";
+import {
+  resolveConnectionImageDefaults,
+  resolveConnectionImageQuality,
+} from "../../services/image/image-generation-defaults.js";
 import { injectMemoryRecallContext } from "../../services/generation/memory-recall-context.js";
 import { resolveMemoryRecallEmbeddingSource } from "../../services/memory-recall-embedding.js";
 import {
@@ -3567,6 +3570,7 @@ async function applyRetryResultEffects(args: {
                       imageEndpointId: imgConnFull.imageEndpointId || undefined,
                       comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
                       imageDefaults,
+                      quality: resolveConnectionImageQuality(imgConnFull),
                       referenceImages,
                       signal: agentContext.signal,
                       fallback: providerAwareImageFallback,

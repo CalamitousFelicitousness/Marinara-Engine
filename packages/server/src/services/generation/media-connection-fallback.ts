@@ -5,7 +5,7 @@ import {
   VIDEO_DEFAULTS_STORAGE_KEY,
 } from "@marinara-engine/shared";
 import type { ImageGenRequest } from "../image/image-generation.js";
-import { resolveConnectionImageDefaults } from "../image/image-generation-defaults.js";
+import { resolveConnectionImageDefaults, resolveConnectionImageQuality } from "../image/image-generation-defaults.js";
 import type { VideoGenerationRequest } from "../video/video-generation.js";
 import { resolveBaseUrl } from "./connection-base-url.js";
 
@@ -56,6 +56,7 @@ export async function resolveImageConnectionFallback(
     imageEndpointId: connection.imageEndpointId || undefined,
     comfyWorkflow: connection.comfyuiWorkflow || undefined,
     imageDefaults: resolveConnectionImageDefaults(connection),
+    quality: resolveConnectionImageQuality(connection),
     ...(imageGenerationSource ? { imageGenerationSource } : {}),
     ...(imageService ? { imageService } : {}),
   };

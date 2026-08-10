@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added batch selection to Character and Persona image galleries so selected images can be downloaded or deleted together after confirmation (#4832).
+- Added a persisted Auto, Low, Medium, or High output-quality choice to GPT Image generation connections (#4831).
 - Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, safe selection cleanup, and an explicit generation-reference toggle that falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
 - Gave Professor Mari granular preset editing: she can now read a preset's individual sections, groups, and choice-blocks with content previews and add, update, or delete any one of them in place through the Keep/Restore review, instead of only creating or replacing a whole preset — also exposed through a new `mari presets` CLI (#4812).
 - Let Professor Mari propose safe data-only custom Home widgets for explicit confirmation, with persistent responsive cards that users can reorder, hide, restore, and delete from the Widgets manager (#4801).
@@ -43,6 +45,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept Professor Mari's Home navigator enabled by default and visible with reduced effects, reset her to the default position when re-enabled, centered her drag handle, contained compact Field Notes and Community actions, and presented iPad sidebars as full-width overlays (#4826, #4827, #4829, #4830).
 - Sharpened Professor Mari's read-only guardrail so a "how do I…" question is answered or offered rather than performed, even when it names the change as its goal (for example "how do I make X have Y") — while a plainly-worded request to make that change, including a polite question form like "can you set X to Y", is still carried out — so she keys on intent rather than grammar and no longer edits without a clear instruction (#4838).
 - Reduced background autonomous-message polling to a lightweight candidate-id lookup instead of re-fetching the full chat list every 30 seconds (#4715).
 - Stopped the server's autonomous-messaging scheduler from sweeping every 60 seconds when no chats had changed, cutting idle load on self-hosted installs (#4716).

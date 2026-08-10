@@ -2899,6 +2899,17 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .getByRole("navigation", { name: "Editor sections" })
       .getByRole("button", { name: "Gallery", exact: true })
       .click();
+    await expect(editor.getByText("Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.")).toBeVisible();
+    await editor.getByRole("button", { name: "Select All", exact: true }).click();
+    await expect(editor.getByText("1 selected", { exact: true })).toBeVisible();
+    await expect(editor.getByRole("button", { name: "Toggle image selection" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(editor.getByRole("button", { name: "Download selected" })).toBeVisible();
+    await expect(editor.getByRole("button", { name: "Delete selected" })).toBeVisible();
+    await expect(editor.getByRole("button", { name: "Set as avatar" })).toHaveCount(0);
+    await editor.getByRole("button", { name: "Cancel selection", exact: true }).click();
     await editor.getByRole("button", { name: "Create with AI", exact: true }).click();
     await expect(sheetDialog).toBeVisible();
     await expect(sheetDialog.getByText("Character Sheet Prompt", { exact: true })).toBeVisible();
@@ -2928,6 +2939,14 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .getByRole("navigation", { name: "Editor sections" })
       .getByRole("button", { name: "Gallery", exact: true })
       .click();
+    await expect(personaEditor.getByRole("button", { name: "Select images", exact: true })).toBeVisible();
+    await expect(personaEditor.getByRole("button", { name: "Select All", exact: true })).toBeVisible();
+    await personaEditor.getByRole("button", { name: "Select All", exact: true }).click();
+    await expect(personaEditor.getByText("1 selected", { exact: true })).toBeVisible();
+    await expect(personaEditor.getByRole("button", { name: "Download selected" })).toBeVisible();
+    await expect(personaEditor.getByRole("button", { name: "Delete selected" })).toBeVisible();
+    await expect(personaEditor.getByRole("button", { name: "Set as avatar" })).toHaveCount(0);
+    await personaEditor.getByRole("button", { name: "Cancel selection", exact: true }).click();
     await personaEditor.getByRole("button", { name: "Create with AI", exact: true }).click();
     await expect(sheetDialog).toBeVisible();
     await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -13456,6 +13475,16 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await page.setViewportSize({ width: mobile ? 390 : 1024, height: mobile ? 650 : 700 });
   expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
   await expect(home).toBeVisible();
+  for (const widgetId of ["learn", "community"]) {
+    const widget = page.locator(`[data-home-widget-id="${widgetId}"]`);
+    const lastShortcut = widget.locator(".mari-home-widget-shortcut").last();
+    const [widgetBounds, shortcutBounds] = await Promise.all([widget.boundingBox(), lastShortcut.boundingBox()]);
+    expect(widgetBounds).not.toBeNull();
+    expect(shortcutBounds).not.toBeNull();
+    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(
+      widgetBounds!.y + widgetBounds!.height + 1,
+    );
+  }
 
   if (mobile) {
     const professorWidget = page.locator('[data-home-widget-id="professor"]');
@@ -13505,9 +13534,17 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
     await page.evaluate(async () => {
       const module = await import("/src/stores/ui.store.ts");
+      module.useUIStore.getState().setReduceAmbientEffects(true);
       module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
     });
-    await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeVisible({ timeout: 6_000 });
+    const restoredAssistant = page.locator('aside[aria-label="Professor Mari assistant"]');
+    await expect(restoredAssistant).toBeVisible({ timeout: 1_000 });
+    await expect(restoredAssistant.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible();
+    await expect(restoredAssistant.locator(".mari-home-professor-popup__arrival-frame")).toHaveCSS("opacity", "0");
+    await page.evaluate(async () => {
+      const module = await import("/src/stores/ui.store.ts");
+      module.useUIStore.getState().setReduceAmbientEffects(false);
+    });
     await page.locator('[data-tour="panel-settings"]').click();
     const suggestionsToggle = page.getByRole("checkbox", { name: "Professor Mari suggestions" });
     const navigationToggle = page.getByRole("checkbox", { name: "Professor Mari navigation" });
@@ -13787,6 +13824,30 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
   expect(restoredPosition).not.toBeNull();
   expect(Math.abs(restoredPosition!.x - droppedPosition!.x)).toBeLessThanOrEqual(8);
   expect(Math.abs(restoredPosition!.y - droppedPosition!.y)).toBeLessThanOrEqual(8);
+
+  await page.evaluate(async () => {
+    const module = await import("/src/stores/ui.store.ts");
+    module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
+  });
+  await expect(sprite).toBeHidden();
+  await page.evaluate(async () => {
+    const module = await import("/src/stores/ui.store.ts");
+    module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
+  });
+  await expect(sprite).toBeVisible({ timeout: 1_000 });
+  await expect(page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1")))
+    .toBeNull();
+  const resetPosition = await sprite.boundingBox();
+  expect(resetPosition).not.toBeNull();
+  expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);
+  await expect
+    .poll(async () => {
+      const position = await sprite.boundingBox();
+      return position ? position.y + position.height : Number.POSITIVE_INFINITY;
+    })
+    .toBeLessThanOrEqual(contentBounds!.y + contentBounds!.height);
 });
 
 test("Home widgets lift and brighten on fine-pointer hover", async ({ page }, testInfo) => {
@@ -15058,6 +15119,22 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
 
   expect(errors).toEqual([]);
+});
+
+test("coarse-pointer iPad widths use full-screen side panels", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Coarse-pointer shell smoke only runs in the mobile project.");
+
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await page.goto("/");
+  await expect(page.locator('[data-shell-overlay-mode="true"]')).toHaveCount(1);
+  await page.locator('[data-tour="panel-characters"]').evaluate((element) => (element as HTMLElement).click());
+
+  const mobilePanel = page.locator('[data-component="RightPanelMobile"]');
+  await expect(mobilePanel).toBeVisible();
+  await expect(page.locator('[data-component="RightPanelDesktop"]')).toHaveCount(0);
+  const panelBounds = await mobilePanel.boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(panelBounds!.width).toBeGreaterThanOrEqual(1023);
 });
 
 test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, request }, testInfo) => {

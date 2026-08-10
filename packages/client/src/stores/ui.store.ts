@@ -19,6 +19,7 @@ import { isCssGradient, RAINBOW_GRADIENT_PRESET } from "../lib/css-colors";
 import { announceChatFloatingUiDismiss } from "../lib/chat-floating-ui-events";
 import { detectConversationTimeZone, normalizeConversationTimeZone } from "../lib/conversation-time-zone";
 import { BASIC_PANEL_SORT_OPTIONS, normalizeBasicPanelSort, type BasicPanelSort } from "../lib/panel-sort";
+import { resetProfessorMariNavigator } from "../lib/professor-mari-navigation";
 import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-types";
 
 export type Panel =
@@ -36,6 +37,7 @@ export type ChatModeShortcut = "conversation" | "roleplay" | "game";
 export const CHARACTER_LIBRARY_SORT_OPTIONS = ["name-asc", "name-desc", "newest", "oldest", "favorites"] as const;
 export type CharacterLibrarySort = (typeof CHARACTER_LIBRARY_SORT_OPTIONS)[number];
 export type CardLibraryKind = "characters" | "personas";
+export const MOBILE_SHELL_MEDIA_QUERY = "(max-width: 767px), (max-width: 1366px) and (any-pointer: coarse)";
 export const CHARACTER_PANEL_FAVORITE_FILTER_OPTIONS = ["all", "favorites", "non-favorites"] as const;
 export type CharacterPanelFavoriteFilter = (typeof CHARACTER_PANEL_FAVORITE_FILTER_OPTIONS)[number];
 export const LOREBOOK_PANEL_CATEGORY_OPTIONS = [
@@ -314,7 +316,7 @@ function normalizeScrollTop(value: unknown) {
 }
 
 function isMobileShellViewport() {
-  return typeof window !== "undefined" && window.innerWidth < 768;
+  return typeof window !== "undefined" && window.matchMedia(MOBILE_SHELL_MEDIA_QUERY).matches;
 }
 
 function dismissChatFloatingUiForMobilePanel(open: boolean) {
@@ -2226,7 +2228,11 @@ export const useUIStore = create<UIState>()(
       setTTSLineVolume: (v) => set({ ttsLineVolume: Math.max(0, Math.min(100, Math.round(v))) }),
       setChibiProfessorMariEnabled: (v) => set({ chibiProfessorMariEnabled: v }),
       setProfessorMariSuggestionsEnabled: (v) => set({ professorMariSuggestionsEnabled: v }),
-      setProfessorMariNavigationEnabled: (v) => set({ professorMariNavigationEnabled: v }),
+      setProfessorMariNavigationEnabled: (v) => {
+        const wasEnabled = get().professorMariNavigationEnabled;
+        set({ professorMariNavigationEnabled: v });
+        if (v && !wasEnabled) resetProfessorMariNavigator();
+      },
       setAchievementsEnabled: (v) => set({ achievementsEnabled: v }),
       setMusicPlayerEnabled: (v) => set({ musicPlayerEnabled: v }),
       setMusicPlayerSource: (v) =>

@@ -43,3 +43,10 @@ export async function saveBlobToDevice(blob: Blob, filename: string): Promise<vo
 
   triggerBrowserDownload(blob, filename);
 }
+
+/** Fetch a same-origin media URL and save it through the active browser or Android shell. */
+export async function downloadUrlToDevice(url: string, filename: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed (${response.status})`);
+  await saveBlobToDevice(await response.blob(), filename);
+}

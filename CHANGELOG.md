@@ -7,6 +7,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Added optional image prompting instructions to image connections, applying them inside existing selfie and Illustrator prompt-writing calls before provider review or generation.
+- Added a Gallery image-agent picker that can run any active custom image-producing agent alongside the base Illustrator (#4846).
+- Added an editable Storyboard Agent shot-planner stage that inspects each generated keyframe before video generation, persists its suitability classification, and falls back to the planned motion when image-aware refinement is unavailable or invalid. The Storyboard Agent page now explains the four-stage prompt workflow and orders its shared prompt editors from illustration through image-aware grounding to video generation (#4839, Pasta-Devs/Marinara-Agents#296).
 - Added batch selection to Character and Persona image galleries so selected images can be downloaded or deleted together after confirmation (#4832).
 - Added a persisted Auto, Low, Medium, or High output-quality choice to GPT Image generation connections (#4831).
 - Added optional character and persona reference sheets under Sprites, with upload, size-bounded AI creation, safe selection cleanup, and an explicit generation-reference toggle that falls back to existing likeness art; both Galleries include the same AI creation entrypoint (#4786).
@@ -47,6 +49,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Scoped image-connection prompt instructions to image-producing agents, bounded stored instructions to 20,000 characters, and kept each retry agent on its own configured image connection.
+- Restored intuitive mobile swipe navigation for Conversation transcripts while preserving Roleplay swipes and interactive controls (#4841).
+- Made Memory Recall re-vectorization exclusive with background chunking so embedding-model changes cannot leave mixed vector dimensions (#4843).
+- Saved pending Lorebook vector settings before vectorization and surfaced provider or eligibility failures instead of reporting a misleading zero-vector success (#4844).
+- Recovered expected sharded chat history from its preserved pre-shard backup when a restored profile contains no message shards (#4845).
 - Kept Professor Mari's Home navigator enabled by default and visible with reduced effects, reset her to the default position when re-enabled, centered her drag handle, contained compact Field Notes and Community actions, and presented iPad sidebars as full-width overlays (#4826, #4827, #4829, #4830).
 - Sharpened Professor Mari's read-only guardrail so a "how do I…" question is answered or offered rather than performed, even when it names the change as its goal (for example "how do I make X have Y") — while a plainly-worded request to make that change, including a polite question form like "can you set X to Y", is still carried out — so she keys on intent rather than grammar and no longer edits without a clear instruction (#4838).
 - Reduced background autonomous-message polling to a lightweight candidate-id lookup instead of re-fetching the full chat list every 30 seconds (#4715).

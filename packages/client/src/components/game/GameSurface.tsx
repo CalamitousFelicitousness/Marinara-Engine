@@ -12225,6 +12225,9 @@ function GameSurfaceComponent({
                   onClose={handleCloseGalleryPanel}
                   anchor={resolvedGalleryAnchor}
                   onIllustrate={handleManualSceneIllustration}
+                  onIllustrateWithAgent={async (agentType) => {
+                    await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+                  }}
                   onGenerateStoryboard={handleGenerateTurnStoryboard}
                   onViewStoryboard={
                     latestTurnStoryboard || storyboardGenerating ? handleViewStoryboardFromGallery : undefined

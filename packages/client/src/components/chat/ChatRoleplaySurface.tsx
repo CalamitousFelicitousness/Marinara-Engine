@@ -1207,6 +1207,7 @@ type RoleplaySurfaceProps = {
   onCloseSettings: () => void;
   onCloseGallery: () => void;
   onIllustrate?: () => void;
+  onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   onGenerateBackground?: () => void | Promise<void>;
   onGenerateVideo?: () => void | Promise<void>;
   onAnimateImage?: (image: ChatImage) => void | Promise<void>;
@@ -1322,6 +1323,7 @@ export function ChatRoleplaySurface({
   onCloseSettings,
   onCloseGallery,
   onIllustrate,
+  onIllustrateWithAgent,
   onGenerateBackground,
   onGenerateVideo,
   onAnimateImage,
@@ -2368,6 +2370,7 @@ export function ChatRoleplaySurface({
         onCloseGallery={onCloseGallery}
         onOpenScheduleEditor={onOpenScheduleEditor}
         onIllustrate={onIllustrate}
+        onIllustrateWithAgent={onIllustrateWithAgent}
         onGenerateStoryboard={
           storyboardAgentActive && latestStoryboardMessage && !generateRoleplayStoryboard.isPending
             ? handleGenerateRoleplayStoryboard

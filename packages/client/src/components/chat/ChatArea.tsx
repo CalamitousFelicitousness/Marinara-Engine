@@ -295,6 +295,12 @@ const shouldIgnoreIntuitiveSwipeTarget = (
   );
 };
 
+function closestChatScrollSurface(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Node)) return null;
+  const element = target instanceof Element ? target : target.parentElement;
+  return element?.closest<HTMLElement>("[data-chat-scroll]") ?? null;
+}
+
 type AgentInjectionReviewItem = {
   agentType: string;
   agentName: string;
@@ -2266,13 +2272,11 @@ export const ChatArea = memo(function ChatArea() {
     if (!intuitiveSwipeNavigation || intuitiveSwipeBlocked) return;
 
     const handleTouchStart = (event: TouchEvent) => {
-      const surface = scrollRef.current;
       const target = event.target;
+      const surface = closestChatScrollSurface(target);
       if (
         event.touches.length !== 1 ||
         !surface ||
-        !(target instanceof Node) ||
-        !surface.contains(target) ||
         shouldIgnoreIntuitiveSwipeTarget(target)
       ) {
         intuitiveTouchStartRef.current = null;
@@ -3111,6 +3115,9 @@ export const ChatArea = memo(function ChatArea() {
               illustratorRetryTargets: ["illustration"],
             })
           }
+          onIllustrateWithAgent={async (agentType) => {
+            await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+          }}
           onGenerateBackground={handleGenerateRoleplayBackground}
           onGenerateVideo={() => handleGenerateRoleplaySceneVideo()}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}

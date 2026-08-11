@@ -822,6 +822,11 @@ function normalizeAppDataActionName(action: string): string {
     "lorebook.entries.get": "lorebook.getentry",
     "lorebook.entry.update": "lorebook.updateentry",
     "lorebook.entries.update": "lorebook.updateentry",
+    "lorebook.entry.delete": "lorebook.deleteentry",
+    "lorebook.entries.delete": "lorebook.deleteentry",
+    "lorebook.entry.remove": "lorebook.deleteentry",
+    "lorebook.entries.remove": "lorebook.deleteentry",
+    "lorebook.removeentry": "lorebook.deleteentry",
     "theme.set": "theme.setactive",
     "theme.activate": "theme.setactive",
     "promptpreset.list": "preset.list",
@@ -3556,6 +3561,26 @@ export class MariDbService {
             table: "lorebook_entries",
             id: entryId,
             patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "deleteentry": {
+        // A safe, scoped single-entry delete so Mari never reaches for a raw `mari db delete --where`
+        // (which can match — and remove — far more rows than intended).
+        const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");
+        const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
+        if (!entryExists) throw new Error(`Lorebook entry ${entryId} not found`);
+        return this.executeMutation(
+          {
+            kind: "delete",
+            table: "lorebook_entries",
+            id: entryId,
             apply: firstBoolean(args, ["apply"]) === true,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,

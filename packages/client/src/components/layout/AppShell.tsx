@@ -32,6 +32,7 @@ import { useCapabilityAgentRegistry, useCapabilityClientModules } from "../../ho
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { FeatureAgentDetailHost } from "../agents/FeatureAgentDetailHost";
 import { getCssBackgroundStyle } from "../../lib/css-colors";
+import { resolveFeatureAgentPackage } from "../../lib/feature-agent-package";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
 import { parseChatMetadata } from "../../lib/chat-display";
@@ -571,11 +572,7 @@ export function AppShell() {
   );
   const selectedFeaturePackage = useMemo(
     () =>
-      selectedFeatureAgent
-        ? ((installedCapabilities.data ?? []).find((item) =>
-            item.manifest.contributions?.agentDetail?.agentIds.includes(selectedFeatureAgent.id),
-          ) ?? null)
-        : null,
+      selectedFeatureAgent ? resolveFeatureAgentPackage(selectedFeatureAgent, installedCapabilities.data ?? []) : null,
     [installedCapabilities.data, selectedFeatureAgent],
   );
   const activeChatMetadata = parseChatMetadata(activeChat?.metadata);

@@ -345,9 +345,50 @@ import {
 } from "../../packages/client/src/lib/background-library.js";
 import { resolveProfessorMariNavigation } from "../../packages/client/src/lib/professor-mari-navigation.js";
 import { resolveCapabilityPackageDisplay } from "../../packages/client/src/lib/capability-package-localization.js";
+import { resolveFeatureAgentPackage } from "../../packages/client/src/lib/feature-agent-package.js";
 import { normalizeHydratedMessage } from "../../packages/client/src/lib/message-hydration.js";
 import { HOME_CHAT_MODE_ACCENTS } from "../../packages/client/src/lib/home-chat-mode-style.js";
-import { homeCustomWidgetCatalogSchema, type CapabilityPackageManifest } from "../../packages/shared/src/index.js";
+import {
+  homeCustomWidgetCatalogSchema,
+  type BuiltInAgentManifest,
+  type CapabilityPackageManifest,
+  type InstalledCapabilityPackage,
+} from "../../packages/shared/src/index.js";
+
+const installedFeaturePackage = {
+  id: "chess",
+  manifest: { contributions: { slots: ["conversation-surface"] } },
+} as InstalledCapabilityPackage;
+assert.equal(
+  resolveFeatureAgentPackage({ id: "chess", packageId: "chess" } as BuiltInAgentManifest, [installedFeaturePackage]),
+  installedFeaturePackage,
+  "Feature agents must resolve their installed package through the registry-owned package ID",
+);
+assert.equal(
+  resolveFeatureAgentPackage({ id: "chess" } as BuiltInAgentManifest, [installedFeaturePackage]),
+  null,
+  "Unowned feature manifests must not borrow an unrelated installed package",
+);
+const contributedFeaturePackage = {
+  id: "world-maps",
+  manifest: { contributions: { agentDetail: { agentIds: ["hierarchical-maps"] } } },
+} as InstalledCapabilityPackage;
+assert.equal(
+  resolveFeatureAgentPackage({ id: "chess", packageId: "chess" } as BuiltInAgentManifest, [
+    {
+      id: "legacy-chess-detail",
+      manifest: { contributions: { agentDetail: { agentIds: ["chess"] } } },
+    } as InstalledCapabilityPackage,
+    installedFeaturePackage,
+  ]),
+  installedFeaturePackage,
+  "The registry-owned Feature package must win when a legacy contribution appears first",
+);
+assert.equal(
+  resolveFeatureAgentPackage({ id: "hierarchical-maps" } as BuiltInAgentManifest, [contributedFeaturePackage]),
+  contributedFeaturePackage,
+  "Feature detail contributions must remain a compatible ownership fallback",
+);
 
 assert.deepEqual(resolveProfessorMariNavigation("Where are the characters?"), {
   kind: "panel",
@@ -3666,6 +3707,10 @@ const appShellSource = readFileSync(
   new URL("../../packages/client/src/components/layout/AppShell.tsx", import.meta.url),
   "utf8",
 );
+const featureAgentDetailHostSource = readFileSync(
+  new URL("../../packages/client/src/components/agents/FeatureAgentDetailHost.tsx", import.meta.url),
+  "utf8",
+);
 const guidedPresetEditorSource = readFileSync(
   new URL("../../packages/client/src/components/presets/PresetEditor.tsx", import.meta.url),
   "utf8",
@@ -3719,6 +3764,15 @@ assert.match(
   /onOpenChatSummarySettings:[\s\S]{0,180}onOpenActivePromptPresetEditor:/u,
   "Feature detail capability props must expose both guided onboarding navigation callbacks",
 );
+assert.match(
+  appShellSource,
+  /resolveFeatureAgentPackage\(selectedFeatureAgent, installedCapabilities\.data \?\? \[\]\)/u,
+);
+assert.match(featureAgentDetailHostSource, /mari-editor-shell mari-editor-legacy-bridge/u);
+assert.match(featureAgentDetailHostSource, /<header className="mari-editor-header">/u);
+assert.match(featureAgentDetailHostSource, /<Sparkles size="1\.125rem"/u);
+assert.doesNotMatch(featureAgentDetailHostSource, /\bPuzzle\b/u);
+assert.doesNotMatch(featureAgentDetailHostSource, /featureagentdetailhost\.feature"/u);
 assert.match(
   chatFloatingUiEventsSource,
   /CHAT_SUMMARY_OPEN_REQUEST_EVENT[\s\S]{0,240}detail:\s*\{\s*chatId\s*\}/u,
@@ -4005,6 +4059,11 @@ const appSource = readFileSync(new URL("../../packages/client/src/App.tsx", impo
 const homeBrowserHubSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeBrowserHub.tsx", import.meta.url),
   "utf8",
+);
+assert.match(
+  homeBrowserHubSource,
+  /<MessageCircle size="0\.8rem" className="mari-rgb-static-icon text-current" \/>/u,
+  "The Your Guide action icon must inherit the same color as its label",
 );
 const globalStylesSource = readFileSync(
   new URL("../../packages/client/src/styles/globals.css", import.meta.url),

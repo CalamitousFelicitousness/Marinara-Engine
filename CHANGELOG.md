@@ -52,6 +52,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Matched Feature agent pages to the shared Agent editor chrome and Chroma accent, and correctly recognized their owning package as installed. (#4892)
+- Kept the Your Guide Professor Mari action icon synchronized with its label color.
 - Kept Sidecar tracker counts and bulk local assignment current when capability Agent packages hydrate or refresh, and centralized Agent result-type admission behind one shared compatibility-tested vocabulary.
 - Kept explicitly selected persona-linked lorebooks usable outside their owner persona while preserving automatic owner matching and chat exclusions (#4887).
 - Extended the Roleplay New Start divider across the full message body for user messages as well as assistant messages (#4886).

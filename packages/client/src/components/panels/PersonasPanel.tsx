@@ -255,7 +255,7 @@ export function PersonasPanel() {
         const affected = allPersonas.filter((p) => p.tags.includes(tag));
         for (const p of affected) {
           const newTags = p.tags.filter((t) => t !== tag);
-          await updatePersona.mutateAsync({ id: p.id, tags: JSON.stringify(newTags) });
+          await updatePersona.mutateAsync({ id: p.id, tags: newTags });
         }
         if (activeTag === tag) setActiveTag(null);
       } catch {

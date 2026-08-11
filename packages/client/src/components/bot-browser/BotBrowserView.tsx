@@ -1935,7 +1935,7 @@ export function BotBrowserView() {
         creator: optionalString(cardData.creator) ?? prepared.card.creator,
         creatorNotes: optionalString(cardData.creator_notes) ?? "",
         personaVersion: optionalString(cardData.character_version) ?? "",
-        tags: JSON.stringify(personaTags),
+        tags: personaTags,
       }),
     });
     const persona = (await personaResponse.json()) as { id?: string; error?: string };

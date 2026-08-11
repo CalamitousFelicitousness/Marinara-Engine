@@ -109,6 +109,23 @@ export function getApiErrorMessage(value: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Format the first usable Zod validation issue in an API error payload. */
+export function formatFirstApiValidationIssue(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && isRecord(error.payload) && Array.isArray(error.payload.issues)) {
+    for (const issue of error.payload.issues) {
+      if (!isRecord(issue) || typeof issue.message !== "string" || !issue.message.trim()) continue;
+      const path = Array.isArray(issue.path)
+        ? issue.path.filter((segment) => typeof segment === "string" || typeof segment === "number").join(".")
+        : typeof issue.path === "string"
+          ? issue.path
+          : "";
+      return path ? `${path}: ${issue.message.trim()}` : issue.message.trim();
+    }
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
 function getSseDataPayload(line: string): string | null {
   const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
   if (!normalized.startsWith("data:")) return null;

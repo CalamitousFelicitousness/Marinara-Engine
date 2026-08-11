@@ -748,7 +748,7 @@ export function CharacterEditor() {
 
     const rpgStats = formData.extensions.rpgStats as RPGStatsConfig | undefined;
     const personaStats = rpgStats
-      ? JSON.stringify({
+      ? {
           enabled: !!rpgStats.enabled,
           bars: [
             { name: "Satiety", value: 100, max: 100, color: "#f59e0b" },
@@ -757,8 +757,8 @@ export function CharacterEditor() {
             { name: "Mood", value: 100, max: 100, color: "#eab308" },
           ],
           rpgStats,
-        })
-      : "";
+        }
+      : null;
 
     try {
       const created = (await createPersona.mutateAsync({
@@ -775,11 +775,9 @@ export function CharacterEditor() {
         nameColor: (formData.extensions.nameColor as string) ?? "",
         dialogueColor: (formData.extensions.dialogueColor as string) ?? "",
         boxColor: (formData.extensions.boxColor as string) ?? "",
-        trackerCardColors: serializeTrackerCardColorConfig(
-          parseTrackerCardColorConfig(formData.extensions.trackerCardColors),
-        ),
+        trackerCardColors: parseTrackerCardColorConfig(formData.extensions.trackerCardColors),
         personaStats,
-        tags: JSON.stringify(formData.tags ?? []),
+        tags: formData.tags ?? [],
       })) as { id?: string };
 
       const personaId = created?.id;

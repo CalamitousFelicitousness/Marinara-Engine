@@ -273,10 +273,36 @@ assert.doesNotMatch(
 
 for (const [path, pattern] of [
   ["components/characters/CharacterEditor.tsx", /onChange=\{\(next\) => updateExtension\("avatarCrop", next\)\}/u],
-  ["components/personas/PersonaEditor.tsx", /onChange=\{\(next\) => updateField\("avatarCrop", next\)\}/u],
+  ["components/personas/PersonaEditor.tsx", /updateField\("avatarCrop", next\)/u],
 ] as const) {
   assert.match(readFileSync(join(repoRoot, "packages/client/src", path), "utf8"), pattern);
 }
+
+// ── 9b. Persona crop interaction follows the editor's live mutation-busy state ──
+const personaEditorSource = readFileSync(
+  join(repoRoot, "packages/client/src/components/personas/PersonaEditor.tsx"),
+  "utf8",
+);
+assert.match(
+  personaEditorSource,
+  /const mutationBusy = mutationKind !== null;/u,
+  "Persona mutation kind must derive the editor's live busy state",
+);
+assert.match(
+  personaEditorSource,
+  /avatarMutationBusy=\{mutationBusy\}/u,
+  "PersonaEditor must pass its live mutation state to the metadata crop owner",
+);
+assert.match(
+  personaEditorSource,
+  /<fieldset\s+disabled=\{avatarMutationBusy\}[\s\S]*?<AvatarCropWidget/u,
+  "the Persona crop fieldset must be disabled by the passed mutation state",
+);
+assert.match(
+  personaEditorSource,
+  /onChange=\{\(next\) => \{\s*if \(avatarMutationBusy\) return;\s*updateField\("avatarCrop", next\);/u,
+  "the Persona crop change handler must reject writes while a mutation is busy",
+);
 
 // ── 10. Drawer/wizard reuse decoded crop boundaries ──
 const drawerSource = readFileSync(join(repoRoot, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"), "utf8");

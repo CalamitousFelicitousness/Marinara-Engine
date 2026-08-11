@@ -1186,7 +1186,11 @@ type RoleplaySurfaceProps = {
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe: (messageId: string, index: number) => void;
-  onToggleConversationStart: (messageId: string, current: boolean) => void;
+  onToggleConversationStart: (
+    messageId: string,
+    sharedStart: boolean,
+    conversationStartForCharacterIds: string[],
+  ) => void;
   onToggleHiddenFromAI: (messageId: string, hiddenFromAll: boolean, hiddenFromAICharacterIds?: string[]) => void;
   onPeekPrompt: () => void;
   onBranch?: (messageId: string) => void;
@@ -1353,7 +1357,8 @@ export function ChatRoleplaySurface({
   const { t } = useTranslation();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const activeAgentIds = chatMeta.activeAgentIds;
-  const enabledConversationCapabilities = chatMeta.enableAgents === true
+  const enabledConversationCapabilities =
+    chatMeta.enableAgents === true
     ? installedCapabilities.filter((item) => {
         if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
         if (item.manifest.kind.includes("conversation-calls")) return false;

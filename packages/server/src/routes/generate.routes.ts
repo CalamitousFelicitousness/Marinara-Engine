@@ -250,6 +250,7 @@ import {
   computeSummaryMessageRange,
   selectRollingSummaryMessages,
   injectIntoOutputFormatOrLastUser,
+  getMessageConversationStartCharacterIds,
   getMessageHiddenFromAICharacterIds,
   isManualTrackerCharacterId,
   isMessageHiddenFromAI,
@@ -1434,6 +1435,7 @@ export async function generateRoutes(app: FastifyInstance) {
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
+        const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
         return {
           id: typeof m.id === "string" ? m.id : null,
@@ -1443,6 +1445,7 @@ export async function generateRoutes(app: FastifyInstance) {
           characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
           ...(personaSnapshotName ? { personaSnapshotName } : {}),
           ...(hiddenFromAICharacterIds.length ? { hiddenFromAICharacterIds } : {}),
+          ...(conversationStartForCharacterIds.length ? { conversationStartForCharacterIds } : {}),
           ...(attachmentInputs.images.length ? { images: attachmentInputs.images } : {}),
           ...(attachmentInputs.files.length ? { files: attachmentInputs.files } : {}),
           ...(Object.keys(providerMetadata).length ? { providerMetadata } : {}),
@@ -4356,7 +4359,10 @@ export async function generateRoutes(app: FastifyInstance) {
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
         agentContext.memory._mainPromptPreview = promptPreviewForAgents(finalMessages);
-        const resolveImagePromptAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
+        const resolveImagePromptAgentContext = async (
+          agent: AgentExecConfig,
+          context: AgentContext,
+        ): Promise<AgentContext> => {
           const isImagePromptAgent =
             agent.type === "illustrator" ||
             (agent.isCustomAgent === true && customAgentHasCapability(agent.settings, "trigger_image_generation"));

@@ -16,6 +16,7 @@ import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import { syncCharacterBookFromLorebook } from "../lorebook/character-book-sync.js";
 import {
   createMariInstructionsStorage,
   MAX_INSTRUCTION_CONTENT_LENGTH,
@@ -4702,6 +4703,9 @@ export class MariDbService {
       }
       throw err;
     }
+    // #4927: the restore reverted the lorebook rows, so rebuild any embedded character_book from the
+    // restored state (no-op for standalone lorebooks).
+    await this.syncAffectedCharacterBooks(record.plan.changes);
     this.pending.delete(id);
     await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
@@ -6385,6 +6389,37 @@ export class MariDbService {
     return { kind, table, scriptPath, apply, cascade: true, reason, cwd };
   }
 
+  // #4927: keep an embedded character's data.character_book in sync after Mari mutates a lorebook
+  // through the generic mutation path — which, unlike the HTTP routes, never called the sync, so
+  // add/update/delete of an embedded lorebook's entries left the derived copy stale. Safe for
+  // standalone lorebooks: syncCharacterBookFromLorebook no-ops when the lorebook isn't embedded, and
+  // swallows its own errors, so a sync failure never breaks the mutation.
+  private async syncAffectedCharacterBooks(changes: PlanChange[]): Promise<void> {
+    const lorebookIds = new Set<string>();
+    const collect = (value: unknown) => {
+      if (typeof value === "string" && value) lorebookIds.add(value);
+    };
+    for (const change of changes) {
+      if (!change.apply) continue;
+      if (change.table === "lorebook_entries") {
+        // Collect BOTH sides: an entry reparented between lorebooks (a raw patch of its
+        // lorebookId) leaves its former lorebook stale too, not just the destination.
+        collect(change.before?.lorebookId);
+        collect(change.after?.lorebookId);
+      } else if (change.table === "lorebooks" && change.action !== "delete" && change.id) {
+        // A rename/metadata update rebuilds the embedded copy from the live row. A whole-lorebook
+        // DELETE is skipped here: syncCharacterBookFromLorebook rebuilds from the (now-gone) row and
+        // no-ops, so it would neither clear the character's stale character_book nor drop the
+        // dangling embed pointer. That clear + restore-re-embed parity with the HTTP DELETE route is
+        // tracked separately (#4932).
+        collect(change.id);
+      }
+    }
+    for (const lorebookId of lorebookIds) {
+      await syncCharacterBookFromLorebook(this.db, lorebookId);
+    }
+  }
+
   private async executeMutation(
     request: ParsedMutationRequest,
     command: string,
@@ -6418,6 +6453,7 @@ export class MariDbService {
 
     try {
       const journalPath = await this.applyPlan(plan);
+      await this.syncAffectedCharacterBooks(plan.changes);
       const history = await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
       const review = await this.createAppliedReview(plan, command, sessionId, journalPath, history.id);
       return {

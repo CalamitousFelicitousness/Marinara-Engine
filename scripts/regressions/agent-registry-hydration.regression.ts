@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { replaceBuiltInAgentDefinitions, type BuiltInAgentManifest } from "../../packages/shared/dist/index.js";
 import { buildRoleplayAgentSettingsOrder } from "../../packages/client/src/lib/agent-settings-order.js";
+import { selectVisibleTrackerCapabilityAgents } from "../../packages/client/src/hooks/use-capability-packages.js";
 import { isReviewableWriterAgentType } from "../../packages/server/src/services/generation/runtime-agent-sections.js";
 
 const manifests: BuiltInAgentManifest[] = [
@@ -110,5 +112,69 @@ const activeSettingsOrder = ["writer", "tracker", "misc"].flatMap((category) =>
     .map((agent) => agent.id),
 );
 assert.deepEqual(activeSettingsOrder, menuOrder, "Roleplay quick links and active settings must share one order");
+
+// Connections can mount before this query resolves. It must use the React Query
+// result, rather than reading the mutable shared registry that is already hydrated.
+assert.deepEqual(
+  selectVisibleTrackerCapabilityAgents(undefined),
+  [],
+  "Connections must show no tracker agents until the capability-agent query hydrates",
+);
+assert.deepEqual(
+  selectVisibleTrackerCapabilityAgents(manifests).map((agent) => agent.id),
+  ["late-tracker"],
+  "Connections must include hydrated visible trackers and exclude hidden agents",
+);
+
+const refreshedManifests = manifests.map((agent) =>
+  agent.id === "late-tracker" ? { ...agent, id: "refreshed-tracker", name: "Refreshed tracker" } : agent,
+);
+assert.deepEqual(
+  selectVisibleTrackerCapabilityAgents(refreshedManifests).map((agent) => agent.id),
+  ["refreshed-tracker"],
+  "Connections must use refreshed capability-agent definitions while it remains mounted",
+);
+
+const connectionsPanelSource = await readFile(
+  new URL("../../packages/client/src/components/panels/ConnectionsPanel.tsx", import.meta.url),
+  "utf8",
+);
+const sidecarCardStart = connectionsPanelSource.indexOf("function SidecarCard()");
+const sidecarCardEnd = connectionsPanelSource.indexOf("\nfunction connectionMatchesSearch", sidecarCardStart);
+assert.ok(sidecarCardStart >= 0 && sidecarCardEnd > sidecarCardStart, "Connections must retain the Sidecar card");
+const sidecarCardSource = connectionsPanelSource.slice(sidecarCardStart, sidecarCardEnd);
+assert.match(
+  sidecarCardSource,
+  /const \{ data: capabilityAgents \} = useCapabilityAgentRegistry\(\);/u,
+  "Connections must subscribe to React-visible capability-agent query data",
+);
+assert.match(
+  sidecarCardSource,
+  /const trackerAgents = useMemo\(\s*\(\) => selectVisibleTrackerCapabilityAgents\(capabilityAgents\),\s*\[capabilityAgents\],\s*\);/u,
+  "Connections must recompute visible trackers when capability-agent query data changes",
+);
+assert.match(
+  sidecarCardSource,
+  /const trackerLocalCount = useMemo\(\(\) => \{[\s\S]*?return trackerAgents\.filter\([\s\S]*?\}, \[agentConfigs, trackerAgents\]\);/u,
+  "the Sidecar count must consume the reactive tracker list",
+);
+const assignHandlerStart = sidecarCardSource.indexOf("const handleAssignTrackersToLocal = async () => {");
+const assignHandlerEnd = sidecarCardSource.indexOf("\n  const handleModelLoadToggle", assignHandlerStart);
+assert.ok(assignHandlerStart >= 0 && assignHandlerEnd > assignHandlerStart, "Connections must retain assign-all handling");
+assert.match(
+  sidecarCardSource.slice(assignHandlerStart, assignHandlerEnd),
+  /trackerAgents\.map\(async \(agent\) => \{/u,
+  "assign-all must consume the same reactive tracker list",
+);
+assert.match(
+  sidecarCardSource,
+  /onClick=\{\(\) => void handleAssignTrackersToLocal\(\)\}/u,
+  "the assign-all button must invoke the reactive tracker handler",
+);
+assert.match(
+  sidecarCardSource,
+  /\{trackerLocalCount\}\/\{trackerAgents\.length\}/u,
+  "the rendered Sidecar count must use the reactive assigned and total tracker values",
+);
 
 console.info("Agent registry hydration regression passed.");

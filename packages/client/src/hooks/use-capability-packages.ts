@@ -50,6 +50,13 @@ export function useCapabilityAgentRegistry(enabled = true) {
   return query;
 }
 
+/** Select visible tracker manifests from the React Query registry result. */
+export function selectVisibleTrackerCapabilityAgents(
+  agents: BuiltInAgentManifest[] | undefined,
+): BuiltInAgentManifest[] {
+  return (agents ?? []).filter((agent) => agent.category === "tracker" && !agent.libraryHidden);
+}
+
 /**
  * Installed packages that can provide a game's EXPERIENCE: runtime-ready, declaring the `game-surface`
  * slot, and carrying the client entrypoint that renders it. Shared so the setup chooser can only ever

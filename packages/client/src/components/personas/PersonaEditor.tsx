@@ -1298,6 +1298,7 @@ export function PersonaEditor() {
   /** The single operation mutex: an immediate ref so two clicks in one tick
    *  cannot both pass, plus render state for the disabled/spinner UI. */
   const mutationTokenRef = useRef<string | null>(null);
+  const mutationKindRef = useRef<PersonaMutationKind | null>(null);
   const [mutationKind, setMutationKind] = useState<PersonaMutationKind | null>(null);
   const formatQuotes = useQuoteFormatter();
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
@@ -1333,6 +1334,7 @@ export function PersonaEditor() {
     if (mutationTokenRef.current) return null;
     const token = generateClientId();
     mutationTokenRef.current = token;
+    mutationKindRef.current = kind;
     setMutationKind(kind);
     return token;
   }, []);
@@ -1340,6 +1342,7 @@ export function PersonaEditor() {
   const finishMutation = useCallback((token: string) => {
     if (mutationTokenRef.current !== token) return;
     mutationTokenRef.current = null;
+    mutationKindRef.current = null;
     setMutationKind(null);
   }, []);
 
@@ -1420,6 +1423,7 @@ export function PersonaEditor() {
       loadedPersonaIdRef.current = rawPersona.id;
       editorSessionRef.current = generateClientId();
       mutationTokenRef.current = null;
+      mutationKindRef.current = null;
       setMutationKind(null);
       fieldVersionsRef.current.clear();
       authoritativeAvatarPathRef.current = rawPersona.avatarPath;
@@ -1432,7 +1436,7 @@ export function PersonaEditor() {
 
     // An avatar/gallery replacement owns the preview and crop until it settles;
     // an interim refetch must not flip the image back and forth underneath it.
-    const avatarOperationActive = mutationKind === "avatar" || mutationKind === "gallery-avatar";
+    const avatarOperationActive = mutationKindRef.current === "avatar" || mutationKindRef.current === "gallery-avatar";
     const baseline = baselineFormRef.current;
     const avatarUnchanged = authoritativeAvatarPathRef.current === rawPersona.avatarPath;
     if (
@@ -1453,6 +1457,7 @@ export function PersonaEditor() {
       editorSessionRef.current = generateClientId();
       loadedPersonaIdRef.current = null;
       mutationTokenRef.current = null;
+      mutationKindRef.current = null;
     };
   }, [personaId]);
 
@@ -1737,6 +1742,12 @@ export function PersonaEditor() {
     try {
       await deletePersona.mutateAsync(deletedPersonaId);
       if (isCurrentEditorSession(session) && loadedPersonaIdRef.current === deletedPersonaId) closeDetail();
+    } catch (error) {
+      if (!isCurrentEditorSession(session) || loadedPersonaIdRef.current !== deletedPersonaId) return;
+      console.error("[PersonaEditor] Delete failed:", error);
+      toast.error(
+        formatFirstApiValidationIssue(error, localizeUi("ui.personas.personaeditor.failedToDeletePersona")),
+      );
     } finally {
       // A failure retains the editor and draft; success closes once above. An old
       // completion cannot clear a newer session's operation token.

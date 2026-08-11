@@ -11,6 +11,7 @@ import { personaCacheKeys, syncCachedPersona } from "../../packages/client/src/l
 import {
   mergeAuthoritativePersonaEditorDraft,
   personaEditorFieldsDifferingFromBaseline,
+  personaEditorValuesEqual,
   pickPersonaEditorFields,
   reconcileVersionedPersonaEditorSave,
 } from "../../packages/client/src/components/personas/persona-editor-transitions.js";
@@ -267,6 +268,23 @@ await assertInactiveCachedPersonaRefetchesActiveIdentity();
 // Sparse save and response precedence execute the production transition helpers.
 type Form = { name: string; comment: string; structured: { alpha: number; beta: number } };
 const baseline: Form = { name: "A", comment: "old", structured: { alpha: 1, beta: 2 } };
+let sameReferenceSerializationCount = 0;
+const sameReference = {
+  toJSON() {
+    sameReferenceSerializationCount += 1;
+    return { alpha: 1 };
+  },
+};
+assert.equal(personaEditorValuesEqual(sameReference, sameReference), true);
+assert.equal(sameReferenceSerializationCount, 0, "identical values avoid stable serialization");
+assert.equal(personaEditorValuesEqual(Number.NaN, Number.NaN), true, "NaN preserves stable-key fallback equality");
+assert.equal(personaEditorValuesEqual(undefined, undefined), true, "undefined preserves stable-key fallback equality");
+assert.equal(personaEditorValuesEqual(() => undefined, () => undefined), true, "functions preserve stable-key fallback equality");
+assert.equal(
+  personaEditorValuesEqual({ beta: 2, alpha: 1 }, { alpha: 1, beta: 2 }),
+  true,
+  "distinct objects retain stable-key comparison",
+);
 assert.deepEqual(personaEditorFieldsDifferingFromBaseline({ ...baseline, structured: { beta: 2, alpha: 1 } }, baseline), []);
 const changed = { ...baseline, name: "B" };
 const keys = personaEditorFieldsDifferingFromBaseline(changed, baseline);
@@ -306,11 +324,23 @@ assert.equal(hydrated.comment, "external", "authoritative untouched fields merge
 // The immediate mutex and Delete paths remain source-level browser-proof gaps.
 const mutationScope = balanced(editor, "const beginMutation = useCallback(", "immediate mutex", "=> {");
 const finishMutationScope = balanced(editor, "const finishMutation = useCallback(", "mutex release", "=> {");
+const hydrationScope = between(editor, "// Hydrate the form from the shared decoded persona.", "// Forced teardown", "Persona hydration");
+const teardownScope = between(editor, "// Forced teardown", "const updateField = useCallback(", "Persona teardown");
+assert.match(editor, /const mutationKindRef = useRef<PersonaMutationKind \| null>\(null\);/u);
 assert.match(mutationScope, /if \(mutationTokenRef\.current\) return null;/u);
+assert.match(mutationScope, /mutationTokenRef\.current = token;\s*mutationKindRef\.current = kind;\s*setMutationKind\(kind\);/u);
 assert.match(finishMutationScope, /if \(mutationTokenRef\.current !== token\) return;/u);
+assert.match(finishMutationScope, /mutationTokenRef\.current = null;\s*mutationKindRef\.current = null;\s*setMutationKind\(null\);/u);
+assert.match(hydrationScope, /mutationTokenRef\.current = null;\s*mutationKindRef\.current = null;\s*setMutationKind\(null\);/u);
+assert.match(
+  hydrationScope,
+  /const avatarOperationActive = mutationKindRef\.current === "avatar" \|\| mutationKindRef\.current === "gallery-avatar";/u,
+);
+assert.match(teardownScope, /mutationTokenRef\.current = null;\s*mutationKindRef\.current = null;/u);
 for (const kind of ["save", "avatar", "gallery-avatar", "delete"]) assert.ok(editor.includes(`beginMutation("${kind}")`));
 const deleteScope = balanced(editor, "const handleDelete = async () =>", "Delete");
 const deleteSuccessScope = between(deleteScope, "try {", "} finally {", "Delete success");
+const deleteFailureScope = between(deleteScope, "} catch (error) {", "} finally {", "Delete failure");
 const deleteFinallyStart = deleteScope.indexOf("} finally {");
 assert.notEqual(deleteFinallyStart, -1, "Delete cleanup must exist");
 const deleteFinallyScope = deleteScope.slice(deleteFinallyStart);
@@ -338,6 +368,16 @@ assert.match(
 );
 assert.doesNotMatch(deleteFinallyScope, /closeDetail\(\)/u);
 assert.match(deleteFinallyScope, /finishMutation\(deleteToken\);/u);
+assert.match(
+  deleteFailureScope,
+  /if \(!isCurrentEditorSession\(session\) \|\| loadedPersonaIdRef\.current !== deletedPersonaId\) return;/u,
+);
+assert.match(deleteFailureScope, /console\.error\("\[PersonaEditor\] Delete failed:", error\);/u);
+assert.match(
+  deleteFailureScope,
+  /toast\.error\(\s*formatFirstApiValidationIssue\(error, localizeUi\("ui\.personas\.personaeditor\.failedToDeletePersona"\)\),\s*\);/u,
+);
+assert.doesNotMatch(deleteFailureScope, /closeDetail\(\)/u);
 
 // Local Back reads immediate state: writes silently block it, clean drafts close,
 // and value-dirty drafts require the existing disposition.

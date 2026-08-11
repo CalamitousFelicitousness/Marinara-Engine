@@ -295,7 +295,7 @@ assert.match(
 );
 assert.match(
   personaEditorSource,
-  /<fieldset\s+disabled=\{avatarMutationBusy\}[\s\S]*?<AvatarCropWidget/u,
+  /<fieldset\b(?=[^>]*disabled=\{avatarMutationBusy\})[^>]*>(?:(?!<\/fieldset>)[\s\S])*?<AvatarCropWidget\b/u,
   "the Persona crop fieldset must be disabled by the passed mutation state",
 );
 assert.match(

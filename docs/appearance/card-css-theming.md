@@ -394,8 +394,10 @@ Paste it whole into **Creator Notes**, then enable **Card Theming** in **Chat Se
       position: relative;
       overflow: hidden;
       /* a steady outer halo. An element's own box-shadow is not clipped by its own
-         overflow: hidden, so this bloom shows even though message content is clipped. */
-      box-shadow: 0 0 16px rgba(190, 70, 190, 0.4), inset 0 0 18px rgba(80, 0, 60, 0.5);
+         overflow: hidden, so this bloom shows even though message content is clipped.
+         (No inset here: the pulsing inset glow lives on the ::after, so a static inset
+         would stack with it and over-brighten the inner glow.) */
+      box-shadow: 0 0 16px rgba(190, 70, 190, 0.4);
     }
     /* the breathing inner glow. Animate a full-bleed overlay's OPACITY (cheap, GPU
        composited) instead of the bubble's box-shadow (expensive: a full repaint every

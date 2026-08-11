@@ -2329,7 +2329,7 @@ function ProfessorMariSkillsMenu({
   const activeEditorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     activeEditorRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedSkill?.id, selectedSkill?.updatedAt]);
+  }, [selectedSkill?.id, selectedSkill?.updatedAt, sortMode, normalizedQuery]);
 
   return (
     <section
@@ -2471,7 +2471,11 @@ function ProfessorMariSkillsMenu({
                     </button>
                     <span className="flex shrink-0 items-center pr-1">
                       <SettingsSwitch
-                        ariaLabel={skill.enabled ? "Disable skill" : "Enable skill"}
+                        ariaLabel={
+                          skill.enabled
+                            ? localizeUi("ui.chat.professormariskillsmenu.disableSkill")
+                            : localizeUi("ui.chat.professormariskillsmenu.enableSkill")
+                        }
                         title={
                           skill.enabled
                             ? localizeUi("ui.noodle.noodlehome.enabled")
@@ -2622,7 +2626,7 @@ function ProfessorMariMemoriesMenu({
   const activeEditorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     activeEditorRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedMemory?.id, selectedMemory?.persistent, selectedMemory?.updatedAt]);
+  }, [selectedMemory?.id, selectedMemory?.persistent, selectedMemory?.updatedAt, sortMode, normalizedQuery]);
 
   return (
     <section
@@ -2957,6 +2961,7 @@ export function HomeProfessorMariChat({
   const skillFileInputRef = useRef<HTMLInputElement>(null);
   const memoryFileInputRef = useRef<HTMLInputElement>(null);
   const lastSyncedMemoryIdRef = useRef<string | null>(null);
+  const lastSyncedSkillIdRef = useRef<string | null>(null);
   const memoriesLoadSeqRef = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const embeddedTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -3377,6 +3382,12 @@ export function HomeProfessorMariChat({
   }, [chatHistoryOpen]);
 
   useEffect(() => {
+    const id = selectedSkill?.id ?? null;
+    // Only reload the draft when the SELECTED skill changes, not when the same skill's row ref
+    // changes because the enabled toggle refetched it, which would silently clobber unsaved
+    // name/description/content edits (the toggle sits on the row, above the open editor).
+    if (id === lastSyncedSkillIdRef.current) return;
+    lastSyncedSkillIdRef.current = id;
     if (!selectedSkill) {
       setSkillDraft({ name: "", description: "", content: "" });
       return;

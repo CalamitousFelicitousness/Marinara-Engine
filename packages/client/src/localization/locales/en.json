@@ -3603,6 +3603,8 @@
   "ui.chat.professormarimemoriesmenu.professorMariMemories": "Professor Mari Memories",
   "ui.chat.professormarimemoriesmenu.searchPlaceholder": "Search memories",
   "ui.chat.professormariskillsmenu.active": "active /",
+  "ui.chat.professormariskillsmenu.disableSkill": "Disable skill",
+  "ui.chat.professormariskillsmenu.enableSkill": "Enable skill",
   "ui.chat.professormariskillsmenu.instructions": "Instructions",
   "ui.chat.professormariskillsmenu.noCustomSkillsYet": "No custom skills yet",
   "ui.chat.professormariskillsmenu.noMatches": "No skills match your search",

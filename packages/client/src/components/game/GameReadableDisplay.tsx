@@ -135,7 +135,7 @@ export function GameReadableDisplay({ type, content, onClose }: GameReadableDisp
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/(^|\n)\s*-#\s+([^\n]*)/g, '$1<small class="mari-md-subtext">$2</small>')
+      .replace(/(^|\n)[ \t]*-#(?:[ \t]+([^\n]*))?(?=\n|$)/g, '$1<small class="mari-md-subtext">$2</small>')
       .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
       .replace(/__(.+?)__/gs, '<u class="mari-md-underline">$1</u>')
       .replace(/\*(.+?)\*/gs, "<em>$1</em>")

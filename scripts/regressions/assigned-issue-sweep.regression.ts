@@ -24,12 +24,16 @@ assert.equal(innerMarkdownMatch?.[9], "bold", "double-star delimiters remain bol
 const underlineMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec("__underlined__");
 assert.equal(underlineMatch?.[10], "underlined", "double underscores retain the underline span");
 assert.equal(DISCORD_SUBTEXT_RE.exec("-# quiet context")?.[1], "quiet context", "Discord-style subtext is recognized");
+assert.equal(DISCORD_SUBTEXT_RE.exec("-#")?.[1], undefined, "bare Discord-style subtext is recognized");
+assert.equal(DISCORD_SUBTEXT_RE.exec("-# ")?.[1], "", "empty Discord-style subtext with spacing is recognized");
 assert.equal(DISCORD_SUBTEXT_RE.test("- ordinary list item"), false, "ordinary list items remain ordinary lists");
 assert.match(
   applyInlineMarkdownHTML("<span>HTML</span><br>-# quiet context"),
   /<small class="mari-md-subtext">quiet context<\/small>/u,
   "embedded-HTML chat content receives the same Discord-style subtext rendering",
 );
+assert.equal(applyInlineMarkdownHTML("-#"), '<small class="mari-md-subtext"></small>');
+assert.equal(applyInlineMarkdownHTML("-# "), '<small class="mari-md-subtext"></small>');
 
 const markdownSource = readFileSync(join(repositoryRoot, "packages/client/src/lib/markdown.tsx"), "utf8");
 assert.match(

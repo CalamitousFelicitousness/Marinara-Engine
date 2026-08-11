@@ -6639,7 +6639,7 @@ export function formatNarration(content: string, boldDialogue = true): string {
     .replace(/\[state:\s*(\w+)\]/gi, (_match, state: string) =>
       commandBadge("bg-sky-500/20 text-sky-300", "⚡ State", state),
     )
-    .replace(/(^|\n)\s*-#\s+([^\n]*)/g, '$1<small class="mari-md-subtext">$2</small>')
+    .replace(/(^|\n)[ \t]*-#(?:[ \t]+([^\n]*))?(?=\n|$)/g, '$1<small class="mari-md-subtext">$2</small>')
     .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
     .replace(/__(.+?)__/gs, '<u class="mari-md-underline">$1</u>')
     .replace(/\*(.+?)\*/gs, "<em>$1</em>")

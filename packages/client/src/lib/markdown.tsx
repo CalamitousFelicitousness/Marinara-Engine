@@ -733,6 +733,9 @@ export function applyInlineMarkdownHTML(html: string): string {
         '<blockquote class="mari-md-blockquote">$1</blockquote>',
       )
       // Discord-style subtext: -# text
-      .replace(/(?:^|(?<=<br[^>]*>))\s*-#\s+(.+?)(?=<br|$)/g, '<small class="mari-md-subtext">$1</small>')
+      .replace(
+        /(?:^|(?<=<br[^>]*>))[ \t]*-#(?:[ \t]+(.*?))?(?=<br|$)/g,
+        '<small class="mari-md-subtext">$1</small>',
+      )
   );
 }

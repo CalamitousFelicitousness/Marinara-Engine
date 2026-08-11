@@ -2309,22 +2309,22 @@ function ProfessorMariSkillsMenu({
   const enabledCount = skills.filter((skill) => skill.enabled).length;
   const hasSkills = skills.length > 0;
   const normalizedQuery = query.trim().toLowerCase();
+  // Pure textual match: drives the noMatches message. The open (selected) row is re-added in
+  // `displayed` below so its editor stays visible even when the search excludes it.
   const filtered = useMemo(
     () =>
       normalizedQuery
-        ? skills.filter(
-            (skill) =>
-              // Keep the open (selected) row visible even if it no longer matches, so its inline
-              // editor never silently vanishes while the user types or after Upload selects it.
-              skill.id === selectedSkill?.id ||
-              `${skill.name} ${skill.description}`.toLowerCase().includes(normalizedQuery),
-          )
+        ? skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(normalizedQuery))
         : skills,
-    [skills, normalizedQuery, selectedSkill?.id],
+    [skills, normalizedQuery],
   );
   const sortMode = useUIStore((s) => s.mariPanelSortMode);
   const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
-  const displayed = useMemo(() => [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode)), [filtered, sortMode]);
+  const displayed = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode));
+    if (selectedSkill && !sorted.some((skill) => skill.id === selectedSkill.id)) return [...sorted, selectedSkill];
+    return sorted;
+  }, [filtered, sortMode, selectedSkill]);
   // Keep the open editor in view when its row moves (selection change, or a rename that re-sorts it).
   const activeEditorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2418,6 +2418,11 @@ function ProfessorMariSkillsMenu({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-1 p-2">
+          {!loading && hasSkills && filtered.length === 0 && (
+            <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.professormariskillsmenu.noMatches")}
+            </div>
+          )}
           {loading ? (
             <div className="space-y-1.5">
               <div className="h-10 animate-pulse rounded-lg bg-[var(--muted)]/30" />
@@ -2426,10 +2431,6 @@ function ProfessorMariSkillsMenu({
           ) : !hasSkills ? (
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormariskillsmenu.noCustomSkillsYet")}
-            </div>
-          ) : displayed.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.professormariskillsmenu.noMatches")}
             </div>
           ) : (
             displayed.map((skill) => {
@@ -2602,26 +2603,24 @@ function ProfessorMariMemoriesMenu({
   const enabledCount = memories.filter((memory) => memory.enabled).length;
   const hasMemories = memories.length > 0;
   const normalizedQuery = query.trim().toLowerCase();
+  // Pure textual match: drives the noMatches message. The open (selected) row is re-added in
+  // `displayed` below so its editor stays visible even when the search excludes it.
   const filtered = useMemo(
     () =>
       normalizedQuery
-        ? memories.filter(
-            (memory) =>
-              // Keep the open (selected) row visible even if it no longer matches, so its inline
-              // editor never silently vanishes while the user types or after Upload selects it.
-              memory.id === selectedMemory?.id ||
-              `${memory.name} ${memory.description}`.toLowerCase().includes(normalizedQuery),
-          )
+        ? memories.filter((memory) => `${memory.name} ${memory.description}`.toLowerCase().includes(normalizedQuery))
         : memories,
-    [memories, normalizedQuery, selectedMemory?.id],
+    [memories, normalizedQuery],
   );
   const sortMode = useUIStore((s) => s.mariPanelSortMode);
   const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
   const displayed = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode));
     // Persistent memories are pinned above the rest; each group keeps the chosen sort order.
-    return [...sorted.filter((memory) => memory.persistent), ...sorted.filter((memory) => !memory.persistent)];
-  }, [filtered, sortMode]);
+    const pinned = [...sorted.filter((memory) => memory.persistent), ...sorted.filter((memory) => !memory.persistent)];
+    if (selectedMemory && !pinned.some((memory) => memory.id === selectedMemory.id)) return [...pinned, selectedMemory];
+    return pinned;
+  }, [filtered, sortMode, selectedMemory]);
   // Keep the open editor in view when its row moves (selection change, persistent toggle, or a rename).
   const activeEditorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2709,6 +2708,11 @@ function ProfessorMariMemoriesMenu({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-1 p-2">
+          {!loading && hasMemories && filtered.length === 0 && (
+            <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.professormarimemoriesmenu.noMatches")}
+            </div>
+          )}
           {loading ? (
             <div className="space-y-1.5">
               <div className="h-10 animate-pulse rounded-lg bg-[var(--muted)]/30" />
@@ -2717,10 +2721,6 @@ function ProfessorMariMemoriesMenu({
           ) : !hasMemories ? (
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormarimemoriesmenu.noMemoriesYet")}
-            </div>
-          ) : displayed.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.professormarimemoriesmenu.noMatches")}
             </div>
           ) : (
             displayed.map((memory) => {
@@ -2962,6 +2962,8 @@ export function HomeProfessorMariChat({
   const memoryFileInputRef = useRef<HTMLInputElement>(null);
   const lastSyncedMemoryIdRef = useRef<string | null>(null);
   const lastSyncedSkillIdRef = useRef<string | null>(null);
+  const hasLoadedSkillsRef = useRef(false);
+  const hasLoadedMemoriesRef = useRef(false);
   const memoriesLoadSeqRef = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const embeddedTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -3209,9 +3211,14 @@ export function HomeProfessorMariChat({
       const response = await api.get<MariWorkspaceSkillsResponse>("/professor-mari/workspace/skills");
       setSkills(response.skills);
       setSkillsDiagnostics(response.diagnostics);
+      const isInitialSkillsLoad = !hasLoadedSkillsRef.current;
+      hasLoadedSkillsRef.current = true;
       setSelectedSkillId((current) => {
         if (current && response.skills.some((skill) => skill.id === current)) return current;
-        return response.skills[0]?.id ?? null;
+        // Only auto-expand the first row on the very first load. On later refreshes, keep the user's
+        // choice: a null (collapsed) selection stays collapsed, and a removed selection falls back to
+        // null instead of reopening the first row.
+        return isInitialSkillsLoad ? (response.skills[0]?.id ?? null) : null;
       });
     } finally {
       setSkillsLoading(false);
@@ -3227,9 +3234,13 @@ export function HomeProfessorMariChat({
       // so an older list can't overwrite the newer one or reset the selection.
       if (seq !== memoriesLoadSeqRef.current) return;
       setMemories(response.instructions);
+      const isInitialMemoriesLoad = !hasLoadedMemoriesRef.current;
+      hasLoadedMemoriesRef.current = true;
       setSelectedMemoryId((current) => {
         if (current && response.instructions.some((memory) => memory.id === current)) return current;
-        return response.instructions[0]?.id ?? null;
+        // Only auto-expand the first row on the very first load; a later refresh preserves a null
+        // (collapsed) selection and falls back to null (not the first row) if the selection was removed.
+        return isInitialMemoriesLoad ? (response.instructions[0]?.id ?? null) : null;
       });
     } finally {
       if (seq === memoriesLoadSeqRef.current) setMemoriesLoading(false);

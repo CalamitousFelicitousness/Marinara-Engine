@@ -42,6 +42,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Manual Agent retries now resolve the same current settings, custom tools, and permitted built-in tools as normal Agent generation while retaining retry-specific historical context and Spotify playback verification (#4894).
 - Localized achievement definitions and official capability-package Home metadata through stable locale-aware contracts with English fallback, and refreshed Home's welcome copy (#4803, #4806).
 - Positioned Professor Mari's navigation helper at the bottom-left on her first appearance while preserving every remembered user placement.
 - Removed the standalone Browser tab and its tutorial step, moved card downloads into split Download/Open Library controls in Characters and Personas, and replaced browser-native card destination and embedded-lorebook prompts with a themed Marinara import flow.
@@ -56,6 +57,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Applied embedded character-card fields when replacing an existing character's avatar, so updated card PNGs refresh the matching editor sections (#4896).
 - Kept automatic summaries chronologically ordered and hidden when requested, while allowing users to rearrange summary entries by drag and drop on desktop and mobile (#4891).
 - Clarified Professor Mari's character-card field guidance so requested backstory, appearance, and other sections are edited independently without replacing unrelated content (#4874).
+- Rewrote the animated glow in the Card CSS Theming guide example to animate `opacity` on an overlay layer instead of the message bubble's `box-shadow`. Animating `box-shadow` forced a full repaint every frame and could pin a weak GPU; the example now demonstrates the GPU-composited pattern instead (#4897).
 - Matched Feature agent pages to the shared Agent editor chrome and Chroma accent, and correctly recognized their owning package as installed. (#4892)
 - Kept the Your Guide Professor Mari action icon synchronized with its label color.
 - Kept Sidecar tracker counts and bulk local assignment current when capability Agent packages hydrate or refresh, and centralized Agent result-type admission behind one shared compatibility-tested vocabulary.

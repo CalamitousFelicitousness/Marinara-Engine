@@ -1,7 +1,14 @@
 // ──────────────────────────────────────────────
 // React Query: Character, Group & Persona hooks
 // ──────────────────────────────────────────────
-import { useInfiniteQuery, useQueries, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQueries,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { useMemo } from "react";
 import { api } from "../lib/api-client";
 import type { ChatGalleryIndex } from "../lib/card-asset-links";
@@ -15,12 +22,15 @@ import {
 } from "../lib/list-pagination";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import { cleanTrackerCardColorConfig } from "../lib/tracker-card-colors";
+import { personaCacheKeys, syncCachedPersona } from "../lib/persona-cache";
 import {
   PROFESSOR_MARI_ID,
   type CharacterData,
   type CharacterCardVersion,
   type Persona,
   type PersonaCardVersion,
+  type PersonaCreateInput,
+  type PersonaUpdateInput,
   type TrackerCardColorConfig,
 } from "@marinara-engine/shared";
 import type { CustomKind, CustomTagPatch } from "../lib/custom-emoji";
@@ -52,9 +62,10 @@ export const characterKeys = {
   personaGallery: (id: string) => ["persona-gallery", id] as const,
   personaGalleryClips: (id: string) => ["persona-gallery", id, "clips"] as const,
   personaCallVideos: (id: string) => ["conversation-calls", "persona-videos", id] as const,
-  personas: ["personas"] as const,
-  personaActive: () => [...characterKeys.personas, "active"] as const,
-  personaDetail: (id: string) => [...characterKeys.personas, "detail", id] as const,
+  personas: personaCacheKeys.list,
+  personaPages: () => [...characterKeys.personas, "page"] as const,
+  personaActive: personaCacheKeys.active,
+  personaDetail: personaCacheKeys.detail,
   personaVersions: (id: string) => [...characterKeys.personaDetail(id), "versions"] as const,
   groups: ["character-groups"] as const,
   personaGroups: ["persona-groups"] as const,
@@ -966,11 +977,11 @@ export function useDeletePersonaGalleryImage(personaId: string) {
 export function useSetPersonaGalleryImageAsAvatar(personaId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (imageId: string) => api.post(`/characters/personas/${personaId}/gallery/${imageId}/avatar`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: characterKeys.personaDetail(personaId) });
-      qc.invalidateQueries({ queryKey: characterKeys.personas });
-      qc.invalidateQueries({ queryKey: characterKeys.personaActive() });
+    mutationFn: (imageId: string) => api.post<Persona>(`/characters/personas/${personaId}/gallery/${imageId}/avatar`),
+    onSuccess: async (updatedPersona) => {
+      await syncCachedPersona(qc, updatedPersona);
+      invalidatePersonaPages(qc);
+      invalidatePersonaVersions(qc, updatedPersona.id);
     },
   });
 }
@@ -988,6 +999,42 @@ export function useTagPersonaGalleryImage(personaId: string) {
 
 // ── Personas ──
 
+type PersonaSheetUpdateFields = {
+  characterSheetImageId?: string | null;
+  useCharacterSheetAsReference?: boolean;
+};
+
+type PersonaTrackerPortrait = {
+  portraitFocusX: number;
+  portraitFocusY: number;
+  portraitZoom: number;
+};
+
+type PersonaUpdateMutationInput = { id: string } & PersonaUpdateInput & PersonaSheetUpdateFields;
+
+type PersonaTrackerCardMutationInput = {
+  id: string;
+  keepalive?: boolean;
+} &
+  (
+    | {
+        trackerCardPaint: TrackerCardPaintConfig;
+        trackerCardPortrait?: never;
+      }
+    | {
+        trackerCardPaint?: never;
+        trackerCardPortrait: PersonaTrackerPortrait;
+      }
+  );
+
+function invalidatePersonaPages(qc: QueryClient) {
+  return qc.invalidateQueries({ queryKey: characterKeys.personaPages() });
+}
+
+function invalidatePersonaVersions(qc: QueryClient, id: string) {
+  return qc.invalidateQueries({ queryKey: characterKeys.personaVersions(id), exact: true });
+}
+
 export function usePersonas(enabled = true) {
   return useQuery({
     queryKey: characterKeys.personas,
@@ -1003,7 +1050,7 @@ export function usePersonaPages(options: { enabled?: boolean; search?: string; s
   const sort = options.sort ?? "";
 
   return useInfiniteQuery({
-    queryKey: [...characterKeys.personas, "page", search, sort] as const,
+    queryKey: [...characterKeys.personaPages(), search, sort] as const,
     initialPageParam: 0,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({
@@ -1062,34 +1109,10 @@ export function useActivePersona(enabled = true) {
 export function useCreatePersona() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: {
-      name: string;
-      description?: string;
-      comment?: string;
-      creator?: string;
-      personaVersion?: string;
-      creatorNotes?: string;
-      phoneticName?: string;
-      personality?: string;
-      scenario?: string;
-      backstory?: string;
-      appearance?: string;
-      characterSheetImageId?: string | null;
-      useCharacterSheetAsReference?: string;
-      nameColor?: string;
-      dialogueColor?: string;
-      boxColor?: string;
-      trackerCardColors?: string;
-      personaStats?: string;
-      tags?: string;
-      savedStatusOptions?: string;
-      convoDisplayName?: string;
-      aboutMe?: string;
-      convoBehavior?: string;
-      avatarCrop?: string;
-    }) => api.post<Persona>("/characters/personas", data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: characterKeys.personas });
+    mutationFn: (data: PersonaCreateInput) => api.post<Persona>("/characters/personas", data),
+    onSuccess: async (createdPersona) => {
+      await syncCachedPersona(qc, createdPersona);
+      invalidatePersonaPages(qc);
       void trackAchievementEvent("library_changed")
         .finally(() => qc.invalidateQueries({ queryKey: achievementKeys.all }))
         .catch(() => undefined);
@@ -1100,68 +1123,32 @@ export function useCreatePersona() {
 export function useUpdatePersona() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      keepalive,
-      trackerCardPaint,
-      trackerCardPortrait,
-      ...requestedData
-    }: {
-      id: string;
-      keepalive?: boolean;
-      name?: string;
-      comment?: string;
-      creator?: string;
-      personaVersion?: string;
-      creatorNotes?: string;
-      phoneticName?: string;
-      description?: string;
-      personality?: string;
-      scenario?: string;
-      backstory?: string;
-      appearance?: string;
-      characterSheetImageId?: string | null;
-      useCharacterSheetAsReference?: string;
-      nameColor?: string;
-      dialogueColor?: string;
-      boxColor?: string;
-      trackerCardColors?: string;
-      personaStats?: string;
-      tags?: string;
-      savedStatusOptions?: string;
-      convoDisplayName?: string;
-      aboutMe?: string;
-      convoBehavior?: string;
-      avatarCrop?: string;
-      trackerCardPaint?: TrackerCardPaintConfig;
-      trackerCardPortrait?: {
-        portraitFocusX: number;
-        portraitFocusY: number;
-        portraitZoom: number;
-      };
-    }) =>
-      trackerCardPaint || trackerCardPortrait
-        ? api.patch<Persona>(
-            `/characters/personas/${id}/tracker-card-colors`,
-            trackerCardPaint
-              ? { paint: cleanTrackerCardPaintConfig(trackerCardPaint) }
-              : { portrait: trackerCardPortrait },
-            keepalive ? { keepalive: true } : undefined,
-          )
-        : api.patch<Persona>(`/characters/personas/${id}`, requestedData, keepalive ? { keepalive: true } : undefined),
-    onSuccess: (updatedPersona) => {
-      if (!updatedPersona || typeof updatedPersona.id !== "string" || !updatedPersona.id) return;
+    mutationFn: ({ id, ...requestedData }: PersonaUpdateMutationInput) =>
+      api.patch<Persona>(`/characters/personas/${id}`, requestedData),
+    onSuccess: async (updatedPersona) => {
+      await syncCachedPersona(qc, updatedPersona);
+      invalidatePersonaPages(qc);
+      void invalidatePersonaVersions(qc, updatedPersona.id);
+    },
+  });
+}
 
-      qc.setQueryData<Persona>(characterKeys.personaDetail(updatedPersona.id), updatedPersona);
-      qc.setQueryData<Persona[] | undefined>(characterKeys.personas, (old) => {
-        if (!old) return old;
-        return old.map((persona) => (persona.id === updatedPersona.id ? updatedPersona : persona));
-      });
-
-      qc.invalidateQueries({ queryKey: characterKeys.personas });
-      qc.invalidateQueries({ queryKey: characterKeys.personaActive() });
-      qc.invalidateQueries({ queryKey: characterKeys.personaDetail(updatedPersona.id) });
-      qc.invalidateQueries({ queryKey: characterKeys.personaVersions(updatedPersona.id) });
+export function useUpdatePersonaTrackerCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: PersonaTrackerCardMutationInput) => {
+      const { id, keepalive } = data;
+      return api.patch<Persona>(
+        `/characters/personas/${id}/tracker-card-colors`,
+        data.trackerCardPaint !== undefined
+          ? { paint: cleanTrackerCardPaintConfig(data.trackerCardPaint) }
+          : { portrait: data.trackerCardPortrait },
+        keepalive ? { keepalive: true } : undefined,
+      );
+    },
+    onSuccess: async (updatedPersona) => {
+      await syncCachedPersona(qc, updatedPersona);
+      invalidatePersonaPages(qc);
     },
   });
 }
@@ -1261,11 +1248,10 @@ export function useUploadPersonaAvatar() {
   return useMutation({
     mutationFn: ({ id, avatar, filename }: { id: string; avatar: string; filename?: string }) =>
       api.post<Persona>(`/characters/personas/${id}/avatar`, { avatar, filename }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: characterKeys.personas });
-      qc.invalidateQueries({ queryKey: characterKeys.personaActive() });
-      qc.invalidateQueries({ queryKey: characterKeys.personaDetail(variables.id) });
-      qc.invalidateQueries({ queryKey: characterKeys.personaVersions(variables.id) });
+    onSuccess: async (updatedPersona) => {
+      await syncCachedPersona(qc, updatedPersona);
+      invalidatePersonaPages(qc);
+      void invalidatePersonaVersions(qc, updatedPersona.id);
     },
   });
 }

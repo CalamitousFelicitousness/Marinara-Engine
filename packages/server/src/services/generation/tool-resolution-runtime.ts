@@ -645,14 +645,23 @@ async function resolveToolRuntime(
     emitMetadataPatch,
     observeSpotifyPlaybackBeforePlay,
   }: ResolveAgentGenerationToolsArgs,
-  options: { enableChatTools: boolean; preloadSpotifyPlayback: boolean },
+  options: {
+    enableChatTools: boolean;
+    preloadSpotifyPlayback: boolean;
+    restoreSpotifyAgentDefaultTools: boolean;
+  },
 ): Promise<ResolvedGenerationTools> {
   const { enableChatTools } = options;
   const spotifyToolNames = new Set(DEFAULT_AGENT_TOOLS.spotify ?? []);
   for (const agent of resolvedAgents) {
     const agentSettings = parseSettings(agent.settings);
     const agentEnabledNames = Array.isArray(agentSettings.enabledTools) ? (agentSettings.enabledTools as string[]) : [];
-    if (isSpotifyMusicAgent(agent) && agentEnabledNames.length === 0 && spotifyToolNames.size > 0) {
+    if (
+      options.restoreSpotifyAgentDefaultTools &&
+      isSpotifyMusicAgent(agent) &&
+      agentEnabledNames.length === 0 &&
+      spotifyToolNames.size > 0
+    ) {
       agent.settings = { ...agentSettings, enabledTools: [...spotifyToolNames] };
     }
   }
@@ -938,7 +947,11 @@ async function resolveToolRuntime(
 export async function resolveAgentGenerationTools(
   args: ResolveAgentGenerationToolsArgs,
 ): Promise<ResolvedGenerationTools> {
-  return resolveToolRuntime(args, { enableChatTools: false, preloadSpotifyPlayback: false });
+  return resolveToolRuntime(args, {
+    enableChatTools: false,
+    preloadSpotifyPlayback: false,
+    restoreSpotifyAgentDefaultTools: args.gameSpotifyMusicEnabled,
+  });
 }
 
 export async function resolveGenerationTools(args: ResolveGenerationToolsArgs): Promise<ResolvedGenerationTools> {
@@ -946,5 +959,9 @@ export async function resolveGenerationTools(args: ResolveGenerationToolsArgs): 
   const enableChatTools =
     args.requestBody.enableTools === true ||
     (!chatToolsExplicitlyDisabled && booleanText(args.chatMetadata.enableTools));
-  return resolveToolRuntime(args, { enableChatTools, preloadSpotifyPlayback: true });
+  return resolveToolRuntime(args, {
+    enableChatTools,
+    preloadSpotifyPlayback: true,
+    restoreSpotifyAgentDefaultTools: true,
+  });
 }

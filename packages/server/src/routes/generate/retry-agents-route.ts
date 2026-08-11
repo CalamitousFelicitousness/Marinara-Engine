@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
   BUILT_IN_AGENTS,
+  DEFAULT_AGENT_TOOLS,
   applyQuestUpdatesToPlayerStats,
   applyTrackerFieldLocksToGameStatePatch,
   getCustomAgentResultCapability,
@@ -3657,18 +3658,19 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         };
       }
 
+      const activeMusicPlayerSource =
+        musicPlayerEnabled === false
+          ? null
+          : musicPlayerSource === "youtube" || musicPlayerSource === "custom"
+            ? musicPlayerSource
+            : "spotify";
       const { conn, enabledConfigs, resolvedAgents, warnings } = await resolveRetryAgents({
         agentTypes,
         chat,
         conns,
         agentsStore,
         agentPromptTemplateIds,
-        activeMusicPlayerSource:
-          musicPlayerEnabled === false
-            ? null
-            : musicPlayerSource === "youtube" || musicPlayerSource === "custom"
-              ? musicPlayerSource
-              : "spotify",
+        activeMusicPlayerSource,
         allowExternalAgentImports: (await getCustomAgentImportPolicy(app.db)).enabled,
         onFallback,
       });
@@ -3754,6 +3756,19 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
       const attachAgentTools = async (entries: ResolvedRetryAgent[], toolInputs: RetryAgentPhaseToolInputs) => {
         if (entries.length === 0) return;
         const context = toolInputs.agentContext;
+        const toolAgents = entries.map((entry) => entry.resolved);
+        if (activeMusicPlayerSource === null) {
+          const spotifyToolNames = new Set(DEFAULT_AGENT_TOOLS.spotify ?? []);
+          for (const agent of toolAgents) {
+            const enabledTools = Array.isArray(agent.settings.enabledTools) ? agent.settings.enabledTools : [];
+            agent.settings = {
+              ...agent.settings,
+              enabledTools: enabledTools.filter(
+                (toolName): toolName is string => typeof toolName === "string" && !spotifyToolNames.has(toolName),
+              ),
+            };
+          }
+        }
         await resolveAgentGenerationTools({
           requestBody: toolInputs.requestBody,
           chatId,
@@ -3762,7 +3777,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           agentsStore,
           customToolsStore,
           lorebooksStore,
-          resolvedAgents: entries.map((entry) => entry.resolved),
+          resolvedAgents: toolAgents,
           enabledConfigs,
           promptCharacterIds: toolInputs.promptCharacterIds,
           personaId:
@@ -3773,7 +3788,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,
           excludedSourceAgentIds: lorebookScopeExclusions.excludedSourceAgentIds,
           gameState: context.gameState,
-          gameSpotifyMusicEnabled: true,
+          gameSpotifyMusicEnabled: activeMusicPlayerSource !== null,
           agentContext: context,
           emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
           observeSpotifyPlaybackBeforePlay: true,

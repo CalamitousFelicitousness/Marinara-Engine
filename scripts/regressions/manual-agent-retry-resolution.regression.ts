@@ -86,6 +86,9 @@ const retryToolWiringSource = retryRouteSource.slice(retryToolWiringStart, retry
 assert.ok(retryToolWiringStart >= 0 && retryToolWiringEnd > retryToolWiringStart);
 assert.match(retryToolWiringSource, /selectedTargetMessage:\s*lastAssistant/);
 assert.match(retryToolWiringSource, /await resolveAgentGenerationTools\(\{/);
+assert.match(retryToolWiringSource, /if \(activeMusicPlayerSource === null\)/);
+assert.match(retryToolWiringSource, /!spotifyToolNames\.has\(toolName\)/);
+assert.match(retryToolWiringSource, /gameSpotifyMusicEnabled:\s*activeMusicPlayerSource !== null/);
 assert.match(
   retryToolWiringSource,
   /emitMetadataPatch:\s*\(patch\)\s*=>\s*sendSseEvent\(reply,\s*\{\s*type:\s*"metadata_patch",\s*data:\s*patch\s*\}\)/,
@@ -596,6 +599,58 @@ assert.equal(
 );
 assert.equal(youtubeToolFreeRuntime.toolDefs, undefined);
 assert.equal(youtubeMusicDjWithoutTools.toolContext, undefined, "a tool-free YouTube Music DJ must not receive tool context");
+
+const disabledSpotifyAgent = makeAgent("spotify-disabled", "spotify", { enabledTools: [] });
+let disabledSpotifyCredentialReads = 0;
+let disabledSpotifyToolLoads = 0;
+await resolveAgentGenerationTools({
+  requestBody: {},
+  chatId: "retry-chat",
+  chatMetadata: {},
+  chats: {
+    getMessage: async () => null,
+    updateMessageContent: async () => ({}),
+    patchMetadata: async (_chatId, patcher) => ({ metadata: await patcher({}) }),
+  },
+  agentsStore: {
+    getById: async () => {
+      disabledSpotifyCredentialReads += 1;
+      return null;
+    },
+    getByType: async () => {
+      disabledSpotifyCredentialReads += 1;
+      return null;
+    },
+  },
+  customToolsStore: {
+    listEnabled: async () => {
+      disabledSpotifyToolLoads += 1;
+      return [];
+    },
+  },
+  lorebooksStore: {
+    listActiveEntries: async () => [],
+    getById: async () => null,
+    listEntries: async () => [],
+    createEntry: async () => null,
+    updateEntry: async () => null,
+  },
+  resolvedAgents: [disabledSpotifyAgent],
+  enabledConfigs: [{ id: "spotify-disabled", type: "spotify" }],
+  promptCharacterIds: [],
+  personaId: null,
+  activeLorebookIds: [],
+  excludedLorebookIds: [],
+  excludedSourceAgentIds: [],
+  gameState: null,
+  gameSpotifyMusicEnabled: false,
+  agentContext: historicalContext,
+  emitMetadataPatch: () => {},
+});
+assert.deepEqual(disabledSpotifyAgent.settings.enabledTools, []);
+assert.equal(disabledSpotifyAgent.toolContext, undefined);
+assert.equal(disabledSpotifyCredentialReads, 0, "disabled Spotify retries must not load credentials");
+assert.equal(disabledSpotifyToolLoads, 0, "disabled Spotify retries must not load tool definitions");
 
 const spotifyBoundaryAgent = makeAgent("spotify-boundary", "spotify", {}) as SpotifyRuntimeAgent;
 let spotifyBoundaryCustomToolLoads = 0;

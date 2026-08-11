@@ -3520,6 +3520,19 @@ strong {
   opacity: 0.7;
 }
 
+/* Discord-style inline underline and line-level subtext */
+.mari-md-underline {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.mari-md-subtext {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.8125em;
+  line-height: 1.35;
+}
+
 /* Fenced code blocks */
 .mari-message-content .mari-md-codeblock {
   position: relative;

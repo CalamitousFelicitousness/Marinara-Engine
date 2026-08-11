@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added Markdown previews to Conversation, Game, and section content in the preset editor, matching character and lorebook authoring (#4916).
+- Added Discord-style `__underline__` and `-# subtext` rendering throughout chat history and other shared Markdown surfaces (#4914).
 - Let Professor Mari set every user-editable lorebook entry setting when she creates or edits entries, not just the keyword-matching controls: activation chance (`probability`, clamped 0-100), timing (`sticky`, `cooldown`, `delay`, `ephemeral`), recursion (`preventRecursion`, `excludeRecursion`, `delayUntilRecursion`), inclusion-group weight, per-entry scan depth, lock, folder placement, character/tag/trigger matching filters, and per-entry vectorization (which she only enables when an embedding model is configured) (#4791).
 - Added shared and per-character New Start context markers to group Roleplay, with an avatar target picker and character-colored dividers that let newly introduced characters begin from a later message without truncating the rest of the cast's history (#4905).
 - Added character-targeted Roleplay message hiding through `/hide <character> <number/range>`, including quoted names and the existing single, range, and comma-separated message selectors (#4906).
@@ -57,6 +59,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Preserved unsent Home Professor Mari messages across editor navigation and app restarts until they are sent or explicitly cleared (#4915).
 - Taught workspace Professor Mari to revise an existing saved memory when asked, instead of declining that a matching memory "already exists": her guidance now includes a read-then-rewrite recipe and worked example for editing a memory's content in place (the same pattern she uses for preset sections), which also works on an enabled or persistent memory without turning it off (#4917).
 - Made Force To Call Tool serialize native required-tool controls for Google Gemini, Vertex AI, and compatible Anthropic requests, while safely falling back to automatic choice for manual Claude extended thinking and Mythos (#4907).
 - Fixed the open-issues regression failing on Windows checkouts: its chat-summary reorder check matched the entry container and the touch-reorder row within a fixed character distance that CRLF line endings pushed just over the limit, so it now verifies the shared desktop and touch reorder surface on the row element directly, independent of line endings and where the row is defined (#4911).

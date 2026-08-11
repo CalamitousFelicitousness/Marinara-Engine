@@ -1071,6 +1071,7 @@ function PromptsTab({
           placeholder={localizeUi("ui.presets.promptstab.leaveEmptyToUseMarinaraSBuiltInConversation")}
           className="mari-editor-field min-h-[12rem] w-full p-3 font-mono text-xs"
           formatOnChange={formatPrompt}
+          showMarkdownPreview
           spellCheck={false}
         />
       </FieldGroup>
@@ -1090,6 +1091,7 @@ function PromptsTab({
           placeholder={localizeUi("ui.presets.promptstab.leaveEmptyToUseMarinaraSBuiltInGame")}
           className="mari-editor-field min-h-[12rem] w-full p-3 font-mono text-xs"
           formatOnChange={formatPrompt}
+          showMarkdownPreview
           spellCheck={false}
         />
       </FieldGroup>
@@ -2960,6 +2962,7 @@ function SectionContentTextarea({
       onExpandedClose={commit}
       formatOnChange={(textarea, inputEvent) => applyTextareaQuoteFormat(textarea, quoteFormat, inputEvent)}
       title={sectionName ?localizeUi("ui.presets.sectioncontenttextarea.editValue1", { value1: sectionName }) :localizeUi("ui.presets.sectioncontenttextarea.editPrompt")}
+      showMarkdownPreview
       className="mari-editor-field min-h-[7.5rem] w-full p-2.5 font-mono text-xs"
       placeholder={localizeUi("ui.presets.sectioncontenttextarea.promptContentSupportsUserCharCommentTrimMacros")}
     />

@@ -57,6 +57,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Taught workspace Professor Mari to revise an existing saved memory when asked, instead of declining that a matching memory "already exists": her guidance now includes a read-then-rewrite recipe and worked example for editing a memory's content in place (the same pattern she uses for preset sections), which also works on an enabled or persistent memory without turning it off (#4917).
 - Made Force To Call Tool serialize native required-tool controls for Google Gemini, Vertex AI, and compatible Anthropic requests, while safely falling back to automatic choice for manual Claude extended thinking and Mythos (#4907).
 - Fixed the open-issues regression failing on Windows checkouts: its chat-summary reorder check matched the entry container and the touch-reorder row within a fixed character distance that CRLF line endings pushed just over the limit, so it now verifies the shared desktop and touch reorder surface on the row element directly, independent of line endings and where the row is defined (#4911).
 - Restored Music DJ Spotify playback by clearing the previous repeat mode before replacing a multi-song context, reapplying repeat only after the selected first track is verified, and surfacing persistent URI mismatches as failures instead of false pending successes (#4903).

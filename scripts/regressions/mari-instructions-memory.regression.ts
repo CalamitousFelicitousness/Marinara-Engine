@@ -251,6 +251,37 @@ try {
     assert.match(block, /just do it/, "the persistent body is injected in full");
     assert.doesNotMatch(block, /key each entry on both/, "the non-persistent body is NOT injected");
 
+    // (7b) The user's reported case: editing an ENABLED, persistent memory's content persists and
+    // stays live. Unlike (4) — a disabled memory whose edit is Restored — this KEEPS the edit and
+    // asserts the new body is what injects going forward. (The engine has no "already matches" no-op;
+    // declining such an edit is a prompt-side decision, not a capability gap.)
+    const livePersistent = (await listMemories()).find((m) => m.name === "How-to handling");
+    assert.ok(
+      livePersistent && livePersistent.enabled === true && livePersistent.persistent === true,
+      "the memory under edit is enabled + persistent",
+    );
+    await mari.executeAction({
+      action: "instruction.update",
+      id: livePersistent.id,
+      data: { content: "When I ask how to do something, just do it without asking." },
+      apply: true,
+    });
+    await drainKeep(mari);
+    const editedLive = (await listMemories()).find((m) => m.id === livePersistent.id);
+    assert.ok(editedLive, "the edited memory still exists after Keep");
+    assert.equal(editedLive.enabled, true, "editing an enabled memory keeps it enabled");
+    assert.equal(editedLive.persistent, true, "editing keeps the persistent flag");
+    assert.match(
+      String(((await mari.executeAction({ action: "instruction.get", id: livePersistent.id })).output as { content?: string } | null)?.content ?? ""),
+      /just do it without asking/,
+      "a kept content edit to an enabled, persistent memory persists",
+    );
+    assert.match(
+      String(renderMariMemoryPrompt(await store.list()) ?? ""),
+      /just do it without asking/,
+      "the edited persistent body is what now injects into the prompt",
+    );
+
     // (8) FORGET: deletes through the Keep/Restore review (must create a review card).
     const beforeForget = new Set(mari.getPendingApprovals().map((a) => a.id));
     await mari.executeAction({ action: "instruction.forget", id: mem.id, apply: true });

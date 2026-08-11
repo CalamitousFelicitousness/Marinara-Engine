@@ -2674,7 +2674,8 @@ export function HomeBrowserHub({
                             className="mt-2 inline-flex min-h-8 max-w-full shrink-0 items-center justify-center gap-1 rounded-lg bg-[oklch(0.73_0.21_345)] px-2 text-center text-[clamp(0.56rem,2.2cqw,0.75rem)] font-bold leading-tight text-[oklch(0.98_0.01_345)] shadow-[0_10px_24px_-14px_oklch(0.73_0.21_345)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.79_0.16_205)] motion-reduce:transform-none sm:gap-1.5 sm:px-2.5"
                             data-home-professor-action
                           >
-                            <MessageCircle size="0.8rem" /> {t("home.professorMari.ask")}
+                            <MessageCircle size="0.8rem" className="mari-rgb-static-icon text-current" />{" "}
+                            {t("home.professorMari.ask")}
                           </button>
                         </div>
                         <div

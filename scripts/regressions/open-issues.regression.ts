@@ -6498,13 +6498,13 @@ assert.match(
 );
 assert.match(
   summaryPopoverSource,
-  /data-summary-entry-root[\s\S]{0,400}onDrop=\{handleSummaryDrop\}/u,
+  /<[A-Za-z]+\b(?=[^>]*data-summary-entry-root\b)(?=[^>]*onDragOver=\{handleSummaryContainerDragOver\})(?=[^>]*onDrop=\{handleSummaryDrop\})[^>]*>/u,
   "The summary entry list root must be the desktop drag-and-drop container",
 );
 assert.match(
   summaryPopoverSource,
-  /data-touch-reorder-item=\{reorderable \? "summary-entry"[\s\S]{0,240}draggable=\{reorderable && dragReady\}[\s\S]{0,160}onDragStart=\{onDragStart\}/u,
-  "Summary entries must expose a shared desktop and touch reorder surface (the same row is a touch-reorder item and desktop-draggable)",
+  /<[A-Za-z]+\b(?=[^>]*data-touch-reorder-item=\{reorderable \? "summary-entry" : undefined\})(?=[^>]*data-touch-reorder-index=\{reorderable \? entryIndex : undefined\})(?=[^>]*draggable=\{reorderable && dragReady\})(?=[^>]*onDragStart=\{onDragStart\})[^>]*>/u,
+  "Summary entries must expose a shared desktop and touch reorder surface (the same row is a touch-reorder item, carries its persisted reorder index, and is desktop-draggable)",
 );
 assert.match(
   summaryPopoverSource,

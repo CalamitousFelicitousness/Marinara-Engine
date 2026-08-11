@@ -2,7 +2,6 @@ import {
   BUILT_IN_AGENTS,
   DEFAULT_AGENT_TOOLS,
   getDefaultAgentPrompt,
-  getDefaultBuiltInAgentSettings,
   isBuiltInAgentHostManaged,
   isBuiltInAgentRuntimeDisabled,
   isAgentConfigDeleted,
@@ -138,30 +137,62 @@ function parseAgentSettings(settings: unknown): Record<string, unknown> {
   return typeof settings === "object" && !Array.isArray(settings) ? (settings as Record<string, unknown>) : {};
 }
 
-function resolveAgentSettings(agentType: string, settings: unknown): Record<string, unknown> {
-  const parsed = parseAgentSettings(settings);
-  if (!BUILT_IN_AGENTS.some((agent) => agent.id === agentType)) return parsed;
-  return mergeBuiltInAgentSettings(agentType, parsed);
+export function resolveEffectiveAgentSettings(args: {
+  agentType: string;
+  settings: unknown;
+  activeMusicPlayerSource?: "spotify" | "youtube" | "custom" | null;
+  chatMetadata?: Record<string, unknown>;
+}): Record<string, unknown> {
+  const { agentType, activeMusicPlayerSource, chatMetadata } = args;
+  const parsed = parseAgentSettings(args.settings);
+  let settings = BUILT_IN_AGENTS.some((agent) => agent.id === agentType)
+    ? mergeBuiltInAgentSettings(agentType, parsed)
+    : parsed;
+
+  if (agentType === "spotify" && activeMusicPlayerSource) {
+    settings = {
+      ...settings,
+      musicProvider: activeMusicPlayerSource,
+      musicPlayerSource: activeMusicPlayerSource,
+      enabledTools: activeMusicPlayerSource === "spotify" ? [...(DEFAULT_AGENT_TOOLS.spotify ?? [])] : [],
+    };
+  }
+
+  settings = applyTextRewriteAgentChatSettings(agentType, settings, chatMetadata);
+  settings = applyKnowledgeAgentChatSettings(agentType, settings, chatMetadata);
+  settings = applyCustomAgentImageChatSettings(agentType, settings, chatMetadata);
+
+  const usesNonSpotifyMusicSource =
+    agentType === "spotify" &&
+    (settings.musicProvider === "youtube" ||
+      settings.musicPlayerSource === "youtube" ||
+      settings.musicProvider === "custom" ||
+      settings.musicPlayerSource === "custom");
+  // Spotify restores playback tools from an empty array; other built-ins treat
+  // an empty array as an explicit opt-out.
+  if (
+    agentType === "spotify" &&
+    !usesNonSpotifyMusicSource &&
+    (!Array.isArray(settings.enabledTools) || settings.enabledTools.length === 0)
+  ) {
+    settings = { ...settings, enabledTools: [...(DEFAULT_AGENT_TOOLS.spotify ?? [])] };
+  } else if (
+    agentType !== "spotify" &&
+    BUILT_IN_AGENTS.some((agent) => agent.id === agentType) &&
+    !Array.isArray(settings.enabledTools) &&
+    (DEFAULT_AGENT_TOOLS[agentType]?.length ?? 0) > 0
+  ) {
+    settings = { ...settings, enabledTools: [...DEFAULT_AGENT_TOOLS[agentType]!] };
+  }
+
+  return settings;
 }
 
-function applyMusicPlayerSourceToMusicDjSettings(
-  settings: Record<string, unknown>,
-  activeMusicPlayerSource: "spotify" | "youtube" | "custom" | null | undefined,
-): Record<string, unknown> {
-  if (!activeMusicPlayerSource) return settings;
-  return {
-    ...settings,
-    musicProvider: activeMusicPlayerSource,
-    musicPlayerSource: activeMusicPlayerSource,
-    enabledTools: activeMusicPlayerSource === "spotify" ? (DEFAULT_AGENT_TOOLS.spotify ?? []) : [],
-  };
-}
-
-function musicAgentUsesSource(settings: Record<string, unknown>, source: "youtube" | "custom"): boolean {
+export function musicAgentUsesSource(settings: Record<string, unknown>, source: "youtube" | "custom"): boolean {
   return settings.musicProvider === source || settings.musicPlayerSource === source;
 }
 
-function getAgentFallbackPrompt(agentType: string, settings: Record<string, unknown>): string {
+export function getAgentFallbackPrompt(agentType: string, settings: Record<string, unknown>): string {
   if (agentType === "spotify" && musicAgentUsesSource(settings, "youtube")) {
     return getDefaultAgentPrompt("youtube");
   }
@@ -373,31 +404,12 @@ export async function resolveAgentPipelineAgents({
   for (const cfg of enabledConfigs) {
     if (hasPerChatAgentList && !perChatAgentSet.has(cfg.type)) continue;
 
-    let settings = resolveAgentSettings(cfg.type as string, cfg.settings);
-    if (cfg.type === "spotify") {
-      settings = applyMusicPlayerSourceToMusicDjSettings(settings, activeMusicPlayerSource);
-    }
-    settings = applyTextRewriteAgentChatSettings(cfg.type as string, settings, chatMetadata);
-    settings = applyKnowledgeAgentChatSettings(cfg.type as string, settings, chatMetadata);
-    settings = applyCustomAgentImageChatSettings(cfg.type as string, settings, chatMetadata);
-    if (
-      cfg.type === "spotify" &&
-      settings.musicProvider !== "youtube" &&
-      settings.musicPlayerSource !== "youtube" &&
-      settings.musicProvider !== "custom" &&
-      settings.musicPlayerSource !== "custom" &&
-      (!Array.isArray(settings.enabledTools) || settings.enabledTools.length === 0)
-    ) {
-      settings.enabledTools = DEFAULT_AGENT_TOOLS.spotify ?? [];
-    }
-    if (
-      cfg.type !== "spotify" &&
-      BUILT_IN_AGENTS.some((agent) => agent.id === cfg.type) &&
-      !Array.isArray(settings.enabledTools) &&
-      (DEFAULT_AGENT_TOOLS[cfg.type as string]?.length ?? 0) > 0
-    ) {
-      settings.enabledTools = [...DEFAULT_AGENT_TOOLS[cfg.type as string]!];
-    }
+    const settings = resolveEffectiveAgentSettings({
+      agentType: cfg.type as string,
+      settings: cfg.settings,
+      activeMusicPlayerSource,
+      chatMetadata,
+    });
     let selectedPromptTemplate = resolveAgentPromptTemplate({
       promptTemplate: normalizeProseGuardianPromptTemplate(cfg.type as string, cfg.promptTemplate),
       fallbackPromptTemplate: getAgentFallbackPrompt(cfg.type as string, settings),
@@ -543,29 +555,12 @@ export async function resolveAgentPipelineAgents({
     }
     if (defaultAgentConn && builtInConnectionId === defaultAgentConn.id)
       defaultAgentConnectionAgents.push(builtIn.name);
-    let builtInSettings = getDefaultBuiltInAgentSettings(builtIn.id);
-    if (builtIn.id === "spotify") {
-      builtInSettings = applyMusicPlayerSourceToMusicDjSettings(builtInSettings, activeMusicPlayerSource);
-    }
-    builtInSettings = applyTextRewriteAgentChatSettings(builtIn.id, builtInSettings, chatMetadata);
-    builtInSettings = applyKnowledgeAgentChatSettings(builtIn.id, builtInSettings, chatMetadata);
-    if (
-      builtIn.id === "spotify" &&
-      builtInSettings.musicProvider !== "youtube" &&
-      builtInSettings.musicPlayerSource !== "youtube" &&
-      builtInSettings.musicProvider !== "custom" &&
-      builtInSettings.musicPlayerSource !== "custom" &&
-      (!Array.isArray(builtInSettings.enabledTools) || builtInSettings.enabledTools.length === 0)
-    ) {
-      builtInSettings.enabledTools = DEFAULT_AGENT_TOOLS.spotify ?? [];
-    }
-    if (
-      builtIn.id !== "spotify" &&
-      !Array.isArray(builtInSettings.enabledTools) &&
-      (DEFAULT_AGENT_TOOLS[builtIn.id]?.length ?? 0) > 0
-    ) {
-      builtInSettings.enabledTools = [...DEFAULT_AGENT_TOOLS[builtIn.id]!];
-    }
+    const builtInSettings = resolveEffectiveAgentSettings({
+      agentType: builtIn.id,
+      settings: undefined,
+      activeMusicPlayerSource,
+      chatMetadata,
+    });
     let selectedPromptTemplate = resolveAgentPromptTemplate({
       promptTemplate: "",
       fallbackPromptTemplate: getAgentFallbackPrompt(builtIn.id, builtInSettings),

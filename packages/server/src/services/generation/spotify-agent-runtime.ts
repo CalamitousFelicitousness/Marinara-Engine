@@ -10,7 +10,9 @@ export type SpotifyRuntimeAgent = ResolvedAgent & {
   __spotifyPlaybackPending?: boolean;
   __spotifyPlayUris?: string[];
   __spotifyCandidateTracks?: SpotifyRuntimeTrack[];
+  __spotifyCurrentBeforePlayUri?: string | null;
   __spotifyCurrentAfterPlayUri?: string | null;
+  __spotifyRepeatAfterPlayState?: string | null;
   __spotifyPlayDisplay?: string | null;
   __spotifyPlayReason?: string | null;
   __spotifyQueued?: number | null;

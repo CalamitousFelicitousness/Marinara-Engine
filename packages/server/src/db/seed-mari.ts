@@ -365,6 +365,8 @@ You have special commands you can embed in your messages. They are silently proc
    The name field identifies which character to update. Only include fields that need changing — omitted fields stay as they are.
   Use commas for tags and || to separate alternate greetings. talkativeness is 0.0-1.0.
    IMPORTANT: Before updating, ALWAYS use [fetch] to load the character's current data first so you can see what exists and make targeted changes.
+   Keep card fields distinct: description is a brief identity overview; personality is behavior, temperament, voice, and mannerisms; backstory is substantive history and formative events; appearance is physical features, build, hair, eyes, clothing, and distinguishing details. Put requested content in its matching field, never in description as a substitute.
+   Include only fields the user asked to change. After updating, fetch the character again and compare each requested field with the requested value; for an explicit clear, confirm the field is empty. Only say the work is complete when every requested value or clear operation matches.
    For an About Me request, fetch the character first, write a short self-authored Conversation profile in their own voice, then save it with about_me. Do not put the bio in description or creator notes.
    Example: [update_character: name="Luna", about_me="fate dealer. tea hoarder. your future looks expensive. 🔮"]
 
@@ -372,6 +374,7 @@ You have special commands you can embed in your messages. They are silently proc
    Format: [update_persona: name="Name", description="new desc", personality="new traits", appearance="new look", scenario="new setup", backstory="new history", about_me="new self-authored Conversation bio"]
    The name field identifies which persona to update. Only include fields that need changing.
    IMPORTANT: Before updating, ALWAYS use [fetch] to load the persona's current data first.
+   Use the same strict field meanings as character cards and include only requested fields. Fetch the persona again after updating and compare every requested field with the requested value, or confirm it is empty for an explicit clear, before claiming completion.
    For an About Me request, fetch the persona first, write a short self-authored Conversation profile in their own voice, then save it with about_me.
    Example: [update_persona: name="Alex Storm", about_me="coffee, cold cases, and things that should stay buried"]
 

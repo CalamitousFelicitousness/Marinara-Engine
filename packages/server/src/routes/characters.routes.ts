@@ -768,6 +768,29 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   return { row, usesFallbackName };
 }
 
+export async function validateCharacterGalleryReferences<T extends Record<string, unknown>>(
+  characterId: string,
+  characterDataUpdate: T,
+  getGalleryImage: (imageId: string) => Promise<{ characterId: string } | null>,
+): Promise<T> {
+  const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
+  if (!Object.hasOwn(extensions, "characterSheetImageId")) return characterDataUpdate;
+
+  const selectedImageId =
+    typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
+  const selectedImage = selectedImageId ? await getGalleryImage(selectedImageId) : null;
+  if (selectedImage?.characterId === characterId) return characterDataUpdate;
+
+  return {
+    ...characterDataUpdate,
+    extensions: {
+      ...extensions,
+      characterSheetImageId: null,
+      useCharacterSheetAsReference: false,
+    },
+  };
+}
+
 export async function charactersRoutes(app: FastifyInstance) {
   const storage = createCharactersStorage(app.db);
   const characterGallery = createCharacterGalleryStorage(app.db);
@@ -1055,23 +1078,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
     const characterDataUpdate = update.data ?? {};
     return enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
-      let validatedDataUpdate = characterDataUpdate;
-      const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
-      if (Object.hasOwn(extensions, "characterSheetImageId")) {
-        const selectedImageId =
-          typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-        const selectedImage = selectedImageId ? await characterGallery.getById(selectedImageId) : null;
-        if (!selectedImage || selectedImage.characterId !== req.params.id) {
-          validatedDataUpdate = {
-            ...characterDataUpdate,
-            extensions: {
-              ...extensions,
-              characterSheetImageId: null,
-              useCharacterSheetAsReference: false,
-            },
-          };
-        }
-      }
+      const validatedDataUpdate = await validateCharacterGalleryReferences(
+        req.params.id,
+        characterDataUpdate,
+        (imageId) => characterGallery.getById(imageId),
+      );
       return storage.update(req.params.id, validatedDataUpdate, avatarPath, {
         comment,
         versionSource,
@@ -1931,7 +1942,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     const char = await storage.getById(id);
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
-    const body = req.body as { avatar?: string; filename?: string };
+    const body = req.body as { avatar?: string; filename?: string; data?: unknown };
     if (!body.avatar) {
       return reply.status(400).send({ error: "No avatar data provided" });
     }
@@ -1958,7 +1969,15 @@ export async function charactersRoutes(app: FastifyInstance) {
     try {
       await mkdir(avatarsDir, { recursive: true });
       await writeFile(filepath, imageBuffer);
-      const updated = await storage.updateAvatar(id, avatarPath);
+      const characterData = body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
+      const updated = await enqueueUpdate(characterUpdateQueues, id, async () => {
+        const validatedData = await validateCharacterGalleryReferences(id, characterData, (imageId) =>
+          characterGallery.getById(imageId),
+        );
+        return storage.update(id, validatedData, avatarPath, {
+          versionReason: body.data === undefined ? "Avatar update" : "Character card and avatar update",
+        });
+      });
       if (!updated) {
         await removeUnattachedAvatarFile({ avatarPath });
         return reply.status(404).send({ error: "Character not found" });

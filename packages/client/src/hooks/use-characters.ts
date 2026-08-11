@@ -25,6 +25,7 @@ import { cleanTrackerCardColorConfig } from "../lib/tracker-card-colors";
 import { personaCacheKeys, syncCachedPersona } from "../lib/persona-cache";
 import {
   PROFESSOR_MARI_ID,
+  type CharacterData,
   type CharacterCardVersion,
   type Persona,
   type PersonaCardVersion,
@@ -308,7 +309,8 @@ export function useResetCharacterVersions() {
 export function useUploadAvatar() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, avatar }: { id: string; avatar: string }) => api.post(`/characters/${id}/avatar`, { avatar }),
+    mutationFn: ({ id, avatar, data }: { id: string; avatar: string; data?: CharacterData }) =>
+      api.post(`/characters/${id}/avatar`, { avatar, ...(data ? { data } : {}) }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: characterKeys.list() });
       qc.invalidateQueries({ queryKey: characterKeys.summariesRoot() });

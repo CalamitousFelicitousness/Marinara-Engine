@@ -4,6 +4,8 @@ import {
   type CapabilityChatRecord,
   type CapabilityCreateMessageWithSwipeInput,
   type CapabilityGameStateRecord,
+  type CapabilityRoleplayEventInput,
+  type CapabilityRoleplayEventRecord,
   type CapabilityDocumentRecord,
   type CapabilityDocumentStore,
   type CapabilityMessageRecord,
@@ -396,6 +398,30 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
         .orderBy(desc(gameStateSnapshots.createdAt), desc(gameStateSnapshots.id))
         .limit(1);
       return rows[0] ? mapGameState(rows[0]) : null;
+    },
+    async appendRoleplayEvent(input: CapabilityRoleplayEventInput): Promise<CapabilityRoleplayEventRecord | null> {
+      const existing = await db
+        .select()
+        .from(capabilityDocuments)
+        .where(and(eq(capabilityDocuments.packageId, "__engine__"), eq(capabilityDocuments.kind, "roleplay-event")))
+        .limit(1000);
+      if (existing.some((row) => {
+        try { return (JSON.parse(row.data) as { idempotencyKey?: unknown }).idempotencyKey === input.idempotencyKey; }
+        catch { return false; }
+      })) return null;
+      const now = input.createdAt;
+      await db.insert(capabilityDocuments).values({
+        id: input.id,
+        packageId: "__engine__",
+        kind: "roleplay-event",
+        name: input.eventType,
+        description: input.sourcePackageId,
+        data: JSON.stringify(input),
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return input;
     },
     async listExistingLorebookEntryIds(entryIds) {
       const requestedIds = Array.from(new Set(entryIds.filter((entryId) => entryId.length > 0)));

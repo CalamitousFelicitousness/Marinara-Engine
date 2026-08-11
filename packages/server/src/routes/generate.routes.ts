@@ -9711,7 +9711,27 @@ export async function generateRoutes(app: FastifyInstance) {
                     payload: command.payload,
                     chatId: input.chatId,
                     sourceMessageId: messageId,
+                    swipeIndex,
+                    branchChatId: input.chatId,
                     characterId,
+                  }, async () => {
+                    const current = await chats.getMessage(messageId);
+                    if (!current) return false;
+                    try {
+                      const existing = JSON.parse(current.extra as string) as Record<string, unknown>;
+                      const marker = existing[`capabilityAction:${command.commandType}`];
+                      if (marker && typeof marker === "object") return false;
+                    } catch {
+                      // Treat malformed legacy extra data as empty.
+                    }
+                    const claimed = await chats.updateMessageExtraForSwipe(messageId, swipeIndex, {
+                      [`capabilityAction:${command.commandType}`]: {
+                        actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
+                        status: "claimed",
+                      },
+                    });
+                    if (!claimed) return false;
+                    return true;
                   });
                 }
 

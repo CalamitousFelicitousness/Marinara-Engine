@@ -4,6 +4,7 @@ export interface CapabilityConversationCommandRegistration {
   maxPayloadChars?: number;
   description?: string;
   payloadExample?: string;
+  validatePayload?: (payload: string | null) => boolean;
   handler?: (action: CapabilityConversationAction) => void | Promise<void>;
 }
 
@@ -13,6 +14,8 @@ export interface CapabilityConversationAction {
   payload: string | null;
   chatId: string;
   sourceMessageId: string;
+  swipeIndex: number;
+  branchChatId: string;
   characterId: string | null;
 }
 
@@ -20,6 +23,8 @@ const tagToCommandType = new Map<string, string>();
 const handlersByCommandType = new Map<string, CapabilityConversationCommandRegistration["handler"]>();
 const payloadLimitsByCommandType = new Map<string, number>();
 const descriptionsByCommandType = new Map<string, { description: string; payloadExample: string }>();
+const validatorsByCommandType = new Map<string, CapabilityConversationCommandRegistration["validatePayload"]>();
+const dispatchedActions = new Set<string>();
 
 export function registerCapabilityConversationCommand(
   registration: CapabilityConversationCommandRegistration,
@@ -35,6 +40,7 @@ export function registerCapabilityConversationCommand(
     tagToCommandType.set(tag, commandType);
   }
   if (registration.handler) handlersByCommandType.set(commandType, registration.handler);
+  if (registration.validatePayload) validatorsByCommandType.set(commandType, registration.validatePayload);
   payloadLimitsByCommandType.set(commandType, Math.max(0, Math.min(registration.maxPayloadChars ?? 2_000, 8_000)));
   if (registration.handler && registration.description) {
     descriptionsByCommandType.set(commandType, {
@@ -49,6 +55,7 @@ export function registerCapabilityConversationCommand(
     if (handlersByCommandType.get(commandType) === registration.handler) handlersByCommandType.delete(commandType);
     payloadLimitsByCommandType.delete(commandType);
     descriptionsByCommandType.delete(commandType);
+    validatorsByCommandType.delete(commandType);
   };
 }
 
@@ -67,18 +74,26 @@ export function parseCapabilityConversationCommands(content: string) {
     seen.add(commandType);
     const rawPayload = match[2]?.trim() || null;
     const maxPayloadChars = payloadLimitsByCommandType.get(commandType) ?? 2_000;
+    const payload = rawPayload && rawPayload.length <= maxPayloadChars ? rawPayload : null;
     commands.push({
       type: "capability",
       commandType,
-      payload: rawPayload && rawPayload.length <= maxPayloadChars ? rawPayload : null,
+      payload: validatorsByCommandType.get(commandType)?.(payload) === false ? null : payload,
     });
   }
   return commands;
 }
 
-export async function dispatchCapabilityConversationAction(action: CapabilityConversationAction): Promise<boolean> {
+export async function dispatchCapabilityConversationAction(
+  action: CapabilityConversationAction,
+  claim?: () => Promise<boolean>,
+): Promise<boolean> {
   const handler = handlersByCommandType.get(action.commandType);
   if (!handler) return false;
+  const actionKey = `${action.branchChatId}:${action.sourceMessageId}:${action.swipeIndex}:${action.commandType}`;
+  if (dispatchedActions.has(actionKey)) return false;
+  if (claim && !(await claim())) return false;
+  dispatchedActions.add(actionKey);
   await handler(action);
   return true;
 }

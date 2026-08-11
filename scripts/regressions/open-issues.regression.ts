@@ -438,6 +438,20 @@ assert.equal(replacedCharacterCard.extensions.backstory, "Updated backstory");
 assert.equal(replacedCharacterCard.extensions.appearance, "Updated appearance");
 assert.equal(replacedCharacterCard.personality, "Keep this personality", "Missing card fields must remain untouched");
 assert.equal(replacedCharacterCard.extensions.nameColor, "#123456", "Local display extensions must be preserved");
+const characterRoutesSource = readFileSync(
+  join(REPOSITORY_ROOT, "packages/server/src/routes/characters.routes.ts"),
+  "utf8",
+);
+assert.match(
+  characterRoutesSource,
+  /async function validateCharacterGalleryReferences[\s\S]{0,1200}characterSheetImageId: null[\s\S]{0,180}useCharacterSheetAsReference: false/u,
+  "Character updates must reject gallery references owned by another character",
+);
+assert.match(
+  characterRoutesSource,
+  /app\.post<\{ Params: \{ id: string \} \}>\("\/:id\/avatar"[\s\S]{0,2400}enqueueUpdate\(characterUpdateQueues[\s\S]{0,500}validateCharacterGalleryReferences/u,
+  "Embedded card updates must serialize writes and validate character-owned gallery references",
+);
 
 assert.equal(
   resolveClientOs(

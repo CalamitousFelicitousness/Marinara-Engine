@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 import type { ChatMLMessage } from "@marinara-engine/shared";
 
-function hasSameAudience(first: ChatMLMessage | undefined, second: ChatMLMessage): boolean {
+export function hasSamePromptAudience(first: ChatMLMessage | undefined, second: ChatMLMessage): boolean {
   if (first?.conversationStartForCharacterIds?.length || second.conversationStartForCharacterIds?.length) {
     return false;
   }
@@ -43,7 +43,7 @@ export function mergeAdjacentMessages(messages: ChatMLMessage[]): ChatMLMessage[
   const canMerge = (a: ChatMLMessage, b: ChatMLMessage) => {
     if (a.role !== b.role) return false;
     if ((a.characterId ?? null) !== (b.characterId ?? null)) return false;
-    if (!hasSameAudience(a, b)) return false;
+    if (!hasSamePromptAudience(a, b)) return false;
     if (!a.contextKind || !b.contextKind) return true;
     return a.contextKind === b.contextKind;
   };
@@ -120,7 +120,7 @@ export function squashLeadingSystemMessages(messages: ChatMLMessage[]): ChatMLMe
   for (let index = 1; index <= leadingSystemMessages.length; index += 1) {
     if (
       index < leadingSystemMessages.length &&
-      hasSameAudience(leadingSystemMessages[runStart], leadingSystemMessages[index]!)
+      hasSamePromptAudience(leadingSystemMessages[runStart], leadingSystemMessages[index]!)
     ) {
       continue;
     }

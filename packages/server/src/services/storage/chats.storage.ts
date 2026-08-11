@@ -1453,12 +1453,13 @@ export function createChatsStorage(db: DB) {
       return withPatchQueue(messageExtraPatchQueues, messageId, async () => {
         const existing = await this.getSwipes(messageId);
         const nextIndex = existing.length;
+        const msg = await this.getMessage(messageId);
+        const retainedExtra = msg ? freshSwipeMessageExtra(msg.extra) : {};
 
         // Backfill: save current message extra onto the currently-active swipe
         // so its thinking/generationInfo isn't lost when we switch away
         // (skip when silent — greeting swipes don't need backfill)
-        const msg = silent ? null : await this.getMessage(messageId);
-        if (msg) {
+        if (!silent && msg) {
           const msgExtra = parseExtraRecord(msg.extra);
           const activeSwipe = existing.find((s: any) => s.index === msg.activeSwipeIndex);
           if (activeSwipe) {
@@ -1475,17 +1476,16 @@ export function createChatsStorage(db: DB) {
           messageId,
           index: nextIndex,
           content,
-          extra: JSON.stringify({}),
+          extra: JSON.stringify(retainedExtra),
           createdAt: now(),
         });
 
         // When silent, only insert the swipe row without switching the active index.
         if (!silent) {
           // Set active swipe to the new one and reset message extra for the fresh swipe.
-          const clearedExtra = msg ? freshSwipeMessageExtra(msg.extra) : {};
           await db
             .update(messages)
-            .set({ activeSwipeIndex: nextIndex, content, extra: JSON.stringify(clearedExtra) })
+            .set({ activeSwipeIndex: nextIndex, content, extra: JSON.stringify(retainedExtra) })
             .where(eq(messages.id, messageId));
           if (msg) {
             await invalidateMemoryChunksFrom(db, msg.chatId, msg.createdAt);

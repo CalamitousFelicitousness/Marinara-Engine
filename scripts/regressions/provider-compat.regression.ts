@@ -20,6 +20,7 @@ import {
   ClaudeSubscriptionProvider,
 } from "../../packages/server/src/services/llm/providers/claude-subscription.provider.js";
 import {
+  applyGoogleFunctionCallingMode,
   resolveGeminiThinkingConfig,
   resolveGoogleFunctionCallingMode,
 } from "../../packages/server/src/services/llm/providers/google.provider.js";
@@ -399,8 +400,22 @@ assert.equal(
 assert.equal(resolveGoogleFunctionCallingMode("required"), "ANY");
 assert.equal(resolveGoogleFunctionCallingMode("auto"), "AUTO");
 assert.equal(resolveGoogleFunctionCallingMode(undefined), "AUTO");
+const googleRequiredBody: Record<string, unknown> = {
+  toolConfig: {
+    retrievalConfig: { latitude: 1 },
+    functionCallingConfig: { allowedFunctionNames: ["lookup"] },
+  },
+};
+applyGoogleFunctionCallingMode(googleRequiredBody, "required");
+assert.deepEqual(googleRequiredBody.toolConfig, {
+  retrievalConfig: { latitude: 1 },
+  functionCallingConfig: { allowedFunctionNames: ["lookup"], mode: "ANY" },
+});
 
-const anthropicAdaptiveRequiredBody: Record<string, unknown> = { thinking: { type: "adaptive" } };
+const anthropicAdaptiveRequiredBody: Record<string, unknown> = {
+  thinking: { type: "adaptive" },
+  tool_choice: { disable_parallel_tool_use: true },
+};
 assert.equal(
   applyAnthropicToolChoice(anthropicAdaptiveRequiredBody, {
     model: "claude-opus-5",
@@ -409,7 +424,7 @@ assert.equal(
   }),
   "applied",
 );
-assert.deepEqual(anthropicAdaptiveRequiredBody.tool_choice, { type: "any" });
+assert.deepEqual(anthropicAdaptiveRequiredBody.tool_choice, { disable_parallel_tool_use: true, type: "any" });
 
 const anthropicManualThinkingBody: Record<string, unknown> = { thinking: { type: "enabled", budget_tokens: 2048 } };
 assert.equal(
@@ -432,6 +447,18 @@ assert.equal(
   "mythos",
 );
 assert.deepEqual(anthropicMythosBody.tool_choice, { type: "auto" });
+const anthropicAutomaticBody: Record<string, unknown> = {
+  tool_choice: { type: "any", disable_parallel_tool_use: true },
+};
+assert.equal(
+  applyAnthropicToolChoice(anthropicAutomaticBody, {
+    model: "claude-opus-5",
+    toolChoice: "auto",
+    tools: [testToolDefinition],
+  }),
+  "none",
+);
+assert.deepEqual(anthropicAutomaticBody.tool_choice, { type: "auto", disable_parallel_tool_use: true });
 assert.equal(supportsAnthropicThinkingDisable("claude-sonnet-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-opus-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-fable-5"), false);

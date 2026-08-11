@@ -74,6 +74,23 @@ export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolCh
   return toolChoice === "required" ? "ANY" : "AUTO";
 }
 
+export function applyGoogleFunctionCallingMode(
+  body: Record<string, unknown>,
+  toolChoice: ChatOptions["toolChoice"],
+): void {
+  const toolConfig = isRecord(body.toolConfig) ? body.toolConfig : {};
+  const functionCallingConfig = isRecord(toolConfig.functionCallingConfig)
+    ? toolConfig.functionCallingConfig
+    : {};
+  body.toolConfig = {
+    ...toolConfig,
+    functionCallingConfig: {
+      ...functionCallingConfig,
+      mode: resolveGoogleFunctionCallingMode(toolChoice),
+    },
+  };
+}
+
 interface GoogleServiceAccountKey {
   client_email?: string;
   private_key?: string;
@@ -594,9 +611,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
-    body.toolConfig = {
-      functionCallingConfig: { mode: resolveGoogleFunctionCallingMode(options.toolChoice) },
-    };
+    applyGoogleFunctionCallingMode(body, options.toolChoice);
     const authHeaders =
       this.providerKind === "google_vertex"
         ? await googleAuthHeadersForVertex(this.apiKey)

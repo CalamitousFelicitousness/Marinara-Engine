@@ -145,22 +145,27 @@ export function applyAnthropicToolChoice(
     delete body.tool_choice;
     return "none";
   }
+  const setToolChoiceType = (type: "auto" | "any") => {
+    const current = isRecord(body.tool_choice) ? body.tool_choice : {};
+    body.tool_choice = { ...current, type };
+    delete (body.tool_choice as Record<string, unknown>).name;
+  };
   if (options.toolChoice !== "required") {
-    body.tool_choice = { type: "auto" };
+    setToolChoiceType("auto");
     return "none";
   }
 
   if (options.model.toLowerCase().includes("mythos")) {
-    body.tool_choice = { type: "auto" };
+    setToolChoiceType("auto");
     return "mythos";
   }
   const thinking = isRecord(body.thinking) ? body.thinking : null;
   if (thinking?.type === "enabled") {
-    body.tool_choice = { type: "auto" };
+    setToolChoiceType("auto");
     return "manual-thinking";
   }
 
-  body.tool_choice = { type: "any" };
+  setToolChoiceType("any");
   return "applied";
 }
 

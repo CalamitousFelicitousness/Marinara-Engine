@@ -1843,15 +1843,7 @@ export const ChatMessage = memo(function ChatMessage({
     return typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra;
   }, [message.extra]);
   const isConversationStart = !!extra.isConversationStart;
-  const conversationStartForCharacterIds: string[] = Array.isArray(extra.conversationStartForCharacterIds)
-    ? Array.from(
-        new Set<string>(
-          (extra.conversationStartForCharacterIds as unknown[])
-            .filter((characterId): characterId is string => typeof characterId === "string" && !!characterId.trim())
-            .map((characterId) => characterId.trim()),
-        ),
-      )
-    : [];
+  const conversationStartForCharacterIds: string[] = extra.conversationStartForCharacterIds ?? [];
   const isHiddenFromAllAI = extra.hiddenFromAI === true;
   const hiddenFromAICharacterIds: string[] = Array.isArray(extra.hiddenFromAICharacterIds)
     ? Array.from(

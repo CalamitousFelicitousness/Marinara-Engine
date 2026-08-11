@@ -159,6 +159,18 @@ function parseSnapshotJson<T>(value: unknown, fallback: T): T {
   }
 }
 
+function normalizeMessageCharacterIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function toSafeExportName(name: string, fallback: string) {
   const safe = name
     .trim()
@@ -2019,7 +2031,12 @@ export async function chatsRoutes(app: FastifyInstance) {
   app.patch<{ Params: { chatId: string; messageId: string } }>(
     "/:chatId/messages/:messageId/extra",
     async (req, reply) => {
-      const partial = req.body as Record<string, unknown>;
+      const partial = { ...(req.body as Record<string, unknown>) };
+      for (const key of ["hiddenFromAICharacterIds", "conversationStartForCharacterIds"] as const) {
+        if (Object.prototype.hasOwnProperty.call(partial, key)) {
+          partial[key] = normalizeMessageCharacterIds(partial[key]);
+        }
+      }
       const updated = await storage.updateMessageExtra(req.params.messageId, partial);
       if (!updated) return reply.status(404).send({ error: "Message not found" });
       // A lone user reaction (no text after it) is a valid turn: feed it to the

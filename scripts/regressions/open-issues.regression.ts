@@ -7,6 +7,7 @@ import AdmZip from "adm-zip";
 import type { Chat, ChatMode, ChatSummaryEntry, Message } from "../../packages/shared/src/types/chat.js";
 import { chatModeSchema } from "../../packages/shared/src/schemas/chat.schema.js";
 import {
+  appendChatSummaryEntryToMetadata,
   combineChatSummaryEntryHistory,
   compileChatSummaryEntries,
   createChatSummaryEntry,
@@ -346,12 +347,15 @@ import {
 import { resolveProfessorMariNavigation } from "../../packages/client/src/lib/professor-mari-navigation.js";
 import { resolveCapabilityPackageDisplay } from "../../packages/client/src/lib/capability-package-localization.js";
 import { resolveFeatureAgentPackage } from "../../packages/client/src/lib/feature-agent-package.js";
+import { mergeEmbeddedCharacterCardFields } from "../../packages/client/src/lib/character-import.js";
+import { formatSupportDiagnostics, resolveClientOs } from "../../packages/client/src/lib/support-diagnostics.js";
 import { normalizeHydratedMessage } from "../../packages/client/src/lib/message-hydration.js";
 import { HOME_CHAT_MODE_ACCENTS } from "../../packages/client/src/lib/home-chat-mode-style.js";
 import {
   homeCustomWidgetCatalogSchema,
   type BuiltInAgentManifest,
   type CapabilityPackageManifest,
+  type CharacterData,
   type InstalledCapabilityPackage,
 } from "../../packages/shared/src/index.js";
 
@@ -388,6 +392,100 @@ assert.equal(
   resolveFeatureAgentPackage({ id: "hierarchical-maps" } as BuiltInAgentManifest, [contributedFeaturePackage]),
   contributedFeaturePackage,
   "Feature detail contributions must remain a compatible ownership fallback",
+);
+
+const existingCharacterCard = {
+  name: "Old name",
+  description: "Old description",
+  personality: "Keep this personality",
+  scenario: "Old scenario",
+  first_mes: "Old greeting",
+  mes_example: "Old example",
+  creator_notes: "Old notes",
+  system_prompt: "Old system prompt",
+  post_history_instructions: "Old reminder",
+  tags: ["old-tag"],
+  creator: "Old creator",
+  character_version: "1.0",
+  alternate_greetings: ["Old alternate"],
+  extensions: {
+    talkativeness: 0.5,
+    fav: true,
+    world: "Old world",
+    depth_prompt: { prompt: "Keep depth", depth: 4, role: "system" },
+    backstory: "Old backstory",
+    appearance: "Old appearance",
+    nameColor: "#123456",
+  },
+  character_book: null,
+} satisfies CharacterData;
+const replacedCharacterCard = mergeEmbeddedCharacterCardFields(existingCharacterCard, {
+  spec: "chara_card_v3",
+  data: {
+    name: "Updated name",
+    description: "Updated description",
+    scenario: "",
+    tags: ["updated-tag"],
+    extensions: { backstory: "Updated backstory", appearance: "Updated appearance" },
+  },
+});
+assert.ok(replacedCharacterCard, "Embedded character metadata must be recognized during avatar replacement");
+assert.equal(replacedCharacterCard.name, "Updated name");
+assert.equal(replacedCharacterCard.description, "Updated description");
+assert.equal(replacedCharacterCard.scenario, "", "Explicitly cleared card fields must stay cleared");
+assert.deepEqual(replacedCharacterCard.tags, ["updated-tag"]);
+assert.equal(replacedCharacterCard.extensions.backstory, "Updated backstory");
+assert.equal(replacedCharacterCard.extensions.appearance, "Updated appearance");
+assert.equal(replacedCharacterCard.personality, "Keep this personality", "Missing card fields must remain untouched");
+assert.equal(replacedCharacterCard.extensions.nameColor, "#123456", "Local display extensions must be preserved");
+
+assert.equal(
+  resolveClientOs(
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_6) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+    "MacIntel",
+  ),
+  "macOS 15.6",
+);
+const copiedSupportDiagnostics = formatSupportDiagnostics({
+  version: "2.4.2",
+  build: "2.4.2+abcdef123456",
+  commit: "abcdef123456",
+  os: "macOS 15.6",
+  browser: "Marinara test shell",
+  gpu: "Test GPU",
+  connectionName: "Sol",
+  connectionProvider: "openai",
+  model: "gpt-5.6-sol",
+});
+for (const expectedLine of [
+  "Version: 2.4.2",
+  "Build: 2.4.2+abcdef123456",
+  "OS: macOS 15.6",
+  "GPU: Test GPU",
+  "Active connection: Sol",
+  "LLM model: gpt-5.6-sol",
+]) {
+  assert.ok(copiedSupportDiagnostics.includes(expectedLine), `Support diagnostics must include ${expectedLine}`);
+}
+const professorMariWorkspaceSource = readFileSync(
+  join(REPOSITORY_ROOT, "packages/server/src/services/professor-mari/workspace-agent.service.ts"),
+  "utf8",
+);
+assert.match(
+  professorMariWorkspaceSource,
+  /description is a brief identity overview[\s\S]{0,220}backstory is[^\n]+history[\s\S]{0,180}appearance is physical features/u,
+  "Professor Mari's workspace prompt must teach smaller models the distinct character-card field meanings",
+);
+assert.match(
+  professorMariWorkspaceSource,
+  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,220}Claim a field was completed only/u,
+  "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
+);
+const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
+assert.match(
+  professorMariSeedSource,
+  /Keep card fields distinct:[\s\S]{0,600}fetch the character again/u,
+  "The seeded Professor Mari command guide must retain the same targeted character-field safeguards",
 );
 
 assert.deepEqual(resolveProfessorMariNavigation("Where are the characters?"), {
@@ -6009,6 +6107,16 @@ assert.equal(comfyPlaceholderPng.readUInt32BE(20), 16);
 
 const chatRoutesSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/routes/chats.routes.ts"), "utf8");
 assert.match(
+  globalStylesSource,
+  /html\[data-marinara-reduced-effects="true"\] \[class\*="backdrop-blur"\],[\s\S]{0,300}backdrop-filter: none !important;/u,
+  "Reduced ambient effects must flatten shared backdrop blur at every viewport size",
+);
+assert.doesNotMatch(
+  globalStylesSource,
+  /@media \(max-width: 767px\) \{[\s\S]{0,300}data-marinara-reduced-effects="true"[^\n]*backdrop-blur/u,
+  "Desktop users must receive the same reduced-effects backdrop flattening as mobile users",
+);
+assert.match(
   chatRoutesSource,
   /if \(existing\.mode === "conversation" && hasStartedChat\) \{/u,
   "Only Conversation chats should create character membership timeline notices",
@@ -6118,6 +6226,34 @@ assert.deepEqual(
   ["combined-again", "combined", "source-a", "source-b", "untouched"],
   "A summary of summaries must retain both generations of source history",
 );
+const appendedSummaryResult = appendChatSummaryEntryToMetadata(
+  { summaryEntries: retainedSummaryEntries },
+  {
+    id: "automatic-after-combine",
+    content: "Newest automatic summary",
+    title: "Newest automatic summary",
+    enabled: true,
+    origin: "automated",
+    rangeStartIndex: 2,
+    rangeEndIndex: 3,
+    createdAt: "2026-08-06T11:00:00.000Z",
+    updatedAt: "2026-08-06T11:00:00.000Z",
+  },
+);
+assert.equal(
+  appendedSummaryResult.entries.at(-1)?.id,
+  "automatic-after-combine",
+  "A newly generated summary must append after the existing user-controlled order even when its source range is earlier",
+);
+const userReorderedSummaryEntries = [
+  appendedSummaryResult.entries.at(-1)!,
+  ...appendedSummaryResult.entries.slice(0, -1),
+];
+assert.equal(
+  compileChatSummaryEntries(userReorderedSummaryEntries),
+  "Newest automatic summary\n\nCombined A and B\n\nUntouched",
+  "Prompt compilation must preserve the summary order chosen by the user",
+);
 for (const sourceId of ["combined", "source-a", "source-b", "untouched"]) {
   assert.equal(
     retainedSecondGenerationEntries.find((entry) => entry.id === sourceId)?.enabled,
@@ -6129,6 +6265,21 @@ assert.match(
   summaryPopoverSource,
   /onSuccess: \(data\) => \{\s*setSelectedEntryIds\(new Set\(\)\);\s*setShowInactiveSummaries\(true\)/u,
   "The Chat Summary popover must reveal retained inactive sources after combining",
+);
+assert.match(
+  summaryPopoverSource,
+  /data-summary-entry-root[\s\S]{0,3000}data-touch-reorder-item/u,
+  "Summary entries must expose a shared desktop and touch reorder surface",
+);
+assert.match(
+  summaryPopoverSource,
+  /startSummaryEntryTouchDrag\(event, entry\.id/u,
+  "Summary entries must support touch drag-and-drop on mobile",
+);
+assert.match(
+  chatRoutesSource,
+  /body\.operation === "reorder"[\s\S]{0,1800}body\.entryIds\.map/u,
+  "Summary reorder requests must persist the complete user-selected entry order",
 );
 assert.match(
   summaryPopoverSource,

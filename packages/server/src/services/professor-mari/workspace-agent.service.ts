@@ -472,9 +472,13 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
         data: {
           type: "object",
           description:
-            "Entity fields. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, book tuning (scanDepth, tokenBudget, entryLimit, recursive, maxRecursionDepth), and an entries array whose items contain name, content, description, keys, secondaryKeys, tag, constant, selective, selectiveLogic, matchWholeWords, caseSensitive, useRegex, position, depth, order, role, and group. See the lorebook authoring guidance for what each entry field does. home_widget.create accepts title, description, accent (cyan, orange, pink, or violet), and icon (sparkles, note, heart, star, book, or compass).",
+            "Entity fields. For character/persona cards: description is a brief identity overview, personality is behavioral traits and mannerisms, backstory is the character's substantive history, and appearance is physical features/clothing. Keep those fields distinct. character.create accepts name, description, personality, scenario, firstMes/firstMessage, mesExample, creatorNotes, backstory, appearance, aboutMe, systemPrompt, postHistoryInstructions, tags, alternateGreetings, creator, and characterVersion. persona.create accepts aboutMe too. lorebook.create accepts name, description, category, tags, book tuning (scanDepth, tokenBudget, entryLimit, recursive, maxRecursionDepth), and an entries array whose items contain name, content, description, keys, secondaryKeys, tag, constant, selective, selectiveLogic, matchWholeWords, caseSensitive, useRegex, position, depth, order, role, and group. See the lorebook authoring guidance for what each entry field does. home_widget.create accepts title, description, accent (cyan, orange, pink, or violet), and icon (sparkles, note, heart, star, book, or compass).",
         },
-        patch: { type: "object" },
+        patch: {
+          type: "object",
+          description:
+            "Partial update fields only. Omitted fields remain unchanged. For character/persona cards, never put requested backstory or appearance content into description: description is the brief identity overview, personality is behavioral traits and mannerisms, backstory is history, and appearance is physical features/clothing.",
+        },
       },
       required: ["action"],
     },
@@ -564,6 +568,8 @@ Workspace defaults:
 - Keep user-facing replies concise and human-readable.
 - For persona creation, interview the user briefly only when missing details would likely create the wrong identity. If the user says to decide the details, create the persona directly. Do not require a preview/approval loop for a new persona.
 - When the user asks you to write or revise a character or persona About Me, inspect that entity first, compose a short self-authored Conversation profile in their own voice, and save it to the real \`aboutMe\` field with \`character.update\` or \`persona.update\`. Do not create a separate document, put it in description, or ask for a special About Me model connection.
+- For every character or persona edit, inspect the existing entity first and keep its card fields semantically separate: \`description\` is a brief identity overview; \`personality\` is behavioral traits, temperament, voice, and mannerisms; \`backstory\` is substantive history and formative events; \`appearance\` is physical features, build, hair, eyes, clothing, and distinguishing details. When the user requests backstory or appearance, write substantive content directly to that exact field—never substitute a one-line description or move it into \`description\`.
+- Character/persona updates are patches. Include only fields the user asked to change and leave every unrelated field out of the patch so it stays untouched. After writing, read the entity back and inspect each requested field. Claim a field was completed only when that read shows non-empty, correctly placed content; otherwise correct it before replying.
 
 Command families:
 - \`app_data\`: no-shell structured actions for characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. Prefer this before shell commands for those objects.

@@ -3395,13 +3395,11 @@ html[data-marinara-reduced-effects="true"] .glimmer-streaming {
   filter: none !important;
 }
 
-@media (max-width: 767px) {
-  html[data-marinara-reduced-effects="true"] [class*="backdrop-blur"],
-  html[data-marinara-reduced-effects="true"] .retro-card,
-  html[data-marinara-reduced-effects="true"] .os-window {
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-  }
+html[data-marinara-reduced-effects="true"] [class*="backdrop-blur"],
+html[data-marinara-reduced-effects="true"] .retro-card,
+html[data-marinara-reduced-effects="true"] .os-window {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Tailwind v4 preflight does not restore italic/bold for semantic elements.

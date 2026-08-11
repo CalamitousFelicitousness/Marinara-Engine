@@ -7392,12 +7392,16 @@ export async function generateRoutes(app: FastifyInstance) {
           const autoRangeEndIndex = autoRange?.endIndex;
           // Compute the hide subset up front so it can be persisted on the entry
           // (deletion restores exactly this set) and reused for the actual hide.
+          const latestChatBeforeSummaryHide = await chats.getById(input.chatId);
+          const latestMetaBeforeSummaryHide = latestChatBeforeSummaryHide
+            ? (parseExtra(latestChatBeforeSummaryHide.metadata) as Record<string, unknown>)
+            : chatMeta;
           const autoHideIds =
-            newText && !shouldReviewSummary && chatMeta.hideSummarisedMessages === true
+            newText && !shouldReviewSummary && latestMetaBeforeSummaryHide.hideSummarisedMessages === true
               ? computeSummaryHideIds({
                   messages: freshMessages,
                   entryMessageIds: autoEntryMessageIds,
-                  tail: resolveRoleplaySummaryTail(chatMeta.summaryTailMessages),
+                  tail: resolveRoleplaySummaryTail(latestMetaBeforeSummaryHide.summaryTailMessages),
                 })
               : [];
           const updatedChat = await chats.patchMetadata(

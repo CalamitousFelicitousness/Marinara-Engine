@@ -319,7 +319,8 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
 type SummaryEntriesPatchBody =
   | { operation: "replace"; entry: Partial<ChatSummaryEntry> & { id: string; content: string } }
   | { operation: "delete"; entryId: string }
-  | { operation: "toggle"; entryId: string; enabled: boolean };
+  | { operation: "toggle"; entryId: string; enabled: boolean }
+  | { operation: "reorder"; entryIds: string[] };
 
 async function loadLatestChatGameSnapshot(
   app: FastifyInstance,
@@ -1267,6 +1268,15 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (typeof body.entryId !== "string" || !body.entryId.trim() || typeof body.enabled !== "boolean") {
         return reply.status(400).send({ error: "toggle requires entryId and enabled" });
       }
+    } else if (body.operation === "reorder") {
+      if (
+        !Array.isArray(body.entryIds) ||
+        body.entryIds.length === 0 ||
+        !body.entryIds.every((id) => typeof id === "string" && id.trim()) ||
+        new Set(body.entryIds).size !== body.entryIds.length
+      ) {
+        return reply.status(400).send({ error: "reorder requires unique entryIds" });
+      }
     } else {
       return reply.status(400).send({ error: "Unsupported summary entry operation" });
     }
@@ -1301,6 +1311,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
 
+    let reorderConflict = false;
     const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
       const entries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
         legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
@@ -1331,6 +1342,14 @@ export async function chatsRoutes(app: FastifyInstance) {
         nextEntries = entries.map((entry) =>
           entry.id === body.entryId ? { ...entry, enabled: body.enabled, updatedAt: now } : entry,
         );
+      } else if (body.operation === "reorder") {
+        const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+        if (body.entryIds.length !== entries.length || body.entryIds.some((id) => !entriesById.has(id))) {
+          reorderConflict = true;
+          nextEntries = entries;
+        } else {
+          nextEntries = body.entryIds.map((id) => entriesById.get(id)!);
+        }
       } else {
         nextEntries = entries;
       }
@@ -1341,6 +1360,9 @@ export async function chatsRoutes(app: FastifyInstance) {
       };
     });
 
+    if (reorderConflict) {
+      return reply.status(409).send({ error: "Summary entries changed before they could be reordered" });
+    }
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     return normalizeChatForResponse(updated);
   });
@@ -4260,12 +4282,16 @@ export async function chatsRoutes(app: FastifyInstance) {
     // summarized set minus the protected tail, so manual hiding honors
     // `summaryTailMessages` like the automatic path. Persisted on the entry (when
     // hiding is enabled) so deletion restores exactly what was hidden.
-    const hideEnabled = chatMeta.hideSummarisedMessages === true;
+    const latestChatBeforeHide = await storage.getById(req.params.id);
+    const latestMetaBeforeHide = latestChatBeforeHide
+      ? (parseExtra(latestChatBeforeHide.metadata) as Record<string, unknown>)
+      : chatMeta;
+    const hideEnabled = latestMetaBeforeHide.hideSummarisedMessages === true;
     const eligibleToHide = hideEnabled
       ? computeSummaryHideIds({
           messages: allMessages,
           entryMessageIds: messageIds,
-          tail: resolveRoleplaySummaryTail(chatMeta.summaryTailMessages),
+          tail: resolveRoleplaySummaryTail(latestMetaBeforeHide.summaryTailMessages),
         })
       : [];
     // Perform the hide on the server, BEFORE the entry records hiddenMessageIds, so

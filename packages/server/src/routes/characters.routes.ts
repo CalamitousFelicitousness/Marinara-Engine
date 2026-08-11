@@ -1931,7 +1931,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     const char = await storage.getById(id);
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
-    const body = req.body as { avatar?: string; filename?: string };
+    const body = req.body as { avatar?: string; filename?: string; data?: unknown };
     if (!body.avatar) {
       return reply.status(400).send({ error: "No avatar data provided" });
     }
@@ -1958,7 +1958,10 @@ export async function charactersRoutes(app: FastifyInstance) {
     try {
       await mkdir(avatarsDir, { recursive: true });
       await writeFile(filepath, imageBuffer);
-      const updated = await storage.updateAvatar(id, avatarPath);
+      const characterData = body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
+      const updated = await storage.update(id, characterData, avatarPath, {
+        versionReason: body.data === undefined ? "Avatar update" : "Character card and avatar update",
+      });
       if (!updated) {
         await removeUnattachedAvatarFile({ avatarPath });
         return reply.status(404).send({ error: "Character not found" });

@@ -843,7 +843,8 @@ export function useUpdateChatSummaries() {
 export type SummaryEntryOperation =
   | { operation: "replace"; entry: Partial<ChatSummaryEntry> & { id: string; content: string } }
   | { operation: "delete"; entryId: string }
-  | { operation: "toggle"; entryId: string; enabled: boolean };
+  | { operation: "toggle"; entryId: string; enabled: boolean }
+  | { operation: "reorder"; entryIds: string[] };
 
 function useSummaryEntryMutation() {
   const qc = useQueryClient();
@@ -896,6 +897,16 @@ export function useToggleSummaryEntry() {
       mutation.mutate({ ...input, operation: "toggle" }),
     mutateAsync: (input: { chatId: string; entryId: string; enabled: boolean }) =>
       mutation.mutateAsync({ ...input, operation: "toggle" }),
+  };
+}
+
+export function useReorderSummaryEntries() {
+  const mutation = useSummaryEntryMutation();
+  return {
+    ...mutation,
+    mutate: (input: { chatId: string; entryIds: string[] }) => mutation.mutate({ ...input, operation: "reorder" }),
+    mutateAsync: (input: { chatId: string; entryIds: string[] }) =>
+      mutation.mutateAsync({ ...input, operation: "reorder" }),
   };
 }
 

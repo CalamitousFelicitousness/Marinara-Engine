@@ -52,6 +52,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made Reduce Ambient Animations & Effects flatten costly backdrop blur on desktop as well as mobile, including shared Conversation overlays (#4897).
 - Applied embedded character-card fields when replacing an existing character's avatar, so updated card PNGs refresh the matching editor sections (#4896).
 - Kept automatic summaries chronologically ordered and hidden when requested, while allowing users to rearrange summary entries by drag and drop on desktop and mobile (#4891).
 - Clarified Professor Mari's character-card field guidance so requested backstory, appearance, and other sections are edited independently without replacing unrelated content (#4874).

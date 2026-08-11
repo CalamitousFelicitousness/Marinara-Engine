@@ -51,6 +51,7 @@ import {
   getFolderImportEntries,
   getFolderManifestConfig,
   type AppSettingsResponse,
+  type APIConnection,
   type ConversationCallCharacterVideoClipKind,
   type ImagePromptKind,
   type ImagePromptMode,
@@ -112,9 +113,11 @@ import {
   BookOpen,
   BarChart3,
   Gauge,
+  LifeBuoy,
   SlidersHorizontal,
 } from "lucide-react";
-import { useClearAllData, useExpungeData, useUpdateChatMetadata, type ExpungeScope } from "../../hooks/use-chats";
+import { useChat, useClearAllData, useExpungeData, useUpdateChatMetadata, type ExpungeScope } from "../../hooks/use-chats";
+import { useConnections } from "../../hooks/use-connections";
 import { useChatStore } from "../../stores/chat.store";
 import { useOpenGameAssetsFolder, useRescanGameAssets } from "../../hooks/use-game-assets";
 import { chatKeys } from "../../hooks/use-chats";
@@ -142,6 +145,7 @@ import { useAgentImportPolicy, useSetAgentImportsEnabled } from "../../hooks/use
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { inspectCharacterFilesForEmbeddedLorebooks } from "../../lib/character-import";
+import { detectBrowserGpu, formatSupportDiagnostics, resolveClientOs } from "../../lib/support-diagnostics";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import {
@@ -238,6 +242,7 @@ type SettingsSectionId =
   | "sillytavern-import"
   | "admin-access"
   | "updates"
+  | "support-diagnostics"
   | "parameters"
   | "message-tools"
   | "backup-export"
@@ -471,6 +476,13 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "Updates",
     description: "Version and update controls.",
     aliases: ["update", "version", "refresh", "release"],
+  },
+  {
+    id: "support-diagnostics",
+    tab: "advanced",
+    label: "Support Diagnostics",
+    description: "Copy technical details for support tickets.",
+    aliases: ["support", "diagnostics", "system info", "gpu", "model", "ticket", "bug report"],
   },
   {
     id: "parameters",
@@ -1184,6 +1196,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Choose which release channel update checks follow.",
     aliases: ["updates", "branch", "version"],
     kind: "Select",
+  },
+  {
+    id: "copy-support-diagnostics",
+    sectionId: "support-diagnostics",
+    label: "Copy Diagnostics",
+    description: "Copy version, build, system, GPU, and active model details for support.",
+    aliases: ["support", "diagnostics", "system info", "gpu", "model", "clipboard"],
+    kind: "Button group",
   },
   {
     id: "custom-generation-parameters",
@@ -7156,6 +7176,9 @@ function ManualUpdateCommand({ command }: { command: string }) {
 function AdvancedSettings() {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const { data: activeChat } = useChat(activeChatId);
+  const { data: rawConnections } = useConnections();
   const showTimestamps = useUIStore((s) => s.showTimestamps);
   const setShowTimestamps = useUIStore((s) => s.setShowTimestamps);
   const showModelName = useUIStore((s) => s.showModelName);
@@ -7450,6 +7473,31 @@ function AdvancedSettings() {
     queryFn: () => api.get("/health"),
     staleTime: 60_000,
   });
+  const connections = (rawConnections ?? []) as APIConnection[];
+  const activeConnection = activeChat?.connectionId
+    ? connections.find((connection) => connection.id === activeChat.connectionId) ?? null
+    : connections.find((connection) => connection.isDefault) ?? null;
+
+  const handleCopySupportDiagnostics = useCallback(async () => {
+    const copied = await copyToClipboard(
+      formatSupportDiagnostics({
+        version: health.data?.version ?? APP_VERSION,
+        build: health.data?.build ?? APP_VERSION,
+        commit: health.data?.commit ?? null,
+        os: resolveClientOs(navigator.userAgent, navigator.platform),
+        browser: navigator.userAgent,
+        gpu: detectBrowserGpu(),
+        connectionName: activeConnection?.name ?? null,
+        connectionProvider: activeConnection?.provider ?? null,
+        model: activeConnection?.model ?? null,
+      }),
+    );
+    if (copied) {
+      toast.success(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopied"));
+    } else {
+      toast.error(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopyFailed"));
+    }
+  }, [activeConnection, health.data, localizeUi]);
 
   const deleteBackupMutation = useMutation({
     mutationFn: (name: string) => api.delete(`/backup/${name}`),
@@ -7869,6 +7917,24 @@ function AdvancedSettings() {
             />
           </div>
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title={localizeUi("ui.panels.advancedsettings.supportDiagnostics")}
+        description={localizeUi("ui.panels.advancedsettings.supportDiagnosticsDescription")}
+        icon={<LifeBuoy size="0.875rem" />}
+        {...getSettingsSectionAnchorProps("support-diagnostics")}
+      >
+        <SearchableSettingTarget controlId="copy-support-diagnostics">
+          <button
+            type="button"
+            onClick={() => void handleCopySupportDiagnostics()}
+            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
+          >
+            <Copy size="0.8125rem" />
+            {localizeUi("ui.panels.advancedsettings.copySupportDiagnostics")}
+          </button>
+        </SearchableSettingTarget>
       </SettingsSection>
 
       <SettingsSection

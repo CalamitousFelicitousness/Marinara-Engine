@@ -56,6 +56,7 @@ import {
 import {
   getSlashCompletions,
   matchSlashCommand,
+  parseTargetedHideArguments,
   shouldExecuteQuickPostAsCommand,
 } from "../../packages/client/src/lib/slash-commands.js";
 import { getAvatarCropStyle } from "../../packages/client/src/lib/utils.js";
@@ -694,8 +695,16 @@ assert.equal(
 // the recovery path, so it can't catch a regression at that anchor).
 assert.equal(isAppDataActionName("instruction.get"), true, "the recovery parser recognizes instruction.get");
 assert.equal(isAppDataActionName("instruction.list"), true, "the recovery parser recognizes instruction.list");
-assert.equal(isAppDataActionName("instructions.remember"), true, "the recovery parser tolerates the lenient plural instructions.*");
-assert.equal(isAppDataActionName("post_history_instructions"), false, "a field name that merely contains 'instructions' is not an action (anchored match)");
+assert.equal(
+  isAppDataActionName("instructions.remember"),
+  true,
+  "the recovery parser tolerates the lenient plural instructions.*",
+);
+assert.equal(
+  isAppDataActionName("post_history_instructions"),
+  false,
+  "a field name that merely contains 'instructions' is not an action (anchored match)",
+);
 // And read/write classification (suffix-based) is correct for the new family.
 assert.equal(
   isMutatingWorkspaceCommand({ id: "i-get", name: "app_data", arguments: { action: "instruction.get" } }),
@@ -2000,18 +2009,28 @@ try {
   // fields that were previously hardcoded on the CLI. add-entry delegates to buildLorebookEntryCreateRow.
   const professorMariCliAddEntry = await mariDb.executeCli({
     argv: [
-      "lorebooks", "add-entry", professorMariCliLorebookId,
-      "--name", "Regex CLI entry",
-      "--keys", "Lycan",
-      "--secondary-keys", "moon,howl",
+      "lorebooks",
+      "add-entry",
+      professorMariCliLorebookId,
+      "--name",
+      "Regex CLI entry",
+      "--keys",
+      "Lycan",
+      "--secondary-keys",
+      "moon,howl",
       "--selective",
-      "--selective-logic", "and_all",
+      "--selective-logic",
+      "and_all",
       "--match-whole-words",
       "--use-regex",
       "--apply",
     ],
   });
-  assert.equal(professorMariCliAddEntry.ok, true, `CLI add-entry must succeed: ${JSON.stringify(professorMariCliAddEntry)}`);
+  assert.equal(
+    professorMariCliAddEntry.ok,
+    true,
+    `CLI add-entry must succeed: ${JSON.stringify(professorMariCliAddEntry)}`,
+  );
   const professorMariCliEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
     (entry) => entry.name === "Regex CLI entry",
   );
@@ -2020,24 +2039,39 @@ try {
   assert.equal(professorMariCliEntry.selectiveLogic, "and_all", "CLI add-entry must persist --selective-logic");
   assert.equal(professorMariCliEntry.matchWholeWords, true, "CLI add-entry must persist --match-whole-words");
   assert.equal(professorMariCliEntry.useRegex, true, "CLI add-entry must persist --use-regex");
-  assert.deepEqual(professorMariCliEntry.secondaryKeys, ["moon", "howl"], "CLI add-entry must persist --secondary-keys");
+  assert.deepEqual(
+    professorMariCliEntry.secondaryKeys,
+    ["moon", "howl"],
+    "CLI add-entry must persist --secondary-keys",
+  );
   assert.equal(professorMariCliEntry.caseSensitive, false, "unset --case-sensitive stays default");
 
   const professorMariCliUpdateEntry = await mariDb.executeCli({
     argv: [
-      "lorebooks", "update-entry", professorMariCliEntry.id,
+      "lorebooks",
+      "update-entry",
+      professorMariCliEntry.id,
       "--no-match-whole-words",
       "--no-selective",
-      "--selective-logic", "not",
+      "--selective-logic",
+      "not",
       "--apply",
     ],
   });
-  assert.equal(professorMariCliUpdateEntry.ok, true, `CLI update-entry must succeed: ${JSON.stringify(professorMariCliUpdateEntry)}`);
+  assert.equal(
+    professorMariCliUpdateEntry.ok,
+    true,
+    `CLI update-entry must succeed: ${JSON.stringify(professorMariCliUpdateEntry)}`,
+  );
   const professorMariCliUpdatedEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
     (entry) => entry.id === professorMariCliEntry.id,
   );
   assert.ok(professorMariCliUpdatedEntry);
-  assert.equal(professorMariCliUpdatedEntry.matchWholeWords, false, "CLI update-entry --no-match-whole-words clears it");
+  assert.equal(
+    professorMariCliUpdatedEntry.matchWholeWords,
+    false,
+    "CLI update-entry --no-match-whole-words clears it",
+  );
   assert.equal(professorMariCliUpdatedEntry.selective, false, "CLI update-entry --no-selective clears it");
   assert.equal(professorMariCliUpdatedEntry.selectiveLogic, "not", "CLI update-entry patches --selective-logic");
 
@@ -2048,7 +2082,16 @@ try {
   assert.equal(professorMariCliBadUpdateLogic.ok, false, "CLI update-entry rejects an invalid --selective-logic");
   assert.match(String(professorMariCliBadUpdateLogic.error), /selective-logic must be one of/u);
   const professorMariCliBadAddLogic = await mariDb.executeCli({
-    argv: ["lorebooks", "add-entry", professorMariCliLorebookId, "--name", "Bad logic", "--selective-logic", "bogus", "--apply"],
+    argv: [
+      "lorebooks",
+      "add-entry",
+      professorMariCliLorebookId,
+      "--name",
+      "Bad logic",
+      "--selective-logic",
+      "bogus",
+      "--apply",
+    ],
   });
   assert.equal(professorMariCliBadAddLogic.ok, false, "CLI add-entry rejects an invalid --selective-logic");
   assert.match(String(professorMariCliBadAddLogic.error), /selective-logic must be one of/u);
@@ -3241,7 +3284,8 @@ assert.deepEqual(JSON.parse(String(swarmUiVideoBody.comfyworkflowraw)), {
 });
 assert.equal(parseSwarmUiVideoReference({ images: ["View/local/raw/output.mp4"] }), "View/local/raw/output.mp4");
 assert.throws(
-  () => buildSwarmUiVideoGenerationBody(
+  () =>
+    buildSwarmUiVideoGenerationBody(
     {
       prompt: "video",
       durationSeconds: 5,
@@ -3868,7 +3912,7 @@ assert.doesNotMatch(assignedSweepChatAreaSource, /updateMessage(?:Extra)?\.mutat
 assert.match(chatMessageSource, /mari-chrome-accent-progress mari-accent-animated mb-1\.5 h-0\.5/u);
 assert.match(
   chatMessageSource,
-  /isConversationStart && \(\s*<div className="mb-1 w-full px-1">/u,
+  /function ConversationStartMarkers[\s\S]*className=\{cn\("w-full", panel \? "mb-1 px-1" : "mb-0\.5 px-2"\)\}/u,
   "Roleplay New Start dividers must span user and assistant message bodies",
 );
 assert.match(chatMessageSource, /pointer-events-auto relative z-30 flex h-11 w-11/u);
@@ -5698,6 +5742,28 @@ assert.equal(isGitUpdateApplyAllowed({ updatesApplyEnabled: true, localChannelSw
 assert.equal(shouldExecuteQuickPostAsCommand("/illustrate"), true);
 assert.equal(shouldExecuteQuickPostAsCommand("  /roll 1d20  "), true);
 assert.equal(shouldExecuteQuickPostAsCommand("/not-a-real-command"), false);
+assert.deepEqual(parseTargetedHideArguments("34-40", "roleplay"), {
+  kind: "global",
+  indices: [34, 35, 36, 37, 38, 39, 40],
+});
+assert.deepEqual(
+  parseTargetedHideArguments('"Lady Maria" 12,18-20', "roleplay", [
+    { id: "maria", name: "Lady Maria" },
+    { id: "maukie", name: "Maukie" },
+  ]),
+  {
+    kind: "targeted",
+    character: { id: "maria", name: "Lady Maria" },
+    indices: [12, 18, 19, 20],
+  },
+);
+assert.deepEqual(
+  parseTargetedHideArguments("mau 34", "roleplay", [
+    { id: "maukie", name: "Maukie" },
+    { id: "maurice", name: "Maurice" },
+  ]),
+  { kind: "error", reason: "ambiguous", targetName: "mau" },
+);
 
 const noCapabilityPackages = new Set<string>();
 const illustratorCapabilityPackages = new Set(["illustrator"]);

@@ -70,6 +70,27 @@ interface GeminiEmbeddingPayload {
 
 type GoogleProviderKind = "google" | "google_vertex";
 
+export function resolveGoogleFunctionCallingMode(toolChoice: ChatOptions["toolChoice"]): "AUTO" | "ANY" {
+  return toolChoice === "required" ? "ANY" : "AUTO";
+}
+
+export function applyGoogleFunctionCallingMode(
+  body: Record<string, unknown>,
+  toolChoice: ChatOptions["toolChoice"],
+): void {
+  const toolConfig = isRecord(body.toolConfig) ? body.toolConfig : {};
+  const functionCallingConfig = isRecord(toolConfig.functionCallingConfig)
+    ? toolConfig.functionCallingConfig
+    : {};
+  body.toolConfig = {
+    ...toolConfig,
+    functionCallingConfig: {
+      ...functionCallingConfig,
+      mode: resolveGoogleFunctionCallingMode(toolChoice),
+    },
+  };
+}
+
 interface GoogleServiceAccountKey {
   client_email?: string;
   private_key?: string;
@@ -583,7 +604,6 @@ export class GoogleProvider extends BaseLLMProvider {
         ...(options.stop?.length ? { stopSequences: options.stop } : {}),
       },
       tools: formatGoogleTools(options.tools),
-      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
     };
 
     if (systemMessages.length > 0) {
@@ -591,6 +611,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    applyGoogleFunctionCallingMode(body, options.toolChoice);
     const authHeaders =
       this.providerKind === "google_vertex"
         ? await googleAuthHeadersForVertex(this.apiKey)

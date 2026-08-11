@@ -19,7 +19,7 @@ import { DEFAULT_GENERATION_PARAMS, generationParametersSchema, resolveMacros } 
 import { wrapContent, wrapGroup } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
 import { ensureLorebookScan, expandMarker, type MarkerContext } from "./marker-expander.js";
-import { mergeAdjacentMessages, squashLeadingSystemMessages } from "./merger.js";
+import { hasSamePromptAudience, mergeAdjacentMessages, squashLeadingSystemMessages } from "./merger.js";
 import { injectAtDepth } from "../lorebook/prompt-injector.js";
 import type { LorebookScanResult } from "../lorebook/index.js";
 import {
@@ -988,15 +988,6 @@ function appendFallbackChatSummaryToSystemPrompt(
 function enforceStrictRoles(messages: ChatMLMessage[]): ChatMLMessage[] {
   if (messages.length === 0) return messages;
 
-  const hasSameAudience = (first: ChatMLMessage | undefined, second: ChatMLMessage) => {
-    const firstAudience = first?.hiddenFromAICharacterIds ?? [];
-    const secondAudience = second.hiddenFromAICharacterIds ?? [];
-    return (
-      firstAudience.length === secondAudience.length &&
-      firstAudience.every((characterId) => secondAudience.includes(characterId))
-    );
-  };
-
   const mergeInto = (target: ChatMLMessage, source: ChatMLMessage) => {
     target.content += "\n\n" + source.content;
     if (target.contextKind !== source.contextKind) {
@@ -1019,7 +1010,7 @@ function enforceStrictRoles(messages: ChatMLMessage[]): ChatMLMessage[] {
   while (idx < messages.length && messages[idx]!.role === "system") {
     const msg = messages[idx]!;
     const leadingSystem = result[result.length - 1];
-    if (leadingSystem?.role === "system" && hasSameAudience(leadingSystem, msg)) {
+    if (leadingSystem?.role === "system" && hasSamePromptAudience(leadingSystem, msg)) {
       mergeInto(leadingSystem, msg);
     } else {
       result.push({ ...msg });
@@ -1032,14 +1023,14 @@ function enforceStrictRoles(messages: ChatMLMessage[]): ChatMLMessage[] {
 
     if (msg.role === "system") {
       const prev = result[result.length - 1];
-      if (prev?.role === "system" && hasSameAudience(prev, msg)) mergeInto(prev, msg);
+      if (prev?.role === "system" && hasSamePromptAudience(prev, msg)) mergeInto(prev, msg);
       else result.push({ ...msg });
       continue;
     }
 
     const prev = result[result.length - 1];
     const sameCharacter = (prev?.characterId ?? null) === (msg.characterId ?? null);
-    if (prev && prev.role === msg.role && sameCharacter && hasSameAudience(prev, msg)) {
+    if (prev && prev.role === msg.role && sameCharacter && hasSamePromptAudience(prev, msg)) {
       mergeInto(prev, msg);
     } else {
       result.push({ ...msg });

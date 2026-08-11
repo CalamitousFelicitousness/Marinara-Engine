@@ -11,6 +11,7 @@ import {
   isNativeGlmEndpoint,
 } from "../../packages/server/src/services/llm/providers/glm-request-compat.js";
 import {
+  applyAnthropicToolChoice,
   AnthropicProvider,
   supportsAnthropicThinkingDisable,
 } from "../../packages/server/src/services/llm/providers/anthropic.provider.js";
@@ -18,7 +19,11 @@ import {
   __setSdkForTesting,
   ClaudeSubscriptionProvider,
 } from "../../packages/server/src/services/llm/providers/claude-subscription.provider.js";
-import { resolveGeminiThinkingConfig } from "../../packages/server/src/services/llm/providers/google.provider.js";
+import {
+  applyGoogleFunctionCallingMode,
+  resolveGeminiThinkingConfig,
+  resolveGoogleFunctionCallingMode,
+} from "../../packages/server/src/services/llm/providers/google.provider.js";
 import {
   normalizeOpenAIChatCompletionsResponseFormat,
   OpenAIProvider,
@@ -147,9 +152,7 @@ try {
     "recovered final message",
   );
 } finally {
-  await new Promise<void>((resolve, reject) =>
-    gatewayServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await new Promise<void>((resolve, reject) => gatewayServer.close((error) => (error ? reject(error) : resolve())));
 }
 
 const openRouterCachingRequestBodies: Array<Record<string, unknown>> = [];
@@ -394,6 +397,68 @@ assert.equal(
   undefined,
   "reasoning-mandatory Gemini 3 models must not receive an unsupported off value",
 );
+assert.equal(resolveGoogleFunctionCallingMode("required"), "ANY");
+assert.equal(resolveGoogleFunctionCallingMode("auto"), "AUTO");
+assert.equal(resolveGoogleFunctionCallingMode(undefined), "AUTO");
+const googleRequiredBody: Record<string, unknown> = {
+  toolConfig: {
+    retrievalConfig: { latitude: 1 },
+    functionCallingConfig: { allowedFunctionNames: ["lookup"] },
+  },
+};
+applyGoogleFunctionCallingMode(googleRequiredBody, "required");
+assert.deepEqual(googleRequiredBody.toolConfig, {
+  retrievalConfig: { latitude: 1 },
+  functionCallingConfig: { allowedFunctionNames: ["lookup"], mode: "ANY" },
+});
+
+const anthropicAdaptiveRequiredBody: Record<string, unknown> = {
+  thinking: { type: "adaptive" },
+  tool_choice: { disable_parallel_tool_use: true },
+};
+assert.equal(
+  applyAnthropicToolChoice(anthropicAdaptiveRequiredBody, {
+    model: "claude-opus-5",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "applied",
+);
+assert.deepEqual(anthropicAdaptiveRequiredBody.tool_choice, { disable_parallel_tool_use: true, type: "any" });
+
+const anthropicManualThinkingBody: Record<string, unknown> = { thinking: { type: "enabled", budget_tokens: 2048 } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicManualThinkingBody, {
+    model: "claude-sonnet-4",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "manual-thinking",
+);
+assert.deepEqual(anthropicManualThinkingBody.tool_choice, { type: "auto" });
+
+const anthropicMythosBody: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicMythosBody, {
+    model: "claude-mythos-5",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "mythos",
+);
+assert.deepEqual(anthropicMythosBody.tool_choice, { type: "auto" });
+const anthropicAutomaticBody: Record<string, unknown> = {
+  tool_choice: { type: "any", disable_parallel_tool_use: true },
+};
+assert.equal(
+  applyAnthropicToolChoice(anthropicAutomaticBody, {
+    model: "claude-opus-5",
+    toolChoice: "auto",
+    tools: [testToolDefinition],
+  }),
+  "none",
+);
+assert.deepEqual(anthropicAutomaticBody.tool_choice, { type: "auto", disable_parallel_tool_use: true });
 assert.equal(supportsAnthropicThinkingDisable("claude-sonnet-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-opus-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-fable-5"), false);
@@ -550,9 +615,7 @@ assert.equal(
     assert.equal("top_k" in disabledBody, false);
     assert.equal("top_p" in disabledBody, false);
   } finally {
-    await new Promise<void>((resolve, reject) =>
-      anthropicServer.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => anthropicServer.close((error) => (error ? reject(error) : resolve())));
   }
 }
 
@@ -673,9 +736,7 @@ try {
     "known reasoning-mandatory OpenRouter models must keep their provider default",
   );
 } finally {
-  await new Promise<void>((resolve, reject) =>
-    openRouterServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await new Promise<void>((resolve, reject) => openRouterServer.close((error) => (error ? reject(error) : resolve())));
 }
 
 const strictSchemaFormat = {
@@ -836,7 +897,10 @@ class HeldProvider extends BaseLLMProvider {
     this.started = resolve;
   });
 
-  constructor(private readonly held: Promise<void>, private readonly failure?: Error) {
+  constructor(
+    private readonly held: Promise<void>,
+    private readonly failure?: Error,
+  ) {
     super("", "");
   }
 
@@ -1118,8 +1182,7 @@ assert.equal(
 );
 // An image fallback is the same logical attempt on another endpoint, so a successful fallback
 // must be recorded completed rather than leaving the primary's failure as the attempt's result.
-const onePixelPng =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 let arliRequest:
   | { url: string; authorization: string | undefined; contentType: string | undefined; body: Record<string, unknown> }
   | undefined;
@@ -1157,18 +1220,12 @@ try {
   assert.equal(arliRequest?.body.width, 768);
   assert.equal(arliRequest?.body.height, 512);
 
-  const imageEditResult = await generateImage(
-    "arli",
-    `http://127.0.0.1:${address.port}/v1`,
-    "arli-secret",
-    "arli",
-    {
+  const imageEditResult = await generateImage("arli", `http://127.0.0.1:${address.port}/v1`, "arli-secret", "arli", {
       prompt: "add blue light",
       model: "Arli/FluxModel",
       referenceImage: `data:image/png;base64,${onePixelPng}`,
       allowLocalUrls: true,
-    },
-  );
+  });
   assert.equal(imageEditResult.base64, onePixelPng);
   assert.equal(arliRequest?.url, "/v1/img2img");
   assert.deepEqual(arliRequest?.body.init_images, [onePixelPng]);
@@ -1383,7 +1440,10 @@ const rejectedAttempt = withConnectionAdmissionProvider(new RegressionProvider([
 });
 await assert.rejects(
   rejectedAttempt.chatComplete([{ role: "user", content: "test" }], { model: "model" }),
-  (error) => error instanceof ConnectionAttemptRejectedError && error.cause instanceof Error && /budget exhausted/.test(error.cause.message),
+  (error) =>
+    error instanceof ConnectionAttemptRejectedError &&
+    error.cause instanceof Error &&
+    /budget exhausted/.test(error.cause.message),
 );
 // A rejected admission attempt is not a provider failure, so both fallback catch sites must
 // rethrow it untouched instead of retrying the same logical attempt on another connection.
@@ -1520,15 +1580,12 @@ const callbackPrimary = new TokenCallbackFailureProvider();
 const callbackFallback = new RegressionProvider(["must not replace visible callback output"]);
 let callbackOutput = "";
 await assert.rejects(
-  collectProviderOutput(
-    new ConnectionFallbackProvider(callbackPrimary, callbackFallback, fallbackConnection, "main"),
-    {
+  collectProviderOutput(new ConnectionFallbackProvider(callbackPrimary, callbackFallback, fallbackConnection, "main"), {
       model: "primary-model",
       onToken: (chunk) => {
         callbackOutput += chunk;
       },
-    },
-  ),
+  }),
   /stream interrupted after callback output/,
 );
 assert.equal(callbackOutput, "visible callback output");
@@ -1572,26 +1629,26 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
 {
   let responsesToolRequestBody: Record<string, unknown> | null = null;
   const responsesToolSse = [
-    'event: response.output_item.added',
+    "event: response.output_item.added",
     'data: {"type":"response.output_item.added","item":{"id":"fc_1","type":"function_call","call_id":"call_1","name":"web_search","arguments":""}}',
-    '',
-    'event: response.function_call_arguments.delta',
+    "",
+    "event: response.function_call_arguments.delta",
     'data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\\"query\\":\\"latest "}',
-    '',
-    'event: response.function_call_arguments.delta',
+    "",
+    "event: response.function_call_arguments.delta",
     'data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"marinara news\\"}"}',
-    '',
-    'event: response.function_call_arguments.done',
+    "",
+    "event: response.function_call_arguments.done",
     'data: {"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":0,"arguments":"{\\"query\\":\\"latest marinara news\\"}"}',
-    '',
-    'event: response.output_item.done',
+    "",
+    "event: response.output_item.done",
     'data: {"type":"response.output_item.done","item":{"id":"fc_1","type":"function_call","call_id":"call_1","name":"web_search"}}',
-    '',
-    'event: response.completed',
+    "",
+    "event: response.completed",
     'data: {"type":"response.completed","response":{"status":"completed"}}',
-    '',
-    'data: [DONE]',
-    '',
+    "",
+    "data: [DONE]",
+    "",
   ].join("\n");
   const responsesServer = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -1621,7 +1678,11 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
       tools: [
         {
           type: "function",
-          function: { name: "web_search", description: "Search the web", parameters: { type: "object", properties: { query: { type: "string" } } } },
+          function: {
+            name: "web_search",
+            description: "Search the web",
+            parameters: { type: "object", properties: { query: { type: "string" } } },
+          },
         },
       ],
     });
@@ -1815,9 +1876,7 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
     );
   } finally {
     resetConnectionAdmissionForTests();
-    await new Promise<void>((resolve, reject) =>
-      captionServer.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve, reject) => captionServer.close((error) => (error ? reject(error) : resolve())));
   }
 }
 

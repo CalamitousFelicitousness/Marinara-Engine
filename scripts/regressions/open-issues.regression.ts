@@ -2142,6 +2142,90 @@ try {
     await lorebookStorage.remove(professorMariDeleteLorebookId);
   }
 
+  // #4927: a Mari lorebook entry mutation resyncs an embedded character's data.character_book on
+  // both apply and Restore. The generic mari-db mutation path used to skip
+  // syncCharacterBookFromLorebook, so add/update/delete of an embedded lorebook's entries left the
+  // character's derived copy stale.
+  const embeddedSyncLorebook = await lorebookStorage.create({ name: "Embedded sync book" });
+  const embeddedSyncCharacter = await characterStorage.create(
+    characterDataSchema.parse({
+      name: "Embedded sync host",
+      character_book: { name: "Embedded sync book", entries: [] },
+      extensions: { importMetadata: { embeddedLorebook: { lorebookId: embeddedSyncLorebook.id } } },
+    }),
+  );
+  assert.ok(embeddedSyncCharacter, "embedded host character created");
+  let embeddedReparentTargetId: string | null = null;
+  try {
+    await lorebookStorage.update(embeddedSyncLorebook.id, { characterId: embeddedSyncCharacter.id });
+    const embeddedSyncEntry = await lorebookStorage.createEntry({
+      lorebookId: embeddedSyncLorebook.id,
+      name: "Embedded entry",
+      content: "original content",
+      keys: ["embed"],
+    });
+    const readEmbeddedBookContent = async () => {
+      const row = await characterStorage.getById(embeddedSyncCharacter.id);
+      const data = JSON.parse(String(row?.data ?? "{}")) as {
+        character_book?: { entries?: Array<{ content?: string }> };
+      };
+      return (data.character_book?.entries ?? []).map((entry) => entry.content ?? "");
+    };
+
+    const beforeEmbeddedSync = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const embeddedSyncUpdate = await mariDb.executeAction({
+      action: "lorebook.updateEntry",
+      entryId: embeddedSyncEntry.id,
+      patch: { content: "edited content" },
+      apply: true,
+    });
+    assert.equal(embeddedSyncUpdate.ok, true);
+    assert.ok(
+      (await readEmbeddedBookContent()).includes("edited content"),
+      "applying a Mari entry edit resyncs the embedded character_book",
+    );
+
+    const embeddedSyncApproval = mariDb.getPendingApprovals().find((approval) => !beforeEmbeddedSync.has(approval.id));
+    assert.ok(embeddedSyncApproval, "the entry edit produced a reviewable approval");
+    await mariDb.restoreAppliedReview(embeddedSyncApproval.id);
+    assert.ok(
+      (await readEmbeddedBookContent()).includes("original content"),
+      "restoring the edit resyncs the embedded character_book back",
+    );
+
+    // #4927 (reparent): moving an entry to a DIFFERENT lorebook must resync the entry's FORMER
+    // lorebook too, not just the destination. syncAffectedCharacterBooks collects both sides of a
+    // lorebook_entries change, so the embedded book the entry LEFT rebuilds without it. (The old
+    // `after ?? before` collection synced only the destination and left this book stale.)
+    const embeddedReparentTarget = await lorebookStorage.create({ name: "Reparent target book" });
+    embeddedReparentTargetId = embeddedReparentTarget.id;
+    const embeddedReparent = await mariDb.executeCli({
+      argv: [
+        "db",
+        "patch",
+        "lorebook_entries",
+        embeddedSyncEntry.id,
+        "--json",
+        JSON.stringify({ lorebookId: embeddedReparentTarget.id }),
+        "--apply",
+      ],
+    });
+    assert.equal(
+      embeddedReparent.ok,
+      true,
+      `reparenting an entry to another lorebook must succeed: ${JSON.stringify(embeddedReparent)}`,
+    );
+    assert.deepEqual(
+      await readEmbeddedBookContent(),
+      [],
+      "reparenting an entry OUT of the embedded lorebook resyncs the former lorebook (the moved entry no longer appears)",
+    );
+  } finally {
+    await lorebookStorage.remove(embeddedSyncLorebook.id);
+    await characterStorage.remove(embeddedSyncCharacter.id);
+    if (embeddedReparentTargetId) await lorebookStorage.remove(embeddedReparentTargetId);
+  }
+
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({
     argv: [

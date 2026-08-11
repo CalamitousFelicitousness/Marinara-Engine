@@ -60,6 +60,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept a character's embedded lorebook in sync when Professor Mari edits it: adding, updating, or deleting an entry (or restoring one of those changes) in a lorebook embedded in a character card now rebuilds that character's copy, instead of leaving it stale as only her edits did before (#4927).
 - Gave Professor Mari a safe way to delete a single lorebook entry (`lorebook.deleteEntry`) and told her to use it instead of a raw `mari db delete`, which previously let her remove far more entries than intended when asked to delete just one (#4924).
 - Preserved unsent Home Professor Mari messages across editor navigation and app restarts until they are sent or explicitly cleared (#4915).
 - Taught workspace Professor Mari to revise an existing saved memory when asked, instead of declining that a matching memory "already exists": her guidance now includes a read-then-rewrite recipe and worked example for editing a memory's content in place (the same pattern she uses for preset sections), which also works on an enabled or persistent memory without turning it off (#4917).

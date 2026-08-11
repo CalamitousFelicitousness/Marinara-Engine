@@ -83,6 +83,7 @@ import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useUIStore, type MariPanelSortMode } from "../../stores/ui.store";
+import { MariEditEasyViewer } from "./MariEditEasyViewer";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
   isProfessorMariTranscriptNearBottom,
@@ -1869,6 +1870,9 @@ function DatabaseWorkspaceApprovalCard({
   onRestore: (id: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const viewMode = useUIStore((s) => s.mariEditViewMode);
+  const setViewMode = useUIStore((s) => s.setMariEditViewMode);
+  const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
   const deletedRows = approval.diffPreview.filter((change) => change.action === "delete");
   const insertedRows = approval.diffPreview.filter((change) => change.action === "insert");
   // #4851: a saved memory lands disabled; offer "Keep & Enable" to keep AND switch it on.
@@ -1891,13 +1895,43 @@ function DatabaseWorkspaceApprovalCard({
           <span className="rounded-full bg-[var(--primary)]/10 px-1.5 py-0.5 text-[0.625rem] text-[var(--primary)]">
             {localizeUi("ui.chat.databaseworkspaceapprovalcard.saved")}
           </span>
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md bg-[var(--background)]/60 p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("easy")}
+              aria-pressed={viewMode === "easy"}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
+                viewMode === "easy"
+                  ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+              )}
+            >
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.easyView")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("raw")}
+              aria-pressed={viewMode === "raw"}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
+                viewMode === "raw"
+                  ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+              )}
+            >
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.rawView")}
+            </button>
+          </div>
         </div>
         <p className="mt-1 text-[0.6875rem] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.databaseworkspaceapprovalcard.mariAlreadyAppliedThisKeepItOrRestoreThe")}
         </p>
-        <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--background)]/80 p-2 font-mono text-[0.6875rem] text-[var(--muted-foreground)]">
-          {approval.command}
-        </pre>
+        {viewMode === "raw" && (
+          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--background)]/80 p-2 font-mono text-[0.6875rem] text-[var(--muted-foreground)]">
+            {approval.command}
+          </pre>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
           <span className="inline-flex items-center gap-1">
             <Database size="0.7rem" /> {summarizeTables(approval.affectedTables)}
@@ -1907,10 +1941,17 @@ function DatabaseWorkspaceApprovalCard({
             {approval.affectedRows === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}
           </span>
         </div>
-        {approval.diffTruncated && (
+        {viewMode === "raw" && approval.diffTruncated && (
           <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}</p>
         )}
-        {deletedRows.length > 0 && (
+        {viewMode === "easy" && (
+          <MariEditEasyViewer
+            approval={approval}
+            hidden={hiddenRows}
+            onDismissRow={(key) => setHiddenRows((prev) => new Set(prev).add(key))}
+          />
+        )}
+        {viewMode === "raw" && deletedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--destructive)]">
               <Trash2 size="0.75rem" />
@@ -1942,7 +1983,7 @@ function DatabaseWorkspaceApprovalCard({
             </div>
           </div>
         )}
-        {insertedRows.length > 0 && (
+        {viewMode === "raw" && insertedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--primary)]">
               <Sparkles size="0.75rem" />{localizeUi("ui.chat.databaseworkspaceapprovalcard.mariCreatedNewItems")}</div>

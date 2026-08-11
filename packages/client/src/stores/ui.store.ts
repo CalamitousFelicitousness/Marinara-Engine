@@ -532,6 +532,7 @@ export interface CustomQuickReply {
 }
 
 export type MariPanelSortMode = "az" | "za" | "newest" | "oldest";
+export type MariEditViewMode = "easy" | "raw";
 
 interface UIState {
   sidebarOpen: boolean;
@@ -565,6 +566,7 @@ interface UIState {
   customCursorEnabled: boolean;
   reduceAmbientEffects: boolean;
   mariPanelSortMode: MariPanelSortMode;
+  mariEditViewMode: MariEditViewMode;
   chatBackground: string | null;
   /** Default background applied when a Roleplay chat has no saved background yet. */
   defaultRoleplayBackground: string;
@@ -945,6 +947,7 @@ interface UIState {
   setCustomCursorEnabled: (enabled: boolean) => void;
   setReduceAmbientEffects: (enabled: boolean) => void;
   setMariPanelSortMode: (mode: MariPanelSortMode) => void;
+  setMariEditViewMode: (mode: MariEditViewMode) => void;
   setChatBackground: (url: string | null) => void;
   setDefaultRoleplayBackground: (url: string) => void;
   setChatBackgroundBlur: (v: number) => void;
@@ -1372,6 +1375,7 @@ export const useUIStore = create<UIState>()(
       customCursorEnabled: true,
       reduceAmbientEffects: false,
       mariPanelSortMode: "az",
+      mariEditViewMode: "easy",
       chatBackground: null,
       defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
       chatBackgroundBlur: 0,
@@ -1674,6 +1678,7 @@ export const useUIStore = create<UIState>()(
       setCustomCursorEnabled: (enabled) => set({ customCursorEnabled: enabled }),
       setReduceAmbientEffects: (enabled) => set({ reduceAmbientEffects: enabled }),
       setMariPanelSortMode: (mode) => set({ mariPanelSortMode: mode }),
+      setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
       setChatBackground: (url) => set({ chatBackground: url }),
       setDefaultRoleplayBackground: (url) =>
         set({ defaultRoleplayBackground: normalizeDefaultRoleplayBackground(url) }),
@@ -2349,6 +2354,7 @@ export const useUIStore = create<UIState>()(
           customCursorEnabled: true,
           reduceAmbientEffects: false,
           mariPanelSortMode: "az",
+          mariEditViewMode: "easy",
           chatBackground: null,
           defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
           chatBackgroundBlur: 0,
@@ -3136,6 +3142,7 @@ export const useUIStore = create<UIState>()(
         customCursorEnabled: state.customCursorEnabled,
         reduceAmbientEffects: state.reduceAmbientEffects,
         mariPanelSortMode: state.mariPanelSortMode,
+        mariEditViewMode: state.mariEditViewMode,
         chatBackground: state.chatBackground,
         defaultRoleplayBackground: state.defaultRoleplayBackground,
         chatBackgroundBlur: state.chatBackgroundBlur,

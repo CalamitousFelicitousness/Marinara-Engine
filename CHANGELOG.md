@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added a search box and collapsible entries to the Professor Mari Skills and Memories panels. Each entry is now a drawer that expands in place to edit; its description shows on wider screens and collapses to just the name on small screens; and persistent memories are marked with a star that stays visible while collapsed (#4868).
 - Added one-click support diagnostics that copy the current version, build, platform, graphics adapter, and active text model for issue reports (#4878).
 - Added SwarmUI as a video-generation backend, including authenticated distributed ComfyUI workflow submission, base64 reference images, model discovery, and MP4 retrieval (#4885).
 - Added responsive batch selection to chat Galleries, with filtered Select All, confirmed multi-image downloads and deletes, and selection cleanup between chats (#4859).

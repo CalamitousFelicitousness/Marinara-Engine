@@ -764,6 +764,8 @@ export interface MessageExtra {
   reactions?: MessageReaction[] | null;
   /** When true, this message marks the "new start" of the conversation — all earlier messages are excluded from context */
   isConversationStart?: boolean;
+  /** Character IDs whose individual Roleplay context begins at this message. */
+  conversationStartForCharacterIds?: string[];
   /** Model's reasoning/thinking content (if available) */
   thinking?: string | null;
   /** Original assistant message before a post-processing rewrite, retained for version comparison. */

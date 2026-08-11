@@ -208,6 +208,7 @@ function freshSwipeMessageExtra(value: unknown): Record<string, unknown> {
     "hiddenFromAICharacterIds",
     "hiddenFromUser",
     "isConversationStart",
+    "conversationStartForCharacterIds",
     "reactions",
     "personaSnapshot",
   ]) {
@@ -980,11 +981,7 @@ export function createChatsStorage(db: DB) {
           cursor &&
           tx.count(
             messages,
-            and(
-              chatCondition,
-              eq(messages.createdAt, cursor.createdAt),
-              eq(messages.id, cursor.id),
-            ),
+            and(chatCondition, eq(messages.createdAt, cursor.createdAt), eq(messages.id, cursor.id)),
           ) !== 1
         ) {
           throw new InvalidMessageCursorError();

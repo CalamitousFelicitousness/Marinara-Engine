@@ -989,6 +989,9 @@ function enforceStrictRoles(messages: ChatMLMessage[]): ChatMLMessage[] {
   if (messages.length === 0) return messages;
 
   const hasSameAudience = (first: ChatMLMessage | undefined, second: ChatMLMessage) => {
+    if (first?.conversationStartForCharacterIds?.length || second.conversationStartForCharacterIds?.length) {
+      return false;
+    }
     const firstAudience = first?.hiddenFromAICharacterIds ?? [];
     const secondAudience = second.hiddenFromAICharacterIds ?? [];
     return (

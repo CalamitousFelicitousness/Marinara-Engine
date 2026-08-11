@@ -517,7 +517,25 @@ export function getMessageHiddenFromAICharacterIds(message: { extra?: unknown })
   const value = parseExtra(message.extra).hiddenFromAICharacterIds;
   if (!Array.isArray(value)) return [];
   return Array.from(
-    new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)),
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+export function getMessageConversationStartCharacterIds(message: { extra?: unknown }): string[] {
+  const value = parseExtra(message.extra).conversationStartForCharacterIds;
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
   );
 }
 
@@ -894,7 +912,11 @@ export function shouldRestoreRegenerationCharacterTarget(
   characterIds: string[],
 ): boolean {
   const isRoleplayGroup = chatMode === "roleplay";
-  return !(isRoleplayGroup && characterIds.length > 1 && resolveGroupGenerationMode(chatMode, configuredMode) === "merged");
+  return !(
+    isRoleplayGroup &&
+    characterIds.length > 1 &&
+    resolveGroupGenerationMode(chatMode, configuredMode) === "merged"
+  );
 }
 
 export function resolvePromptCharacterIdsForTarget(
@@ -924,11 +946,7 @@ export function resolveVisibleGameStateAnchor(
     const message = messages[index]!;
     const markedSystemAnchor =
       message.role === "system" && parseExtra(message.extra).gameStateAnchor === "checkpoint_restore";
-    if (
-      (message.role !== "assistant" && !markedSystemAnchor) ||
-      typeof message.id !== "string" ||
-      !message.id
-    ) {
+    if ((message.role !== "assistant" && !markedSystemAnchor) || typeof message.id !== "string" || !message.id) {
       continue;
     }
     const swipeIndex =
@@ -1102,8 +1120,9 @@ export function parseStoredGenerationParameters(raw: unknown): StoredGenerationP
     out.customParameters = mergeCustomParameters({}, source.customParameters);
   }
   if (isPlainRecord(source.managedCustomParameters)) {
-    const managedCustomParameters =
-      generationParametersSchema.shape.managedCustomParameters.safeParse(source.managedCustomParameters);
+    const managedCustomParameters = generationParametersSchema.shape.managedCustomParameters.safeParse(
+      source.managedCustomParameters,
+    );
     if (managedCustomParameters.success) out.managedCustomParameters = managedCustomParameters.data;
   }
   if (isPlainRecord(source.enabledParameters)) {

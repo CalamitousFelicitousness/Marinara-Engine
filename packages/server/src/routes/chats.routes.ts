@@ -672,9 +672,9 @@ export async function chatsRoutes(app: FastifyInstance) {
                 .slice(0, 12)
             : [];
           const spriteDisplayModes = Array.isArray(metadata.spriteDisplayModes)
-            ? metadata.spriteDisplayModes.filter(
-                (mode): mode is "expressions" | "full-body" => mode === "expressions" || mode === "full-body",
-              ).slice(0, 12)
+            ? metadata.spriteDisplayModes
+                .filter((mode): mode is "expressions" | "full-body" => mode === "expressions" || mode === "full-body")
+                .slice(0, 12)
             : [];
           const spriteExpressionCharacterIds = new Set([...spriteCharacterIds, ...chatCharacterIds].slice(0, 12));
           const spriteExpressions: Record<string, string> = {};
@@ -685,9 +685,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 typeof expression === "string" &&
                 expression.trim()
               ) {
-                spriteExpressions[characterId] = expression
-                  .trim()
-                  .slice(0, HOME_FEED_SPRITE_EXPRESSION_MAX_LENGTH);
+                spriteExpressions[characterId] = expression.trim().slice(0, HOME_FEED_SPRITE_EXPRESSION_MAX_LENGTH);
               }
             }
           }
@@ -700,9 +698,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 typeof expression === "string" &&
                 expression.trim()
               ) {
-                spriteExpressions[characterId] = expression
-                  .trim()
-                  .slice(0, HOME_FEED_SPRITE_EXPRESSION_MAX_LENGTH);
+                spriteExpressions[characterId] = expression.trim().slice(0, HOME_FEED_SPRITE_EXPRESSION_MAX_LENGTH);
               }
             }
           }
@@ -2050,12 +2046,18 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
         syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
       }
+      if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
+        syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds")) {
+        syncAllSwipeExtra.conversationStartForCharacterIds = partial.conversationStartForCharacterIds;
+      }
       if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
         syncAllSwipeExtra.reactions = partial.reactions;
       }
 
       if (Object.keys(syncAllSwipeExtra).length > 0) {
-        // AI visibility and reactions are message-level fields, so keep them
+        // AI visibility, context boundaries, and reactions are message-level fields, so keep them
         // stable across swipe changes instead of binding them to one swipe.
         const swipes = await storage.getSwipes(req.params.messageId);
         for (const swipe of swipes) {

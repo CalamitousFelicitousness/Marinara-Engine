@@ -4,6 +4,9 @@
 import type { ChatMLMessage } from "@marinara-engine/shared";
 
 function hasSameAudience(first: ChatMLMessage | undefined, second: ChatMLMessage): boolean {
+  if (first?.conversationStartForCharacterIds?.length || second.conversationStartForCharacterIds?.length) {
+    return false;
+  }
   const firstAudience = first?.hiddenFromAICharacterIds ?? [];
   const secondAudience = second.hiddenFromAICharacterIds ?? [];
   return (

@@ -2187,7 +2187,11 @@ try {
 
     const embeddedSyncApproval = mariDb.getPendingApprovals().find((approval) => !beforeEmbeddedSync.has(approval.id));
     assert.ok(embeddedSyncApproval, "the entry edit produced a reviewable approval");
-    await mariDb.restoreAppliedReview(embeddedSyncApproval.id);
+    const embeddedSyncRestore = await mariDb.restoreAppliedReview(embeddedSyncApproval.id);
+    assert.ok(
+      embeddedSyncRestore && "history" in embeddedSyncRestore,
+      `restoring the entry edit must succeed (not null / state_changed): ${JSON.stringify(embeddedSyncRestore)}`,
+    );
     assert.ok(
       (await readEmbeddedBookContent()).includes("original content"),
       "restoring the edit resyncs the embedded character_book back",

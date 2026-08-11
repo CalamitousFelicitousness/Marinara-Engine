@@ -6,6 +6,7 @@ export const capabilityPermissionSchema = z.enum([
   "agent-runtime",
   "chat-read",
   "chat-write",
+  "conversation-actions",
   "network",
   "prompt-context",
   "routes",

@@ -395,6 +395,7 @@ import {
   handleProfessorMariCommand,
 } from "../services/generation/professor-mari-command-runtime.js";
 import { handleTurnGameCommand } from "../services/generation/turn-game-command-runtime.js";
+import { dispatchCapabilityConversationAction } from "../services/capability-packages/capability-command-registry.service.js";
 import { handleConversationSideEffectCommand } from "../services/generation/conversation-side-effect-command-runtime.js";
 import { handleConversationCallCommand } from "../services/generation/conversation-call-command-runtime.js";
 import { handleConversationMusicCommand } from "../services/generation/conversation-music-command-runtime.js";
@@ -9702,6 +9703,17 @@ export async function generateRoutes(app: FastifyInstance) {
                   reply,
                   signal: abortController.signal,
                 });
+
+                if (command.type === "capability") {
+                  await dispatchCapabilityConversationAction({
+                    type: "capability",
+                    commandType: command.commandType,
+                    payload: command.payload,
+                    chatId: input.chatId,
+                    sourceMessageId: messageId,
+                    characterId,
+                  });
+                }
 
                 const professorMariResult = await handleProfessorMariCommand({
                   command,

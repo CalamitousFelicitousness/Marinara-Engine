@@ -2097,47 +2097,50 @@ try {
   // #4924: lorebook.deleteEntry removes exactly ONE entry (scoped), so Mari never needs a raw
   // `mari db delete --where` that can mass-delete unrelated rows.
   const professorMariDeleteLorebookId = "professor-mari-delete-entry-regression";
-  const professorMariDeleteCreate = await mariDb.executeAction({
-    action: "lorebook.create",
-    lorebookId: professorMariDeleteLorebookId,
-    data: {
-      name: "Delete-entry regression",
-      entries: [
-        { name: "Keep me", content: "This entry must survive." },
-        { name: "Remove me", content: "This entry gets deleted." },
-      ],
-    },
-    apply: true,
-  });
-  assert.equal(professorMariDeleteCreate.ok, true);
-  const professorMariDeleteEntries = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
-  assert.equal(professorMariDeleteEntries.length, 2, "both entries were created");
-  const professorMariEntryToDelete = professorMariDeleteEntries.find((entry) => entry.name === "Remove me");
-  const professorMariEntryToKeep = professorMariDeleteEntries.find((entry) => entry.name === "Keep me");
-  assert.ok(professorMariEntryToDelete && professorMariEntryToKeep, "both named entries are present before delete");
+  try {
+    const professorMariDeleteCreate = await mariDb.executeAction({
+      action: "lorebook.create",
+      lorebookId: professorMariDeleteLorebookId,
+      data: {
+        name: "Delete-entry regression",
+        entries: [
+          { name: "Keep me", content: "This entry must survive." },
+          { name: "Remove me", content: "This entry gets deleted." },
+        ],
+      },
+      apply: true,
+    });
+    assert.equal(professorMariDeleteCreate.ok, true);
+    const professorMariDeleteEntries = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
+    assert.equal(professorMariDeleteEntries.length, 2, "both entries were created");
+    const professorMariEntryToDelete = professorMariDeleteEntries.find((entry) => entry.name === "Remove me");
+    const professorMariEntryToKeep = professorMariDeleteEntries.find((entry) => entry.name === "Keep me");
+    assert.ok(professorMariEntryToDelete && professorMariEntryToKeep, "both named entries are present before delete");
 
-  // Deleting a non-existent entry is rejected, not a silent no-op.
-  const professorMariDeleteMissing = await mariDb.executeAction({
-    action: "lorebook.deleteEntry",
-    entryId: "no-such-entry-id",
-    apply: true,
-  });
-  assert.equal(professorMariDeleteMissing.ok, false, "deleting a missing entry is rejected");
+    // Deleting a non-existent entry is rejected, not a silent no-op.
+    const professorMariDeleteMissing = await mariDb.executeAction({
+      action: "lorebook.deleteEntry",
+      entryId: "no-such-entry-id",
+      apply: true,
+    });
+    assert.equal(professorMariDeleteMissing.ok, false, "deleting a missing entry is rejected");
 
-  const professorMariDeleteResult = await mariDb.executeAction({
-    action: "lorebook.deleteEntry",
-    entryId: professorMariEntryToDelete.id,
-    apply: true,
-  });
-  assert.equal(
-    professorMariDeleteResult.ok,
-    true,
-    `lorebook.deleteEntry must succeed: ${JSON.stringify(professorMariDeleteResult)}`,
-  );
-  const professorMariAfterDelete = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
-  assert.equal(professorMariAfterDelete.length, 1, "exactly one entry was removed (scoped, not a mass delete)");
-  assert.equal(professorMariAfterDelete[0]?.id, professorMariEntryToKeep.id, "the untargeted entry survives");
-  await lorebookStorage.remove(professorMariDeleteLorebookId);
+    const professorMariDeleteResult = await mariDb.executeAction({
+      action: "lorebook.deleteEntry",
+      entryId: professorMariEntryToDelete.id,
+      apply: true,
+    });
+    assert.equal(
+      professorMariDeleteResult.ok,
+      true,
+      `lorebook.deleteEntry must succeed: ${JSON.stringify(professorMariDeleteResult)}`,
+    );
+    const professorMariAfterDelete = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
+    assert.equal(professorMariAfterDelete.length, 1, "exactly one entry was removed (scoped, not a mass delete)");
+    assert.equal(professorMariAfterDelete[0]?.id, professorMariEntryToKeep.id, "the untargeted entry survives");
+  } finally {
+    await lorebookStorage.remove(professorMariDeleteLorebookId);
+  }
 
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({

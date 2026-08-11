@@ -131,6 +131,23 @@ const LOREBOOK_TOGGLES: Array<{ key: string; labelKey: string }> = [
   { key: "locked", labelKey: "ui.chat.mariediteasyviewer.toggleLocked" },
 ];
 
+// Fields the lorebook layout renders itself; anything else Mari changes (probability, timing,
+// recursion, group weight, scan depth, folder, filters, vectorization) falls through to a generic
+// field diff so no editable setting is silently missing from the view.
+const LOREBOOK_HANDLED_PATHS = new Set([
+  "name",
+  "keys",
+  "secondaryKeys",
+  "content",
+  "description",
+  "enabled",
+  "constant",
+  "matchWholeWords",
+  "caseSensitive",
+  "useRegex",
+  "locked",
+]);
+
 function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
   const { t: localizeUi } = useUiTranslation();
   const before = change.before ?? null;
@@ -152,6 +169,8 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
           on: truthy(after[key]),
         }))
       : [];
+
+  const remainingFields = computeFieldChanges(change).filter((field) => !LOREBOOK_HANDLED_PATHS.has(field.path));
 
   return (
     <div className="mari-editor-panel mari-editor-panel--soft space-y-2 rounded-lg p-2">
@@ -213,6 +232,14 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
             >
               {toggle.label}: {toggle.on ? localizeUi("ui.chat.mariediteasyviewer.on") : localizeUi("ui.chat.mariediteasyviewer.off")}
             </span>
+          ))}
+        </div>
+      )}
+
+      {remainingFields.length > 0 && (
+        <div className="space-y-1.5">
+          {remainingFields.map((field) => (
+            <FieldChangeView key={field.path} change={field} />
           ))}
         </div>
       )}
@@ -301,7 +328,10 @@ export function MariEditEasyViewer({
   onDismissRow: (key: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const rows = approval.diffPreview.filter((change) => !hidden.has(rowKey(change)));
+  // Key by the row's stable diffPreview index too: planTransform can emit multiple rows sharing
+  // table/id/action, so the index guarantees a unique React key AND dismiss/hidden-Set key.
+  const keyed = approval.diffPreview.map((change, index) => ({ change, key: `${index}:${rowKey(change)}` }));
+  const rows = keyed.filter((item) => !hidden.has(item.key));
 
   if (approval.diffPreview.length === 0) {
     return (
@@ -319,8 +349,8 @@ export function MariEditEasyViewer({
           {localizeUi("ui.chat.mariediteasyviewer.allDismissed")}
         </p>
       ) : (
-        rows.map((change) => (
-          <RowCard key={rowKey(change)} change={change} onDismiss={() => onDismissRow(rowKey(change))} />
+        rows.map((item) => (
+          <RowCard key={item.key} change={item.change} onDismiss={() => onDismissRow(item.key)} />
         ))
       )}
       {approval.diffTruncated && (

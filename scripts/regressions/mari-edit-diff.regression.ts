@@ -94,4 +94,20 @@ const memoryInsert = computeFieldChanges({
 assert.ok(memoryInsert.some((c) => c.label === "Enabled" && c.after === "off"), "enabled:0 renders as off");
 assert.ok(memoryInsert.some((c) => c.label === "Persistent" && c.after === "on"), "persistent:1 renders as on");
 
+// A lorebook entry setting outside the specialized layout (probability, timing, etc. — all
+// editable since #4791) is still surfaced by computeFieldChanges, so the Easy Viewer's catch-all
+// renders it instead of silently dropping the change.
+const lorebookSetting = computeFieldChanges({
+  table: "lorebook_entries",
+  id: "e3",
+  action: "update",
+  before: { id: "e3", name: "Map", probability: 50, sticky: 0 },
+  after: { id: "e3", name: "Map", probability: 100, sticky: 3 },
+});
+assert.ok(
+  lorebookSetting.some((c) => c.label === "Probability" && c.before === "50" && c.after === "100"),
+  "an unlisted lorebook setting (probability) is surfaced",
+);
+assert.ok(lorebookSetting.some((c) => c.label === "Sticky" && c.after === "3"), "a timing change is surfaced");
+
 console.log("Mari Easy Viewer diff regressions passed.");

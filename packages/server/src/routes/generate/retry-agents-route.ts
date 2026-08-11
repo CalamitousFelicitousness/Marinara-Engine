@@ -589,7 +589,7 @@ export function resolveRetryAgentContextPolicy(resolvedAgents: readonly Resolved
   const contextSize =
     resolvedAgents.length > 0
       ? Math.max(...resolvedAgents.map((agent) => normalizeAgentContextSize(agent.settings.contextSize)))
-      : 5;
+      : normalizeAgentContextSize(undefined);
   const customAgentVectorAccessEnabled = resolvedAgents.some((agent) =>
     customAgentHasCapability(agent.settings, "access_vectors"),
   );
@@ -3775,7 +3775,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           gameState: context.gameState,
           gameSpotifyMusicEnabled: true,
           agentContext: context,
-          emitMetadataPatch: () => {},
+          emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
           observeSpotifyPlaybackBeforePlay: true,
         });
       };

@@ -168,6 +168,8 @@ export function resolveEffectiveAgentSettings(args: {
       settings.musicPlayerSource === "youtube" ||
       settings.musicProvider === "custom" ||
       settings.musicPlayerSource === "custom");
+  // Spotify restores playback tools from an empty array; other built-ins treat
+  // an empty array as an explicit opt-out.
   if (
     agentType === "spotify" &&
     !usesNonSpotifyMusicSource &&

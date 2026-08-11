@@ -4,6 +4,7 @@ import { getDefaultAgentPrompt, replaceBuiltInAgentDefinitions } from "../../pac
 import type { AgentContext, AgentResult } from "../../packages/shared/src/types/agent.js";
 import type { BuiltInAgentManifest } from "../../packages/shared/src/features/agents/agent-manifest.types.js";
 import type { ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
+import { normalizeAgentContextSize } from "../../packages/server/src/services/agents/agent-executor.js";
 import {
   getAgentFallbackPrompt,
   resolveEffectiveAgentSettings,
@@ -67,8 +68,6 @@ const agentArgsStart = toolRuntimeSource.indexOf("export type ResolveAgentGenera
 const agentArgsEnd = toolRuntimeSource.indexOf("export type ResolvedGenerationTools", agentArgsStart);
 const agentArgsSource = toolRuntimeSource.slice(agentArgsStart, agentArgsEnd);
 assert.ok(agentArgsStart >= 0 && agentArgsEnd > agentArgsStart);
-assert.match(agentArgsSource, /ResolveGenerationToolsArgs & \{/);
-assert.match(agentArgsSource, /observeSpotifyPlaybackBeforePlay\?: boolean/);
 assert.equal(
   /LLMToolCall|execute|toolName|spotifyExecutionAdapter/.test(agentArgsSource),
   false,
@@ -76,30 +75,22 @@ assert.equal(
 );
 assert.equal(toolRuntimeSource.includes("SpotifyAgentToolExecutionAdapter"), false);
 assert.equal(toolRuntimeSource.includes("enabledConfigs?:"), false, "configuration identity input must be required");
-assert.equal(retryRouteSource.includes("observeSpotifyPlaybackBeforePlay: true"), true);
-const historicalContextBuildIndex = retryRouteSource.indexOf("const agentContext = await buildRetryAgentContext({");
-const sharedToolResolutionIndex = retryRouteSource.indexOf("await resolveAgentGenerationTools({");
-assert.ok(historicalContextBuildIndex >= 0 && sharedToolResolutionIndex > historicalContextBuildIndex);
-assert.equal(
-  (retryRouteSource.match(/resolveEffectiveAgentSettings\(\{/g) ?? []).length,
-  2,
-  "configured and fallback retry Agents must both use shared effective settings",
-);
 assert.equal(retryRouteSource.includes("attachRetrySpotifyToolContexts"), false);
 assert.equal(retryRouteSource.includes("applyDefaultBuiltInAgentTools"), false);
-assert.equal(retryRouteSource.includes("JSON.parse(c.settings)"), false);
-assert.equal(retryRouteSource.includes("spotifyRetryConfig"), false);
-assert.equal(
-  (retryRouteSource.match(/resolvedAgents: resolvedAgents\.map\(\(entry\) => entry\.resolved\)/g) ?? []).length,
-  2,
-  "both historical retry contexts must consume effective resolved Agent settings",
+
+// The pure fixtures below cannot observe whether the Fastify route still wires these
+// seams, so keep one narrow caller-contract guard without pinning call counts or order.
+const retryToolWiringStart = retryRouteSource.indexOf("const phaseToolInputs = resolveRetryAgentPhaseToolInputs({");
+const retryToolWiringEnd = retryRouteSource.indexOf("const retryIllustratorPromptAgent", retryToolWiringStart);
+const retryToolWiringSource = retryRouteSource.slice(retryToolWiringStart, retryToolWiringEnd);
+assert.ok(retryToolWiringStart >= 0 && retryToolWiringEnd > retryToolWiringStart);
+assert.match(retryToolWiringSource, /selectedTargetMessage:\s*lastAssistant/);
+assert.match(retryToolWiringSource, /await resolveAgentGenerationTools\(\{/);
+assert.match(
+  retryToolWiringSource,
+  /emitMetadataPatch:\s*\(patch\)\s*=>\s*sendSseEvent\(reply,\s*\{\s*type:\s*"metadata_patch",\s*data:\s*patch\s*\}\)/,
 );
-assert.equal(
-  (retryRouteSource.match(/selectedTargetMessage: lastAssistant/g) ?? []).length,
-  1,
-  "both phase inputs must derive identity from the selected retry response target",
-);
-assert.equal(retryRouteSource.includes("selectedTargetMessage: preGenerationLastAssistant"), false);
+assert.match(retryToolWiringSource, /observeSpotifyPlaybackBeforePlay:\s*true/);
 
 const makeAgent = (id: string, type: string, settings: Record<string, unknown>): ResolvedAgent =>
   ({
@@ -252,6 +243,11 @@ assert.equal(
   resolveRetryAgentContextPolicy([resolvedMalformedBuiltIn]).musicPlayerSource,
   null,
   "a Music DJ omitted from the resolved array must not activate retry Music-source context",
+);
+assert.equal(
+  resolveRetryAgentContextPolicy([]).contextSize,
+  normalizeAgentContextSize(undefined),
+  "an empty retry Agent set must use the canonical context-size default",
 );
 
 const historicalContext: AgentContext = {
@@ -604,6 +600,8 @@ assert.equal(youtubeMusicDjWithoutTools.toolContext, undefined, "a tool-free You
 const spotifyBoundaryAgent = makeAgent("spotify-boundary", "spotify", {}) as SpotifyRuntimeAgent;
 let spotifyBoundaryCustomToolLoads = 0;
 const spotifyBoundaryEvents: string[] = [];
+const unexpectedSpotifyRequests: string[] = [];
+const spotifyBoundaryViolations: string[] = [];
 let boundaryCurrentUri = "spotify:track:old";
 let boundaryRepeatState = "off";
 const originalFetch = globalThis.fetch;
@@ -629,12 +627,15 @@ globalThis.fetch = async (input, init) => {
   }
   if (url.startsWith("https://api.spotify.com/v1/me/player/play") && method === "PUT") {
     const body = JSON.parse(String(init?.body)) as { uris?: string[] };
-    assert.deepEqual(body.uris, ["spotify:track:new"]);
+    if (JSON.stringify(body.uris) !== JSON.stringify(["spotify:track:new"])) {
+      spotifyBoundaryViolations.push(`unexpected play uris: ${JSON.stringify(body.uris)}`);
+    }
     boundaryCurrentUri = "spotify:track:new";
     spotifyBoundaryEvents.push("play:spotify:track:new");
     return new Response(null, { status: 204 });
   }
-  assert.fail(`Unexpected Spotify boundary request: ${method} ${url}`);
+  unexpectedSpotifyRequests.push(`${method} ${url}`);
+  return new Response(null, { status: 500 });
 };
 try {
   await resolveAgentGenerationTools({
@@ -692,6 +693,8 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
+assert.deepEqual(unexpectedSpotifyRequests, [], "Spotify boundary requests must stay inside the expected fake API");
+assert.deepEqual(spotifyBoundaryViolations, [], "Spotify play requests must preserve the approved single-track payload");
 assert.deepEqual(
   spotifyBoundaryEvents,
   [

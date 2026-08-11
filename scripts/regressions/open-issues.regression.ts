@@ -1907,6 +1907,14 @@ try {
           selectiveLogic: "and_all",
           matchWholeWords: true,
           caseSensitive: true,
+          // Embedded entries must also receive the full user-editable settings, not just the
+          // keyword-matching subset the builder handles.
+          probability: 25,
+          sticky: 6,
+          groupWeight: 8,
+          excludeRecursion: true,
+          characterFilterMode: "include",
+          characterFilterIds: ["char-embedded"],
         },
       ],
     },
@@ -1920,6 +1928,16 @@ try {
   assert.equal(professorMariParamEntry.matchWholeWords, true, "create must persist matchWholeWords");
   assert.equal(professorMariParamEntry.caseSensitive, true, "create must persist caseSensitive");
   assert.equal(professorMariParamEntry.useRegex, false, "unset useRegex stays default");
+  assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
+  assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
+  assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
+  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
+  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
+  assert.deepEqual(
+    professorMariParamEntry.characterFilterIds,
+    ["char-embedded"],
+    "create must persist an embedded entry's filter ids",
+  );
 
   // updateEntry (the fidelity-pass path, via assignLorebookEntryActionFields) patches the same fields.
   const professorMariEntryUpdate = await mariDb.executeAction({
@@ -1948,11 +1966,116 @@ try {
   assert.equal(professorMariAfterBadLogic.content, "Updated body.", "valid sibling field still applies");
   assert.equal(professorMariAfterBadLogic.selectiveLogic, "not", "invalid selectiveLogic is ignored");
 
-  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm its path also persists a new field.
+  // #4791 follow-up: the remaining user-editable entry settings (activation chance, timing,
+  // recursion, grouping, scan depth, lock, filters) are now patchable via updateEntry too, and
+  // probability is clamped to 0-100.
+  const professorMariSettingsUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: {
+      probability: 150,
+      sticky: 3,
+      cooldown: 2,
+      delay: 1,
+      groupWeight: 5,
+      scanDepth: 4,
+      preventRecursion: false,
+      excludeRecursion: true,
+      delayUntilRecursion: true,
+      excludeFromVectorization: true,
+      locked: true,
+      characterFilterIds: ["char-1", "char-2"],
+    },
+    apply: true,
+  });
+  assert.equal(professorMariSettingsUpdate.ok, true, `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`);
+  const professorMariSettingsEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariSettingsEntry);
+  assert.equal(professorMariSettingsEntry.probability, 100, "probability is clamped to 0-100");
+  assert.equal(professorMariSettingsEntry.sticky, 3, "updateEntry sets sticky");
+  assert.equal(professorMariSettingsEntry.cooldown, 2, "updateEntry sets cooldown");
+  assert.equal(professorMariSettingsEntry.delay, 1, "updateEntry sets delay");
+  assert.equal(professorMariSettingsEntry.groupWeight, 5, "updateEntry sets groupWeight");
+  assert.equal(professorMariSettingsEntry.scanDepth, 4, "updateEntry sets scanDepth");
+  assert.equal(professorMariSettingsEntry.preventRecursion, false, "updateEntry clears preventRecursion");
+  assert.equal(professorMariSettingsEntry.excludeRecursion, true, "updateEntry sets excludeRecursion");
+  assert.equal(professorMariSettingsEntry.delayUntilRecursion, true, "updateEntry sets delayUntilRecursion");
+  assert.equal(professorMariSettingsEntry.excludeFromVectorization, true, "updateEntry sets excludeFromVectorization");
+  assert.equal(professorMariSettingsEntry.locked, true, "updateEntry sets locked");
+  assert.deepEqual(
+    professorMariSettingsEntry.characterFilterIds,
+    ["char-1", "char-2"],
+    "updateEntry sets characterFilterIds",
+  );
+
+  // #4791 follow-up (hardening): nullable numbers clear on explicit null, ephemeral honors its int>=0
+  // bound, filter modes are enum-validated (and case-normalized), and unknown matching sources drop.
+  const professorMariHardeningUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: {
+      sticky: null,
+      ephemeral: -5,
+      characterFilterMode: "Include",
+      characterTagFilterMode: "bogus",
+      additionalMatchingSources: ["character_description", "not_a_source"],
+    },
+    apply: true,
+  });
+  assert.equal(
+    professorMariHardeningUpdate.ok,
+    true,
+    `hardening updateEntry must succeed: ${JSON.stringify(professorMariHardeningUpdate)}`,
+  );
+  const professorMariHardenedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariHardenedEntry);
+  assert.equal(professorMariHardenedEntry.sticky, null, "explicit null clears a nullable numeric field");
+  assert.equal(professorMariHardenedEntry.ephemeral, 0, "ephemeral clamps a negative to its 0 minimum");
+  assert.equal(professorMariHardenedEntry.characterFilterMode, "include", "a filter mode is normalized and validated");
+  assert.equal(
+    professorMariHardenedEntry.characterTagFilterMode,
+    "any",
+    "an invalid filter mode is dropped, leaving the default",
+  );
+  assert.deepEqual(
+    professorMariHardenedEntry.additionalMatchingSources,
+    ["character_description"],
+    "unknown additionalMatchingSources values are filtered out",
+  );
+
+  // folderId must reference an existing folder in the entry's own lorebook: a bad id is rejected
+  // (unlike the pre-fix path, which stored a dangling reference), and an explicit null clears it.
+  const professorMariBadFolder = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { folderId: "no-such-folder" },
+    apply: true,
+  });
+  assert.equal(
+    professorMariBadFolder.ok,
+    false,
+    "updateEntry rejects a folderId that is not a folder in the entry's lorebook",
+  );
+  const professorMariClearFolder = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { folderId: null },
+    apply: true,
+  });
+  assert.equal(professorMariClearFolder.ok, true, "updateEntry accepts a folder-only null clear");
+  const professorMariClearedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.equal(professorMariClearedEntry.folderId, null, "explicit null clears folderId");
+
+  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm the create path
+  // also persists the new fields when they arrive as top-level keys (exercising the addentry allowlist).
   const professorMariAddEntry = await mariDb.executeAction({
     action: "lorebook.addEntry",
     lorebookId: professorMariParamLorebookId,
     data: { name: "Regex entry", content: "Pattern-matched lore.", keys: ["\\bLycan\\b"], useRegex: true },
+    probability: 20,
+    excludeRecursion: true,
+    sticky: 7,
+    characterFilterIds: ["char-9"],
     apply: true,
   });
   assert.equal(professorMariAddEntry.ok, true);
@@ -1961,6 +2084,14 @@ try {
   );
   assert.ok(professorMariAddedEntry);
   assert.equal(professorMariAddedEntry.useRegex, true, "addEntry must persist useRegex");
+  assert.equal(professorMariAddedEntry.probability, 20, "addEntry persists a top-level allowlisted number");
+  assert.equal(professorMariAddedEntry.excludeRecursion, true, "addEntry persists a top-level allowlisted boolean");
+  assert.equal(professorMariAddedEntry.sticky, 7, "addEntry persists a top-level allowlisted timing field");
+  assert.deepEqual(
+    professorMariAddedEntry.characterFilterIds,
+    ["char-9"],
+    "addEntry persists a top-level allowlisted list field",
+  );
   await lorebookStorage.remove(professorMariParamLorebookId);
 
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";

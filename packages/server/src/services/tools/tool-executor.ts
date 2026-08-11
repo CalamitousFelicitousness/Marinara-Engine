@@ -1329,6 +1329,17 @@ async function primeSpotifyPlaybackDevice(
   await wait(SPOTIFY_PLAYBACK_SETTLE_MS);
 }
 
+async function clearSpotifyRepeatBeforePlayback(accessToken: string, deviceId: string | null): Promise<void> {
+  for (const delay of SPOTIFY_REPEAT_RETRY_DELAYS_MS) {
+    if (delay > 0) await wait(delay);
+    const repeat = await applySpotifyRepeatAfterPlay(accessToken, "off", deviceId);
+    if (repeat !== "off") continue;
+    const snapshot = await fetchSpotifyPlaybackSnapshot(accessToken);
+    if (snapshot?.repeatState === "off") return;
+  }
+  logger.debug("[spotify] Repeat-off could not be verified before replacing the playback context");
+}
+
 async function verifyOrNudgeSpotifyPlayback(args: {
   accessToken: string;
   body: SpotifyPlayRequestBody;
@@ -1842,6 +1853,8 @@ async function spotifyPlay(
 
     if (singleTrackUri && effectiveRepeatAfterPlay === "track") {
       await applySpotifyRepeatAfterPlay(creds.accessToken, "off", playDeviceId);
+    } else if (repeatTrackList && beforePlayback?.repeatState !== "off") {
+      await clearSpotifyRepeatBeforePlayback(creds.accessToken, playDeviceId);
     }
 
     if (uris.length === 1 && !firstUri.startsWith("spotify:track:")) {
@@ -1901,7 +1914,9 @@ async function spotifyPlay(
     const play = await requestSpotifyPlayback(creds.accessToken, playDeviceId, body);
     if (!play.ok) return { error: play.error };
     if (singleTrackUri) await wait(SPOTIFY_PLAYBACK_SETTLE_MS);
-    let repeat = await applySpotifyRepeatAfterPlay(creds.accessToken, effectiveRepeatAfterPlay, playDeviceId);
+    let repeat = repeatTrackList
+      ? null
+      : await applySpotifyRepeatAfterPlay(creds.accessToken, effectiveRepeatAfterPlay, playDeviceId);
     const requireFirstUriMatch = singleTrackUri || (allTrackUris && uris.length > 1);
     let current = await verifyOrNudgeSpotifyPlayback({
       accessToken: creds.accessToken,
@@ -1913,6 +1928,7 @@ async function spotifyPlay(
       expectedUris: playbackUris,
       requireFirstUri: requireFirstUriMatch,
     });
+    const playbackVerified = spotifyPlaybackMatches(current, playbackUris, requireFirstUriMatch);
     if (singleTrackUri && effectiveRepeatAfterPlay === "track" && current?.repeatState !== "track") {
       repeat = await applySpotifyRepeatAfterPlay(creds.accessToken, "track", current?.deviceId ?? playDeviceId, 3);
       current = await verifyOrNudgeSpotifyPlayback({
@@ -1926,7 +1942,7 @@ async function spotifyPlay(
         requireFirstUri: true,
       });
     }
-    if (repeatTrackList && current?.repeatState !== "context") {
+    if (repeatTrackList && playbackVerified && current?.repeatState !== "context") {
       for (const delay of SPOTIFY_REPEAT_RETRY_DELAYS_MS) {
         if (delay > 0) await wait(delay);
         repeat = await applySpotifyRepeatAfterPlay(
@@ -1949,26 +1965,20 @@ async function spotifyPlay(
         playbackUris[0] ?? firstUri,
         current?.repeatState ?? "unknown",
       );
-      const queuedAfterStart = await queueSpotifyTracks(
-        creds.accessToken,
-        current?.deviceId ?? playDeviceId,
-        queuedTrackUris,
-      );
-      const totalQueued = playbackUris.length + queuedAfterStart;
-      await rememberSpotifyPlayedTracks(context, uris);
+      const currentUri = current?.trackUri ?? null;
+      const error =
+        currentUri === (playbackUris[0] ?? firstUri)
+          ? `Spotify started the selected track, but failed to apply ${effectiveRepeatAfterPlay ?? "the requested"} repeat mode.`
+          : `Spotify playback failed to start the selected track on ${current?.deviceName ?? targetDeviceName ?? "the active device"}.`;
       return {
-        applied: true,
-        playbackPending: true,
-        verification: "pending",
+        error,
+        verification: "failed",
         uris,
         reason,
         repeat,
         repeatState: current?.repeatState ?? repeat ?? null,
-        currentUri: current?.trackUri ?? null,
+        currentUri,
         device: current?.deviceName ?? targetDeviceName,
-        queued: totalQueued,
-        queueRequested: uris.length,
-        display: formatSpotifyPlaybackPendingDisplay(firstUri, reason, current?.deviceName ?? targetDeviceName),
       };
     }
     const queuedAfterStart = await queueSpotifyTracks(

@@ -53,6 +53,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Restored Music DJ Spotify playback by clearing the previous repeat mode before replacing a multi-song context, reapplying repeat only after the selected first track is verified, and surfacing persistent URI mismatches as failures instead of false pending successes (#4903).
 - Made persona saves reliable: the editor now sends only the fields you actually changed, keeps edits made while a save is still running, prevents saves and avatar replacements from overlapping, blocks its own Back and Discard controls mid-write, and explains exactly which field a rejected save objected to — including an empty persona name.
 - Made Reduce Ambient Animations & Effects flatten costly backdrop blur on desktop as well as mobile, including shared Conversation overlays (#4897).
 - Applied embedded character-card fields when replacing an existing character's avatar, so updated card PNGs refresh the matching editor sections (#4896).

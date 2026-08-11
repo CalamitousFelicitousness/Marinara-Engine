@@ -2135,6 +2135,11 @@ const cases: RegressionCase[] = [
           );
         }
         if (url.pathname === "/v1/me/player/play" && method === "PUT") {
+          assert.equal(
+            repeatState,
+            "off",
+            "Music DJ must clear the previous repeat mode before replacing Spotify's playback context",
+          );
           const body = JSON.parse(String(init?.body ?? "{}")) as { uris?: string[]; position_ms?: number };
           playbackBodies.push(body);
           activeUri = body.uris?.[0] ?? activeUri;
@@ -2178,6 +2183,7 @@ const cases: RegressionCase[] = [
         };
         assert.deepEqual(playbackBodies[0]?.uris, selectedUris);
         assert.deepEqual(queuedUris, [], "repeatable Music DJ selections must not use Spotify's disposable queue");
+        assert.deepEqual(repeatStates, ["off", "context"]);
         assert.equal(repeatStates.at(-1), "context");
         assert.equal(payload.repeat, "context");
         assert.equal(payload.repeatState, "context");
@@ -2306,17 +2312,19 @@ const cases: RegressionCase[] = [
           },
         );
 
-        assert.equal(results[0]?.success, true);
+        assert.equal(results[0]?.success, false);
         const payload = JSON.parse(results[0]!.result) as {
+          error?: string;
           applied?: boolean;
           playbackPending?: boolean;
           verification?: string;
           repeatState?: string;
         };
-        assert.equal(repeatRequests, 4, "Spotify repeat should be retried while playback reports it as off");
-        assert.equal(payload.applied, true);
-        assert.equal(payload.playbackPending, true);
-        assert.equal(payload.verification, "pending");
+        assert.equal(repeatRequests, 3, "Spotify repeat should be retried while playback reports it as off");
+        assert.match(payload.error ?? "", /failed to apply context repeat mode/u);
+        assert.equal(payload.applied, undefined);
+        assert.equal(payload.playbackPending, undefined);
+        assert.equal(payload.verification, "failed");
         assert.equal(payload.repeatState, "off");
       } finally {
         globalThis.fetch = originalFetch;

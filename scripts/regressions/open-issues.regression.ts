@@ -1907,6 +1907,14 @@ try {
           selectiveLogic: "and_all",
           matchWholeWords: true,
           caseSensitive: true,
+          // Embedded entries must also receive the full user-editable settings, not just the
+          // keyword-matching subset the builder handles.
+          probability: 25,
+          sticky: 6,
+          groupWeight: 8,
+          excludeRecursion: true,
+          characterFilterMode: "include",
+          characterFilterIds: ["char-embedded"],
         },
       ],
     },
@@ -1920,6 +1928,16 @@ try {
   assert.equal(professorMariParamEntry.matchWholeWords, true, "create must persist matchWholeWords");
   assert.equal(professorMariParamEntry.caseSensitive, true, "create must persist caseSensitive");
   assert.equal(professorMariParamEntry.useRegex, false, "unset useRegex stays default");
+  assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
+  assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
+  assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
+  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
+  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
+  assert.deepEqual(
+    professorMariParamEntry.characterFilterIds,
+    ["char-embedded"],
+    "create must persist an embedded entry's filter ids",
+  );
 
   // updateEntry (the fidelity-pass path, via assignLorebookEntryActionFields) patches the same fields.
   const professorMariEntryUpdate = await mariDb.executeAction({

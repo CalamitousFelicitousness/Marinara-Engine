@@ -3344,13 +3344,17 @@ export class MariDbService {
         };
         this.assignLorebookActionFields(row, data);
         const entries = Array.isArray(data.entries) ? data.entries : [];
-        const relatedInserts = entries.map((entry, index) => {
-          if (!isRecord(entry)) throw new Error(`lorebook entry ${index + 1} must be an object`);
-          return {
-            table: "lorebook_entries",
-            row: buildLorebookEntryCreateRow(entry, id, newId(), timestamp, (index + 1) * 100),
-          };
-        });
+        const relatedInserts = await Promise.all(
+          entries.map(async (entry, index) => {
+            if (!isRecord(entry)) throw new Error(`lorebook entry ${index + 1} must be an object`);
+            // Give embedded entries the same coverage as lorebook.addEntry: build the base row, then
+            // apply every user-editable setting and validate folder placement against this lorebook.
+            const entryRow = buildLorebookEntryCreateRow(entry, id, newId(), timestamp, (index + 1) * 100);
+            this.assignLorebookEntryActionFields(entryRow, entry);
+            await this.assignEntryFolderId(entryRow, entry, id);
+            return { table: "lorebook_entries", row: entryRow };
+          }),
+        );
         return this.executeMutation(
           {
             kind: "insert",

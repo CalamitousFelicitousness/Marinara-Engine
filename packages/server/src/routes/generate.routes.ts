@@ -7392,14 +7392,19 @@ export async function generateRoutes(app: FastifyInstance) {
           const autoRangeEndIndex = autoRange?.endIndex;
           // Compute the hide subset up front so it can be persisted on the entry
           // (deletion restores exactly this set) and reused for the actual hide.
-          const latestChatBeforeSummaryHide = await chats.getById(input.chatId);
+          const [latestChatBeforeSummaryHide, latestMessagesBeforeSummaryHide] = await Promise.all([
+            chats.getById(input.chatId),
+            chats.listMessages(input.chatId),
+          ]);
           const latestMetaBeforeSummaryHide = latestChatBeforeSummaryHide
             ? (parseExtra(latestChatBeforeSummaryHide.metadata) as Record<string, unknown>)
             : chatMeta;
+          // Do not claim messages that arrived during generation were summarized.
+          // The live list is used only to protect the real current visible tail.
           const autoHideIds =
             newText && !shouldReviewSummary && latestMetaBeforeSummaryHide.hideSummarisedMessages === true
               ? computeSummaryHideIds({
-                  messages: freshMessages,
+                  messages: latestMessagesBeforeSummaryHide,
                   entryMessageIds: autoEntryMessageIds,
                   tail: resolveRoleplaySummaryTail(latestMetaBeforeSummaryHide.summaryTailMessages),
                 })

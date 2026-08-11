@@ -2260,7 +2260,7 @@ function SummaryEntryRow({
           >
             <GripVertical size="0.875rem" />
           </button>
-          <div className="hidden items-center gap-0.5 sm:flex">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={onMoveUp}

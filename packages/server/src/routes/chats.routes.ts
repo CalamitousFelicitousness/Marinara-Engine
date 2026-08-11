@@ -4282,14 +4282,19 @@ export async function chatsRoutes(app: FastifyInstance) {
     // summarized set minus the protected tail, so manual hiding honors
     // `summaryTailMessages` like the automatic path. Persisted on the entry (when
     // hiding is enabled) so deletion restores exactly what was hidden.
-    const latestChatBeforeHide = await storage.getById(req.params.id);
+    const [latestChatBeforeHide, latestMessagesBeforeHide] = await Promise.all([
+      storage.getById(req.params.id),
+      storage.listMessages(req.params.id),
+    ]);
     const latestMetaBeforeHide = latestChatBeforeHide
       ? (parseExtra(latestChatBeforeHide.metadata) as Record<string, unknown>)
       : chatMeta;
     const hideEnabled = latestMetaBeforeHide.hideSummarisedMessages === true;
+    // Keep ownership tied to the exact messages sent to the provider, but use
+    // the live list to protect the real current tail if messages arrived while it ran.
     const eligibleToHide = hideEnabled
       ? computeSummaryHideIds({
-          messages: allMessages,
+          messages: latestMessagesBeforeHide,
           entryMessageIds: messageIds,
           tail: resolveRoleplaySummaryTail(latestMetaBeforeHide.summaryTailMessages),
         })

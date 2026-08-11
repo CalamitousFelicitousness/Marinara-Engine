@@ -460,9 +460,12 @@ const copiedSupportDiagnostics = formatSupportDiagnostics({
 for (const expectedLine of [
   "Version: 2.4.2",
   "Build: 2.4.2+abcdef123456",
+  "Commit: abcdef123456",
   "OS: macOS 15.6",
+  "Browser / app shell: Marinara test shell",
   "GPU: Test GPU",
   "Active connection: Sol",
+  "Connection provider: openai",
   "LLM model: gpt-5.6-sol",
 ]) {
   assert.ok(copiedSupportDiagnostics.includes(expectedLine), `Support diagnostics must include ${expectedLine}`);
@@ -478,7 +481,7 @@ assert.match(
 );
 assert.match(
   professorMariWorkspaceSource,
-  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,220}Claim a field was completed only/u,
+  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}requested value[\s\S]{0,220}Claim completion only/u,
   "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
 );
 const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
@@ -6275,6 +6278,16 @@ assert.match(
   summaryPopoverSource,
   /startSummaryEntryTouchDrag\(event, entry\.id/u,
   "Summary entries must support touch drag-and-drop on mobile",
+);
+assert.match(
+  readFileSync(join(REPOSITORY_ROOT, "packages/client/src/lib/touch-reorder.ts"), "utf8"),
+  /candidateIndex = readReorderIndex\(candidate\)[\s\S]{0,260}lastIndex = readReorderIndex/u,
+  "Touch reorder gaps must use persisted row indexes when filtered entries are not rendered",
+);
+assert.match(
+  summaryPopoverSource,
+  /<div className="flex items-center gap-0\.5">[\s\S]{0,900}onMoveUp[\s\S]{0,900}onMoveDown/u,
+  "Summary entries must keep keyboard reorder controls available on narrow viewports",
 );
 assert.match(
   chatRoutesSource,

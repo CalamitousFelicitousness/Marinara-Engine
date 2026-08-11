@@ -1959,9 +1959,11 @@ export async function charactersRoutes(app: FastifyInstance) {
       await mkdir(avatarsDir, { recursive: true });
       await writeFile(filepath, imageBuffer);
       const characterData = body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
-      const updated = await storage.update(id, characterData, avatarPath, {
-        versionReason: body.data === undefined ? "Avatar update" : "Character card and avatar update",
-      });
+      const updated = await enqueueUpdate(characterUpdateQueues, id, () =>
+        storage.update(id, characterData, avatarPath, {
+          versionReason: body.data === undefined ? "Avatar update" : "Character card and avatar update",
+        }),
+      );
       if (!updated) {
         await removeUnattachedAvatarFile({ avatarPath });
         return reply.status(404).send({ error: "Character not found" });

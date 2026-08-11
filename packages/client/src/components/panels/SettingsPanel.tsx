@@ -7177,8 +7177,8 @@ function AdvancedSettings() {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const activeChatId = useChatStore((state) => state.activeChatId);
-  const { data: activeChat } = useChat(activeChatId);
-  const { data: rawConnections } = useConnections();
+  const { data: activeChat, isLoading: isActiveChatLoading } = useChat(activeChatId);
+  const { data: rawConnections, isLoading: isConnectionsLoading } = useConnections();
   const showTimestamps = useUIStore((s) => s.showTimestamps);
   const setShowTimestamps = useUIStore((s) => s.setShowTimestamps);
   const showModelName = useUIStore((s) => s.showModelName);
@@ -7477,6 +7477,7 @@ function AdvancedSettings() {
   const activeConnection = activeChat?.connectionId
     ? connections.find((connection) => connection.id === activeChat.connectionId) ?? null
     : connections.find((connection) => connection.isDefault) ?? null;
+  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading);
 
   const handleCopySupportDiagnostics = useCallback(async () => {
     const copied = await copyToClipboard(
@@ -7929,6 +7930,7 @@ function AdvancedSettings() {
           <button
             type="button"
             onClick={() => void handleCopySupportDiagnostics()}
+            disabled={supportDiagnosticsPending}
             className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
           >
             <Copy size="0.8125rem" />

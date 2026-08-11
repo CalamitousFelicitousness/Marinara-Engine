@@ -219,6 +219,7 @@ try {
   >;
   assert.deepEqual(switchedMessageExtra.conversationStartForCharacterIds, ["new-character"]);
   assert.deepEqual(switchedMessageExtra.hiddenFromAICharacterIds, ["private-character"]);
+  assert.equal(switchedMessageExtra.isConversationStart, true);
 
   await db.insert(memoryChunks).values({
     id: "unaffected-earlier-memory",

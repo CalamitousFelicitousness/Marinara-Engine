@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { executeAgent, executeAgentBatch } from "../../packages/server/src/services/agents/agent-executor.js";
+import {
+  executeAgent,
+  executeAgentBatch,
+  resolveAgentResultType,
+} from "../../packages/server/src/services/agents/agent-executor.js";
 import { createAgentPipeline, type ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
 import { resolveAgentPipelineAgents } from "../../packages/server/src/services/generation/agent-resolution.js";
 import { buildLlamaArgs } from "../../packages/server/src/services/sidecar/sidecar-launch-plan.js";
@@ -9,7 +13,8 @@ import {
   type ChatMessage,
   type ChatOptions,
 } from "../../packages/server/src/services/llm/base-provider.js";
-import type { AgentContext } from "../../packages/shared/src/types/agent.js";
+import { agentResultTypeSchema } from "../../packages/shared/src/schemas/agent.schema.js";
+import { AGENT_RESULT_TYPE_VALUES, type AgentContext } from "../../packages/shared/src/types/agent.js";
 
 class RecordingProvider extends BaseLLMProvider {
   calls = 0;
@@ -59,6 +64,73 @@ const context: AgentContext = {
   chatSummary: null,
   streaming: false,
 };
+
+// This test oracle intentionally duplicates the public compatibility contract so
+// coordinated production changes cannot make a breaking vocabulary edit invisible.
+const EXPECTED_AGENT_RESULT_TYPE_VALUES = [
+  "game_state_update",
+  "text_rewrite",
+  "sprite_change",
+  "echo_message",
+  "quest_update",
+  "image_prompt",
+  "context_injection",
+  "continuity_check",
+  "director_event",
+  "lorebook_update",
+  "character_card_update",
+  "background_change",
+  "character_tracker_update",
+  "persona_stats_update",
+  "custom_tracker_update",
+  "spotify_control",
+  "youtube_control",
+  "local_music_control",
+  "haptic_command",
+  "cyoa_choices",
+  "secret_plot",
+  "game_master_narration",
+  "party_action",
+  "game_map_update",
+  "game_state_transition",
+  "prompt_patch",
+  "frontend_theme_update",
+  "about_me_update",
+] as const;
+
+assert.deepEqual(
+  AGENT_RESULT_TYPE_VALUES,
+  EXPECTED_AGENT_RESULT_TYPE_VALUES,
+  "agent result vocabulary must retain its exact public values and order",
+);
+assert.deepEqual(
+  agentResultTypeSchema.options,
+  EXPECTED_AGENT_RESULT_TYPE_VALUES,
+  "agent result schema must retain the public vocabulary order",
+);
+assert.equal(
+  agentResultTypeSchema.safeParse("unrecognized_result_type").success,
+  false,
+  "agent result schema must reject unknown values",
+);
+for (const resultType of AGENT_RESULT_TYPE_VALUES) {
+  assert.equal(agentResultTypeSchema.safeParse(resultType).success, true, `${resultType} must be schema-accepted`);
+  assert.equal(
+    resolveAgentResultType({ type: "custom-agent", settings: { resultType } }),
+    resultType,
+    `${resultType} must be runtime-admitted`,
+  );
+}
+assert.equal(
+  resolveAgentResultType({ type: "world-state", settings: { resultType: "unrecognized_result_type" } }),
+  "game_state_update",
+  "an unknown configured result type should retain its built-in mapping fallback",
+);
+assert.equal(
+  resolveAgentResultType({ type: "custom-agent", settings: { resultType: "unrecognized_result_type" } }),
+  "context_injection",
+  "an unknown configured result type should fall back to context injection when unmapped",
+);
 
 const defaultTemperatureProvider = new RecordingProvider();
 await executeAgent(makeAgent("temperature-default"), context, defaultTemperatureProvider, "agent-model");

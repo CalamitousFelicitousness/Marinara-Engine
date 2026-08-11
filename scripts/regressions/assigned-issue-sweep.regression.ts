@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { INLINE_MD_RE } from "../../packages/client/src/lib/inline-markdown-regex.js";
+import { DISCORD_SUBTEXT_RE, INLINE_MD_RE } from "../../packages/client/src/lib/inline-markdown-regex.js";
+import { applyInlineMarkdownHTML } from "../../packages/client/src/lib/markdown.js";
 import { mergeUndatedSyncedSettings } from "../../packages/client/src/hooks/use-settings-sync.js";
 import {
   isStockMarinaraUniversalPreset,
@@ -11,12 +12,49 @@ import {
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-const outerMarkdownMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec(
-  "*This is **bold** in italic.*",
+const outerMarkdownMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec("*This is **bold** in italic.*");
+assert.equal(
+  outerMarkdownMatch?.[11],
+  "This is **bold** in italic.",
+  "single-star delimiters keep the full italic span",
 );
-assert.equal(outerMarkdownMatch?.[11], "This is **bold** in italic.", "single-star delimiters keep the full italic span");
 const innerMarkdownMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec(outerMarkdownMatch?.[11] ?? "");
 assert.equal(innerMarkdownMatch?.[9], "bold", "double-star delimiters remain bold inside italic text");
+
+const underlineMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec("__underlined__");
+assert.equal(underlineMatch?.[10], "underlined", "double underscores retain the underline span");
+assert.equal(DISCORD_SUBTEXT_RE.exec("-# quiet context")?.[1], "quiet context", "Discord-style subtext is recognized");
+const bareSubtextMatch = DISCORD_SUBTEXT_RE.exec("-#");
+assert.ok(bareSubtextMatch, "bare Discord-style subtext is recognized");
+assert.equal(bareSubtextMatch[1], undefined, "bare Discord-style subtext has no content");
+assert.equal(DISCORD_SUBTEXT_RE.exec("-# ")?.[1], "", "empty Discord-style subtext with spacing is recognized");
+assert.equal(DISCORD_SUBTEXT_RE.test("- ordinary list item"), false, "ordinary list items remain ordinary lists");
+assert.match(
+  applyInlineMarkdownHTML("<span>HTML</span><br>-# quiet context"),
+  /<small class="mari-md-subtext">quiet context<\/small>/u,
+  "embedded-HTML chat content receives the same Discord-style subtext rendering",
+);
+assert.equal(applyInlineMarkdownHTML("-#"), '<small class="mari-md-subtext"></small>');
+assert.equal(applyInlineMarkdownHTML("-# "), '<small class="mari-md-subtext"></small>');
+
+const markdownSource = readFileSync(join(repositoryRoot, "packages/client/src/lib/markdown.tsx"), "utf8");
+assert.match(
+  markdownSource,
+  /<u key=\{`\$\{keyPrefix\}u\$\{key\+\+\}`\} className="mari-md-underline">/u,
+  "the React Markdown path renders double underscores as underline",
+);
+assert.match(
+  markdownSource,
+  /<small key=\{`\$\{keyBase\}sub\$\{key\+\+\}`\} className="mari-md-subtext">/u,
+  "the React Markdown path renders Discord-style subtext as a semantic small block",
+);
+
+const gameNarrationSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/game/GameNarration.tsx"),
+  "utf8",
+);
+assert.match(gameNarrationSource, /mari-md-underline/u, "Game chat narration retains underline markup");
+assert.match(gameNarrationSource, /mari-md-subtext/u, "Game chat narration retains Discord-style subtext markup");
 
 const mergedSettings = mergeUndatedSyncedSettings({ accentColor: "local", homeGreetingEnabled: true } as never, {
   accentColor: "server",
@@ -65,6 +103,31 @@ assert.doesNotMatch(
   lorebookCallbacks,
   /if \(!dirtyRef\.current\) return;/u,
   "embedded-lorebook controls reconcile immediately even when the editor is clean",
+);
+
+const presetEditorSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/presets/PresetEditor.tsx"),
+  "utf8",
+);
+assert.equal(
+  presetEditorSource.match(/showMarkdownPreview/gu)?.length,
+  3,
+  "Conversation, Game, and section preset content expose Markdown previews",
+);
+
+const professorMariChatSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/chat/HomeProfessorMariChat.tsx"),
+  "utf8",
+);
+assert.match(
+  professorMariChatSource,
+  /inputDrafts\.get\(PROFESSOR_MARI_DRAFT_KEY\)/u,
+  "Home Professor Mari restores her composer from the persisted draft store",
+);
+assert.match(
+  professorMariChatSource,
+  /setInputDraft\(PROFESSOR_MARI_DRAFT_KEY,/u,
+  "Home Professor Mari saves composer changes through the persisted draft store",
 );
 
 console.info("Assigned issue-sweep regressions passed.");

@@ -112,6 +112,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 const MARI_AVATAR_URL = "/sprites/mari/Mari_profile.png";
 const MARI_CHIBI_URL = "/sprites/mari/chibi-professor-mari.png";
 const PROFESSOR_MARI_WELCOME_MESSAGE_ID = "__professor_mari_home_welcome__";
+const PROFESSOR_MARI_DRAFT_KEY = "__home_professor_mari__";
 const MARI_CONNECTION_STORAGE_KEY = "marinara:home-professor-mari-connection-id";
 const PROFESSOR_MARI_ERROR_TOAST_DURATION_MS = 120_000;
 const WORKSPACE_SETTLE_POLL_MS = 1_500;
@@ -2909,7 +2910,15 @@ export function HomeProfessorMariChat({
   const trackAchievement = useTrackAchievement();
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState("");
+  const draft = useChatStore((state) => state.inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "");
+  const setInputDraft = useChatStore((state) => state.setInputDraft);
+  const setDraft = useCallback(
+    (next: string | ((current: string) => string)) => {
+      const current = useChatStore.getState().inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "";
+      setInputDraft(PROFESSOR_MARI_DRAFT_KEY, typeof next === "function" ? next(current) : next);
+    },
+    [setInputDraft],
+  );
   const [attachments, setAttachments] = useState<ProfessorMariAttachment[]>([]);
   const [isReadingAttachments, setIsReadingAttachments] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(() => readStoredConnectionId());
@@ -3728,7 +3737,7 @@ export function HomeProfessorMariChat({
     if (chatHistoryOpen) await loadChatHistory();
     await qc.invalidateQueries({ queryKey: chatKeys.messages(chat.id) });
     toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariSPreviousChatWasSaved"));
-  }, [chatHistoryOpen, clearMariChips, effectiveConnectionId, loadChatHistory, qc, setActiveChatId, localizeUi]);
+  }, [chatHistoryOpen, clearMariChips, effectiveConnectionId, loadChatHistory, qc, setActiveChatId, setDraft, localizeUi]);
 
   const guidedPlan = professorMariSuggestionsEnabled && mariPlanChatId === chatId ? mariPlan : null;
   const guidedPlanStep = guidedPlan ? (guidedPlan[mariPlanCursor] ?? null) : null;
@@ -3761,7 +3770,7 @@ export function HomeProfessorMariChat({
       setDraft((current) => (current.trim() ? `${current.trimEnd()} ${chip.prompt}` : chip.prompt));
       focusComposer();
     },
-    [clearMariPlan, focusComposer, guidedPlanStep, recordMariPlanAnswer],
+    [clearMariPlan, focusComposer, guidedPlanStep, recordMariPlanAnswer, setDraft],
   );
 
   const runRestart = useCallback(async () => {
@@ -4205,7 +4214,7 @@ export function HomeProfessorMariChat({
       }
       return true;
     },
-    [chatId, loadChatHistory, qc, localizeUi],
+    [chatId, loadChatHistory, qc, setDraft, localizeUi],
   );
 
   const handleDeleteProfessorChat = useCallback(

@@ -24,7 +24,9 @@ assert.equal(innerMarkdownMatch?.[9], "bold", "double-star delimiters remain bol
 const underlineMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec("__underlined__");
 assert.equal(underlineMatch?.[10], "underlined", "double underscores retain the underline span");
 assert.equal(DISCORD_SUBTEXT_RE.exec("-# quiet context")?.[1], "quiet context", "Discord-style subtext is recognized");
-assert.equal(DISCORD_SUBTEXT_RE.exec("-#")?.[1], undefined, "bare Discord-style subtext is recognized");
+const bareSubtextMatch = DISCORD_SUBTEXT_RE.exec("-#");
+assert.ok(bareSubtextMatch, "bare Discord-style subtext is recognized");
+assert.equal(bareSubtextMatch[1], undefined, "bare Discord-style subtext has no content");
 assert.equal(DISCORD_SUBTEXT_RE.exec("-# ")?.[1], "", "empty Discord-style subtext with spacing is recognized");
 assert.equal(DISCORD_SUBTEXT_RE.test("- ordinary list item"), false, "ordinary list items remain ordinary lists");
 assert.match(

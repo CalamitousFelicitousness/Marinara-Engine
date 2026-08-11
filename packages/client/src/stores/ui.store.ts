@@ -531,6 +531,8 @@ export interface CustomQuickReply {
   icon?: string;
 }
 
+export type MariPanelSortMode = "az" | "za" | "newest" | "oldest";
+
 interface UIState {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -562,6 +564,7 @@ interface UIState {
   appAccentRgbMode: boolean;
   customCursorEnabled: boolean;
   reduceAmbientEffects: boolean;
+  mariPanelSortMode: MariPanelSortMode;
   chatBackground: string | null;
   /** Default background applied when a Roleplay chat has no saved background yet. */
   defaultRoleplayBackground: string;
@@ -941,6 +944,7 @@ interface UIState {
   setAppAccentRgbMode: (enabled: boolean) => void;
   setCustomCursorEnabled: (enabled: boolean) => void;
   setReduceAmbientEffects: (enabled: boolean) => void;
+  setMariPanelSortMode: (mode: MariPanelSortMode) => void;
   setChatBackground: (url: string | null) => void;
   setDefaultRoleplayBackground: (url: string) => void;
   setChatBackgroundBlur: (v: number) => void;
@@ -1367,6 +1371,7 @@ export const useUIStore = create<UIState>()(
       appAccentRgbMode: false,
       customCursorEnabled: true,
       reduceAmbientEffects: false,
+      mariPanelSortMode: "az",
       chatBackground: null,
       defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
       chatBackgroundBlur: 0,
@@ -1668,6 +1673,7 @@ export const useUIStore = create<UIState>()(
       setAppAccentRgbMode: (enabled) => set({ appAccentRgbMode: enabled }),
       setCustomCursorEnabled: (enabled) => set({ customCursorEnabled: enabled }),
       setReduceAmbientEffects: (enabled) => set({ reduceAmbientEffects: enabled }),
+      setMariPanelSortMode: (mode) => set({ mariPanelSortMode: mode }),
       setChatBackground: (url) => set({ chatBackground: url }),
       setDefaultRoleplayBackground: (url) =>
         set({ defaultRoleplayBackground: normalizeDefaultRoleplayBackground(url) }),
@@ -2342,6 +2348,7 @@ export const useUIStore = create<UIState>()(
           appAccentRgbMode: false,
           customCursorEnabled: true,
           reduceAmbientEffects: false,
+          mariPanelSortMode: "az",
           chatBackground: null,
           defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
           chatBackgroundBlur: 0,
@@ -3128,6 +3135,7 @@ export const useUIStore = create<UIState>()(
         appAccentRgbMode: state.appAccentRgbMode,
         customCursorEnabled: state.customCursorEnabled,
         reduceAmbientEffects: state.reduceAmbientEffects,
+        mariPanelSortMode: state.mariPanelSortMode,
         chatBackground: state.chatBackground,
         defaultRoleplayBackground: state.defaultRoleplayBackground,
         chatBackgroundBlur: state.chatBackgroundBlur,

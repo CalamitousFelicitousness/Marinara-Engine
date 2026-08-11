@@ -82,7 +82,7 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
-import { useUIStore } from "../../stores/ui.store";
+import { useUIStore, type MariPanelSortMode } from "../../stores/ui.store";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
   isProfessorMariTranscriptNearBottom,
@@ -2219,6 +2219,53 @@ function WorkspaceApprovalCard({
   );
 }
 
+// #4868: client-side sort for the Skills/Memories panels. Deliberately keyed on name or
+// createdAt, never updatedAt, so saving or toggling a row does NOT reorder it (which used to
+// snap the open editor out of view). Persistent memories are pinned above the rest by the caller.
+function compareMariPanelItems(
+  a: { name: string; createdAt: string },
+  b: { name: string; createdAt: string },
+  mode: MariPanelSortMode,
+): number {
+  switch (mode) {
+    case "za":
+      return b.name.localeCompare(a.name);
+    case "newest":
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    case "oldest":
+      return String(a.createdAt).localeCompare(String(b.createdAt));
+    default:
+      return a.name.localeCompare(b.name);
+  }
+}
+
+const MARI_PANEL_SORT_OPTIONS: MariPanelSortMode[] = ["az", "za", "newest", "oldest"];
+
+function MariPanelSortSelect({ value, onChange }: { value: MariPanelSortMode; onChange: (mode: MariPanelSortMode) => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  const labels: Record<MariPanelSortMode, string> = {
+    az: localizeUi("ui.chat.homeprofessormarichat.sortAToZ"),
+    za: localizeUi("ui.chat.homeprofessormarichat.sortZToA"),
+    newest: localizeUi("ui.chat.homeprofessormarichat.sortNewest"),
+    oldest: localizeUi("ui.chat.homeprofessormarichat.sortOldest"),
+  };
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value as MariPanelSortMode)}
+      aria-label={localizeUi("ui.chat.homeprofessormarichat.sortLabel")}
+      title={localizeUi("ui.chat.homeprofessormarichat.sortLabel")}
+      className="h-8 shrink-0 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 text-[0.6875rem] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55"
+    >
+      {MARI_PANEL_SORT_OPTIONS.map((mode) => (
+        <option key={mode} value={mode}>
+          {labels[mode]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function ProfessorMariSkillsMenu({
   skills,
   selectedSkill,
@@ -2275,6 +2322,14 @@ function ProfessorMariSkillsMenu({
         : skills,
     [skills, normalizedQuery, selectedSkill?.id],
   );
+  const sortMode = useUIStore((s) => s.mariPanelSortMode);
+  const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
+  const displayed = useMemo(() => [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode)), [filtered, sortMode]);
+  // Keep the open editor in view when its row moves (selection change, or a rename that re-sorts it).
+  const activeEditorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    activeEditorRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedSkill?.id, selectedSkill?.updatedAt]);
 
   return (
     <section
@@ -2342,18 +2397,21 @@ function ProfessorMariSkillsMenu({
 
       {hasSkills && (
         <div className="shrink-0 border-b border-[var(--border)]/50 px-2.5 py-2">
-          <div className="relative">
-            <Search
-              size="0.8rem"
-              className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
-            />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={localizeUi("ui.chat.professormariskillsmenu.searchPlaceholder")}
-              aria-label={localizeUi("ui.chat.professormariskillsmenu.searchPlaceholder")}
-              className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] pl-7 pr-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55"
-            />
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search
+                size="0.8rem"
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+              />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={localizeUi("ui.chat.professormariskillsmenu.searchPlaceholder")}
+                aria-label={localizeUi("ui.chat.professormariskillsmenu.searchPlaceholder")}
+                className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] pl-7 pr-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55"
+              />
+            </div>
+            <MariPanelSortSelect value={sortMode} onChange={setSortMode} />
           </div>
         </div>
       )}
@@ -2369,12 +2427,12 @@ function ProfessorMariSkillsMenu({
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormariskillsmenu.noCustomSkillsYet")}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : displayed.length === 0 ? (
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormariskillsmenu.noMatches")}
             </div>
           ) : (
-            filtered.map((skill) => {
+            displayed.map((skill) => {
               const active = selectedSkill?.id === skill.id;
               return (
                 <div
@@ -2427,7 +2485,7 @@ function ProfessorMariSkillsMenu({
                     </span>
                   </div>
                   {active && (
-                    <div className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
+                    <div ref={active ? activeEditorRef : undefined} className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
                       <label className="block text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
                         {localizeUi("ui.characters.metadatatab.name")}
                         <input
@@ -2553,6 +2611,18 @@ function ProfessorMariMemoriesMenu({
         : memories,
     [memories, normalizedQuery, selectedMemory?.id],
   );
+  const sortMode = useUIStore((s) => s.mariPanelSortMode);
+  const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
+  const displayed = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode));
+    // Persistent memories are pinned above the rest; each group keeps the chosen sort order.
+    return [...sorted.filter((memory) => memory.persistent), ...sorted.filter((memory) => !memory.persistent)];
+  }, [filtered, sortMode]);
+  // Keep the open editor in view when its row moves (selection change, persistent toggle, or a rename).
+  const activeEditorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    activeEditorRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedMemory?.id, selectedMemory?.persistent, selectedMemory?.updatedAt]);
 
   return (
     <section
@@ -2614,18 +2684,21 @@ function ProfessorMariMemoriesMenu({
 
       {hasMemories && (
         <div className="shrink-0 border-b border-[var(--border)]/50 px-2.5 py-2">
-          <div className="relative">
-            <Search
-              size="0.8rem"
-              className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
-            />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={localizeUi("ui.chat.professormarimemoriesmenu.searchPlaceholder")}
-              aria-label={localizeUi("ui.chat.professormarimemoriesmenu.searchPlaceholder")}
-              className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] pl-7 pr-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55"
-            />
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search
+                size="0.8rem"
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+              />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={localizeUi("ui.chat.professormarimemoriesmenu.searchPlaceholder")}
+                aria-label={localizeUi("ui.chat.professormarimemoriesmenu.searchPlaceholder")}
+                className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--card)] pl-7 pr-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/55"
+              />
+            </div>
+            <MariPanelSortSelect value={sortMode} onChange={setSortMode} />
           </div>
         </div>
       )}
@@ -2641,12 +2714,12 @@ function ProfessorMariMemoriesMenu({
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormarimemoriesmenu.noMemoriesYet")}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : displayed.length === 0 ? (
             <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.professormarimemoriesmenu.noMatches")}
             </div>
           ) : (
-            filtered.map((memory) => {
+            displayed.map((memory) => {
               const active = selectedMemory?.id === memory.id;
               return (
                 <div
@@ -2706,7 +2779,7 @@ function ProfessorMariMemoriesMenu({
                     </span>
                   </div>
                   {active && (
-                    <div className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
+                    <div ref={active ? activeEditorRef : undefined} className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
                       {!memory.enabled && (
                         <div className="rounded-md border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5 text-[0.65rem] text-amber-200">
                           {localizeUi("ui.chat.professormarimemoriesmenu.disabledHint")}

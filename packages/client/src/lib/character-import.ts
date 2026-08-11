@@ -1,4 +1,5 @@
 import { api } from "./api-client";
+import type { CharacterData } from "@marinara-engine/shared";
 
 export interface EmbeddedLorebookImportPreview {
   filename: string;
@@ -49,6 +50,86 @@ export function readCharacterCardData(raw: Record<string, unknown>): Record<stri
     return raw.data as Record<string, unknown>;
   }
   return raw;
+}
+
+const CHARACTER_CARD_STRING_FIELDS = [
+  "description",
+  "personality",
+  "scenario",
+  "first_mes",
+  "mes_example",
+  "creator_notes",
+  "system_prompt",
+  "post_history_instructions",
+  "creator",
+  "character_version",
+] as const;
+
+const LEGACY_CHARACTER_CARD_FIELDS: Partial<
+  Record<(typeof CHARACTER_CARD_STRING_FIELDS)[number], readonly string[]>
+> = {
+  description: ["char_persona"],
+  scenario: ["world_scenario"],
+  first_mes: ["char_greeting"],
+  mes_example: ["example_dialogue"],
+} as const;
+
+function firstPresentValue(source: Record<string, unknown>, keys: readonly string[]): unknown {
+  for (const key of keys) {
+    if (Object.hasOwn(source, key)) return source[key];
+  }
+  return undefined;
+}
+
+/** Merge only fields explicitly carried by a replacement character-card image. */
+export function mergeEmbeddedCharacterCardFields(
+  current: CharacterData,
+  raw: Record<string, unknown>,
+): CharacterData | null {
+  const data = readCharacterCardData(raw);
+  const next: CharacterData = { ...current, extensions: { ...current.extensions } };
+  let foundField = false;
+
+  const name = firstPresentValue(data, ["name", "char_name"]);
+  if (typeof name === "string" && name.trim()) {
+    next.name = name;
+    foundField = true;
+  }
+
+  for (const field of CHARACTER_CARD_STRING_FIELDS) {
+    const value = firstPresentValue(data, [field, ...(LEGACY_CHARACTER_CARD_FIELDS[field] ?? [])]);
+    if (typeof value !== "string") continue;
+    next[field] = value;
+    foundField = true;
+  }
+
+  if (Object.hasOwn(data, "tags") && Array.isArray(data.tags)) {
+    next.tags = data.tags.filter((tag): tag is string => typeof tag === "string");
+    foundField = true;
+  }
+  if (Object.hasOwn(data, "alternate_greetings") && Array.isArray(data.alternate_greetings)) {
+    next.alternate_greetings = data.alternate_greetings.filter(
+      (greeting): greeting is string => typeof greeting === "string",
+    );
+    foundField = true;
+  }
+
+  const extensions = optionalRecord(data.extensions);
+  for (const field of ["backstory", "appearance", "world"] as const) {
+    if (!Object.hasOwn(extensions ?? {}, field) || typeof extensions?.[field] !== "string") continue;
+    next.extensions[field] = extensions[field];
+    foundField = true;
+  }
+  const depthPrompt = optionalRecord(extensions?.depth_prompt);
+  if (Object.hasOwn(extensions ?? {}, "depth_prompt") && depthPrompt) {
+    next.extensions.depth_prompt = {
+      ...current.extensions.depth_prompt,
+      ...depthPrompt,
+    } as CharacterData["extensions"]["depth_prompt"];
+    foundField = true;
+  }
+
+  return foundField ? next : null;
 }
 
 export function readCharacterCardDetailFields(raw: Record<string, unknown>): CharacterCardDetailFields | null {

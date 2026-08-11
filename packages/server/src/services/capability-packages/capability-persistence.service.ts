@@ -3,6 +3,7 @@ import {
   type CapabilityChatMetadataUpdate,
   type CapabilityChatRecord,
   type CapabilityCreateMessageWithSwipeInput,
+  type CapabilityGameStateRecord,
   type CapabilityDocumentRecord,
   type CapabilityDocumentStore,
   type CapabilityMessageRecord,
@@ -106,6 +107,37 @@ function mapMessage(row: typeof messages.$inferSelect): CapabilityMessageRecord 
     activeSwipeIndex: row.activeSwipeIndex,
     extra: row.extra,
     createdAt: row.createdAt,
+  };
+}
+
+function parsePresentCharacterIds(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const record = entry as { characterId?: unknown; id?: unknown };
+      const id = record.characterId ?? record.id;
+      return typeof id === "string" && id.trim().length > 0 ? [id] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function mapGameState(row: typeof gameStateSnapshots.$inferSelect): CapabilityGameStateRecord {
+  return {
+    snapshotId: row.id,
+    chatId: row.chatId,
+    messageId: row.messageId,
+    swipeIndex: row.swipeIndex,
+    date: row.date,
+    time: row.time,
+    location: row.location,
+    weather: row.weather,
+    temperature: row.temperature,
+    presentCharacterIds: parsePresentCharacterIds(row.presentCharacters),
   };
 }
 
@@ -355,6 +387,15 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
         .where(eq(messages.chatId, chatId))
         .orderBy(messages.createdAt, messages.id);
       return rows.map(mapMessage);
+    },
+    async getGameState(chatId) {
+      const rows = await db
+        .select()
+        .from(gameStateSnapshots)
+        .where(and(eq(gameStateSnapshots.chatId, chatId), eq(gameStateSnapshots.committed, 1)))
+        .orderBy(desc(gameStateSnapshots.createdAt), desc(gameStateSnapshots.id))
+        .limit(1);
+      return rows[0] ? mapGameState(rows[0]) : null;
     },
     async listExistingLorebookEntryIds(entryIds) {
       const requestedIds = Array.from(new Set(entryIds.filter((entryId) => entryId.length > 0)));

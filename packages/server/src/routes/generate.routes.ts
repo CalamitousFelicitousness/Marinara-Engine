@@ -3069,6 +3069,10 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         let canonicalGamePartyNames: string[] = [];
+        let capabilityPromptContext: Awaited<ReturnType<typeof collectCapabilityPromptContext>> = {
+          blocks: [],
+          provides: {},
+        };
         if (chatMode === "game") {
           const selectedGamePrompt =
             resolvedPreset && presetId
@@ -3165,10 +3169,12 @@ export async function generateRoutes(app: FastifyInstance) {
 
           // A package holding `prompt-context` appends its live state to the system message, the same way
           // the lorebook block above does. Nothing registered (the normal case) ⇒ no effect on the prompt.
-          const capabilityPromptContext = await collectCapabilityPromptContext({
+          capabilityPromptContext = await collectCapabilityPromptContext({
             chatId: input.chatId,
             chatMeta,
             mode: "game",
+            targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+            personaId,
           });
           if (capabilityPromptContext.blocks.length > 0) {
             const capabilityBlock = capabilityPromptContext.blocks.join("\n\n");
@@ -3258,6 +3264,25 @@ export async function generateRoutes(app: FastifyInstance) {
             "[generate/game] Injected format reminder (%d chars) as last user message",
             formatReminder.length,
           );
+        }
+
+        if (chatMode !== "game") {
+          capabilityPromptContext = await collectCapabilityPromptContext({
+            chatId: input.chatId,
+            chatMeta,
+            mode: chatMode,
+            targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+            personaId,
+          });
+          if (capabilityPromptContext.blocks.length > 0) {
+            const capabilityBlock = capabilityPromptContext.blocks.join("\n\n");
+            const sysMsg = finalMessages.find((m) => m.role === "system");
+            if (sysMsg) {
+              sysMsg.content += "\n\n" + capabilityBlock;
+            } else {
+              finalMessages.unshift({ role: "system" as const, content: capabilityBlock });
+            }
+          }
         }
 
         if (chatMode === "conversation" && !conversationScopesAwarenessToResponder) {

@@ -614,7 +614,10 @@ import {
   resolveStoryboardAnimationRefinement,
 } from "../../packages/server/src/services/video/storyboard-animation-refinement.js";
 import { resolveGameGmPromptTemplate } from "../../packages/server/src/services/generation/game-gm-prompt-runtime.js";
-import { countConversationMessagesAfterSummaryAnchor } from "../../packages/server/src/services/conversation/auto-summary.service.js";
+import {
+  countConversationMessagesAfterSummaryAnchor,
+  parseSummaryResponse,
+} from "../../packages/server/src/services/conversation/auto-summary.service.js";
 import {
   prepareConversationPromptHistory,
   resolveConversationMembershipHistoryEvent,
@@ -2133,7 +2136,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "Spotify repeats a Music DJ track selection as one context",
+    name: "Spotify preserves enabled repeat for a Music DJ track selection",
     async run() {
       const originalFetch = globalThis.fetch;
       const selectedUris = [
@@ -2198,7 +2201,6 @@ const cases: RegressionCase[] = [
           ],
           {
             spotify: { accessToken: "regression-token" },
-            spotifyRepeatAfterPlay: "track",
           },
         );
 
@@ -7600,6 +7602,16 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         parseChatSummaryResult('{"title":"Legacy title field","summary":"Old clients remain compatible."}'),
         { title: "Legacy title field", summary: "Old clients remain compatible." },
         "The parser should accept title as an alias for name",
+      );
+      assert.deepEqual(
+        parseChatSummaryResult("{name: 'Repaired title', summary: 'Recovered roleplay summary',}"),
+        { title: "Repaired title", summary: "Recovered roleplay summary" },
+        "Roleplay summaries should use the shared JSON repair waterfall",
+      );
+      assert.deepEqual(
+        parseSummaryResponse('{summary: "Recovered conversation summary", keyDetails: ["Promise kept"],'),
+        { summary: "Recovered conversation summary", keyDetails: ["Promise kept"] },
+        "Conversation summaries should repair common malformed JSON and incomplete containers",
       );
       assert.deepEqual(parseChatSummaryResult("Plain-text summary"), {
         title: "",

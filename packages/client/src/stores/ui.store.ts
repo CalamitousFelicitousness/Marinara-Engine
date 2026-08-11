@@ -857,6 +857,7 @@ interface UIState {
   enterToSendRP: boolean;
   enterToSendConvo: boolean;
   enterToSendGame: boolean;
+  enterToSendProfessorMari: boolean;
 
   // ── Roleplay Effects ──
   weatherEffects: boolean;
@@ -1122,6 +1123,7 @@ interface UIState {
   setEnterToSendRP: (v: boolean) => void;
   setEnterToSendConvo: (v: boolean) => void;
   setEnterToSendGame: (v: boolean) => void;
+  setEnterToSendProfessorMari: (v: boolean) => void;
   setWeatherEffects: (v: boolean) => void;
   // Impersonate settings actions
   setImpersonatePromptTemplate: (v: string) => void;
@@ -1313,6 +1315,7 @@ export function pickSyncedSettings(state: UIState) {
     enterToSendRP: state.enterToSendRP,
     enterToSendConvo: state.enterToSendConvo,
     enterToSendGame: state.enterToSendGame,
+    enterToSendProfessorMari: state.enterToSendProfessorMari,
     weatherEffects: state.weatherEffects,
     hasCompletedOnboarding: state.hasCompletedOnboarding,
     gameTutorialDisabled: state.gameTutorialDisabled,
@@ -1534,6 +1537,7 @@ export const useUIStore = create<UIState>()(
       enterToSendRP: false,
       enterToSendConvo: true,
       enterToSendGame: true,
+      enterToSendProfessorMari: true,
       weatherEffects: true,
       activeCustomTheme: null,
       customThemes: [],
@@ -2438,6 +2442,7 @@ export const useUIStore = create<UIState>()(
       setEnterToSendRP: (v) => set({ enterToSendRP: v }),
       setEnterToSendConvo: (v) => set({ enterToSendConvo: v }),
       setEnterToSendGame: (v) => set({ enterToSendGame: v }),
+      setEnterToSendProfessorMari: (v) => set({ enterToSendProfessorMari: v }),
       setWeatherEffects: (v) => set({ weatherEffects: v }),
       setImpersonatePromptTemplate: (v) => set({ impersonatePromptTemplate: v }),
       selectImpersonatePromptTemplate: (template) =>
@@ -3236,6 +3241,7 @@ export const useUIStore = create<UIState>()(
         enterToSendRP: state.enterToSendRP,
         enterToSendConvo: state.enterToSendConvo,
         enterToSendGame: state.enterToSendGame,
+        enterToSendProfessorMari: state.enterToSendProfessorMari,
         weatherEffects: state.weatherEffects,
         hasMigratedCustomThemesToServer: state.hasMigratedCustomThemesToServer,
         activeCustomTheme: state.activeCustomTheme,

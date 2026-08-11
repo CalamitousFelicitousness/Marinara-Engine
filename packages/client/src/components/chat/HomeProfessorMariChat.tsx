@@ -2993,6 +2993,7 @@ export function HomeProfessorMariChat({
   const [messages, setMessages] = useState<Message[]>([]);
   const draft = useChatStore((state) => state.inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "");
   const setInputDraft = useChatStore((state) => state.setInputDraft);
+  const enterToSend = useUIStore((state) => state.enterToSendProfessorMari);
   const setDraft = useCallback(
     (next: string | ((current: string) => string)) => {
       const current = useChatStore.getState().inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "";
@@ -5006,7 +5007,10 @@ export function HomeProfessorMariChat({
               if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              const shouldSend = enterToSend
+                ? event.key === "Enter" && !event.shiftKey
+                : event.key === "Enter" && (event.metaKey || event.ctrlKey);
+              if (shouldSend) {
                 event.preventDefault();
                 void handleSubmit();
               }
@@ -5778,7 +5782,10 @@ export function HomeProfessorMariChat({
                                 if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
                               }}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter" && !event.shiftKey) {
+                                const shouldSend = enterToSend
+                                  ? event.key === "Enter" && !event.shiftKey
+                                  : event.key === "Enter" && (event.metaKey || event.ctrlKey);
+                                if (shouldSend) {
                                   event.preventDefault();
                                   void handleSubmit();
                                 }

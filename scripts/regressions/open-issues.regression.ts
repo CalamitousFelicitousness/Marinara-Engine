@@ -29,6 +29,7 @@ import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
+import { validateCharacterGalleryReferences } from "../../packages/server/src/routes/characters.routes.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -442,14 +443,29 @@ const characterRoutesSource = readFileSync(
   join(REPOSITORY_ROOT, "packages/server/src/routes/characters.routes.ts"),
   "utf8",
 );
-assert.match(
-  characterRoutesSource,
-  /async function validateCharacterGalleryReferences[\s\S]{0,1200}characterSheetImageId: null[\s\S]{0,180}useCharacterSheetAsReference: false/u,
-  "Character updates must reject gallery references owned by another character",
+const ownedGalleryUpdate = {
+  extensions: { characterSheetImageId: "owned-image", useCharacterSheetAsReference: true },
+};
+assert.equal(
+  await validateCharacterGalleryReferences("character-a", ownedGalleryUpdate, async () => ({
+    characterId: "character-a",
+  })),
+  ownedGalleryUpdate,
+  "A character-owned gallery reference must remain unchanged",
+);
+const foreignGalleryUpdate = await validateCharacterGalleryReferences(
+  "character-a",
+  { extensions: { characterSheetImageId: "foreign-image", useCharacterSheetAsReference: true } },
+  async () => ({ characterId: "character-b" }),
+);
+assert.deepEqual(
+  foreignGalleryUpdate.extensions,
+  { characterSheetImageId: null, useCharacterSheetAsReference: false },
+  "A foreign gallery reference must be cleared before character data is persisted",
 );
 assert.match(
   characterRoutesSource,
-  /app\.post<\{ Params: \{ id: string \} \}>\("\/:id\/avatar"[\s\S]{0,2400}enqueueUpdate\(characterUpdateQueues[\s\S]{0,500}validateCharacterGalleryReferences/u,
+  /app\.post<\{ Params: \{ id: string \} \}>\("\/:id\/avatar"[\s\S]{0,2400}enqueueUpdate\(characterUpdateQueues, id, async \(\) => \{\s*const validatedData = await validateCharacterGalleryReferences/u,
   "Embedded card updates must serialize writes and validate character-owned gallery references",
 );
 

@@ -768,6 +768,29 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   return { row, usesFallbackName };
 }
 
+export async function validateCharacterGalleryReferences<T extends Record<string, unknown>>(
+  characterId: string,
+  characterDataUpdate: T,
+  getGalleryImage: (imageId: string) => Promise<{ characterId: string } | null>,
+): Promise<T> {
+  const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
+  if (!Object.hasOwn(extensions, "characterSheetImageId")) return characterDataUpdate;
+
+  const selectedImageId =
+    typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
+  const selectedImage = selectedImageId ? await getGalleryImage(selectedImageId) : null;
+  if (selectedImage?.characterId === characterId) return characterDataUpdate;
+
+  return {
+    ...characterDataUpdate,
+    extensions: {
+      ...extensions,
+      characterSheetImageId: null,
+      useCharacterSheetAsReference: false,
+    },
+  };
+}
+
 export async function charactersRoutes(app: FastifyInstance) {
   const storage = createCharactersStorage(app.db);
   const characterGallery = createCharacterGalleryStorage(app.db);
@@ -791,28 +814,6 @@ export async function charactersRoutes(app: FastifyInstance) {
       })
       .catch(() => undefined);
     return next;
-  }
-
-  async function validateCharacterGalleryReferences<T extends Record<string, unknown>>(
-    characterId: string,
-    characterDataUpdate: T,
-  ): Promise<T> {
-    const extensions = parseCharacterDataRecord(characterDataUpdate.extensions);
-    if (!Object.hasOwn(extensions, "characterSheetImageId")) return characterDataUpdate;
-
-    const selectedImageId =
-      typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-    const selectedImage = selectedImageId ? await characterGallery.getById(selectedImageId) : null;
-    if (selectedImage?.characterId === characterId) return characterDataUpdate;
-
-    return {
-      ...characterDataUpdate,
-      extensions: {
-        ...extensions,
-        characterSheetImageId: null,
-        useCharacterSheetAsReference: false,
-      },
-    };
   }
 
   // ── Characters ──
@@ -1077,7 +1078,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
     const characterDataUpdate = update.data ?? {};
     return enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
-      const validatedDataUpdate = await validateCharacterGalleryReferences(req.params.id, characterDataUpdate);
+      const validatedDataUpdate = await validateCharacterGalleryReferences(
+        req.params.id,
+        characterDataUpdate,
+        (imageId) => characterGallery.getById(imageId),
+      );
       return storage.update(req.params.id, validatedDataUpdate, avatarPath, {
         comment,
         versionSource,
@@ -1966,7 +1971,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       await writeFile(filepath, imageBuffer);
       const characterData = body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
       const updated = await enqueueUpdate(characterUpdateQueues, id, async () => {
-        const validatedData = await validateCharacterGalleryReferences(id, characterData);
+        const validatedData = await validateCharacterGalleryReferences(id, characterData, (imageId) =>
+          characterGallery.getById(imageId),
+        );
         return storage.update(id, validatedData, avatarPath, {
           versionReason: body.data === undefined ? "Avatar update" : "Character card and avatar update",
         });

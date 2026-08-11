@@ -374,6 +374,17 @@ const contributedFeaturePackage = {
   manifest: { contributions: { agentDetail: { agentIds: ["hierarchical-maps"] } } },
 } as InstalledCapabilityPackage;
 assert.equal(
+  resolveFeatureAgentPackage({ id: "chess", packageId: "chess" } as BuiltInAgentManifest, [
+    {
+      id: "legacy-chess-detail",
+      manifest: { contributions: { agentDetail: { agentIds: ["chess"] } } },
+    } as InstalledCapabilityPackage,
+    installedFeaturePackage,
+  ]),
+  installedFeaturePackage,
+  "The registry-owned Feature package must win when a legacy contribution appears first",
+);
+assert.equal(
   resolveFeatureAgentPackage({ id: "hierarchical-maps" } as BuiltInAgentManifest, [contributedFeaturePackage]),
   contributedFeaturePackage,
   "Feature detail contributions must remain a compatible ownership fallback",

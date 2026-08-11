@@ -106,7 +106,7 @@ export function FeatureAgentDetailHost({
           <ArrowLeft size="1.125rem" />
         </button>
         <div className="mari-editor-icon-tile">
-          <Sparkles size="1.125rem" className="max-md:!h-[0.875rem] max-md:!w-[0.875rem]" />
+          <Sparkles size="1.125rem" className="max-md:h-[0.875rem]! max-md:w-[0.875rem]!" />
         </div>
         <h1 id="feature-agent-detail-title" className="mari-editor-title min-w-0 flex-1 truncate">
           {agent.name}

@@ -5,9 +5,10 @@ export function resolveFeatureAgentPackage(
   installedPackages: readonly InstalledCapabilityPackage[],
 ): InstalledCapabilityPackage | null {
   return (
+    installedPackages.find((item) => item.id === agent.packageId) ??
     installedPackages.find(
-      (item) =>
-        item.id === agent.packageId || item.manifest.contributions?.agentDetail?.agentIds.includes(agent.id) === true,
-    ) ?? null
+      (item) => item.manifest.contributions?.agentDetail?.agentIds.includes(agent.id) === true,
+    ) ??
+    null
   );
 }

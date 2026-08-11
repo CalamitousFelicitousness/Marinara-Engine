@@ -2321,9 +2321,11 @@ function ProfessorMariSkillsMenu({
   const sortMode = useUIStore((s) => s.mariPanelSortMode);
   const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
   const displayed = useMemo(() => {
-    const sorted = [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode));
-    if (selectedSkill && !sorted.some((skill) => skill.id === selectedSkill.id)) return [...sorted, selectedSkill];
-    return sorted;
+    // Re-add the open (selected) row BEFORE sorting so it lands in its correct sorted position,
+    // not appended out of order at the end.
+    const candidates =
+      selectedSkill && !filtered.some((skill) => skill.id === selectedSkill.id) ? [...filtered, selectedSkill] : filtered;
+    return [...candidates].sort((a, b) => compareMariPanelItems(a, b, sortMode));
   }, [filtered, sortMode, selectedSkill]);
   // Keep the open editor in view when its row moves (selection change, or a rename that re-sorts it).
   const activeEditorRef = useRef<HTMLDivElement>(null);
@@ -2615,11 +2617,15 @@ function ProfessorMariMemoriesMenu({
   const sortMode = useUIStore((s) => s.mariPanelSortMode);
   const setSortMode = useUIStore((s) => s.setMariPanelSortMode);
   const displayed = useMemo(() => {
-    const sorted = [...filtered].sort((a, b) => compareMariPanelItems(a, b, sortMode));
+    // Re-add the open (selected) row BEFORE sorting/partitioning so it lands in its correct group
+    // and sorted position, not appended out of order at the end.
+    const candidates =
+      selectedMemory && !filtered.some((memory) => memory.id === selectedMemory.id)
+        ? [...filtered, selectedMemory]
+        : filtered;
+    const sorted = [...candidates].sort((a, b) => compareMariPanelItems(a, b, sortMode));
     // Persistent memories are pinned above the rest; each group keeps the chosen sort order.
-    const pinned = [...sorted.filter((memory) => memory.persistent), ...sorted.filter((memory) => !memory.persistent)];
-    if (selectedMemory && !pinned.some((memory) => memory.id === selectedMemory.id)) return [...pinned, selectedMemory];
-    return pinned;
+    return [...sorted.filter((memory) => memory.persistent), ...sorted.filter((memory) => !memory.persistent)];
   }, [filtered, sortMode, selectedMemory]);
   // Keep the open editor in view when its row moves (selection change, persistent toggle, or a rename).
   const activeEditorRef = useRef<HTMLDivElement>(null);

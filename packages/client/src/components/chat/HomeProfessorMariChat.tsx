@@ -1883,16 +1883,24 @@ function DatabaseWorkspaceApprovalCard({
   // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
   // flips the rest.
   const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
+  const setDefaultViewMode = useUIStore((s) => s.setMariEditViewMode);
   const [viewMode, setViewMode] = useState<MariEditViewMode>(defaultViewMode);
   const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
   const cardRef = useRef<HTMLDivElement>(null);
   const toggleAnchorRef = useRef<number | null>(null);
   // Keep this card anchored in the scroll viewport across a height change so the toggle doesn't
   // shove what the user is reading off-screen.
-  const changeViewMode = useCallback((mode: MariEditViewMode) => {
-    toggleAnchorRef.current = cardRef.current?.getBoundingClientRect().top ?? null;
-    setViewMode(mode);
-  }, []);
+  const changeViewMode = useCallback(
+    (mode: MariEditViewMode) => {
+      toggleAnchorRef.current = cardRef.current?.getBoundingClientRect().top ?? null;
+      setViewMode(mode);
+      // Persist as the saved default so the choice survives this card remounting and new cards open
+      // the same way. Already-mounted cards keep their own local state, so one card's toggle still
+      // does not flip the others.
+      setDefaultViewMode(mode);
+    },
+    [setDefaultViewMode],
+  );
   useLayoutEffect(() => {
     const anchor = toggleAnchorRef.current;
     toggleAnchorRef.current = null;

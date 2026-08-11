@@ -160,10 +160,12 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
   const descBefore = stringField(before, "description");
   const descAfter = stringField(after, "description");
 
-  // A disabled entry effectively stops firing, so surface the enabled state as a prominent badge
-  // next to the name rather than a small chip lost among the others.
-  const enabledChanged = Boolean(before && after && truthy(before.enabled) !== truthy(after.enabled));
-  const enabledOn = truthy(after?.enabled);
+  // A disabled entry effectively stops firing, so surface it as a prominent badge next to the name
+  // rather than a small chip lost among the others. Show "Disabled" whenever the resulting (or, for
+  // a delete, the removed) entry is disabled — covering a new disabled entry, an update that leaves
+  // it disabled, and a disable — and "Enabled" only when an entry is re-enabled.
+  const isDisabled = Boolean(source && !truthy((source as Row)?.enabled));
+  const wasReEnabled = Boolean(before && after && !truthy(before.enabled) && truthy(after.enabled));
   // Only surface toggle CHANGES on a genuine update; on insert/delete the whole entry is added or
   // removed (shown by the name/content), so per-toggle chips would misrepresent it as flips.
   const changedToggles =
@@ -188,16 +190,16 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
             localizeUi("ui.chat.mariediteasyviewer.untitledEntry")
           )}
         </div>
-        {enabledChanged && (
+        {(isDisabled || wasReEnabled) && (
           <span
             className={cn(
               "rounded-md px-1.5 py-0.5 text-[0.625rem] font-semibold",
-              enabledOn ? "bg-emerald-500/25 text-[var(--foreground)]" : "bg-[var(--destructive)]/30 text-[var(--foreground)]",
+              isDisabled ? "bg-[var(--destructive)]/30 text-[var(--foreground)]" : "bg-emerald-500/25 text-[var(--foreground)]",
             )}
           >
-            {enabledOn
-              ? localizeUi("ui.chat.mariediteasyviewer.toggleEnabled")
-              : localizeUi("ui.chat.mariediteasyviewer.disabled")}
+            {isDisabled
+              ? localizeUi("ui.chat.mariediteasyviewer.disabled")
+              : localizeUi("ui.chat.mariediteasyviewer.toggleEnabled")}
           </span>
         )}
       </div>

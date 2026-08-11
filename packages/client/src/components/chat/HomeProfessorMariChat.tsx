@@ -82,7 +82,7 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
-import { useUIStore, type MariPanelSortMode } from "../../stores/ui.store";
+import { useUIStore, type MariEditViewMode, type MariPanelSortMode } from "../../stores/ui.store";
 import { MariEditEasyViewer } from "./MariEditEasyViewer";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
@@ -1854,6 +1854,16 @@ function WorkspaceErrorEvent({ message }: { message: string }) {
   );
 }
 
+function getScrollableAncestor(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function DatabaseWorkspaceApprovalCard({
   approval,
   busy,
@@ -1870,9 +1880,28 @@ function DatabaseWorkspaceApprovalCard({
   onRestore: (id: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const viewMode = useUIStore((s) => s.mariEditViewMode);
-  const setViewMode = useUIStore((s) => s.setMariEditViewMode);
+  // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
+  // flips the rest.
+  const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
+  const [viewMode, setViewMode] = useState<MariEditViewMode>(defaultViewMode);
   const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
+  const cardRef = useRef<HTMLDivElement>(null);
+  const toggleAnchorRef = useRef<number | null>(null);
+  // Keep this card anchored in the scroll viewport across a height change so the toggle doesn't
+  // shove what the user is reading off-screen.
+  const changeViewMode = useCallback((mode: MariEditViewMode) => {
+    toggleAnchorRef.current = cardRef.current?.getBoundingClientRect().top ?? null;
+    setViewMode(mode);
+  }, []);
+  useLayoutEffect(() => {
+    const anchor = toggleAnchorRef.current;
+    toggleAnchorRef.current = null;
+    if (anchor === null || !cardRef.current) return;
+    const delta = cardRef.current.getBoundingClientRect().top - anchor;
+    if (Math.abs(delta) < 1) return;
+    const scroller = getScrollableAncestor(cardRef.current);
+    if (scroller) scroller.scrollTop += delta;
+  }, [viewMode]);
   const deletedRows = approval.diffPreview.filter((change) => change.action === "delete");
   const insertedRows = approval.diffPreview.filter((change) => change.action === "insert");
   // #4851: a saved memory lands disabled; offer "Keep & Enable" to keep AND switch it on.
@@ -1887,7 +1916,10 @@ function DatabaseWorkspaceApprovalCard({
 
   return (
     <TranscriptRow marker={<ShieldAlert size="0.85rem" className="mt-1 text-[var(--primary)]" />}>
-      <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3 text-xs text-[var(--foreground)]">
+      <div
+        ref={cardRef}
+        className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3 text-xs text-[var(--foreground)]"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <span className="font-semibold">
             {localizeUi("ui.chat.databaseworkspaceapprovalcard.reviewMariSChanges")}
@@ -1898,7 +1930,7 @@ function DatabaseWorkspaceApprovalCard({
           <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md bg-[var(--background)]/60 p-0.5">
             <button
               type="button"
-              onClick={() => setViewMode("easy")}
+              onClick={() => changeViewMode("easy")}
               aria-pressed={viewMode === "easy"}
               className={cn(
                 "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
@@ -1911,7 +1943,7 @@ function DatabaseWorkspaceApprovalCard({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode("raw")}
+              onClick={() => changeViewMode("raw")}
               aria-pressed={viewMode === "raw"}
               className={cn(
                 "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",

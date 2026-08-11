@@ -3499,6 +3499,7 @@
   "ui.chat.mariediteasyviewer.character": "Character",
   "ui.chat.mariediteasyviewer.content": "Content",
   "ui.chat.mariediteasyviewer.description": "Description",
+  "ui.chat.mariediteasyviewer.disabled": "Disabled",
   "ui.chat.mariediteasyviewer.dismiss": "Dismiss",
   "ui.chat.mariediteasyviewer.dismissHint": "Hide this reviewed change. Keep or Restore still apply to the whole batch.",
   "ui.chat.mariediteasyviewer.empty": "(empty)",

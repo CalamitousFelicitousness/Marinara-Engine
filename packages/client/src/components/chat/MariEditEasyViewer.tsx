@@ -160,25 +160,45 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
   const descBefore = stringField(before, "description");
   const descAfter = stringField(after, "description");
 
+  // A disabled entry effectively stops firing, so surface the enabled state as a prominent badge
+  // next to the name rather than a small chip lost among the others.
+  const enabledChanged = Boolean(before && after && truthy(before.enabled) !== truthy(after.enabled));
+  const enabledOn = truthy(after?.enabled);
   // Only surface toggle CHANGES on a genuine update; on insert/delete the whole entry is added or
   // removed (shown by the name/content), so per-toggle chips would misrepresent it as flips.
   const changedToggles =
     before && after
-      ? LOREBOOK_TOGGLES.filter(({ key }) => truthy(before[key]) !== truthy(after[key])).map(({ key, labelKey }) => ({
-          label: localizeUi(labelKey),
-          on: truthy(after[key]),
-        }))
+      ? LOREBOOK_TOGGLES.filter(({ key }) => key !== "enabled" && truthy(before[key]) !== truthy(after[key])).map(
+          ({ key, labelKey }) => ({
+            label: localizeUi(labelKey),
+            on: truthy(after[key]),
+          }),
+        )
       : [];
 
   const remainingFields = computeFieldChanges(change).filter((field) => !LOREBOOK_HANDLED_PATHS.has(field.path));
 
   return (
     <div className="mari-editor-panel mari-editor-panel--soft space-y-2 rounded-lg p-2">
-      <div className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
-        {nameBefore || nameAfter ? (
-          <InlineTextDiff before={nameBefore} after={nameAfter} />
-        ) : (
-          localizeUi("ui.chat.mariediteasyviewer.untitledEntry")
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+          {nameBefore || nameAfter ? (
+            <InlineTextDiff before={nameBefore} after={nameAfter} />
+          ) : (
+            localizeUi("ui.chat.mariediteasyviewer.untitledEntry")
+          )}
+        </div>
+        {enabledChanged && (
+          <span
+            className={cn(
+              "rounded-md px-1.5 py-0.5 text-[0.625rem] font-semibold",
+              enabledOn ? "bg-emerald-500/25 text-[var(--foreground)]" : "bg-[var(--destructive)]/30 text-[var(--foreground)]",
+            )}
+          >
+            {enabledOn
+              ? localizeUi("ui.chat.mariediteasyviewer.toggleEnabled")
+              : localizeUi("ui.chat.mariediteasyviewer.disabled")}
+          </span>
         )}
       </div>
 
@@ -294,14 +314,28 @@ function RowCard({ change, onDismiss }: { change: MariDbRowChange; onDismiss: ()
   const { t: localizeUi } = useUiTranslation();
   const meta = actionMeta(change.action, localizeUi);
   const MetaIcon = meta.icon;
+  // A delete is Mari's most destructive action — make the whole row unmistakably red.
+  const isDelete = change.action === "delete";
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--background)]/40 p-2">
+    <div
+      className={cn(
+        "rounded-lg border p-2",
+        isDelete ? "border-[var(--destructive)]/60 bg-[var(--destructive)]/10" : "border-[var(--border)] bg-[var(--background)]/40",
+      )}
+    >
       <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
         <MetaIcon size="0.75rem" className={cn("shrink-0", meta.tone)} />
         <span className="truncate text-[0.6875rem] font-semibold text-[var(--foreground)]">
           {rowTitle(change, localizeUi)}
         </span>
-        <span className={cn("shrink-0 text-[0.625rem]", meta.tone)}>{meta.label}</span>
+        <span
+          className={cn(
+            "shrink-0 text-[0.625rem]",
+            isDelete ? "font-semibold uppercase tracking-wide text-[var(--destructive)]" : meta.tone,
+          )}
+        >
+          {meta.label}
+        </span>
         <button
           type="button"
           onClick={onDismiss}

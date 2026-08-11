@@ -58,6 +58,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Made Force To Call Tool serialize native required-tool controls for Google Gemini, Vertex AI, and compatible Anthropic requests, while safely falling back to automatic choice for manual Claude extended thinking and Mythos (#4907).
+- Fixed the open-issues regression failing on Windows checkouts: its chat-summary reorder check matched the entry container and the touch-reorder row within a fixed character distance that CRLF line endings pushed just over the limit, so it now verifies the shared desktop and touch reorder surface on the row element directly, independent of line endings and where the row is defined (#4911).
 - Restored Music DJ Spotify playback by clearing the previous repeat mode before replacing a multi-song context, reapplying repeat only after the selected first track is verified, and surfacing persistent URI mismatches as failures instead of false pending successes (#4903).
 - Made persona saves reliable: the editor now sends only the fields you actually changed, keeps edits made while a save is still running, prevents saves and avatar replacements from overlapping, blocks its own Back and Discard controls mid-write, and explains exactly which field a rejected save objected to — including an empty persona name.
 - Made Reduce Ambient Animations & Effects flatten costly backdrop blur on desktop as well as mobile, including shared Conversation overlays (#4897).

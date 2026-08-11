@@ -2,12 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
   BUILT_IN_AGENTS,
-  BUILT_IN_TOOLS,
-  DEFAULT_AGENT_TOOLS,
-  getDefaultAgentPrompt,
   applyQuestUpdatesToPlayerStats,
   applyTrackerFieldLocksToGameStatePatch,
-  getDefaultBuiltInAgentSettings,
   getCustomAgentResultCapability,
   NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
   customAgentHasCapability,
@@ -17,7 +13,6 @@ import {
   isBuiltInAgentRuntimeDisabled,
   isBuiltInAgentHostManaged,
   isRetiredBuiltInAgentId,
-  normalizeBuiltInAgentEnabledTools,
   normalizeWorldCustomFields,
   normalizeAgentPhaseValue,
   normalizeAgentPromptTemplateSelectionMap,
@@ -48,13 +43,12 @@ import {
   type ResolvedAgent,
 } from "../../services/agents/agent-pipeline.js";
 import { executeAgent, executeAgentBatch, normalizeAgentContextSize } from "../../services/agents/agent-executor.js";
-import type { BaseLLMProvider, LLMToolDefinition } from "../../services/llm/base-provider.js";
+import type { BaseLLMProvider } from "../../services/llm/base-provider.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../../services/llm/local-sidecar.js";
 import { createLLMProvider } from "../../services/llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "../../services/llm/connection-fallback-provider.js";
 import { sidecarModelService } from "../../services/sidecar/sidecar-model.service.js";
 import { buildSpotifyDjConstraints } from "../../services/spotify/spotify-dj-constraints.js";
-import { resolveSpotifyCredentials } from "../../services/spotify/spotify.service.js";
 import { fingerprintChatSummary } from "../../services/prompt/chat-summary-fingerprint.js";
 import {
   buildPromptMacroContext,
@@ -105,6 +99,7 @@ import {
 import { createGameStateStorage } from "../../services/storage/game-state.storage.js";
 import { normalizeCharacterRpgStats } from "../../services/generation/character-prompt-context.js";
 import { createLorebooksStorage } from "../../services/storage/lorebooks.storage.js";
+import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
 import {
   formatOwnerSpatialBreadcrumb,
@@ -142,7 +137,10 @@ import {
   buildLorebookWriteApprovalProposal,
   isAgentWriteApprovalEnvelope,
 } from "./agent-write-approval.js";
-import { filterGameInternalAgentIds } from "../../services/lorebook/game-lorebook-scope.js";
+import {
+  filterGameInternalAgentIds,
+  resolveLorebookScopeExclusions,
+} from "../../services/lorebook/game-lorebook-scope.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { sendSseEvent, startSseKeepalive, startSseReply } from "./sse.js";
 import { buildGenerationPromptPresetCandidates } from "./prompt-preset-selection.js";
@@ -168,15 +166,12 @@ import {
   resolveIllustratorCharacterReferences,
 } from "./illustrator-references.js";
 import {
-  applyTextRewriteAgentChatSettings,
   explicitlyRequestsTextRewrite,
   isBuiltInTextRewriteAgentType,
   mergePairedBuiltInRewriteAgents,
   normalizeProseGuardianPromptTemplate,
 } from "../../services/generation/prose-guardian-settings.js";
-import { applyKnowledgeAgentChatSettings } from "../../services/generation/knowledge-agent-settings.js";
 import {
-  applyCustomAgentImageChatSettings,
   forceImageGenerationScopeError,
   needsForcedSnapshotFallback,
   resolveCustomAgentStyleProfileId,
@@ -197,11 +192,19 @@ import {
   type IllustratorRetryTarget,
 } from "../../services/generation/illustrator-retry-targets.js";
 import { normalizeContextInjections } from "./agent-normalizers.js";
+import { resolveCustomWritableLorebookIds } from "../../services/generation/agent-prompt-runtime.js";
 import {
-  executeToolCallForModel,
-  executeToolCalls,
-  type MetadataPatchInput,
-} from "../../services/tools/tool-executor.js";
+  getAgentFallbackPrompt,
+  musicAgentUsesSource,
+  resolveEffectiveAgentSettings,
+} from "../../services/generation/agent-resolution.js";
+import { resolveAgentGenerationTools } from "../../services/generation/tool-resolution-runtime.js";
+import {
+  readSpotifyPlaybackTrackUri,
+  readSpotifyStringField,
+  readSpotifyTrackUris,
+  type SpotifyRuntimeAgent,
+} from "../../services/generation/spotify-agent-runtime.js";
 
 type PersonaContext = {
   personaId: string | null;
@@ -249,30 +252,6 @@ function customAgentCanEmitRetryResult(result: AgentResult, agents: ResolvedRetr
   }
   const capability = getCustomAgentResultCapability(result.type);
   return capability ? customAgentCanApplyRetryResult(result, agents, capability) : true;
-}
-
-function applyDefaultBuiltInAgentTools(agentType: string, settings: unknown): Record<string, unknown> {
-  const next =
-    settings && typeof settings === "object" && !Array.isArray(settings)
-      ? { ...(settings as Record<string, unknown>) }
-      : {};
-  if (!isBuiltInAgentType(agentType)) return next;
-
-  const currentTools = next.enabledTools;
-  if (!Array.isArray(currentTools)) {
-    const defaults = DEFAULT_AGENT_TOOLS[agentType] ?? [];
-    if (defaults.length > 0) next.enabledTools = [...defaults];
-    return next;
-  }
-
-  const normalizedTools = normalizeBuiltInAgentEnabledTools(agentType, currentTools) ?? [];
-  next.enabledTools = normalizedTools;
-
-  if (agentType === "spotify" && normalizedTools.length === 0) {
-    next.enabledTools = [...(DEFAULT_AGENT_TOOLS.spotify ?? [])];
-  }
-
-  return next;
 }
 
 function hasAgentJsonParseError(result: AgentResult): boolean {
@@ -444,37 +423,6 @@ async function resolveRetryAgentWrapFormat(args: {
   return "xml";
 }
 
-function musicAgentUsesYoutube(settings: Record<string, unknown> | null | undefined): boolean {
-  return settings?.musicProvider === "youtube" || settings?.musicPlayerSource === "youtube";
-}
-
-function musicAgentUsesCustom(settings: Record<string, unknown> | null | undefined): boolean {
-  return settings?.musicProvider === "custom" || settings?.musicPlayerSource === "custom";
-}
-
-function applyRetryMusicPlayerSource(
-  settings: Record<string, unknown>,
-  activeMusicPlayerSource: "spotify" | "youtube" | "custom" | null | undefined,
-): Record<string, unknown> {
-  if (!activeMusicPlayerSource) return settings;
-  return {
-    ...settings,
-    musicProvider: activeMusicPlayerSource,
-    musicPlayerSource: activeMusicPlayerSource,
-    enabledTools: activeMusicPlayerSource === "spotify" ? (DEFAULT_AGENT_TOOLS.spotify ?? []) : [],
-  };
-}
-
-function getRetryAgentFallbackPrompt(agentType: string, settings: Record<string, unknown>): string {
-  if (agentType === "spotify" && musicAgentUsesYoutube(settings)) {
-    return getDefaultAgentPrompt("youtube");
-  }
-  if (agentType === "spotify" && musicAgentUsesCustom(settings)) {
-    return getDefaultAgentPrompt("local-music");
-  }
-  return getDefaultAgentPrompt(agentType);
-}
-
 function getGameImageStylePrompt(chat: any, chatMeta: Record<string, unknown>): string {
   if (((chat as any).mode ?? "conversation") !== "game") return "";
   const setupConfig = parseSettingsRecord(chatMeta.gameSetupConfig);
@@ -633,6 +581,71 @@ async function resolvePersonaContext(
   return { personaId, personaName, personaDescription, personaFields, personaAvatarPath, personaStats, rpgStats };
 }
 
+export function resolveRetryAgentContextPolicy(resolvedAgents: readonly ResolvedAgent[]): {
+  contextSize: number;
+  customAgentVectorAccessEnabled: boolean;
+  musicPlayerSource: "spotify" | "youtube" | "custom" | null;
+} {
+  const contextSize =
+    resolvedAgents.length > 0
+      ? Math.max(...resolvedAgents.map((agent) => normalizeAgentContextSize(agent.settings.contextSize)))
+      : 5;
+  const customAgentVectorAccessEnabled = resolvedAgents.some((agent) =>
+    customAgentHasCapability(agent.settings, "access_vectors"),
+  );
+  const musicAgent = resolvedAgents.find((agent) => agent.type === "spotify" || agent.type === "youtube");
+  const musicSettings = musicAgent?.settings ?? {};
+  const musicPlayerSource = musicAgent
+    ? musicAgent.type === "youtube" || musicAgentUsesSource(musicSettings, "youtube")
+      ? "youtube"
+      : musicAgentUsesSource(musicSettings, "custom")
+        ? "custom"
+        : "spotify"
+    : null;
+  return { contextSize, customAgentVectorAccessEnabled, musicPlayerSource };
+}
+
+type RetryAgentPhaseToolInputs = {
+  requestBody: Record<string, unknown>;
+  promptCharacterIds: string[];
+  agentContext: AgentContext;
+};
+
+export function resolveRetryAgentPhaseToolInputs(args: {
+  requestBody: Record<string, unknown>;
+  agentContext: AgentContext;
+  preGenerationAgentContext: AgentContext | null;
+  selectedTargetMessage: { role?: unknown; characterId?: unknown } | null | undefined;
+}): {
+  default: RetryAgentPhaseToolInputs;
+  preGeneration: RetryAgentPhaseToolInputs | null;
+} {
+  const resolveForContext = (agentContext: AgentContext): RetryAgentPhaseToolInputs => {
+    const activeCharacterIds = agentContext.characters.map((character) => character.id);
+    const targetCharacterId =
+      args.selectedTargetMessage?.role === "assistant" &&
+      typeof args.selectedTargetMessage.characterId === "string" &&
+      activeCharacterIds.includes(args.selectedTargetMessage.characterId)
+        ? args.selectedTargetMessage.characterId
+        : null;
+    const requestBody = { ...args.requestBody };
+    if (targetCharacterId) {
+      requestBody.forCharacterId = targetCharacterId;
+    } else {
+      delete requestBody.forCharacterId;
+    }
+    return {
+      agentContext,
+      requestBody,
+      promptCharacterIds: targetCharacterId ? [targetCharacterId] : activeCharacterIds,
+    };
+  };
+  return {
+    default: resolveForContext(args.agentContext),
+    preGeneration: args.preGenerationAgentContext ? resolveForContext(args.preGenerationAgentContext) : null,
+  };
+}
+
 async function buildRetryAgentContext(args: {
   cyoaAgentWillRun: boolean;
   chatId: string;
@@ -641,8 +654,7 @@ async function buildRetryAgentContext(args: {
   chatMeta: Record<string, unknown>;
   currentBackground: string | null;
   recentMessages: any[];
-  enabledConfigs: any[];
-  resolvedAgentTypes: Set<string>;
+  resolvedAgents: ResolvedAgent[];
   lastAssistant: any;
   chars: ReturnType<typeof createCharactersStorage>;
   gameStateStore: ReturnType<typeof createGameStateStorage>;
@@ -669,8 +681,7 @@ async function buildRetryAgentContext(args: {
     chatMeta,
     currentBackground,
     recentMessages,
-    enabledConfigs,
-    resolvedAgentTypes,
+    resolvedAgents,
     lastAssistant,
     chars,
     gameStateStore,
@@ -683,6 +694,7 @@ async function buildRetryAgentContext(args: {
     historicalGameStateAnchor,
     useLatestGameStateFallback = true,
   } = args;
+  const resolvedAgentTypes = new Set(resolvedAgents.map((agent) => agent.type));
 
   const allCharacterIds: string[] =
     typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : (chat.characterIds ?? []);
@@ -758,17 +770,8 @@ async function buildRetryAgentContext(args: {
     character.firstMes = resolveCharacterPromptText(character.firstMes);
     character.postHistoryInstructions = resolveCharacterPromptText(character.postHistoryInstructions);
   }
-  const agentContextSize =
-    enabledConfigs.length > 0
-      ? Math.max(
-          ...enabledConfigs.map((c: any) => {
-            const settings = typeof c.settings === "string" ? JSON.parse(c.settings) : (c.settings ?? {});
-            return normalizeAgentContextSize(settings.contextSize);
-          }),
-        )
-      : 5;
-
-  const agentSlice = recentMessages.slice(-agentContextSize);
+  const contextPolicy = resolveRetryAgentContextPolicy(resolvedAgents);
+  const agentSlice = recentMessages.slice(-contextPolicy.contextSize);
   const resolvedAgentSlice = resolveHistoryMessageMacros(
     agentSlice.map((message: any) => ({
       ...message,
@@ -812,11 +815,7 @@ async function buildRetryAgentContext(args: {
   };
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
-  const customAgentVectorAccessEnabled = enabledConfigs.some((config: any) => {
-    if (!resolvedAgentTypes.has(config.type)) return false;
-    const settings = parseJsonIfString<Record<string, unknown>>(config.settings ?? {});
-    return customAgentHasCapability(settings, "access_vectors");
-  });
+  const customAgentVectorAccessEnabled = contextPolicy.customAgentVectorAccessEnabled;
   const lastAssistantExtra = lastAssistant ? parseExtra((lastAssistant as any).extra) : {};
   const rawLorebookScan =
     lastAssistantExtra.lorebookScan &&
@@ -1151,12 +1150,7 @@ async function buildRetryAgentContext(args: {
     agentContext.memory._forceImageGeneration = true;
   }
 
-  const spotifyRetryConfig = enabledConfigs.find((config) => config.type === "spotify");
-  const spotifyMusicSettings = parseSettingsRecord(spotifyRetryConfig?.settings);
-  const spotifyMusicUsesYoutube = musicAgentUsesYoutube(spotifyMusicSettings);
-  const spotifyMusicUsesCustom = musicAgentUsesCustom(spotifyMusicSettings);
-
-  if (resolvedAgentTypes.has("youtube") || (resolvedAgentTypes.has("spotify") && spotifyMusicUsesYoutube)) {
+  if (contextPolicy.musicPlayerSource === "youtube") {
     const mode = ((chat as any).mode ?? "conversation") as string;
     agentContext.memory._youtubeDjConstraints = {
       manualRetry: true,
@@ -1169,7 +1163,7 @@ async function buildRetryAgentContext(args: {
     };
   }
 
-  if (resolvedAgentTypes.has("spotify") && spotifyMusicUsesCustom) {
+  if (contextPolicy.musicPlayerSource === "custom") {
     const mode = ((chat as any).mode ?? "conversation") as string;
     agentContext.memory._customMusicDjConstraints = {
       manualRetry: true,
@@ -1182,7 +1176,7 @@ async function buildRetryAgentContext(args: {
     };
   }
 
-  if (resolvedAgentTypes.has("spotify") && !spotifyMusicUsesYoutube && !spotifyMusicUsesCustom) {
+  if (contextPolicy.musicPlayerSource === "spotify") {
     const mode = ((chat as any).mode ?? "conversation") as string;
     agentContext.memory._spotifyDjConstraints = {
       ...buildSpotifyDjConstraints({
@@ -1513,17 +1507,15 @@ async function resolveRetryAgents(args: {
       defaultAgentConnectionAgents.push(cfg.name ?? cfg.type);
     }
 
-    const rawSettings = typeof cfg.settings === "string" ? JSON.parse(cfg.settings) : (cfg.settings ?? {});
-    let settings = applyDefaultBuiltInAgentTools(cfg.type, rawSettings);
-    if (cfg.type === "spotify") {
-      settings = applyRetryMusicPlayerSource(settings, activeMusicPlayerSource);
-    }
-    settings = applyTextRewriteAgentChatSettings(cfg.type as string, settings, chatMeta);
-    settings = applyKnowledgeAgentChatSettings(cfg.type as string, settings, chatMeta);
-    settings = applyCustomAgentImageChatSettings(cfg.type as string, settings, chatMeta);
+    const settings = resolveEffectiveAgentSettings({
+      agentType: cfg.type as string,
+      settings: cfg.settings,
+      activeMusicPlayerSource,
+      chatMetadata: chatMeta,
+    });
     const selectedPromptTemplate = resolveAgentPromptTemplate({
       promptTemplate: normalizeProseGuardianPromptTemplate(cfg.type as string, cfg.promptTemplate),
-      fallbackPromptTemplate: getRetryAgentFallbackPrompt(cfg.type as string, settings),
+      fallbackPromptTemplate: getAgentFallbackPrompt(cfg.type as string, settings),
       settings,
       selectedPromptTemplateId: agentPromptTemplateSelections[cfg.type as string] ?? null,
     });
@@ -1592,15 +1584,15 @@ async function resolveRetryAgents(args: {
     if (defaultAgentConn && builtInConnectionId === defaultAgentConn.id)
       defaultAgentConnectionAgents.push(builtIn.name);
 
-    let settings = applyDefaultBuiltInAgentTools(builtIn.id, getDefaultBuiltInAgentSettings(builtIn.id));
-    if (builtIn.id === "spotify") {
-      settings = applyRetryMusicPlayerSource(settings, activeMusicPlayerSource);
-    }
-    settings = applyTextRewriteAgentChatSettings(builtIn.id, settings, chatMeta);
-    settings = applyKnowledgeAgentChatSettings(builtIn.id, settings, chatMeta);
+    const settings = resolveEffectiveAgentSettings({
+      agentType: builtIn.id,
+      settings: undefined,
+      activeMusicPlayerSource,
+      chatMetadata: chatMeta,
+    });
     const selectedPromptTemplate = resolveAgentPromptTemplate({
       promptTemplate: "",
-      fallbackPromptTemplate: getRetryAgentFallbackPrompt(builtIn.id, settings),
+      fallbackPromptTemplate: getAgentFallbackPrompt(builtIn.id, settings),
       settings,
       selectedPromptTemplateId: agentPromptTemplateSelections[builtIn.id] ?? null,
     });
@@ -1670,483 +1662,6 @@ function retryProviderKey(provider: unknown): string {
   return `provider:${id}`;
 }
 
-function toLLMToolDefinition(toolName: string): LLMToolDefinition | null {
-  const tool = BUILT_IN_TOOLS.find((entry) => entry.name === toolName);
-  if (!tool) return null;
-  return {
-    type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters as unknown as Record<string, unknown>,
-    },
-  };
-}
-
-const CHAT_METADATA_TOOL_NAMES = new Set([
-  "read_chat_summary",
-  "append_chat_summary",
-  "read_chat_variable",
-  "write_chat_variable",
-]);
-const LOREBOOK_WRITE_TOOL_NAME = "save_lorebook_entry";
-const EDIT_CHAT_MESSAGE_TOOL_NAME = "edit_chat_message";
-
-function resolveRetryAgentWritableLorebookId(settings: Record<string, unknown>): string | null {
-  const enabledTools = Array.isArray(settings.enabledTools) ? settings.enabledTools : [];
-  const lorebookWriteEnabled =
-    settings.lorebookWriteEnabled === true || enabledTools.includes(LOREBOOK_WRITE_TOOL_NAME);
-  if (!lorebookWriteEnabled) return null;
-  for (const key of ["writableLorebookId", "targetLorebookId"]) {
-    const value = settings[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  const writableIds = settings.writableLorebookIds;
-  if (Array.isArray(writableIds)) {
-    const first = writableIds.find((value): value is string => typeof value === "string" && value.trim().length > 0);
-    if (first) return first.trim();
-  }
-  return null;
-}
-
-function resolveRetryCustomWritableLorebookIds(settings: Record<string, unknown>): string[] | null {
-  const ids: string[] = [];
-  for (const key of ["writableLorebookId", "targetLorebookId"]) {
-    const value = settings[key];
-    if (typeof value === "string" && value.trim()) ids.push(value.trim());
-  }
-  const writableIds = settings.writableLorebookIds;
-  if (Array.isArray(writableIds)) {
-    for (const value of writableIds) {
-      if (typeof value === "string" && value.trim()) ids.push(value.trim());
-    }
-  }
-  return ids.length > 0 ? Array.from(new Set(ids)) : null;
-}
-
-async function attachRetryLorebookWriterToolContexts(args: {
-  lorebooksStore: ReturnType<typeof createLorebooksStorage>;
-  resolvedAgents: ResolvedRetryAgent[];
-  requireApproval: boolean;
-  chatId: string;
-}) {
-  const { lorebooksStore, resolvedAgents, requireApproval, chatId } = args;
-  const tool = toLLMToolDefinition(LOREBOOK_WRITE_TOOL_NAME);
-  if (!tool) return;
-
-  for (const entry of resolvedAgents) {
-    const settings = parseSettingsRecord(entry.resolved.settings);
-    const writableLorebookId = resolveRetryAgentWritableLorebookId(settings);
-    if (!writableLorebookId) continue;
-
-    const existingContext = entry.resolved.toolContext;
-    const tools = existingContext?.tools.some((item) => item.function.name === LOREBOOK_WRITE_TOOL_NAME)
-      ? [...existingContext.tools]
-      : [...(existingContext?.tools ?? []), tool];
-
-    entry.resolved.toolContext = {
-      tools,
-      executeToolCall: async (call) => {
-        if (call.function.name !== LOREBOOK_WRITE_TOOL_NAME) {
-          if (existingContext) return existingContext.executeToolCall(call);
-          return JSON.stringify({
-            error: `Tool not allowed for agent ${entry.resolved.type}: ${call.function.name}`,
-            allowed: [LOREBOOK_WRITE_TOOL_NAME],
-          });
-        }
-
-        const saveLorebookEntry = async (loreEntry: {
-          name: string;
-          content: string;
-          description?: string;
-          keys: string[];
-          tag?: string;
-          mode: "create" | "replace" | "append";
-        }) => {
-          // When agent write-approval is required, never write inline — surface a
-          // proposal envelope (mirroring the structured lorebook_update gate) so the
-          // user approves the write before it touches the lorebook DB.
-          if (requireApproval) {
-            const existingEntries = await lorebooksStore
-              .listEntries(writableLorebookId)
-              .then((entries) => entries as Array<{ name?: string | null; content?: string | null }>)
-              .catch(() => [] as Array<{ name?: string | null; content?: string | null }>);
-            return {
-              requiresApproval: true,
-              approval: buildLorebookWriteApprovalProposal({
-                chatId,
-                agentType: entry.resolved.type,
-                agentName: entry.cfg?.name ?? entry.resolved.name ?? entry.resolved.type,
-                updates: [
-                  {
-                    action: loreEntry.mode === "create" ? "create" : "update",
-                    name: loreEntry.name,
-                    content: loreEntry.content,
-                    description: loreEntry.description ?? "",
-                    keys: loreEntry.keys,
-                    tag: loreEntry.tag ?? "",
-                    mode: loreEntry.mode,
-                  },
-                ],
-                preferredTargetLorebookId: writableLorebookId,
-                writableLorebookIds: [writableLorebookId],
-                existingEntries,
-              }),
-            };
-          }
-
-          const targetLorebook = await lorebooksStore.getById(writableLorebookId);
-          if (!targetLorebook) {
-            return { error: "Selected lorebook is no longer available.", lorebookId: writableLorebookId };
-          }
-          const existingEntries = await lorebooksStore.listEntries(writableLorebookId);
-          const normalizedName = loreEntry.name.trim().toLocaleLowerCase();
-          const existing = existingEntries.find(
-            (candidate: any) =>
-              typeof candidate.name === "string" && candidate.name.trim().toLocaleLowerCase() === normalizedName,
-          ) as any;
-          const keys = Array.from(new Set(loreEntry.keys.map((key) => key.trim()).filter(Boolean)));
-
-          if (!existing || loreEntry.mode === "create") {
-            const created = await lorebooksStore.createEntry({
-              lorebookId: writableLorebookId,
-              name: loreEntry.name,
-              content: loreEntry.content,
-              description: loreEntry.description ?? "",
-              keys,
-              tag: loreEntry.tag ?? "",
-              enabled: true,
-              constant: false,
-              selective: false,
-              position: 0,
-              depth: 4,
-              role: "system",
-            });
-            return {
-              applied: true,
-              action: "created",
-              lorebookId: writableLorebookId,
-              lorebookName: (targetLorebook as any).name,
-              entryId: (created as any)?.id ?? null,
-              name: loreEntry.name,
-              sourceAgentId: entry.resolved.id,
-            };
-          }
-
-          const existingContent = typeof existing.content === "string" ? existing.content : "";
-          const nextContent =
-            loreEntry.mode === "append" && existingContent.trim()
-              ? existingContent.includes(loreEntry.content)
-                ? existingContent
-                : `${existingContent.trim()}\n\n${loreEntry.content}`
-              : loreEntry.content;
-          const existingKeys = Array.isArray(existing.keys)
-            ? existing.keys.filter((key: unknown): key is string => typeof key === "string")
-            : [];
-          const updated = await lorebooksStore.updateEntry(existing.id, {
-            content: nextContent,
-            description: loreEntry.description ?? existing.description ?? "",
-            keys: Array.from(new Set([...existingKeys, ...keys])),
-            ...(loreEntry.tag !== undefined ? { tag: loreEntry.tag } : {}),
-            enabled: true,
-          });
-          return {
-            applied: true,
-            action: loreEntry.mode === "append" ? "appended" : "replaced",
-            lorebookId: writableLorebookId,
-            lorebookName: (targetLorebook as any).name,
-            entryId: (updated as any)?.id ?? existing.id,
-            name: loreEntry.name,
-            sourceAgentId: entry.resolved.id,
-          };
-        };
-
-        return executeToolCallForModel(call, { saveLorebookEntry });
-      },
-    };
-  }
-}
-
-async function attachRetryChatMetadataToolContexts(args: {
-  chats: ReturnType<typeof createChatsStorage>;
-  chatId: string;
-  chatMeta: Record<string, unknown>;
-  resolvedAgents: ResolvedRetryAgent[];
-}) {
-  const { chats, chatId, chatMeta, resolvedAgents } = args;
-
-  const updateChatMetadataForTools = async (patchOrUpdater: MetadataPatchInput) => {
-    let emittedPatch: Record<string, unknown> = {};
-    const updatedChat = await chats.patchMetadata(chatId, async (currentMeta) => {
-      const patch = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...currentMeta }) : patchOrUpdater;
-      emittedPatch = patch;
-      return patch;
-    });
-    const updatedMeta = updatedChat ? parseExtra(updatedChat.metadata) : { ...chatMeta, ...emittedPatch };
-    for (const key of Object.keys(chatMeta)) {
-      if (!(key in updatedMeta)) delete chatMeta[key];
-    }
-    Object.assign(chatMeta, updatedMeta);
-    return updatedMeta;
-  };
-
-  for (const entry of resolvedAgents) {
-    if (entry.resolved.toolContext?.tools.length) continue;
-    const settings = parseSettingsRecord(entry.resolved.settings);
-    const enabledNames = Array.isArray(settings.enabledTools) ? (settings.enabledTools as string[]) : [];
-    const metadataToolNames = enabledNames.filter((name) => CHAT_METADATA_TOOL_NAMES.has(name));
-    if (metadataToolNames.length === 0) continue;
-
-    const tools = metadataToolNames
-      .map((name) => toLLMToolDefinition(name))
-      .filter((tool): tool is LLMToolDefinition => tool !== null);
-    if (tools.length === 0) continue;
-
-    const allowedToolNames = new Set(tools.map((tool) => tool.function.name));
-    entry.resolved.toolContext = {
-      tools,
-      executeToolCall: async (call) => {
-        if (!allowedToolNames.has(call.function.name)) {
-          return JSON.stringify({
-            error: `Tool not allowed for agent ${entry.resolved.type}: ${call.function.name}`,
-            allowed: Array.from(allowedToolNames),
-          });
-        }
-        return executeToolCallForModel(call, {
-          chatMeta,
-          onUpdateMetadata: updateChatMetadataForTools,
-        });
-      },
-    };
-  }
-}
-
-async function attachRetryEditChatMessageToolContexts(args: {
-  chats: ReturnType<typeof createChatsStorage>;
-  chatId: string;
-  resolvedAgents: ResolvedRetryAgent[];
-}) {
-  const { chats, chatId, resolvedAgents } = args;
-  const tool = toLLMToolDefinition(EDIT_CHAT_MESSAGE_TOOL_NAME);
-  if (!tool) return;
-
-  const replaceChatMessageContent = async (input: { messageId: string; content: string; reason?: string }) => {
-    if (!input || typeof input.messageId !== "string" || !input.messageId.trim()) {
-      return { error: "messageId is required and must be a string." };
-    }
-    if (typeof input.content !== "string") {
-      return { error: "content is required and must be a string.", messageId: input.messageId };
-    }
-    const messageId = input.messageId.trim();
-    const message = await chats.getMessage(messageId);
-    if (!message || message.chatId !== chatId) {
-      return { error: "Message not found in this chat.", messageId };
-    }
-    if (message.role !== "user" && message.role !== "assistant") {
-      return { error: "Only user or assistant messages can be edited.", messageId };
-    }
-    await chats.updateMessageContent(messageId, input.content);
-    return { applied: true, messageId, role: message.role, reason: input.reason ?? null };
-  };
-
-  for (const entry of resolvedAgents) {
-    const settings = parseSettingsRecord(entry.resolved.settings);
-    const enabledNames = Array.isArray(settings.enabledTools) ? (settings.enabledTools as string[]) : [];
-    if (!enabledNames.includes(EDIT_CHAT_MESSAGE_TOOL_NAME)) continue;
-    if (!customAgentHasCapability(settings, "edit_messages")) continue;
-
-    const existingContext = entry.resolved.toolContext;
-    const tools = existingContext?.tools.some((item) => item.function.name === EDIT_CHAT_MESSAGE_TOOL_NAME)
-      ? [...existingContext.tools]
-      : [...(existingContext?.tools ?? []), tool];
-
-    entry.resolved.toolContext = {
-      tools,
-      executeToolCall: async (call) => {
-        if (call.function.name !== EDIT_CHAT_MESSAGE_TOOL_NAME) {
-          if (existingContext) return existingContext.executeToolCall(call);
-          return JSON.stringify({
-            error: `Tool not allowed for agent ${entry.resolved.type}: ${call.function.name}`,
-            allowed: [EDIT_CHAT_MESSAGE_TOOL_NAME],
-          });
-        }
-        return executeToolCallForModel(call, { replaceChatMessageContent });
-      },
-    };
-  }
-}
-
-async function attachRetrySpotifyToolContexts(args: {
-  agentsStore: ReturnType<typeof createAgentsStorage>;
-  chats: ReturnType<typeof createChatsStorage>;
-  chatId: string;
-  chatMeta: Record<string, unknown>;
-  resolvedAgents: ResolvedRetryAgent[];
-}) {
-  const { agentsStore, chats, chatId, chatMeta, resolvedAgents } = args;
-  const spotifyToolNames = new Set(DEFAULT_AGENT_TOOLS.spotify ?? []);
-  let spotifyAccessToken: string | null = null;
-  let spotifyError: string | null = null;
-  let spotifyCredentialsResolved = false;
-
-  const updateChatMetadataForTools = async (patchOrUpdater: MetadataPatchInput) => {
-    let emittedPatch: Record<string, unknown> = {};
-    const updatedChat = await chats.patchMetadata(chatId, async (currentMeta) => {
-      const patch = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...currentMeta }) : patchOrUpdater;
-      emittedPatch = patch;
-      return patch;
-    });
-    const updatedMeta = updatedChat ? parseExtra(updatedChat.metadata) : { ...chatMeta, ...emittedPatch };
-    for (const key of Object.keys(chatMeta)) {
-      if (!(key in updatedMeta)) delete chatMeta[key];
-    }
-    Object.assign(chatMeta, updatedMeta);
-    return updatedMeta;
-  };
-
-  for (const entry of resolvedAgents) {
-    if (entry.resolved.toolContext?.tools.length) continue;
-    const settings = parseSettingsRecord(entry.resolved.settings);
-    const enabledNames = Array.isArray(settings.enabledTools) ? (settings.enabledTools as string[]) : [];
-    // YouTube-mode Music DJ is a pure-JSON agent (no tools) — don't backfill the
-    // Spotify tools, or it runs as a tool-caller and never emits a youtube_control result.
-    const spotifyEnabledNames =
-      entry.resolved.type === "spotify" &&
-      !musicAgentUsesYoutube(settings) &&
-      !musicAgentUsesCustom(settings) &&
-      enabledNames.length === 0
-        ? [...spotifyToolNames]
-        : enabledNames.filter((name) => spotifyToolNames.has(name));
-    if (spotifyEnabledNames.length === 0) continue;
-
-    const tools = spotifyEnabledNames
-      .map((name) => toLLMToolDefinition(name))
-      .filter((tool): tool is LLMToolDefinition => tool !== null);
-    if (tools.length === 0) continue;
-
-    if (!spotifyCredentialsResolved) {
-      spotifyCredentialsResolved = true;
-      const credentials = await resolveSpotifyCredentials(agentsStore, { agentId: entry.resolved.id });
-      if ("accessToken" in credentials) {
-        spotifyAccessToken = credentials.accessToken;
-      } else {
-        spotifyError = credentials.error;
-        logger.warn("[retry-agents] Spotify credentials unavailable: %s", credentials.error);
-      }
-    }
-
-    const allowedToolNames = new Set(tools.map((tool) => tool.function.name));
-    if (entry.resolved.type === "spotify") {
-      entry.resolved.settings = {
-        ...settings,
-        enabledTools: spotifyEnabledNames,
-      };
-      (entry.resolved as any).__spotifyToolCalls = new Set<string>();
-      (entry.resolved as any).__spotifyPlayApplied = false;
-      (entry.resolved as any).__spotifyPlayError = null;
-      (entry.resolved as any).__spotifyToolError = spotifyError;
-      (entry.resolved as any).__spotifyPlaybackPending = false;
-    }
-    entry.resolved.toolContext = {
-      tools,
-      executeToolCall: async (call) => {
-        const spotifyToolCalls = (entry.resolved as any).__spotifyToolCalls;
-        if (spotifyToolCalls instanceof Set) {
-          spotifyToolCalls.add(call.function.name);
-        }
-        if (!allowedToolNames.has(call.function.name)) {
-          return JSON.stringify({
-            error: `Tool not allowed for agent ${entry.resolved.type}: ${call.function.name}`,
-            allowed: Array.from(allowedToolNames),
-          });
-        }
-        if (!spotifyAccessToken) {
-          (entry.resolved as any).__spotifyToolError =
-            spotifyError ?? "Spotify is not connected. Open the Music DJ agent and connect your account.";
-          return JSON.stringify({
-            error: spotifyError ?? "Spotify is not connected. Open the Music DJ agent and connect your account.",
-          });
-        }
-        if (call.function.name === "spotify_play") {
-          const beforeResults = await executeToolCalls(
-            [
-              {
-                id: `spotify-before-play-${Date.now()}`,
-                type: "function",
-                function: { name: "spotify_get_current_playback", arguments: "{}" },
-              },
-            ],
-            { spotify: { accessToken: spotifyAccessToken } },
-          );
-          try {
-            const before = JSON.parse(beforeResults[0]?.result ?? "{}");
-            (entry.resolved as any).__spotifyCurrentBeforePlayUri = getSpotifyPlaybackTrackUri(before);
-          } catch {
-            (entry.resolved as any).__spotifyCurrentBeforePlayUri = null;
-          }
-        }
-        const result = await executeToolCallForModel(call, {
-          chatMeta,
-          onUpdateMetadata: updateChatMetadataForTools,
-          spotify: { accessToken: spotifyAccessToken },
-          spotifyRepeatAfterPlay: "track",
-        });
-        if (call.function.name === "spotify_play") {
-          try {
-            const parsed = JSON.parse(result) as Record<string, unknown>;
-            if (parsed.applied === true) {
-              (entry.resolved as any).__spotifyPlayApplied = true;
-              (entry.resolved as any).__spotifyPlayError = null;
-              (entry.resolved as any).__spotifyPlaybackPending = parsed.playbackPending === true;
-              (entry.resolved as any).__spotifyPlayUris = getSpotifyTrackUris(parsed);
-              (entry.resolved as any).__spotifyCurrentAfterPlayUri = getSpotifyPlaybackTrackUri(parsed);
-              (entry.resolved as any).__spotifyRepeatAfterPlayState =
-                getStringField(parsed, "repeatState") || getStringField(parsed, "repeat");
-            } else if (typeof parsed.error === "string") {
-              (entry.resolved as any).__spotifyPlayError = parsed.error;
-            }
-          } catch {
-            // Keep the raw tool result for the model; validation below handles missing playback.
-          }
-        }
-        return result;
-      },
-    };
-  }
-}
-
-function getSpotifyTrackUris(data: unknown): string[] {
-  if (!data || typeof data !== "object") return [];
-  const record = data as Record<string, unknown>;
-  const raw =
-    (Array.isArray(record.trackUris) && record.trackUris) ||
-    (Array.isArray(record.uris) && record.uris) ||
-    (typeof record.trackUri === "string" ? [record.trackUri] : null) ||
-    (typeof record.uri === "string" ? [record.uri] : null) ||
-    [];
-  return raw.filter((uri): uri is string => typeof uri === "string" && uri.startsWith("spotify:"));
-}
-
-function getSpotifyPlaybackTrackUri(data: unknown): string | null {
-  if (!data || typeof data !== "object") return null;
-  const record = data as Record<string, unknown>;
-  if (typeof record.currentUri === "string" && record.currentUri.startsWith("spotify:track:")) {
-    return record.currentUri;
-  }
-  const track = record.track;
-  if (track && typeof track === "object") {
-    const uri = (track as Record<string, unknown>).uri;
-    if (typeof uri === "string" && uri.startsWith("spotify:track:")) return uri;
-  }
-  return null;
-}
-
-function getStringField(data: unknown, key: string): string {
-  if (!data || typeof data !== "object") return "";
-  const value = (data as Record<string, unknown>)[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
 async function executeSpotifyRetryToolJson(
   entry: ResolvedRetryAgent,
   name: string,
@@ -2187,8 +1702,8 @@ function getSpotifyTracks(data: Record<string, unknown>): Array<{ uri: string; n
 }
 
 function buildSpotifyRetryQuery(result: AgentResult, context: AgentContext): { query: string; mood: string } {
-  const mood = getStringField(result.data, "mood");
-  const searchQuery = getStringField(result.data, "searchQuery");
+  const mood = readSpotifyStringField(result.data, "mood");
+  const searchQuery = readSpotifyStringField(result.data, "searchQuery");
   const scene = typeof context.mainResponse === "string" ? context.mainResponse.replace(/\[[^\]]+\]/g, " ") : "";
   const compactScene = scene.replace(/\s+/g, " ").trim().slice(0, 600);
   return {
@@ -2216,7 +1731,7 @@ async function applyDeterministicSpotifyRetryFallback(args: {
 
   const { query, mood } = buildSpotifyRetryQuery(result, context);
   const current = await executeSpotifyRetryToolJson(entry, "spotify_get_current_playback", {});
-  const currentUri = getSpotifyPlaybackTrackUri(current) ?? "";
+  const currentUri = readSpotifyPlaybackTrackUri(current) ?? "";
 
   const artist = typeof constraints.artist === "string" ? constraints.artist.trim() : "";
   const sourceType = typeof constraints.sourceType === "string" ? constraints.sourceType : "liked";
@@ -2258,7 +1773,7 @@ async function applyDeterministicSpotifyRetryFallback(args: {
     return { ...result, success: false, error: playError };
   }
   const playbackPending = play.playbackPending === true;
-  const playedUri = getSpotifyPlaybackTrackUri(play);
+  const playedUri = readSpotifyPlaybackTrackUri(play);
   if (!playbackPending && playedUri !== picked.uri) {
     return {
       ...result,
@@ -2266,7 +1781,7 @@ async function applyDeterministicSpotifyRetryFallback(args: {
       error: "Spotify accepted the retry, but the active track did not change to the selected song.",
     };
   }
-  const repeatState = getStringField(play, "repeatState") || getStringField(play, "repeat");
+  const repeatState = readSpotifyStringField(play, "repeatState") || readSpotifyStringField(play, "repeat");
   if (!playbackPending && repeatState && repeatState !== "track") {
     return {
       ...result,
@@ -2290,21 +1805,22 @@ async function applyDeterministicSpotifyRetryFallback(args: {
       repeat: play.repeat ?? null,
       repeatState: repeatState || null,
       currentUri: playedUri ?? null,
-      device: getStringField(play, "device") || null,
-      display: getStringField(play, "display") || null,
+      device: readSpotifyStringField(play, "device") || null,
+      display: readSpotifyStringField(play, "display") || null,
       playbackPending,
     },
   };
 }
 
-async function validateSpotifyRetryPlayback(
+export async function validateSpotifyRetryPlayback(
   entry: ResolvedRetryAgent,
   result: AgentResult,
   context: AgentContext,
 ): Promise<AgentResult> {
   if (entry.resolved.type !== "spotify") return result;
   if (result.type !== "spotify_control") return result;
-  const spotifyToolError = (entry.resolved as any).__spotifyToolError;
+  const spotifyAgent = entry.resolved as SpotifyRuntimeAgent;
+  const spotifyToolError = spotifyAgent.__spotifyToolError;
   if (isBlockingSpotifyRetryToolError(spotifyToolError)) {
     return { ...result, success: false, error: spotifyToolError };
   }
@@ -2316,19 +1832,17 @@ async function validateSpotifyRetryPlayback(
   const forceFreshPick = constraints.manualRetry === true || constraints.forceFreshPick === true;
   if (!forceFreshPick) return result;
 
-  const toolCalls = (entry.resolved as any).__spotifyToolCalls;
+  const toolCalls = spotifyAgent.__spotifyToolCalls;
   const spotifyPlayCalled = toolCalls instanceof Set && toolCalls.has("spotify_play");
-  const spotifyPlayApplied = (entry.resolved as any).__spotifyPlayApplied === true;
-  const spotifyPlayError = (entry.resolved as any).__spotifyPlayError;
-  const spotifyPlayUris = Array.isArray((entry.resolved as any).__spotifyPlayUris)
-    ? ((entry.resolved as any).__spotifyPlayUris as string[])
-    : [];
+  const spotifyPlayApplied = spotifyAgent.__spotifyPlayApplied === true;
+  const spotifyPlayError = spotifyAgent.__spotifyPlayError;
+  const spotifyPlayUris = Array.isArray(spotifyAgent.__spotifyPlayUris) ? spotifyAgent.__spotifyPlayUris : [];
   const spotifyPlayUri = spotifyPlayUris.length === 1 ? spotifyPlayUris[0] : null;
   const spotifyPlayIsSingleTrack = !!spotifyPlayUri && spotifyPlayUri.startsWith("spotify:track:");
-  const currentBeforePlay = (entry.resolved as any).__spotifyCurrentBeforePlayUri;
-  const currentAfterPlay = (entry.resolved as any).__spotifyCurrentAfterPlayUri;
-  const repeatAfterPlay = (entry.resolved as any).__spotifyRepeatAfterPlayState;
-  const playbackPending = (entry.resolved as any).__spotifyPlaybackPending === true;
+  const currentBeforePlay = spotifyAgent.__spotifyCurrentBeforePlayUri;
+  const currentAfterPlay = spotifyAgent.__spotifyCurrentAfterPlayUri;
+  const repeatAfterPlay = spotifyAgent.__spotifyRepeatAfterPlayState;
+  const playbackPending = spotifyAgent.__spotifyPlaybackPending === true;
   if (constraints.mode !== "game" && spotifyPlayCalled && spotifyPlayApplied) {
     return result;
   }
@@ -2373,7 +1887,7 @@ async function validateSpotifyRetryPlayback(
     return applyDeterministicSpotifyRetryFallback({ entry, result, context, constraints });
   }
 
-  const uris = getSpotifyTrackUris(result.data);
+  const uris = readSpotifyTrackUris(result.data);
   const requestedTrackUri = uris.find((uri) => uri.startsWith("spotify:track:")) ?? null;
   if (!spotifyPlayCalled && result.success && requestedTrackUri && entry.resolved.toolContext) {
     const fallbackResult = await entry.resolved.toolContext.executeToolCall({
@@ -2390,9 +1904,9 @@ async function validateSpotifyRetryPlayback(
     try {
       const parsed = JSON.parse(fallbackResult) as Record<string, unknown>;
       if (parsed.applied === true) {
-        const fallbackCurrentBefore = (entry.resolved as any).__spotifyCurrentBeforePlayUri;
-        const fallbackPlayedUri = getSpotifyPlaybackTrackUri(parsed);
-        const fallbackRepeatState = getStringField(parsed, "repeatState") || getStringField(parsed, "repeat");
+        const fallbackCurrentBefore = spotifyAgent.__spotifyCurrentBeforePlayUri;
+        const fallbackPlayedUri = readSpotifyPlaybackTrackUri(parsed);
+        const fallbackRepeatState = readSpotifyStringField(parsed, "repeatState") || readSpotifyStringField(parsed, "repeat");
         const fallbackPlaybackPending = parsed.playbackPending === true;
         if (
           !fallbackPlaybackPending &&
@@ -2469,7 +1983,11 @@ async function resolveRetryImagePromptContext(args: {
 
   const imageConnectionId =
     args.entry.resolved.type === "illustrator"
-      ? resolveIllustratorImageConnectionId(args.chatMode, args.chatMeta, args.entry.resolved.settings.imageConnectionId)
+      ? resolveIllustratorImageConnectionId(
+          args.chatMode,
+          args.chatMeta,
+          args.entry.resolved.settings.imageConnectionId,
+        )
       : typeof args.entry.resolved.settings.imageConnectionId === "string"
         ? args.entry.resolved.settings.imageConnectionId.trim()
         : "";
@@ -2575,7 +2093,13 @@ async function executeRetryBatches(
           chatMeta,
         });
         groupResults.push(
-          await executeAgent(entry.resolved, imagePromptContext, group.provider, group.model, entry.resolved.toolContext),
+          await executeAgent(
+            entry.resolved,
+            imagePromptContext,
+            group.provider,
+            group.model,
+            entry.resolved.toolContext,
+          ),
         );
       }
 
@@ -3177,7 +2701,7 @@ async function applyRetryResultEffects(args: {
         if (retryUpdates.length > 0) {
           const customWritableLorebookIds =
             !isBuiltInLorebookAgent && resultAgent
-              ? resolveRetryCustomWritableLorebookIds(resultAgent.settings)
+              ? resolveCustomWritableLorebookIds(resultAgent.settings)
               : agentContext.writableLorebookIds;
           const writableLorebookIds = customCanEditLorebooks ? customWritableLorebookIds : null;
           const preferredTargetLorebookId =
@@ -3443,8 +2967,8 @@ async function applyRetryResultEffects(args: {
                       typeof retryPersonaReference?.avatarPath === "string"
                         ? retryPersonaReference.avatarPath
                         : typeof agentContext.memory._personaAvatarPath === "string"
-                        ? agentContext.memory._personaAvatarPath
-                        : null,
+                          ? agentContext.memory._personaAvatarPath
+                          : null,
                     appearance: agentContext.persona.appearance,
                     characterSheetImageId:
                       typeof retryPersonaReference?.characterSheetImageId === "string"
@@ -3966,6 +3490,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
   const agentsStore = createAgentsStorage(app.db);
   const gameStateStore = createGameStateStorage(app.db);
   const lorebooksStore = createLorebooksStorage(app.db);
+  const customToolsStore = createCustomToolsStorage(app.db);
   const presets = createPromptsStorage(app.db);
 
   app.post<{
@@ -4166,15 +3691,6 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           },
         };
       }
-      await attachRetrySpotifyToolContexts({ agentsStore, chats, chatId, chatMeta, resolvedAgents });
-      await attachRetryChatMetadataToolContexts({ chats, chatId, chatMeta, resolvedAgents });
-      await attachRetryLorebookWriterToolContexts({
-        lorebooksStore,
-        resolvedAgents,
-        requireApproval: requireAgentWriteApproval,
-        chatId,
-      });
-      await attachRetryEditChatMessageToolContexts({ chats, chatId, resolvedAgents });
       const cyoaAgentWillRun = resolvedAgents.some((e) => e.resolved.type === "cyoa");
       const agentContext = await buildRetryAgentContext({
         cyoaAgentWillRun,
@@ -4184,8 +3700,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         chatMeta,
         currentBackground,
         recentMessages,
-        enabledConfigs,
-        resolvedAgentTypes: new Set(resolvedAgents.map((a) => a.resolved.type)),
+        resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
         lastAssistant,
         chars,
         gameStateStore,
@@ -4209,8 +3724,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
               chatMeta,
               currentBackground,
               recentMessages: preGenerationRecentMessages,
-              enabledConfigs,
-              resolvedAgentTypes: new Set(resolvedAgents.map((a) => a.resolved.type)),
+              resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
               lastAssistant: null,
               chars,
               gameStateStore,
@@ -4224,6 +3738,58 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
               useLatestGameStateFallback: false,
             })
           : null;
+
+      const activeLorebookIds = Array.isArray(chatMeta.activeLorebookIds)
+        ? chatMeta.activeLorebookIds.filter(
+            (value): value is string => typeof value === "string" && value.trim().length > 0,
+          )
+        : [];
+      const lorebookScopeExclusions = resolveLorebookScopeExclusions(chatMode, chatMeta);
+      const phaseToolInputs = resolveRetryAgentPhaseToolInputs({
+        requestBody: request.body as unknown as Record<string, unknown>,
+        agentContext,
+        preGenerationAgentContext,
+        selectedTargetMessage: lastAssistant,
+      });
+      const attachAgentTools = async (entries: ResolvedRetryAgent[], toolInputs: RetryAgentPhaseToolInputs) => {
+        if (entries.length === 0) return;
+        const context = toolInputs.agentContext;
+        await resolveAgentGenerationTools({
+          requestBody: toolInputs.requestBody,
+          chatId,
+          chatMetadata: chatMeta,
+          chats,
+          agentsStore,
+          customToolsStore,
+          lorebooksStore,
+          resolvedAgents: entries.map((entry) => entry.resolved),
+          enabledConfigs,
+          promptCharacterIds: toolInputs.promptCharacterIds,
+          personaId:
+            typeof context.memory._personaId === "string" && context.memory._personaId.trim()
+              ? context.memory._personaId
+              : null,
+          activeLorebookIds,
+          excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,
+          excludedSourceAgentIds: lorebookScopeExclusions.excludedSourceAgentIds,
+          gameState: context.gameState,
+          gameSpotifyMusicEnabled: true,
+          agentContext: context,
+          emitMetadataPatch: () => {},
+          observeSpotifyPlaybackBeforePlay: true,
+        });
+      };
+      const preGenerationToolAgents = preGenerationAgentContext
+        ? resolvedAgents.filter((entry) => entry.resolved.phase === "pre_generation")
+        : [];
+      if (phaseToolInputs.preGeneration) {
+        await attachAgentTools(preGenerationToolAgents, phaseToolInputs.preGeneration);
+      }
+      await attachAgentTools(
+        resolvedAgents.filter((entry) => !preGenerationToolAgents.includes(entry)),
+        phaseToolInputs.default,
+      );
+
       const retryIllustratorPromptAgent = resolvedAgents.find((entry) => entry.resolved.type === "illustrator");
       if (retryIllustratorPromptAgent) {
         try {

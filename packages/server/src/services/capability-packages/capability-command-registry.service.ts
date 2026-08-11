@@ -2,6 +2,8 @@ export interface CapabilityConversationCommandRegistration {
   commandType: string;
   tags: string[];
   maxPayloadChars?: number;
+  description?: string;
+  payloadExample?: string;
   handler?: (action: CapabilityConversationAction) => void | Promise<void>;
 }
 
@@ -17,6 +19,7 @@ export interface CapabilityConversationAction {
 const tagToCommandType = new Map<string, string>();
 const handlersByCommandType = new Map<string, CapabilityConversationCommandRegistration["handler"]>();
 const payloadLimitsByCommandType = new Map<string, number>();
+const descriptionsByCommandType = new Map<string, { description: string; payloadExample: string }>();
 
 export function registerCapabilityConversationCommand(
   registration: CapabilityConversationCommandRegistration,
@@ -33,13 +36,26 @@ export function registerCapabilityConversationCommand(
   }
   if (registration.handler) handlersByCommandType.set(commandType, registration.handler);
   payloadLimitsByCommandType.set(commandType, Math.max(0, Math.min(registration.maxPayloadChars ?? 2_000, 8_000)));
+  if (registration.handler && registration.description) {
+    descriptionsByCommandType.set(commandType, {
+      description: registration.description.trim().slice(0, 500),
+      payloadExample: registration.payloadExample?.trim().slice(0, 500) || "{}",
+    });
+  }
   return () => {
     for (const tag of tags) {
       if (tagToCommandType.get(tag) === commandType) tagToCommandType.delete(tag);
     }
     if (handlersByCommandType.get(commandType) === registration.handler) handlersByCommandType.delete(commandType);
     payloadLimitsByCommandType.delete(commandType);
+    descriptionsByCommandType.delete(commandType);
   };
+}
+
+export function listCapabilityConversationCommandInstructions(): string[] {
+  return Array.from(descriptionsByCommandType, ([commandType, details]) =>
+    `- [${commandType}:<JSON payload>] — ${details.description} Example: [${commandType}:${details.payloadExample}]`,
+  );
 }
 
 export function parseCapabilityConversationCommands(content: string) {

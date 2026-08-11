@@ -52,6 +52,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Rewrote the animated glow in the Card CSS Theming guide example to animate `opacity` on an overlay layer instead of the message bubble's `box-shadow`. Animating `box-shadow` forced a full repaint every frame and could pin a weak GPU; the example now demonstrates the GPU-composited pattern instead (#4897).
 - Matched Feature agent pages to the shared Agent editor chrome and Chroma accent, and correctly recognized their owning package as installed. (#4892)
 - Kept the Your Guide Professor Mari action icon synchronized with its label color.
 - Kept Sidecar tracker counts and bulk local assignment current when capability Agent packages hydrate or refresh, and centralized Agent result-type admission behind one shared compatibility-tested vocabulary.

@@ -338,6 +338,10 @@ function describeProfessorMariError(error: unknown) {
   return "The request failed before Professor Mari could answer. This message will stay visible long enough to screenshot for troubleshooting.";
 }
 
+function isProfessorMariAbortError(error: unknown) {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+}
+
 function toMessageExtra(message: Message): Message["extra"] {
   if (typeof message.extra === "string") {
     try {
@@ -4652,7 +4656,7 @@ export function HomeProfessorMariChat({
 
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
-      if (!chatId || isBusy || messageMutationBusyRef.current) return;
+      if (!chatId || isBusy) return;
       messageLoadAbortRef.current?.abort();
       setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, content } : m)));
       try {
@@ -4806,6 +4810,7 @@ export function HomeProfessorMariChat({
         });
       }
     } catch (error) {
+      if (isProfessorMariAbortError(error)) return;
       setDraft(text);
       setAttachments(submittedAttachments);
       console.error("[Professor Mari] Failed to send", error);

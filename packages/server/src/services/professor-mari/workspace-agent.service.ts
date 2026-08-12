@@ -1645,7 +1645,6 @@ export function resolveWorkspaceMutationVerification(
 export function workspaceTextClaimsMutationCompletion(text: string): boolean {
   const normalized = text.trim().replace(/\s+/gu, " ");
   if (!normalized) return false;
-  if (/^(?:all\s+)?(?:done|complete|completed|finished)\b/iu.test(normalized)) return true;
   const completedMutation =
     "created|updated|changed|deleted|removed|renamed|wrote|written|fixed|implemented|built|installed|imported|exported|saved|enabled|disabled|assigned|linked|unlinked|generated|moved|copied|replaced|verified";
   return (

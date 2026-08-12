@@ -40,6 +40,22 @@ class RecordingProvider extends BaseLLMProvider {
   }
 }
 
+class ConcurrencyRecordingProvider extends RecordingProvider {
+  activeCalls = 0;
+  maxActiveCalls = 0;
+
+  override async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
+    this.activeCalls += 1;
+    this.maxActiveCalls = Math.max(this.maxActiveCalls, this.activeCalls);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return await super.chatComplete(messages, options);
+    } finally {
+      this.activeCalls -= 1;
+    }
+  }
+}
+
 const makeAgent = (type: string, resultType = "context_injection"): ResolvedAgent => ({
   id: type,
   type,
@@ -307,6 +323,56 @@ await createAgentPipeline([spotifyAgent], context).postGenerate("The room settle
 assert.equal(spotifyProvider.calls, 1, "Spotify Music DJ should make one planning request");
 assert.equal(spotifyProvider.options[0]?.tools, undefined, "Spotify planning should not enter the LLM tool loop");
 assert.equal(spotifyToolExecutions, 0, "Spotify tools should run later in the deterministic playback stage");
+
+const connectionLimitedProvider = new ConcurrencyRecordingProvider();
+const connectionLimitedAgents: ResolvedAgent[] = [
+  {
+    ...makeAgent("tracker-limited"),
+    provider: connectionLimitedProvider,
+    maxParallelJobs: 1,
+    settings: { ...makeAgent("tracker-limited").settings, includeParallelResults: false },
+  },
+  {
+    ...makeAgent("illustrator-limited"),
+    provider: connectionLimitedProvider,
+    maxParallelJobs: 1,
+    settings: { ...makeAgent("illustrator-limited").settings, includeParallelResults: true },
+  },
+];
+await createAgentPipeline(connectionLimitedAgents, context).postGenerate(
+  "A shared connection must serialize its jobs.",
+);
+assert.equal(connectionLimitedProvider.calls, 2, "separate post-processing groups should still make separate requests");
+assert.equal(
+  connectionLimitedProvider.maxActiveCalls,
+  1,
+  "Max Parallel Agent Jobs must apply across every post-processing group sharing a connection",
+);
+
+const isolatedConnectionLimitedProvider = new ConcurrencyRecordingProvider();
+const isolatedConnectionLimitedAgents: ResolvedAgent[] = [
+  {
+    ...makeAgent("illustrator"),
+    id: "illustrator-limited-a",
+    provider: isolatedConnectionLimitedProvider,
+    maxParallelJobs: 1,
+  },
+  {
+    ...makeAgent("illustrator"),
+    id: "illustrator-limited-b",
+    provider: isolatedConnectionLimitedProvider,
+    maxParallelJobs: 1,
+  },
+];
+await createAgentPipeline(isolatedConnectionLimitedAgents, context).postGenerate(
+  "Isolated jobs in one batch group must share the connection limit.",
+);
+assert.equal(isolatedConnectionLimitedProvider.calls, 2, "isolated agents should still make separate requests");
+assert.equal(
+  isolatedConnectionLimitedProvider.maxActiveCalls,
+  1,
+  "Max Parallel Agent Jobs must also serialize isolated configs inside one batch group",
+);
 
 const parallelLlamaArgs = buildLlamaArgs({
   modelPath: "/tmp/model.gguf",

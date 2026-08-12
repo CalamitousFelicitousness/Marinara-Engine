@@ -1931,6 +1931,19 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
       })
       .toBe(50);
 
+    const downloadPromise = page.waitForEvent("download");
+    await editor.getByRole("button", { name: "Export connection" }).click();
+    const exportDialog = page.getByRole("dialog", { name: "Export Connection Data" });
+    await expect(exportDialog).toBeVisible();
+    await exportDialog.getByRole("button", { name: "Export", exact: true }).click();
+    const download = await downloadPromise;
+    const downloadPath = await download.path();
+    expect(downloadPath).not.toBeNull();
+    const exported = JSON.parse(readFileSync(downloadPath!, "utf8")) as {
+      connections?: Array<{ defaultParameters?: { imageGeneration?: { seed?: number } } }>;
+    };
+    expect(exported.connections?.[0]?.defaultParameters?.imageGeneration?.seed).toBe(50);
+
     await page.locator('[data-tour="panel-personas"]').click();
     await rightPanel
       .getByText(personaName, { exact: true })

@@ -168,6 +168,7 @@ import { extractCreatorNotesCss } from "../../lib/creator-notes-css";
 import { isLorebookScopeActiveForChat } from "../../lib/lorebook-scope";
 import { addSilentGreetingSwipes } from "../../lib/message-swipes";
 import { useUIStore } from "../../stores/ui.store";
+import { abortGenerationForChat, useChatStore } from "../../stores/chat.store";
 import { blurActiveChatFloatingUiControl, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
@@ -822,6 +823,8 @@ export function ChatSettingsDrawer({
   const disconnectChat = useDisconnectChat();
   const { retryAgents } = useGenerate();
   const agentProcessing = useAgentStore((s) => s.processingChatIds.includes(chat.id));
+  const hasLocalGeneration = useChatStore((s) => s.abortControllers.has(chat.id));
+  const [stoppingGeneration, setStoppingGeneration] = useState(false);
   const scheduleGenerationPreferences = useUIStore((s) => s.scheduleGenerationPreferences);
   const setScheduleGenerationPreferences = useUIStore((s) => s.setScheduleGenerationPreferences);
   const roleplaySpriteScale = useUIStore((s) => s.roleplaySpriteScale);
@@ -862,6 +865,30 @@ export function ChatSettingsDrawer({
   const isConversation = chatMode === "conversation";
   const isGame = chatMode === "game";
   const isRoleplayMode = chatMode === "roleplay";
+  const { data: generationStatus, refetch: refetchGenerationStatus } = useQuery({
+    queryKey: ["generation-status", chat.id],
+    queryFn: () => api.get<{ active: boolean }>(`/generate/status/${encodeURIComponent(chat.id)}`),
+    enabled: open && isRoleplayMode,
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data?.active ? 1_000 : false),
+  });
+  const activeGeneration = hasLocalGeneration || generationStatus?.active === true;
+  const handleStopActiveGeneration = useCallback(async () => {
+    setStoppingGeneration(true);
+    try {
+      const controller = useChatStore.getState().abortControllers.get(chat.id);
+      await abortGenerationForChat(chat.id, controller);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : localizeUi("ui.chat.chatsettingsdrawer.couldNotStopGeneration"),
+      );
+    } finally {
+      await refetchGenerationStatus();
+      setStoppingGeneration(false);
+    }
+  }, [chat.id, localizeUi, refetchGenerationStatus]);
   const worldMapsSettingsDescription = localizeUi("ui.chat.chatsettingsdrawer.worldMapsFeatureSummary");
   const supportsNarrativeDirectorSecretPlot = chatMode === "roleplay";
   const modeSettingsSurfaces = CHAT_SETTINGS_SURFACES[chatMode];
@@ -6296,7 +6323,7 @@ export function ChatSettingsDrawer({
                             },
                             onDirtyChange: setEditorDirty,
                           }}
-                          className="block overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]/45"
+                          className="block overflow-hidden rounded-lg"
                         />
                       </AgentSettingsCard>
                     ) : null}
@@ -6911,6 +6938,30 @@ export function ChatSettingsDrawer({
                         })}
                       </div>
                     </div>
+                  )}
+                  {isRoleplayMode && (activeGeneration || stoppingGeneration) && (
+                    <button
+                      type="button"
+                      onClick={() => void handleStopActiveGeneration()}
+                      disabled={stoppingGeneration}
+                      className="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg bg-red-500/10 px-3 py-2.5 text-left text-red-300 ring-1 ring-red-500/25 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[0.6875rem] font-medium">
+                          {stoppingGeneration
+                            ? localizeUi("ui.chat.chatsettingsdrawer.stoppingGeneration")
+                            : localizeUi("ui.chat.chatsettingsdrawer.stopActiveGeneration")}
+                        </span>
+                        <p className="text-[0.625rem] leading-relaxed text-red-200/70">
+                          {localizeUi("ui.chat.chatsettingsdrawer.stopActiveGenerationDescription")}
+                        </p>
+                      </div>
+                      {stoppingGeneration ? (
+                        <Loader2 size="0.8125rem" className="shrink-0 animate-spin" />
+                      ) : (
+                        <X size="0.8125rem" className="shrink-0" />
+                      )}
+                    </button>
                   )}
                   <button
                     onClick={() => setShowAgentSuiteModal(true)}
@@ -8421,7 +8472,7 @@ export function ChatSettingsDrawer({
                                             },
                                             onDirtyChange: setEditorDirty,
                                           }}
-                                          className="block overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]/45"
+                                          className="block overflow-hidden rounded-lg"
                                         />
                                       </AgentSettingsCard>
                                     </div>
@@ -8760,7 +8811,7 @@ export function ChatSettingsDrawer({
                                                 },
                                                 onDirtyChange: setEditorDirty,
                                               }}
-                                              className="mt-2 block overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]/45"
+                                              className="mt-2 block overflow-hidden rounded-lg"
                                             />
                                           )}
                                           {agent.id === STORYBOARD_AGENT_ID && (

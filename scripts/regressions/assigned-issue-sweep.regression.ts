@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 import { DISCORD_SUBTEXT_RE, INLINE_MD_RE } from "../../packages/client/src/lib/inline-markdown-regex.js";
 import { applyInlineMarkdownHTML } from "../../packages/client/src/lib/markdown.js";
 import { mergeUndatedSyncedSettings } from "../../packages/client/src/hooks/use-settings-sync.js";
+import {
+  formatRuntimeBuild,
+  getServerRuntimeBuild,
+  isRuntimeBuildCurrent,
+} from "../../packages/client/src/lib/runtime-build.js";
 import { useAgentStore } from "../../packages/client/src/stores/agent.store.js";
 import {
   isStockMarinaraUniversalPreset,
@@ -12,6 +17,29 @@ import {
 } from "../../packages/shared/src/types/prompt.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+
+const clientBuild = formatRuntimeBuild("2.4.2", "aaaaaaaaaaaa");
+assert.equal(clientBuild, "2.4.2+aaaaaaaaaaaa");
+assert.equal(
+  isRuntimeBuildCurrent("2.4.2", clientBuild, { version: "2.4.2", build: "2.4.2+aaaaaaaaaaaa" }),
+  true,
+  "matching same-version builds do not refresh",
+);
+assert.equal(
+  isRuntimeBuildCurrent("2.4.2", clientBuild, { version: "2.4.2", build: "2.4.2+bbbbbbbbbbbb" }),
+  false,
+  "a newer commit with the same release version refreshes the stale client",
+);
+assert.equal(
+  isRuntimeBuildCurrent("2.4.2", clientBuild, { version: "2.4.2" }),
+  true,
+  "older servers without build metadata retain version-only compatibility",
+);
+assert.equal(
+  getServerRuntimeBuild({ version: "2.4.2", build: " 2.4.2+bbbbbbbbbbbb " }),
+  "2.4.2+bbbbbbbbbbbb",
+  "the server build identity is normalized for the recovery key",
+);
 
 const outerMarkdownMatch = new RegExp(INLINE_MD_RE.source, INLINE_MD_RE.flags).exec("*This is **bold** in italic.*");
 assert.equal(

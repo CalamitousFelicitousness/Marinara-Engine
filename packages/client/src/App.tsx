@@ -37,6 +37,11 @@ import { useDialogStore } from "./stores/dialog.store";
 import { api } from "./lib/api-client";
 import { forceRefreshSpa } from "./lib/browser-runtime";
 import {
+  formatRuntimeBuild,
+  getServerRuntimeBuild,
+  isRuntimeBuildCurrent,
+} from "./lib/runtime-build";
+import {
   getCssColorFallback,
   getCssGradientColorStops,
   isCssGradient,
@@ -53,6 +58,7 @@ import { setCustomNotificationSoundUrl } from "./lib/notification-sound";
 
 const VERSION_RECOVERY_KEY = "marinara:pwa-version-recovery";
 const VERSION_CHECK_INTERVAL_MS = 5 * 60_000;
+const CLIENT_BUILD = formatRuntimeBuild(APP_VERSION, __MARINARA_BUILD_COMMIT__);
 const LazyModalRenderer = lazy(() =>
   import("./components/layout/ModalRenderer").then((module) => ({ default: module.ModalRenderer })),
 );
@@ -64,6 +70,7 @@ type HealthResponse = {
   status: string;
   timestamp: string;
   version: string;
+  build?: string | null;
 };
 
 type CustomFontFace = {
@@ -951,12 +958,13 @@ export function App() {
           return;
         }
 
-        if (health.version === APP_VERSION) {
+        const serverBuild = getServerRuntimeBuild(health);
+        if (isRuntimeBuildCurrent(APP_VERSION, CLIENT_BUILD, health)) {
           sessionStorage.removeItem(VERSION_RECOVERY_KEY);
           return;
         }
 
-        await recoverFromVersionSkew(health.version);
+        await recoverFromVersionSkew(serverBuild);
       } catch {
         // Ignore version checks when the network is unavailable.
       }

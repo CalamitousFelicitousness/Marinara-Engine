@@ -560,6 +560,29 @@ elif [ "$AUTO_OPEN_BROWSER_ENABLED" != "1" ]; then
     echo "  [OK] Auto-open disabled (AUTO_OPEN_BROWSER=${AUTO_OPEN_BROWSER_VALUE})"
 fi
 
+# Keep Android from suspending the Termux process while the local server is
+# running. Release the lock on every launcher exit, including Ctrl+C.
+TERMUX_WAKE_LOCK_ACQUIRED=0
+release_termux_wake_lock() {
+    if [ "$TERMUX_WAKE_LOCK_ACQUIRED" = "1" ]; then
+        if ! termux-wake-unlock >/dev/null 2>&1; then
+            echo "  [WARN] Could not release the Android wake lock."
+        fi
+    fi
+}
+
+if command -v termux-wake-lock &> /dev/null && command -v termux-wake-unlock &> /dev/null; then
+    if termux-wake-lock >/dev/null 2>&1; then
+        TERMUX_WAKE_LOCK_ACQUIRED=1
+        trap release_termux_wake_lock EXIT
+        echo "  [OK] Android wake lock acquired for background reliability"
+    else
+        echo "  [WARN] Could not acquire an Android wake lock; background execution may pause."
+    fi
+else
+    echo "  [WARN] Termux wake-lock commands are unavailable; background execution may pause."
+fi
+
 # Start server
 cd packages/server
-exec node dist/index.js
+node dist/index.js

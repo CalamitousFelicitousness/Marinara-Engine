@@ -70,6 +70,25 @@ for (const launcherPath of ["start.sh", "start-termux.sh", "start.bat"]) {
     );
   }
 }
+const termuxLauncherSource = readFileSync(join(repositoryRoot, "start-termux.sh"), "utf8");
+assert.ok(
+  termuxLauncherSource.includes("termux-wake-lock") && termuxLauncherSource.includes("termux-wake-unlock"),
+  "the Termux launcher must hold an Android wake lock while the server runs",
+);
+assert.match(
+  termuxLauncherSource,
+  /trap release_termux_wake_lock EXIT/u,
+  "the Termux launcher must release its wake lock whenever the server exits",
+);
+assert.ok(
+  termuxLauncherSource.indexOf("termux-wake-lock") < termuxLauncherSource.lastIndexOf("node dist/index.js"),
+  "the Termux launcher must acquire its wake lock before starting the server",
+);
+assert.doesNotMatch(
+  termuxLauncherSource,
+  /exec node dist\/index\.js/u,
+  "the Termux launcher must retain its shell so the EXIT cleanup trap can run",
+);
 const installerSource = readFileSync(join(repositoryRoot, "win/installer/install.bat"), "utf8");
 assert.ok(
   installerSource.includes("check-target") && installerSource.includes("if errorlevel 2"),

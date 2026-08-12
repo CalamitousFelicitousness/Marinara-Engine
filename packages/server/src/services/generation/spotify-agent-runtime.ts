@@ -360,10 +360,12 @@ async function playSpotifyFallbackCandidates(args: {
     "spotify_play",
     uris.length === 1 ? { uri: uris[0], reason } : { uris, reason },
   );
+  const activeUri = readSpotifyPlaybackTrackUri(play);
   if (
     play.applied !== true &&
     play.verification === "failed" &&
-    readSpotifyPlaybackTrackUri(play) !== uris[0] &&
+    typeof activeUri === "string" &&
+    activeUri !== uris[0] &&
     candidates.tracks.length > 1
   ) {
     picked = candidates.tracks.slice(1, queueSize + 1);

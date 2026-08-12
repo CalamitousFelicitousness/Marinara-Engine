@@ -206,20 +206,30 @@ const presetsPanelSource = readFileSync(
   join(repositoryRoot, "packages/client/src/components/panels/PresetsPanel.tsx"),
   "utf8",
 );
-const unsupportedRegexPlacementBranch =
+const unsupportedRegexPlacementGate =
   /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?const normalized =/u.exec(
     presetsPanelSource,
   )?.[0];
-assert.ok(unsupportedRegexPlacementBranch, "the preset regex placement import branch remains discoverable");
+assert.ok(unsupportedRegexPlacementGate, "the preset regex placement import branch remains discoverable");
 assert.doesNotMatch(
-  unsupportedRegexPlacementBranch,
+  unsupportedRegexPlacementGate,
   /continue;/u,
   "unsupported SillyTavern placements must not discard the entire preset regex entry",
 );
+const successfulRegexImportWarning =
+  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(successfulRegexImportWarning, "the successful preset regex import warning remains discoverable");
 assert.match(
-  unsupportedRegexPlacementBranch,
-  /warnings\.push/u,
-  "ignored SillyTavern placements remain visible as an import warning",
+  successfulRegexImportWarning,
+  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push/u,
+  "ignored SillyTavern placements produce a warning only after the regex imports successfully",
+);
+assert.match(
+  successfulRegexImportWarning,
+  /localizeUi\("ui\.panels\.presetspanel\.ignoredUnsupportedRegexPlacements"/u,
+  "unsupported placement warnings must use the localized message",
 );
 
 console.info("Assigned issue-sweep regressions passed.");

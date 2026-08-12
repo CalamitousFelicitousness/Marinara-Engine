@@ -18,7 +18,11 @@ import {
   type ChatOptions,
 } from "../../packages/server/src/services/llm/base-provider.js";
 import { agentResultTypeSchema } from "../../packages/shared/src/schemas/agent.schema.js";
-import { AGENT_RESULT_TYPE_VALUES, type AgentContext } from "../../packages/shared/src/types/agent.js";
+import {
+  AGENT_RESULT_TYPE_VALUES,
+  type AgentContext,
+  type AgentResult,
+} from "../../packages/shared/src/types/agent.js";
 
 class RecordingProvider extends BaseLLMProvider {
   calls = 0;
@@ -329,6 +333,7 @@ assert.equal(spotifyProvider.options[0]?.tools, undefined, "Spotify planning sho
 assert.equal(spotifyToolExecutions, 0, "Spotify tools should run later in the deterministic playback stage");
 
 const spotifyFallbackCalls: string[] = [];
+let spotifyFallbackReportsActiveUri = true;
 const spotifyFallbackAgent = {
   ...makeAgent("spotify", "spotify_control"),
   __spotifyCandidateTracks: [
@@ -344,7 +349,7 @@ const spotifyFallbackAgent = {
         return JSON.stringify({
           error: "Spotify playback failed to start the selected track on Regression device.",
           verification: "failed",
-          currentUri: "spotify:track:previous",
+          ...(spotifyFallbackReportsActiveUri ? { currentUri: "spotify:track:previous" } : {}),
         });
       }
       return JSON.stringify({
@@ -356,25 +361,24 @@ const spotifyFallbackAgent = {
     },
   },
 } as SpotifyRuntimeAgent;
+const spotifyFallbackPlannerResult: AgentResult = {
+  agentId: "spotify",
+  agentType: "spotify",
+  type: "spotify_control",
+  data: {
+    action: "play",
+    mood: "tense",
+    searchQuery: "game soundtrack",
+    trackUris: [],
+    trackNames: [],
+  },
+  tokensUsed: 12,
+  durationMs: 1,
+  success: true,
+  error: null,
+};
 const [spotifyFallbackResult] = await applySpotifyAgentPlaybackFallbacks(
-  [
-    {
-      agentId: "spotify",
-      agentType: "spotify",
-      type: "spotify_control",
-      data: {
-        action: "play",
-        mood: "tense",
-        searchQuery: "game soundtrack",
-        trackUris: [],
-        trackNames: [],
-      },
-      tokensUsed: 12,
-      durationMs: 1,
-      success: true,
-      error: null,
-    },
-  ],
+  [spotifyFallbackPlannerResult],
   [spotifyFallbackAgent],
   { ...context, chatMode: "game" },
 );
@@ -385,6 +389,20 @@ assert.deepEqual(
 );
 assert.equal(spotifyFallbackResult?.success, true);
 assert.deepEqual((spotifyFallbackResult?.data as Record<string, unknown>).trackUris, ["spotify:track:fallback"]);
+
+spotifyFallbackReportsActiveUri = false;
+spotifyFallbackCalls.length = 0;
+const [spotifyMissingUriResult] = await applySpotifyAgentPlaybackFallbacks(
+  [spotifyFallbackPlannerResult],
+  [spotifyFallbackAgent],
+  { ...context, chatMode: "game" },
+);
+assert.deepEqual(
+  spotifyFallbackCalls,
+  ["spotify:track:unavailable"],
+  "Music DJ must not switch candidates when Spotify verification reports no active URI",
+);
+assert.equal(spotifyMissingUriResult?.success, false);
 
 const connectionLimitedProvider = new ConcurrencyRecordingProvider();
 const connectionLimitedAgents: ResolvedAgent[] = [

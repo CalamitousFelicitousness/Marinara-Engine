@@ -576,14 +576,6 @@ export function PresetsPanel() {
         const orderBase = getNextRegexOrderBase((regexScripts ?? []) as RegexScriptRow[]);
         for (const [index, entry] of entries.entries()) {
           const unsupportedPlacements = getUnsupportedStRegexPlacements(entry);
-          if (unsupportedPlacements.length > 0) {
-            warnings.push(
-              localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
-                value1: index + 1,
-                value2: unsupportedPlacements.join(", "),
-              }),
-            );
-          }
           const normalized = normalizeRegexImportEntry(entry, orderBase + index);
           if (!normalized) {
             failed.push(`Entry ${index + 1}: missing name or find pattern.`);
@@ -592,6 +584,14 @@ export function PresetsPanel() {
           try {
             await createRegexScript.mutateAsync(normalized);
             imported++;
+            if (unsupportedPlacements.length > 0) {
+              warnings.push(
+                localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
+                  value1: index + 1,
+                  value2: unsupportedPlacements.join(", "),
+                }),
+              );
+            }
           } catch (error) {
             failed.push(`Entry ${index + 1} (${normalized.name}): ${describeImportError(error)}`);
           }

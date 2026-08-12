@@ -8196,6 +8196,14 @@ try {
     join(REPOSITORY_ROOT, "packages/server/src/routes/generate.routes.ts"),
     "utf8",
   );
+  const turnGameBotRunnerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/services/turn-games/turn-game-bot-runner.service.ts"),
+    "utf8",
+  );
+  const turnGameCommandRuntimeSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/services/generation/turn-game-command-runtime.ts"),
+    "utf8",
+  );
 
   assert.match(
     chatAreaSource,
@@ -8236,6 +8244,22 @@ try {
     "Turn-game recovery must re-check cancellation after a bot runner resolves",
   );
   assert.match(turnGameResumeBlock, /logger\.warn\(turnGameErr/u);
+  assert.match(
+    generateRouteSource,
+    /logDebugOverride\(requestDebug \|\| isDebugAgentsEnabled\(\), message, \.\.\.args\)/u,
+    "Turn-game prompt logging must honor both UI debug mode and DEBUG_AGENTS",
+  );
+  assert.equal(
+    (generateRouteSource.match(/debugLog: turnGameDebugLog/gu) ?? []).length,
+    3,
+    "Every production turn-game runner path must receive the request-aware debug logger",
+  );
+  assert.match(turnGameCommandRuntimeSource, /debugLog: args\.debugLog/u);
+  assert.match(
+    turnGameBotRunnerSource,
+    /args\.debugLog\?\.\([\s\S]*?JSON\.stringify\(moveMessages, null, 2\)[\s\S]*?provider\.chatComplete\(moveMessages/u,
+    "Turn-game bot moves must log the final provider prompt immediately before submission",
+  );
 }
 
 console.info("Open-issue regressions passed.");

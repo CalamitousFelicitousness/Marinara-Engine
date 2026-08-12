@@ -42,6 +42,7 @@ interface RunBotTurnsArgs {
   baseUrl?: string;
   reply: FastifyReply;
   signal?: AbortSignal;
+  debugLog?: (message: string, ...args: unknown[]) => void;
   /** Test/override hooks — production passes conn+baseUrl and builds the provider here. */
   provider?: BaseLLMProvider;
   model?: string;
@@ -369,6 +370,13 @@ export async function runTurnGameBotTurns(args: RunBotTurnsArgs): Promise<void> 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let proposed: any = null;
     try {
+      args.debugLog?.(
+        "[debug/turn-game/move] chatId=%s seatId=%s model=%s prompt messages:\n%s",
+        chatId,
+        seatId,
+        model,
+        JSON.stringify(moveMessages, null, 2),
+      );
       const res = await provider.chatComplete(moveMessages, {
         model,
         tools,

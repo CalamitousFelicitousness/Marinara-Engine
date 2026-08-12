@@ -316,6 +316,7 @@ export function ConnectionEditor() {
   const [localImageCaptioningEnabled, setLocalImageCaptioningEnabled] = useState(false);
   const [localImageCaptioningConnectionId, setLocalImageCaptioningConnectionId] = useState("");
   const [localImageDefaults, setLocalImageDefaults] = useState<ImageGenerationDefaultsProfile | null>(null);
+  const localImageDefaultsRef = useRef<ImageGenerationDefaultsProfile | null>(null);
   const [localVideoDefaults, setLocalVideoDefaults] = useState<VideoGenerationDefaultsProfile | null>(null);
   const [imageDefaultsExpanded, setImageDefaultsExpanded] = useState(false);
   const [videoDefaultsExpanded, setVideoDefaultsExpanded] = useState(false);
@@ -441,9 +442,11 @@ export function ConnectionEditor() {
     setLocalDefaultParameters(getEditableGenerationParameters(CONNECTION_PARAMETER_DEFAULTS, c.defaultParameters));
     setLocalImageCaptioningEnabled(imageCaptioningDefaults.imageCaptioningEnabled === true);
     setLocalImageCaptioningConnectionId(imageCaptioningDefaults.imageCaptioningConnectionId ?? "");
-    setLocalImageDefaults(
-      defaultsService ? (storedImageDefaults ?? createDefaultImageGenerationProfile(defaultsService)) : null,
-    );
+    const nextImageDefaults = defaultsService
+      ? (storedImageDefaults ?? createDefaultImageGenerationProfile(defaultsService))
+      : null;
+    localImageDefaultsRef.current = nextImageDefaults;
+    setLocalImageDefaults(nextImageDefaults);
     setLocalVideoDefaults(
       (c.provider as APIProvider) === "video_generation"
         ? storedVideoDefaults
@@ -594,14 +597,17 @@ export function ConnectionEditor() {
 
   useEffect(() => {
     if (localProvider !== "image_generation" || !selectedImageDefaultsService) {
+      localImageDefaultsRef.current = null;
       setLocalImageDefaults(null);
       return;
     }
-    setLocalImageDefaults((current) =>
-      current?.service === selectedImageDefaultsService
+    setLocalImageDefaults((current) => {
+      const next = current?.service === selectedImageDefaultsService
         ? sanitizeImageGenerationProfile(current, selectedImageDefaultsService)
-        : createDefaultImageGenerationProfile(selectedImageDefaultsService),
-    );
+        : createDefaultImageGenerationProfile(selectedImageDefaultsService);
+      localImageDefaultsRef.current = next;
+      return next;
+    });
   }, [localProvider, selectedImageDefaultsService]);
 
   useEffect(() => {
@@ -771,8 +777,8 @@ export function ConnectionEditor() {
         });
       } else if (isImageProvider) {
         const nextImageDefaults =
-          selectedImageDefaultsService && localImageDefaults
-            ? sanitizeImageGenerationProfile(localImageDefaults, selectedImageDefaultsService)
+          selectedImageDefaultsService && localImageDefaultsRef.current
+            ? sanitizeImageGenerationProfile(localImageDefaultsRef.current, selectedImageDefaultsService)
             : null;
         await saveConnectionDefaults.mutateAsync({
           id: connectionDetailId,
@@ -853,7 +859,6 @@ export function ConnectionEditor() {
     selectedImageDefaultsService,
     selectedVideoProvider,
     selectedVideoDefaultsService,
-    localImageDefaults,
     localVideoDefaults,
     updateConnection,
     saveConnectionDefaults,
@@ -895,8 +900,8 @@ export function ConnectionEditor() {
     const defaultParameters = isImageProvider
       ? buildImageDefaultParameters(
           currentConnection.defaultParameters,
-          selectedImageDefaultsService && localImageDefaults
-            ? sanitizeImageGenerationProfile(localImageDefaults, selectedImageDefaultsService)
+          selectedImageDefaultsService && localImageDefaultsRef.current
+            ? sanitizeImageGenerationProfile(localImageDefaultsRef.current, selectedImageDefaultsService)
             : null,
         )
       : isVideoProvider
@@ -996,7 +1001,6 @@ export function ConnectionEditor() {
     localClaudeFastMode,
     selectedImageDefaultsService,
     selectedVideoDefaultsService,
-    localImageDefaults,
     localVideoDefaults, localizeUi,
   ]);
 
@@ -2106,15 +2110,18 @@ export function ConnectionEditor() {
               expanded={imageDefaultsExpanded}
               onExpandedChange={setImageDefaultsExpanded}
               onChange={(next) => {
-                setLocalImageDefaults((current) => {
-                  if (!current) return current;
-                  const resolved = typeof next === "function" ? next(current) : next;
-                  return sanitizeImageGenerationProfile(resolved, selectedImageDefaultsService);
-                });
+                const current = localImageDefaultsRef.current;
+                if (!current) return;
+                const resolved = typeof next === "function" ? next(current) : next;
+                const sanitized = sanitizeImageGenerationProfile(resolved, selectedImageDefaultsService);
+                localImageDefaultsRef.current = sanitized;
+                setLocalImageDefaults(sanitized);
                 markDirty();
               }}
               onReset={() => {
-                setLocalImageDefaults(createDefaultImageGenerationProfile(selectedImageDefaultsService));
+                const defaults = createDefaultImageGenerationProfile(selectedImageDefaultsService);
+                localImageDefaultsRef.current = defaults;
+                setLocalImageDefaults(defaults);
                 markDirty();
               }}
             />

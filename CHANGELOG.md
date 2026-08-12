@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Added a Roleplay Agents-menu stop control that appears only while the current chat has an active generation and can cancel server-side work that survived navigation or a reload (#4942).
+- Added a persisted Send on Enter toggle for Professor Mari and a reusable setup download on New Game's final step before the game starts (#4928, #4930).
 - Added Markdown previews to Conversation, Game, and section content in the preset editor, matching character and lorebook authoring (#4916).
 - Added Discord-style `__underline__` and `-# subtext` rendering throughout chat history and other shared Markdown surfaces (#4914).
 - Added an Easy Viewer to Professor Mari's Keep/Restore review cards: instead of raw `app_data` JSON, her edits now show as a readable before/after diff with removed text in red and added text in green, lorebook entries laid out like the entry editor (name, keys, content, toggles), and a per-change Dismiss control to hide reviewed items and reduce clutter. Deletions and disables are flagged prominently since they are the most consequential, and you can toggle each card between Easy and Raw independently (#4919).
@@ -67,6 +68,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Resumed pending turn-game bot seats after a regular Conversation reply so UNO cannot remain frozen when a chat send wins the per-chat generation lock (#4941).
 - Made the Game minimap's zoom icons follow the selected interface accent instead of retaining a fixed color (#4944).
 - Matched embedded Long-Term Memory chat settings to the compact spacing, control sizing, typography, and surfaces used by other Agent menus (Pasta-Devs/Marinara-Agents#309).
+- Repaired common malformed JSON in Roleplay and Conversation summaries through the shared JSON-repair path instead of falling back to raw model output (#4925).
+- Kept NovelAI generation defaults from reverting when Save follows a newly committed setup field (#4929).
+- Cleared embedded character-book data and pointers when Professor Mari deletes a whole lorebook, then restored both to the actual embedding character on Restore, including empty and multi-linked books (#4932).
+- Preserved an enabled Spotify repeat setting when Music DJ replaces playback with a multi-song selection, looping the selected set as one context (#4934).
 - Kept a character's embedded lorebook in sync when Professor Mari edits it: adding, updating, or deleting an entry (or restoring one of those changes) in a lorebook embedded in a character card now rebuilds that character's copy, instead of leaving it stale as only her edits did before (#4927).
 - Gave Professor Mari a safe way to delete a single lorebook entry (`lorebook.deleteEntry`) and told her to use it instead of a raw `mari db delete`, which previously let her remove far more entries than intended when asked to delete just one (#4924).
 - Preserved unsent Home Professor Mari messages across editor navigation and app restarts until they are sent or explicitly cleared (#4915).

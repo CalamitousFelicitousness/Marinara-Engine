@@ -2158,6 +2158,7 @@ try {
   );
   assert.ok(embeddedSyncCharacter, "embedded host character created");
   let embeddedReparentTargetId: string | null = null;
+  let embeddedLinkDecoyId: string | null = null;
   try {
     await lorebookStorage.update(embeddedSyncLorebook.id, { characterId: embeddedSyncCharacter.id });
     const embeddedSyncEntry = await lorebookStorage.createEntry({
@@ -2226,10 +2227,62 @@ try {
       [],
       "reparenting an entry OUT of the embedded lorebook resyncs the former lorebook (the moved entry no longer appears)",
     );
+
+    // #4932: whole-lorebook deletion must resolve the actual embedding character before the
+    // generic cascade removes its links. Keep a different linked character first to prove the
+    // hydrated lorebook's derived characterId is not treated as the embedded owner.
+    const embeddedLinkDecoy = await characterStorage.create(characterDataSchema.parse({ name: "A linked decoy" }));
+    assert.ok(embeddedLinkDecoy);
+    embeddedLinkDecoyId = embeddedLinkDecoy.id;
+    await lorebookStorage.update(embeddedSyncLorebook.id, {
+      characterIds: [embeddedLinkDecoy.id, embeddedSyncCharacter.id],
+    });
+    const pendingBeforeDelete = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const embeddedWholeDelete = await mariDb.executeCli({
+      argv: ["db", "delete", "lorebooks", embeddedSyncLorebook.id, "--cascade", "--apply"],
+    });
+    assert.equal(
+      embeddedWholeDelete.ok,
+      true,
+      `deleting an embedded lorebook through mari-db must succeed: ${JSON.stringify(embeddedWholeDelete)}`,
+    );
+    const deletedHost = await characterStorage.getById(embeddedSyncCharacter.id);
+    const deletedHostData = JSON.parse(String(deletedHost?.data ?? "{}")) as {
+      character_book?: unknown;
+      extensions?: { importMetadata?: { embeddedLorebook?: unknown } };
+    };
+    assert.equal(deletedHostData.character_book, null, "whole-lorebook delete clears the embedded character book");
+    assert.equal(
+      deletedHostData.extensions?.importMetadata?.embeddedLorebook,
+      undefined,
+      "whole-lorebook delete clears the embedded lorebook pointer",
+    );
+    const wholeDeleteApproval = mariDb
+      .getPendingApprovals()
+      .find((approval) => !pendingBeforeDelete.has(approval.id));
+    assert.ok(wholeDeleteApproval, "whole-lorebook delete produced a reviewable approval");
+    const restoredWholeDelete = await mariDb.restoreAppliedReview(wholeDeleteApproval.id);
+    assert.ok(restoredWholeDelete && "history" in restoredWholeDelete, "whole-lorebook Restore must succeed");
+    const restoredHost = await characterStorage.getById(embeddedSyncCharacter.id);
+    const restoredHostData = JSON.parse(String(restoredHost?.data ?? "{}")) as {
+      character_book?: { entries?: unknown[] };
+      extensions?: { importMetadata?: { embeddedLorebook?: { lorebookId?: string } } };
+    };
+    assert.deepEqual(
+      restoredHostData.character_book?.entries,
+      [],
+      "Restore re-embeds even an empty character book",
+    );
+    assert.equal(
+      restoredHostData.extensions?.importMetadata?.embeddedLorebook?.lorebookId,
+      embeddedSyncLorebook.id,
+      "Restore reinstates the embedded lorebook pointer on the actual host",
+    );
   } finally {
     await lorebookStorage.remove(embeddedSyncLorebook.id);
     await characterStorage.remove(embeddedSyncCharacter.id);
     if (embeddedReparentTargetId) await lorebookStorage.remove(embeddedReparentTargetId);
+    if (embeddedLinkDecoyId) await characterStorage.remove(embeddedLinkDecoyId);
   }
 
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
@@ -4069,6 +4122,16 @@ assert.equal(
 );
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
+assert.match(
+  professorMariHomeSource,
+  /enterToSendProfessorMari/u,
+  "Professor Mari must read her persisted Send on Enter preference",
+);
+assert.equal(
+  professorMariHomeSource.match(/event\.key === "Enter" && \(event\.metaKey \|\| event\.ctrlKey\)/gu)?.length,
+  2,
+  "Both Professor Mari composers must keep Enter as newline and Ctrl/Command+Enter as send when disabled",
+);
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);
 assert.match(
@@ -4869,6 +4932,16 @@ assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
 assert.match(gameSetupWizardSource, /enableAgents: enableAgents \|\| undefined/u);
 assert.match(
   gameSetupWizardSource,
+  /handleExportSetup[\s\S]{0,700}buildGameSetupShareFile/u,
+  "New Game's final setup step must export the same reusable setup format before starting",
+);
+assert.match(
+  gameSetupWizardSource,
+  /onClick=\{handleExportSetup\}[\s\S]{0,300}ui\.game\.gamesetupsummary\.downloadSetup/u,
+  "New Game's final setup step must expose the setup download action",
+);
+assert.match(
+  gameSetupWizardSource,
   /id="game-setup-spatial-map-target-count"[\s\S]{0,180}min=\{1\}[\s\S]{0,120}max=\{SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT\}/u,
   "New Game AI map setup must expose the bounded custom place target from World Maps",
 );
@@ -5652,11 +5725,21 @@ assert.match(
   /if \(version <= 37\) \{[\s\S]*IMAGE_STYLE_PROFILES_STORAGE_KEY\] \?\? persisted\.imageStyleProfiles/u,
   "The image-style legacy-key fallback must remain version-specific",
 );
-const projectionState = { ...useUIStore.getState(), enterToSendGame: false, gameTutorialDisabled: true };
+const projectionState = {
+  ...useUIStore.getState(),
+  enterToSendGame: false,
+  enterToSendProfessorMari: false,
+  gameTutorialDisabled: true,
+};
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
   false,
   "Game's Send on Enter preference must be server-synced",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).enterToSendProfessorMari,
+  false,
+  "Professor Mari's Send on Enter preference must be server-synced",
 );
 assert.equal(
   pickSyncedSettings(projectionState).gameTutorialDisabled,
@@ -7302,6 +7385,16 @@ try {
     connectionEditorSource,
     /type="button"[\s\S]{0,180}novelAiStylePlateInputRef\.current\?\.click\(\)[\s\S]{0,1000}type="file"/u,
     "NovelAI style-plate selection must use an explicit non-submitting button instead of label navigation",
+  );
+  assert.match(
+    connectionEditorSource,
+    /localImageDefaultsRef\.current = sanitized;[\s\S]{0,100}setLocalImageDefaults\(sanitized\)/u,
+    "NovelAI defaults must update a synchronous save snapshot before React paints the next render",
+  );
+  assert.match(
+    connectionEditorSource,
+    /selectedImageDefaultsService && localImageDefaultsRef\.current[\s\S]{0,140}sanitizeImageGenerationProfile\(localImageDefaultsRef\.current/u,
+    "Connection save must persist the latest image defaults snapshot",
   );
 
   const backgroundAutonomousSource = readFileSync(

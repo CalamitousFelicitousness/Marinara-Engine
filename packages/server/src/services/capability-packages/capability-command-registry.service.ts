@@ -68,7 +68,11 @@ export function listCapabilityConversationCommandInstructions(): string[] {
 export function parseCapabilityConversationCommands(content: string) {
   const commands: Array<{ type: "capability"; commandType: string; payload: string | null }> = [];
   const seen = new Set<string>();
-  for (const match of content.matchAll(/\[([a-z][a-z0-9_-]*)(?::([^\]\r\n]*))?\]/gi)) {
+  // A JSON payload can itself contain `]` (a note body, an array), so the payload group matches a
+  // `{…}` brace run before falling back to bracket-free text. Lazy so two commands on one line stay
+  // separate. ponytail: flat objects only — a nested `}` ends the match early; upgrade to a real
+  // scanner if payloads ever nest.
+  for (const match of content.matchAll(/\[([a-z][a-z0-9_-]*)(?::(\{[^\r\n]*?\}|[^\]\r\n]*))?\]/gi)) {
     const commandType = tagToCommandType.get(match[1]!.toLocaleLowerCase());
     if (!commandType || seen.has(commandType)) continue;
     seen.add(commandType);
@@ -99,7 +103,7 @@ export async function dispatchCapabilityConversationAction(
 }
 
 export function stripCapabilityConversationCommands(content: string) {
-  return content.replace(/\[([a-z][a-z0-9_-]*)(?::[^\]\r\n]*)?\]/gi, (match, tag: string) =>
+  return content.replace(/\[([a-z][a-z0-9_-]*)(?::(?:\{[^\r\n]*?\}|[^\]\r\n]*))?\]/gi, (match, tag: string) =>
     tagToCommandType.has(tag.toLocaleLowerCase()) ? "" : match,
   );
 }

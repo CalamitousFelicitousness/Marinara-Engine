@@ -3,6 +3,7 @@ import {
   dispatchCapabilityConversationAction,
   parseCapabilityConversationCommands,
   registerCapabilityConversationCommand,
+  stripCapabilityConversationCommands,
 } from "../../packages/server/src/services/capability-packages/capability-command-registry.service.js";
 import { visibleTo } from "../../packages/server/src/services/capability-packages/capability-roleplay-events.service.js";
 
@@ -41,6 +42,12 @@ try {
   // validatePayload rejects anything that is not the declared action.
   const [rejected] = parseCapabilityConversationCommands('[phone:{"action":"delete_all"}]');
   assert.equal(rejected?.payload, null);
+
+  // A JSON payload that itself contains `]` is captured whole (not truncated at the first bracket),
+  // and stripping removes the whole tag rather than leaving a `}]` tail in the visible prose.
+  const bracketed = '[phone:{"action":"send_message","body":"a]b"}]';
+  assert.equal(parseCapabilityConversationCommands(bracketed)[0]?.payload, '{"action":"send_message","body":"a]b"}');
+  assert.equal(stripCapabilityConversationCommands(`hi ${bracketed} bye`).trim(), "hi  bye".trim());
 
   // Dispatch is idempotent per source message + swipe, so regeneration cannot double-send.
   const action = {

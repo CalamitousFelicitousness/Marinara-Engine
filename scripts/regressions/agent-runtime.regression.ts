@@ -6,6 +6,10 @@ import {
 } from "../../packages/server/src/services/agents/agent-executor.js";
 import { createAgentPipeline, type ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
 import { resolveAgentPipelineAgents } from "../../packages/server/src/services/generation/agent-resolution.js";
+import {
+  applySpotifyAgentPlaybackFallbacks,
+  type SpotifyRuntimeAgent,
+} from "../../packages/server/src/services/generation/spotify-agent-runtime.js";
 import { buildLlamaArgs } from "../../packages/server/src/services/sidecar/sidecar-launch-plan.js";
 import {
   BaseLLMProvider,
@@ -323,6 +327,64 @@ await createAgentPipeline([spotifyAgent], context).postGenerate("The room settle
 assert.equal(spotifyProvider.calls, 1, "Spotify Music DJ should make one planning request");
 assert.equal(spotifyProvider.options[0]?.tools, undefined, "Spotify planning should not enter the LLM tool loop");
 assert.equal(spotifyToolExecutions, 0, "Spotify tools should run later in the deterministic playback stage");
+
+const spotifyFallbackCalls: string[] = [];
+const spotifyFallbackAgent = {
+  ...makeAgent("spotify", "spotify_control"),
+  __spotifyCandidateTracks: [
+    { uri: "spotify:track:unavailable", name: "Unavailable", artist: "Regression Artist" },
+    { uri: "spotify:track:fallback", name: "Fallback", artist: "Regression Artist" },
+  ],
+  toolContext: {
+    tools: [],
+    executeToolCall: async (call) => {
+      const args = JSON.parse(call.function.arguments) as { uri?: string };
+      spotifyFallbackCalls.push(args.uri ?? "");
+      if (args.uri === "spotify:track:unavailable") {
+        return JSON.stringify({
+          error: "Spotify playback failed to start the selected track on Regression device.",
+          verification: "failed",
+          currentUri: "spotify:track:previous",
+        });
+      }
+      return JSON.stringify({
+        applied: true,
+        currentUri: "spotify:track:fallback",
+        device: "Regression device",
+        queued: 1,
+      });
+    },
+  },
+} as SpotifyRuntimeAgent;
+const [spotifyFallbackResult] = await applySpotifyAgentPlaybackFallbacks(
+  [
+    {
+      agentId: "spotify",
+      agentType: "spotify",
+      type: "spotify_control",
+      data: {
+        action: "play",
+        mood: "tense",
+        searchQuery: "game soundtrack",
+        trackUris: [],
+        trackNames: [],
+      },
+      tokensUsed: 12,
+      durationMs: 1,
+      success: true,
+      error: null,
+    },
+  ],
+  [spotifyFallbackAgent],
+  { ...context, chatMode: "game" },
+);
+assert.deepEqual(
+  spotifyFallbackCalls,
+  ["spotify:track:unavailable", "spotify:track:fallback"],
+  "Music DJ should try the next deterministic candidate after Spotify accepts but cannot verify the first",
+);
+assert.equal(spotifyFallbackResult?.success, true);
+assert.deepEqual((spotifyFallbackResult?.data as Record<string, unknown>).trackUris, ["spotify:track:fallback"]);
 
 const connectionLimitedProvider = new ConcurrencyRecordingProvider();
 const connectionLimitedAgents: ResolvedAgent[] = [

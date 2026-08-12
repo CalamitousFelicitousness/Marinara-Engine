@@ -202,4 +202,24 @@ assert.match(
   "chat navigation uses the continuation-preserving Agent reset",
 );
 
+const presetsPanelSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/panels/PresetsPanel.tsx"),
+  "utf8",
+);
+const unsupportedRegexPlacementBranch =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?const normalized =/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(unsupportedRegexPlacementBranch, "the preset regex placement import branch remains discoverable");
+assert.doesNotMatch(
+  unsupportedRegexPlacementBranch,
+  /continue;/u,
+  "unsupported SillyTavern placements must not discard the entire preset regex entry",
+);
+assert.match(
+  unsupportedRegexPlacementBranch,
+  /warnings\.push/u,
+  "ignored SillyTavern placements remain visible as an import warning",
+);
+
 console.info("Assigned issue-sweep regressions passed.");

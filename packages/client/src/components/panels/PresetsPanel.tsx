@@ -315,6 +315,7 @@ export function PresetsPanel() {
   const [selectedPresetIds, setSelectedPresetIds] = useState<Set<string>>(new Set());
   const [exportingSelected, setExportingSelected] = useState(false);
   const [regexImportError, setRegexImportError] = useState<string | null>(null);
+  const [regexImportWarning, setRegexImportWarning] = useState<string | null>(null);
   const [regexImportSuccess, setRegexImportSuccess] = useState<string | null>(null);
   const [functionImportError, setFunctionImportError] = useState<string | null>(null);
   const [functionImportSuccess, setFunctionImportSuccess] = useState<string | null>(null);
@@ -558,6 +559,7 @@ export function PresetsPanel() {
   const handleImportRegex = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       setRegexImportError(null);
+      setRegexImportWarning(null);
       setRegexImportSuccess(null);
       const file = event.target.files?.[0];
       if (!file) return;
@@ -570,14 +572,17 @@ export function PresetsPanel() {
 
         let imported = 0;
         const failed: string[] = [];
+        const warnings: string[] = [];
         const orderBase = getNextRegexOrderBase((regexScripts ?? []) as RegexScriptRow[]);
         for (const [index, entry] of entries.entries()) {
           const unsupportedPlacements = getUnsupportedStRegexPlacements(entry);
           if (unsupportedPlacements.length > 0) {
-            failed.push(
-              `Entry ${index + 1}: unsupported SillyTavern placement ${unsupportedPlacements.join(", ")} was skipped.`,
+            warnings.push(
+              localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
+                value1: index + 1,
+                value2: unsupportedPlacements.join(", "),
+              }),
             );
-            continue;
           }
           const normalized = normalizeRegexImportEntry(entry, orderBase + index);
           if (!normalized) {
@@ -598,6 +603,9 @@ export function PresetsPanel() {
         if (failed.length > 0) {
           setRegexImportError(`Skipped ${failed.length} regex script${failed.length === 1 ? "" : "s"}. ${failed[0]}`);
         }
+        if (warnings.length > 0) {
+          setRegexImportWarning(warnings[0]!);
+        }
         if (imported === 0 && failed.length === 0) {
           setRegexImportError("No valid regex scripts found in file.");
         }
@@ -607,7 +615,7 @@ export function PresetsPanel() {
 
       event.target.value = "";
     },
-    [createRegexScript, regexScripts],
+    [createRegexScript, localizeUi, regexScripts],
   );
 
   const handleExportFunctions = useCallback(() => {
@@ -1453,6 +1461,7 @@ export function PresetsPanel() {
         handleImportRegex={handleImportRegex}
         handleExportRegex={handleExportRegex}
         regexImportError={regexImportError}
+        regexImportWarning={regexImportWarning}
         regexImportSuccess={regexImportSuccess}
         sortedRegexScripts={sortedRegexScripts}
         draggedRegexId={draggedRegexId}
@@ -1519,6 +1528,7 @@ function RegexSection({
   handleImportRegex,
   handleExportRegex,
   regexImportError,
+  regexImportWarning,
   regexImportSuccess,
   sortedRegexScripts,
   draggedRegexId,
@@ -1535,6 +1545,7 @@ function RegexSection({
   handleImportRegex: (event: ChangeEvent<HTMLInputElement>) => void;
   handleExportRegex: () => void;
   regexImportError: string | null;
+  regexImportWarning: string | null;
   regexImportSuccess: string | null;
   sortedRegexScripts: RegexScriptRow[];
   draggedRegexId: string | null;
@@ -1616,6 +1627,7 @@ function RegexSection({
           {regexImportError}
         </div>
       )}
+      {regexImportWarning && <div className="mb-1 px-1 text-xs text-amber-500">{regexImportWarning}</div>}
       {regexImportSuccess && <div className="mb-1 px-1 text-xs text-green-500">{regexImportSuccess}</div>}
       {sortedRegexScripts.length === 0 ? (
         <p className="mari-chrome-text-muted px-1 py-2 text-[0.625rem]">

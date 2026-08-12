@@ -1878,6 +1878,180 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
   if (cleanupFailure !== undefined) throw cleanupFailure;
 });
 
+test("NovelAI generation defaults survive save and editor navigation", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "Desktop connection-default editing is covered here.");
+
+  const suffix = Date.now().toString(36);
+  const connectionName = `NovelAI Defaults ${suffix}`;
+  const personaName = `NovelAI Navigation Persona ${suffix}`;
+  let connectionId: string | null = null;
+  let personaId: string | null = null;
+
+  try {
+    const connectionResponse = await request.post("/api/connections", {
+      data: {
+        name: connectionName,
+        provider: "image_generation",
+        imageGenerationSource: "novelai",
+        imageService: "novelai",
+        model: "nai-diffusion-4-5-full",
+      },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    connectionId = ((await connectionResponse.json()) as { id: string }).id;
+
+    const personaResponse = await request.post("/api/characters/personas", { data: { name: personaName } });
+    expect(personaResponse.ok()).toBeTruthy();
+    personaId = ((await personaResponse.json()) as { id: string }).id;
+
+    await page.goto("/");
+    await page.locator('[data-tour="panel-connections"]').click();
+    const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
+    await rightPanel
+      .getByText(connectionName, { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+
+    let editor = page.locator(".mari-editor-shell");
+    await expect(editor).toBeVisible();
+    await editor.getByRole("button", { name: /NovelAI generation setup/iu }).click();
+    const seedInput = editor.getByRole("spinbutton", { name: "Seed" });
+    await seedInput.fill("50");
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(editor.getByText("Saved", { exact: true })).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        const response = await request.get(`/api/connections/${connectionId}`);
+        const stored = (await response.json()) as { defaultParameters?: string | null };
+        const params = JSON.parse(stored.defaultParameters ?? "{}") as {
+          imageGeneration?: { seed?: number };
+        };
+        return params.imageGeneration?.seed;
+      })
+      .toBe(50);
+
+    const downloadPromise = page.waitForEvent("download");
+    await editor.getByRole("button", { name: "Export connection" }).click();
+    const exportDialog = page.getByRole("dialog", { name: "Export Connection Data" });
+    await expect(exportDialog).toBeVisible();
+    await exportDialog.getByRole("button", { name: "Export", exact: true }).click();
+    const download = await downloadPromise;
+    const downloadPath = await download.path();
+    expect(downloadPath).not.toBeNull();
+    const exported = JSON.parse(readFileSync(downloadPath!, "utf8")) as {
+      connections?: Array<{ defaultParameters?: { imageGeneration?: { seed?: number } } }>;
+    };
+    expect(exported.connections?.[0]?.defaultParameters?.imageGeneration?.seed).toBe(50);
+
+    await page.locator('[data-tour="panel-personas"]').click();
+    await rightPanel
+      .getByText(personaName, { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts");
+          return useUIStore.getState().personaDetailId;
+        }),
+      )
+      .toBe(personaId);
+
+    await page.locator('[data-tour="panel-connections"]').click();
+    await rightPanel
+      .getByText(connectionName, { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+    editor = page.locator(".mari-editor-shell");
+    const reopenedSeedInput = editor.getByRole("spinbutton", { name: "Seed" });
+    if (!(await reopenedSeedInput.isVisible())) {
+      await editor.getByRole("button", { name: /NovelAI generation setup/iu }).click();
+    }
+    await expect(reopenedSeedInput).toHaveValue("50");
+  } finally {
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    if (personaId) await request.delete(`/api/characters/personas/${personaId}`).catch(() => undefined);
+  }
+});
+
+test("NovelAI generation defaults survive connection import", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "Desktop connection import is covered here.");
+
+  const connectionName = `Imported NovelAI Defaults ${Date.now().toString(36)}`;
+  let importedConnectionId: string | null = null;
+
+  try {
+    await page.goto("/");
+    await page.locator('[data-tour="panel-connections"]').click();
+    const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
+    await rightPanel.getByRole("button", { name: "Import connection" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import Connections" });
+    await importDialog.locator('input[type="file"]').setInputFiles({
+      name: "novelai-defaults.connection.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          kind: "marinara.connections",
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          connections: [
+            {
+              name: connectionName,
+              provider: "image_generation",
+              baseUrl: "https://image.novelai.net",
+              model: "nai-diffusion-4-5-full",
+              imageGenerationSource: "novelai",
+              imageService: "novelai",
+              defaultParameters: {
+                imageGeneration: {
+                  version: 1,
+                  service: "novelai",
+                  seed: 73,
+                  styleProfileId: null,
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    });
+    await expect(importDialog).toContainText("1 succeeded");
+
+    const connectionsResponse = await request.get("/api/connections");
+    const connections = (await connectionsResponse.json()) as Array<{
+      id: string;
+      name: string;
+      defaultParameters?: string | null;
+    }>;
+    const imported = connections.find((connection) => connection.name === connectionName);
+    expect(imported).toBeTruthy();
+    importedConnectionId = imported?.id ?? null;
+    const params = JSON.parse(imported?.defaultParameters ?? "{}") as {
+      imageGeneration?: { seed?: number };
+    };
+    expect(params.imageGeneration?.seed).toBe(73);
+
+    await importDialog.getByRole("button", { name: "Close Import Connections" }).click();
+    await expect(importDialog).toHaveCount(0);
+    await rightPanel
+      .getByText(connectionName, { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+    const editor = page.locator(".mari-editor-shell");
+    await expect(editor).toBeVisible();
+    const seedInput = editor.getByRole("spinbutton", { name: "Seed" });
+    if (!(await seedInput.isVisible())) {
+      await editor.getByRole("button", { name: /NovelAI generation setup/iu }).click();
+    }
+    await expect(seedInput).toHaveValue("73");
+  } finally {
+    if (importedConnectionId) {
+      await request.delete(`/api/connections/${importedConnectionId}`).catch(() => undefined);
+    }
+  }
+});
+
 test("Connection image captioning defaults persist with a dedicated captioning connection", async ({
   page,
   request,

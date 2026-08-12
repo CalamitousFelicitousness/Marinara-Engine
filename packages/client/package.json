@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "node ./scripts/build.mjs",
-    "clean": "node -e \"const fs=require('fs');['dist','tsconfig.tsbuildinfo'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch{}})\"",
+    "clean": "node -e \"const fs=require('fs');['dist','tsconfig.tsbuildinfo','node_modules/.cache/eslint'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch{}})\"",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/.eslintcache"
   },
   "dependencies": {
     "@dnd-kit/core": "6.3.1",

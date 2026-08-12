@@ -4128,9 +4128,11 @@ assert.match(
   "Professor Mari must read her persisted Send on Enter preference",
 );
 assert.equal(
-  professorMariHomeSource.match(/event\.key === "Enter" && \(event\.metaKey \|\| event\.ctrlKey\)/gu)?.length,
+  professorMariHomeSource.match(
+    /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
+  )?.length,
   2,
-  "Both Professor Mari composers must keep Enter as newline and Ctrl/Command+Enter as send when disabled",
+  "Both Professor Mari composers must preserve Shift+Enter and require the configured send shortcut",
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);

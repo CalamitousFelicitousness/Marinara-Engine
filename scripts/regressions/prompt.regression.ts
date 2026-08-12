@@ -7613,6 +7613,11 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         { summary: "Recovered conversation summary", keyDetails: ["Promise kept"] },
         "Conversation summaries should repair common malformed JSON and incomplete containers",
       );
+      assert.deepEqual(
+        parseSummaryResponse("Plain-text conversation summary"),
+        { summary: "Plain-text conversation summary", keyDetails: [] },
+        "Conversation summaries should preserve plain text when shared JSON repair cannot produce a record",
+      );
       assert.deepEqual(parseChatSummaryResult("Plain-text summary"), {
         title: "",
         summary: "Plain-text summary",

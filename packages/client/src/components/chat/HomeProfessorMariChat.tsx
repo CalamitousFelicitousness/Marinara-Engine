@@ -5007,9 +5007,10 @@ export function HomeProfessorMariChat({
               if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
             }}
             onKeyDown={(event) => {
-              const shouldSend = enterToSend
-                ? event.key === "Enter" && !event.shiftKey
-                : event.key === "Enter" && (event.metaKey || event.ctrlKey);
+              const shouldSend =
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                (enterToSend || event.metaKey || event.ctrlKey);
               if (shouldSend) {
                 event.preventDefault();
                 void handleSubmit();
@@ -5782,9 +5783,10 @@ export function HomeProfessorMariChat({
                                 if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
                               }}
                               onKeyDown={(event) => {
-                                const shouldSend = enterToSend
-                                  ? event.key === "Enter" && !event.shiftKey
-                                  : event.key === "Enter" && (event.metaKey || event.ctrlKey);
+                                const shouldSend =
+                                  event.key === "Enter" &&
+                                  !event.shiftKey &&
+                                  (enterToSend || event.metaKey || event.ctrlKey);
                                 if (shouldSend) {
                                   event.preventDefault();
                                   void handleSubmit();

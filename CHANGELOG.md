@@ -49,6 +49,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Repeated local checks now reuse native TypeScript and ESLint caches for unchanged client files (#4938).
 - Manual Agent retries now resolve the same current settings, custom tools, and permitted built-in tools as normal Agent generation while retaining retry-specific historical context and Spotify playback verification (#4894).
 - Localized achievement definitions and official capability-package Home metadata through stable locale-aware contracts with English fallback, and refreshed Home's welcome copy (#4803, #4806).
 - Positioned Professor Mari's navigation helper at the bottom-left on her first appearance while preserving every remembered user placement.

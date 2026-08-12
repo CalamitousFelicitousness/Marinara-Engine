@@ -63,6 +63,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept Professor Mari's generated continuation suggestions available after opening and closing a lorebook (#4953).
+- Made SwarmUI image requests honor the configured ComfyUI timeout instead of inheriting a shorter transport timeout (#4954).
 - Kept canceled Professor Mari prompts out of the composer, made the first message edit persist, and retained retry for the latest response (#4947).
 - Preserved the complete provider-ready prompt produced by Game Mode's dynamic image prompt generator through prompt review and image submission (#4948).
 - Stopped Professor Mari's workspace verification guard from treating ordinary task-completion wording as an unverified data mutation (#4949).

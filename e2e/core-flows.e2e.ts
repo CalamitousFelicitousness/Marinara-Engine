@@ -1884,22 +1884,26 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
   const suffix = Date.now().toString(36);
   const connectionName = `NovelAI Defaults ${suffix}`;
   const personaName = `NovelAI Navigation Persona ${suffix}`;
-  const connectionResponse = await request.post("/api/connections", {
-    data: {
-      name: connectionName,
-      provider: "image_generation",
-      imageGenerationSource: "novelai",
-      imageService: "novelai",
-      model: "nai-diffusion-4-5-full",
-    },
-  });
-  const personaResponse = await request.post("/api/characters/personas", { data: { name: personaName } });
-  expect(connectionResponse.ok()).toBeTruthy();
-  expect(personaResponse.ok()).toBeTruthy();
-  const connection = (await connectionResponse.json()) as { id: string };
-  const persona = (await personaResponse.json()) as { id: string };
+  let connectionId: string | null = null;
+  let personaId: string | null = null;
 
   try {
+    const connectionResponse = await request.post("/api/connections", {
+      data: {
+        name: connectionName,
+        provider: "image_generation",
+        imageGenerationSource: "novelai",
+        imageService: "novelai",
+        model: "nai-diffusion-4-5-full",
+      },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    connectionId = ((await connectionResponse.json()) as { id: string }).id;
+
+    const personaResponse = await request.post("/api/characters/personas", { data: { name: personaName } });
+    expect(personaResponse.ok()).toBeTruthy();
+    personaId = ((await personaResponse.json()) as { id: string }).id;
+
     await page.goto("/");
     await page.locator('[data-tour="panel-connections"]').click();
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
@@ -1918,7 +1922,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
 
     await expect
       .poll(async () => {
-        const response = await request.get(`/api/connections/${connection.id}`);
+        const response = await request.get(`/api/connections/${connectionId}`);
         const stored = (await response.json()) as { defaultParameters?: string | null };
         const params = JSON.parse(stored.defaultParameters ?? "{}") as {
           imageGeneration?: { seed?: number };
@@ -1939,7 +1943,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
           return useUIStore.getState().personaDetailId;
         }),
       )
-      .toBe(persona.id);
+      .toBe(personaId);
 
     await page.locator('[data-tour="panel-connections"]').click();
     await rightPanel
@@ -1953,10 +1957,8 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     }
     await expect(reopenedSeedInput).toHaveValue("50");
   } finally {
-    await Promise.all([
-      request.delete(`/api/connections/${connection.id}`).catch(() => undefined),
-      request.delete(`/api/characters/personas/${persona.id}`).catch(() => undefined),
-    ]);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    if (personaId) await request.delete(`/api/characters/personas/${personaId}`).catch(() => undefined);
   }
 });
 
@@ -2016,6 +2018,20 @@ test("NovelAI generation defaults survive connection import", async ({ page, req
       imageGeneration?: { seed?: number };
     };
     expect(params.imageGeneration?.seed).toBe(73);
+
+    await importDialog.getByRole("button", { name: "Close Import Connections" }).click();
+    await expect(importDialog).toHaveCount(0);
+    await rightPanel
+      .getByText(connectionName, { exact: true })
+      .first()
+      .evaluate((element) => (element as HTMLElement).click());
+    const editor = page.locator(".mari-editor-shell");
+    await expect(editor).toBeVisible();
+    const seedInput = editor.getByRole("spinbutton", { name: "Seed" });
+    if (!(await seedInput.isVisible())) {
+      await editor.getByRole("button", { name: /NovelAI generation setup/iu }).click();
+    }
+    await expect(seedInput).toHaveValue("73");
   } finally {
     if (importedConnectionId) {
       await request.delete(`/api/connections/${importedConnectionId}`).catch(() => undefined);

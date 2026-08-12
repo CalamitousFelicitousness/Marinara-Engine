@@ -570,11 +570,11 @@ release_termux_wake_lock() {
         fi
     fi
 }
+trap release_termux_wake_lock EXIT
 
 if command -v termux-wake-lock &> /dev/null && command -v termux-wake-unlock &> /dev/null; then
     if termux-wake-lock >/dev/null 2>&1; then
         TERMUX_WAKE_LOCK_ACQUIRED=1
-        trap release_termux_wake_lock EXIT
         echo "  [OK] Android wake lock acquired for background reliability"
     else
         echo "  [WARN] Could not acquire an Android wake lock; background execution may pause."

@@ -18,9 +18,10 @@ function normalizeBuildCommit(value: string | undefined) {
 }
 
 function resolveBuildCommit() {
-  const environmentCommit = normalizeBuildCommit(
-    process.env.MARINARA_GIT_COMMIT ?? process.env.GITHUB_SHA ?? process.env.BUILD_COMMIT,
-  );
+  const environmentCommit =
+    normalizeBuildCommit(process.env.MARINARA_GIT_COMMIT) ??
+    normalizeBuildCommit(process.env.GITHUB_SHA) ??
+    normalizeBuildCommit(process.env.BUILD_COMMIT);
   if (environmentCommit) return environmentCommit;
 
   try {

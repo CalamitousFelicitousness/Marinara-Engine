@@ -80,8 +80,17 @@ assert.match(
   /trap release_termux_wake_lock EXIT/u,
   "the Termux launcher must release its wake lock whenever the server exits",
 );
+const wakeLockTrapIndex = termuxLauncherSource.search(/^[ \t]*trap release_termux_wake_lock EXIT[ \t]*$/mu);
+const wakeLockAcquireIndex = termuxLauncherSource.search(
+  /^[ \t]*if[ \t]+termux-wake-lock\b[^\n]*;[ \t]*then[ \t]*$/mu,
+);
+const serverStartIndex = termuxLauncherSource.lastIndexOf("node dist/index.js");
 assert.ok(
-  termuxLauncherSource.indexOf("termux-wake-lock") < termuxLauncherSource.lastIndexOf("node dist/index.js"),
+  wakeLockTrapIndex >= 0 && wakeLockAcquireIndex >= 0 && wakeLockTrapIndex < wakeLockAcquireIndex,
+  "the Termux launcher must register wake-lock cleanup before acquiring the lock",
+);
+assert.ok(
+  wakeLockAcquireIndex >= 0 && serverStartIndex >= 0 && wakeLockAcquireIndex < serverStartIndex,
   "the Termux launcher must acquire its wake lock before starting the server",
 );
 assert.doesNotMatch(

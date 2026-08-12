@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DISCORD_SUBTEXT_RE, INLINE_MD_RE } from "../../packages/client/src/lib/inline-markdown-regex.js";
 import { applyInlineMarkdownHTML } from "../../packages/client/src/lib/markdown.js";
 import { mergeUndatedSyncedSettings } from "../../packages/client/src/hooks/use-settings-sync.js";
+import { useAgentStore } from "../../packages/client/src/stores/agent.store.js";
 import {
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
@@ -128,6 +129,49 @@ assert.match(
   professorMariChatSource,
   /setInputDraft\(PROFESSOR_MARI_DRAFT_KEY,/u,
   "Home Professor Mari saves composer changes through the persisted draft store",
+);
+
+const continuationChips = [{ id: "continue", label: "Continue", prompt: "Continue with the current lorebook." }];
+const guidedPlan = [
+  {
+    fieldKey: "setting",
+    question: "Where should the story take place?",
+    chips: [{ id: "setting-library", label: "Library", prompt: "A candlelit library" }],
+  },
+  {
+    fieldKey: "tone",
+    question: "What tone should it use?",
+    chips: [{ id: "tone-mysterious", label: "Mysterious", prompt: "Mysterious" }],
+  },
+];
+useAgentStore.getState().reset();
+useAgentStore.getState().setMariChips("professor-chat", continuationChips);
+useAgentStore.getState().setMariPlan("professor-chat", guidedPlan);
+assert.equal(useAgentStore.getState().recordMariPlanAnswer("setting", "A candlelit library"), "advanced");
+useAgentStore.getState().setActiveAgents(["professor_mari"]);
+useAgentStore.getState().resetForChatChange();
+assert.deepEqual(
+  useAgentStore.getState().mariChips,
+  continuationChips,
+  "temporary chat/editor navigation retains Professor Mari continuation suggestions",
+);
+assert.equal(useAgentStore.getState().mariChipsChatId, "professor-chat");
+assert.deepEqual(useAgentStore.getState().mariPlan, guidedPlan);
+assert.equal(useAgentStore.getState().mariPlanChatId, "professor-chat");
+assert.equal(useAgentStore.getState().mariPlanCursor, 1);
+assert.deepEqual(useAgentStore.getState().mariPlanAnswers, { setting: "A candlelit library" });
+assert.deepEqual(useAgentStore.getState().activeAgents, [], "other Agent runtime state still resets between chats");
+useAgentStore.getState().reset();
+assert.equal(useAgentStore.getState().mariPlan, null, "full Agent reset clears Professor Mari's guided plan");
+assert.equal(useAgentStore.getState().mariPlanChatId, null);
+assert.equal(useAgentStore.getState().mariPlanCursor, 0);
+assert.deepEqual(useAgentStore.getState().mariPlanAnswers, {});
+
+const chatStoreSource = readFileSync(join(repositoryRoot, "packages/client/src/stores/chat.store.ts"), "utf8");
+assert.match(
+  chatStoreSource,
+  /useAgentStore\.getState\(\)\.resetForChatChange\(\)/u,
+  "chat navigation uses the continuation-preserving Agent reset",
 );
 
 console.info("Assigned issue-sweep regressions passed.");

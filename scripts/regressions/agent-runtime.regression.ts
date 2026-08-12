@@ -349,6 +349,31 @@ assert.equal(
   "Max Parallel Agent Jobs must apply across every post-processing group sharing a connection",
 );
 
+const isolatedConnectionLimitedProvider = new ConcurrencyRecordingProvider();
+const isolatedConnectionLimitedAgents: ResolvedAgent[] = [
+  {
+    ...makeAgent("illustrator"),
+    id: "illustrator-limited-a",
+    provider: isolatedConnectionLimitedProvider,
+    maxParallelJobs: 1,
+  },
+  {
+    ...makeAgent("illustrator"),
+    id: "illustrator-limited-b",
+    provider: isolatedConnectionLimitedProvider,
+    maxParallelJobs: 1,
+  },
+];
+await createAgentPipeline(isolatedConnectionLimitedAgents, context).postGenerate(
+  "Isolated jobs in one batch group must share the connection limit.",
+);
+assert.equal(isolatedConnectionLimitedProvider.calls, 2, "isolated agents should still make separate requests");
+assert.equal(
+  isolatedConnectionLimitedProvider.maxActiveCalls,
+  1,
+  "Max Parallel Agent Jobs must also serialize isolated configs inside one batch group",
+);
+
 const parallelLlamaArgs = buildLlamaArgs({
   modelPath: "/tmp/model.gguf",
   gpuLayers: 0,

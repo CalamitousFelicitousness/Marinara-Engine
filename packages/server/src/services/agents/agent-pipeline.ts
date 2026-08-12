@@ -198,8 +198,13 @@ async function executeGroup(
 
   const batchResultsPromise =
     batchAgents.length > 0
-      ? runWithConnectionLimit(() =>
-          executeAgentBatch(batchAgents, groupContext, group.provider, group.model, resolveAgentContext),
+      ? executeAgentBatch(
+          batchAgents,
+          groupContext,
+          group.provider,
+          group.model,
+          resolveAgentContext,
+          runWithConnectionLimit,
         ).then((results) => {
           for (const result of results) {
             safeOnResult(result);

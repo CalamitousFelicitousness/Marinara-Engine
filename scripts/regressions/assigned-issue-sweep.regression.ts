@@ -216,6 +216,16 @@ assert.doesNotMatch(
   /continue;/u,
   "unsupported SillyTavern placements must not discard the entire preset regex entry",
 );
+const regexBeforeSuccessfulImport =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await createRegexScript\.mutateAsync\(normalized\);/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(regexBeforeSuccessfulImport, "the preset regex pre-import path remains discoverable");
+assert.doesNotMatch(
+  regexBeforeSuccessfulImport,
+  /warnings\.push/u,
+  "unsupported placement warnings must not be emitted before the regex imports successfully",
+);
 const successfulRegexImportWarning =
   /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
     presetsPanelSource,

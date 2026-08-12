@@ -9838,8 +9838,10 @@ export async function generateRoutes(app: FastifyInstance) {
             signal: abortController.signal,
           });
         } catch (turnGameErr) {
+          if (abortController.signal.aborted || isAbortLikeError(turnGameErr)) return;
           logger.warn(turnGameErr, "[turn-game] Failed to resume pending bot turns after Conversation reply");
         }
+        if (abortController.signal.aborted) return;
       }
 
       // Signal completion before the slow illustration tail. The client keeps

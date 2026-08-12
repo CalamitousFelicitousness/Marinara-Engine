@@ -8225,6 +8225,16 @@ try {
     )?.[0] ?? "";
   assert.match(turnGameResumeBlock, /chatMode === "conversation"/u);
   assert.match(turnGameResumeBlock, /await runTurnGameBotTurns\(/u);
+  assert.match(
+    turnGameResumeBlock,
+    /if \(abortController\.signal\.aborted \|\| isAbortLikeError\(turnGameErr\)\) return;/u,
+    "Turn-game recovery must propagate cancellation without logging it as a failure",
+  );
+  assert.match(
+    turnGameResumeBlock,
+    /await runTurnGameBotTurns\([\s\S]*?if \(abortController\.signal\.aborted\) return;/u,
+    "Turn-game recovery must re-check cancellation after a bot runner resolves",
+  );
   assert.match(turnGameResumeBlock, /logger\.warn\(turnGameErr/u);
 }
 

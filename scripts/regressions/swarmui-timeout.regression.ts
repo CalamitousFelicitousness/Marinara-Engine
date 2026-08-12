@@ -7,7 +7,7 @@ const { Agent, getGlobalDispatcher, setGlobalDispatcher } = requireFromServer("u
 
 const previousImageTimeout = process.env.IMAGE_GEN_TIMEOUT_MS;
 const previousComfyTimeout = process.env.COMFYUI_GEN_TIMEOUT;
-process.env.IMAGE_GEN_TIMEOUT_MS = "1000";
+process.env.IMAGE_GEN_TIMEOUT_MS = "80";
 process.env.COMFYUI_GEN_TIMEOUT = "1";
 
 const originalDispatcher = getGlobalDispatcher();

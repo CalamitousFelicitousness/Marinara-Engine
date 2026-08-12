@@ -132,8 +132,22 @@ assert.match(
 );
 
 const continuationChips = [{ id: "continue", label: "Continue", prompt: "Continue with the current lorebook." }];
+const guidedPlan = [
+  {
+    fieldKey: "setting",
+    question: "Where should the story take place?",
+    chips: [{ id: "setting-library", label: "Library", prompt: "A candlelit library" }],
+  },
+  {
+    fieldKey: "tone",
+    question: "What tone should it use?",
+    chips: [{ id: "tone-mysterious", label: "Mysterious", prompt: "Mysterious" }],
+  },
+];
 useAgentStore.getState().reset();
 useAgentStore.getState().setMariChips("professor-chat", continuationChips);
+useAgentStore.getState().setMariPlan("professor-chat", guidedPlan);
+assert.equal(useAgentStore.getState().recordMariPlanAnswer("setting", "A candlelit library"), "advanced");
 useAgentStore.getState().setActiveAgents(["professor_mari"]);
 useAgentStore.getState().resetForChatChange();
 assert.deepEqual(
@@ -142,8 +156,16 @@ assert.deepEqual(
   "temporary chat/editor navigation retains Professor Mari continuation suggestions",
 );
 assert.equal(useAgentStore.getState().mariChipsChatId, "professor-chat");
+assert.deepEqual(useAgentStore.getState().mariPlan, guidedPlan);
+assert.equal(useAgentStore.getState().mariPlanChatId, "professor-chat");
+assert.equal(useAgentStore.getState().mariPlanCursor, 1);
+assert.deepEqual(useAgentStore.getState().mariPlanAnswers, { setting: "A candlelit library" });
 assert.deepEqual(useAgentStore.getState().activeAgents, [], "other Agent runtime state still resets between chats");
 useAgentStore.getState().reset();
+assert.equal(useAgentStore.getState().mariPlan, null, "full Agent reset clears Professor Mari's guided plan");
+assert.equal(useAgentStore.getState().mariPlanChatId, null);
+assert.equal(useAgentStore.getState().mariPlanCursor, 0);
+assert.deepEqual(useAgentStore.getState().mariPlanAnswers, {});
 
 const chatStoreSource = readFileSync(join(repositoryRoot, "packages/client/src/stores/chat.store.ts"), "utf8");
 assert.match(

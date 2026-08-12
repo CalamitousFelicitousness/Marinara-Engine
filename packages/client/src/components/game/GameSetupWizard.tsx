@@ -27,6 +27,7 @@ import {
   RotateCcw,
   FolderOpen,
   FileUp,
+  Download,
   CheckCircle2,
   ChevronDown,
 } from "lucide-react";
@@ -78,7 +79,12 @@ import { useLorebooks } from "../../hooks/use-lorebooks";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useGameAssetStore } from "../../stores/game-asset.store";
 import { useUIStore } from "../../stores/ui.store";
-import { parseGameSetupShareFileJson, resolveGameSetupImport } from "../../lib/game-setup-share";
+import {
+  buildGameSetupShareFile,
+  parseGameSetupShareFileJson,
+  resolveGameSetupImport,
+} from "../../lib/game-setup-share";
+import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 
@@ -141,6 +147,8 @@ interface WizardConnection {
   name: string;
   model?: string;
   provider?: string;
+  imageService?: string | null;
+  videoService?: string | null;
   defaultParameters?: string | null;
   isDefault?: boolean | string;
 }
@@ -1074,8 +1082,7 @@ export function GameSetupWizard({
     }
   };
 
-  const handleComplete = () => {
-    if (isLoading || !canStart) return;
+  const buildSetupConfig = (): GameSetupConfig => {
     const trimmedGameSystemPrompt = gameSystemPromptDraft.trim();
     const customGameSystemPrompt =
       customGamePromptEnabled &&
@@ -1084,6 +1091,114 @@ export function GameSetupWizard({
         ? trimmedGameSystemPrompt
         : null;
     const trimmedGameSpecialInstructions = gameSpecialInstructions.trim();
+
+    return {
+      genre: genres.join(", ") || "Fantasy",
+      setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
+      tone: tones.join(", ") || "Heroic",
+      difficulty,
+      combatStyle,
+      spatialMapInstructions:
+        enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+          ? spatialMapInstructions.trim() || undefined
+          : undefined,
+      gameWorldMapMode:
+        enableAgents && hierarchicalMapsInstalled && (draftSpatialMap || manualSpatialMap || templateSpatialMap)
+          ? "hierarchical"
+          : "standard",
+      rating,
+      gmMode,
+      gmCharacterId: gmMode === "character" && gmCharacterId ? gmCharacterId : undefined,
+      partyCharacterIds,
+      playerGoals: playerGoals || "Have an adventure",
+      personaId: personaId ?? undefined,
+      sceneConnectionId: sceneModelValue && sceneModelValue !== "local" ? sceneModelValue : undefined,
+      enableAgents: enableAgents || undefined,
+      enableSpriteGeneration: illustratorEnabled || undefined,
+      imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
+      videoConnectionId: illustratorEnabled && videoConnectionId ? videoConnectionId : undefined,
+      ...(importedArtStyleSettingsRef.current ?? {}),
+      activeLorebookIds: activeLorebookIds.length > 0 ? activeLorebookIds : undefined,
+      enableCustomWidgets,
+      customHudWidgets:
+        enableCustomWidgets && manualWidgetSetupEnabled ? normalizeGameHudWidgets(customHudWidgets) : undefined,
+      enableSpotifyDj: musicDjEnabled || undefined,
+      spotifySourceType: musicDjEnabled ? gameSpotifySourceType : undefined,
+      spotifyPlaylistId:
+        musicDjEnabled && gameSpotifySourceType === "playlist" ? gameSpotifyPlaylistId.trim() || undefined : undefined,
+      spotifyPlaylistName:
+        musicDjEnabled && gameSpotifySourceType === "playlist" ? gameSpotifyPlaylistName.trim() || undefined : undefined,
+      spotifyArtist:
+        musicDjEnabled && gameSpotifySourceType === "artist" ? gameSpotifyArtist.trim() || undefined : undefined,
+      enableLorebookKeeper: lorebookKeeperEnabled || undefined,
+      language: normalizedLanguage || undefined,
+      generationParameters: customizeParameters
+        ? { ...(importedGenerationParametersRef.current ?? {}), ...generationParameters }
+        : undefined,
+      promptPresetId,
+      gameGmPromptTemplateId: gamePresentation === "anime" ? ANIME_GAME_PROMPT_TEMPLATE_ID : null,
+      gameSystemPrompt: customGameSystemPrompt,
+      gameSpecialInstructions: trimmedGameSpecialInstructions || null,
+    };
+  };
+
+  const buildSetupShareLabels = (): GameInitialSetupLabels => ({
+    characterNames: Object.fromEntries(
+      characters
+        .filter((character) =>
+          [...partyCharacterIds, ...(gmCharacterId ? [gmCharacterId] : [])].includes(character.id),
+        )
+        .map((character) => [character.id, character.name]),
+    ),
+    lorebookNames: Object.fromEntries(
+      lorebooks
+        .filter((lorebook) => activeLorebookIds.includes(lorebook.id))
+        .map((lorebook) => [lorebook.id, lorebook.name]),
+    ),
+    promptPresetNames: selectedPromptPreset ? { [selectedPromptPreset.id]: selectedPromptPreset.name } : undefined,
+    personaName: personas.find((persona) => persona.id === personaId)?.name ?? null,
+  });
+
+  const snapshotConnection = (id: string | null | undefined, service: "image" | "video" | null = null) => {
+    if (!id) return null;
+    const connection = connections.find((candidate) => candidate.id === id);
+    if (!connection) return null;
+    return {
+      name: connection.name,
+      provider: connection.provider ?? null,
+      model: connection.model ?? null,
+      service: service === "image" ? connection.imageService : service === "video" ? connection.videoService : null,
+    };
+  };
+
+  const handleExportSetup = () => {
+    const config = buildSetupConfig();
+    const exportName = gameName.trim() || "game";
+    downloadJsonFile(
+      buildGameSetupShareFile({
+        gameName: exportName,
+        config,
+        effectiveGenerationParameters: config.generationParameters,
+        preferences,
+        fallbackGmConnectionId: gmConnectionId,
+        labels: buildSetupShareLabels(),
+        connections: {
+          gm: snapshotConnection(gmConnectionId),
+          scene:
+            sceneModelValue === "local"
+              ? { name: "Local scene helper", provider: "local" }
+              : snapshotConnection(sceneModelValue),
+          image: snapshotConnection(config.imageConnectionId, "image"),
+          video: snapshotConnection(config.videoConnectionId, "video"),
+        },
+      }),
+      `${sanitizeExportFilenamePart(exportName, "game")}.marinara-game-setup.json`,
+    );
+    toast.success(localizeUi("ui.game.gamesetupsummary.reusableGameModeSetupDownloaded"));
+  };
+
+  const handleComplete = () => {
+    if (isLoading || !canStart) return;
     if (startMuted) {
       useGameAssetStore.getState().setAudioMuted(true);
     }
@@ -1105,79 +1220,11 @@ export function GameSetupWizard({
       },
     );
     onComplete(
-      {
-        genre: genres.join(", ") || "Fantasy",
-        setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
-        tone: tones.join(", ") || "Heroic",
-        difficulty,
-        combatStyle,
-        spatialMapInstructions:
-          enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-            ? spatialMapInstructions.trim() || undefined
-            : undefined,
-        gameWorldMapMode:
-          enableAgents && hierarchicalMapsInstalled && (draftSpatialMap || manualSpatialMap || templateSpatialMap)
-            ? "hierarchical"
-            : "standard",
-        rating,
-        gmMode,
-        gmCharacterId: gmMode === "character" && gmCharacterId ? gmCharacterId : undefined,
-        partyCharacterIds,
-        playerGoals: playerGoals || "Have an adventure",
-        personaId: personaId ?? undefined,
-        sceneConnectionId: sceneModelValue && sceneModelValue !== "local" ? sceneModelValue : undefined,
-        enableAgents: enableAgents || undefined,
-        enableSpriteGeneration: illustratorEnabled || undefined,
-        imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
-        videoConnectionId: illustratorEnabled && videoConnectionId ? videoConnectionId : undefined,
-        ...(importedArtStyleSettingsRef.current ?? {}),
-        activeLorebookIds: activeLorebookIds.length > 0 ? activeLorebookIds : undefined,
-        enableCustomWidgets,
-        customHudWidgets:
-          enableCustomWidgets && manualWidgetSetupEnabled ? normalizeGameHudWidgets(customHudWidgets) : undefined,
-        enableSpotifyDj: musicDjEnabled || undefined,
-        spotifySourceType: musicDjEnabled ? gameSpotifySourceType : undefined,
-        spotifyPlaylistId:
-          musicDjEnabled && gameSpotifySourceType === "playlist"
-            ? gameSpotifyPlaylistId.trim() || undefined
-            : undefined,
-        spotifyPlaylistName:
-          musicDjEnabled && gameSpotifySourceType === "playlist"
-            ? gameSpotifyPlaylistName.trim() || undefined
-            : undefined,
-        spotifyArtist:
-          musicDjEnabled && gameSpotifySourceType === "artist" ? gameSpotifyArtist.trim() || undefined : undefined,
-        enableLorebookKeeper: lorebookKeeperEnabled || undefined,
-        language: normalizedLanguage || undefined,
-        generationParameters: customizeParameters
-          ? { ...(importedGenerationParametersRef.current ?? {}), ...generationParameters }
-          : undefined,
-        promptPresetId,
-        gameGmPromptTemplateId: gamePresentation === "anime" ? ANIME_GAME_PROMPT_TEMPLATE_ID : null,
-        gameSystemPrompt: customGameSystemPrompt,
-        gameSpecialInstructions: trimmedGameSpecialInstructions || null,
-      },
+      buildSetupConfig(),
       preferences,
       {
         gmConnectionId: gmConnectionId ?? undefined,
-        shareLabels: {
-          characterNames: Object.fromEntries(
-            characters
-              .filter((character) =>
-                [...partyCharacterIds, ...(gmCharacterId ? [gmCharacterId] : [])].includes(character.id),
-              )
-              .map((character) => [character.id, character.name]),
-          ),
-          lorebookNames: Object.fromEntries(
-            lorebooks
-              .filter((lorebook) => activeLorebookIds.includes(lorebook.id))
-              .map((lorebook) => [lorebook.id, lorebook.name]),
-          ),
-          promptPresetNames: selectedPromptPreset
-            ? { [selectedPromptPreset.id]: selectedPromptPreset.name }
-            : undefined,
-          personaName: personas.find((persona) => persona.id === personaId)?.name ?? null,
-        },
+        shareLabels: buildSetupShareLabels(),
       },
       gameName.trim() || undefined,
       enableAgents && hierarchicalMapsInstalled && draftSpatialMap
@@ -3072,27 +3119,38 @@ export function GameSetupWizard({
                   >{localizeUi("onboarding.actions.next")}<ArrowRight size={14} />
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleComplete}
-                    disabled={isLoading || !canStart}
-                    className={GAME_SETUP_PRIMARY_BUTTON_CLASS}
-                    title={canStartMessage ?? undefined}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        {isDraftingMap
-                          ?localizeUi("ui.game.gamesetupwizard.draftingMap")
-                          : isLinkingSharedWorld
-                            ? localizeUi("ui.game.gamesetupwizard.linkingWorld")
-                            : localizeUi("ui.game.gamesetupwizard.generatingWorld")}
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 size={14} />{localizeUi("ui.game.gamesurfacecomponent.startGame")}</>
-                    )}
-                  </button>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportSetup}
+                      disabled={isLoading}
+                      className={cn(GAME_SETUP_GHOST_BUTTON_CLASS, "disabled:cursor-wait disabled:opacity-40")}
+                    >
+                      <Download size={14} />
+                      {localizeUi("ui.game.gamesetupsummary.downloadSetup")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleComplete}
+                      disabled={isLoading || !canStart}
+                      className={GAME_SETUP_PRIMARY_BUTTON_CLASS}
+                      title={canStartMessage ?? undefined}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          {isDraftingMap
+                            ?localizeUi("ui.game.gamesetupwizard.draftingMap")
+                            : isLinkingSharedWorld
+                              ? localizeUi("ui.game.gamesetupwizard.linkingWorld")
+                              : localizeUi("ui.game.gamesetupwizard.generatingWorld")}
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={14} />{localizeUi("ui.game.gamesurfacecomponent.startGame")}</>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

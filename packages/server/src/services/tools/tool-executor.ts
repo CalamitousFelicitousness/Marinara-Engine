@@ -1831,7 +1831,8 @@ async function spotifyPlay(
       uris.length > 1 &&
       (repeatAfterPlay === "track" ||
         repeatAfterPlay === "context" ||
-        (repeatAfterPlay === undefined && beforePlayback?.repeatState === "context"));
+        (repeatAfterPlay === undefined &&
+          (beforePlayback?.repeatState === "track" || beforePlayback?.repeatState === "context")));
     const effectiveRepeatAfterPlay = repeatTrackList ? "context" : repeatAfterPlay;
     const fallbackDevice = beforePlayback?.deviceId ? null : await findActiveSpotifyPlaybackDevice(creds.accessToken);
     const targetDeviceId = beforePlayback?.deviceId ?? fallbackDevice?.deviceId ?? null;

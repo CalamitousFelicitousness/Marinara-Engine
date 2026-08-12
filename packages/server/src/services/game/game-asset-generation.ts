@@ -582,7 +582,7 @@ export async function buildNpcPortraitProviderPrompt(req: NpcPortraitRequest): P
     ],
   });
   return compileGameImagePrompt(
-    req.dynamicPromptGenerator ? { ...req, appearance: null } : req,
+    req.dynamicPromptGenerator ? { ...req, appearance: null, preserveFullSourcePrompt: true } : req,
     "portrait",
     prompt,
     1400,
@@ -602,6 +602,7 @@ function compileGameImagePrompt(
     appearance?: string | null;
     preserveFullBackgroundPrompt?: boolean;
     preserveFullScenePrompt?: boolean;
+    preserveFullSourcePrompt?: boolean;
     omitProfileStyleText?: boolean;
     omitProfileSubjectTags?: boolean;
   },
@@ -628,7 +629,10 @@ function compileGameImagePrompt(
       negativePrompt: [negativePrompt, hardNegative].filter(Boolean).join(", "),
     };
   }
-  if ((kind === "illustration" || kind === "background") && req.preserveFullScenePrompt) {
+  if (
+    req.preserveFullSourcePrompt ||
+    ((kind === "illustration" || kind === "background") && req.preserveFullScenePrompt)
+  ) {
     const compilePrefix = (dedupeAgainstPrompt: string) =>
       compileImagePrompt({
         kind,
@@ -1063,7 +1067,11 @@ export async function buildBackgroundProviderPrompt(req: BackgroundGenRequest): 
     ],
   });
   return compileGameImagePrompt(
-    req.mapsArtworkContext ? { ...req, artStyle: undefined } : req,
+    req.dynamicPromptGenerator
+      ? { ...req, artStyle: req.mapsArtworkContext ? undefined : req.artStyle, preserveFullSourcePrompt: true }
+      : req.mapsArtworkContext
+        ? { ...req, artStyle: undefined }
+        : req,
     "background",
     prompt,
     req.preserveFullBackgroundPrompt || req.preserveFullScenePrompt ? 7000 : 1000,
@@ -1251,7 +1259,13 @@ export async function buildSceneIllustrationProviderPrompt(
         ]
       : [],
   });
-  return compileGameImagePrompt(req, "illustration", prompt, 7000, GAME_ILLUSTRATION_NEGATIVE_PROMPT);
+  return compileGameImagePrompt(
+    req.dynamicPromptGenerator ? { ...req, preserveFullSourcePrompt: true } : req,
+    "illustration",
+    prompt,
+    7000,
+    GAME_ILLUSTRATION_NEGATIVE_PROMPT,
+  );
 }
 
 export async function buildSceneIllustrationImagePrompt(req: SceneIllustrationGenRequest): Promise<string> {

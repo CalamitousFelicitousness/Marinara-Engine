@@ -6577,6 +6577,16 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       });
       assert.equal(countAppearance(dynamicPreserved.prompt), 1);
 
+      const providerReadyDynamicPrompt =
+        "1girl, elphelt_valentine, guilty_gear, solo, portrait, upper_body, pink_hair, blue_eyes, white_background, masterpiece, best_quality";
+      const providerReadyDynamic = await buildNpcPortraitProviderPrompt({
+        ...request,
+        styleProfiles: createDefaultImageStyleProfileSettings(),
+        styleProfileId: "danbooru",
+        dynamicPromptGenerator: async () => providerReadyDynamicPrompt,
+      });
+      assert.match(providerReadyDynamic.prompt, new RegExp(providerReadyDynamicPrompt));
+
       const dynamicOmitted = await buildNpcPortraitProviderPrompt({
         ...request,
         dynamicPromptGenerator: async () => "Centered portrait of Lyra with a readable expression and clean lighting.",
@@ -9534,6 +9544,12 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.equal(workspaceTextClaimsMutationCompletion(unsupportedCompletion.visibleText), true);
       assert.equal(workspaceActionNeedsVerification(unsupportedCompletion, []), "none");
+
+      const completedSupportReply = parseAssistantWorkspaceAction(
+        '{"say":"Done. Shell commands are unavailable here, so use these manual steps.","commands":[],"stop":true}',
+      );
+      assert.equal(workspaceTextClaimsMutationCompletion(completedSupportReply.visibleText), false);
+      assert.equal(workspaceActionNeedsVerification(completedSupportReply, []), null);
 
       const mutationResult: WorkspaceCommandResult = {
         id: "create-lorebook",

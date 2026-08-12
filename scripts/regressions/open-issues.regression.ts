@@ -4095,6 +4095,10 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+const lorebookHooksSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-lorebooks.ts", import.meta.url),
+  "utf8",
+);
 const professorMariContextBudget = resolveProfessorMariContextBudget(
   [
     {
@@ -4136,6 +4140,21 @@ assert.equal(
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);
+assert.match(
+  professorMariHomeSource,
+  /const handleEditMessage = useCallback\([\s\S]{0,180}if \(!chatId \|\| isBusy\) return;/u,
+  "Professor Mari's first edit after generation must not be rejected by a stale busy ref",
+);
+assert.match(
+  professorMariHomeSource,
+  /catch \(error\) \{\s*if \(isProfessorMariAbortError\(error\)\) return;\s*setDraft\(text\)/u,
+  "Stopping Professor Mari must not restore an already-submitted prompt to the composer",
+);
+assert.match(
+  lorebookHooksSource,
+  /useDeleteLorebook\(\)[\s\S]{0,900}invalidateQueries\(\{ queryKey: \["chats"\] \}\)/u,
+  "Deleting a lorebook must refresh cached chat metadata so it leaves active context immediately",
+);
 assert.match(
   professorMariHomeSource,
   /handleDeleteProfessorChat[\s\S]{0,500}showConfirmDialog/u,

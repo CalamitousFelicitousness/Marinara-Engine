@@ -63,6 +63,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept canceled Professor Mari prompts out of the composer, made the first message edit persist, and retained retry for the latest response (#4947).
+- Preserved the complete provider-ready prompt produced by Game Mode's dynamic image prompt generator through prompt review and image submission (#4948).
+- Stopped Professor Mari's workspace verification guard from treating ordinary task-completion wording as an unverified data mutation (#4949).
+- Enforced each connection's Max Parallel Agent Jobs limit across separate post-processing Agent batches (#4950).
+- Removed deleted lorebooks from the active chat context immediately instead of leaving a stale cached attachment label (#4951).
 - Made turn-game bot move prompts visible when UI debug mode or `DEBUG_AGENTS` is enabled (follow-up to #4945).
 - Included custom world fields and persona inventory in Agent Suite tracker editing without replacing adjacent tracker data (#4937).
 - Exposed active custom image agents in Conversation Gallery's Illustrate picker, matching the existing Roleplay and Game action (#4940).

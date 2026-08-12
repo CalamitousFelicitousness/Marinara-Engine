@@ -142,9 +142,9 @@ function savePendingSpatialTransitions(m: Map<string, PendingSpatialTransitionDr
   }
 }
 
-function abortGenerationForChat(chatId: string, controller?: AbortController) {
+export async function abortGenerationForChat(chatId: string, controller?: AbortController): Promise<void> {
   controller?.abort();
-  void api.post("/generate/abort", { chatId }).catch(() => {});
+  await api.post("/generate/abort", { chatId });
 }
 
 const notificationAutoDismissTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -564,7 +564,7 @@ export const useChatStore = create<ChatState>()(
             ? [streamingChatId]
             : [...abortControllers.keys()];
       for (const targetChatId of new Set(targetIds)) {
-        abortGenerationForChat(targetChatId, abortControllers.get(targetChatId));
+        void abortGenerationForChat(targetChatId, abortControllers.get(targetChatId)).catch(() => {});
       }
     },
     appendStreamBuffer: (text, chatId) =>
@@ -1032,7 +1032,7 @@ export const useChatStore = create<ChatState>()(
       chatNotificationSources.clear();
       const { abortControllers } = useChatStore.getState();
       for (const [chatId, controller] of abortControllers) {
-        abortGenerationForChat(chatId, controller);
+        void abortGenerationForChat(chatId, controller).catch(() => {});
       }
       clearAllNotificationTimers();
       currentInputSnapshot = "";

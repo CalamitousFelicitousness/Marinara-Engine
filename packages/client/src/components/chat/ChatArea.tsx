@@ -2968,6 +2968,14 @@ export const ChatArea = memo(function ChatArea() {
             onOpenScheduleEditor={handleOpenScheduleEditor}
             onCloseSettings={handleCloseSettingsPanel}
             onCloseGallery={handleCloseGalleryPanel}
+            onIllustrate={() =>
+              retryAgents(activeChatId, ["illustrator"], {
+                illustratorRetryTargets: ["illustration"],
+              })
+            }
+            onIllustrateWithAgent={async (agentType) => {
+              await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+            }}
             onGenerateSelfie={handleGenerateConversationSelfie}
             onWizardFinish={() => {
               setWizardOpen(false);

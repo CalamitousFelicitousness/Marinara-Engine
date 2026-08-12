@@ -30,6 +30,8 @@ import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/co
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
 import { validateCharacterGalleryReferences } from "../../packages/server/src/routes/characters.routes.js";
+import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
+import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -4126,9 +4128,11 @@ assert.match(
   "Professor Mari must read her persisted Send on Enter preference",
 );
 assert.equal(
-  professorMariHomeSource.match(/event\.key === "Enter" && \(event\.metaKey \|\| event\.ctrlKey\)/gu)?.length,
+  professorMariHomeSource.match(
+    /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
+  )?.length,
   2,
-  "Both Professor Mari composers must keep Enter as newline and Ctrl/Command+Enter as send when disabled",
+  "Both Professor Mari composers must preserve Shift+Enter and require the configured send shortcut",
 );
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);
@@ -8109,6 +8113,129 @@ try {
   assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z"), null, "bare timestamps are not cursors");
   assert.equal(parseMessageCursor("not-a-date|42"), null, "cursor timestamps must be valid");
   assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z|%"), null, "cursor ids must be valid URI components");
+}
+
+{
+  // #4937: Agent Suite tracker editing must expose every field owned by the
+  // World State and Persona Stats trackers without replacing adjacent data.
+  const gameState = {
+    id: "state-4937",
+    chatId: "chat-4937",
+    messageId: "message-4937",
+    swipeIndex: 0,
+    date: "August 12",
+    time: "10:00",
+    location: "Lab",
+    weather: "Clear",
+    temperature: "20 C",
+    worldCustomFields: [{ name: "Moon", value: "Full", icon: "moon" }],
+    presentCharacters: [],
+    recentEvents: [],
+    personaStats: [{ name: "Energy", value: 8, max: 10, color: "blue" }],
+    playerStats: {
+      stats: [],
+      attributes: null,
+      skills: { alchemy: 4 },
+      inventory: [{ name: "Vial", description: "Sealed", quantity: 2, location: "on_person" }],
+      activeQuests: [],
+      status: "Focused",
+    },
+    createdAt: "2026-08-12T08:00:00.000Z",
+  } satisfies GameState;
+  assert.deepEqual(
+    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>)
+      .worldCustomFields,
+    gameState.worldCustomFields,
+  );
+  assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.getValue(gameState), {
+    personaStats: gameState.personaStats,
+    inventory: gameState.playerStats.inventory,
+  });
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, {
+      personaStats: [],
+      inventory: [{ name: "Key", description: "Brass", quantity: 1, location: "stored" }],
+    }),
+    {
+      personaStats: [],
+      playerStats: {
+        ...gameState.playerStats,
+        inventory: [{ name: "Key", description: "Brass", quantity: 1, location: "stored" }],
+      },
+    },
+    "Persona inventory edits must preserve skills, status, and other player stats",
+  );
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }),
+    { error: "World custom fields must be a JSON array" },
+  );
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
+    { personaStats: [] },
+    "Dropping inventory from an AI rewrite must leave the saved inventory unchanged",
+  );
+}
+
+{
+  // #4940, #4941, #4942 and the requested UI consistency fixes are thin
+  // integration lanes, so pin their host wiring alongside the behavior checks.
+  const chatAreaSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatArea.tsx"),
+    "utf8",
+  );
+  const conversationSurfaceSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatConversationSurface.tsx"),
+    "utf8",
+  );
+  const settingsDrawerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+    "utf8",
+  );
+  const gameMapSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/components/game/GameMap.tsx"), "utf8");
+  const generateRouteSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/routes/generate.routes.ts"),
+    "utf8",
+  );
+
+  assert.match(
+    chatAreaSource,
+    /<ChatConversationSurface[\s\S]*?onIllustrateWithAgent=\{async \(agentType\)[\s\S]*?forceImageGeneration: true/u,
+    "Conversation Gallery must forward custom image-agent illustration requests",
+  );
+  assert.match(conversationSurfaceSource, /onIllustrateWithAgent=\{onIllustrateWithAgent\}/u);
+
+  assert.match(settingsDrawerSource, /\/generate\/status\/\$\{encodeURIComponent\(chat\.id\)\}/u);
+  assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
+  assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
+  assert.equal(
+    (settingsDrawerSource.match(/packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu) ?? [])
+      .length,
+    3,
+    "Long-Term Memory must use the same un-nested Agent Settings surface in every chat mode",
+  );
+
+  assert.match(
+    gameMapSource,
+    /GAME_MAP_ACTION_ITEM_CLASS\s*=\s*\n\s*"text-\[var\(--primary\)\]/u,
+    "Minimap zoom controls must inherit the selected accent color",
+  );
+  const turnGameResumeBlock =
+    /\/\/ A normal chat send can claim[\s\S]*?\/\/ Signal completion before the slow illustration tail/u.exec(
+      generateRouteSource,
+    )?.[0] ?? "";
+  assert.match(turnGameResumeBlock, /chatMode === "conversation"/u);
+  assert.match(turnGameResumeBlock, /await runTurnGameBotTurns\(/u);
+  assert.match(
+    turnGameResumeBlock,
+    /if \(abortController\.signal\.aborted \|\| isAbortLikeError\(turnGameErr\)\) return;/u,
+    "Turn-game recovery must propagate cancellation without logging it as a failure",
+  );
+  assert.match(
+    turnGameResumeBlock,
+    /await runTurnGameBotTurns\([\s\S]*?if \(abortController\.signal\.aborted\) return;/u,
+    "Turn-game recovery must re-check cancellation after a bot runner resolves",
+  );
+  assert.match(turnGameResumeBlock, /logger\.warn\(turnGameErr/u);
 }
 
 console.info("Open-issue regressions passed.");

@@ -63,6 +63,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Made turn-game bot move prompts visible when UI debug mode or `DEBUG_AGENTS` is enabled (follow-up to #4945).
 - Included custom world fields and persona inventory in Agent Suite tracker editing without replacing adjacent tracker data (#4937).
 - Exposed active custom image agents in Conversation Gallery's Illustrate picker, matching the existing Roleplay and Game action (#4940).
 - Resumed pending turn-game bot seats after a regular Conversation reply so UNO cannot remain frozen when a chat send wins the per-chat generation lock (#4941).

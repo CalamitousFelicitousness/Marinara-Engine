@@ -419,7 +419,7 @@ import {
   resolveChatSummaryPrompt,
   withoutRetiredChatSummaryAgentIds,
 } from "../services/generation/roleplay-summary-runtime.js";
-import { getChatGenerationTimeoutMs, getMaxToolRounds } from "../config/runtime-config.js";
+import { getChatGenerationTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../config/runtime-config.js";
 import {
   isReviewableWriterAgentType,
   buildRuntimeAgentSectionEligibleTypes,
@@ -768,6 +768,9 @@ export async function generateRoutes(app: FastifyInstance) {
     const requestDebug = input.debugMode === true;
     const debugLog = (message: string, ...args: any[]) => {
       logDebugOverride(requestDebug, message, ...args);
+    };
+    const turnGameDebugLog = (message: string, ...args: any[]) => {
+      logDebugOverride(requestDebug || isDebugAgentsEnabled(), message, ...args);
     };
 
     // Resolve the chat
@@ -1255,6 +1258,7 @@ export async function generateRoutes(app: FastifyInstance) {
           baseUrl,
           reply,
           signal: abortController.signal,
+          debugLog: turnGameDebugLog,
         });
         generationComplete = true;
         sendSseEvent(reply, { type: "done", data: "" });
@@ -9682,6 +9686,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   baseUrl,
                   reply,
                   signal: abortController.signal,
+                  debugLog: turnGameDebugLog,
                 });
 
                 const professorMariResult = await handleProfessorMariCommand({
@@ -9836,6 +9841,7 @@ export async function generateRoutes(app: FastifyInstance) {
             baseUrl,
             reply,
             signal: abortController.signal,
+            debugLog: turnGameDebugLog,
           });
         } catch (turnGameErr) {
           if (abortController.signal.aborted || isAbortLikeError(turnGameErr)) return;

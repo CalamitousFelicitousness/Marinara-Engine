@@ -4,6 +4,15 @@ import {
   parseCapabilityConversationCommands,
   registerCapabilityConversationCommand,
 } from "../../packages/server/src/services/capability-packages/capability-command-registry.service.js";
+import { visibleTo } from "../../packages/server/src/services/capability-packages/capability-roleplay-events.service.js";
+
+// Audience filter: public always shows; user-only never reaches a model; a private event shows only when
+// every character the turn can write is in its audience (so a group turn cannot leak it).
+assert.equal(visibleTo("public", []), true);
+assert.equal(visibleTo("user-only", ["a"]), false);
+assert.equal(visibleTo({ characterIds: ["a"] }, ["a"]), true);
+assert.equal(visibleTo({ characterIds: ["a"] }, ["a", "b"]), false);
+assert.equal(visibleTo({ characterIds: ["a"] }, []), false);
 
 let handled = 0;
 const release = registerCapabilityConversationCommand({

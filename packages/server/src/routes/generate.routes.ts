@@ -303,6 +303,7 @@ import { prepareConversationPromptHistory } from "./generate/conversation-histor
 import { resolveConversationPresenceRuntime } from "./generate/conversation-presence-runtime.js";
 import { resolveProfessorMariPromptContext } from "./generate/professor-mari-prompt-context.js";
 import { collectCapabilityPromptContext } from "../services/capability-packages/capability-prompt-context.service.js";
+import { collectRoleplayEventContext } from "../services/capability-packages/capability-roleplay-events.service.js";
 import {
   appendToFirstSystemMessage,
   CONVERSATION_NO_REPEAT_INSTRUCTION,
@@ -3187,6 +3188,21 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
 
+          // The read half of roleplay events: durable phone facts the transient context has dropped,
+          // audience-filtered so a private event never reaches a turn that can write another character.
+          {
+            const eventBlock = await collectRoleplayEventContext(
+              app.db,
+              input.chatId,
+              promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+            );
+            if (eventBlock) {
+              const sysMsg = finalMessages.find((m) => m.role === "system");
+              if (sysMsg) sysMsg.content += "\n\n" + eventBlock;
+              else finalMessages.unshift({ role: "system" as const, content: eventBlock });
+            }
+          }
+
           // Game bypasses the preset assembler, so card-authored depth and
           // post-history instructions must be injected explicitly before the
           // final GM format reminder claims the generation tail.
@@ -3283,6 +3299,16 @@ export async function generateRoutes(app: FastifyInstance) {
             } else {
               finalMessages.unshift({ role: "system" as const, content: capabilityBlock });
             }
+          }
+          const eventBlock = await collectRoleplayEventContext(
+            app.db,
+            input.chatId,
+            promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+          );
+          if (eventBlock) {
+            const sysMsg = finalMessages.find((m) => m.role === "system");
+            if (sysMsg) sysMsg.content += "\n\n" + eventBlock;
+            else finalMessages.unshift({ role: "system" as const, content: eventBlock });
           }
         }
 

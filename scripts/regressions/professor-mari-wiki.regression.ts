@@ -43,11 +43,15 @@ assert.equal(stripHtml('<script type="text/javascript">hidden()</script >Visible
 assert.equal(stripHtml('<style type="text/css">.hidden { display: none }</style >Readable'), "Readable");
 assert.equal(stripHtml("<script>hidden()</script\t\n ignored>Visible"), "Visible");
 assert.equal(stripHtml("<style>.hidden { display: none }</style\t\n ignored>Readable"), "Readable");
+assert.equal(stripHtml("Before<script>hidden()"), "Before");
+assert.equal(stripHtml("Before<style>.hidden { display: none }</style"), "Before");
+assert.equal(stripHtml("Before<script type=text/javascript"), "Before<script type=text/javascript");
+assert.equal(stripHtml("Before<style type=text/css"), "Before<style type=text/css");
 const malformedScriptClosings = "</script".repeat(50_000);
 const malformedStyleClosings = "</style".repeat(50_000);
 const malformedClosingScanStartedAt = performance.now();
-assert.equal(stripHtml(`<script>hidden${malformedScriptClosings}`), `hidden${malformedScriptClosings}`);
-assert.equal(stripHtml(`<style>hidden${malformedStyleClosings}`), `hidden${malformedStyleClosings}`);
+assert.equal(stripHtml(`<script>hidden${malformedScriptClosings}`), "");
+assert.equal(stripHtml(`<style>hidden${malformedStyleClosings}`), "");
 assert.ok(
   performance.now() - malformedClosingScanStartedAt < 2_000,
   "repeated unterminated script and style closing prefixes should be scanned in linear time",

@@ -25,6 +25,7 @@ assert.deepEqual(extractSetvarAssignments("{{setvar::mode::gm}} {{SETVAR::tone::
 ]);
 assert.deepEqual(extractSetvarAssignments("İ {{SETVAR::mode::gm}}"), [["mode", "gm"]]);
 assert.equal(extractSetvarAssignments("{{setvar::0::".repeat(20_000) + "value}}").length, 1);
+assert.deepEqual(extractSetvarAssignments("{{setvar::broken::{{setvar::mode::gm}}"), [["mode", "gm"]]);
 
 assert.ok(parseTrustedTimestamp(`2024-01-02${" ".repeat(50_000)}@ 03h 04m 05s`));
 
@@ -82,6 +83,17 @@ const wrappedMessages = [
 dedupeLastMessageWrappers(wrappedMessages);
 assert.equal(wrappedMessages[0]?.content, "Old");
 assert.equal(wrappedMessages[1]?.content, "## Last Message\nCurrent");
+const standaloneHeading = [{ content: "## Last Message" }, { content: "<last_message>Current</last_message>" }];
+dedupeLastMessageWrappers(standaloneHeading);
+assert.equal(standaloneHeading[0]?.content, "");
+const inlineWrapperText = [
+  { content: "History\n</chat_history>" },
+  { content: "Ordinary prose mentions <last_message> and a later line\n## Last Message" },
+  { content: "<last_message>Current</last_message>" },
+];
+dedupeLastMessageWrappers(inlineWrapperText);
+assert.equal(inlineWrapperText[0]?.content, "History\n</chat_history>");
+assert.equal(inlineWrapperText[1]?.content, "Ordinary prose mentions <last_message> and a later line\n## Last Message");
 const boundaryWhitespaceNoise = [
   { content: `${"\n".repeat(50_000)}x` },
   { content: "<last_message>Old</last_message>" },
@@ -125,7 +137,14 @@ assert.equal(
   "Choose [A] or [B]",
 );
 assert.equal(stripMacroComments("Before{{//".repeat(20_000) + "comment}}After"), "BeforeAfter");
+assert.equal(stripMacroComments("Before{{// comment with } a lone brace }}After"), "BeforeAfter");
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
+assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));
+const scopedParsingStartedAt = performance.now();
+extractSetvarAssignments("{{setvar::broken::".repeat(20_000) + "{{setvar::mode::gm}}");
+stripMacroComments("Before{{//".repeat(20_000) + "comment with } a lone brace }}After");
+sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback");
+assert.ok(performance.now() - scopedParsingStartedAt < 5_000, "adversarial parsing should complete within five seconds");
 const encodedSpeakerNoise = "&lt;;".repeat(20_000);
 assert.equal(decodeEncodedSpeakerTags(encodedSpeakerNoise), encodedSpeakerNoise);
 assert.equal(decodeEncodedSpeakerTags("&lt;speaker=&quot;Luna&quot;&gt;"), '<speaker="Luna">');

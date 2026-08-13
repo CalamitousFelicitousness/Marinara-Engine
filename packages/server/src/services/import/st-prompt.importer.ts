@@ -242,7 +242,13 @@ export function extractSetvarAssignments(content: string): Array<[name: string, 
     if (!match) break;
     const start = match.index;
     const nameStart = start + prefix.length;
+    prefixPattern.lastIndex = nameStart;
+    const nestedStart = prefixPattern.exec(content)?.index ?? -1;
     const separator = content.indexOf("::", nameStart);
+    if (nestedStart >= 0 && (separator < 0 || nestedStart < separator)) {
+      cursor = nestedStart;
+      continue;
+    }
     if (separator < 0) break;
     const name = content.slice(nameStart, separator);
     if (!/^\w+$/u.test(name)) {
@@ -251,6 +257,10 @@ export function extractSetvarAssignments(content: string): Array<[name: string, 
     }
     const firstClose = content.indexOf("}", separator + 2);
     if (firstClose < 0) break;
+    if (nestedStart >= 0 && nestedStart < firstClose) {
+      cursor = nestedStart;
+      continue;
+    }
 
     if (firstClose > separator + 2 && content[firstClose + 1] === "}") {
       assignments.push([name, content.slice(separator + 2, firstClose)]);

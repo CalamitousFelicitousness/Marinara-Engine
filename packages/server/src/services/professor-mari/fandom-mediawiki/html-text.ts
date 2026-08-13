@@ -44,9 +44,15 @@ function stripRawTextElement(value: string, tagName: "script" | "style") {
     if (openingEnd < 0) break;
 
     const closingStart = findTagPrefix(value, closingPrefix, openingEnd + 1);
-    if (closingStart < 0) break;
+    if (closingStart < 0) {
+      chunks.push(value.slice(outputCursor, openingStart));
+      return chunks.join("");
+    }
     const closingEnd = value.indexOf(">", closingStart + closingPrefix.length);
-    if (closingEnd < 0) break;
+    if (closingEnd < 0) {
+      chunks.push(value.slice(outputCursor, openingStart));
+      return chunks.join("");
+    }
 
     chunks.push(value.slice(outputCursor, openingStart), " ");
     outputCursor = closingEnd + 1;

@@ -45,7 +45,10 @@ export function sanitizeFolderSegment(value: string, fallback: string): string {
   let end = normalized.length;
   while (normalized[start] === "-") start++;
   while (end > start && normalized[end - 1] === "-") end--;
-  const safe = normalized.slice(start, end).slice(0, 80);
+  const truncated = normalized.slice(start, end).slice(0, 80);
+  let safeEnd = truncated.length;
+  while (safeEnd > 0 && truncated[safeEnd - 1] === "-") safeEnd--;
+  const safe = truncated.slice(0, safeEnd);
   return safe || fallback;
 }
 

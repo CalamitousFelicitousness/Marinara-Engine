@@ -193,13 +193,8 @@ export function stripMacroComments(template: string): string {
   while (cursor < template.length) {
     const start = template.indexOf("{{//", cursor);
     if (start < 0) break;
-    const firstClose = template.indexOf("}", start + 4);
+    const firstClose = template.indexOf("}}", start + 4);
     if (firstClose < 0) break;
-    if (template[firstClose + 1] !== "}") {
-      result += template.slice(cursor, firstClose + 1);
-      cursor = firstClose + 1;
-      continue;
-    }
     result += template.slice(cursor, start);
     cursor = firstClose + 2;
   }

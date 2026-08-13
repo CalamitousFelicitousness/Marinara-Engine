@@ -334,9 +334,11 @@ export function findLastIndex(messages: SimpleMessage[], role: string): number {
 
 function isLastMessagePromptBlock(content: unknown): boolean {
   if (typeof content !== "string") return false;
-  const lowerContent = content.toLowerCase();
-  if (lowerContent.includes("<last_message>") || lowerContent.includes("</last_message>")) return true;
-  return content.split("\n").some(isLastMessageHeadingLine);
+  const trimmed = content.trim();
+  const lowerContent = trimmed.toLowerCase();
+  if (lowerContent.startsWith("<last_message>") || lowerContent.endsWith("</last_message>")) return true;
+  const firstNewline = trimmed.indexOf("\n");
+  return isLastMessageHeadingLine(firstNewline >= 0 ? trimmed.slice(0, firstNewline) : trimmed);
 }
 
 function isLastMessageHeadingLine(line: string): boolean {
@@ -354,8 +356,9 @@ function stripBoundaryLastMessageWrapper(content: string): string {
     stripped = stripped.slice(0, -"</last_message>".length).trimEnd();
   }
   const firstNewline = stripped.indexOf("\n");
-  if (firstNewline >= 0 && isLastMessageHeadingLine(stripped.slice(0, firstNewline))) {
-    stripped = stripped.slice(firstNewline + 1);
+  const firstLine = firstNewline >= 0 ? stripped.slice(0, firstNewline) : stripped;
+  if (isLastMessageHeadingLine(firstLine)) {
+    stripped = firstNewline >= 0 ? stripped.slice(firstNewline + 1) : "";
   }
   return stripped.trim();
 }

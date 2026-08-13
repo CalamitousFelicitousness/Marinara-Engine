@@ -163,6 +163,34 @@ assert.equal(
   resolveMacros('[\n{{#if {{char}} == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]', groupMacroContext),
   "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
 );
+assert.equal(
+  resolveMacros("[\n{{group}} accompanies {{char}}.\n]", groupMacroContext),
+  "[\nDottore accompanies Miko.\n]\n[\nMiko accompanies Dottore.\n]",
+);
+assert.equal(
+  resolveMacros(
+    '[\n{{#if user == "Other"}}Other{{else if char == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]',
+    groupMacroContext,
+  ),
+  "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
+);
+const nestedParenthesesConditional = `[\n{{#if ${"(".repeat(10_000)}unknown${")".repeat(10_000)}}}text\n]`;
+const nestedParenthesesStartedAt = performance.now();
+assert.equal(resolveMacros(nestedParenthesesConditional, groupMacroContext), nestedParenthesesConditional);
+assert.ok(
+  performance.now() - nestedParenthesesStartedAt < 1_000,
+  "malformed nested conditional detection should complete within one second",
+);
+const nestedCharacterCondition = `[\n{{#if ${"(".repeat(8_000)}char == "Miko"${")".repeat(8_000)}}}Miko{{else}}Dottore{{/if}}\n]`;
+const nestedCharacterStartedAt = performance.now();
+assert.equal(
+  resolveMacros(nestedCharacterCondition, groupMacroContext),
+  "[\nMiko\n]\n[\nDottore\n]",
+);
+assert.ok(
+  performance.now() - nestedCharacterStartedAt < 1_000,
+  "deeply wrapped character conditions should complete within one second",
+);
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
 assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));
 const scopedParsingStartedAt = performance.now();

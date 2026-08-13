@@ -134,6 +134,14 @@ const CHARACTER_MACRO_NAMES = new Set([
   "personality",
   "scenario",
 ]);
+const CHARACTER_CONDITIONAL_OPERAND_NAMES = new Set([
+  ...CHARACTER_MACRO_NAMES,
+  "character",
+  "characterphonetic",
+  "group",
+  "speaker",
+  "speakerphonetic",
+]);
 const MAX_CHARACTER_FIELD_RESOLUTION_DEPTH = 4;
 const MAX_DICE_COUNT = 1000;
 const MAX_DICE_SIDES = 1_000_000;
@@ -651,6 +659,46 @@ function resolveDeferredCharacterConditionals(template: string, ctx: MacroContex
   });
 }
 
+function hasCharacterConditionalOperandCandidate(condition: string): boolean {
+  let quote: "single" | "double" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < condition.length; index++) {
+    const character = condition[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (quoteKind(character) === quote) quote = null;
+      continue;
+    }
+
+    const nextQuote = quoteKind(character);
+    if (nextQuote) {
+      quote = nextQuote;
+      continue;
+    }
+
+    const candidateStart = character === "@" ? index + 1 : index;
+    let candidateEnd = candidateStart;
+    while (candidateEnd < condition.length) {
+      const code = condition.charCodeAt(candidateEnd);
+      const isIdentifierCharacter =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        code === 95 ||
+        (code >= 97 && code <= 122);
+      if (!isIdentifierCharacter) break;
+      candidateEnd++;
+    }
+    if (candidateEnd === candidateStart) continue;
+    if (CHARACTER_CONDITIONAL_OPERAND_NAMES.has(condition.slice(candidateStart, candidateEnd).toLowerCase())) {
+      return true;
+    }
+    index = candidateEnd - 1;
+  }
+  return false;
+}
+
 function hasCharacterMacro(template: string): boolean {
   const lowerTemplate = template.toLowerCase();
   for (const name of CHARACTER_MACRO_NAMES) {
@@ -662,8 +710,14 @@ function hasCharacterMacro(template: string): boolean {
     const tag = readNextMacroTag(template, searchIndex);
     if (!tag) return false;
 
-    const condition = parseIfCondition(tag.body);
-    if (condition !== null && conditionDependsOnCharacter(condition)) return true;
+    const condition = parseIfCondition(tag.body) ?? parseElseIfCondition(tag.body);
+    if (
+      condition !== null &&
+      hasCharacterConditionalOperandCandidate(condition) &&
+      conditionDependsOnCharacter(condition)
+    ) {
+      return true;
+    }
     searchIndex = tag.end;
   }
   return false;
@@ -975,14 +1029,19 @@ function splitTopLevelCondition(input: string, delimiter: "||" | "&&"): string[]
   return parts;
 }
 
-function isWrappedCondition(input: string): boolean {
-  if (!input.startsWith("(") || !input.endsWith(")")) return false;
+function unwrapCondition(input: string): string {
+  let start = 0;
+  let end = input.length;
+  while (start < end && /\s/u.test(input[start]!)) start++;
+  while (end > start && /\s/u.test(input[end - 1]!)) end--;
+
   let quote: "single" | "double" | null = null;
   let escaped = false;
   let macroDepth = 0;
-  let parenthesisDepth = 0;
+  const parenthesisStack: number[] = [];
+  const matchingParentheses = new Map<number, number>();
 
-  for (let index = 0; index < input.length; index += 1) {
+  for (let index = start; index < end; index++) {
     const character = input[index]!;
     if (quote) {
       if (escaped) escaped = false;
@@ -1010,18 +1069,21 @@ function isWrappedCondition(input: string): boolean {
       index += 1;
       continue;
     }
-    if (character === "(") parenthesisDepth += 1;
-    else if (character === ")") parenthesisDepth -= 1;
-    if (parenthesisDepth === 0 && index < input.length - 1) return false;
+    if (character === "(") {
+      parenthesisStack.push(index);
+    } else if (character === ")") {
+      const opening = parenthesisStack.pop();
+      if (opening !== undefined) matchingParentheses.set(opening, index);
+    }
   }
 
-  return parenthesisDepth === 0;
-}
-
-function unwrapCondition(input: string): string {
-  let unwrapped = input.trim();
-  while (isWrappedCondition(unwrapped)) unwrapped = unwrapped.slice(1, -1).trim();
-  return unwrapped;
+  while (start < end && input[start] === "(" && matchingParentheses.get(start) === end - 1) {
+    start++;
+    end--;
+    while (start < end && /\s/u.test(input[start]!)) start++;
+    while (end > start && /\s/u.test(input[end - 1]!)) end--;
+  }
+  return input.slice(start, end);
 }
 
 function parseConditionExpression(condition: string): ParsedConditionExpression {

@@ -109,7 +109,10 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
           ? await capabilityModuleRuntime.activatePackage(app, id)
           : installed;
       } finally {
-        await refreshCapabilityAgentRegistry();
+        // A restart-required update leaves the prior runtime active in this
+        // process. Keep its agent definitions visible until startup activates
+        // the replacement; refreshing now would make the package disappear.
+        if (installed.status !== "restart-required") await refreshCapabilityAgentRegistry();
       }
     },
   );

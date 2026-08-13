@@ -1932,7 +1932,9 @@ function DatabaseWorkspaceApprovalCard({
   const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
   const setDefaultViewMode = useUIStore((s) => s.setMariEditViewMode);
   const [viewMode, setViewMode] = useState<MariEditViewMode>(defaultViewMode);
-  const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
+  // #4931: which rows are collapsed (folded to their name + status summary). Reversible — unlike the
+  // old one-way Dismiss.
+  const [collapsedRows, setCollapsedRows] = useState<Set<string>>(() => new Set());
   const cardRef = useRef<HTMLDivElement>(null);
   const toggleAnchorRef = useRef<number | null>(null);
   // Keep this card anchored in the scroll viewport across a height change so the toggle doesn't
@@ -2034,8 +2036,15 @@ function DatabaseWorkspaceApprovalCard({
         {viewMode === "easy" && (
           <MariEditEasyViewer
             approval={approval}
-            hidden={hiddenRows}
-            onDismissRow={(key) => setHiddenRows((prev) => new Set(prev).add(key))}
+            collapsed={collapsedRows}
+            onToggleCollapse={(key) =>
+              setCollapsedRows((prev) => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              })
+            }
             onRejectRow={
               onRejectRows
                 ? (change, index) => {
@@ -2044,9 +2053,9 @@ function DatabaseWorkspaceApprovalCard({
                         { index, table: change.table, id: change.id, action: change.action },
                       ]);
                       // A successful reject prunes the row, shifting every later index, so the
-                      // positional dismiss keys go stale — drop them then. On a no-op (state_changed
-                      // / invalid_selection) diffPreview is unchanged, so keep the dismissals.
-                      if (reverted) setHiddenRows(new Set());
+                      // positional collapse keys go stale — reset them then. On a no-op (state_changed
+                      // / invalid_selection) diffPreview is unchanged, so keep the collapse state.
+                      if (reverted) setCollapsedRows(new Set());
                     })();
                   }
                 : undefined

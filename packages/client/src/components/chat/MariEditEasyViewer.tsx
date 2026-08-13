@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
 import { diffWords } from "../../lib/word-diff";
 import type { MariDbPendingApproval, MariDbRowChange } from "@marinara-engine/shared";
-import { Check, Eye, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
 
 type Row = Record<string, unknown> | null | undefined;
 
@@ -237,7 +237,7 @@ function renderStatusSlot<T>(
   return value !== null ? pill(value) : null;
 }
 
-function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
+function LorebookEntryDiff({ change, collapsed }: { change: MariDbRowChange; collapsed?: boolean }) {
   const { t: localizeUi } = useUiTranslation();
   const before = change.before ?? null;
   const after = change.after ?? null;
@@ -331,6 +331,9 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
         {renderStatusSlot(beforeVec, afterVec, vectorPill, localizeUi("ui.chat.mariediteasyviewer.changedTo"))}
       </div>
 
+      {/* Collapsing keeps the name + status summary above and folds away the bulky details. */}
+      {!collapsed && (
+        <>
       <div>
         <div className="mb-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.mariediteasyviewer.primaryKeys")}
@@ -394,12 +397,17 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
       )}
 
       {!source && <EmptyValue />}
+        </>
+      )}
     </div>
   );
 }
 
-function GenericRowDiff({ change }: { change: MariDbRowChange }) {
+function GenericRowDiff({ change, collapsed }: { change: MariDbRowChange; collapsed?: boolean }) {
   const { t: localizeUi } = useUiTranslation();
+  // A character/preset row is identified by the card header (its name), so collapsing hides the whole
+  // field diff.
+  if (collapsed) return null;
   const fields = computeFieldChanges(change);
   if (fields.length === 0) {
     return <p className="text-[0.6875rem] italic text-[var(--muted-foreground)]">{localizeUi("ui.chat.mariediteasyviewer.noFieldChanges")}</p>;
@@ -453,14 +461,16 @@ function canRenderPrompt(change: MariDbRowChange): boolean {
 function RowCard({
   change,
   index,
-  onDismiss,
+  collapsed,
+  onToggleCollapse,
   onReject,
   onRender,
   busy,
 }: {
   change: MariDbRowChange;
   index: number;
-  onDismiss: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onReject?: (change: MariDbRowChange, index: number) => void;
   onRender?: (change: MariDbRowChange, index: number) => void;
   busy?: boolean;
@@ -470,9 +480,8 @@ function RowCard({
   const MetaIcon = meta.icon;
   // A delete is Mari's most destructive action — make the whole row unmistakably red.
   const isDelete = change.action === "delete";
-  // Reject actually reverts the row on the server (unlike Dismiss, which only hides it). Only top-
-  // level lorebook entries are individually rejectable — the server refuses anything else — so the
-  // control is offered only there.
+  // Reject reverts the row on the server (a real undo). Only top-level lorebook entries are
+  // individually rejectable — the server refuses anything else — so the control is offered only there.
   const canReject = Boolean(onReject) && change.table === "lorebook_entries";
   const canRender = Boolean(onRender) && canRenderPrompt(change);
   return (
@@ -483,19 +492,33 @@ function RowCard({
       )}
     >
       <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
-        <MetaIcon size="0.75rem" className={cn("shrink-0", meta.tone)} />
-        <span className="truncate text-[0.6875rem] font-semibold text-[var(--foreground)]">
-          {rowTitle(change, localizeUi)}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 text-[0.625rem]",
-            isDelete ? "font-semibold uppercase tracking-wide text-[var(--destructive)]" : meta.tone,
-          )}
+        {/* The header is the accordion toggle: click to fold the details away and re-open later. */}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-label={localizeUi(collapsed ? "ui.chat.mariediteasyviewer.expand" : "ui.chat.mariediteasyviewer.collapse")}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
-          {meta.label}
-        </span>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {collapsed ? (
+            <ChevronRight size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
+          ) : (
+            <ChevronDown size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
+          )}
+          <MetaIcon size="0.75rem" className={cn("shrink-0", meta.tone)} />
+          <span className="truncate text-[0.6875rem] font-semibold text-[var(--foreground)]">
+            {rowTitle(change, localizeUi)}
+          </span>
+          <span
+            className={cn(
+              "shrink-0 text-[0.625rem]",
+              isDelete ? "font-semibold uppercase tracking-wide text-[var(--destructive)]" : meta.tone,
+            )}
+          >
+            {meta.label}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
           {canRender && (
             <button
               type="button"
@@ -522,44 +545,40 @@ function RowCard({
               {localizeUi("ui.chat.mariediteasyviewer.reject")}
             </button>
           )}
-          <button
-            type="button"
-            onClick={onDismiss}
-            title={localizeUi("ui.chat.mariediteasyviewer.dismissHint")}
-            aria-label={localizeUi("ui.chat.mariediteasyviewer.dismiss")}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-          >
-            <Check size="0.7rem" />
-            {localizeUi("ui.chat.mariediteasyviewer.dismiss")}
-          </button>
         </div>
       </div>
-      {change.table === "lorebook_entries" ? <LorebookEntryDiff change={change} /> : <GenericRowDiff change={change} />}
+      {change.table === "lorebook_entries" ? (
+        <LorebookEntryDiff change={change} collapsed={collapsed} />
+      ) : (
+        <GenericRowDiff change={change} collapsed={collapsed} />
+      )}
     </div>
   );
 }
 
 export function MariEditEasyViewer({
   approval,
-  hidden,
-  onDismissRow,
+  collapsed,
+  onToggleCollapse,
   onRejectRow,
   onRenderRow,
   busy,
 }: {
   approval: MariDbPendingApproval;
-  hidden: ReadonlySet<string>;
-  onDismissRow: (key: string) => void;
+  collapsed: ReadonlySet<string>;
+  onToggleCollapse: (key: string) => void;
   onRejectRow?: (change: MariDbRowChange, index: number) => void;
   onRenderRow?: (change: MariDbRowChange, index: number) => void;
   busy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   // Key by the row's stable diffPreview index too: planTransform can emit multiple rows sharing
-  // table/id/action, so the index guarantees a unique React key AND dismiss/hidden-Set key. The
-  // index is also the identifier a reject sends — it maps 1:1 to the server's plan.changes[index].
-  const keyed = approval.diffPreview.map((change, index) => ({ change, index, key: `${index}:${rowKey(change)}` }));
-  const rows = keyed.filter((item) => !hidden.has(item.key));
+  // table/id/action, so the index guarantees a unique React key AND collapse-Set key. The index is
+  // also the identifier a reject sends — it maps 1:1 to the server's plan.changes[index].
+  const rows = approval.diffPreview.map((change, index) => ({ change, index, key: `${index}:${rowKey(change)}` }));
+  // Reject reverts one row and keeps the rest; on a single-row change that is identical to the whole-
+  // card Restore, so don't offer the redundant per-row control there.
+  const rejectRow = onRejectRow && approval.diffPreview.length > 1 ? onRejectRow : undefined;
 
   if (approval.diffPreview.length === 0) {
     return (
@@ -572,23 +591,18 @@ export function MariEditEasyViewer({
 
   return (
     <div className="mt-2 space-y-2">
-      {rows.length === 0 ? (
-        <p className="text-[0.6875rem] italic text-[var(--muted-foreground)]">
-          {localizeUi("ui.chat.mariediteasyviewer.allDismissed")}
-        </p>
-      ) : (
-        rows.map((item) => (
-          <RowCard
-            key={item.key}
-            change={item.change}
-            index={item.index}
-            onDismiss={() => onDismissRow(item.key)}
-            onReject={onRejectRow}
-            onRender={onRenderRow}
-            busy={busy}
-          />
-        ))
-      )}
+      {rows.map((item) => (
+        <RowCard
+          key={item.key}
+          change={item.change}
+          index={item.index}
+          collapsed={collapsed.has(item.key)}
+          onToggleCollapse={() => onToggleCollapse(item.key)}
+          onReject={rejectRow}
+          onRender={onRenderRow}
+          busy={busy}
+        />
+      ))}
       {approval.diffTruncated && (
         <p className="text-[0.625rem] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}

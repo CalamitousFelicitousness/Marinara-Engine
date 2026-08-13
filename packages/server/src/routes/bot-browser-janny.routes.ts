@@ -172,6 +172,17 @@ function readDoubleQuotedHtmlAttribute(tag: string, name: string): string | null
   return end < 0 ? null : tag.slice(valueStart, end);
 }
 
+export function decodeAstroPropsAttribute(value: string): string {
+  const entities: Record<string, string> = {
+    "&quot;": '"',
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&#39;": "'",
+  };
+  return value.replace(/&(?:quot|amp|lt|gt|#39);/g, (entity) => entities[entity] ?? entity);
+}
+
 /** Find Astro character props without backtracking across the fetched page. */
 export function extractJannyAstroCharacterProps(html: string): string | null {
   const openingTag = "<astro-island";
@@ -448,12 +459,7 @@ export async function botBrowserJannyRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "Could not parse character data from page" });
       }
 
-      const propsDecoded = astroProps
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&#39;/g, "'");
+      const propsDecoded = decodeAstroPropsAttribute(astroProps);
 
       const propsJson = JSON.parse(propsDecoded);
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { normalizeCardAssetImageSyntax } from "../../packages/client/src/lib/card-asset-links.js";
-import { extractJannyAstroCharacterProps } from "../../packages/server/src/routes/bot-browser-janny.routes.js";
+import {
+  decodeAstroPropsAttribute,
+  extractJannyAstroCharacterProps,
+} from "../../packages/server/src/routes/bot-browser-janny.routes.js";
 import { parseLorebookWriteApprovalText } from "../../packages/server/src/routes/generate/agent-write-approval.js";
 import { dedupeLastMessageWrappers } from "../../packages/server/src/routes/generate/generate-route-utils.js";
 import { buildImpersonateInstruction } from "../../packages/server/src/services/conversation/impersonate-prompt.js";
@@ -42,6 +45,8 @@ assert.equal(
   "wanted",
 );
 assert.equal(extractJannyAstroCharacterProps('<astro-island props="character fallback"></astro-island>'), "character fallback");
+assert.equal(decodeAstroPropsAttribute("&quot;x&amp;y&quot;"), '"x&y"');
+assert.equal(decodeAstroPropsAttribute("&amp;quot;"), "&quot;");
 const nestedAlt = "(".repeat(50_000) + "portrait)[card://self/gallery/a.png]";
 assert.equal(normalizeCardAssetImageSyntax(nestedAlt).endsWith("portrait](card://self/gallery/a.png)"), true);
 

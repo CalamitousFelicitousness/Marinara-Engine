@@ -131,6 +131,7 @@ const CHARACTER_MACRO_NAMES = new Set([
   "convo_display",
   "description",
   "example",
+  "group",
   "personality",
   "scenario",
 ]);
@@ -138,7 +139,6 @@ const CHARACTER_CONDITIONAL_OPERAND_NAMES = new Set([
   ...CHARACTER_MACRO_NAMES,
   "character",
   "characterphonetic",
-  "group",
   "speaker",
   "speakerphonetic",
 ]);

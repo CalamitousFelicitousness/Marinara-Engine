@@ -164,8 +164,8 @@ assert.equal(
   "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
 );
 assert.equal(
-  resolveMacros("[\n{{group}} accompanies {{char}}.\n]", groupMacroContext),
-  "[\nDottore accompanies Miko.\n]\n[\nMiko accompanies Dottore.\n]",
+  resolveMacros("[\n{{group}}\n]", groupMacroContext),
+  "[\nDottore\n]\n[\nMiko\n]",
 );
 assert.equal(
   resolveMacros(

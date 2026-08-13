@@ -319,6 +319,34 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
   expect(squareRadius).toBeLessThan(squareWidth / 3);
 });
 
+test("Message avatar scale stays interactive at the largest display size", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-tour="panel-settings"]').click();
+  await page.getByRole("tab", { name: "Appearance" }).click();
+
+  await page.locator("#settings-control-display-size select").selectOption("22");
+
+  const control = page.locator("#settings-control-roleplay-avatar-scale");
+  const slider = control.locator('input[type="range"]');
+  await control.scrollIntoViewIfNeeded();
+  await expect(slider).toBeVisible();
+
+  const box = await slider.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(80);
+
+  for (const fraction of [0.8, 0.25, 0.65]) {
+    await page.mouse.click(box!.x + box!.width * fraction, box!.y + box!.height / 2);
+    const expectedValue = 0.75 + (2.5 - 0.75) * fraction;
+    await expect
+      .poll(async () => Number(await slider.inputValue()))
+      .toBeGreaterThan(expectedValue - 0.12);
+    await expect
+      .poll(async () => Number(await slider.inputValue()))
+      .toBeLessThan(expectedValue + 0.12);
+  }
+});
+
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-tour="panel-settings"]').click();

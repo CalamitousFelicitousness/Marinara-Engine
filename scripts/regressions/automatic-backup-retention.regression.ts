@@ -146,6 +146,12 @@ try {
         size: 10,
         tolerateSourceChanges: true,
       },
+      {
+        entryName: "marinara-automatic-backup/storage/oversized.data",
+        filePath: sourcePath,
+        size: logicalSize,
+        tolerateSourceChanges: true,
+      },
     ],
     true,
   );
@@ -155,7 +161,11 @@ try {
   readSync(partialHandle, partialEnd, 0, partialEnd.length, partialSize - partialEnd.length);
   closeSync(partialHandle);
   assert.equal(partialEnd.readUInt32LE(0), 0x06054b50);
-  assert.equal(partialEnd.readUInt16LE(8), 1, "one unreadable asset should be omitted without losing valid entries");
+  assert.equal(
+    partialEnd.readUInt16LE(8),
+    1,
+    "unreadable assets and oversized non-media must be omitted without losing valid entries",
+  );
 } finally {
   await rm(zipFixtureRoot, { recursive: true, force: true });
 }

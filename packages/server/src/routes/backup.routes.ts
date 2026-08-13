@@ -2698,13 +2698,14 @@ async function collectDirectoryZipSources(sourceDir: string, entryRoot: string) 
         );
         continue;
       }
+      const entryName = `${entryRoot}/${relativePath}`;
       sources.push({
-        entryName: `${entryRoot}/${relativePath}`,
+        entryName,
         filePath: fullPath,
         size: fileStat.size,
         mtime: fileStat.mtime,
         tolerateSourceChanges: true,
-        allowLargeStoredEntry: isLargeStoredMediaEntry(`${entryRoot}/${relativePath}`),
+        allowLargeStoredEntry: isLargeStoredMediaEntry(entryName),
       });
     }
   }

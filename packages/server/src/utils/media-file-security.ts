@@ -28,10 +28,22 @@ export function isSafeSvgImageBuffer(buffer: Buffer): boolean {
   if (source.includes("\ufffd") || !/<svg(?:\s|>)/iu.test(source)) return false;
   // Preserve ordinary SVG 1.1 exports while rejecting internal subsets and
   // non-SVG declarations. Entity declarations remain forbidden below.
-  const withoutPassiveDoctype = source.replace(
-    /<!doctype\s+svg(?:\s+(?:public\s+["']-\/\/W3C\/\/DTD SVG [^"']+["']\s+["']https?:\/\/www\.w3\.org\/Graphics\/SVG\/[^"']+["']|system\s+["']https?:\/\/www\.w3\.org\/Graphics\/SVG\/[^"']+["']))?\s*>/giu,
-    " ",
-  );
+  const doctypeStart = source.search(/<!doctype/iu);
+  let withoutPassiveDoctype = source;
+  if (doctypeStart >= 0) {
+    const doctypeEnd = source.indexOf(">", doctypeStart);
+    if (doctypeEnd < 0) return false;
+    const declaration = source.slice(doctypeStart, doctypeEnd + 1);
+    const normalized = declaration.replace(/\s+/gu, " ").trim().toLowerCase();
+    const passiveSvgDoctype =
+      normalized === "<!doctype svg>" ||
+      (/^<!doctype svg (?:public|system) /u.test(normalized) &&
+        !normalized.includes("[") &&
+        normalized.includes("www.w3.org/graphics/svg/") &&
+        normalized.endsWith(">"));
+    if (!passiveSvgDoctype) return false;
+    withoutPassiveDoctype = `${source.slice(0, doctypeStart)} ${source.slice(doctypeEnd + 1)}`;
+  }
   return !(
     /<!doctype|<!entity/iu.test(withoutPassiveDoctype) ||
     /<(?:script|foreignObject|iframe|object|embed)(?:\s|>)/iu.test(source) ||

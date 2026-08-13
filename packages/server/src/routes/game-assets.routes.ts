@@ -485,7 +485,7 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Invalid path" });
     }
 
-    const filePath = join(GAME_ASSETS_DIR, wildcard);
+    const filePath = assertInsideDir(GAME_ASSETS_DIR, join(GAME_ASSETS_DIR, wildcard));
     if (!existsSync(filePath)) {
       return reply.status(404).send({ error: "Asset not found" });
     }
@@ -497,10 +497,11 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
     const width = parseThumbnailWidth((req.query as { w?: string }).w);
     const thumbPath = width ? await resolveThumbPath(filePath, width) : null;
 
-    const servedPath = thumbPath ?? filePath;
-    const stream = createReadStream(servedPath);
     if (thumbPath) {
-      return reply.header("Content-Type", "image/webp").header("Cache-Control", "public, max-age=604800").send(stream);
+      return reply
+        .header("Content-Type", "image/webp")
+        .header("Cache-Control", "public, max-age=604800")
+        .send(createReadStream(thumbPath));
     }
     if (IMAGE_EXTS.has(ext)) {
       const image = await validateImageAssetFile(filePath, wildcard, { allowSvg: true });
@@ -509,16 +510,19 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
       return reply
         .header("Content-Type", image.mimeType)
         .header("Cache-Control", "public, max-age=604800")
-        .send(stream);
+        .send(createReadStream(filePath));
     }
     if (MUSIC_FILE_EXTENSIONS.has(ext)) {
-      return reply.header("Content-Type", mime).header("Cache-Control", "public, max-age=604800").send(stream);
+      return reply
+        .header("Content-Type", mime)
+        .header("Cache-Control", "public, max-age=604800")
+        .send(createReadStream(filePath));
     }
     return reply
       .header("Content-Type", "application/octet-stream")
       .header("Content-Disposition", `attachment; filename="${basename(wildcard).replace(/["\\]/g, "_")}"`)
       .header("Cache-Control", "no-store")
-      .send(stream);
+      .send(createReadStream(filePath));
   });
 
   // ── GET /game-assets/local-music-file?path=:encoded ──

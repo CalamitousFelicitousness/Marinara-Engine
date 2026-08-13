@@ -87,6 +87,11 @@ import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { newId } from "../utils/id-generator.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
+import {
+  sendValidatedMediaFile,
+  validateImageAssetFile,
+  validateVideoAssetFile,
+} from "../utils/media-file-security.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 
 const GALLERY_DIR = join(DATA_DIR, "gallery");
@@ -890,7 +895,9 @@ export async function galleryRoutes(app: FastifyInstance) {
       if (!storedFile || !existsSync(storedFile.absolutePath)) {
         return reply.status(404).send({ error: "Not found" });
       }
-      return reply.sendFile(storedFile.filename, storedFile.directory);
+      const validatedImage = await validateImageAssetFile(storedFile.absolutePath, storedFile.filename);
+      if (!validatedImage) return reply.status(404).send({ error: "Not found" });
+      return sendValidatedMediaFile(reply, validatedImage, { method: req.method, rangeHeader: req.headers.range });
     }
 
     if (parts[0] === "sprites" && (parts[1] === "facial" || parts[1] === "fullbody") && parts[2]) {
@@ -898,7 +905,11 @@ export async function galleryRoutes(app: FastifyInstance) {
       if (!isSafeAssetSegment(target)) return reply.status(400).send({ error: "Invalid sprite target" });
       const match = await findContextualSprite(chat, parts[1], target);
       if (!match) return reply.status(404).send({ error: "Sprite not found" });
-      return reply.sendFile(match.filename, join(SPRITES_DIR, match.ownerId));
+      const spritePath = assertInsideDir(SPRITES_DIR, join(SPRITES_DIR, match.ownerId, match.filename));
+      const validatedImage = await validateImageAssetFile(spritePath, match.filename, { allowSvg: true });
+      if (!validatedImage) return reply.status(404).send({ error: "Sprite not found" });
+      if (validatedImage.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
+      return sendValidatedMediaFile(reply, validatedImage, { method: req.method, rangeHeader: req.headers.range });
     }
 
     return reply.status(404).send({ error: "Asset not found" });
@@ -1030,10 +1041,14 @@ export async function galleryRoutes(app: FastifyInstance) {
 
       const filePath = assertInsideDir(GAME_SCENE_VIDEOS_ROOT, join(GAME_SCENE_VIDEOS_ROOT, chatId, filename));
       if (!existsSync(filePath)) return reply.status(404).send({ error: "Scene video file not found" });
+      const video = await validateVideoAssetFile(filePath, filename);
+      if (!video) return reply.status(404).send({ error: "Scene video file not found" });
 
-      return reply
-        .header("Content-Type", "video/mp4")
-        .sendFile(filename, join(GAME_SCENE_VIDEOS_ROOT, chatId), { maxAge: "1y", immutable: true });
+      return sendValidatedMediaFile(reply, video, {
+        method: req.method,
+        rangeHeader: req.headers.range,
+        cacheControl: "public, max-age=31536000, immutable",
+      });
     },
   );
 
@@ -1763,7 +1778,10 @@ export async function galleryRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    return reply.sendFile(storedFile.filename, storedFile.directory);
+    const validatedImage = await validateImageAssetFile(storedFile.absolutePath, storedFile.filename);
+    if (!validatedImage) return reply.status(404).send({ error: "Not found" });
+
+    return sendValidatedMediaFile(reply, validatedImage, { method: req.method, rangeHeader: req.headers.range });
   });
 
   // Delete a gallery image

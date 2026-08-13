@@ -368,11 +368,11 @@ function replaceDialogueSpeaker(prefix: string, speaker: string): string {
 function normalizeInlineVnDialogueLines(source: string): string {
   return source
     .replace(
-      /([^\n])\s+(\[[^\]]+\]\s*\[(?:main|side|extra|action|thought|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:)/gi,
+      /(\S)[^\S\r\n]+(\[[^\r\n[\]]+\][^\S\r\n]*\[(?:main|side|extra|action|thought|whisper(?::[^\r\n[\]]+)?)\][^\S\r\n]*(?:\[[^\r\n[\]]+\])?[^\S\r\n]*:)/gi,
       "$1\n$2",
     )
     .replace(
-      /(\[[^\]]+\]\s*\[(?:main|side|extra|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:\s*(?:"[^"]*"|“[^”]*”|«[^»]*»))\s+(?=\S)/gi,
+      /(\[[^\r\n[\]]+\][^\S\r\n]*\[(?:main|side|extra|whisper(?::[^\r\n[\]]+)?)\][^\S\r\n]*(?:\[[^\r\n[\]]+\])?[^\S\r\n]*:[^\S\r\n]*(?:"[^"\r\n]*"|“[^”\r\n]*”|«[^»\r\n]*»))[^\S\r\n]+(?=\S)/gi,
       "$1\n",
     );
 }

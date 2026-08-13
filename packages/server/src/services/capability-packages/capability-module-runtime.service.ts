@@ -48,7 +48,10 @@ type CapabilityActivationContext = {
     registerService<T>(key: string, service: T): Cleanup;
     /** Contribute text to each turn's system prompt. Requires the `prompt-context` permission. */
     registerPromptContext(contributor: CapabilityPromptContextContributor): Cleanup;
-    registerPrivilegedRoutes(routes: import("fastify").FastifyPluginAsync, options: { prefix: string }): Promise<Cleanup>;
+    registerPrivilegedRoutes(
+      routes: import("fastify").FastifyPluginAsync,
+      options: { prefix: string },
+    ): Promise<Cleanup>;
   };
 };
 
@@ -62,9 +65,7 @@ async function createCapabilityRuntimeHost(app: FastifyInstance, packageId: stri
     embeddings,
     async getAgentConfig() {
       const config = await agents?.getByType(packageId);
-      return config
-        ? { connectionId: config.connectionId, settings: parseAgentSettingsRecord(config.settings) }
-        : null;
+      return config ? { connectionId: config.connectionId, settings: parseAgentSettingsRecord(config.settings) } : null;
     },
     isDebugAgentsEnabled,
     json: Object.freeze({ parseJsonish: parseGameJsonish }),
@@ -151,6 +152,7 @@ class CapabilityModuleRuntime {
       await capabilityPackageManager.markRuntimeReadiness(installed.id, "pending");
       const blockReason = capabilityPackageManager.runtimeBlockReason(installed);
       if (blockReason) throw new Error(blockReason);
+      await capabilityPackageManager.verifyRuntimeFiles(installed);
 
       const moduleUrl = new URL(pathToFileURL(serverEntrypoint).href);
       moduleUrl.searchParams.set("activation", `${installed.version}-${Date.now()}`);

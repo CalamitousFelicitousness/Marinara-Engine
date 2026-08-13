@@ -201,8 +201,8 @@ if not defined NEW_HEAD (
     goto :fatal
 )
 if defined RELEASE_COMMIT if /I not "!NEW_HEAD!"=="%RELEASE_COMMIT%" (
-    echo  [WARN] Downloaded release %RELEASE_TAG% resolved to !NEW_HEAD!, not the installer-expected %RELEASE_COMMIT%.
-    echo         Continuing with the fetched release tag because hotfix tags may move.
+    set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% resolved to !NEW_HEAD!, not the installer-expected %RELEASE_COMMIT%."
+    goto :fatal
 )
 goto :deps
 
@@ -224,8 +224,8 @@ if not defined TARGET_HEAD (
     goto :fatal
 )
 if defined RELEASE_COMMIT if /I not "!TARGET_HEAD!"=="%RELEASE_COMMIT%" (
-    echo  [WARN] Release %RELEASE_TAG% resolved to !TARGET_HEAD!, not the installer-expected %RELEASE_COMMIT%.
-    echo         Continuing with the fetched release tag because hotfix tags may move.
+    set "INSTALL_ERROR=Release %RELEASE_TAG% resolved to !TARGET_HEAD!, not the installer-expected %RELEASE_COMMIT%."
+    goto :fatal
 )
 git cat-file -e "!TARGET_HEAD!" >nul 2>&1
 if errorlevel 1 (

@@ -4,15 +4,23 @@
 //
 // Marinara stores user data as JSON table snapshots under DATA_DIR/storage.
 // This in-memory table store persists dirty tables back to those files.
-import { existsSync, mkdirSync, openSync, closeSync, readdirSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
-import { copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  closeSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  STORAGE_MIGRATION_NOTICE_SETTINGS_KEY,
-  type StorageMigrationNotice,
-} from "@marinara-engine/shared";
+import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
 import * as schema from "./schema/index.js";
@@ -86,6 +94,27 @@ type FileTransactionContext = {
   dirtyShards: Map<string, Set<string>>;
   flushed: boolean;
 };
+
+const PRIVATE_DIRECTORY_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
+function hardenPrivateStorageTree(rootDir: string) {
+  if (process.platform === "win32") return;
+  const pending = [rootDir];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    try {
+      chmodSync(current, PRIVATE_DIRECTORY_MODE);
+      for (const entry of readdirSync(current, { withFileTypes: true })) {
+        const path = join(current, entry.name);
+        if (entry.isDirectory()) pending.push(path);
+        else if (entry.isFile()) chmodSync(path, PRIVATE_FILE_MODE);
+      }
+    } catch (err) {
+      logger.warn(err, "[file-storage] Could not apply private permissions to %s", current);
+    }
+  }
+}
 
 export type QuarantinedStorageTable = {
   table: string;
@@ -230,9 +259,28 @@ const UNASSIGNED_SHARD_KEY = "orphaned-rows";
 const SHARD_MIGRATION_SENTINEL = ".migrating";
 
 const WINDOWS_RESERVED_BASENAMES = new Set([
-  "CON", "PRN", "AUX", "NUL",
-  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9",
 ]);
 
 /**
@@ -253,12 +301,7 @@ export function encodeShardKey(rawKey: string): string {
     encoded += /[a-z0-9-]/.test(char) ? char : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
   }
   const upper = encoded.toUpperCase();
-  if (
-    encoded.length > 120 ||
-    WINDOWS_RESERVED_BASENAMES.has(upper) ||
-    encoded.endsWith(".") ||
-    encoded.endsWith(" ")
-  ) {
+  if (encoded.length > 120 || WINDOWS_RESERVED_BASENAMES.has(upper) || encoded.endsWith(".") || encoded.endsWith(" ")) {
     return `%h${createHash("sha256").update(rawKey, "utf8").digest("hex").slice(0, 32)}`;
   }
   return encoded;
@@ -601,7 +644,7 @@ function looksNulFilled(path: string): boolean {
 }
 
 async function atomicWriteFile(path: string, content: string, options: { refreshBackup?: boolean } = {}) {
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
   const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
   const refreshBackup = options.refreshBackup ?? true;
   try {
@@ -620,6 +663,7 @@ async function atomicWriteFile(path: string, content: string, options: { refresh
       const bakTmpPath = `${bakPath}.tmp-${process.pid}-${Date.now()}`;
       try {
         await copyFile(path, bakTmpPath);
+        if (process.platform !== "win32") await chmod(bakTmpPath, PRIVATE_FILE_MODE);
         await flushFile(bakTmpPath);
         await rename(bakTmpPath, bakPath);
         await flushDirectory(dirname(bakPath));
@@ -636,7 +680,7 @@ async function atomicWriteFile(path: string, content: string, options: { refresh
         );
       }
     }
-    await writeFile(tmpPath, content);
+    await writeFile(tmpPath, content, { mode: PRIVATE_FILE_MODE });
     await flushFile(tmpPath);
     await rename(tmpPath, path);
     await flushDirectory(dirname(path));
@@ -1172,7 +1216,8 @@ class FileTableStore {
   }
 
   async initialize() {
-    mkdirSync(this.rootDir, { recursive: true });
+    mkdirSync(this.rootDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    hardenPrivateStorageTree(this.rootDir);
 
     // Refuse newer-format data BEFORE any migration side effect: the
     // migration renames monoliths and writes shard files, which must never
@@ -1219,7 +1264,8 @@ class FileTableStore {
     const migrationIndex = new Map<string, string>();
     let expectedTableCounts: Record<string, number> = {};
     try {
-      expectedTableCounts = parseJsonFile<TableSnapshotManifest | null>(manifestPath(this.rootDir), null).value?.tables ?? {};
+      expectedTableCounts =
+        parseJsonFile<TableSnapshotManifest | null>(manifestPath(this.rootDir), null).value?.tables ?? {};
     } catch {
       // The full loader reports manifest corruption later. Recovery here is
       // intentionally limited to a trustworthy positive row count.
@@ -1392,8 +1438,8 @@ class FileTableStore {
     migrationIndex: Map<string, string>,
   ) {
     const meta = getMeta(table);
-    mkdirSync(dir, { recursive: true });
-    await writeFile(sentinelPath, new Date().toISOString(), "utf8");
+    mkdirSync(dir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    await writeFile(sentinelPath, new Date().toISOString(), { encoding: "utf8", mode: PRIVATE_FILE_MODE });
 
     // The monolith loads through the exact pipeline the flat loader uses, so
     // .bak recovery, malformed-row quarantine, and normalizeRow all apply.
@@ -2028,7 +2074,10 @@ class FileTableStore {
         if (prior.fromFormat === null || typeof prior.fromFormat === "number") fromFormat = prior.fromFormat;
         if (Array.isArray(prior.migratedTables)) {
           tables = [
-            ...new Set([...prior.migratedTables.filter((entry): entry is string => typeof entry === "string"), ...tables]),
+            ...new Set([
+              ...prior.migratedTables.filter((entry): entry is string => typeof entry === "string"),
+              ...tables,
+            ]),
           ];
         }
       } catch {
@@ -2418,7 +2467,7 @@ class FileTableStore {
       else rowsByShard.set(key, [row]);
     }
     if (!this.shardDirsCreated.has(table)) {
-      mkdirSync(shardDirPath(this.rootDir, table), { recursive: true });
+      mkdirSync(shardDirPath(this.rootDir, table), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
       this.shardDirsCreated.add(table);
     }
     // Stale physical files (foreign-row holders found at load): force a
@@ -2474,7 +2523,7 @@ class FileTableStore {
   }
 
   private async saveFileSnapshots(dirtyTables: Set<string>, dirtyShards: Map<string, Set<string>>) {
-    mkdirSync(join(this.rootDir, "tables"), { recursive: true });
+    mkdirSync(join(this.rootDir, "tables"), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     const tables: Record<string, number> = {};
     const shards: Record<string, number> = {};
 

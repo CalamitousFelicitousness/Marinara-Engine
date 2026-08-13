@@ -47,6 +47,18 @@ function officialArtifactRoot(branch: OfficialAgentBranch): string {
 function officialArtworkRoot(branch: OfficialAgentBranch): string {
   return `${OFFICIAL_AGENT_RAW_ROOT}/${branch}/artwork/agent-covers`;
 }
+function isOfficialCatalogUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.hostname === "raw.githubusercontent.com" &&
+      /^\/Pasta-Devs\/Marinara-Agents\/(?:main|staging)\/catalog(?:\/|$)/u.test(parsed.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
 const ENGINE_RELEASE_VERSION_PATTERN = /^v?(\d+)\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 export function resolveCapabilityCatalogUrl(
   engineVersion: string = APP_VERSION,
@@ -57,13 +69,12 @@ export function resolveCapabilityCatalogUrl(
   if (override) return override;
   const match = ENGINE_RELEASE_VERSION_PATTERN.exec(engineVersion.trim());
   const catalogRoot = officialCatalogRoot(branch);
-  return match
-    ? `${catalogRoot}/v${Number(match[1])}/catalog.json`
-    : `${catalogRoot}/catalog.json`;
+  return match ? `${catalogRoot}/v${Number(match[1])}/catalog.json` : `${catalogRoot}/catalog.json`;
 }
 const CATALOG_URL = resolveCapabilityCatalogUrl();
 const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 250 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES = 8_192;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const BROWSER_TAB_ASSET_CONTENT_TYPES = new Map([
   [".gif", "image/gif"],
@@ -101,6 +112,7 @@ function isSymlink(entry: AdmZip.IZipEntry): boolean {
 
 export function validatePackageArchiveEntries(zip: AdmZip, maximumExpandedBytes = MAX_EXPANDED_BYTES) {
   const entries = zip.getEntries().filter((item) => !item.isDirectory);
+  if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Package contains too many files");
   const names = new Set<string>();
   let expandedBytes = 0;
   for (const item of entries) {
@@ -334,10 +346,7 @@ function getOfficialAgentBranchFromCatalogUrl(catalogUrl: string): OfficialAgent
   return null;
 }
 
-export function resolveCapabilityPackageArtifactUrl(
-  entry: CapabilityCatalogPackage,
-  catalogUrl = CATALOG_URL,
-): string {
+export function resolveCapabilityPackageArtifactUrl(entry: CapabilityCatalogPackage, catalogUrl = CATALOG_URL): string {
   const branch = getOfficialAgentBranchFromCatalogUrl(catalogUrl);
   if (!branch) return entry.artifact.url;
   return `${officialArtifactRoot(branch)}/${entry.manifest.id}-${entry.manifest.version}.zip`;
@@ -355,8 +364,29 @@ export function resolveCapabilityPackageIconUrl(
 async function readInstalledAgentDefinitions(installed: InstalledCapabilityPackage) {
   const entrypoint = installed.manifest.entrypoints.agents;
   if (!entrypoint) return [];
-  const file = inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalizeArchivePath(entrypoint)));
+  const file = await verifyInstalledPackageFile(installed, entrypoint);
   return packagedAgentDefinitionsSchema.parse(JSON.parse(await readFile(file, "utf8")));
+}
+
+async function verifyInstalledPackageFile(
+  installed: InstalledCapabilityPackage,
+  relativePath: string,
+): Promise<string> {
+  const normalized = normalizeArchivePath(relativePath);
+  const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalized);
+  if (!declaration) throw new Error(`Package ${installed.id} requested undeclared file ${normalized}`);
+  const file = inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalized));
+  const data = await readFile(file);
+  if (data.byteLength !== declaration.bytes || createHash("sha256").update(data).digest("hex") !== declaration.sha256) {
+    throw new Error(`Installed package ${installed.id} failed integrity verification for ${normalized}`);
+  }
+  return file;
+}
+
+async function verifyInstalledPackageFiles(installed: InstalledCapabilityPackage): Promise<void> {
+  for (const declaration of installed.manifest.files) {
+    await verifyInstalledPackageFile(installed, declaration.path);
+  }
 }
 
 async function readInstalledAgentIds(installed: InstalledCapabilityPackage): Promise<string[]> {
@@ -398,6 +428,7 @@ export function findPendingCapabilityPackageUpdates(
       name: entry.manifest.name,
       installedVersion: installed.version,
       version: entry.manifest.version,
+      artifactSha256: entry.artifact.sha256,
       restartRequired: entry.manifest.restartRequired,
     }));
 }
@@ -534,6 +565,7 @@ export const capabilityPackageManager = {
     }
     return {
       ...catalog,
+      provenance: { kind: isOfficialCatalogUrl(CATALOG_URL) ? "official" : "custom", url: CATALOG_URL },
       packages: catalog.packages
         .filter((entry) => !NON_DOWNLOADABLE_CORE_PACKAGE_IDS.has(entry.manifest.id))
         .map((entry) => ({
@@ -611,6 +643,10 @@ export const capabilityPackageManager = {
       }));
   },
 
+  async verifyRuntimeFiles(installed: InstalledCapabilityPackage) {
+    await verifyInstalledPackageFiles(installed);
+  },
+
   async clientEntrypoint(packageId: string) {
     const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
     if (!installed || !isInstalledCapabilityReady(installed)) return null;
@@ -618,7 +654,7 @@ export const capabilityPackageManager = {
     if (!entrypoint) return null;
     return {
       installed,
-      file: inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalizeArchivePath(entrypoint))),
+      file: await verifyInstalledPackageFile(installed, entrypoint),
     };
   },
 
@@ -639,7 +675,7 @@ export const capabilityPackageManager = {
     return {
       installed,
       contentType,
-      file: inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalizedPath)),
+      file: await verifyInstalledPackageFile(installed, normalizedPath),
     };
   },
 
@@ -788,13 +824,13 @@ export const capabilityPackageManager = {
     return true;
   },
 
-  async install(packageId: string, expectedVersion?: string) {
+  async install(packageId: string, expectedVersion: string, expectedArtifactSha256: string) {
     const catalog = await this.catalog();
     const entry = catalog.packages.find((candidate) => candidate.manifest.id === packageId);
-    if (!entry) throw new Error("Package is not present in the official catalog");
-    if (expectedVersion && entry.manifest.version !== expectedVersion) {
+    if (!entry) throw new Error("Package is not present in the configured catalog");
+    if (entry.manifest.version !== expectedVersion || entry.artifact.sha256 !== expectedArtifactSha256) {
       throw new CapabilityPackageVersionMismatchError(
-        `This Agent update is no longer available; ${entry.manifest.id} now offers version ${entry.manifest.version}`,
+        `This Agent package changed after it was reviewed. Review the current ${entry.manifest.id} package and try again.`,
       );
     }
     return installCatalogPackage(entry);

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   importCustomToolEntries,
   normalizeCustomToolImportEntry,
@@ -58,8 +61,25 @@ const staticTool = normalizeCustomToolImportEntry({
   enabled: true,
 });
 assert.ok(staticTool);
-assert.equal(staticTool.enabled, true, "non-webhook imports must retain their existing enabled behavior");
+assert.equal(staticTool.enabled, true, "static imports must retain their existing enabled behavior");
 assert.equal(staticTool.includeHiddenContext, true);
+
+const preparedScript = prepareCustomToolImportEntry({
+  name: "trusted_script",
+  description: "Run a locally reviewed script",
+  executionType: "script",
+  scriptBody: "return args;",
+  includeHiddenContext: true,
+  enabled: true,
+});
+assert.ok(preparedScript);
+assert.equal(preparedScript.config.enabled, false, "imported scripts must wait for local review");
+assert.equal(
+  preparedScript.config.includeHiddenContext,
+  false,
+  "imported scripts must not inherit private context access",
+);
+assert.equal(preparedScript.review?.executionType, "script");
 
 const created: Record<string, unknown>[] = [];
 const importResult = await importCustomToolEntries(
@@ -107,5 +127,60 @@ const localWebhookExport = serializeCustomToolForTransfer({
 });
 assert.equal(localWebhookExport.enabled, true, "local tool state must remain exportable");
 assert.equal(localWebhookExport.includeHiddenContext, true, "local hidden-context choices must remain exportable");
+
+const profileImportSource = await readFile(
+  new URL("../../packages/server/src/routes/backup.routes.ts", import.meta.url),
+  "utf8",
+);
+assert.match(profileImportSource, /quarantineProfileCustomToolRow/u);
+assert.match(profileImportSource, /tableName === "custom_tools"/u);
+const customToolStorageSource = await readFile(
+  new URL("../../packages/server/src/services/storage/custom-tools.storage.ts", import.meta.url),
+  "utf8",
+);
+assert.match(customToolStorageSource, /encryptCustomToolWebhookUrl/u);
+assert.match(customToolStorageSource, /ENCRYPTED_WEBHOOK_PREFIX/u);
+
+const storageRoot = await mkdtemp(join(tmpdir(), "marinara-custom-tool-security-"));
+const previousDataDir = process.env.DATA_DIR;
+const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
+try {
+  process.env.DATA_DIR = storageRoot;
+  process.env.FILE_STORAGE_DIR = join(storageRoot, "storage");
+  const [{ createFileNativeDB }, { customTools }, { createCustomToolsStorage }] = await Promise.all([
+    import("../../packages/server/src/db/file-backed-store.js"),
+    import("../../packages/server/src/db/schema/index.js"),
+    import("../../packages/server/src/services/storage/custom-tools.storage.js"),
+  ]);
+  const db = await createFileNativeDB();
+  try {
+    const storage = createCustomToolsStorage(db);
+    const createdWebhook = await storage.create({
+      name: "encrypted_webhook",
+      description: "Encryption regression",
+      parametersSchema: {},
+      executionType: "webhook",
+      webhookUrl: "https://example.com/hook?secret=value",
+      includeHiddenContext: false,
+      enabled: false,
+    });
+    const [raw] = await db.select().from(customTools);
+    assert.match(raw?.webhookUrl ?? "", /^enc:v1:/u, "webhook credentials must be encrypted in storage");
+    assert.doesNotMatch(raw?.webhookUrl ?? "", /example\.com|secret=value/u);
+    assert.equal(
+      (await storage.getById(createdWebhook.id))?.webhookUrl,
+      "https://example.com/hook?secret=value",
+      "the owner can still use and edit the configured webhook",
+    );
+  } finally {
+    await db._fileStore.close();
+  }
+} finally {
+  if (previousDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = previousDataDir;
+  if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
+  else process.env.FILE_STORAGE_DIR = previousFileStorageDir;
+  await rm(storageRoot, { recursive: true, force: true });
+}
 
 console.info("Custom tool import security regressions passed.");

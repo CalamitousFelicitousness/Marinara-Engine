@@ -5,7 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { join, relative } from "path";
 import { createReadStream, createWriteStream, existsSync, readdirSync, statSync } from "fs";
 import type { WriteStream } from "fs";
-import { cp, mkdir, copyFile, readFile, readdir, writeFile, stat, mkdtemp, rm, open, rename } from "fs/promises";
+import { chmod, cp, mkdir, copyFile, readFile, readdir, writeFile, stat, mkdtemp, rm, open, rename } from "fs/promises";
 import type { FileHandle } from "fs/promises";
 import { tmpdir } from "os";
 import { pipeline } from "stream/promises";
@@ -36,6 +36,7 @@ import { flushDB } from "../db/connection.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
+import { encryptCustomToolWebhookUrl } from "../utils/custom-tool-webhook.js";
 import {
   ProfileImportAssetValidationError,
   cleanupStagedProfileAssets,
@@ -88,6 +89,23 @@ const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = ZIP32_MAX_VALUE;
 const PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 64 * 1024 * 1024;
 const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = ZIP32_MAX_VALUE;
+const PRIVATE_DIRECTORY_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
+async function hardenPrivateBackupTree(rootPath: string): Promise<void> {
+  if (process.platform === "win32" || !existsSync(rootPath)) return;
+  try {
+    await chmod(rootPath, PRIVATE_DIRECTORY_MODE);
+    const entries = await readdir(rootPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const path = join(rootPath, entry.name);
+      if (entry.isDirectory()) await hardenPrivateBackupTree(path);
+      else if (entry.isFile()) await chmod(path, PRIVATE_FILE_MODE);
+    }
+  } catch (err) {
+    logger.warn(err, "[backup] Could not apply private permissions to %s", rootPath);
+  }
+}
 
 function withOptionalNoodleAutoPostPaused<T>(operation: () => Promise<T>): Promise<T> {
   const service = getCapabilityService<{ pause<TValue>(run: () => Promise<TValue>): Promise<TValue> }>("noodle:backup");
@@ -576,6 +594,16 @@ export function quarantineProfilePersonalExtensionRow(row: Record<string, unknow
   };
 }
 
+export function quarantineProfileCustomToolRow(row: Record<string, unknown>) {
+  const secured = {
+    ...row,
+    webhookUrl:
+      typeof row.webhookUrl === "string" ? encryptCustomToolWebhookUrl(row.webhookUrl) : (row.webhookUrl ?? null),
+  };
+  if (row.executionType === "static") return secured;
+  return { ...secured, enabled: "false", includeHiddenContext: "false" };
+}
+
 // Secret-bearing columns to omit on the conflict-UPDATE path so an existing row
 // keeps its stored secret (the file store leaves an unmentioned column untouched); only
 // the fresh-insert path carries the export's redacted values. For
@@ -949,6 +977,7 @@ async function importProfileStorageSnapshot(
             if (tableName === "noodle_posts") cleanRow = migrateLegacyNoodlePostAccessRow(cleanRow);
             if (tableName === "api_connections") cleanRow.apiKeyEncrypted = "";
             if (tableName === "installed_extensions") cleanRow = quarantineProfilePersonalExtensionRow(cleanRow);
+            if (tableName === "custom_tools") cleanRow = quarantineProfileCustomToolRow(cleanRow);
             const insert = tx.insert(table as any).values(cleanRow as any) as any;
             const conflictTarget = schemaPrimaryKeyColumn(table);
             if (conflictTarget) {
@@ -1146,7 +1175,7 @@ async function collectProfileAssetZipSources(files: ProfileFileAsset[], basePath
 }
 
 async function writeProfileTableJsonLines(outputPath: string, tableName: string, rows: Array<Record<string, unknown>>) {
-  const stream = createWriteStream(outputPath);
+  const stream = createWriteStream(outputPath, { mode: PRIVATE_FILE_MODE });
   let size = 0;
   let count = 0;
   try {
@@ -1605,7 +1634,7 @@ async function finishZipStream(stream: WriteStream) {
 }
 
 async function writeStoredZipArchive(outputPath: string, sources: StoredZipEntrySource[]) {
-  const stream = createWriteStream(outputPath);
+  const stream = createWriteStream(outputPath, { mode: PRIVATE_FILE_MODE });
   const records: StoredZipEntryRecord[] = [];
   let position = 0;
 
@@ -2165,7 +2194,9 @@ function buildBackupRestoreNotes() {
 async function copyPersistedEncryptionKey(dataDir: string, backupDir: string) {
   const keyPath = resolvePersistedEncryptionKeyPath(dataDir);
   if (!existsSync(keyPath)) return;
-  await copyFile(keyPath, join(backupDir, ENCRYPTION_KEY_FILENAME));
+  const destination = join(backupDir, ENCRYPTION_KEY_FILENAME);
+  await copyFile(keyPath, destination);
+  if (process.platform !== "win32") await chmod(destination, PRIVATE_FILE_MODE);
 }
 
 async function collectDirectoryZipSources(sourceDir: string, entryRoot: string) {
@@ -2215,7 +2246,9 @@ async function writeFullBackupArchive(
   workingDir: string,
 ) {
   const dataDir = getDataDir();
-  const sources = await withOptionalNoodleAutoPostPaused(() => buildProfileArchiveSources(app, backupName, workingDir, false));
+  const sources = await withOptionalNoodleAutoPostPaused(() =>
+    buildProfileArchiveSources(app, backupName, workingDir, false),
+  );
   sources.push({
     entryName: `${backupName}/RESTORE.txt`,
     data: Buffer.from(buildBackupRestoreNotes(), "utf8"),
@@ -2249,7 +2282,8 @@ async function writeAutomaticBackup(app: FastifyInstance, retentionCount: number
   const legacyPreviousPath = join(backupsRoot, `${AUTOMATIC_BACKUP_FILENAME}.previous`);
   let archivedPreviousPath: string | null = null;
   try {
-    await mkdir(backupsRoot, { recursive: true });
+    await mkdir(backupsRoot, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    await hardenPrivateBackupTree(backupsRoot);
     await rm(pendingPath, { force: true });
     if (!existsSync(finalPath) && existsSync(legacyPreviousPath)) {
       await rename(legacyPreviousPath, finalPath);
@@ -2298,6 +2332,7 @@ function sendBackupRouteError(reply: FastifyReply, err: unknown, operation: stri
 }
 
 export async function backupRoutes(app: FastifyInstance) {
+  await hardenPrivateBackupTree(getBackupsRoot());
   const automaticBackupStorage = createAppSettingsStorage(app.db);
   let automaticBackupRunning = false;
 
@@ -2409,9 +2444,12 @@ export async function backupRoutes(app: FastifyInstance) {
       const backupsRoot = join(dataDir, "backups");
       const backupDir = join(backupsRoot, backupName);
 
-      await mkdir(backupDir, { recursive: true });
+      await mkdir(backupDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
       await writeNativeProfileZip(app, join(backupDir, "marinara-profile.zip"));
-      await writeFile(join(backupDir, "RESTORE.txt"), buildBackupRestoreNotes(), "utf8");
+      await writeFile(join(backupDir, "RESTORE.txt"), buildBackupRestoreNotes(), {
+        encoding: "utf8",
+        mode: PRIVATE_FILE_MODE,
+      });
 
       await copyPersistedEncryptionKey(dataDir, backupDir);
 
@@ -2422,6 +2460,8 @@ export async function backupRoutes(app: FastifyInstance) {
           await cp(src, join(backupDir, dirName), { recursive: true });
         }
       }
+
+      await hardenPrivateBackupTree(backupDir);
 
       return reply.send({
         success: true,

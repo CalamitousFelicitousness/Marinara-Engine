@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,6 +55,24 @@ function writeRegistry(packages: ReturnType<typeof installedPackage>[]) {
     writeFileSync(join(versionRoot, "server.mjs"), "x");
     writeFileSync(join(versionRoot, "client.js"), "x");
   }
+}
+
+function refreshRegistryFileIntegrity() {
+  const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+    schemaVersion: number;
+    packages: Array<ReturnType<typeof installedPackage>>;
+  };
+  for (const item of registry.packages) {
+    const versionRoot = join(packagesRoot, "versions", item.id, item.version);
+    for (const declaration of item.manifest.files) {
+      const path = join(versionRoot, declaration.path);
+      if (!existsSync(path)) continue;
+      const data = readFileSync(path);
+      declaration.bytes = data.byteLength;
+      declaration.sha256 = createHash("sha256").update(data).digest("hex");
+    }
+  }
+  writeFileSync(registryPath, JSON.stringify(registry, null, 2));
 }
 
 function seedWhisperModels() {
@@ -186,9 +205,7 @@ try {
     resolveCapabilityCatalogUrl,
     resolveCapabilityPackageArtifactUrl,
     resolveCapabilityPackageIconUrl,
-  } = await import(
-    "../../packages/server/src/services/capability-packages/package-manager.service.js"
-  );
+  } = await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
   assert.equal(
     resolveCapabilityCatalogUrl("2.3.1", "", "main"),
     "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/catalog/v2/catalog.json",
@@ -389,10 +406,7 @@ try {
   assert.ok(Date.now() - timeoutStartedAt < 1_000, "Long-term memory capability calls must have a total-duration cap");
 
   const capabilityLanguageModelSource = readFileSync(
-    join(
-      repositoryRoot,
-      "packages/server/src/services/capability-packages/capability-language-model.service.ts",
-    ),
+    join(repositoryRoot, "packages/server/src/services/capability-packages/capability-language-model.service.ts"),
     "utf8",
   );
   assert.match(
@@ -705,10 +719,7 @@ try {
   );
   await capabilityPackageManager.completeHierarchicalMapsSelectionCorrection();
   assert.equal(await capabilityPackageManager.isHierarchicalMapsSelectionCorrectionComplete(), true);
-  writeFileSync(
-    mapsCorrectionPath,
-    JSON.stringify({ schemaVersion: 2, completedAt: new Date().toISOString() }),
-  );
+  writeFileSync(mapsCorrectionPath, JSON.stringify({ schemaVersion: 2, completedAt: new Date().toISOString() }));
   assert.equal(
     await capabilityPackageManager.isHierarchicalMapsSelectionCorrectionComplete(),
     false,
@@ -870,6 +881,7 @@ try {
         name: "conversation-calls",
         installedVersion: "1.0.0",
         version: "1.0.2",
+        artifactSha256: "1".repeat(64),
         restartRequired: true,
       },
     ],
@@ -943,12 +955,20 @@ try {
     ]),
   );
   writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
+  refreshRegistryFileIntegrity();
   const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
   assert.equal(browserTabAsset?.contentType, "image/png");
   assert.equal(
     browserTabAsset?.file,
     join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
   );
+  writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "tampered");
+  await assert.rejects(
+    capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+    /integrity verification/u,
+    "Capability assets changed outside the reviewed package must not be served",
+  );
+  writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
   assert.equal(
     await capabilityPackageManager.browserTabAsset(agentSuite.id, "server.mjs"),
     null,
@@ -1461,6 +1481,7 @@ try {
   });
   assert.equal((await persistence.spatialSnapshots.getBootstrap(rollbackChat.id))?.id, "committed-definition-snapshot");
 
+  refreshRegistryFileIntegrity();
   await capabilityModuleRuntime.start({ db } as Parameters<typeof capabilityModuleRuntime.start>[0]);
 
   const readinessById = new Map((await capabilityPackageManager.installed()).map((item) => [item.id, item]));
@@ -1512,6 +1533,7 @@ try {
       return api.registerService("hot-game:runtime", { active: true });
     }`,
   );
+  refreshRegistryFileIntegrity();
   const activatedHotGame = await capabilityModuleRuntime.activatePackage(
     {} as Parameters<typeof capabilityModuleRuntime.activatePackage>[0],
     hotGame.id,

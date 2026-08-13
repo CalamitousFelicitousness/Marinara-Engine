@@ -65,7 +65,8 @@ function summarizeRow(row: unknown): unknown {
     if (Object.prototype.hasOwnProperty.call(out, key) || key === "data") continue;
     if (typeof value === "string") out[key] = truncate(value);
     else if (Array.isArray(value)) out[key] = `[${value.length} item${value.length === 1 ? "" : "s"}]`;
-    else if (isRecord(value)) out[key] = `{${Object.keys(value).length} key${Object.keys(value).length === 1 ? "" : "s"}}`;
+    else if (isRecord(value))
+      out[key] = `{${Object.keys(value).length} key${Object.keys(value).length === 1 ? "" : "s"}}`;
     else out[key] = value;
   }
   return out;
@@ -120,14 +121,20 @@ async function main() {
   const argv = process.argv.slice(2);
   const jsonl = argv.includes("--jsonl");
   const rawOutput = argv.includes("--raw");
+  const targetServerUrl = serverUrl();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     [CSRF_HEADER]: CSRF_HEADER_VALUE,
   };
   const adminSecret = process.env.MARI_ADMIN_SECRET || process.env.ADMIN_SECRET;
   if (adminSecret) headers["X-Admin-Secret"] = adminSecret;
+  const androidSecret = process.env.MARINARA_ANDROID_SECRET;
+  const targetHostname = new URL(targetServerUrl).hostname.toLowerCase();
+  if (androidSecret && ["127.0.0.1", "localhost", "[::1]", "::1"].includes(targetHostname)) {
+    headers["X-Marinara-Android-Secret"] = androidSecret;
+  }
 
-  const response = await fetch(`${serverUrl()}/api/professor-mari/workspace/db/command`, {
+  const response = await fetch(`${targetServerUrl}/api/professor-mari/workspace/db/command`, {
     method: "POST",
     headers,
     body: JSON.stringify({

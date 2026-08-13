@@ -8,8 +8,20 @@ def releaseKeystorePassword = System.getenv("ANDROID_SIGNING_STORE_PASSWORD")
 def releaseKeystoreType = System.getenv("ANDROID_SIGNING_STORE_TYPE") ?: "pkcs12"
 def releaseKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
 def releaseKeyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
-def hasReleaseSigning = releaseKeystorePath && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
-
+def hasReleaseSigning = releaseKeystorePath && file(releaseKeystorePath).isFile() && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
+def releaseCommit = (project.findProperty("marinaraReleaseCommit") ?: System.getenv("MARINARA_RELEASE_COMMIT") ?: "").toString().trim().toLowerCase()
+if (!releaseCommit) {
+    try {
+        releaseCommit = providers.exec {
+            commandLine "git", "rev-parse", "HEAD"
+        }.standardOutput.asText.get().trim().toLowerCase()
+    } catch (Exception ignored) {
+        releaseCommit = ""
+    }
+}
+if (!(releaseCommit ==~ /^[a-f0-9]{40}$/)) {
+    throw new GradleException("Android builds require a full source commit. Build from Git or pass -PmarinaraReleaseCommit=<40-hex-commit>.")
+}
 android {
     namespace 'com.marinara.engine'
     compileSdk 34
@@ -26,6 +38,7 @@ android {
         versionName "2.4.2"
         buildConfigField "String", "MARINARA_SERVER_URL", "\"http://127.0.0.1:${marinaraPort}\""
         buildConfigField "String", "MARINARA_RELEASE_TAG", "\"v2.4.2\""
+        buildConfigField "String", "MARINARA_RELEASE_COMMIT", "\"${releaseCommit}\""
     }
 
     signingConfigs {
@@ -43,7 +56,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
         debug {
@@ -54,5 +69,15 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+if (!hasReleaseSigning) {
+    tasks.configureEach { task ->
+        if (task.name in ["assembleRelease", "bundleRelease", "packageRelease"]) {
+            task.doFirst {
+                throw new GradleException("Release APK builds require all ANDROID_SIGNING_* credentials; debug signing is not allowed for release artifacts.")
+            }
+        }
     }
 }

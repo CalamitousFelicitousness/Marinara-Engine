@@ -259,6 +259,7 @@ Android policy:
 
 - `versionName` must match the app version.
 - `versionCode` must increase monotonically for every shipped APK.
+- Release APKs require the configured `ANDROID_SIGNING_*` keystore credentials; use a debug build for local testing rather than publishing a debug-signed release artifact.
 
 Release-related behavior already in the repo:
 

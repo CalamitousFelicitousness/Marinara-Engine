@@ -29,6 +29,7 @@ try {
       action: "preset.create",
       data: {
         name: "Granular Preset",
+        systemKey: "marinara-universal-preset",
         groups: [{ name: "Formatting" }],
         sections: [
           { name: "Intro", content: "You are a helpful assistant.", role: "system" },
@@ -43,6 +44,10 @@ try {
     const presetList = (await mari.executeAction({ action: "preset.list" })).output as Array<{ id: string; name: string }>;
     const presetId = presetList.find((preset) => preset.name === "Granular Preset")?.id;
     assert.ok(presetId, "the created preset is listed");
+    const createdPreset = (await mari.executeAction({ action: "preset.get", presetId })).output as {
+      systemKey?: string;
+    };
+    assert.equal(createdPreset.systemKey, "", "preset.create cannot claim an Engine-owned system key");
 
     // (1) SEE: preset.sections lists every section with an id + content preview (the #4812 fix).
     const sections = (await mari.executeAction({ action: "preset.sections", presetId })).output as Array<{

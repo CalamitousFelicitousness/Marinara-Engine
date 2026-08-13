@@ -1288,6 +1288,8 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
       firstBoolean(input, ["isDefault", "is_default"]) ?? (existing ? existing.isDefault === "true" : false),
     ),
     author: firstString(input, ["author"]) ?? (typeof existing?.author === "string" ? existing.author : ""),
+    // Engine-owned preset identity is never writable through Professor Mari.
+    systemKey: typeof existing?.systemKey === "string" ? existing.systemKey : "",
   };
   delete row.conversation_prompt;
   delete row.game_prompt;
@@ -1299,6 +1301,7 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
   delete row.wrap_format;
   delete row.default_choices;
   delete row.is_default;
+  delete row.system_key;
   return row;
 }
 

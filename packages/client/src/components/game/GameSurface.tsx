@@ -152,6 +152,7 @@ import {
   normalizeStoryboardAgentSettings,
   normalizeRpgStatPools,
   normalizeTextForMatch,
+  resolveGameImageDynamicPromptEnabled,
   resolveGameSetupArtStylePrompt,
   scoreMusic,
   scoreAmbient,
@@ -10327,6 +10328,7 @@ function GameSurfaceComponent({
                     updateChatMetadata.mutateAsync({
                       id: chatId,
                       gameSetupConfig: { ...storedSetupConfig, ...config },
+                      gameImageDynamicPromptEnabled: resolveGameImageDynamicPromptEnabled(config),
                     }),
                   ]);
                   if (mapPlan) {

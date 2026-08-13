@@ -1,24 +1,19 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { createRequire } from "node:module";
-
-const requireFromServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
-const { Agent, getGlobalDispatcher, setGlobalDispatcher } = requireFromServer("undici");
+import { Socket } from "node:net";
 
 const previousImageTimeout = process.env.IMAGE_GEN_TIMEOUT_MS;
 const previousComfyTimeout = process.env.COMFYUI_GEN_TIMEOUT;
 process.env.IMAGE_GEN_TIMEOUT_MS = "80";
 process.env.COMFYUI_GEN_TIMEOUT = "1";
 
-const originalDispatcher = getGlobalDispatcher();
-const shortGlobalDispatcher = new Agent({ headersTimeout: 40, bodyTimeout: 40 });
-setGlobalDispatcher(shortGlobalDispatcher);
-
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const requestPorts = new Map<string, number>();
 const server = createServer((request, response) => {
+  if (request.url && request.socket.remotePort) requestPorts.set(request.url, request.socket.remotePort);
   if (request.url === "/API/GetNewSession") {
     response.setHeader("Content-Type", "application/json");
     response.end(JSON.stringify({ session_id: "regression-session" }));
@@ -45,6 +40,17 @@ await new Promise<void>((resolve, reject) => {
   server.listen(0, "127.0.0.1", resolve);
 });
 
+const keepAliveCalls: Array<{ delay: number; localPort?: number }> = [];
+const originalSetKeepAlive = Socket.prototype.setKeepAlive;
+Socket.prototype.setKeepAlive = function (enable = false, initialDelay = 0) {
+  if (enable) {
+    const call = { delay: initialDelay, localPort: this.localPort };
+    keepAliveCalls.push(call);
+    if (!call.localPort) this.once("connect", () => (call.localPort = this.localPort));
+  }
+  return originalSetKeepAlive.call(this, enable, initialDelay);
+};
+
 try {
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -61,9 +67,23 @@ try {
   });
   assert.equal(result.mimeType, "image/png");
   assert.equal(result.base64, png.toString("base64"));
+  const generationPort = requestPorts.get("/API/GenerateText2Image");
+  assert.ok(generationPort, "the regression server must observe the SwarmUI generation request");
+  assert.ok(
+    keepAliveCalls.some((call) => call.localPort === generationPort && call.delay === 10_000),
+    "SwarmUI generation must probe an idle TCP connection before the reported 30-second network timeout",
+  );
+  for (const path of ["/API/GetNewSession", "/View/generated.png"]) {
+    const port = requestPorts.get(path);
+    assert.ok(port, `the regression server must observe ${path}`);
+    assert.equal(
+      keepAliveCalls.some((call) => call.localPort === port && call.delay === 10_000),
+      false,
+      `${path} must retain ordinary fetch transport behavior`,
+    );
+  }
 } finally {
-  setGlobalDispatcher(originalDispatcher);
-  await shortGlobalDispatcher.close();
+  Socket.prototype.setKeepAlive = originalSetKeepAlive;
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });

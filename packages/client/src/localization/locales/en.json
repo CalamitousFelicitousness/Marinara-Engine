@@ -3296,7 +3296,7 @@
   "ui.chat.echochamberpanel.waitingForReactions": "Waiting for reactions…",
   "ui.chat.edittextarea.cancelEdit": "Cancel edit",
   "ui.chat.edittextarea.cancelEsc": "Cancel (Esc)",
-  "ui.chat.edittextarea.saveCmdEnter": "Save (Cmd+Enter)",
+  "ui.chat.edittextarea.saveCmdEnter": "Save (Cmd/Ctrl+Enter)",
   "ui.chat.edittextarea.saveEdit": "Save edit",
   "ui.chat.encounterconfig.attachASpellbookSoTheAiKnowsWhichSpells": "Attach a spellbook so the AI knows which spells and abilities are available in combat.",
   "ui.chat.encounterconfig.beginCombat": "Begin Combat",

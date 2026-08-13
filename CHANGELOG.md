@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Let Game setup enable Illustrator's Dynamic LLM Prompt Generation before the first image request (#4964).
 - Added literal message search to Conversation and Roleplay chat headers, with compact results that jump to matching messages anywhere in the current chat (#4922).
 - Added a Roleplay Agents-menu stop control that appears only while the current chat has an active generation and can cancel server-side work that survived navigation or a reload (#4942).
 - Added a persisted Send on Enter toggle for Professor Mari and a reusable setup download on New Game's final step before the game starts (#4928, #4930).
@@ -65,6 +66,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept visible Android browsers connected to a same-device Termux server responsive with a lightweight loopback-only heartbeat, without restoring hidden-tab or remote-client polling (#4968).
+- Kept long-running SwarmUI image requests alive across idle container networking while retaining the configured ComfyUI generation deadline (#4969).
+- Restored Professor Mari preset creation while keeping Engine-owned preset identifiers protected from user input.
+- Updated Roleplay message-edit shortcut hints to mention Ctrl+Enter on Windows as well as Cmd+Enter on macOS (#4965).
 - Hardened local security without removing extension or remote-access capabilities: made Professor Mari filters data-only, encrypted webhook credentials, bounded ZIP extraction and rich-chat network/CSS behavior, restricted automatic network trust to detected runtimes, privatized local data and backups, verified downloads and release commits, and patched audited dependencies.
 - Authenticated APK-managed Android localhost sessions without restricting manual Termux or LAN use, verified the pinned F-Droid Termux APK before install, bound native bridge calls to the exact Engine origin, and made release signing and bootstrap source commits fail closed.
 - Imported preset regex entries even when they contain unsupported SillyTavern placements, warning about ignored placement values instead of discarding the entire regex, and let Music DJ try the next candidate when Spotify accepts but cannot verify the first selected track (#4959, #4960).

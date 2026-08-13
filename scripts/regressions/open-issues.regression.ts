@@ -4924,7 +4924,11 @@ assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"
 assert.match(personaEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
 assert.match(fileDownloadSource, /MarinaraAndroid/u);
 assert.match(spriteDownloadSource, /saveBlobToDevice/u);
-assert.match(androidMainActivitySource, /public void saveFile\(String base64Data, String mimeType, String filename\)/u);
+assert.match(
+  androidMainActivitySource,
+  /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u,
+  "Android file saves must require the authenticated top-frame bridge token",
+);
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
   characterEditorSource,

@@ -4,7 +4,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { join, relative } from "path";
 import { createReadStream, createWriteStream, existsSync, readdirSync, statSync } from "fs";
-import type { WriteStream } from "fs";
+import type { Dirent, WriteStream } from "fs";
 import { chmod, cp, mkdir, copyFile, readFile, readdir, writeFile, stat, mkdtemp, rm, open, rename } from "fs/promises";
 import type { FileHandle } from "fs/promises";
 import { tmpdir } from "os";
@@ -44,6 +44,7 @@ import {
   rollbackPromotedProfileAssets,
   stageProfileImportAssets,
   type ProfileImportAssetInput,
+  type ProfileImportAssetStream,
   type StagedProfileImportAssets,
 } from "../services/import/profile-import-assets.js";
 import { ProfileImportRequestError } from "../services/import/profile-import-errors.js";
@@ -229,12 +230,16 @@ type ProfileExportEnvelopeOptions = {
 type ProfileStorageSnapshotOptions = {
   inlineFileData?: boolean;
   inlineJsonBudget?: ProfileInlineJsonBudget;
+  skipUnreadableFiles?: boolean;
+  onSkippedFile?: (path: string) => void;
 };
 type ProfileInlineJsonBudget = {
   limitBytes: number;
   estimatedBytes: number;
 };
-type ProfileAssetReader = (safePath: string) => Buffer | null | Promise<Buffer | null>;
+type ProfileAssetReader<TContents = Buffer | ProfileImportAssetStream> = (
+  safePath: string,
+) => TContents | null | Promise<TContents | null>;
 type ProfileArchiveAssetIndex = Map<string, { entryName: string; expectedSize: number }>;
 type ProfileImportWarning =
   | ProfileNoodleImportWarning
@@ -272,6 +277,7 @@ type StoredZipEntrySource =
       size: number;
       mtime?: Date;
       tolerateSourceChanges?: boolean;
+      allowLargeStoredEntry?: boolean;
     };
 type StoredZipEntryRecord = {
   entryName: string;
@@ -808,7 +814,17 @@ async function collectProfileAssetFiles(
     const stack = [src];
     while (stack.length > 0) {
       const current = stack.pop()!;
-      for (const entry of await readdir(current, { withFileTypes: true })) {
+      let directoryEntries: Dirent[];
+      try {
+        directoryEntries = await readdir(current, { withFileTypes: true });
+      } catch (error) {
+        if (!options.skipUnreadableFiles) throw error;
+        const logError = error instanceof Error ? error : new Error(String(error));
+        logger.warn(logError, "[backup] Skipping unreadable profile asset directory: %s", current);
+        options.onSkippedFile?.(relative(dataDir, current).split(/[\\/]/g).join("/"));
+        continue;
+      }
+      for (const entry of directoryEntries) {
         const full = join(current, entry.name);
         if (entry.isDirectory()) {
           stack.push(full);
@@ -818,7 +834,16 @@ async function collectProfileAssetFiles(
         const relPath = [dirName, relative(src, full)].filter(Boolean).join("/").split(/[\\/]/g).join("/");
         const safePath = normalizeProfileAssetPath(relPath);
         if (!safePath) continue;
-        const fileStat = await stat(full);
+        let fileStat: Awaited<ReturnType<typeof stat>>;
+        try {
+          fileStat = await stat(full);
+        } catch (error) {
+          if (!options.skipUnreadableFiles) throw error;
+          const logError = error instanceof Error ? error : new Error(String(error));
+          logger.warn(logError, "[backup] Skipping unreadable profile asset: %s", relPath);
+          options.onSkippedFile?.(relPath);
+          continue;
+        }
         const asset: ProfileFileAsset = { path: safePath, size: fileStat.size };
         if (inlineFileData) {
           reserveInlineJsonBudget(options.inlineJsonBudget, estimateBase64Length(fileStat.size));
@@ -1090,13 +1115,13 @@ function validateProfileStorageTableInputs(snapshot: ProfileStorageSnapshot) {
 function buildProfileImportAssetInputs(
   snapshot: ProfileStorageSnapshot,
   readAsset: ProfileAssetReader | undefined,
-): ProfileImportAssetInput[] {
+): Array<ProfileImportAssetInput> {
   if (!Array.isArray(snapshot.files)) return [];
   return snapshot.files.flatMap((file) => {
     const safePath = normalizeProfileAssetPath(file?.path);
     if (!safePath) return [];
     const expectedSize = getProfileAssetManifestSize(file, safePath);
-    assertProfileArchiveEntryLimit(safePath, expectedSize);
+    if (typeof file.data === "string") assertProfileArchiveEntryLimit(safePath, expectedSize);
     return [
       {
         path: safePath,
@@ -1340,7 +1365,16 @@ function getProfileStorageSnapshotFromEnvelope(envelope: ExportEnvelope) {
   return isProfileStorageSnapshot(data.fileStorage) ? data.fileStorage : null;
 }
 
-async function collectProfileAssetZipSources(files: ProfileFileAsset[], basePath = "") {
+type CollectProfileAssetZipSourcesOptions = {
+  skipFailedFiles?: boolean;
+  onSkipped?: (path: string) => void;
+};
+
+async function collectProfileAssetZipSources(
+  files: ProfileFileAsset[],
+  basePath = "",
+  options: CollectProfileAssetZipSourcesOptions = {},
+) {
   const dataDir = getDataDir();
   const sources: StoredZipEntrySource[] = [];
   let totalUncompressedBytes = 0;
@@ -1349,32 +1383,37 @@ async function collectProfileAssetZipSources(files: ProfileFileAsset[], basePath
   for (const file of files) {
     const safePath = normalizeProfileAssetPath(file.path);
     if (!safePath) continue;
-    const inputPath = assertInsideDir(dataDir, join(dataDir, ...safePath.split("/")));
-    if (!existsSync(inputPath)) continue;
-    const fileStat = await stat(inputPath);
-    if (!fileStat.isFile()) continue;
-    if (fileStat.size !== file.size) {
-      throw new Error(`Profile asset changed while exporting: ${safePath}`);
+    try {
+      const inputPath = assertInsideDir(dataDir, join(dataDir, ...safePath.split("/")));
+      if (!existsSync(inputPath)) throw new Error("file no longer exists");
+      const fileStat = await stat(inputPath);
+      if (!fileStat.isFile()) throw new Error("path is not a regular file");
+      if (fileStat.size !== file.size) {
+        throw new Error(`Profile asset changed while exporting: ${safePath}`);
+      }
+      const nextTotalBytes = totalUncompressedBytes + fileStat.size;
+      if (nextTotalBytes > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES) {
+        throw new ProfileArchiveTooLargeError(
+          profileArchiveSizeError("Profile ZIP assets", nextTotalBytes, PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES),
+        );
+      }
+      const entryName = profileArchiveEntryPath(basePath, safePath);
+      if (seenEntryNames.has(entryName)) continue;
+      seenEntryNames.add(entryName);
+      totalUncompressedBytes = nextTotalBytes;
+      sources.push({
+        entryName,
+        filePath: inputPath,
+        size: fileStat.size,
+        mtime: fileStat.mtime,
+        allowLargeStoredEntry: true,
+      });
+    } catch (error) {
+      if (!options.skipFailedFiles) throw error;
+      const logError = error instanceof Error ? error : new Error(String(error));
+      logger.warn(logError, "[backup] Omitting profile asset %s from this backup", safePath);
+      options.onSkipped?.(safePath);
     }
-    if (fileStat.size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
-      throw new ProfileArchiveTooLargeError(
-        profileArchiveSizeError(safePath, fileStat.size, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
-      );
-    }
-    totalUncompressedBytes += fileStat.size;
-    if (totalUncompressedBytes > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES) {
-      throw new ProfileArchiveTooLargeError(
-        profileArchiveSizeError(
-          "Profile ZIP assets",
-          totalUncompressedBytes,
-          PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES,
-        ),
-      );
-    }
-    const entryName = profileArchiveEntryPath(basePath, safePath);
-    if (seenEntryNames.has(entryName)) continue;
-    seenEntryNames.add(entryName);
-    sources.push({ entryName, filePath: inputPath, size: fileStat.size, mtime: fileStat.mtime });
   }
 
   return sources;
@@ -1404,7 +1443,9 @@ async function buildProfileArchiveSources(
   basePath: string,
   workingDir: string,
   includeAssets: boolean,
+  skipUnreadableAssets = false,
 ) {
+  const skippedAssetPaths = new Set<string>();
   const tables: Record<string, ProfileArchiveTableFile> = {};
   const tableSources: StoredZipEntrySource[] = [];
   const tablesDir = join(workingDir, "profile-tables");
@@ -1425,7 +1466,18 @@ async function buildProfileArchiveSources(
     });
   }
 
-  const files = await collectProfileAssetFiles(getDataDir(), { inlineFileData: false });
+  const collectedFiles = await collectProfileAssetFiles(getDataDir(), {
+    inlineFileData: false,
+    skipUnreadableFiles: skipUnreadableAssets,
+    onSkippedFile: (path) => skippedAssetPaths.add(path),
+  });
+  const assetSources = includeAssets
+    ? await collectProfileAssetZipSources(collectedFiles, basePath, {
+        skipFailedFiles: skipUnreadableAssets,
+        onSkipped: (path) => skippedAssetPaths.add(path),
+      })
+    : [];
+  const files = collectedFiles.filter((file) => !skippedAssetPaths.has(file.path));
   const snapshot: ProfileArchiveStorageSnapshot = { version: 2, tables, files };
   const envelope: ExportEnvelope = {
     type: "marinara_profile",
@@ -1443,7 +1495,7 @@ async function buildProfileArchiveSources(
   return [
     { entryName: profileArchiveEntryPath(basePath, "marinara-profile.json"), data: manifest },
     ...tableSources,
-    ...(includeAssets ? await collectProfileAssetZipSources(files, basePath) : []),
+    ...assetSources,
   ] satisfies StoredZipEntrySource[];
 }
 
@@ -1642,6 +1694,36 @@ function normalizeStoredZipEntryName(entryName: string) {
   return parts.join("/");
 }
 
+/** Large entries stay safe to inspect when they are uncompressed files under a known backup directory. */
+export function isPermittedLargeStoredBackupEntry(
+  entryName: string,
+  method: number,
+  compressedSize: number,
+  size: number,
+  entryLimitBytes = PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES,
+) {
+  if (size <= entryLimitBytes && compressedSize <= entryLimitBytes) return true;
+  if (method !== 0 || compressedSize !== size) return false;
+  const normalized = normalizeProfileArchiveEntryPath(entryName);
+  const parts = normalized.split("/").filter(Boolean);
+  const rootOffset = parts[0]?.startsWith("marinara-") ? 1 : 0;
+  const root = parts.slice(rootOffset).join("/");
+  return PROFILE_ASSET_DIRS.some((dirName) => root.startsWith(`${dirName}/`));
+}
+
+/** Testable ZIP32 writer seam used by the backup regression without constructing a complete application DB. */
+export async function writeStoredBackupArchiveForRegression(
+  outputPath: string,
+  sources: Array<{ entryName: string; filePath: string; size: number; tolerateSourceChanges?: boolean }>,
+  skipFailedFileEntries = false,
+) {
+  await writeStoredZipArchive(
+    outputPath,
+    sources.map((source) => ({ ...source, allowLargeStoredEntry: true })),
+    { skipFailedFileEntries },
+  );
+}
+
 function assertZip32Value(value: number, label: string) {
   if (!Number.isSafeInteger(value) || value < 0 || value > ZIP32_MAX_VALUE) {
     throw new Error(`Profile ZIP ${label} exceeds the ZIP32 size limit.`);
@@ -1742,44 +1824,35 @@ function buildEndOfCentralDirectory(entryCount: number, centralDirectorySize: nu
 }
 
 async function writeStoredZipFileEntry(
-  stream: WriteStream,
+  output: FileHandle,
   source: StoredZipEntrySource,
   position: number,
+  entryLimitBytes: number,
+  skipFailedFileEntries: boolean,
 ): Promise<{ record: StoredZipEntryRecord; position: number } | null> {
-  const entryName = normalizeStoredZipEntryName(source.entryName);
   const tolerateSourceChanges = "filePath" in source && source.tolerateSourceChanges === true;
+  const entryStart = position;
+  let entryName = source.entryName;
   let sourceHandle: FileHandle | null = null;
   try {
+    entryName = normalizeStoredZipEntryName(source.entryName);
     let sourceMtime = source.mtime;
     if (tolerateSourceChanges) {
-      try {
-        sourceHandle = await open(source.filePath, "r");
-        const currentStat = await sourceHandle.stat();
-        assertZip32Value(currentStat.size, `${entryName} size`);
-        if (currentStat.size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
-          throw new ProfileArchiveTooLargeError(
-            profileArchiveSizeError(entryName, currentStat.size, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
-          );
-        }
-        sourceMtime = currentStat.mtime;
-      } catch (error) {
-        await sourceHandle?.close().catch(() => {});
-        sourceHandle = null;
-        if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
-          logger.warn("[backup] Skipping ZIP source that disappeared during export: %s", entryName);
-          return null;
-        }
-        throw error;
+      sourceHandle = await open(source.filePath, "r");
+      const currentStat = await sourceHandle.stat();
+      if (!currentStat.isFile()) throw new Error(`Profile ZIP source is not a regular file: ${entryName}`);
+      assertZip32Value(currentStat.size, `${entryName} size`);
+      if (currentStat.size > entryLimitBytes) {
+        throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, currentStat.size, entryLimitBytes));
       }
+      sourceMtime = currentStat.mtime;
     }
 
     const { dosTime, dosDate } = getZipDosTimeDate(sourceMtime);
     const size = "data" in source ? source.data.length : tolerateSourceChanges ? 0 : source.size;
     assertZip32Value(size, `${entryName} size`);
-    if (size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
-      throw new ProfileArchiveTooLargeError(
-        profileArchiveSizeError(entryName, size, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
-      );
+    if (size > entryLimitBytes) {
+      throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, size, entryLimitBytes));
     }
     assertZip32Value(position, `${entryName} offset`);
 
@@ -1795,46 +1868,37 @@ async function writeStoredZipFileEntry(
       usesDataDescriptor: tolerateSourceChanges,
     };
     const header = buildLocalFileHeader(record);
-    await writeZipBuffer(stream, header);
-    position += header.length;
+    position = await writeZipFileBuffer(output, header, position);
 
     if ("data" in source) {
-      await writeZipBuffer(stream, source.data);
-      position += source.data.length;
+      position = await writeZipFileBuffer(output, source.data, position);
     } else if (sourceHandle) {
       let crcState = 0xffffffff;
       let written = 0;
       for await (const chunk of sourceHandle.createReadStream({ autoClose: false })) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        await writeZipBuffer(stream, buffer);
+        position = await writeZipFileBuffer(output, buffer, position);
         crcState = updateCrc32State(crcState, buffer);
         written += buffer.length;
-        if (written > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
-          throw new ProfileArchiveTooLargeError(
-            profileArchiveSizeError(entryName, written, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
-          );
+        if (written > entryLimitBytes) {
+          throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, written, entryLimitBytes));
         }
-        position += buffer.length;
       }
       record.crc32 = finishCrc32(crcState);
       record.size = written;
       assertZip32Value(record.size, `${entryName} size`);
       assertZip32Value(position, `${entryName} offset`);
       const descriptor = buildStoredZipDataDescriptor(record);
-      await writeZipBuffer(stream, descriptor);
-      position += descriptor.length;
+      position = await writeZipFileBuffer(output, descriptor, position);
     } else {
       let written = 0;
       for await (const chunk of createReadStream(source.filePath)) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        await writeZipBuffer(stream, buffer);
+        position = await writeZipFileBuffer(output, buffer, position);
         written += buffer.length;
-        if (written > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
-          throw new ProfileArchiveTooLargeError(
-            profileArchiveSizeError(entryName, written, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
-          );
+        if (written > entryLimitBytes) {
+          throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, written, entryLimitBytes));
         }
-        position += buffer.length;
       }
       if (written !== source.size) {
         throw new Error(`Profile ZIP source changed while exporting: ${entryName}`);
@@ -1842,9 +1906,26 @@ async function writeStoredZipFileEntry(
     }
 
     return { record, position };
+  } catch (error) {
+    if (!tolerateSourceChanges || !skipFailedFileEntries) throw error;
+    await output.truncate(entryStart);
+    const reason = error instanceof Error ? error.message : String(error);
+    const logError = error instanceof Error ? error : new Error(reason);
+    logger.warn(logError, "[backup] Skipping ZIP source %s because it could not be archived", entryName);
+    return null;
   } finally {
     await sourceHandle?.close().catch(() => {});
   }
+}
+
+async function writeZipFileBuffer(handle: FileHandle, buffer: Buffer, position: number) {
+  let offset = 0;
+  while (offset < buffer.length) {
+    const { bytesWritten } = await handle.write(buffer, offset, buffer.length - offset, position + offset);
+    if (bytesWritten === 0) throw new Error("Profile ZIP output stopped accepting data.");
+    offset += bytesWritten;
+  }
+  return position + buffer.length;
 }
 
 async function finishZipStream(stream: WriteStream) {
@@ -1863,46 +1944,74 @@ async function finishZipStream(stream: WriteStream) {
   });
 }
 
-async function writeStoredZipArchive(outputPath: string, sources: StoredZipEntrySource[]) {
-  const stream = createWriteStream(outputPath, { mode: PRIVATE_FILE_MODE });
+async function writeStoredZipArchive(
+  outputPath: string,
+  sources: StoredZipEntrySource[],
+  options: { skipFailedFileEntries?: boolean } = {},
+) {
+  const output = await open(outputPath, "w", PRIVATE_FILE_MODE);
   const records: StoredZipEntryRecord[] = [];
   let position = 0;
   let totalUncompressedBytes = 0;
+  let centralDirectorySizeEstimate = 0;
 
   try {
     for (const source of sources) {
-      const result = await writeStoredZipFileEntry(stream, source, position);
+      const entryStart = position;
+      const canSkip =
+        options.skipFailedFileEntries === true && "filePath" in source && source.tolerateSourceChanges === true;
+      const normalEntryLimit =
+        "filePath" in source && source.allowLargeStoredEntry === true
+          ? ZIP32_MAX_VALUE
+          : PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES;
+      const remainingContentBytes = PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES - totalUncompressedBytes;
+      const entryLimit = canSkip ? Math.min(normalEntryLimit, remainingContentBytes) : normalEntryLimit;
+      const result = await writeStoredZipFileEntry(
+        output,
+        source,
+        position,
+        entryLimit,
+        options.skipFailedFileEntries === true,
+      );
       if (!result) continue;
+      const centralHeaderSize = buildCentralDirectoryHeader(result.record).length;
+      const nextTotalBytes = totalUncompressedBytes + result.record.size;
+      const nextCentralDirectorySize = centralDirectorySizeEstimate + centralHeaderSize;
+      const failure =
+        records.length + 1 > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT
+          ? `Profile ZIP contains too many entries (${records.length + 1}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`
+          : nextTotalBytes > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES
+            ? profileArchiveSizeError(
+                "Profile ZIP contents",
+                nextTotalBytes,
+                PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES,
+              )
+            : result.position > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES
+              ? profileArchiveSizeError("Profile archive", result.position, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES)
+              : nextCentralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES
+                ? profileArchiveSizeError(
+                    "Profile archive central directory",
+                    nextCentralDirectorySize,
+                    PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+                  )
+                : null;
+      if (failure) {
+        if (!canSkip) throw new ProfileArchiveTooLargeError(failure);
+        await output.truncate(entryStart);
+        logger.warn("[backup] Skipping ZIP source %s: %s", result.record.entryName, failure);
+        continue;
+      }
       records.push(result.record);
-      if (records.length > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
-        throw new ProfileArchiveTooLargeError(
-          `Profile ZIP contains too many entries (${records.length}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
-        );
-      }
-      totalUncompressedBytes += result.record.size;
-      if (totalUncompressedBytes > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES) {
-        throw new ProfileArchiveTooLargeError(
-          profileArchiveSizeError(
-            "Profile ZIP contents",
-            totalUncompressedBytes,
-            PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES,
-          ),
-        );
-      }
+      totalUncompressedBytes = nextTotalBytes;
+      centralDirectorySizeEstimate = nextCentralDirectorySize;
       position = result.position;
-      if (position > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES) {
-        throw new ProfileArchiveTooLargeError(
-          profileArchiveSizeError("Profile archive", position, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES),
-        );
-      }
     }
 
     const centralDirectoryOffset = position;
     assertZip32Value(centralDirectoryOffset, "central directory offset");
     for (const record of records) {
       const header = buildCentralDirectoryHeader(record);
-      await writeZipBuffer(stream, header);
-      position += header.length;
+      position = await writeZipFileBuffer(output, header, position);
     }
     const centralDirectorySize = position - centralDirectoryOffset;
     assertZip32Value(centralDirectorySize, "central directory size");
@@ -1921,11 +2030,9 @@ async function writeStoredZipArchive(outputPath: string, sources: StoredZipEntry
         profileArchiveSizeError("Profile archive", position + end.length, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES),
       );
     }
-    await writeZipBuffer(stream, end);
-    await finishZipStream(stream);
-  } catch (err) {
-    stream.destroy();
-    throw err;
+    await writeZipFileBuffer(output, end, position);
+  } finally {
+    await output.close();
   }
 }
 
@@ -2051,7 +2158,17 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       const crc32 = centralDirectory.readUInt32LE(offset + 16);
       const compressedSize = readZip32Value(centralDirectory, offset + 20, "entry compressed size");
       const size = readZip32Value(centralDirectory, offset + 24, "entry size");
-      if (compressedSize > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES || size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+      const fileNameLength = centralDirectory.readUInt16LE(offset + 28);
+      const extraLength = centralDirectory.readUInt16LE(offset + 30);
+      const commentLength = centralDirectory.readUInt16LE(offset + 32);
+      const localHeaderOffset = readZip32Value(centralDirectory, offset + 42, "entry offset");
+      const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
+      if (nextOffset > centralDirectory.length) {
+        throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
+      }
+      const entryName = centralDirectory.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
+      const normalizedName = normalizeProfileArchiveEntryPath(entryName);
+      if (!isPermittedLargeStoredBackupEntry(normalizedName, method, compressedSize, size)) {
         throw new ProfileImportRequestError(
           profileArchiveSizeError(
             "Profile archive entry",
@@ -2062,14 +2179,6 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       }
       totalUncompressedBytes += size;
       assertProfileArchiveTotalLimit(totalUncompressedBytes, "Profile archive contents");
-      const fileNameLength = centralDirectory.readUInt16LE(offset + 28);
-      const extraLength = centralDirectory.readUInt16LE(offset + 30);
-      const commentLength = centralDirectory.readUInt16LE(offset + 32);
-      const localHeaderOffset = readZip32Value(centralDirectory, offset + 42, "entry offset");
-      const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
-      if (nextOffset > centralDirectory.length) {
-        throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
-      }
 
       if (localHeaderOffset + 30 > archiveStat.size) {
         throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
@@ -2086,8 +2195,6 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
         throw new ProfileImportRequestError("Profile archive entry data is outside the ZIP file.");
       }
 
-      const entryName = centralDirectory.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
-      const normalizedName = normalizeProfileArchiveEntryPath(entryName);
       const entry: ProfileZipEntry = {
         entryName: normalizedName,
         isDirectory: normalizedName.endsWith("/"),
@@ -2363,7 +2470,6 @@ function validateProfileArchiveAssets(
     if (!safePath) continue;
     const entryName = profileArchiveEntryPath(basePath, safePath);
     const expectedSize = getProfileAssetManifestSize(file, safePath);
-    assertProfileArchiveEntryLimit(safePath, expectedSize);
     const entry = getProfileZipEntry(zip, entryName);
     if (!entry || entry.isDirectory) {
       warnings.push({
@@ -2378,7 +2484,10 @@ function validateProfileArchiveAssets(
       throw new ProfileImportRequestError(`Profile archive asset ${safePath} does not match its manifest size.`);
     }
     const compressedSize = getZipEntryCompressedSize(entry);
-    if (compressedSize === null || compressedSize > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+    if (
+      compressedSize === null ||
+      !isPermittedLargeStoredBackupEntry(entryName, entry.header.method, compressedSize, expectedSize)
+    ) {
       throw new ProfileImportRequestError(
         profileArchiveSizeError(safePath, compressedSize ?? -1, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
       );
@@ -2401,6 +2510,16 @@ async function readProfileArchiveAsset(
   if (!asset) return null;
   const entry = getProfileZipEntry(zip, asset.entryName);
   if (!entry || entry.isDirectory) return null;
+  if (entry.header.method === 0) {
+    if (asset.expectedSize === 0) return Buffer.alloc(0);
+    return {
+      stream: createReadStream(zip.filePath, {
+        start: entry.header.dataOffset,
+        end: entry.header.dataOffset + asset.expectedSize - 1,
+      }),
+      expectedCrc32: entry.header.crc32,
+    } satisfies ProfileImportAssetStream;
+  }
   return readProfileArchiveEntryBuffer(zip, entry, asset.expectedSize);
 }
 
@@ -2499,15 +2618,14 @@ async function collectDirectoryZipSources(sourceDir: string, entryRoot: string) 
       try {
         fileStat = await stat(fullPath);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
-          logger.warn(
-            "[backup] Skipping ZIP source that disappeared during collection: %s/%s",
-            entryRoot,
-            relativePath,
-          );
-          continue;
-        }
-        throw error;
+        const reason = error instanceof Error ? error : new Error(String(error));
+        logger.warn(
+          reason,
+          "[backup] Skipping unreadable ZIP source during collection: %s/%s",
+          entryRoot,
+          relativePath,
+        );
+        continue;
       }
       sources.push({
         entryName: `${entryRoot}/${relativePath}`,
@@ -2515,6 +2633,7 @@ async function collectDirectoryZipSources(sourceDir: string, entryRoot: string) 
         size: fileStat.size,
         mtime: fileStat.mtime,
         tolerateSourceChanges: true,
+        allowLargeStoredEntry: true,
       });
     }
   }
@@ -2529,7 +2648,7 @@ async function writeFullBackupArchive(
 ) {
   const dataDir = getDataDir();
   const sources = await withOptionalNoodleAutoPostPaused(() =>
-    buildProfileArchiveSources(app, backupName, workingDir, false),
+    buildProfileArchiveSources(app, backupName, workingDir, false, true),
   );
   sources.push({
     entryName: `${backupName}/RESTORE.txt`,
@@ -2552,7 +2671,7 @@ async function writeFullBackupArchive(
     });
   }
 
-  await writeStoredZipArchive(outputPath, sources);
+  await writeStoredZipArchive(outputPath, sources, { skipFailedFileEntries: true });
 }
 
 async function writeAutomaticBackup(app: FastifyInstance, retentionCount: number) {

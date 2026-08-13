@@ -150,7 +150,7 @@ function hasUnsafeSvgHref(source: string): boolean {
 }
 
 /** Resolve symlinks and permit reads only from Marinara's configured media roots. */
-async function resolveAllowedMediaPath(filePath: string): Promise<string | null> {
+async function resolveAllowedMediaPath(filePath: string, additionalRoot?: string): Promise<string | null> {
   let canonicalPath: string;
   try {
     canonicalPath = await realpath(resolve(filePath));
@@ -158,7 +158,9 @@ async function resolveAllowedMediaPath(filePath: string): Promise<string | null>
     return null;
   }
 
-  for (const configuredRoot of new Set([getDataDir(), getFileStorageDir()])) {
+  for (const configuredRoot of new Set(
+    [getDataDir(), getFileStorageDir(), additionalRoot].filter(Boolean) as string[],
+  )) {
     try {
       const canonicalRoot = await realpath(resolve(configuredRoot));
       const rootPrefix = canonicalRoot.endsWith(sep) ? canonicalRoot : `${canonicalRoot}${sep}`;
@@ -243,9 +245,9 @@ export function validateVideoAssetBuffer(buffer: Buffer, filename: string): Vali
 export async function validateImageAssetFile(
   filePath: string,
   filename = basename(filePath),
-  options: { allowSvg?: boolean } = {},
+  options: { allowSvg?: boolean; additionalRoot?: string } = {},
 ): Promise<ValidatedImageFile | null> {
-  const safeFilePath = await resolveAllowedMediaPath(filePath);
+  const safeFilePath = await resolveAllowedMediaPath(filePath, options.additionalRoot);
   if (!safeFilePath) return null;
   let handle: FileHandle | null = null;
   if (extname(filename).toLowerCase() === SVG_EXTENSION) {
@@ -284,8 +286,9 @@ export async function validateImageAssetFile(
 export async function validateVideoAssetFile(
   filePath: string,
   filename = basename(filePath),
+  options: { additionalRoot?: string } = {},
 ): Promise<ValidatedVideoFile | null> {
-  const safeFilePath = await resolveAllowedMediaPath(filePath);
+  const safeFilePath = await resolveAllowedMediaPath(filePath, options.additionalRoot);
   if (!safeFilePath) return null;
   let handle: FileHandle | null = null;
   try {

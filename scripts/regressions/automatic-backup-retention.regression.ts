@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { closeSync, mkdtempSync, openSync, readSync, writeSync } from "node:fs";
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  isPermittedLargeStoredBackupEntry,
+  writeStoredBackupArchiveForRegression,
+} from "../../packages/server/src/routes/backup.routes.js";
 import {
   AUTOMATIC_BACKUP_FILENAME,
   automaticBackupArchiveFilename,
@@ -35,6 +40,91 @@ assert.match(
   backupRouteSource,
   /withAutomaticBackupLifecycleLock\(\(\) =>\s*pruneAutomaticBackupFiles\(backupsRoot, next\.retentionCount\)/u,
 );
+assert.equal(
+  isPermittedLargeStoredBackupEntry(
+    "marinara-automatic-backup/backgrounds/violet night.gif",
+    0,
+    376_363_985,
+    376_363_985,
+  ),
+  true,
+  "a large stored background from Marinara's own streaming backup must remain importable",
+);
+assert.equal(
+  isPermittedLargeStoredBackupEntry(
+    "marinara-automatic-backup/profile-tables/messages.jsonl",
+    0,
+    376_363_985,
+    376_363_985,
+  ),
+  false,
+  "large non-media backup entries must keep the untrusted per-entry ceiling",
+);
+assert.equal(
+  isPermittedLargeStoredBackupEntry("marinara-automatic-backup/backgrounds/violet night.gif", 8, 1_024, 376_363_985),
+  false,
+  "compressed large assets must not bypass ZIP-bomb defenses",
+);
+assert.match(backupRouteSource, /writeStoredZipArchive\(outputPath, sources, \{ skipFailedFileEntries: true \}\)/u);
+assert.match(backupRouteSource, /await output\.truncate\(entryStart\)/u);
+
+const zipFixtureRoot = mkdtempSync(join(tmpdir(), "marinara-large-backup-regression-"));
+try {
+  const sourcePath = join(zipFixtureRoot, "large.gif");
+  const archivePath = join(zipFixtureRoot, "large.zip");
+  const logicalSize = 256 * 1024 * 1024 + 1;
+  const descriptor = openSync(sourcePath, "w");
+  writeSync(descriptor, Buffer.from("GIF89a", "ascii"), 0, 6, 0);
+  writeSync(descriptor, Buffer.from([0]), 0, 1, logicalSize - 1);
+  closeSync(descriptor);
+  await writeStoredBackupArchiveForRegression(archivePath, [
+    {
+      entryName: "marinara-automatic-backup/backgrounds/large.gif",
+      filePath: sourcePath,
+      size: logicalSize,
+      tolerateSourceChanges: true,
+    },
+  ]);
+  const archiveSize = (await stat(archivePath)).size;
+  assert.ok(archiveSize > logicalSize, "the >256 MiB streamed media entry should produce a valid ZIP");
+  const archiveHandle = openSync(archivePath, "r");
+  const end = Buffer.alloc(22);
+  readSync(archiveHandle, end, 0, end.length, archiveSize - end.length);
+  closeSync(archiveHandle);
+  assert.equal(end.readUInt32LE(0), 0x06054b50);
+  assert.equal(end.readUInt16LE(8), 1);
+
+  const retainedSource = join(zipFixtureRoot, "retained.txt");
+  const missingSource = join(zipFixtureRoot, "missing.gif");
+  const partialArchive = join(zipFixtureRoot, "partial.zip");
+  await writeFile(retainedSource, "retained", "utf8");
+  await writeStoredBackupArchiveForRegression(
+    partialArchive,
+    [
+      {
+        entryName: "marinara-automatic-backup/RESTORE.txt",
+        filePath: retainedSource,
+        size: 8,
+      },
+      {
+        entryName: "marinara-automatic-backup/backgrounds/missing.gif",
+        filePath: missingSource,
+        size: 10,
+        tolerateSourceChanges: true,
+      },
+    ],
+    true,
+  );
+  const partialSize = (await stat(partialArchive)).size;
+  const partialHandle = openSync(partialArchive, "r");
+  const partialEnd = Buffer.alloc(22);
+  readSync(partialHandle, partialEnd, 0, partialEnd.length, partialSize - partialEnd.length);
+  closeSync(partialHandle);
+  assert.equal(partialEnd.readUInt32LE(0), 0x06054b50);
+  assert.equal(partialEnd.readUInt16LE(8), 1, "one unreadable asset should be omitted without losing valid entries");
+} finally {
+  await rm(zipFixtureRoot, { recursive: true, force: true });
+}
 
 const timestampedName = automaticBackupArchiveFilename(new Date("2026-07-27T20:00:00.000Z"));
 assert.equal(timestampedName, "marinara-automatic-backup-2026-07-27T20-00-00-000Z.zip");

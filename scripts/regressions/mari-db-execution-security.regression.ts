@@ -8,7 +8,11 @@ import { customTools } from "../../packages/server/src/db/schema/index.js";
 import { MariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
 import { runMariTransformSandbox } from "../../packages/server/src/services/mari-db/mari-transform-sandbox.js";
 import { createMariWherePredicate } from "../../packages/server/src/services/mari-db/mari-where-expression.js";
-import { getWorkspaceShellSandboxStatus } from "../../packages/server/src/services/professor-mari/workspace-shell-sandbox.js";
+import {
+  getWorkspaceShellSandboxStatus,
+  spawnWorkspaceSandboxedProcess,
+} from "../../packages/server/src/services/professor-mari/workspace-shell-sandbox.js";
+import { ENCRYPTED_WEBHOOK_PREFIX } from "../../packages/server/src/utils/custom-tool-webhook.js";
 
 const rows = [
   { id: "one", score: 1, enabled: true, data: { name: "Alpha", tags: ["first", "warm"] } },
@@ -62,20 +66,31 @@ const transformSource = readFileSync(
   new URL("../../packages/server/src/services/mari-db/mari-transform-sandbox.ts", import.meta.url),
   "utf8",
 );
-const shellSandboxSource = readFileSync(
-  new URL("../../packages/server/src/services/professor-mari/workspace-shell-sandbox.ts", import.meta.url),
-  "utf8",
-);
 assert.doesNotMatch(dbSource, /new Function/u, "mari db filtering must never evaluate JavaScript");
 assert.doesNotMatch(dbSource, /pathToFileURL/u, "the host DB service must never import transform modules");
 assert.match(dbSource, /runMariTransformSandbox/u, "transform planning is routed through the sandbox runner");
-assert.match(transformSource, /writableWorkspace: false/u, "transform dry-runs cannot mutate the workspace");
 assert.match(transformSource, /--permission/u, "the transform process cannot spawn unsandboxed child processes");
-assert.match(
-  shellSandboxSource,
-  /throw new Error\(\s*`\$\{status\.reason\}`/u,
-  "an unavailable OS sandbox fails closed",
-);
+{
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+  try {
+    const unavailable = getWorkspaceShellSandboxStatus();
+    assert.equal(unavailable.available, false);
+    await assert.rejects(
+      spawnWorkspaceSandboxedProcess({
+        executable: process.execPath,
+        args: ["--version"],
+        workspaceRoot: tmpdir(),
+        env: process.env,
+      }),
+      (error: unknown) =>
+        error instanceof Error && !unavailable.available && error.message.includes(unavailable.reason),
+      "an unavailable OS sandbox fails closed with its availability reason",
+    );
+  } finally {
+    if (platformDescriptor) Object.defineProperty(process, "platform", platformDescriptor);
+  }
+}
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 const dbStorage = mkdtempSync(join(tmpdir(), "marinara-mari-where-db-"));
@@ -105,11 +120,24 @@ try {
       id: string | null;
       message: string;
     }> = [];
-    customToolValidator.validateCustomToolRow(
-      { ...customToolRow, webhookUrl: "enc:v1:opaque-ciphertext" },
-      "encrypted-webhook",
-      encryptedWebhookIssues,
-    );
+    const urlDescriptor = Object.getOwnPropertyDescriptor(globalThis, "URL");
+    Object.defineProperty(globalThis, "URL", {
+      configurable: true,
+      value: new Proxy(URL, {
+        construct: () => {
+          throw new TypeError("fixture rejects URL parsing");
+        },
+      }),
+    });
+    try {
+      customToolValidator.validateCustomToolRow(
+        { ...customToolRow, webhookUrl: `${ENCRYPTED_WEBHOOK_PREFIX}invalid` },
+        "encrypted-webhook",
+        encryptedWebhookIssues,
+      );
+    } finally {
+      if (urlDescriptor) Object.defineProperty(globalThis, "URL", urlDescriptor);
+    }
     assert.equal(
       encryptedWebhookIssues.some((issue) => issue.message.includes("webhookUrl")),
       false,
@@ -133,6 +161,15 @@ try {
       apply: true,
     });
     assert.equal(created.ok, true);
+
+    const deletePlanner = mari as unknown as {
+      planDelete(request: Record<string, unknown>, issues: unknown[]): Promise<unknown[]>;
+    };
+    await assert.rejects(
+      deletePlanner.planDelete({ kind: "delete", table: "characters", apply: false, cascade: false, reason: null }, []),
+      /Delete requires an id or an explicit --where expression/u,
+      "delete selection fails closed inside the planner even when a caller bypasses CLI parsing",
+    );
 
     const selected = await mari.executeCli({
       argv: [
@@ -192,7 +229,11 @@ try {
       "false",
       "model-authored tools cannot grant themselves hidden context",
     );
-    assert.match(storedTool?.webhookUrl ?? "", /^enc:v1:/u, "webhook credentials are encrypted at the raw DB boundary");
+    assert.equal(
+      storedTool?.webhookUrl?.startsWith(ENCRYPTED_WEBHOOK_PREFIX),
+      true,
+      "webhook credentials are encrypted at the raw DB boundary",
+    );
     const journalDir = join(dbStorage, "journal");
     const persistedReviewData = readdirSync(journalDir, { recursive: true })
       .filter((entry) => typeof entry === "string")
@@ -208,10 +249,7 @@ try {
     );
 
     const legacyWebhookCredential = "https://hooks.example.test/services/legacy-delete-token";
-    await db
-      .update(customTools)
-      .set({ webhookUrl: legacyWebhookCredential })
-      .where(eq(customTools.id, storedTool!.id));
+    await db.update(customTools).set({ webhookUrl: legacyWebhookCredential }).where(eq(customTools.id, storedTool!.id));
     const deletedLegacyTool = await mari.executeCli({
       argv: ["db", "delete", "custom_tools", storedTool!.id, "--apply"],
     });

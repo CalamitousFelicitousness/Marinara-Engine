@@ -147,10 +147,18 @@ const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 try {
   process.env.DATA_DIR = storageRoot;
   process.env.FILE_STORAGE_DIR = join(storageRoot, "storage");
-  const [{ createFileNativeDB }, { customTools }, { createCustomToolsStorage }] = await Promise.all([
+  const [
+    { createFileNativeDB },
+    { customTools },
+    { createCustomToolsStorage },
+    { quarantineProfileCustomToolRow },
+    { ENCRYPTED_WEBHOOK_PREFIX },
+  ] = await Promise.all([
     import("../../packages/server/src/db/file-backed-store.js"),
     import("../../packages/server/src/db/schema/index.js"),
     import("../../packages/server/src/services/storage/custom-tools.storage.js"),
+    import("../../packages/server/src/routes/backup.routes.js"),
+    import("../../packages/server/src/utils/custom-tool-webhook.js"),
   ]);
   const db = await createFileNativeDB();
   try {
@@ -172,6 +180,30 @@ try {
       "https://example.com/hook?secret=value",
       "the owner can still use and edit the configured webhook",
     );
+
+    const importedAt = new Date(0).toISOString();
+    const importedProfileTool = quarantineProfileCustomToolRow({
+      id: "foreign-encrypted-webhook",
+      name: "foreign_encrypted_webhook",
+      description: "Foreign encrypted profile fixture",
+      parametersSchema: "{}",
+      executionType: "webhook",
+      webhookUrl: `${ENCRYPTED_WEBHOOK_PREFIX}invalid`,
+      staticResult: null,
+      scriptBody: null,
+      includeHiddenContext: "true",
+      enabled: "true",
+      sortOrder: 20,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+    }) as typeof customTools.$inferInsert;
+    assert.equal(importedProfileTool.webhookUrl, null, "foreign encrypted webhook values are cleared on import");
+    await db.insert(customTools).values(importedProfileTool);
+    const importedRead = await storage.getById("foreign-encrypted-webhook");
+    assert.ok(importedRead, "a tool with a cleared foreign credential remains readable after profile import");
+    assert.equal(importedRead.webhookUrl, null);
+    assert.equal(importedRead.enabled, "false");
+    assert.equal(importedRead.includeHiddenContext, "false");
   } finally {
     await db._fileStore.close();
   }

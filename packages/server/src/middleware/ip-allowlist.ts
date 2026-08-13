@@ -190,6 +190,37 @@ function readDockerDefaultGatewayIp(): string | null {
 
 const dockerDefaultGatewayIp = isDockerRuntime() ? readDockerDefaultGatewayIp() : null;
 
+function readInterfaceIndex(interfaceName: string, field: "ifindex" | "iflink"): number | null {
+  if (!/^[a-z0-9_.:-]+$/iu.test(interfaceName)) return null;
+  try {
+    const raw = readFileSync(`/sys/class/net/${interfaceName}/${field}`, "utf8").trim();
+    if (!/^\d+$/u.test(raw)) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A bridge/macvlan container interface links to a different peer index in the
+ * host namespace. Host-network interfaces link to themselves, so they are not
+ * sufficient evidence for the automatic bypass.
+ */
+function readContainerPeerInterfaceNames(
+  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const interfaceName of Object.keys(interfaces)) {
+    const ifindex = readInterfaceIndex(interfaceName, "ifindex");
+    const iflink = readInterfaceIndex(interfaceName, "iflink");
+    if (ifindex !== null && iflink !== null && ifindex !== iflink) names.add(interfaceName);
+  }
+  return names;
+}
+
+const dockerContainerInterfaceNames = isDockerRuntime() ? readContainerPeerInterfaceNames() : new Set<string>();
+
 function matchesIp(ip: string, cidr: string): boolean {
   const bytes = ipToBytes(ip);
   const parsed = parseCIDR(cidr);
@@ -201,6 +232,27 @@ export function isDockerRuntimeNetworkIp(
   ip: string,
   interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
   gatewayIp: string | null = dockerDefaultGatewayIp,
+  containerInterfaceNames: ReadonlySet<string> = dockerContainerInterfaceNames,
+): boolean {
+  const hasContainerInterface = Object.keys(interfaces).some((interfaceName) =>
+    containerInterfaceNames.has(interfaceName),
+  );
+  if (!hasContainerInterface) return false;
+  if (gatewayIp && matchesIp(ip, gatewayIp)) return true;
+  return Object.entries(interfaces).some(
+    ([interfaceName, addresses]) =>
+      containerInterfaceNames.has(interfaceName) &&
+      addresses?.some((entry) => {
+        const cidr = entry.cidr;
+        return !entry.internal && typeof cidr === "string" && matchesIp(ip, cidr);
+      }),
+  );
+}
+
+function isDockerCompatibilityNetworkIp(
+  ip: string,
+  interfaces: ReturnType<typeof networkInterfaces>,
+  gatewayIp: string | null,
 ): boolean {
   if (gatewayIp && matchesIp(ip, gatewayIp)) return true;
   return Object.values(interfaces).some((addresses) =>
@@ -394,6 +446,7 @@ export function isTrustedInterfaceRequest(
   dockerNetwork: {
     interfaces?: ReturnType<typeof networkInterfaces>;
     gatewayIp?: string | null;
+    containerInterfaceNames?: ReadonlySet<string>;
   } = {},
 ): boolean {
   const tailscaleMode = getTailscaleBypassMode();
@@ -404,16 +457,21 @@ export function isTrustedInterfaceRequest(
       (tailscaleMode === "auto" && typeof localAddress === "string" && isTailscaleIp(localAddress)));
 
   const dockerMode = getDockerBypassMode();
+  const dockerInterfaces = dockerNetwork.interfaces ?? networkInterfaces();
+  const dockerGatewayIp = dockerNetwork.gatewayIp === undefined ? dockerDefaultGatewayIp : dockerNetwork.gatewayIp;
   const dockerRuntimeMatch =
     isDockerRuntime() &&
     isDockerRuntimeNetworkIp(
       request.ip,
-      dockerNetwork.interfaces ?? networkInterfaces(),
-      dockerNetwork.gatewayIp === undefined ? dockerDefaultGatewayIp : dockerNetwork.gatewayIp,
+      dockerInterfaces,
+      dockerGatewayIp,
+      dockerNetwork.containerInterfaceNames ?? dockerContainerInterfaceNames,
     );
   const dockerTrusted =
     dockerMode === "enabled"
-      ? isDockerIp(request.ip) || dockerRuntimeMatch
+      ? isDockerIp(request.ip) ||
+        dockerRuntimeMatch ||
+        (isDockerRuntime() && isDockerCompatibilityNetworkIp(request.ip, dockerInterfaces, dockerGatewayIp))
       : dockerMode === "auto" && dockerRuntimeMatch;
   const dockerProxyForwarded = dockerTrusted && hasProxyForwardingHeaders(request);
   if (dockerProxyForwarded && isDockerProxyAuthRequired()) return false;

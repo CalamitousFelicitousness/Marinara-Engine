@@ -83,17 +83,31 @@ try {
     cidr: "10.42.0.2/24",
   };
   const dockerInterfaces = { eth0: [dockerAddress] };
+  const dockerContainerInterfaceNames = new Set(["eth0"]);
 
-  assert.equal(isDockerRuntimeNetworkIp("10.42.0.99", dockerInterfaces, null), true);
+  assert.equal(isDockerRuntimeNetworkIp("10.42.0.99", dockerInterfaces, null, dockerContainerInterfaceNames), true);
   assert.equal(
-    isDockerRuntimeNetworkIp("10.43.0.99", dockerInterfaces, null),
+    isDockerRuntimeNetworkIp("10.43.0.99", dockerInterfaces, null, dockerContainerInterfaceNames),
     false,
     "automatic Docker trust must not include an unrelated private network",
   );
   assert.equal(
-    isDockerRuntimeNetworkIp("192.168.65.1", dockerInterfaces, "192.168.65.1"),
+    isDockerRuntimeNetworkIp("192.168.65.1", dockerInterfaces, "192.168.65.1", dockerContainerInterfaceNames),
     true,
     "the exact Docker gateway remains trusted outside the interface CIDR",
+  );
+  const hostNetworkInterfaces = {
+    eth0: [{ ...dockerAddress, address: "192.168.1.10", cidr: "192.168.1.10/24" }],
+  };
+  assert.equal(
+    isDockerRuntimeNetworkIp("192.168.1.44", hostNetworkInterfaces, null, new Set()),
+    false,
+    "a host-network LAN must not become automatically trusted without container-interface evidence",
+  );
+  assert.equal(
+    isDockerRuntimeNetworkIp("192.168.1.1", hostNetworkInterfaces, "192.168.1.1", new Set()),
+    false,
+    "a host-network default gateway is not Docker-specific evidence",
   );
 
   assert.equal(
@@ -106,6 +120,7 @@ try {
     isTrustedInterfaceRequest(request({}, "10.42.0.99", "10.42.0.2"), {
       interfaces: dockerInterfaces,
       gatewayIp: null,
+      containerInterfaceNames: dockerContainerInterfaceNames,
     }),
     true,
     "a peer on the actual container network keeps the automatic bypass",
@@ -114,6 +129,7 @@ try {
     isTrustedInterfaceRequest(request({ "x-forwarded-for": "198.51.100.10" }, "10.42.0.99", "10.42.0.2"), {
       interfaces: dockerInterfaces,
       gatewayIp: null,
+      containerInterfaceNames: dockerContainerInterfaceNames,
     }),
     false,
     "forwarding headers withhold automatic Docker trust",
@@ -122,6 +138,7 @@ try {
     isTrustedInterfaceRequest(request({}, "192.168.65.1", "10.42.0.2"), {
       interfaces: dockerInterfaces,
       gatewayIp: "192.168.65.1",
+      containerInterfaceNames: dockerContainerInterfaceNames,
     }),
     true,
     "the exact detected Docker gateway keeps the automatic bypass",
@@ -134,6 +151,26 @@ try {
     false,
     "automatic Docker trust must not include the whole conventional bridge range",
   );
+  assert.equal(
+    isTrustedInterfaceRequest(request({}, "192.168.1.44", "192.168.1.10"), {
+      interfaces: hostNetworkInterfaces,
+      gatewayIp: null,
+      containerInterfaceNames: new Set(),
+    }),
+    false,
+    "Docker host-network LAN traffic must authenticate in automatic mode",
+  );
+  process.env.BYPASS_AUTH_DOCKER = "true";
+  assert.equal(
+    isTrustedInterfaceRequest(request({}, "192.168.1.44", "192.168.1.10"), {
+      interfaces: hostNetworkInterfaces,
+      gatewayIp: null,
+      containerInterfaceNames: new Set(),
+    }),
+    true,
+    "the explicit Docker bypass retains compatibility for intentional host-network deployments",
+  );
+  delete process.env.BYPASS_AUTH_DOCKER;
   delete process.env.MARINARA_DOCKER;
 
   assert.equal(

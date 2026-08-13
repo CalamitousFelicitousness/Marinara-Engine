@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { logger } from "../../lib/logger.js";
 import {
   getWorkspaceShellSandboxStatus,
@@ -31,6 +32,7 @@ type RunMariTransformInput = {
 
 const TRANSFORM_TIMEOUT_MS = 15 * 60_000;
 const MAX_TRANSFORM_OUTPUT_BYTES = 32 * 1024 * 1024;
+const MAX_TRANSFORM_ERROR_BYTES = 32_000;
 const UNSAFE_TRANSFORM_FALLBACK_ENV = "MARI_DB_ALLOW_UNSAFE_TRANSFORMS";
 
 // This source is deliberately self-contained. It executes in a separate Node process behind
@@ -209,9 +211,11 @@ export async function runMariTransformSandbox(input: RunMariTransformInput): Pro
 
   return new Promise<MariTransformOutput[]>((resolveRun, rejectRun) => {
     const child = sandboxed.child;
-    let stdout = "";
-    let stderr = "";
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     let outputBytes = 0;
+    let stderrBytes = 0;
+    let stderrTruncated = false;
     let settled = false;
     let exceededOutput = false;
     let timedOut = false;
@@ -233,14 +237,26 @@ export async function runMariTransformSandbox(input: RunMariTransformInput): Pro
         child.kill("SIGKILL");
         return;
       }
-      stdout += chunk.toString("utf8");
+      stdoutChunks.push(chunk);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderr.length < 32_000) stderr += chunk.toString("utf8");
+      const remainingBytes = MAX_TRANSFORM_ERROR_BYTES - stderrBytes;
+      if (remainingBytes <= 0) {
+        stderrTruncated = true;
+        return;
+      }
+      const accepted = chunk.byteLength > remainingBytes ? chunk.subarray(0, remainingBytes) : chunk;
+      stderrChunks.push(accepted.byteLength === chunk.byteLength ? accepted : Buffer.from(accepted));
+      stderrBytes += accepted.byteLength;
+      if (accepted.byteLength < chunk.byteLength) stderrTruncated = true;
     });
     child.on("error", (error) => finish(() => rejectRun(error)));
     child.on("close", (exitCode) =>
       finish(() => {
+        const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+        const stderrBuffer = Buffer.concat(stderrChunks, stderrBytes);
+        const stderrDecoder = new StringDecoder("utf8");
+        const stderr = stderrTruncated ? stderrDecoder.write(stderrBuffer) : stderrDecoder.end(stderrBuffer);
         if (timedOut) {
           rejectRun(new Error("Transform timed out after 15 minutes"));
           return;

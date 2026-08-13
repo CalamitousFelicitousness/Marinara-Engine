@@ -111,8 +111,9 @@ function isSymlink(entry: AdmZip.IZipEntry): boolean {
 }
 
 export function validatePackageArchiveEntries(zip: AdmZip, maximumExpandedBytes = MAX_EXPANDED_BYTES) {
-  const entries = zip.getEntries().filter((item) => !item.isDirectory);
-  if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Package contains too many files");
+  const archiveEntries = zip.getEntries();
+  if (archiveEntries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Package contains too many files");
+  const entries = archiveEntries.filter((item) => !item.isDirectory);
   const names = new Set<string>();
   let expandedBytes = 0;
   for (const item of entries) {

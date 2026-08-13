@@ -91,6 +91,42 @@ try {
   });
   assert.equal(replay.statusCode, 401, "a challenge must be one-time use");
 
+  const capacityChallenges: Array<{ clientNonce: string; serverNonce: string }> = [];
+  for (let index = 0; index < 64; index += 1) {
+    const capacityClientNonce = (index + 3).toString(16).padStart(64, "0");
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/android-auth/challenge",
+      payload: { clientNonce: capacityClientNonce },
+    });
+    assert.equal(response.statusCode, 200);
+    capacityChallenges.push({
+      clientNonce: capacityClientNonce,
+      serverNonce: response.json<{ serverNonce: string }>().serverNonce,
+    });
+  }
+  const saturated = await app.inject({
+    method: "POST",
+    url: "/api/android-auth/challenge",
+    payload: { clientNonce: "ff".repeat(32) },
+  });
+  assert.equal(saturated.statusCode, 429, "challenge saturation must reject new work instead of evicting live work");
+  const firstCapacityChallenge = capacityChallenges[0]!;
+  const retainedChallenge = await app.inject({
+    method: "POST",
+    url: "/api/android-auth/session",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams({
+      clientNonce: firstCapacityChallenge.clientNonce,
+      serverNonce: firstCapacityChallenge.serverNonce,
+      proof: androidLocalAuthTesting.hmac(
+        secret,
+        `client:${firstCapacityChallenge.clientNonce}:${firstCapacityChallenge.serverNonce}`,
+      ),
+    }).toString(),
+  });
+  assert.equal(retainedChallenge.statusCode, 303, "a live challenge must survive a later capacity rejection");
+
   const cli = await app.inject({
     method: "GET",
     url: "/api/private",
@@ -138,6 +174,12 @@ try {
     resolve(repositoryRoot, "android/app/src/main/java/com/marinara/engine/MainActivity.java"),
     "utf8",
   );
+  const mariCliSource = readFileSync(resolve(repositoryRoot, "packages/server/src/bin/mari.ts"), "utf8");
+  assert.match(
+    mariCliSource,
+    /MARINARA_ANDROID_SECRET_FILE[\s\S]*\.marinara-engine[\s\S]*android-secret/u,
+    "a fresh Termux shell must let the mari CLI recover the APK-managed secret from its protected file",
+  );
   assert.doesNotMatch(activitySource, /url\.startsWith\("http:\/\/(?:localhost|127\.0\.0\.1)"\)/u);
   assert.match(
     activitySource,
@@ -173,10 +215,10 @@ try {
 
   const gradleSource = readFileSync(resolve(repositoryRoot, "android/app/build.gradle"), "utf8");
   assert.doesNotMatch(gradleSource, /signingConfigs\.debug/u, "release builds must never use Android's debug key");
-  assert.match(gradleSource, /Release APK builds require all ANDROID_SIGNING_\*/u);
+  assert.match(gradleSource, /Release APK(?:\/AAB)? builds require all ANDROID_SIGNING_\*/u);
   assert.match(
     gradleSource,
-    /task\.name in \["assembleRelease", "bundleRelease", "packageRelease"\]/u,
+    /releaseArtifactTaskNames[\s\S]*"assembleRelease"[\s\S]*"bundleRelease"[\s\S]*"packageRelease"/u,
     "the signing guard must cover release artifacts without blocking unrelated Gradle tasks",
   );
 

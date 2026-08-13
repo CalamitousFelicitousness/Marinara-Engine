@@ -150,11 +150,28 @@ try {
 
   const dockerfileSource = readFileSync(join(repositoryRoot, "Dockerfile"), "utf8");
   assert.match(dockerfileSource, /apt-get install[\s\S]*\bbubblewrap\b/u, "The official image must install Bubblewrap");
-  assert.equal(
-    dockerfileSource.match(/^FROM node:24-trixie-slim@sha256:[0-9a-f]{64}(?: AS \w+)?$/gmu)?.length,
-    2,
-    "Both full-image stages must use digest-pinned Debian Trixie for ARM64 sidecar compatibility",
-  );
+  const dockerBaseStages = dockerfileSource
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => /^FROM\s+/iu.test(line));
+  assert.equal(dockerBaseStages.length, 2, "The full image must retain its reviewed build and production stages");
+  const pinnedNodeBase = /^FROM\s+node:24-trixie-slim@(sha256:[0-9a-f]{64})(?:\s+AS\s+[a-z0-9_.-]+)?$/iu;
+  // Offline evidence recorded from the pinned OCI index. A base-image bump
+  // must update this reviewed index -> linux/arm64 manifest relationship.
+  const arm64ManifestByIndex = new Map([
+    [
+      "sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d",
+      "sha256:8525258f39fa3365fcf9a9d01e85458c7280ad00bd30c5e67655311262257e9e",
+    ],
+  ]);
+  for (const stage of dockerBaseStages) {
+    const match = pinnedNodeBase.exec(stage);
+    assert.ok(match, `Every full-image stage must pin node:24-trixie-slim by digest: ${stage}`);
+    assert.ok(
+      arm64ManifestByIndex.has(match[1]!),
+      `The pinned Node manifest must have reviewed linux/arm64 support: ${match[1]}`,
+    );
+  }
 } finally {
   delete process.env.TRUSTED_HOSTS;
   delete process.env.CSRF_TRUSTED_ORIGINS;

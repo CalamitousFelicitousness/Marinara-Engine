@@ -60,6 +60,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve PR refs
         env:
@@ -67,6 +68,7 @@ jobs:
         run: |
           BASE=$(gh pr view "$PR_NUM" --json baseRefName -q .baseRefName)
           echo "PR_BASE_REF=$BASE" >> "$GITHUB_ENV"
+          gh auth setup-git
           git fetch --force origin "$BASE:refs/remotes/origin/$BASE"
 
       - name: Preserve review tooling from base branch
@@ -107,6 +109,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git status
+          gh auth setup-git
           git fetch origin "pull/$PR_NUM/head:pr-$PR_NUM"
           git checkout "pr-$PR_NUM"
           HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid -q .headRefOid)
@@ -144,6 +147,7 @@ jobs:
         run: |
           HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid -q .headRefOid)
           if [ "$HEAD_SHA" != "$(git rev-parse HEAD)" ]; then
+            gh auth setup-git
             git fetch --force origin "pull/$PR_NUM/head:refs/remotes/bunny-review/pr-$PR_NUM"
             git checkout --detach "$HEAD_SHA"
           fi

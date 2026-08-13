@@ -51,6 +51,93 @@ const scopedCss = scopeChatMessageCss(
 assert.doesNotMatch(scopedCss, /@namespace/iu, "shared-message CSS cannot retain external namespaces");
 assert.match(scopedCss, /\.message-scope \.safe\s*\{/u, "ordinary message selectors remain scoped");
 
+const globalCss = scopeChatMessageCss(
+  `
+    @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }
+    @font-face { font-family: "Story Font"; src: url("https://example.invalid/story.woff2"); }
+    @property --glow { syntax: "<color>"; inherits: false; initial-value: red; }
+    @page { margin: 0; }
+    @counter-style app-counter { system: numeric; symbols: "X"; }
+    .animated { animation: 1s pulse; font-family: "Story Font"; color: var(--glow); }
+  `,
+  ".message-scope",
+);
+assert.doesNotMatch(globalCss, /@(?:page|counter-style)\b/iu, "document-global rules cannot affect the app");
+assert.doesNotMatch(globalCss, /@keyframes\s+pulse\b/iu, "message keyframe names cannot collide with app animations");
+assert.match(globalCss, /@keyframes\s+mari-msg-[\w-]+-pulse\b/iu, "message animations remain available by namespace");
+assert.match(globalCss, /animation:\s*1s\s+mari-msg-[\w-]+-pulse/iu, "animation references use the namespace");
+assert.doesNotMatch(globalCss, /font-family:\s*"Story Font"/iu, "message fonts cannot override an app family");
+assert.match(globalCss, /font-family:\s*"mari-msg-font-[^"]+"/iu, "message fonts remain available by namespace");
+assert.doesNotMatch(globalCss, /@property\s+--glow\b/iu, "registered properties cannot collide with app properties");
+assert.match(
+  globalCss,
+  /var\(--mari-msg-[\w-]+-glow\)/iu,
+  "registered custom properties remain available by namespace",
+);
+
+const conditionalCss = scopeChatMessageCss(
+  `
+    @media (min-width: 1px) { .inside:is(.wide, .narrow), [data-label="a,b"] { color: red; } }
+    @layer attacker, base;
+    @layer cards { .outer { & + .outside { color: green; } :is(&, body) .outside { color: blue; } } }
+    .after { color: rgb(4, 5, 6); }
+  `,
+  ".message-scope",
+);
+assert.match(
+  conditionalCss,
+  /@media[^{}]*\{\s*\.message-scope \.inside:is\(\.wide, \.narrow\), \.message-scope \[data-label="a,b"\]\s*\{/u,
+  "conditional rules and selector-list commas remain available inside the message scope",
+);
+assert.match(
+  conditionalCss,
+  /\}\s*\.message-scope \.after\s*\{/u,
+  "a selector following a retained at-rule cannot escape the message scope",
+);
+assert.doesNotMatch(conditionalCss, /\}\s*\.after\s*\{/u, "an at-rule closing brace cannot expose a global selector");
+assert.doesNotMatch(conditionalCss, /@layer\s+attacker/u, "statement layers cannot reorder the app's cascade");
+assert.match(conditionalCss, /@layer\s+mari-msg-layer-[\w-]+\s*\{/u, "named message layers remain usable by namespace");
+assert.match(conditionalCss, /\.message-scope \.outer\s*\{\s*\}/u, "the safely scoped parent rule remains available");
+assert.doesNotMatch(conditionalCss, /&|:is\([^)]*body|\.outside/u, "nested rules cannot select outside the message");
+
+const malformedBraceCss = scopeChatMessageCss(
+  ".inside { color: red; }} .after-malformed { color: blue; }",
+  ".message-scope",
+);
+assert.equal(malformedBraceCss, "", "malformed CSS fails closed instead of relying on browser error recovery");
+assert.doesNotMatch(malformedBraceCss, /\}\s*\.after-malformed\s*\{/u);
+
+const indirectGlobalCss = scopeChatMessageCss(
+  `
+    @keyframes pulse { from { opacity: 0; } }
+    @font-face { font-family: "Story Font"; src: url("https://example.invalid/story.woff2"); }
+    .indirect { --animation-name: pulse; --font-name: "Story Font"; animation-name: var(--animation-name); font-family: var(--font-name); }
+  `,
+  ".message-scope",
+);
+assert.match(indirectGlobalCss, /--animation-name:\s*mari-msg-[\w-]+-pulse/u, "indirect animations remain usable");
+assert.match(indirectGlobalCss, /--font-name:\s*"mari-msg-font-[^"]+"/u, "indirect custom fonts remain usable");
+
+const rejectedGlobalIdentifiers = scopeChatMessageCss(
+  `
+    @keyframes "app-spin" { from { opacity: 0; } }
+    @keyframes évil { from { opacity: 0; } }
+    @keyframes \\31 app { from { opacity: 0; } }
+    @property --évil { syntax: "<color>"; inherits: false; initial-value: red; }
+    @property --app\\5f color { syntax: "<color>"; inherits: false; initial-value: red; }
+    @font-face { font-family: "Harmless"; font-family: "Inter"; src: local("}"); }
+  `,
+  ".message-scope",
+);
+assert.doesNotMatch(rejectedGlobalIdentifiers, /@keyframes\s+(?:"app-spin"|évil|\\31 app)/u);
+assert.doesNotMatch(rejectedGlobalIdentifiers, /@property\s+(?:--évil|--app\\5f color)/u);
+assert.doesNotMatch(rejectedGlobalIdentifiers, /font-family:\s*"(?:Harmless|Inter)"/u);
+assert.match(
+  rejectedGlobalIdentifiers,
+  /font-family:\s*"mari-msg-font-[^"]+"/u,
+  "every effective font-face family is namespaced even with duplicate declarations and brace-like strings",
+);
+
 const chatMessageSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
   "utf8",

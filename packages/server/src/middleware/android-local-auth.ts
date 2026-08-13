@@ -234,7 +234,10 @@ export async function androidLocalAuthRoutes(app: FastifyInstance) {
     }
 
     pruneExpired();
-    trimOldest(pendingChallenges, MAX_PENDING_CHALLENGES);
+    if (pendingChallenges.size >= MAX_PENDING_CHALLENGES) {
+      reply.header("Retry-After", Math.ceil(CHALLENGE_TTL_MS / 1_000));
+      return reply.status(429).send({ error: "Too many pending Android authentication challenges" });
+    }
     const serverNonce = randomBytes(32).toString("hex");
     pendingChallenges.set(serverNonce, { clientNonce, expiresAt: Date.now() + CHALLENGE_TTL_MS });
     return {

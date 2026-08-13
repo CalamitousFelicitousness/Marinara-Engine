@@ -205,7 +205,16 @@ try {
     resolveCapabilityCatalogUrl,
     resolveCapabilityPackageArtifactUrl,
     resolveCapabilityPackageIconUrl,
+    validatePackageArchiveEntries,
   } = await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+  const directoryFloodArchive = {
+    getEntries: () => Array.from({ length: 8_193 }, (_, index) => ({ isDirectory: true, entryName: `dir-${index}/` })),
+  } as unknown as Parameters<typeof validatePackageArchiveEntries>[0];
+  assert.throws(
+    () => validatePackageArchiveEntries(directoryFloodArchive),
+    /Package contains too many files/u,
+    "directory-only ZIP entries count toward the archive entry limit",
+  );
   assert.equal(
     resolveCapabilityCatalogUrl("2.3.1", "", "main"),
     "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents/main/catalog/v2/catalog.json",

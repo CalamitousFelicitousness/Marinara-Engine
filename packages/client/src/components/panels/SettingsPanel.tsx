@@ -1363,6 +1363,7 @@ function AndroidStatusBarSetting() {
       setSupported(true);
     };
     window.addEventListener(ANDROID_BRIDGE_READY_EVENT, refreshBridge);
+    refreshBridge();
     return () => window.removeEventListener(ANDROID_BRIDGE_READY_EVENT, refreshBridge);
   }, []);
 

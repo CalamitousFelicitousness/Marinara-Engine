@@ -36,7 +36,7 @@ import { flushDB } from "../db/connection.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
-import { encryptCustomToolWebhookUrl } from "../utils/custom-tool-webhook.js";
+import { ENCRYPTED_WEBHOOK_PREFIX, encryptCustomToolWebhookUrl } from "../utils/custom-tool-webhook.js";
 import {
   ProfileImportAssetValidationError,
   cleanupStagedProfileAssets,
@@ -595,10 +595,15 @@ export function quarantineProfilePersonalExtensionRow(row: Record<string, unknow
 }
 
 export function quarantineProfileCustomToolRow(row: Record<string, unknown>) {
+  let importedWebhookUrl = row.webhookUrl ?? null;
+  if (typeof row.webhookUrl === "string") {
+    importedWebhookUrl = row.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)
+      ? null
+      : encryptCustomToolWebhookUrl(row.webhookUrl);
+  }
   const secured = {
     ...row,
-    webhookUrl:
-      typeof row.webhookUrl === "string" ? encryptCustomToolWebhookUrl(row.webhookUrl) : (row.webhookUrl ?? null),
+    webhookUrl: importedWebhookUrl,
   };
   if (row.executionType === "static") return secured;
   return { ...secured, enabled: "false", includeHiddenContext: "false" };

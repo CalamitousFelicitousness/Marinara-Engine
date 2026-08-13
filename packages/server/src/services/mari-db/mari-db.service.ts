@@ -7135,6 +7135,9 @@ export class MariDbService {
 
   private async planDelete(request: ParsedMutationRequest, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
+    if (!request.id && !request.where?.trim()) {
+      throw new Error("Delete requires an id or an explicit --where expression");
+    }
     const rows = await this.rawRows(meta.name);
     const predicate = request.id
       ? (row: Row) => String(row[getPrimary(meta)]) === request.id

@@ -19,9 +19,6 @@ if (!releaseCommit) {
         releaseCommit = ""
     }
 }
-if (!(releaseCommit ==~ /^[a-f0-9]{40}$/)) {
-    throw new GradleException("Android builds require a full source commit. Build from Git or pass -PmarinaraReleaseCommit=<40-hex-commit>.")
-}
 android {
     namespace 'com.marinara.engine'
     compileSdk 34
@@ -72,12 +69,24 @@ android {
     }
 }
 
-if (!hasReleaseSigning) {
-    tasks.configureEach { task ->
-        if (task.name in ["assembleRelease", "bundleRelease", "packageRelease"]) {
-            task.doFirst {
-                throw new GradleException("Release APK builds require all ANDROID_SIGNING_* credentials; debug signing is not allowed for release artifacts.")
-            }
+gradle.taskGraph.whenReady { taskGraph ->
+    def releaseArtifactTaskNames = [
+        "assembleRelease",
+        "bundleRelease",
+        "packageRelease",
+        "packageReleaseBundle",
+        "packageReleaseUniversalApk",
+        "signReleaseBundle",
+    ]
+    def buildsReleaseArtifact = taskGraph.allTasks.any { task ->
+        task.project == project && task.name in releaseArtifactTaskNames
+    }
+    if (buildsReleaseArtifact) {
+        if (!(releaseCommit ==~ /^[a-f0-9]{40}$/)) {
+            throw new GradleException("Android release builds require a full source commit. Build from Git or pass -PmarinaraReleaseCommit=<40-hex-commit>.")
+        }
+        if (!hasReleaseSigning) {
+            throw new GradleException("Release APK/AAB builds require all ANDROID_SIGNING_* credentials; debug signing is not allowed for release artifacts.")
         }
     }
 }

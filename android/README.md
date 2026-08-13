@@ -124,7 +124,7 @@ APK-managed installs also protect ordinary localhost browser sessions. The Termu
 cat ~/.marinara-engine/android-secret
 ```
 
-The `mari` CLI continues to work automatically because the Termux launcher passes the same secret to it. LAN access and manual installations remain governed by the normal Marinara authentication settings.
+The `mari` CLI continues to work automatically because the Termux launcher passes the same secret to it; direct local CLI runs also fall back to this private secret file. LAN access and manual installations remain governed by the normal Marinara authentication settings.
 
 To skip the update check and start the already-installed local copy, run `./start-termux.sh --skip-update`.
 To skip automatic Engine updates on every launch, add `AUTO_UPDATE_ENABLED=false` to the project `.env`; the launcher still checks for a newer published release and prints its download link when one is available, while manual update controls remain available.

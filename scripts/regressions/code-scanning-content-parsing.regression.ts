@@ -192,8 +192,7 @@ assert.ok(
   performance.now() - nestedCharacterStartedAt < 1_000,
   "deeply wrapped character conditions should complete within one second",
 );
-let nestedAndCondition = "char";
-for (let depth = 0; depth < 1_600; depth += 1) nestedAndCondition = `char && (${nestedAndCondition})`;
+const nestedAndCondition = `${"char && (".repeat(50_000)}char${")".repeat(50_000)}`;
 const nestedAndConditional = `[\n{{#if ${nestedAndCondition}}}{{char}}{{else}}missing{{/if}}\n]`;
 const nestedAndStartedAt = performance.now();
 assert.equal(resolveMacros(nestedAndConditional, groupMacroContext), "[\nMiko\n]\n[\nDottore\n]");
@@ -205,10 +204,23 @@ for (const condition of ["(char)) && false", "(char || false)) && false", "()cha
   assert.equal(
     resolveMacros(`[\n{{#if ${condition}}}T{{else}}F{{/if}}\n]`, groupMacroContext),
     "[\nF\n]\n[\nF\n]",
+    `malformed grouped condition should evaluate false per block: ${condition}`,
   );
 }
+assert.equal(
+  resolveMacros("{{#if (char)() && false}}T{{else}}F{{/if}}", groupMacroContext, {
+    deferCharacterMacros: "all",
+    trimResult: false,
+  }),
+  "F",
+  "malformed adjacent operands should not trigger character deferral",
+);
 for (const condition of ["(false))", "(false)))", "(false)) && true", "()false", "char && ()false", "false || ()false"]) {
-  assert.equal(resolveMacros(`{{#if ${condition}}}T{{else}}F{{/if}}`, groupMacroContext), "T");
+  assert.equal(
+    resolveMacros(`{{#if ${condition}}}T{{else}}F{{/if}}`, groupMacroContext),
+    "T",
+    `malformed condition should keep legacy truthy behavior: ${condition}`,
+  );
 }
 const adjacentGroupCondition = `(char)${"()".repeat(16_000)} && false`;
 const adjacentGroupStartedAt = performance.now();

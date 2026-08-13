@@ -736,19 +736,14 @@ function hasCharacterMacro(template: string): boolean {
 
     const end = findBalancedMacroEnd(template, start);
     if (end === -1) {
-      return (
-        hasCharacterConditionalOperandCandidate(template.slice(bodyStart)) ||
-        [...CHARACTER_MACRO_NAMES].some((macroName) =>
-          lowerTemplate.includes(`{{${macroName}}}`, start + 2),
-        )
-      );
+      return hasCharacterConditionalOperandCandidate(template.slice(bodyStart));
     }
     const body = template.slice(start + 2, end - 2).trim();
     const condition = parseIfCondition(body) ?? parseElseIfCondition(body);
     if (
       condition !== null &&
       hasCharacterConditionalOperandCandidate(condition) &&
-      conditionDependsOnCharacter(condition)
+      (conditionDependsOnCharacter(condition) || conditionHasLegacyAdjacentCharacterReference(condition))
     ) {
       return true;
     }
@@ -993,10 +988,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
 }
 
 function isCharacterConditionalOperand(raw: string): boolean {
-  const normalized = normalizeConditionKey(raw);
-  return /^(char|charname|charphonetic|charnamephonetic|character|characterphonetic|speaker|speakerphonetic|group|description|personality|backstory|appearance|scenario|example|charsysinfo|charposthistory|convo_display|char_about|convo_behavior)$/.test(
-    normalized,
-  );
+  return CHARACTER_CONDITIONAL_OPERAND_NAMES.has(normalizeConditionKey(raw));
 }
 
 type ParsedConditionExpression = { left: string; operator: string; right?: string };
@@ -1230,11 +1222,6 @@ function parseConditionSyntax(condition: string): ConditionSyntaxNode {
 
   // An unmatched opening parenthesis makes every operator after it nested in
   // the legacy grammar. Treat that suffix as one atom without rescanning it.
-  if (frames.length !== 1) {
-    const root = frames[0]!;
-    appendConditionAtom(root, condition, condition.length, true);
-    return finishConditionSyntaxFrame(root);
-  }
   const root = frames[0]!;
   appendConditionAtom(root, condition, condition.length, true);
   return finishConditionSyntaxFrame(root);
@@ -1249,11 +1236,41 @@ function parseConditionComparisons(condition: string): ParsedConditionExpression
       comparisons.push(parseConditionExpression(node.value));
     } else if (node.kind === "group") {
       pending.push(node.child);
+    } else if (node.kind === "adjacent") {
+      comparisons.push(parseConditionExpression(conditionSyntaxNodeText(node)));
     } else {
       for (let index = node.children.length - 1; index >= 0; index -= 1) pending.push(node.children[index]!);
     }
   }
   return comparisons;
+}
+
+// Bracket expansion historically recognized character operands even in
+// malformed adjacent groups such as `(char)()`. Keep that compatibility local
+// while comparison/deferred-operand consumers match the atom actually evaluated.
+function conditionHasLegacyAdjacentCharacterReference(condition: string): boolean {
+  const pending: Array<{ node: ConditionSyntaxNode; insideAdjacent: boolean }> = [
+    { node: parseConditionSyntax(condition), insideAdjacent: false },
+  ];
+  while (pending.length > 0) {
+    const { node, insideAdjacent } = pending.pop()!;
+    if (node.kind === "atom") {
+      if (!insideAdjacent) continue;
+      const parsed = parseConditionExpression(node.value);
+      if (
+        isCharacterConditionalOperand(parsed.left) ||
+        (parsed.right ? isCharacterConditionalOperand(parsed.right) : false)
+      ) {
+        return true;
+      }
+    } else if (node.kind === "group") {
+      pending.push({ node: node.child, insideAdjacent });
+    } else {
+      const childInsideAdjacent = insideAdjacent || node.kind === "adjacent";
+      for (const child of node.children) pending.push({ node: child, insideAdjacent: childInsideAdjacent });
+    }
+  }
+  return false;
 }
 
 function conditionDependsOnCharacter(condition: string): boolean {

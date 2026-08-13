@@ -49,6 +49,7 @@ import { capabilityModuleRuntime } from "./services/capability-packages/capabili
 import { migrateLegacyCapabilities } from "./services/capability-packages/legacy-capability-migration.js";
 import { createClientStaticOptions } from "./config/client-static-config.js";
 import { hostValidationHook } from "./middleware/host-validation.js";
+import { androidLocalAuthHook, androidLocalLoginRoute } from "./middleware/android-local-auth.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
 const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -113,9 +114,8 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
         app.log.info("Removed obsolete downloadable copies of core features: %s", removedCorePackages.join(", "));
       }
       await migrateLegacyCapabilities(db, hadUserStateBeforeStartup);
-      const noodleMigration = await capabilityPackageManager.migrateExtractedNoodleAvailability(
-        hadUserStateBeforeStartup,
-      );
+      const noodleMigration =
+        await capabilityPackageManager.migrateExtractedNoodleAvailability(hadUserStateBeforeStartup);
       if ("pending" in noodleMigration && noodleMigration.pending) {
         app.log.debug("Optional Noodle package is not in the active catalog yet; migration remains pending");
       } else if (noodleMigration.migrated) {
@@ -186,6 +186,10 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // ── CSRF / Origin protection for unsafe API requests ──
   app.addHook("onRequest", csrfProtectionHook);
 
+  // APK-managed Termux installs use a per-install secret so unrelated Android
+  // apps cannot inherit the server's ordinary loopback trust.
+  app.addHook("onRequest", androidLocalAuthHook);
+
   // ── Prevent caching of API JSON responses ──
   // Without explicit Cache-Control, browsers apply heuristic caching which
   // can return stale data when React Query refetches after mutations.
@@ -207,6 +211,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
 
   // ── Routes ──
   await registerRoutes(app);
+  await androidLocalLoginRoute(app);
 
   // Trusted downloaded server capabilities register while Fastify is still mutable.
   await capabilityModuleRuntime.start(app);

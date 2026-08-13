@@ -88,7 +88,6 @@ const approveSchema = z.object({
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
   return requirePrivilegedAccess(request, reply, {
     loopbackOnly,
-    trustedNetwork: !loopbackOnly,
     feature: "Professor Mari workspace",
   });
 }

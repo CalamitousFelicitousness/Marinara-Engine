@@ -287,6 +287,16 @@ The Android app is a small shell around Termux. Termux is a Linux terminal app f
 
 Also confirm the app and Termux use the same port. The default is `7860`. If you built the app with a different port, set the matching `PORT` in the Termux `.env` too.
 
+### Android localhost opens the login page or returns 401/503
+
+APK-managed Termux installs protect localhost with a private per-install secret. The Android app authenticates automatically. In another browser on the same phone, open `/android-login` and paste the value shown by this Termux command:
+
+```bash
+cat ~/.marinara-engine/android-secret
+```
+
+The local `mari` CLI reads the same file automatically. A 401 means the pasted secret or an authentication challenge was rejected; reload `/android-login` and paste the current value. A 503 means the server received a malformed configured secret. Restart through `./start-termux.sh`; if the launcher reports that its secret file is invalid or empty, return to the Android app and tap **Install / Start Marinara** so the APK provisions it again. Do not put this secret in screenshots or issue reports.
+
 ### Android update stops with exit status 134
 
 Exit status 134 usually means Android ran out of memory during a build step. Update again from the latest launcher:

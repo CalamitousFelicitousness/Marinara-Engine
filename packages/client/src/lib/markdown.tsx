@@ -109,6 +109,7 @@ export function applyInlineMarkdown(text: string, keyPrefix: string, _depth = 0)
             className="my-1 inline-block max-w-full rounded-lg align-bottom sm:max-w-md"
             loading="lazy"
             decoding="async"
+            referrerPolicy="no-referrer"
           />,
         );
       } else {
@@ -548,6 +549,7 @@ export function renderMarkdownBlocks(
           className="my-1 max-w-full rounded-lg sm:max-w-md"
           loading="lazy"
           decoding="async"
+          referrerPolicy="no-referrer"
         />,
       );
       continue;
@@ -733,9 +735,6 @@ export function applyInlineMarkdownHTML(html: string): string {
         '<blockquote class="mari-md-blockquote">$1</blockquote>',
       )
       // Discord-style subtext: -# text
-      .replace(
-        /(?:^|(?<=<br[^>]*>))[ \t]*-#(?:[ \t]+(.*?))?(?=<br|$)/g,
-        '<small class="mari-md-subtext">$1</small>',
-      )
+      .replace(/(?:^|(?<=<br[^>]*>))[ \t]*-#(?:[ \t]+(.*?))?(?=<br|$)/g, '<small class="mari-md-subtext">$1</small>')
   );
 }

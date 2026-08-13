@@ -10,10 +10,13 @@ process.env.HOST = "0.0.0.0";
 delete process.env.TRUSTED_HOSTS;
 delete process.env.CSRF_TRUSTED_ORIGINS;
 delete process.env.CORS_ORIGINS;
+delete process.env.MARINARA_E2E_DISABLE_RATE_LIMIT;
 
 const { corsDelegate } = await import("../../packages/server/src/config/cors-config.js");
 const { hostValidationHook, parseRequestHostname } =
   await import("../../packages/server/src/middleware/host-validation.js");
+const { rateLimitHook, resetRateLimitBucketsForTests } =
+  await import("../../packages/server/src/middleware/rate-limit.js");
 
 assert.equal(parseRequestHostname("192.168.1.50:7860"), "192.168.1.50");
 assert.equal(parseRequestHostname("[fd7a:115c:a1e0::1]:7860"), "fd7a:115c:a1e0::1");
@@ -22,6 +25,21 @@ assert.equal(parseRequestHostname("attacker.example/path"), null);
 assert.equal(parseRequestHostname("attacker.example:0"), null);
 assert.equal(parseRequestHostname("attacker.example:99999"), null);
 assert.equal(parseRequestHostname("attacker.example, localhost:7860"), null);
+
+const rateLimitedApp = Fastify();
+rateLimitedApp.addHook("onRequest", rateLimitHook);
+rateLimitedApp.post("/api/backup", async () => ({ ok: true }));
+try {
+  for (let requestNumber = 1; requestNumber <= 30; requestNumber += 1) {
+    const response = await rateLimitedApp.inject({ method: "POST", url: "/api/backup" });
+    assert.equal(response.statusCode, 200, `backup request ${requestNumber} remains within its explicit limit`);
+  }
+  const rejectedBackup = await rateLimitedApp.inject({ method: "POST", url: "/api/backup" });
+  assert.equal(rejectedBackup.statusCode, 429, "expensive backup routes are capped at 30 requests per minute and IP");
+} finally {
+  await rateLimitedApp.close();
+  resetRateLimitBucketsForTests();
+}
 
 const app = Fastify();
 app.addHook("onRequest", hostValidationHook);
@@ -114,6 +132,11 @@ try {
     appSource,
     /updateInstalledPackagesToLatest/u,
     "App startup must never download and execute Agent updates without user consent",
+  );
+  assert.ok(
+    appSource.indexOf('app.addHook("onRequest", rateLimitHook)') <
+      appSource.indexOf('app.addHook("onRequest", androidLocalAuthHook)'),
+    "API rate limiting must run before Android authorization",
   );
 
   const composeSource = readFileSync(join(repositoryRoot, "docker-compose.yml"), "utf8");

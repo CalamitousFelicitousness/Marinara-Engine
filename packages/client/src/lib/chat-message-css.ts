@@ -165,7 +165,6 @@ function sanitizePositionDeclarations(css: string): string {
 export function sanitizeChatMessageCss(css: string): string {
   let sanitized = canonicalizeKeywordEscapes(stripCssComments(css));
   sanitized = stripForbiddenStatementAtRules(sanitized)
-    .replace(/<\/?style\b[^>]*>/gi, "")
     .replace(/expression\s*\([^)]*\)/gi, "")
     .replace(/javascript\s*:/gi, "")
     .replace(/vbscript\s*:/gi, "")
@@ -174,7 +173,7 @@ export function sanitizeChatMessageCss(css: string): string {
     .replace(/url\s*\(\s*(?!['"]?(?:data:image\/|https?:\/\/))(['"]?)[^)]+\)/gi, "none")
     .replace(/!important/gi, "")
     .replace(/\bcontent\s*:[^;}]*/gi, "")
-    .replace(/<\/style/gi, "<\\/style");
+    .replace(/</g, "\\3c ");
   return sanitizePositionDeclarations(sanitized).trim();
 }
 

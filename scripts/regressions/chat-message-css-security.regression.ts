@@ -31,6 +31,10 @@ assert.match(positionedCss, /background-position:\s*fixed/u, "unrelated position
 const quotedComment = sanitizeChatMessageCss('[data-label="/* literal */"] { color: red; }');
 assert.match(quotedComment, /"\/\* literal \*\/"/u, "comment-like text inside strings remains intact");
 
+const reconstructedStyleTag = sanitizeChatMessageCss("<sty<style>le>.safe { color: red; }</sty</style>le>");
+assert.doesNotMatch(reconstructedStyleTag, /</u, "tag-like text cannot reconstruct an HTML style element");
+assert.match(reconstructedStyleTag, /\\3c /u, "literal angle brackets retain their CSS meaning through escaping");
+
 const scopedCss = scopeChatMessageCss(
   '@namespace svg url("https://example.invalid/ns"); .safe { color: red; }',
   ".message-scope",

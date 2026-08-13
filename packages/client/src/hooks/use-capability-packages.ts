@@ -77,13 +77,18 @@ export function selectGameExperiencePackages(
   );
 }
 
+/** A restart-required update can keep using the version already loaded by this browser session. */
+export function isCapabilityPackageAvailableUntilRestart(installed: InstalledCapabilityPackage): boolean {
+  return installed.status === "restart-required" && Boolean(installed.previousVersion);
+}
+
 /** Installed destinations that Home can safely expose as browser tabs. */
 export function selectHomeBrowserPackages(
   installed: InstalledCapabilityPackage[] | undefined,
 ): InstalledCapabilityPackage[] {
   return (installed ?? []).filter(
     (pkg) =>
-      isInstalledCapabilityReady(pkg) &&
+      (isInstalledCapabilityReady(pkg) || isCapabilityPackageAvailableUntilRestart(pkg)) &&
       pkg.manifest.contributions?.slots?.includes("home-browser-tab") &&
       Boolean(pkg.manifest.entrypoints.client?.trim()) &&
       Boolean(pkg.manifest.contributions.homeBrowserTab),
@@ -208,7 +213,15 @@ export function useCapabilityClientModules() {
   useEffect(() => {
     const eligiblePackageIds = new Set<string>();
     for (const item of installed.data ?? []) {
-      if (!isInstalledCapabilityReady(item) || !item.manifest.entrypoints.client) continue;
+      if (!item.manifest.entrypoints.client) continue;
+      if (isCapabilityPackageAvailableUntilRestart(item)) {
+        // The old client module is still loaded and paired with the old server
+        // runtime until Marinara restarts. Keep its state mounted while the new
+        // package version waits on disk.
+        eligiblePackageIds.add(item.id);
+        continue;
+      }
+      if (!isInstalledCapabilityReady(item)) continue;
       eligiblePackageIds.add(item.id);
       const current = getCapabilityClientModuleState(item.id);
       const attempt = current.version === item.version ? current.attempt : 0;

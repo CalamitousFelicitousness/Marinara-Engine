@@ -13,6 +13,33 @@ echo ""
 # Navigate to script directory
 cd "$(dirname "$0")"
 
+# APK-managed installs provision a per-install secret in Termux-private
+# storage. The server uses it to keep unrelated Android apps from inheriting
+# loopback trust; manual Termux installs simply continue without this setting.
+MARINARA_ANDROID_SECRET_FILE="${MARINARA_ANDROID_SECRET_FILE:-$HOME/.marinara-engine/android-secret}"
+MARINARA_ANDROID_SECRET_REQUIRED=0
+if [ -f "$MARINARA_ANDROID_SECRET_FILE" ]; then
+    MARINARA_ANDROID_SECRET_REQUIRED=1
+    if [ -z "${MARINARA_ANDROID_SECRET:-}" ]; then
+        IFS= read -r MARINARA_ANDROID_SECRET < "$MARINARA_ANDROID_SECRET_FILE" || true
+    fi
+fi
+if [ -n "${MARINARA_ANDROID_SECRET:-}" ]; then
+    if [ "${#MARINARA_ANDROID_SECRET}" -ne 64 ] || [[ "$MARINARA_ANDROID_SECRET" == *[!0-9a-fA-F]* ]]; then
+        echo "  [ERROR] The Android local-auth secret is invalid. Re-run setup from the Marinara Android app."
+        if [ "$MARINARA_ANDROID_SECRET_REQUIRED" = "1" ]; then
+            exit 1
+        fi
+        unset MARINARA_ANDROID_SECRET
+    else
+        chmod 600 "$MARINARA_ANDROID_SECRET_FILE" 2>/dev/null || true
+        export MARINARA_ANDROID_SECRET
+    fi
+elif [ "$MARINARA_ANDROID_SECRET_REQUIRED" = "1" ]; then
+    echo "  [ERROR] The Android local-auth secret is empty. Re-run setup from the Marinara Android app."
+    exit 1
+fi
+
 SKIP_UPDATE=0
 for arg in "$@"; do
     case "$arg" in
@@ -525,6 +552,11 @@ case "$BROWSER_HOST" in
   ""|"0.0.0.0"|"::") BROWSER_HOST="127.0.0.1" ;;
 esac
 
+LOCAL_BROWSER_PATH=""
+if [ -n "${MARINARA_ANDROID_SECRET:-}" ]; then
+  LOCAL_BROWSER_PATH="/android-login"
+fi
+
 AUTO_OPEN_BROWSER_VALUE="${AUTO_OPEN_BROWSER:-true}"
 case "${AUTO_OPEN_BROWSER_VALUE,,}" in
   0|false|no|off) AUTO_OPEN_BROWSER_ENABLED=0 ;;
@@ -542,7 +574,7 @@ echo ""
 echo "  ══════════════════════════════════════════"
 echo "    Starting Marinara Engine on ${PROTOCOL}://${HOST}:${PORT}"
 if [ "$BROWSER_HOST" != "$HOST" ]; then
-echo "    Local browser URL: ${PROTOCOL}://${BROWSER_HOST}:${PORT}"
+echo "    Local browser URL: ${PROTOCOL}://${BROWSER_HOST}:${PORT}${LOCAL_BROWSER_PATH}"
 fi
 if [ -n "$LOCAL_IP" ]; then
 echo "    LAN access: ${PROTOCOL}://${LOCAL_IP}:${PORT}"
@@ -555,11 +587,34 @@ echo ""
 
 # Open in Termux browser if available (no-op if not)
 if [ "$AUTO_OPEN_BROWSER_ENABLED" = "1" ] && command -v termux-open-url &> /dev/null; then
-    (sleep 3 && termux-open-url "${PROTOCOL}://${BROWSER_HOST}:${PORT}") &
+    (sleep 3 && termux-open-url "${PROTOCOL}://${BROWSER_HOST}:${PORT}${LOCAL_BROWSER_PATH}") &
 elif [ "$AUTO_OPEN_BROWSER_ENABLED" != "1" ]; then
     echo "  [OK] Auto-open disabled (AUTO_OPEN_BROWSER=${AUTO_OPEN_BROWSER_VALUE})"
 fi
 
+# Keep Android from suspending the Termux process while the local server is
+# running. Release the lock on every launcher exit, including Ctrl+C.
+TERMUX_WAKE_LOCK_ACQUIRED=0
+release_termux_wake_lock() {
+    if [ "$TERMUX_WAKE_LOCK_ACQUIRED" = "1" ]; then
+        if ! termux-wake-unlock >/dev/null 2>&1; then
+            echo "  [WARN] Could not release the Android wake lock."
+        fi
+    fi
+}
+trap release_termux_wake_lock EXIT
+
+if command -v termux-wake-lock &> /dev/null && command -v termux-wake-unlock &> /dev/null; then
+    if termux-wake-lock >/dev/null 2>&1; then
+        TERMUX_WAKE_LOCK_ACQUIRED=1
+        echo "  [OK] Android wake lock acquired for background reliability"
+    else
+        echo "  [WARN] Could not acquire an Android wake lock; background execution may pause."
+    fi
+else
+    echo "  [WARN] Termux wake-lock commands are unavailable; background execution may pause."
+fi
+
 # Start server
 cd packages/server
-exec node dist/index.js
+node dist/index.js

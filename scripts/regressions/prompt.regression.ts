@@ -473,6 +473,32 @@ assert.equal(
   2,
   "other group characters should keep the restricted message in context",
 );
+const characterStartHistory: ChatMLMessage[] = [
+  { role: "user", content: "Shared opening", contextKind: "history" },
+  {
+    role: "assistant",
+    content: "Maukie enters",
+    contextKind: "history",
+    characterId: "maukie",
+    conversationStartForCharacterIds: ["maukie"],
+  },
+  { role: "user", content: "Welcome, Maukie", contextKind: "history" },
+];
+assert.deepEqual(
+  filterPromptMessagesForCharacterAudience(characterStartHistory, ["maukie"]).map((message) => message.content),
+  ["Maukie enters", "Welcome, Maukie"],
+  "a character-specific New Start should exclude earlier history only for that character",
+);
+assert.deepEqual(
+  filterPromptMessagesForCharacterAudience(characterStartHistory, ["dottore"]).map((message) => message.content),
+  ["Shared opening", "Maukie enters", "Welcome, Maukie"],
+  "other characters should retain history before another character's New Start",
+);
+assert.equal(
+  mergeAdjacentMessages(characterStartHistory).length,
+  3,
+  "prompt merging must preserve character-specific context boundaries",
+);
 assert.equal(
   mergeAdjacentMessages([
     { role: "user", content: "Visible", contextKind: "history" },
@@ -588,7 +614,10 @@ import {
   resolveStoryboardAnimationRefinement,
 } from "../../packages/server/src/services/video/storyboard-animation-refinement.js";
 import { resolveGameGmPromptTemplate } from "../../packages/server/src/services/generation/game-gm-prompt-runtime.js";
-import { countConversationMessagesAfterSummaryAnchor } from "../../packages/server/src/services/conversation/auto-summary.service.js";
+import {
+  countConversationMessagesAfterSummaryAnchor,
+  parseSummaryResponse,
+} from "../../packages/server/src/services/conversation/auto-summary.service.js";
 import {
   prepareConversationPromptHistory,
   resolveConversationMembershipHistoryEvent,
@@ -917,7 +946,9 @@ const cases: RegressionCase[] = [
         [personaLinkedBook],
       );
       assert.deepEqual(filterRelevantLorebooks([personaLinkedBook], { personaId: "different-persona" }), []);
-      assert.deepEqual(filterRelevantLorebooks([personaLinkedBook], { personaId: "owner-persona" }), [personaLinkedBook]);
+      assert.deepEqual(filterRelevantLorebooks([personaLinkedBook], { personaId: "owner-persona" }), [
+        personaLinkedBook,
+      ]);
       const lorebookStorageSource = readFileSync(
         new URL("../../packages/server/src/services/storage/lorebooks.storage.ts", import.meta.url),
         "utf8",
@@ -989,8 +1020,7 @@ const cases: RegressionCase[] = [
       assert.equal(roleplay.storyboardAgentAnimationRefinementTemplateId, "shot-planner");
       assert.equal(roleplay.storyboardAgentImageAwareShotPlanningEnabled, true);
       assert.equal(
-        (roleplay.storyboardAgentAnimationRefinementTemplates as Array<{ promptTemplate: string }>)[0]
-          ?.promptTemplate,
+        (roleplay.storyboardAgentAnimationRefinementTemplates as Array<{ promptTemplate: string }>)[0]?.promptTemplate,
         "AGENT SHOT PLANNER",
       );
       assert.deepEqual(
@@ -2106,7 +2136,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "Spotify repeats a Music DJ track selection as one context",
+    name: "Spotify preserves enabled repeat for a Music DJ track selection",
     async run() {
       const originalFetch = globalThis.fetch;
       const selectedUris = [
@@ -2171,7 +2201,6 @@ const cases: RegressionCase[] = [
           ],
           {
             spotify: { accessToken: "regression-token" },
-            spotifyRepeatAfterPlay: "track",
           },
         );
 
@@ -4677,11 +4706,7 @@ const cases: RegressionCase[] = [
         null,
       );
       assert.equal(
-        resolveStoryboardAnimationRefinement(
-          '{"classification":"subtle","narrationBeat":"One |"}',
-          "Original |",
-          650,
-        ),
+        resolveStoryboardAnimationRefinement('{"classification":"subtle","narrationBeat":"One |"}', "Original |", 650),
         null,
       );
 
@@ -6552,6 +6577,16 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       });
       assert.equal(countAppearance(dynamicPreserved.prompt), 1);
 
+      const providerReadyDynamicPrompt =
+        "1girl, elphelt_valentine, guilty_gear, solo, portrait, upper_body, pink_hair, blue_eyes, white_background, masterpiece, best_quality";
+      const providerReadyDynamic = await buildNpcPortraitProviderPrompt({
+        ...request,
+        styleProfiles: createDefaultImageStyleProfileSettings(),
+        styleProfileId: "danbooru",
+        dynamicPromptGenerator: async () => providerReadyDynamicPrompt,
+      });
+      assert.match(providerReadyDynamic.prompt, new RegExp(providerReadyDynamicPrompt));
+
       const dynamicOmitted = await buildNpcPortraitProviderPrompt({
         ...request,
         dynamicPromptGenerator: async () => "Centered portrait of Lyra with a readable expression and clean lighting.",
@@ -7577,6 +7612,21 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         parseChatSummaryResult('{"title":"Legacy title field","summary":"Old clients remain compatible."}'),
         { title: "Legacy title field", summary: "Old clients remain compatible." },
         "The parser should accept title as an alias for name",
+      );
+      assert.deepEqual(
+        parseChatSummaryResult("{name: 'Repaired title', summary: 'Recovered roleplay summary',}"),
+        { title: "Repaired title", summary: "Recovered roleplay summary" },
+        "Roleplay summaries should use the shared JSON repair waterfall",
+      );
+      assert.deepEqual(
+        parseSummaryResponse('{summary: "Recovered conversation summary", keyDetails: ["Promise kept"],'),
+        { summary: "Recovered conversation summary", keyDetails: ["Promise kept"] },
+        "Conversation summaries should repair common malformed JSON and incomplete containers",
+      );
+      assert.deepEqual(
+        parseSummaryResponse("Plain-text conversation summary"),
+        { summary: "Plain-text conversation summary", keyDetails: [] },
+        "Conversation summaries should preserve plain text when shared JSON repair cannot produce a record",
       );
       assert.deepEqual(parseChatSummaryResult("Plain-text summary"), {
         title: "",
@@ -9028,12 +9078,20 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       addNameLookupEntry(avatars, "John Smith", "/api/avatars/file/john-smith.png");
       addNameLookupEntry(avatars, "John Doe", "/api/avatars/file/john-doe.png");
-      assert.equal(findCharAvatarFuzzy("John", avatars), undefined, "ambiguous aliases must not select by insertion order");
+      assert.equal(
+        findCharAvatarFuzzy("John", avatars),
+        undefined,
+        "ambiguous aliases must not select by insertion order",
+      );
       assert.equal(findCharAvatarFuzzy("John Smith", avatars), "/api/avatars/file/john-smith.png");
 
       const boundaryAvatars = new Map<string, string>();
       addNameLookupEntry(boundaryAvatars, "Ann", "/api/avatars/file/ann.png");
-      assert.equal(findCharAvatarFuzzy("Joanne", boundaryAvatars), undefined, "partial matches require word boundaries");
+      assert.equal(
+        findCharAvatarFuzzy("Joanne", boundaryAvatars),
+        undefined,
+        "partial matches require word boundaries",
+      );
 
       let warned = false;
       let updateByMessageCalled = false;
@@ -9053,7 +9111,11 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       await gameStateStore.updateByMessage();
       assert.equal(unavailableLibrary.size, 0);
       assert.equal(warned, true);
-      assert.equal(updateByMessageCalled, true, "optional avatar enrichment failures must not block tracker persistence");
+      assert.equal(
+        updateByMessageCalled,
+        true,
+        "optional avatar enrichment failures must not block tracker persistence",
+      );
     },
   },
   {
@@ -9482,6 +9544,12 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.equal(workspaceTextClaimsMutationCompletion(unsupportedCompletion.visibleText), true);
       assert.equal(workspaceActionNeedsVerification(unsupportedCompletion, []), "none");
+
+      const completedSupportReply = parseAssistantWorkspaceAction(
+        '{"say":"Done. Shell commands are unavailable here, so use these manual steps.","commands":[],"stop":true}',
+      );
+      assert.equal(workspaceTextClaimsMutationCompletion(completedSupportReply.visibleText), false);
+      assert.equal(workspaceActionNeedsVerification(completedSupportReply, []), null);
 
       const mutationResult: WorkspaceCommandResult = {
         id: "create-lorebook",

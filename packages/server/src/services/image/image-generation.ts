@@ -29,7 +29,13 @@ import {
 import { isImageLocalUrlsEnabled } from "../../config/runtime-config.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
-import { assertInsideDir, normalizeLoopbackUrl, safeFetch, validateOutboundUrl } from "../../utils/security.js";
+import {
+  assertInsideDir,
+  normalizeLoopbackUrl,
+  safeFetch,
+  validateOutboundUrl,
+  type SafeFetchOptions,
+} from "../../utils/security.js";
 import { notifyGenerationFallback, type GenerationFallbackNotifier } from "../generation/fallback-notification.js";
 import {
   isConnectionAdmissionFailure,
@@ -218,6 +224,13 @@ function resolveImageBackend(source: string, baseUrl: string, serviceHint: strin
 const IMAGE_GEN_TIMEOUT = Number(process.env.IMAGE_GEN_TIMEOUT_MS ?? 1_800_000);
 const COMFYUI_GEN_TIMEOUT_SECONDS = Number(process.env.COMFYUI_GEN_TIMEOUT ?? 2400);
 
+export function resolveComfyUiImageGenerationTimeoutMs(
+  imageTimeoutMs = IMAGE_GEN_TIMEOUT,
+  comfyUiTimeoutSeconds = COMFYUI_GEN_TIMEOUT_SECONDS,
+): number {
+  return Math.max(imageTimeoutMs, comfyUiTimeoutSeconds * 1000);
+}
+
 /**
  * Identify the physical image endpoint an admission slot belongs to. RunPod connections share
  * one API base URL and select the actual endpoint with a separate id, so the base URL alone
@@ -257,7 +270,7 @@ export async function generateImage(
   const normalizedBaseUrl = normalizeImageUrl(baseUrl);
   const generationTimeoutMs =
     resolvedSource === "comfyui" || resolvedSource === "swarmui" || resolvedSource === "runpod_comfyui"
-      ? Math.max(IMAGE_GEN_TIMEOUT, COMFYUI_GEN_TIMEOUT_SECONDS * 1000)
+      ? resolveComfyUiImageGenerationTimeoutMs()
       : IMAGE_GEN_TIMEOUT;
   // Primary plus fallback is one logical attempt, booked once here and reported once below with
   // the outcome of the whole chain. Only the outermost call owns this: the recursive fallback
@@ -622,6 +635,7 @@ type ImageFetchOptions = {
   allowLocal?: boolean;
   allowLoopback?: boolean;
   allowedOrigins?: string[];
+  agentOptions?: SafeFetchOptions["agentOptions"];
 };
 
 function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOptions = {}) {
@@ -634,13 +648,24 @@ function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOp
       allowedProtocols: ["https:", "http:"],
       flagName: "IMAGE_LOCAL_URLS_ENABLED",
     },
+    agentOptions: options.agentOptions,
     maxResponseBytes: MAX_IMAGE_RESPONSE_BYTES,
     decodeCompressedResponse: true,
   });
 }
 
-function localImageBackendFetch(url: string | URL, init?: RequestInit) {
-  return imageFetch(url, init, { allowLocal: true });
+function localImageBackendFetch(url: string | URL, init?: RequestInit, timeoutMs?: number) {
+  return imageFetch(url, init, {
+    allowLocal: true,
+    ...(timeoutMs
+      ? {
+          agentOptions: {
+            bodyTimeout: timeoutMs,
+            headersTimeout: timeoutMs,
+          },
+        }
+      : {}),
+  });
 }
 
 function isOpenAIGptImageModel(model?: string): boolean {
@@ -3278,12 +3303,16 @@ async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGe
     "[debug/image/swarmui] final request payload:\n%s",
     JSON.stringify(debugBody, null, 2),
   );
-  const response = await localImageBackendFetch(`${base}/API/GenerateText2Image`, {
-    method: "POST",
-    headers: swarmUiHeaders(apiKey),
-    body: JSON.stringify(body),
-    signal: imageRequestSignal(request),
-  });
+  const response = await localImageBackendFetch(
+    `${base}/API/GenerateText2Image`,
+    {
+      method: "POST",
+      headers: swarmUiHeaders(apiKey),
+      body: JSON.stringify(body),
+      signal: imageRequestSignal(request),
+    },
+    resolveComfyUiImageGenerationTimeoutMs(),
+  );
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`SwarmUI generation failed (${response.status}): ${sanitizeErrorText(text)}`);

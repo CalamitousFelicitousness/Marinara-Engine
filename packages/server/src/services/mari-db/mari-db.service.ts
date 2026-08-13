@@ -3,7 +3,6 @@
 // ──────────────────────────────────────────────
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { pathToFileURL } from "node:url";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -16,6 +15,12 @@ import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import {
+  clearCharacterEmbeddedLorebook,
+  embedLorebookIntoCharacter,
+  resolveEmbeddedCharacterId,
+  syncCharacterBookFromLorebook,
+} from "../lorebook/character-book-sync.js";
 import {
   createMariInstructionsStorage,
   MAX_INSTRUCTION_CONTENT_LENGTH,
@@ -48,6 +53,9 @@ import {
 } from "@marinara-engine/shared";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
 import { replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
+import { createMariWherePredicate } from "./mari-where-expression.js";
+import { runMariTransformSandbox } from "./mari-transform-sandbox.js";
+import { encryptCustomToolWebhookUrl, ENCRYPTED_WEBHOOK_PREFIX } from "../../utils/custom-tool-webhook.js";
 
 type Row = Record<string, unknown>;
 type Table = AnyFileTable;
@@ -71,6 +79,7 @@ type PlanChange = MariDbRowChange & {
   afterRaw?: Row | null;
   apply: boolean;
   cascadeOf?: string;
+  embeddedCharacterId?: string;
 };
 type Plan = {
   changes: PlanChange[];
@@ -543,6 +552,34 @@ function normalizeCustomToolWriteRow(row: Row): Row {
   return out;
 }
 
+function secureCustomToolRequestForStorage(
+  request: ParsedMutationRequest,
+  encryptedWebhooks: ReadonlyMap<string, string>,
+): void {
+  const secureRow = (row: Row | undefined) => {
+    if (!row || typeof row.webhookUrl !== "string") return;
+    row.webhookUrl = encryptedWebhooks.get(row.webhookUrl) ?? encryptCustomToolWebhookUrl(row.webhookUrl);
+  };
+  if (request.table === "custom_tools") {
+    secureRow(request.row);
+    secureRow(request.patch);
+  }
+  for (const related of request.relatedInserts ?? []) {
+    if (related.table === "custom_tools") secureRow(related.row);
+  }
+}
+
+function commandForStorage(request: ParsedMutationRequest, command: string): string {
+  const hasWebhookCredential =
+    (request.table === "custom_tools" &&
+      [request.row?.webhookUrl, request.patch?.webhookUrl].some((value) => typeof value === "string" && value)) ||
+    (request.relatedInserts ?? []).some(
+      (related) =>
+        related.table === "custom_tools" && typeof related.row.webhookUrl === "string" && related.row.webhookUrl,
+    );
+  return hasWebhookCredential ? `mari db ${request.kind} ${request.table} [webhook credential redacted]` : command;
+}
+
 function normalizeWriteRow(table: string, row: Row): Row {
   if (table === "agent_configs") return normalizeAgentConfigWriteRow(row);
   if (table === "custom_tools") return normalizeCustomToolWriteRow(row);
@@ -822,6 +859,11 @@ function normalizeAppDataActionName(action: string): string {
     "lorebook.entries.get": "lorebook.getentry",
     "lorebook.entry.update": "lorebook.updateentry",
     "lorebook.entries.update": "lorebook.updateentry",
+    "lorebook.entry.delete": "lorebook.deleteentry",
+    "lorebook.entries.delete": "lorebook.deleteentry",
+    "lorebook.entry.remove": "lorebook.deleteentry",
+    "lorebook.entries.remove": "lorebook.deleteentry",
+    "lorebook.removeentry": "lorebook.deleteentry",
     "theme.set": "theme.setactive",
     "theme.activate": "theme.setactive",
     "promptpreset.list": "preset.list",
@@ -870,13 +912,19 @@ function appDataCreateApply(source: Row): boolean {
 // file the user asks Mari to remember never lands half-saved without anyone knowing.
 function requireInstructionLength(value: string, max: number, field: string): string {
   if (value.length > max) {
-    throw new Error(`That memory's ${field} is ${value.length} characters; the maximum is ${max}. Trim it or split it into two memories.`);
+    throw new Error(
+      `That memory's ${field} is ${value.length} characters; the maximum is ${max}. Trim it or split it into two memories.`,
+    );
   }
   return value;
 }
 
 function buildInstructionInsertRow(data: Row, id: string, timestamp: string): Row {
-  const name = requireInstructionLength((firstString(data, ["name", "title", "label"]) ?? "").trim(), MAX_INSTRUCTION_NAME_LENGTH, "name");
+  const name = requireInstructionLength(
+    (firstString(data, ["name", "title", "label"]) ?? "").trim(),
+    MAX_INSTRUCTION_NAME_LENGTH,
+    "name",
+  );
   if (!name) throw new Error("A memory needs a name.");
   const content = requireInstructionLength(
     (firstString(data, ["content", "text", "body", "memory"]) ?? "").trim(),
@@ -893,7 +941,8 @@ function buildInstructionInsertRow(data: Row, id: string, timestamp: string): Ro
       "description",
     ),
     content,
-    persistent: firstBoolean(data, ["persistent", "pinned", "always", "alwaysInject", "always_inject"]) === true ? 1 : 0,
+    persistent:
+      firstBoolean(data, ["persistent", "pinned", "always", "alwaysInject", "always_inject"]) === true ? 1 : 0,
     // Disabled, ALWAYS: a Mari-authored memory is inert until the USER enables it (via the
     // Memories panel or "Keep & Enable" on the review card). Mari never sets `enabled` herself,
     // so a prompt-injection cannot induce a self-activating memory. Defense-in-depth.
@@ -914,7 +963,11 @@ function buildInstructionPatch(data: Row): Row {
   // "") so a supplied "" reaches the always-injected index instead of leaving the stale value.
   const descriptionKey = ["description", "summary"].find((key) => typeof data[key] === "string");
   if (descriptionKey !== undefined) {
-    patch.description = requireInstructionLength((data[descriptionKey] as string).trim(), MAX_INSTRUCTION_DESCRIPTION_LENGTH, "description");
+    patch.description = requireInstructionLength(
+      (data[descriptionKey] as string).trim(),
+      MAX_INSTRUCTION_DESCRIPTION_LENGTH,
+      "description",
+    );
   }
   const content = firstString(data, ["content", "text", "body", "memory"]);
   if (content !== undefined) {
@@ -1027,6 +1080,16 @@ export function normalizeCharacterActionData(input: Row): Row {
 }
 
 const SELECTIVE_LOGIC_VALUES = new Set(["and", "and_all", "or", "not", "not_all"]);
+const LOREBOOK_FILTER_MODE_VALUES = new Set(["any", "include", "exclude"]);
+const LOREBOOK_MATCHING_SOURCE_VALUES = new Set([
+  "character_name",
+  "character_description",
+  "character_personality",
+  "character_scenario",
+  "character_tags",
+  "persona_description",
+  "persona_tags",
+]);
 
 /** Validate a selectiveLogic string against the stored enum; undefined if absent or invalid. */
 function normalizeSelectiveLogicValue(raw: string | undefined): string | undefined {
@@ -1442,7 +1505,8 @@ function buildPromptSectionPatch(data: Row): Row {
   if (content !== undefined) patch.content = content;
   const role = firstString(data, ["role"]);
   if (role !== undefined) {
-    if (!["system", "user", "assistant"].includes(role)) throw new Error(`role must be system, user, or assistant, got "${role}"`);
+    if (!["system", "user", "assistant"].includes(role))
+      throw new Error(`role must be system, user, or assistant, got "${role}"`);
     patch.role = role;
   }
   const enabled = firstBoolean(data, ["enabled"]);
@@ -1533,7 +1597,11 @@ function buildPromptSectionInsertRow(
   return {
     id,
     presetId,
-    identifier: normalizePromptIdentifier(firstString(data, ["identifier", "key", "slug"]) ?? name, `section_${index}`, usedIdentifiers),
+    identifier: normalizePromptIdentifier(
+      firstString(data, ["identifier", "key", "slug"]) ?? name,
+      `section_${index}`,
+      usedIdentifiers,
+    ),
     name,
     content: firstString(data, ["content", "prompt", "text"]) ?? "",
     role: requireOneOf(data.role, ["system", "user", "assistant"], "role", "system"),
@@ -1643,6 +1711,62 @@ function assignListField(target: Row, source: Row, sourceKeys: string[], targetK
   if (value === undefined) return false;
   target[targetKey] = value;
   return true;
+}
+
+/**
+ * Assign a nullable numeric field: an explicit `null` clears it to its default, a finite number (or
+ * numeric string) sets it — optionally truncated to an integer and/or clamped to [min, max] — and an
+ * absent or non-numeric value is ignored. Lets Mari both set and clear the entry's nullable numbers.
+ */
+function assignNullableNumberField(
+  target: Row,
+  source: Row,
+  sourceKeys: string[],
+  targetKey: string,
+  bounds?: { min?: number; max?: number; integer?: boolean },
+): boolean {
+  for (const key of sourceKeys) {
+    if (!(key in source)) continue;
+    const raw = source[key];
+    if (raw === null) {
+      target[targetKey] = null;
+      return true;
+    }
+    let value: number | undefined;
+    if (typeof raw === "number" && Number.isFinite(raw)) value = raw;
+    else if (typeof raw === "string" && raw.trim() && Number.isFinite(Number(raw))) value = Number(raw);
+    if (value === undefined) continue;
+    if (bounds?.integer) value = Math.trunc(value);
+    if (bounds?.min !== undefined) value = Math.max(bounds.min, value);
+    if (bounds?.max !== undefined) value = Math.min(bounds.max, value);
+    target[targetKey] = value;
+    return true;
+  }
+  return false;
+}
+
+/** Assign a lorebook filter mode, validated against the stored enum (invalid values are ignored). */
+function assignFilterModeField(target: Row, source: Row, sourceKeys: string[], targetKey: string): boolean {
+  const value = firstString(source, sourceKeys);
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  if (!LOREBOOK_FILTER_MODE_VALUES.has(normalized)) return false;
+  target[targetKey] = normalized;
+  return true;
+}
+
+/** Assign the additional-matching-sources array, keeping only known source names. */
+function assignMatchingSourcesField(target: Row, source: Row, sourceKeys: string[], targetKey: string): boolean {
+  for (const key of sourceKeys) {
+    const value = source[key];
+    if (!Array.isArray(value)) continue;
+    target[targetKey] = value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter((entry) => LOREBOOK_MATCHING_SOURCE_VALUES.has(entry));
+    return true;
+  }
+  return false;
 }
 
 function assignBooleanTextField(target: Row, source: Row, sourceKeys: string[], targetKey: string): boolean {
@@ -2268,35 +2392,6 @@ function buildMinimalCharacterData(
   }
   return data;
 }
-
-function createWherePredicate(expr: string | undefined): (row: Row) => boolean {
-  if (!expr) return () => true;
-  const fn = new Function("row", `return Boolean(${expr});`) as (row: Row) => boolean;
-  return (row: Row) => {
-    try {
-      return Boolean(fn(row));
-    } catch {
-      return false;
-    }
-  };
-}
-
-async function importTransform(path: string): Promise<(row: Row, ctx: TransformContext) => unknown> {
-  const url = pathToFileURL(path).href + `?mariDb=${Date.now()}`;
-  const mod = (await import(url)) as { default?: unknown; transform?: unknown };
-  const fn = mod.default ?? mod.transform;
-  if (typeof fn !== "function") throw new Error(`Transform ${path} must export a default function`);
-  return fn as (row: Row, ctx: TransformContext) => unknown;
-}
-
-type TransformContext = {
-  table: string;
-  now: string;
-  newId: () => string;
-  raw: (row: Row) => Row;
-  parse: (row: Row) => Row;
-  find: (table: string, predicate: (row: Row) => boolean) => Row[];
-};
 
 export class MariDbService {
   private pending = new Map<string, PendingRecord>();
@@ -2934,7 +3029,100 @@ export class MariDbService {
       assignBooleanTextField(target, source, ["matchWholeWords", "match_whole_words"], "matchWholeWords") || changed;
     changed = assignBooleanTextField(target, source, ["caseSensitive", "case_sensitive"], "caseSensitive") || changed;
     changed = assignBooleanTextField(target, source, ["useRegex", "use_regex"], "useRegex") || changed;
+    // #4791 follow-up: the remaining user-editable entry settings — activation chance, timing,
+    // recursion, grouping, matching filters, and per-entry vectorization. Nullable numbers accept an
+    // explicit null to clear; filter modes and matching sources are validated against their enums.
+    // (folderId is validated against the entry's own lorebook in the add/update handlers below, which
+    // have DB access; it cannot be resolved from this synchronous helper.)
+    changed =
+      assignNullableNumberField(target, source, ["probability"], "probability", { min: 0, max: 100, integer: true }) ||
+      changed;
+    changed = assignNullableNumberField(target, source, ["scanDepth", "scan_depth"], "scanDepth") || changed;
+    changed = assignNullableNumberField(target, source, ["sticky"], "sticky") || changed;
+    changed = assignNullableNumberField(target, source, ["cooldown"], "cooldown") || changed;
+    changed = assignNullableNumberField(target, source, ["delay"], "delay") || changed;
+    changed =
+      assignNullableNumberField(target, source, ["ephemeral"], "ephemeral", { min: 0, integer: true }) || changed;
+    changed = assignNullableNumberField(target, source, ["groupWeight", "group_weight"], "groupWeight") || changed;
+    changed =
+      assignBooleanTextField(target, source, ["preventRecursion", "prevent_recursion"], "preventRecursion") || changed;
+    changed =
+      assignBooleanTextField(target, source, ["excludeRecursion", "exclude_recursion"], "excludeRecursion") || changed;
+    changed =
+      assignBooleanTextField(target, source, ["delayUntilRecursion", "delay_until_recursion"], "delayUntilRecursion") ||
+      changed;
+    changed =
+      assignBooleanTextField(
+        target,
+        source,
+        ["excludeFromVectorization", "exclude_from_vectorization"],
+        "excludeFromVectorization",
+      ) || changed;
+    changed = assignBooleanTextField(target, source, ["locked"], "locked") || changed;
+    changed =
+      assignFilterModeField(target, source, ["characterFilterMode", "character_filter_mode"], "characterFilterMode") ||
+      changed;
+    changed =
+      assignListField(target, source, ["characterFilterIds", "character_filter_ids"], "characterFilterIds") || changed;
+    changed =
+      assignFilterModeField(
+        target,
+        source,
+        ["characterTagFilterMode", "character_tag_filter_mode"],
+        "characterTagFilterMode",
+      ) || changed;
+    changed =
+      assignListField(target, source, ["characterTagFilters", "character_tag_filters"], "characterTagFilters") ||
+      changed;
+    changed =
+      assignFilterModeField(
+        target,
+        source,
+        ["generationTriggerFilterMode", "generation_trigger_filter_mode"],
+        "generationTriggerFilterMode",
+      ) || changed;
+    changed =
+      assignListField(
+        target,
+        source,
+        ["generationTriggerFilters", "generation_trigger_filters"],
+        "generationTriggerFilters",
+      ) || changed;
+    changed =
+      assignMatchingSourcesField(
+        target,
+        source,
+        ["additionalMatchingSources", "additional_matching_sources"],
+        "additionalMatchingSources",
+      ) || changed;
     return changed;
+  }
+
+  /**
+   * Resolve and validate a folderId change for a lorebook entry. The add/update handlers own this
+   * (not the synchronous field helper) because it needs a DB lookup: an explicit null / empty / "none"
+   * clears placement, otherwise the folder must exist and belong to the entry's own lorebook — mirroring
+   * the CLI (`mari lorebooks add-entry/update-entry --folder-id`) and the storage layer.
+   */
+  private async assignEntryFolderId(target: Row, source: Row, lorebookId: string): Promise<void> {
+    for (const key of ["folderId", "folder_id"]) {
+      if (!(key in source)) continue;
+      const value = source[key];
+      if (value === null || (typeof value === "string" && (!value.trim() || value.trim().toLowerCase() === "none"))) {
+        target.folderId = null;
+        return;
+      }
+      if (typeof value === "string") {
+        const folderId = value.trim();
+        const folderRow = await this.getRawById(getMeta("lorebook_folders"), folderId);
+        if (!folderRow || String(folderRow.lorebookId) !== String(lorebookId)) {
+          throw new Error(`Folder ${folderId} not found in lorebook ${lorebookId}`);
+        }
+        target.folderId = folderId;
+        return;
+      }
+      return;
+    }
   }
 
   // #4851: Professor Mari's persistent standing instructions ("memories").
@@ -2990,7 +3178,22 @@ export class MariDbService {
           args,
           ["data", "instruction", "memory", "row"],
           // NB: no "enabled"; Mari never sets a memory's enabled state (see buildInstructionInsertRow).
-          ["name", "title", "label", "description", "summary", "content", "text", "body", "memory", "persistent", "pinned", "always", "alwaysInject", "always_inject"],
+          [
+            "name",
+            "title",
+            "label",
+            "description",
+            "summary",
+            "content",
+            "text",
+            "body",
+            "memory",
+            "persistent",
+            "pinned",
+            "always",
+            "alwaysInject",
+            "always_inject",
+          ],
         );
         const timestamp = now();
         const id = firstString(args, ["id", "instructionId", "memoryId"]) ?? newId();
@@ -3017,7 +3220,22 @@ export class MariDbService {
           args,
           ["patch", "data", "instruction", "memory"],
           // NB: no "enabled"; only the user toggles a memory's enabled state (see buildInstructionPatch).
-          ["name", "title", "label", "description", "summary", "content", "text", "body", "memory", "persistent", "pinned", "always", "alwaysInject", "always_inject"],
+          [
+            "name",
+            "title",
+            "label",
+            "description",
+            "summary",
+            "content",
+            "text",
+            "body",
+            "memory",
+            "persistent",
+            "pinned",
+            "always",
+            "alwaysInject",
+            "always_inject",
+          ],
         );
         const patch = buildInstructionPatch(data);
         if (Object.keys(patch).length <= 1) {
@@ -3188,13 +3406,17 @@ export class MariDbService {
         };
         this.assignLorebookActionFields(row, data);
         const entries = Array.isArray(data.entries) ? data.entries : [];
-        const relatedInserts = entries.map((entry, index) => {
-          if (!isRecord(entry)) throw new Error(`lorebook entry ${index + 1} must be an object`);
-          return {
-            table: "lorebook_entries",
-            row: buildLorebookEntryCreateRow(entry, id, newId(), timestamp, (index + 1) * 100),
-          };
-        });
+        const relatedInserts = await Promise.all(
+          entries.map(async (entry, index) => {
+            if (!isRecord(entry)) throw new Error(`lorebook entry ${index + 1} must be an object`);
+            // Give embedded entries the same coverage as lorebook.addEntry: build the base row, then
+            // apply every user-editable setting and validate folder placement against this lorebook.
+            const entryRow = buildLorebookEntryCreateRow(entry, id, newId(), timestamp, (index + 1) * 100);
+            this.assignLorebookEntryActionFields(entryRow, entry);
+            await this.assignEntryFolderId(entryRow, entry, id);
+            return { table: "lorebook_entries", row: entryRow };
+          }),
+        );
         return this.executeMutation(
           {
             kind: "insert",
@@ -3289,12 +3511,33 @@ export class MariDbService {
             "matchWholeWords",
             "caseSensitive",
             "useRegex",
+            "probability",
+            "scanDepth",
+            "sticky",
+            "cooldown",
+            "delay",
+            "ephemeral",
+            "groupWeight",
+            "preventRecursion",
+            "excludeRecursion",
+            "delayUntilRecursion",
+            "excludeFromVectorization",
+            "locked",
+            "characterFilterMode",
+            "characterFilterIds",
+            "characterTagFilterMode",
+            "characterTagFilters",
+            "generationTriggerFilterMode",
+            "generationTriggerFilters",
+            "additionalMatchingSources",
+            "folderId",
           ],
         );
         const timestamp = now();
         const id = firstString(args, ["entryId", "id"]) ?? newId();
         const row = buildLorebookEntryCreateRow(data, lorebookId, id, timestamp);
         this.assignLorebookEntryActionFields(row, data);
+        await this.assignEntryFolderId(row, data, lorebookId);
         return this.executeMutation(
           {
             kind: "insert",
@@ -3339,10 +3582,31 @@ export class MariDbService {
             "matchWholeWords",
             "caseSensitive",
             "useRegex",
+            "probability",
+            "scanDepth",
+            "sticky",
+            "cooldown",
+            "delay",
+            "ephemeral",
+            "groupWeight",
+            "preventRecursion",
+            "excludeRecursion",
+            "delayUntilRecursion",
+            "excludeFromVectorization",
+            "locked",
+            "characterFilterMode",
+            "characterFilterIds",
+            "characterTagFilterMode",
+            "characterTagFilters",
+            "generationTriggerFilterMode",
+            "generationTriggerFilters",
+            "additionalMatchingSources",
+            "folderId",
           ],
         );
         const patch: Row = { updatedAt: now() };
         this.assignLorebookEntryActionFields(patch, data);
+        await this.assignEntryFolderId(patch, data, String(entryExists.lorebookId));
         if (Object.keys(patch).length <= 1) {
           throw new Error(
             "lorebook.updateEntry needs entryId plus a patch field such as name, content, keys, description, enabled, constant, or order",
@@ -3354,6 +3618,26 @@ export class MariDbService {
             table: "lorebook_entries",
             id: entryId,
             patch,
+            apply: firstBoolean(args, ["apply"]) === true,
+            cascade: false,
+            reason: firstString(args, ["reason"]) ?? null,
+            cwd: context.cwd,
+          },
+          context.command,
+          context.sessionId,
+        );
+      }
+      case "deleteentry": {
+        // A safe, scoped single-entry delete so Mari never reaches for a raw `mari db delete --where`
+        // (which can match — and remove — far more rows than intended).
+        const entryId = requiredString(args, ["entryId", "id"], "lorebook entry id");
+        const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
+        if (!entryExists) throw new Error(`Lorebook entry ${entryId} not found`);
+        return this.executeMutation(
+          {
+            kind: "delete",
+            table: "lorebook_entries",
+            id: entryId,
             apply: firstBoolean(args, ["apply"]) === true,
             cascade: false,
             reason: firstString(args, ["reason"]) ?? null,
@@ -4076,7 +4360,18 @@ export class MariDbService {
         const data = actionDataWithTopLevel(
           args,
           ["patch", "data", "section"],
-          ["name", "content", "role", "enabled", "isMarker", "groupId", "markerConfig", "injectionPosition", "injectionDepth", "injectionOrder"],
+          [
+            "name",
+            "content",
+            "role",
+            "enabled",
+            "isMarker",
+            "groupId",
+            "markerConfig",
+            "injectionPosition",
+            "injectionDepth",
+            "injectionOrder",
+          ],
         );
         const patch = buildPromptSectionPatch(data);
         if (Object.keys(patch).length === 0) {
@@ -4116,10 +4411,16 @@ export class MariDbService {
         const groupId = requiredString(args, ["groupId", "id"], "prompt group id");
         const existing = await this.getRawById(getMeta("prompt_groups"), groupId);
         if (!existing) throw new Error(`Prompt group ${groupId} not found`);
-        const data = actionDataWithTopLevel(args, ["patch", "data", "group"], ["name", "parentGroupId", "order", "enabled"]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["patch", "data", "group"],
+          ["name", "parentGroupId", "order", "enabled"],
+        );
         const patch = buildPromptGroupPatch(data);
         if (Object.keys(patch).length === 0) {
-          throw new Error("preset.updateGroup needs groupId plus a field such as name, enabled, order, or parentGroupId");
+          throw new Error(
+            "preset.updateGroup needs groupId plus a field such as name, enabled, order, or parentGroupId",
+          );
         }
         // #4812: a parent group must live in the same preset and must not create a cycle (a group
         // nested under itself or under one of its own descendants would loop any tree walk).
@@ -4139,7 +4440,9 @@ export class MariDbService {
             if (seen.has(cursorId)) break;
             seen.add(cursorId);
             cursor =
-              typeof cursor.parentGroupId === "string" && cursor.parentGroupId ? groupsById.get(cursor.parentGroupId) : undefined;
+              typeof cursor.parentGroupId === "string" && cursor.parentGroupId
+                ? groupsById.get(cursor.parentGroupId)
+                : undefined;
           }
         }
         return this.executeMutation(
@@ -4164,7 +4467,20 @@ export class MariDbService {
         const data = actionDataWithTopLevel(
           args,
           ["patch", "data", "choiceBlock", "choice"],
-          ["variableName", "variable", "question", "options", "choices", "values", "multiSelect", "separator", "randomPick", "displayMode", "optionSort", "sortOrder"],
+          [
+            "variableName",
+            "variable",
+            "question",
+            "options",
+            "choices",
+            "values",
+            "multiSelect",
+            "separator",
+            "randomPick",
+            "displayMode",
+            "optionSort",
+            "sortOrder",
+          ],
         );
         const usedVariableNames = new Set(
           (await this.rawRows("choice_blocks"))
@@ -4178,7 +4494,9 @@ export class MariDbService {
           );
         }
         if (Array.isArray(patch.options) && patch.options.length === 0) {
-          throw new Error("preset.updateChoiceBlock cannot set an empty options array; a choice block needs at least one option");
+          throw new Error(
+            "preset.updateChoiceBlock cannot set an empty options array; a choice block needs at least one option",
+          );
         }
         return this.executeMutation(
           {
@@ -4202,7 +4520,19 @@ export class MariDbService {
         const data = actionDataWithTopLevel(
           args,
           ["data", "section", "row"],
-          ["name", "identifier", "content", "role", "enabled", "isMarker", "groupId", "markerConfig", "injectionPosition", "injectionDepth", "injectionOrder"],
+          [
+            "name",
+            "identifier",
+            "content",
+            "role",
+            "enabled",
+            "isMarker",
+            "groupId",
+            "markerConfig",
+            "injectionPosition",
+            "injectionDepth",
+            "injectionOrder",
+          ],
         );
         requiredString(data, ["name", "title", "label"], "section name");
         // #4812: a section may only be filed under a group in its OWN preset (same reason as
@@ -4243,7 +4573,11 @@ export class MariDbService {
         const presetId = requiredString(args, ["presetId", "id"], "prompt preset id");
         const preset = await this.getRawById(getMeta("prompt_presets"), presetId);
         if (!preset) throw new Error(`Prompt preset ${presetId} not found`);
-        const data = actionDataWithTopLevel(args, ["data", "group", "row"], ["name", "parentGroupId", "order", "enabled"]);
+        const data = actionDataWithTopLevel(
+          args,
+          ["data", "group", "row"],
+          ["name", "parentGroupId", "order", "enabled"],
+        );
         requiredString(data, ["name", "title", "label"], "group name");
         // #4812: a parent group must live in the same preset. A fresh group has no descendants yet,
         // so a cycle is impossible here — only the cross-preset/existence check is needed.
@@ -4279,14 +4613,35 @@ export class MariDbService {
         const data = actionDataWithTopLevel(
           args,
           ["data", "choiceBlock", "choice", "row"],
-          ["variableName", "variable", "question", "options", "choices", "values", "multiSelect", "separator", "randomPick", "displayMode", "optionSort", "sortOrder"],
+          [
+            "variableName",
+            "variable",
+            "question",
+            "options",
+            "choices",
+            "values",
+            "multiSelect",
+            "separator",
+            "randomPick",
+            "displayMode",
+            "optionSort",
+            "sortOrder",
+          ],
         );
         const existingBlocks = (await this.rawRows("choice_blocks")).filter((block) => block.presetId === presetId);
         const choiceBlockId = newId();
         const usedVariableNames = new Set(existingBlocks.map((block) => String(block.variableName)));
-        const row = buildChoiceBlockInsertRow(data, presetId, choiceBlockId, existingBlocks.length + 1, usedVariableNames);
+        const row = buildChoiceBlockInsertRow(
+          data,
+          presetId,
+          choiceBlockId,
+          existingBlocks.length + 1,
+          usedVariableNames,
+        );
         if ((row.options as unknown[]).length === 0) {
-          throw new Error("preset.addChoiceBlock needs a non-empty options array (each option is a label the user can pick)");
+          throw new Error(
+            "preset.addChoiceBlock needs a non-empty options array (each option is a label the user can pick)",
+          );
         }
         // choice_blocks are ordered by their own sortOrder column, not a parent order array, so a
         // plain insert is enough — no parent patch needed.
@@ -4475,6 +4830,9 @@ export class MariDbService {
       }
       throw err;
     }
+    // #4927: the restore reverted the lorebook rows, so rebuild any embedded character_book from the
+    // restored state (no-op for standalone lorebooks).
+    await this.syncAffectedCharacterBooks(record.plan.changes);
     this.pending.delete(id);
     await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
@@ -4649,7 +5007,7 @@ export class MariDbService {
         message: `Tool executionType must be one of: ${[...TOOL_EXECUTION_TYPES].join(", ")}`,
       });
     }
-    if (row.executionType === "script" && !isCustomToolScriptEnabled()) {
+    if (row.executionType === "script" && row.enabled === "true" && !isCustomToolScriptEnabled()) {
       issues.push({
         level: "error",
         table: "custom_tools",
@@ -4693,7 +5051,7 @@ export class MariDbService {
           id,
           message: "Tool webhookUrl must be a URL string or null",
         });
-      } else {
+      } else if (!row.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)) {
         try {
           new URL(row.webhookUrl);
         } catch {
@@ -5446,7 +5804,10 @@ export class MariDbService {
         const timestamp = now();
         const addSecondaryKeysRaw = flagString(flags, "secondary-keys") ?? "";
         const addSecondaryKeys = addSecondaryKeysRaw
-          ? addSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+          ? addSecondaryKeysRaw
+              .split(",")
+              .map((k) => k.trim())
+              .filter(Boolean)
           : [];
         const addSelectiveLogic = flagString(flags, "selective-logic");
         if (addSelectiveLogic !== undefined && !normalizeSelectiveLogicValue(addSelectiveLogic)) {
@@ -5545,7 +5906,10 @@ export class MariDbService {
         const updateSecondaryKeysRaw = flagString(flags, "secondary-keys");
         if (updateSecondaryKeysRaw !== undefined) {
           entryPatch.secondaryKeys = updateSecondaryKeysRaw
-            ? updateSecondaryKeysRaw.split(",").map((k) => k.trim()).filter(Boolean)
+            ? updateSecondaryKeysRaw
+                .split(",")
+                .map((k) => k.trim())
+                .filter(Boolean)
             : [];
         }
         const patchFolderId = flagString(flags, "folder-id");
@@ -5693,70 +6057,114 @@ export class MariDbService {
       case "choice-blocks":
         return run("choiceblocks", { presetId: need(0, "Usage: mari presets choice-blocks <preset-id>") });
       case "get-choice-block":
-        return run("getchoiceblock", { choiceBlockId: need(0, "Usage: mari presets get-choice-block <choice-block-id>") });
+        return run("getchoiceblock", {
+          choiceBlockId: need(0, "Usage: mari presets get-choice-block <choice-block-id>"),
+        });
       case "add-section":
         return run("addsection", {
-          presetId: need(0, "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--apply]"),
+          presetId: need(
+            0,
+            "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "update-section":
         return run("updatesection", {
-          sectionId: need(0, "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--apply]"),
+          sectionId: need(
+            0,
+            "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "delete-section":
-        return run("deletesection", { sectionId: need(0, "Usage: mari presets delete-section <section-id> [--apply]"), apply, reason });
+        return run("deletesection", {
+          sectionId: need(0, "Usage: mari presets delete-section <section-id> [--apply]"),
+          apply,
+          reason,
+        });
       case "add-group":
         return run("addgroup", {
-          presetId: need(0, "Usage: mari presets add-group <preset-id> --name <name> [--parent-group-id <id>] [--apply]"),
+          presetId: need(
+            0,
+            "Usage: mari presets add-group <preset-id> --name <name> [--parent-group-id <id>] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "update-group":
         return run("updategroup", {
-          groupId: need(0, "Usage: mari presets update-group <group-id> [--name <name>] [--enable|--disable] [--order <n>] [--parent-group-id <id>] [--apply]"),
+          groupId: need(
+            0,
+            "Usage: mari presets update-group <group-id> [--name <name>] [--enable|--disable] [--order <n>] [--parent-group-id <id>] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "delete-group":
-        return run("deletegroup", { groupId: need(0, "Usage: mari presets delete-group <group-id> [--apply]"), apply, reason });
+        return run("deletegroup", {
+          groupId: need(0, "Usage: mari presets delete-group <group-id> [--apply]"),
+          apply,
+          reason,
+        });
       case "add-choice-block":
         return run("addchoiceblock", {
-          presetId: need(0, "Usage: mari presets add-choice-block <preset-id> --variable-name <name> --question <text> --options <a,b,c> [--multi-select] [--apply]"),
+          presetId: need(
+            0,
+            "Usage: mari presets add-choice-block <preset-id> --variable-name <name> --question <text> --options <a,b,c> [--multi-select] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "update-choice-block":
         return run("updatechoiceblock", {
-          choiceBlockId: need(0, "Usage: mari presets update-choice-block <choice-block-id> [--question <text>] [--options <a,b,c>] [--variable-name <name>] [--multi-select] [--apply]"),
+          choiceBlockId: need(
+            0,
+            "Usage: mari presets update-choice-block <choice-block-id> [--question <text>] [--options <a,b,c>] [--variable-name <name>] [--multi-select] [--apply]",
+          ),
           data: presetDataFromFlags(flags),
           apply,
           reason,
         });
       case "delete-choice-block":
-        return run("deletechoiceblock", { choiceBlockId: need(0, "Usage: mari presets delete-choice-block <choice-block-id> [--apply]"), apply, reason });
+        return run("deletechoiceblock", {
+          choiceBlockId: need(0, "Usage: mari presets delete-choice-block <choice-block-id> [--apply]"),
+          apply,
+          reason,
+        });
       case "create": {
         const json = await resolveJsonInput(flags, context.cwd);
         if (!json)
-          throw new Error('Usage: mari presets create (--json \'{"name":"...","sections":[...]}\' | --json-file <path>) [--apply]');
+          throw new Error(
+            'Usage: mari presets create (--json \'{"name":"...","sections":[...]}\' | --json-file <path>) [--apply]',
+          );
         return run("create", { data: parseRequiredJsonObjectInput(json, "preset json"), apply, reason });
       }
       case "update": {
-        const id = need(0, "Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]");
+        const id = need(
+          0,
+          "Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]",
+        );
         const json = await resolveJsonInput(flags, context.cwd);
         if (!json)
-          throw new Error("Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]");
+          throw new Error(
+            "Usage: mari presets update <preset-id> (--json '<partial-json>' | --json-file <path>) [--apply]",
+          );
         return run("update", { id, data: parseRequiredJsonObjectInput(json, "preset json"), apply, reason });
       }
       default:
-        return { ok: false, mode: "read", command: context.command, error: `Unknown presets command "${sub}".\n${this.presetsHelpText()}` };
+        return {
+          ok: false,
+          mode: "read",
+          command: context.command,
+          error: `Unknown presets command "${sub}".\n${this.presetsHelpText()}`,
+        };
     }
   }
 
@@ -6089,7 +6497,7 @@ export class MariDbService {
     flags: Map<string, string | boolean>,
   ): Promise<MariDbCommandResult> {
     if (!table) throw new Error("Usage: mari db select <table> --where <expr>");
-    const predicate = createWherePredicate(flagString(flags, "where"));
+    const predicate = createMariWherePredicate(flagString(flags, "where"));
     const rows = (await this.rawRows(table)).map((row) => parseRow(table, row)).filter(predicate);
     const limit = normalizeLimit(flagString(flags, "limit"), 100, 5000);
     return { ok: true, mode: "read", command, output: rows.slice(0, limit) };
@@ -6150,12 +6558,62 @@ export class MariDbService {
     if (kind === "delete") {
       const table = positionals[0];
       if (!table) throw new Error("Usage: mari db delete <table> <id>|--where <expr> [--cascade] [--apply]");
-      return { kind, table, id: positionals[1], where: flagString(flags, "where"), apply, cascade, reason, cwd };
+      const id = positionals[1];
+      const where = flagString(flags, "where");
+      if (!id && !where) throw new Error("Delete requires an id or an explicit --where expression");
+      return { kind, table, id, where, apply, cascade, reason, cwd };
     }
     const [table, scriptPath] = positionals;
     if (!table || !scriptPath)
       throw new Error("Usage: mari db transform <table|all> <script.mjs> [--dry-run] [--apply]");
     return { kind, table, scriptPath, apply, cascade: true, reason, cwd };
+  }
+
+  private async captureDeletedLorebookEmbeddings(changes: PlanChange[]): Promise<void> {
+    for (const change of changes) {
+      if (!change.apply || change.table !== "lorebooks" || change.action !== "delete") continue;
+      change.embeddedCharacterId = (await resolveEmbeddedCharacterId(this.db, change.id)) ?? undefined;
+    }
+  }
+
+  // #4927/#4932: keep an embedded character's data.character_book in sync after Mari mutates a lorebook
+  // through the generic mutation path — which, unlike the HTTP routes, never called the sync, so
+  // add/update/delete of an embedded lorebook's entries left the derived copy stale. Safe for
+  // standalone lorebooks: syncCharacterBookFromLorebook no-ops when the lorebook isn't embedded, and
+  // swallows its own errors, so a sync failure never breaks the mutation.
+  private async syncAffectedCharacterBooks(changes: PlanChange[]): Promise<void> {
+    const lorebookIds = new Set<string>();
+    const collect = (value: unknown) => {
+      if (typeof value === "string" && value) lorebookIds.add(value);
+    };
+    for (const change of changes) {
+      if (!change.apply) continue;
+      if (change.table === "lorebook_entries") {
+        // Collect BOTH sides: an entry reparented between lorebooks (a raw patch of its
+        // lorebookId) leaves its former lorebook stale too, not just the destination.
+        collect(change.before?.lorebookId);
+        collect(change.after?.lorebookId);
+      } else if (change.table === "lorebooks" && change.id) {
+        if (change.action === "delete") {
+          if (!change.embeddedCharacterId) continue;
+          const restored = await this.getRawById(getMeta("lorebooks"), change.id);
+          if (restored) {
+            try {
+              await embedLorebookIntoCharacter(this.db, change.embeddedCharacterId, change.id);
+            } catch (err) {
+              logger.error(err, "[mari-db] failed to restore embedded lorebook %s", change.id);
+            }
+          } else {
+            await clearCharacterEmbeddedLorebook(this.db, change.embeddedCharacterId, change.id);
+          }
+        } else {
+          collect(change.id);
+        }
+      }
+    }
+    for (const lorebookId of lorebookIds) {
+      await syncCharacterBookFromLorebook(this.db, lorebookId);
+    }
   }
 
   private async executeMutation(
@@ -6164,9 +6622,10 @@ export class MariDbService {
     sessionId: string,
   ): Promise<MariDbCommandResult> {
     const planTimestamp = now();
-    const plan = await this.planMutation(request, command, planTimestamp);
+    const storedCommand = commandForStorage(request, command);
+    const plan = await this.planMutation(request, storedCommand, planTimestamp);
     if (plan.validation.status === "blocked") {
-      await this.recordHistory({ plan, command, sessionId, status: "blocked", journalPath: null });
+      await this.recordHistory({ plan, command: storedCommand, sessionId, status: "blocked", journalPath: null });
       return {
         ok: false,
         mode: request.apply ? "apply" : "dry-run",
@@ -6178,7 +6637,7 @@ export class MariDbService {
     }
 
     if (!request.apply) {
-      await this.recordHistory({ plan, command, sessionId, status: "dry-run", journalPath: null });
+      await this.recordHistory({ plan, command: storedCommand, sessionId, status: "dry-run", journalPath: null });
       return {
         ok: true,
         mode: "dry-run",
@@ -6190,9 +6649,17 @@ export class MariDbService {
     }
 
     try {
+      await this.captureDeletedLorebookEmbeddings(plan.changes);
       const journalPath = await this.applyPlan(plan);
-      const history = await this.recordHistory({ plan, command, sessionId, status: "approved", journalPath });
-      const review = await this.createAppliedReview(plan, command, sessionId, journalPath, history.id);
+      await this.syncAffectedCharacterBooks(plan.changes);
+      const history = await this.recordHistory({
+        plan,
+        command: storedCommand,
+        sessionId,
+        status: "approved",
+        journalPath,
+      });
+      const review = await this.createAppliedReview(plan, storedCommand, sessionId, journalPath, history.id);
       return {
         ok: true,
         mode: "apply",
@@ -6204,7 +6671,7 @@ export class MariDbService {
       };
     } catch (err) {
       logger.error(err, "[mari-db] apply failed");
-      await this.recordHistory({ plan, command, sessionId, status: "failed", journalPath: null });
+      await this.recordHistory({ plan, command: storedCommand, sessionId, status: "failed", journalPath: null });
       return {
         ok: false,
         mode: "apply",
@@ -6263,6 +6730,69 @@ export class MariDbService {
         }
       }
     }
+
+    // Raw Mari DB commands are model-driven and apply before the user sees the
+    // Keep/Restore review. Keep executable tool authoring available, but never
+    // let that path arm a webhook/script or grant it hidden chat context. The
+    // user can inspect and enable the saved draft in the privileged Tools UI.
+    const encryptedWebhooks = new Map<string, string>();
+    for (const change of changes.filter((candidate) => candidate.table === "custom_tools")) {
+      const before = change.beforeRaw;
+      const beforeWebhookUrl = before?.webhookUrl;
+      if (typeof beforeWebhookUrl === "string") {
+        before!.webhookUrl = encryptCustomToolWebhookUrl(beforeWebhookUrl);
+        change.before = parseRow("custom_tools", before!);
+      }
+
+      const after = change.afterRaw;
+      if (!after) continue;
+      if (
+        typeof after.webhookUrl === "string" &&
+        after.webhookUrl &&
+        !after.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)
+      ) {
+        try {
+          new URL(after.webhookUrl);
+        } catch {
+          issues.push({
+            level: "error",
+            table: "custom_tools",
+            id: change.id,
+            message: "Tool webhookUrl must be a valid URL",
+          });
+        }
+      }
+      const executable = after.executionType === "webhook" || after.executionType === "script";
+      const executableDefinitionChanged =
+        !before ||
+        before.executionType !== after.executionType ||
+        beforeWebhookUrl !== after.webhookUrl ||
+        before.scriptBody !== after.scriptBody;
+      const privilegeEscalated =
+        (after.enabled === "true" && before?.enabled !== "true") ||
+        (after.includeHiddenContext === "true" && before?.includeHiddenContext !== "true");
+      if (executable && (executableDefinitionChanged || privilegeEscalated)) {
+        after.enabled = "false";
+        after.includeHiddenContext = "false";
+        change.after = parseRow("custom_tools", after);
+        issues.push({
+          level: "notice",
+          table: "custom_tools",
+          id: change.id,
+          message:
+            "Executable tool changes are saved disabled without hidden context; review and enable them in Tools.",
+        });
+      }
+      if (typeof after.webhookUrl === "string") {
+        const originalWebhookUrl = after.webhookUrl;
+        const encryptedWebhookUrl =
+          encryptedWebhooks.get(originalWebhookUrl) ?? encryptCustomToolWebhookUrl(originalWebhookUrl);
+        after.webhookUrl = encryptedWebhookUrl;
+        if (encryptedWebhookUrl) encryptedWebhooks.set(originalWebhookUrl, encryptedWebhookUrl);
+        change.after = parseRow("custom_tools", after);
+      }
+    }
+    secureCustomToolRequestForStorage(request, encryptedWebhooks);
 
     // Memories (mari_instructions) are a normal file-backed table, so the generic raw path would
     // otherwise reach them and skip the length caps + enabled=0 forcing that only the instruction.*
@@ -6330,7 +6860,12 @@ export class MariDbService {
     ];
     // Seed the collision set with the primary row's id so a related insert cannot re-claim it.
     changes.push(
-      ...(await this.planRelatedInserts(request.relatedInserts, timestamp, allocateId, new Set([`${meta.name}:${insertPk}`]))),
+      ...(await this.planRelatedInserts(
+        request.relatedInserts,
+        timestamp,
+        allocateId,
+        new Set([`${meta.name}:${insertPk}`]),
+      )),
     );
     return changes;
   }
@@ -6387,7 +6922,9 @@ export class MariDbService {
       // clean dry-run and abort late at apply, so reject it here too.
       const seenKey = `${meta.name}:${insertPk}`;
       if (seenIds.has(seenKey)) {
-        throw new Error(`A ${meta.name} row with id "${insertPk}" is used more than once in this create; each row needs a unique id.`);
+        throw new Error(
+          `A ${meta.name} row with id "${insertPk}" is used more than once in this create; each row needs a unique id.`,
+        );
       }
       seenIds.add(seenKey);
       this.fillTimestamps(meta, parsed, true, timestamp);
@@ -6606,10 +7143,13 @@ export class MariDbService {
 
   private async planDelete(request: ParsedMutationRequest, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
+    if (!request.id && !request.where?.trim()) {
+      throw new Error("Delete requires an id or an explicit --where expression");
+    }
     const rows = await this.rawRows(meta.name);
     const predicate = request.id
       ? (row: Row) => String(row[getPrimary(meta)]) === request.id
-      : createWherePredicate(request.where);
+      : createMariWherePredicate(request.where);
     const selected = rows.filter((row) => predicate(parseRow(meta.name, row)));
     const changes: PlanChange[] = selected.map((row) => ({
       table: meta.name,
@@ -6640,7 +7180,6 @@ export class MariDbService {
   ): Promise<PlanChange[]> {
     const cwd = request.cwd ? resolve(request.cwd) : process.cwd();
     const scriptPath = resolve(cwd, String(request.scriptPath));
-    const transform = await importTransform(scriptPath);
     const tables = request.table === "all" ? [...FILE_BACKED_TABLES] : [String(request.table)];
     const allParsed = new Map<string, Row[]>();
     const allRaw = new Map<string, Row[]>();
@@ -6653,6 +7192,17 @@ export class MariDbService {
         rawRows.map((row) => parseRow(table, row)),
       );
     }
+    const sandboxResults = await runMariTransformSandbox({
+      workspaceRoot: cwd,
+      scriptPath,
+      timestamp,
+      tables: tables.map((table) => ({
+        name: table,
+        rows: allRaw.get(table) ?? [],
+        jsonColumns: [...(JSON_COLUMNS[table] ?? [])],
+      })),
+    });
+    const resultsByTable = new Map(sandboxResults.map((result) => [result.table, result.results]));
     const changes: PlanChange[] = [];
     for (const table of tables) {
       const meta = getMeta(table);
@@ -6661,15 +7211,15 @@ export class MariDbService {
       for (let index = 0; index < parsedRows.length; index++) {
         const row = clone(parsedRows[index]!);
         const raw = rawRows[index]!;
-        const ctx: TransformContext = {
-          table,
-          now: timestamp,
-          newId: allocateId,
-          raw: (parsedRow) => serializeRow(table, parsedRow),
-          parse: (rawRow) => parseRow(table, rawRow),
-          find: (findTable, predicate) => (allParsed.get(findTable) ?? []).filter(predicate).map(clone),
-        };
-        const result = await transform(row, ctx);
+        const tableResults = resultsByTable.get(table);
+        if (!tableResults || tableResults.length !== parsedRows.length) {
+          throw new Error(`Transform sandbox returned an incomplete result for ${table}`);
+        }
+        const sandboxResult = tableResults[index];
+        if (!sandboxResult || typeof sandboxResult.defined !== "boolean") {
+          throw new Error(`Transform sandbox returned an invalid result for ${table}`);
+        }
+        const result = sandboxResult.defined ? sandboxResult.value : undefined;
         if (result === null || result === false || result === undefined) continue;
         if (isRecord(result) && result.delete === true) {
           changes.push({
@@ -6954,6 +7504,8 @@ export class MariDbService {
         }
       }
       addCharacterDataShapeIssues(change.table, row, change.id, issues);
+      if (change.table === "agent_configs") this.validateAgentConfigRow(row, change.id, issues);
+      if (change.table === "custom_tools") this.validateCustomToolRow(row, change.id, issues);
     }
 
     const parentRowsByTable = new Map<string, Row[]>();
@@ -7307,7 +7859,11 @@ export class MariDbService {
       for (const path of stale) this.safeRm(path);
       loaded.slice(0, dropCount).forEach((record) => this.safeRm(this.pendingSidecarPath(record.id)));
       if (dropCount > 0) {
-        logger.info("[mari-db] dropped %d persisted pending review(s) over the %d cap on load", dropCount, PENDING_REVIEW_LIMIT);
+        logger.info(
+          "[mari-db] dropped %d persisted pending review(s) over the %d cap on load",
+          dropCount,
+          PENDING_REVIEW_LIMIT,
+        );
       }
     } catch (err) {
       logger.warn(err, "[mari-db] failed to hydrate persisted pending reviews");
@@ -7515,7 +8071,9 @@ export class MariDbService {
       "Usage: mari db <command>",
       "Discovery: status, tables, schema <table>, counts, data-dir, now, new-id",
       "Read: list <table>, get <table> <id>, select <table> --where <expr>, search <table|all> <query>, validate [--table <table>]",
+      "Where: row.field and row['field'] with comparisons, &&, ||, !, parentheses, and safe string/array methods (includes, startsWith, endsWith, case conversion, trim); arbitrary code and calls are rejected",
       "Write: insert|patch|replace|delete|transform ... (dry-run by default; --apply saves reversible changes and shows a Keep/Restore review card)",
+      "Transform scripts use an OS sandbox where supported; on other systems, reviewed local scripts remain available only with MARI_DB_ALLOW_UNSAFE_TRANSFORMS=true.",
       `Known tables: ${FILE_BACKED_TABLES.slice(0, 8).join(", ")} ... (${FILE_BACKED_TABLES.length})`,
       `Journal directory: ${this.journalDir()} (${basename(getFileStorageDir())})`,
     ].join("\n");

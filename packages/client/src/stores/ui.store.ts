@@ -532,6 +532,7 @@ export interface CustomQuickReply {
 }
 
 export type MariPanelSortMode = "az" | "za" | "newest" | "oldest";
+export type MariEditViewMode = "easy" | "raw";
 
 interface UIState {
   sidebarOpen: boolean;
@@ -565,6 +566,7 @@ interface UIState {
   customCursorEnabled: boolean;
   reduceAmbientEffects: boolean;
   mariPanelSortMode: MariPanelSortMode;
+  mariEditViewMode: MariEditViewMode;
   chatBackground: string | null;
   /** Default background applied when a Roleplay chat has no saved background yet. */
   defaultRoleplayBackground: string;
@@ -855,6 +857,7 @@ interface UIState {
   enterToSendRP: boolean;
   enterToSendConvo: boolean;
   enterToSendGame: boolean;
+  enterToSendProfessorMari: boolean;
 
   // ── Roleplay Effects ──
   weatherEffects: boolean;
@@ -945,6 +948,7 @@ interface UIState {
   setCustomCursorEnabled: (enabled: boolean) => void;
   setReduceAmbientEffects: (enabled: boolean) => void;
   setMariPanelSortMode: (mode: MariPanelSortMode) => void;
+  setMariEditViewMode: (mode: MariEditViewMode) => void;
   setChatBackground: (url: string | null) => void;
   setDefaultRoleplayBackground: (url: string) => void;
   setChatBackgroundBlur: (v: number) => void;
@@ -1119,6 +1123,7 @@ interface UIState {
   setEnterToSendRP: (v: boolean) => void;
   setEnterToSendConvo: (v: boolean) => void;
   setEnterToSendGame: (v: boolean) => void;
+  setEnterToSendProfessorMari: (v: boolean) => void;
   setWeatherEffects: (v: boolean) => void;
   // Impersonate settings actions
   setImpersonatePromptTemplate: (v: string) => void;
@@ -1310,6 +1315,7 @@ export function pickSyncedSettings(state: UIState) {
     enterToSendRP: state.enterToSendRP,
     enterToSendConvo: state.enterToSendConvo,
     enterToSendGame: state.enterToSendGame,
+    enterToSendProfessorMari: state.enterToSendProfessorMari,
     weatherEffects: state.weatherEffects,
     hasCompletedOnboarding: state.hasCompletedOnboarding,
     gameTutorialDisabled: state.gameTutorialDisabled,
@@ -1372,6 +1378,7 @@ export const useUIStore = create<UIState>()(
       customCursorEnabled: true,
       reduceAmbientEffects: false,
       mariPanelSortMode: "az",
+      mariEditViewMode: "easy",
       chatBackground: null,
       defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
       chatBackgroundBlur: 0,
@@ -1530,6 +1537,7 @@ export const useUIStore = create<UIState>()(
       enterToSendRP: false,
       enterToSendConvo: true,
       enterToSendGame: true,
+      enterToSendProfessorMari: true,
       weatherEffects: true,
       activeCustomTheme: null,
       customThemes: [],
@@ -1674,6 +1682,7 @@ export const useUIStore = create<UIState>()(
       setCustomCursorEnabled: (enabled) => set({ customCursorEnabled: enabled }),
       setReduceAmbientEffects: (enabled) => set({ reduceAmbientEffects: enabled }),
       setMariPanelSortMode: (mode) => set({ mariPanelSortMode: mode }),
+      setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
       setChatBackground: (url) => set({ chatBackground: url }),
       setDefaultRoleplayBackground: (url) =>
         set({ defaultRoleplayBackground: normalizeDefaultRoleplayBackground(url) }),
@@ -2349,6 +2358,7 @@ export const useUIStore = create<UIState>()(
           customCursorEnabled: true,
           reduceAmbientEffects: false,
           mariPanelSortMode: "az",
+          mariEditViewMode: "easy",
           chatBackground: null,
           defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
           chatBackgroundBlur: 0,
@@ -2432,6 +2442,7 @@ export const useUIStore = create<UIState>()(
       setEnterToSendRP: (v) => set({ enterToSendRP: v }),
       setEnterToSendConvo: (v) => set({ enterToSendConvo: v }),
       setEnterToSendGame: (v) => set({ enterToSendGame: v }),
+      setEnterToSendProfessorMari: (v) => set({ enterToSendProfessorMari: v }),
       setWeatherEffects: (v) => set({ weatherEffects: v }),
       setImpersonatePromptTemplate: (v) => set({ impersonatePromptTemplate: v }),
       selectImpersonatePromptTemplate: (template) =>
@@ -3136,6 +3147,7 @@ export const useUIStore = create<UIState>()(
         customCursorEnabled: state.customCursorEnabled,
         reduceAmbientEffects: state.reduceAmbientEffects,
         mariPanelSortMode: state.mariPanelSortMode,
+        mariEditViewMode: state.mariEditViewMode,
         chatBackground: state.chatBackground,
         defaultRoleplayBackground: state.defaultRoleplayBackground,
         chatBackgroundBlur: state.chatBackgroundBlur,
@@ -3229,6 +3241,7 @@ export const useUIStore = create<UIState>()(
         enterToSendRP: state.enterToSendRP,
         enterToSendConvo: state.enterToSendConvo,
         enterToSendGame: state.enterToSendGame,
+        enterToSendProfessorMari: state.enterToSendProfessorMari,
         weatherEffects: state.weatherEffects,
         hasMigratedCustomThemesToServer: state.hasMigratedCustomThemesToServer,
         activeCustomTheme: state.activeCustomTheme,

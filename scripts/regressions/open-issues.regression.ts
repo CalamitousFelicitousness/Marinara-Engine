@@ -30,6 +30,8 @@ import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/co
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
 import { validateCharacterGalleryReferences } from "../../packages/server/src/routes/characters.routes.js";
+import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
+import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 import {
@@ -56,6 +58,7 @@ import {
 import {
   getSlashCompletions,
   matchSlashCommand,
+  parseTargetedHideArguments,
   shouldExecuteQuickPostAsCommand,
 } from "../../packages/client/src/lib/slash-commands.js";
 import { getAvatarCropStyle } from "../../packages/client/src/lib/utils.js";
@@ -694,8 +697,16 @@ assert.equal(
 // the recovery path, so it can't catch a regression at that anchor).
 assert.equal(isAppDataActionName("instruction.get"), true, "the recovery parser recognizes instruction.get");
 assert.equal(isAppDataActionName("instruction.list"), true, "the recovery parser recognizes instruction.list");
-assert.equal(isAppDataActionName("instructions.remember"), true, "the recovery parser tolerates the lenient plural instructions.*");
-assert.equal(isAppDataActionName("post_history_instructions"), false, "a field name that merely contains 'instructions' is not an action (anchored match)");
+assert.equal(
+  isAppDataActionName("instructions.remember"),
+  true,
+  "the recovery parser tolerates the lenient plural instructions.*",
+);
+assert.equal(
+  isAppDataActionName("post_history_instructions"),
+  false,
+  "a field name that merely contains 'instructions' is not an action (anchored match)",
+);
 // And read/write classification (suffix-based) is correct for the new family.
 assert.equal(
   isMutatingWorkspaceCommand({ id: "i-get", name: "app_data", arguments: { action: "instruction.get" } }),
@@ -1898,6 +1909,14 @@ try {
           selectiveLogic: "and_all",
           matchWholeWords: true,
           caseSensitive: true,
+          // Embedded entries must also receive the full user-editable settings, not just the
+          // keyword-matching subset the builder handles.
+          probability: 25,
+          sticky: 6,
+          groupWeight: 8,
+          excludeRecursion: true,
+          characterFilterMode: "include",
+          characterFilterIds: ["char-embedded"],
         },
       ],
     },
@@ -1911,6 +1930,16 @@ try {
   assert.equal(professorMariParamEntry.matchWholeWords, true, "create must persist matchWholeWords");
   assert.equal(professorMariParamEntry.caseSensitive, true, "create must persist caseSensitive");
   assert.equal(professorMariParamEntry.useRegex, false, "unset useRegex stays default");
+  assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
+  assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
+  assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
+  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
+  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
+  assert.deepEqual(
+    professorMariParamEntry.characterFilterIds,
+    ["char-embedded"],
+    "create must persist an embedded entry's filter ids",
+  );
 
   // updateEntry (the fidelity-pass path, via assignLorebookEntryActionFields) patches the same fields.
   const professorMariEntryUpdate = await mariDb.executeAction({
@@ -1939,11 +1968,116 @@ try {
   assert.equal(professorMariAfterBadLogic.content, "Updated body.", "valid sibling field still applies");
   assert.equal(professorMariAfterBadLogic.selectiveLogic, "not", "invalid selectiveLogic is ignored");
 
-  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm its path also persists a new field.
+  // #4791 follow-up: the remaining user-editable entry settings (activation chance, timing,
+  // recursion, grouping, scan depth, lock, filters) are now patchable via updateEntry too, and
+  // probability is clamped to 0-100.
+  const professorMariSettingsUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: {
+      probability: 150,
+      sticky: 3,
+      cooldown: 2,
+      delay: 1,
+      groupWeight: 5,
+      scanDepth: 4,
+      preventRecursion: false,
+      excludeRecursion: true,
+      delayUntilRecursion: true,
+      excludeFromVectorization: true,
+      locked: true,
+      characterFilterIds: ["char-1", "char-2"],
+    },
+    apply: true,
+  });
+  assert.equal(professorMariSettingsUpdate.ok, true, `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`);
+  const professorMariSettingsEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariSettingsEntry);
+  assert.equal(professorMariSettingsEntry.probability, 100, "probability is clamped to 0-100");
+  assert.equal(professorMariSettingsEntry.sticky, 3, "updateEntry sets sticky");
+  assert.equal(professorMariSettingsEntry.cooldown, 2, "updateEntry sets cooldown");
+  assert.equal(professorMariSettingsEntry.delay, 1, "updateEntry sets delay");
+  assert.equal(professorMariSettingsEntry.groupWeight, 5, "updateEntry sets groupWeight");
+  assert.equal(professorMariSettingsEntry.scanDepth, 4, "updateEntry sets scanDepth");
+  assert.equal(professorMariSettingsEntry.preventRecursion, false, "updateEntry clears preventRecursion");
+  assert.equal(professorMariSettingsEntry.excludeRecursion, true, "updateEntry sets excludeRecursion");
+  assert.equal(professorMariSettingsEntry.delayUntilRecursion, true, "updateEntry sets delayUntilRecursion");
+  assert.equal(professorMariSettingsEntry.excludeFromVectorization, true, "updateEntry sets excludeFromVectorization");
+  assert.equal(professorMariSettingsEntry.locked, true, "updateEntry sets locked");
+  assert.deepEqual(
+    professorMariSettingsEntry.characterFilterIds,
+    ["char-1", "char-2"],
+    "updateEntry sets characterFilterIds",
+  );
+
+  // #4791 follow-up (hardening): nullable numbers clear on explicit null, ephemeral honors its int>=0
+  // bound, filter modes are enum-validated (and case-normalized), and unknown matching sources drop.
+  const professorMariHardeningUpdate = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: {
+      sticky: null,
+      ephemeral: -5,
+      characterFilterMode: "Include",
+      characterTagFilterMode: "bogus",
+      additionalMatchingSources: ["character_description", "not_a_source"],
+    },
+    apply: true,
+  });
+  assert.equal(
+    professorMariHardeningUpdate.ok,
+    true,
+    `hardening updateEntry must succeed: ${JSON.stringify(professorMariHardeningUpdate)}`,
+  );
+  const professorMariHardenedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.ok(professorMariHardenedEntry);
+  assert.equal(professorMariHardenedEntry.sticky, null, "explicit null clears a nullable numeric field");
+  assert.equal(professorMariHardenedEntry.ephemeral, 0, "ephemeral clamps a negative to its 0 minimum");
+  assert.equal(professorMariHardenedEntry.characterFilterMode, "include", "a filter mode is normalized and validated");
+  assert.equal(
+    professorMariHardenedEntry.characterTagFilterMode,
+    "any",
+    "an invalid filter mode is dropped, leaving the default",
+  );
+  assert.deepEqual(
+    professorMariHardenedEntry.additionalMatchingSources,
+    ["character_description"],
+    "unknown additionalMatchingSources values are filtered out",
+  );
+
+  // folderId must reference an existing folder in the entry's own lorebook: a bad id is rejected
+  // (unlike the pre-fix path, which stored a dangling reference), and an explicit null clears it.
+  const professorMariBadFolder = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { folderId: "no-such-folder" },
+    apply: true,
+  });
+  assert.equal(
+    professorMariBadFolder.ok,
+    false,
+    "updateEntry rejects a folderId that is not a folder in the entry's lorebook",
+  );
+  const professorMariClearFolder = await mariDb.executeAction({
+    action: "lorebook.updateEntry",
+    entryId: professorMariParamEntry.id,
+    patch: { folderId: null },
+    apply: true,
+  });
+  assert.equal(professorMariClearFolder.ok, true, "updateEntry accepts a folder-only null clear");
+  const professorMariClearedEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
+  assert.equal(professorMariClearedEntry.folderId, null, "explicit null clears folderId");
+
+  // lorebook.addEntry (app_data action) shares the same whitelist + builders; confirm the create path
+  // also persists the new fields when they arrive as top-level keys (exercising the addentry allowlist).
   const professorMariAddEntry = await mariDb.executeAction({
     action: "lorebook.addEntry",
     lorebookId: professorMariParamLorebookId,
     data: { name: "Regex entry", content: "Pattern-matched lore.", keys: ["\\bLycan\\b"], useRegex: true },
+    probability: 20,
+    excludeRecursion: true,
+    sticky: 7,
+    characterFilterIds: ["char-9"],
     apply: true,
   });
   assert.equal(professorMariAddEntry.ok, true);
@@ -1952,7 +2086,204 @@ try {
   );
   assert.ok(professorMariAddedEntry);
   assert.equal(professorMariAddedEntry.useRegex, true, "addEntry must persist useRegex");
+  assert.equal(professorMariAddedEntry.probability, 20, "addEntry persists a top-level allowlisted number");
+  assert.equal(professorMariAddedEntry.excludeRecursion, true, "addEntry persists a top-level allowlisted boolean");
+  assert.equal(professorMariAddedEntry.sticky, 7, "addEntry persists a top-level allowlisted timing field");
+  assert.deepEqual(
+    professorMariAddedEntry.characterFilterIds,
+    ["char-9"],
+    "addEntry persists a top-level allowlisted list field",
+  );
   await lorebookStorage.remove(professorMariParamLorebookId);
+
+  // #4924: lorebook.deleteEntry removes exactly ONE entry (scoped), so Mari never needs a raw
+  // `mari db delete --where` that can mass-delete unrelated rows.
+  const professorMariDeleteLorebookId = "professor-mari-delete-entry-regression";
+  try {
+    const professorMariDeleteCreate = await mariDb.executeAction({
+      action: "lorebook.create",
+      lorebookId: professorMariDeleteLorebookId,
+      data: {
+        name: "Delete-entry regression",
+        entries: [
+          { name: "Keep me", content: "This entry must survive." },
+          { name: "Remove me", content: "This entry gets deleted." },
+        ],
+      },
+      apply: true,
+    });
+    assert.equal(professorMariDeleteCreate.ok, true);
+    const professorMariDeleteEntries = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
+    assert.equal(professorMariDeleteEntries.length, 2, "both entries were created");
+    const professorMariEntryToDelete = professorMariDeleteEntries.find((entry) => entry.name === "Remove me");
+    const professorMariEntryToKeep = professorMariDeleteEntries.find((entry) => entry.name === "Keep me");
+    assert.ok(professorMariEntryToDelete && professorMariEntryToKeep, "both named entries are present before delete");
+
+    // Deleting a non-existent entry is rejected, not a silent no-op.
+    const professorMariDeleteMissing = await mariDb.executeAction({
+      action: "lorebook.deleteEntry",
+      entryId: "no-such-entry-id",
+      apply: true,
+    });
+    assert.equal(professorMariDeleteMissing.ok, false, "deleting a missing entry is rejected");
+
+    const professorMariDeleteResult = await mariDb.executeAction({
+      action: "lorebook.deleteEntry",
+      entryId: professorMariEntryToDelete.id,
+      apply: true,
+    });
+    assert.equal(
+      professorMariDeleteResult.ok,
+      true,
+      `lorebook.deleteEntry must succeed: ${JSON.stringify(professorMariDeleteResult)}`,
+    );
+    const professorMariAfterDelete = await lorebookStorage.listEntries(professorMariDeleteLorebookId);
+    assert.equal(professorMariAfterDelete.length, 1, "exactly one entry was removed (scoped, not a mass delete)");
+    assert.equal(professorMariAfterDelete[0]?.id, professorMariEntryToKeep.id, "the untargeted entry survives");
+  } finally {
+    await lorebookStorage.remove(professorMariDeleteLorebookId);
+  }
+
+  // #4927: a Mari lorebook entry mutation resyncs an embedded character's data.character_book on
+  // both apply and Restore. The generic mari-db mutation path used to skip
+  // syncCharacterBookFromLorebook, so add/update/delete of an embedded lorebook's entries left the
+  // character's derived copy stale.
+  const embeddedSyncLorebook = await lorebookStorage.create({ name: "Embedded sync book" });
+  const embeddedSyncCharacter = await characterStorage.create(
+    characterDataSchema.parse({
+      name: "Embedded sync host",
+      character_book: { name: "Embedded sync book", entries: [] },
+      extensions: { importMetadata: { embeddedLorebook: { lorebookId: embeddedSyncLorebook.id } } },
+    }),
+  );
+  assert.ok(embeddedSyncCharacter, "embedded host character created");
+  let embeddedReparentTargetId: string | null = null;
+  let embeddedLinkDecoyId: string | null = null;
+  try {
+    await lorebookStorage.update(embeddedSyncLorebook.id, { characterId: embeddedSyncCharacter.id });
+    const embeddedSyncEntry = await lorebookStorage.createEntry({
+      lorebookId: embeddedSyncLorebook.id,
+      name: "Embedded entry",
+      content: "original content",
+      keys: ["embed"],
+    });
+    const readEmbeddedBookContent = async () => {
+      const row = await characterStorage.getById(embeddedSyncCharacter.id);
+      const data = JSON.parse(String(row?.data ?? "{}")) as {
+        character_book?: { entries?: Array<{ content?: string }> };
+      };
+      return (data.character_book?.entries ?? []).map((entry) => entry.content ?? "");
+    };
+
+    const beforeEmbeddedSync = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const embeddedSyncUpdate = await mariDb.executeAction({
+      action: "lorebook.updateEntry",
+      entryId: embeddedSyncEntry.id,
+      patch: { content: "edited content" },
+      apply: true,
+    });
+    assert.equal(embeddedSyncUpdate.ok, true);
+    assert.ok(
+      (await readEmbeddedBookContent()).includes("edited content"),
+      "applying a Mari entry edit resyncs the embedded character_book",
+    );
+
+    const embeddedSyncApproval = mariDb.getPendingApprovals().find((approval) => !beforeEmbeddedSync.has(approval.id));
+    assert.ok(embeddedSyncApproval, "the entry edit produced a reviewable approval");
+    const embeddedSyncRestore = await mariDb.restoreAppliedReview(embeddedSyncApproval.id);
+    assert.ok(
+      embeddedSyncRestore && "history" in embeddedSyncRestore,
+      `restoring the entry edit must succeed (not null / state_changed): ${JSON.stringify(embeddedSyncRestore)}`,
+    );
+    assert.ok(
+      (await readEmbeddedBookContent()).includes("original content"),
+      "restoring the edit resyncs the embedded character_book back",
+    );
+
+    // #4927 (reparent): moving an entry to a DIFFERENT lorebook must resync the entry's FORMER
+    // lorebook too, not just the destination. syncAffectedCharacterBooks collects both sides of a
+    // lorebook_entries change, so the embedded book the entry LEFT rebuilds without it. (The old
+    // `after ?? before` collection synced only the destination and left this book stale.)
+    const embeddedReparentTarget = await lorebookStorage.create({ name: "Reparent target book" });
+    embeddedReparentTargetId = embeddedReparentTarget.id;
+    const embeddedReparent = await mariDb.executeCli({
+      argv: [
+        "db",
+        "patch",
+        "lorebook_entries",
+        embeddedSyncEntry.id,
+        "--json",
+        JSON.stringify({ lorebookId: embeddedReparentTarget.id }),
+        "--apply",
+      ],
+    });
+    assert.equal(
+      embeddedReparent.ok,
+      true,
+      `reparenting an entry to another lorebook must succeed: ${JSON.stringify(embeddedReparent)}`,
+    );
+    assert.deepEqual(
+      await readEmbeddedBookContent(),
+      [],
+      "reparenting an entry OUT of the embedded lorebook resyncs the former lorebook (the moved entry no longer appears)",
+    );
+
+    // #4932: whole-lorebook deletion must resolve the actual embedding character before the
+    // generic cascade removes its links. Keep a different linked character first to prove the
+    // hydrated lorebook's derived characterId is not treated as the embedded owner.
+    const embeddedLinkDecoy = await characterStorage.create(characterDataSchema.parse({ name: "A linked decoy" }));
+    assert.ok(embeddedLinkDecoy);
+    embeddedLinkDecoyId = embeddedLinkDecoy.id;
+    await lorebookStorage.update(embeddedSyncLorebook.id, {
+      characterIds: [embeddedLinkDecoy.id, embeddedSyncCharacter.id],
+    });
+    const pendingBeforeDelete = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const embeddedWholeDelete = await mariDb.executeCli({
+      argv: ["db", "delete", "lorebooks", embeddedSyncLorebook.id, "--cascade", "--apply"],
+    });
+    assert.equal(
+      embeddedWholeDelete.ok,
+      true,
+      `deleting an embedded lorebook through mari-db must succeed: ${JSON.stringify(embeddedWholeDelete)}`,
+    );
+    const deletedHost = await characterStorage.getById(embeddedSyncCharacter.id);
+    const deletedHostData = JSON.parse(String(deletedHost?.data ?? "{}")) as {
+      character_book?: unknown;
+      extensions?: { importMetadata?: { embeddedLorebook?: unknown } };
+    };
+    assert.equal(deletedHostData.character_book, null, "whole-lorebook delete clears the embedded character book");
+    assert.equal(
+      deletedHostData.extensions?.importMetadata?.embeddedLorebook,
+      undefined,
+      "whole-lorebook delete clears the embedded lorebook pointer",
+    );
+    const wholeDeleteApproval = mariDb
+      .getPendingApprovals()
+      .find((approval) => !pendingBeforeDelete.has(approval.id));
+    assert.ok(wholeDeleteApproval, "whole-lorebook delete produced a reviewable approval");
+    const restoredWholeDelete = await mariDb.restoreAppliedReview(wholeDeleteApproval.id);
+    assert.ok(restoredWholeDelete && "history" in restoredWholeDelete, "whole-lorebook Restore must succeed");
+    const restoredHost = await characterStorage.getById(embeddedSyncCharacter.id);
+    const restoredHostData = JSON.parse(String(restoredHost?.data ?? "{}")) as {
+      character_book?: { entries?: unknown[] };
+      extensions?: { importMetadata?: { embeddedLorebook?: { lorebookId?: string } } };
+    };
+    assert.deepEqual(
+      restoredHostData.character_book?.entries,
+      [],
+      "Restore re-embeds even an empty character book",
+    );
+    assert.equal(
+      restoredHostData.extensions?.importMetadata?.embeddedLorebook?.lorebookId,
+      embeddedSyncLorebook.id,
+      "Restore reinstates the embedded lorebook pointer on the actual host",
+    );
+  } finally {
+    await lorebookStorage.remove(embeddedSyncLorebook.id);
+    await characterStorage.remove(embeddedSyncCharacter.id);
+    if (embeddedReparentTargetId) await lorebookStorage.remove(embeddedReparentTargetId);
+    if (embeddedLinkDecoyId) await characterStorage.remove(embeddedLinkDecoyId);
+  }
 
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({
@@ -2000,18 +2331,28 @@ try {
   // fields that were previously hardcoded on the CLI. add-entry delegates to buildLorebookEntryCreateRow.
   const professorMariCliAddEntry = await mariDb.executeCli({
     argv: [
-      "lorebooks", "add-entry", professorMariCliLorebookId,
-      "--name", "Regex CLI entry",
-      "--keys", "Lycan",
-      "--secondary-keys", "moon,howl",
+      "lorebooks",
+      "add-entry",
+      professorMariCliLorebookId,
+      "--name",
+      "Regex CLI entry",
+      "--keys",
+      "Lycan",
+      "--secondary-keys",
+      "moon,howl",
       "--selective",
-      "--selective-logic", "and_all",
+      "--selective-logic",
+      "and_all",
       "--match-whole-words",
       "--use-regex",
       "--apply",
     ],
   });
-  assert.equal(professorMariCliAddEntry.ok, true, `CLI add-entry must succeed: ${JSON.stringify(professorMariCliAddEntry)}`);
+  assert.equal(
+    professorMariCliAddEntry.ok,
+    true,
+    `CLI add-entry must succeed: ${JSON.stringify(professorMariCliAddEntry)}`,
+  );
   const professorMariCliEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
     (entry) => entry.name === "Regex CLI entry",
   );
@@ -2020,24 +2361,39 @@ try {
   assert.equal(professorMariCliEntry.selectiveLogic, "and_all", "CLI add-entry must persist --selective-logic");
   assert.equal(professorMariCliEntry.matchWholeWords, true, "CLI add-entry must persist --match-whole-words");
   assert.equal(professorMariCliEntry.useRegex, true, "CLI add-entry must persist --use-regex");
-  assert.deepEqual(professorMariCliEntry.secondaryKeys, ["moon", "howl"], "CLI add-entry must persist --secondary-keys");
+  assert.deepEqual(
+    professorMariCliEntry.secondaryKeys,
+    ["moon", "howl"],
+    "CLI add-entry must persist --secondary-keys",
+  );
   assert.equal(professorMariCliEntry.caseSensitive, false, "unset --case-sensitive stays default");
 
   const professorMariCliUpdateEntry = await mariDb.executeCli({
     argv: [
-      "lorebooks", "update-entry", professorMariCliEntry.id,
+      "lorebooks",
+      "update-entry",
+      professorMariCliEntry.id,
       "--no-match-whole-words",
       "--no-selective",
-      "--selective-logic", "not",
+      "--selective-logic",
+      "not",
       "--apply",
     ],
   });
-  assert.equal(professorMariCliUpdateEntry.ok, true, `CLI update-entry must succeed: ${JSON.stringify(professorMariCliUpdateEntry)}`);
+  assert.equal(
+    professorMariCliUpdateEntry.ok,
+    true,
+    `CLI update-entry must succeed: ${JSON.stringify(professorMariCliUpdateEntry)}`,
+  );
   const professorMariCliUpdatedEntry = (await lorebookStorage.listEntries(professorMariCliLorebookId)).find(
     (entry) => entry.id === professorMariCliEntry.id,
   );
   assert.ok(professorMariCliUpdatedEntry);
-  assert.equal(professorMariCliUpdatedEntry.matchWholeWords, false, "CLI update-entry --no-match-whole-words clears it");
+  assert.equal(
+    professorMariCliUpdatedEntry.matchWholeWords,
+    false,
+    "CLI update-entry --no-match-whole-words clears it",
+  );
   assert.equal(professorMariCliUpdatedEntry.selective, false, "CLI update-entry --no-selective clears it");
   assert.equal(professorMariCliUpdatedEntry.selectiveLogic, "not", "CLI update-entry patches --selective-logic");
 
@@ -2048,7 +2404,16 @@ try {
   assert.equal(professorMariCliBadUpdateLogic.ok, false, "CLI update-entry rejects an invalid --selective-logic");
   assert.match(String(professorMariCliBadUpdateLogic.error), /selective-logic must be one of/u);
   const professorMariCliBadAddLogic = await mariDb.executeCli({
-    argv: ["lorebooks", "add-entry", professorMariCliLorebookId, "--name", "Bad logic", "--selective-logic", "bogus", "--apply"],
+    argv: [
+      "lorebooks",
+      "add-entry",
+      professorMariCliLorebookId,
+      "--name",
+      "Bad logic",
+      "--selective-logic",
+      "bogus",
+      "--apply",
+    ],
   });
   assert.equal(professorMariCliBadAddLogic.ok, false, "CLI add-entry rejects an invalid --selective-logic");
   assert.match(String(professorMariCliBadAddLogic.error), /selective-logic must be one of/u);
@@ -3241,7 +3606,8 @@ assert.deepEqual(JSON.parse(String(swarmUiVideoBody.comfyworkflowraw)), {
 });
 assert.equal(parseSwarmUiVideoReference({ images: ["View/local/raw/output.mp4"] }), "View/local/raw/output.mp4");
 assert.throws(
-  () => buildSwarmUiVideoGenerationBody(
+  () =>
+    buildSwarmUiVideoGenerationBody(
     {
       prompt: "video",
       durationSeconds: 5,
@@ -3729,6 +4095,10 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+const lorebookHooksSource = readFileSync(
+  new URL("../../packages/client/src/hooks/use-lorebooks.ts", import.meta.url),
+  "utf8",
+);
 const professorMariContextBudget = resolveProfessorMariContextBudget(
   [
     {
@@ -3756,8 +4126,35 @@ assert.equal(
 );
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
+assert.match(
+  professorMariHomeSource,
+  /enterToSendProfessorMari/u,
+  "Professor Mari must read her persisted Send on Enter preference",
+);
+assert.equal(
+  professorMariHomeSource.match(
+    /event\.key === "Enter" &&\s*!event\.shiftKey &&\s*\(enterToSend \|\| event\.metaKey \|\| event\.ctrlKey\)/gu,
+  )?.length,
+  2,
+  "Both Professor Mari composers must preserve Shift+Enter and require the configured send shortcut",
+);
 assert.match(professorMariHomeSource, /toggleProfessorChatSelection/u);
 assert.match(professorMariHomeSource, /handleBulkDeleteProfessorChats/u);
+assert.match(
+  professorMariHomeSource,
+  /const handleEditMessage = useCallback\([\s\S]{0,180}if \(!chatId \|\| isBusy\) return;/u,
+  "Professor Mari's first edit after generation must not be rejected by a stale busy ref",
+);
+assert.match(
+  professorMariHomeSource,
+  /catch \(error\) \{\s*if \(isProfessorMariAbortError\(error\)\) return;\s*setDraft\(text\)/u,
+  "Stopping Professor Mari must not restore an already-submitted prompt to the composer",
+);
+assert.match(
+  lorebookHooksSource,
+  /useDeleteLorebook\(\)[\s\S]{0,900}invalidateQueries\(\{ queryKey: \["chats"\] \}\)/u,
+  "Deleting a lorebook must refresh cached chat metadata so it leaves active context immediately",
+);
 assert.match(
   professorMariHomeSource,
   /handleDeleteProfessorChat[\s\S]{0,500}showConfirmDialog/u,
@@ -3868,7 +4265,7 @@ assert.doesNotMatch(assignedSweepChatAreaSource, /updateMessage(?:Extra)?\.mutat
 assert.match(chatMessageSource, /mari-chrome-accent-progress mari-accent-animated mb-1\.5 h-0\.5/u);
 assert.match(
   chatMessageSource,
-  /isConversationStart && \(\s*<div className="mb-1 w-full px-1">/u,
+  /function ConversationStartMarkers[\s\S]*className=\{cn\("w-full", panel \? "mb-1 px-1" : "mb-0\.5 px-2"\)\}/u,
   "Roleplay New Start dividers must span user and assistant message bodies",
 );
 assert.match(chatMessageSource, /pointer-events-auto relative z-30 flex h-11 w-11/u);
@@ -4554,6 +4951,16 @@ assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
 assert.match(gameSetupWizardSource, /enableAgents: enableAgents \|\| undefined/u);
+assert.match(
+  gameSetupWizardSource,
+  /handleExportSetup[\s\S]{0,700}buildGameSetupShareFile/u,
+  "New Game's final setup step must export the same reusable setup format before starting",
+);
+assert.match(
+  gameSetupWizardSource,
+  /onClick=\{handleExportSetup\}[\s\S]{0,300}ui\.game\.gamesetupsummary\.downloadSetup/u,
+  "New Game's final setup step must expose the setup download action",
+);
 assert.match(
   gameSetupWizardSource,
   /id="game-setup-spatial-map-target-count"[\s\S]{0,180}min=\{1\}[\s\S]{0,120}max=\{SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT\}/u,
@@ -5339,11 +5746,21 @@ assert.match(
   /if \(version <= 37\) \{[\s\S]*IMAGE_STYLE_PROFILES_STORAGE_KEY\] \?\? persisted\.imageStyleProfiles/u,
   "The image-style legacy-key fallback must remain version-specific",
 );
-const projectionState = { ...useUIStore.getState(), enterToSendGame: false, gameTutorialDisabled: true };
+const projectionState = {
+  ...useUIStore.getState(),
+  enterToSendGame: false,
+  enterToSendProfessorMari: false,
+  gameTutorialDisabled: true,
+};
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
   false,
   "Game's Send on Enter preference must be server-synced",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).enterToSendProfessorMari,
+  false,
+  "Professor Mari's Send on Enter preference must be server-synced",
 );
 assert.equal(
   pickSyncedSettings(projectionState).gameTutorialDisabled,
@@ -5698,6 +6115,28 @@ assert.equal(isGitUpdateApplyAllowed({ updatesApplyEnabled: true, localChannelSw
 assert.equal(shouldExecuteQuickPostAsCommand("/illustrate"), true);
 assert.equal(shouldExecuteQuickPostAsCommand("  /roll 1d20  "), true);
 assert.equal(shouldExecuteQuickPostAsCommand("/not-a-real-command"), false);
+assert.deepEqual(parseTargetedHideArguments("34-40", "roleplay"), {
+  kind: "global",
+  indices: [34, 35, 36, 37, 38, 39, 40],
+});
+assert.deepEqual(
+  parseTargetedHideArguments('"Lady Maria" 12,18-20', "roleplay", [
+    { id: "maria", name: "Lady Maria" },
+    { id: "maukie", name: "Maukie" },
+  ]),
+  {
+    kind: "targeted",
+    character: { id: "maria", name: "Lady Maria" },
+    indices: [12, 18, 19, 20],
+  },
+);
+assert.deepEqual(
+  parseTargetedHideArguments("mau 34", "roleplay", [
+    { id: "maukie", name: "Maukie" },
+    { id: "maurice", name: "Maurice" },
+  ]),
+  { kind: "error", reason: "ambiguous", targetName: "mau" },
+);
 
 const noCapabilityPackages = new Set<string>();
 const illustratorCapabilityPackages = new Set(["illustrator"]);
@@ -6301,8 +6740,13 @@ assert.match(
 );
 assert.match(
   summaryPopoverSource,
-  /data-summary-entry-root[\s\S]{0,3000}data-touch-reorder-item/u,
-  "Summary entries must expose a shared desktop and touch reorder surface",
+  /<[A-Za-z]+\b(?=[^>]*data-summary-entry-root\b)(?=[^>]*onDragOver=\{handleSummaryContainerDragOver\})(?=[^>]*onDrop=\{handleSummaryDrop\})[^>]*>/u,
+  "The summary entry list root must be the desktop drag-and-drop container",
+);
+assert.match(
+  summaryPopoverSource,
+  /<[A-Za-z]+\b(?=[^>]*data-touch-reorder-item=\{reorderable \? "summary-entry" : undefined\})(?=[^>]*data-touch-reorder-index=\{reorderable \? entryIndex : undefined\})(?=[^>]*draggable=\{reorderable && dragReady\})(?=[^>]*onDragStart=\{onDragStart\})[^>]*>/u,
+  "Summary entries must expose a shared desktop and touch reorder surface (the same row is a touch-reorder item, carries its persisted reorder index, and is desktop-draggable)",
 );
 assert.match(
   summaryPopoverSource,
@@ -6962,6 +7406,16 @@ try {
     connectionEditorSource,
     /type="button"[\s\S]{0,180}novelAiStylePlateInputRef\.current\?\.click\(\)[\s\S]{0,1000}type="file"/u,
     "NovelAI style-plate selection must use an explicit non-submitting button instead of label navigation",
+  );
+  assert.match(
+    connectionEditorSource,
+    /localImageDefaultsRef\.current = sanitized;[\s\S]{0,100}setLocalImageDefaults\(sanitized\)/u,
+    "NovelAI defaults must update a synchronous save snapshot before React paints the next render",
+  );
+  assert.match(
+    connectionEditorSource,
+    /selectedImageDefaultsService && localImageDefaultsRef\.current[\s\S]{0,140}sanitizeImageGenerationProfile\(localImageDefaultsRef\.current/u,
+    "Connection save must persist the latest image defaults snapshot",
   );
 
   const backgroundAutonomousSource = readFileSync(
@@ -7678,6 +8132,153 @@ try {
   assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z"), null, "bare timestamps are not cursors");
   assert.equal(parseMessageCursor("not-a-date|42"), null, "cursor timestamps must be valid");
   assert.equal(parseMessageCursor("2026-08-09T12:00:00.000Z|%"), null, "cursor ids must be valid URI components");
+}
+
+{
+  // #4937: Agent Suite tracker editing must expose every field owned by the
+  // World State and Persona Stats trackers without replacing adjacent data.
+  const gameState = {
+    id: "state-4937",
+    chatId: "chat-4937",
+    messageId: "message-4937",
+    swipeIndex: 0,
+    date: "August 12",
+    time: "10:00",
+    location: "Lab",
+    weather: "Clear",
+    temperature: "20 C",
+    worldCustomFields: [{ name: "Moon", value: "Full", icon: "moon" }],
+    presentCharacters: [],
+    recentEvents: [],
+    personaStats: [{ name: "Energy", value: 8, max: 10, color: "blue" }],
+    playerStats: {
+      stats: [],
+      attributes: null,
+      skills: { alchemy: 4 },
+      inventory: [{ name: "Vial", description: "Sealed", quantity: 2, location: "on_person" }],
+      activeQuests: [],
+      status: "Focused",
+    },
+    createdAt: "2026-08-12T08:00:00.000Z",
+  } satisfies GameState;
+  assert.deepEqual(
+    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>)
+      .worldCustomFields,
+    gameState.worldCustomFields,
+  );
+  assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.getValue(gameState), {
+    personaStats: gameState.personaStats,
+    inventory: gameState.playerStats.inventory,
+  });
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, {
+      personaStats: [],
+      inventory: [{ name: "Key", description: "Brass", quantity: 1, location: "stored" }],
+    }),
+    {
+      personaStats: [],
+      playerStats: {
+        ...gameState.playerStats,
+        inventory: [{ name: "Key", description: "Brass", quantity: 1, location: "stored" }],
+      },
+    },
+    "Persona inventory edits must preserve skills, status, and other player stats",
+  );
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }),
+    { error: "World custom fields must be a JSON array" },
+  );
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
+    { personaStats: [] },
+    "Dropping inventory from an AI rewrite must leave the saved inventory unchanged",
+  );
+}
+
+{
+  // #4940, #4941, #4942 and the requested UI consistency fixes are thin
+  // integration lanes, so pin their host wiring alongside the behavior checks.
+  const chatAreaSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatArea.tsx"),
+    "utf8",
+  );
+  const conversationSurfaceSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatConversationSurface.tsx"),
+    "utf8",
+  );
+  const settingsDrawerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+    "utf8",
+  );
+  const gameMapSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/components/game/GameMap.tsx"), "utf8");
+  const generateRouteSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/routes/generate.routes.ts"),
+    "utf8",
+  );
+  const turnGameBotRunnerSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/services/turn-games/turn-game-bot-runner.service.ts"),
+    "utf8",
+  );
+  const turnGameCommandRuntimeSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/server/src/services/generation/turn-game-command-runtime.ts"),
+    "utf8",
+  );
+
+  assert.match(
+    chatAreaSource,
+    /<ChatConversationSurface[\s\S]*?onIllustrateWithAgent=\{async \(agentType\)[\s\S]*?forceImageGeneration: true/u,
+    "Conversation Gallery must forward custom image-agent illustration requests",
+  );
+  assert.match(conversationSurfaceSource, /onIllustrateWithAgent=\{onIllustrateWithAgent\}/u);
+
+  assert.match(settingsDrawerSource, /\/generate\/status\/\$\{encodeURIComponent\(chat\.id\)\}/u);
+  assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
+  assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
+  assert.equal(
+    (settingsDrawerSource.match(/packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu) ?? [])
+      .length,
+    3,
+    "Long-Term Memory must use the same un-nested Agent Settings surface in every chat mode",
+  );
+
+  assert.match(
+    gameMapSource,
+    /GAME_MAP_ACTION_ITEM_CLASS\s*=\s*\n\s*"text-\[var\(--primary\)\]/u,
+    "Minimap zoom controls must inherit the selected accent color",
+  );
+  const turnGameResumeBlock =
+    /\/\/ A normal chat send can claim[\s\S]*?\/\/ Signal completion before the slow illustration tail/u.exec(
+      generateRouteSource,
+    )?.[0] ?? "";
+  assert.match(turnGameResumeBlock, /chatMode === "conversation"/u);
+  assert.match(turnGameResumeBlock, /await runTurnGameBotTurns\(/u);
+  assert.match(
+    turnGameResumeBlock,
+    /if \(abortController\.signal\.aborted \|\| isAbortLikeError\(turnGameErr\)\) return;/u,
+    "Turn-game recovery must propagate cancellation without logging it as a failure",
+  );
+  assert.match(
+    turnGameResumeBlock,
+    /await runTurnGameBotTurns\([\s\S]*?if \(abortController\.signal\.aborted\) return;/u,
+    "Turn-game recovery must re-check cancellation after a bot runner resolves",
+  );
+  assert.match(turnGameResumeBlock, /logger\.warn\(turnGameErr/u);
+  assert.match(
+    generateRouteSource,
+    /logDebugOverride\(requestDebug \|\| isDebugAgentsEnabled\(\), message, \.\.\.args\)/u,
+    "Turn-game prompt logging must honor both UI debug mode and DEBUG_AGENTS",
+  );
+  assert.equal(
+    (generateRouteSource.match(/debugLog: turnGameDebugLog/gu) ?? []).length,
+    3,
+    "Every production turn-game runner path must receive the request-aware debug logger",
+  );
+  assert.match(turnGameCommandRuntimeSource, /debugLog: args\.debugLog/u);
+  assert.match(
+    turnGameBotRunnerSource,
+    /args\.debugLog\?\.\([\s\S]*?JSON\.stringify\(moveMessages, null, 2\)[\s\S]*?provider\.chatComplete\(moveMessages/u,
+    "Turn-game bot moves must log the final provider prompt immediately before submission",
+  );
 }
 
 console.info("Open-issue regressions passed.");

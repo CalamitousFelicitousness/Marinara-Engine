@@ -1,5 +1,10 @@
+import { getAndroidBridgeToken } from "@/lib/android-bridge";
+
 type MarinaraAndroidFileBridge = {
-  saveFile?: (base64Data: string, mimeType: string, filename: string) => void;
+  saveFile?: {
+    (token: string, base64Data: string, mimeType: string, filename: string): void;
+    (base64Data: string, mimeType: string, filename: string): void;
+  };
 };
 
 /** Read the optional Android shell file bridge from the current browser window. */
@@ -37,7 +42,9 @@ export async function saveBlobToDevice(blob: Blob, filename: string): Promise<vo
   const bridge = getAndroidFileBridge();
   if (typeof bridge?.saveFile === "function") {
     const base64Data = arrayBufferToBase64(await blob.arrayBuffer());
-    bridge.saveFile(base64Data, blob.type || "application/octet-stream", filename);
+    const token = getAndroidBridgeToken();
+    if (token) bridge.saveFile(token, base64Data, blob.type || "application/octet-stream", filename);
+    else bridge.saveFile(base64Data, blob.type || "application/octet-stream", filename);
     return;
   }
 

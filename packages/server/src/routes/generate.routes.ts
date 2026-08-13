@@ -250,6 +250,7 @@ import {
   computeSummaryMessageRange,
   selectRollingSummaryMessages,
   injectIntoOutputFormatOrLastUser,
+  getMessageConversationStartCharacterIds,
   getMessageHiddenFromAICharacterIds,
   isManualTrackerCharacterId,
   isMessageHiddenFromAI,
@@ -420,7 +421,7 @@ import {
   resolveChatSummaryPrompt,
   withoutRetiredChatSummaryAgentIds,
 } from "../services/generation/roleplay-summary-runtime.js";
-import { getChatGenerationTimeoutMs, getMaxToolRounds } from "../config/runtime-config.js";
+import { getChatGenerationTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../config/runtime-config.js";
 import {
   isReviewableWriterAgentType,
   buildRuntimeAgentSectionEligibleTypes,
@@ -769,6 +770,9 @@ export async function generateRoutes(app: FastifyInstance) {
     const requestDebug = input.debugMode === true;
     const debugLog = (message: string, ...args: any[]) => {
       logDebugOverride(requestDebug, message, ...args);
+    };
+    const turnGameDebugLog = (message: string, ...args: any[]) => {
+      logDebugOverride(requestDebug || isDebugAgentsEnabled(), message, ...args);
     };
 
     // Resolve the chat
@@ -1256,6 +1260,7 @@ export async function generateRoutes(app: FastifyInstance) {
           baseUrl,
           reply,
           signal: abortController.signal,
+          debugLog: turnGameDebugLog,
         });
         generationComplete = true;
         sendSseEvent(reply, { type: "done", data: "" });
@@ -1436,6 +1441,7 @@ export async function generateRoutes(app: FastifyInstance) {
           content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
         }
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
+        const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
         return {
           id: typeof m.id === "string" ? m.id : null,
@@ -1445,6 +1451,7 @@ export async function generateRoutes(app: FastifyInstance) {
           characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
           ...(personaSnapshotName ? { personaSnapshotName } : {}),
           ...(hiddenFromAICharacterIds.length ? { hiddenFromAICharacterIds } : {}),
+          ...(conversationStartForCharacterIds.length ? { conversationStartForCharacterIds } : {}),
           ...(attachmentInputs.images.length ? { images: attachmentInputs.images } : {}),
           ...(attachmentInputs.files.length ? { files: attachmentInputs.files } : {}),
           ...(Object.keys(providerMetadata).length ? { providerMetadata } : {}),
@@ -4400,7 +4407,10 @@ export async function generateRoutes(app: FastifyInstance) {
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
         agentContext.memory._mainPromptPreview = promptPreviewForAgents(finalMessages);
-        const resolveImagePromptAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
+        const resolveImagePromptAgentContext = async (
+          agent: AgentExecConfig,
+          context: AgentContext,
+        ): Promise<AgentContext> => {
           const isImagePromptAgent =
             agent.type === "illustrator" ||
             (agent.isCustomAgent === true && customAgentHasCapability(agent.settings, "trigger_image_generation"));
@@ -9720,6 +9730,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   baseUrl,
                   reply,
                   signal: abortController.signal,
+                  debugLog: turnGameDebugLog,
                 });
 
                 if (command.type === "capability") {
@@ -9877,6 +9888,29 @@ export async function generateRoutes(app: FastifyInstance) {
         } catch (oocErr) {
           logger.error(oocErr, "[generate] Failed to post OOC messages");
         }
+      }
+
+      // A normal chat send can claim the client's per-chat generation lock at
+      // the same moment a turn-game requests its bot loop. The bot request is
+      // then intentionally skipped, so resume any pending bot seat before this
+      // Conversation stream releases the lock. Human turns and chats without an
+      // active game are cheap no-ops inside the shared runner.
+      if (chatMode === "conversation" && !input.impersonate && !abortController.signal.aborted) {
+        try {
+          await runTurnGameBotTurns({
+            db: app.db,
+            chatId: input.chatId,
+            conn,
+            baseUrl,
+            reply,
+            signal: abortController.signal,
+            debugLog: turnGameDebugLog,
+          });
+        } catch (turnGameErr) {
+          if (abortController.signal.aborted || isAbortLikeError(turnGameErr)) return;
+          logger.warn(turnGameErr, "[turn-game] Failed to resume pending bot turns after Conversation reply");
+        }
+        if (abortController.signal.aborted) return;
       }
 
       // Signal completion before the slow illustration tail. The client keeps

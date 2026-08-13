@@ -315,6 +315,7 @@ export function PresetsPanel() {
   const [selectedPresetIds, setSelectedPresetIds] = useState<Set<string>>(new Set());
   const [exportingSelected, setExportingSelected] = useState(false);
   const [regexImportError, setRegexImportError] = useState<string | null>(null);
+  const [regexImportWarning, setRegexImportWarning] = useState<string | null>(null);
   const [regexImportSuccess, setRegexImportSuccess] = useState<string | null>(null);
   const [functionImportError, setFunctionImportError] = useState<string | null>(null);
   const [functionImportSuccess, setFunctionImportSuccess] = useState<string | null>(null);
@@ -489,9 +490,7 @@ export function PresetsPanel() {
           toast.success(localizeUi("ui.panels.presetspanel.presetPictureUpdated"));
         } catch (error) {
           toast.error(
-            error instanceof Error
-              ? error.message
-              : localizeUi("ui.panels.presetspanel.failedToUploadPresetPicture"),
+            error instanceof Error ? error.message : localizeUi("ui.panels.presetspanel.failedToUploadPresetPicture"),
           );
         } finally {
           imageTargetPresetIdRef.current = null;
@@ -558,6 +557,7 @@ export function PresetsPanel() {
   const handleImportRegex = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       setRegexImportError(null);
+      setRegexImportWarning(null);
       setRegexImportSuccess(null);
       const file = event.target.files?.[0];
       if (!file) return;
@@ -570,15 +570,10 @@ export function PresetsPanel() {
 
         let imported = 0;
         const failed: string[] = [];
+        const warnings: string[] = [];
         const orderBase = getNextRegexOrderBase((regexScripts ?? []) as RegexScriptRow[]);
         for (const [index, entry] of entries.entries()) {
           const unsupportedPlacements = getUnsupportedStRegexPlacements(entry);
-          if (unsupportedPlacements.length > 0) {
-            failed.push(
-              `Entry ${index + 1}: unsupported SillyTavern placement ${unsupportedPlacements.join(", ")} was skipped.`,
-            );
-            continue;
-          }
           const normalized = normalizeRegexImportEntry(entry, orderBase + index);
           if (!normalized) {
             failed.push(`Entry ${index + 1}: missing name or find pattern.`);
@@ -587,6 +582,14 @@ export function PresetsPanel() {
           try {
             await createRegexScript.mutateAsync(normalized);
             imported++;
+            if (unsupportedPlacements.length > 0) {
+              warnings.push(
+                localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
+                  value1: index + 1,
+                  value2: unsupportedPlacements.join(", "),
+                }),
+              );
+            }
           } catch (error) {
             failed.push(`Entry ${index + 1} (${normalized.name}): ${describeImportError(error)}`);
           }
@@ -598,6 +601,9 @@ export function PresetsPanel() {
         if (failed.length > 0) {
           setRegexImportError(`Skipped ${failed.length} regex script${failed.length === 1 ? "" : "s"}. ${failed[0]}`);
         }
+        if (warnings.length > 0) {
+          setRegexImportWarning(warnings[0]!);
+        }
         if (imported === 0 && failed.length === 0) {
           setRegexImportError("No valid regex scripts found in file.");
         }
@@ -607,12 +613,27 @@ export function PresetsPanel() {
 
       event.target.value = "";
     },
-    [createRegexScript, regexScripts],
+    [createRegexScript, localizeUi, regexScripts],
   );
 
-  const handleExportFunctions = useCallback(() => {
+  const handleExportFunctions = useCallback(async () => {
     if (customToolRows.length === 0) {
       toast.error(localizeUi("ui.panels.presetspanel.noFunctionsToExport"));
+      return;
+    }
+
+    const includesWebhookCredentials = customToolRows.some(
+      (tool) => tool.executionType === "webhook" && Boolean(tool.webhookUrl),
+    );
+    if (
+      includesWebhookCredentials &&
+      !(await showConfirmDialog({
+        title: localizeUi("ui.panels.presetspanel.exportWebhookCredentials"),
+        message: localizeUi("ui.panels.presetspanel.exportWebhookCredentialsWarning"),
+        confirmLabel: localizeUi("ui.panels.presetspanel.exportWithCredentials"),
+        tone: "destructive",
+      }))
+    ) {
       return;
     }
 
@@ -984,11 +1005,7 @@ export function PresetsPanel() {
             )}
             <div
               data-preset-open-action={preset.id}
-              className={cn(
-                "min-w-0 flex-1",
-                !selectionMode &&
-                  "pr-0 max-md:pr-36 [@media(pointer:coarse)]:pr-36",
-              )}
+              className={cn("min-w-0 flex-1", !selectionMode && "pr-0 max-md:pr-36 [@media(pointer:coarse)]:pr-36")}
             >
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5" title={preset.name}>
@@ -1453,6 +1470,7 @@ export function PresetsPanel() {
         handleImportRegex={handleImportRegex}
         handleExportRegex={handleExportRegex}
         regexImportError={regexImportError}
+        regexImportWarning={regexImportWarning}
         regexImportSuccess={regexImportSuccess}
         sortedRegexScripts={sortedRegexScripts}
         draggedRegexId={draggedRegexId}
@@ -1519,6 +1537,7 @@ function RegexSection({
   handleImportRegex,
   handleExportRegex,
   regexImportError,
+  regexImportWarning,
   regexImportSuccess,
   sortedRegexScripts,
   draggedRegexId,
@@ -1535,6 +1554,7 @@ function RegexSection({
   handleImportRegex: (event: ChangeEvent<HTMLInputElement>) => void;
   handleExportRegex: () => void;
   regexImportError: string | null;
+  regexImportWarning: string | null;
   regexImportSuccess: string | null;
   sortedRegexScripts: RegexScriptRow[];
   draggedRegexId: string | null;
@@ -1616,6 +1636,7 @@ function RegexSection({
           {regexImportError}
         </div>
       )}
+      {regexImportWarning && <div className="mb-1 px-1 text-xs text-amber-500">{regexImportWarning}</div>}
       {regexImportSuccess && <div className="mb-1 px-1 text-xs text-green-500">{regexImportSuccess}</div>}
       {sortedRegexScripts.length === 0 ? (
         <p className="mari-chrome-text-muted px-1 py-2 text-[0.625rem]">
@@ -1889,17 +1910,17 @@ function FunctionsSection({
       {functionImportReviews.length > 0 && (
         <section
           aria-live="polite"
-          aria-label={localizeUi("ui.panels.functionssection.importReviewTitle")}
+          aria-label={localizeUi("ui.panels.functionssection.executableImportReviewTitle")}
           className="mb-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/45 p-2.5"
         >
           <div className="flex items-start gap-2">
             <ShieldCheck aria-hidden="true" size="0.9375rem" className="mt-0.5 shrink-0 text-[var(--primary)]" />
             <div className="min-w-0">
               <h3 className="text-xs font-semibold text-[var(--foreground)]">
-                {localizeUi("ui.panels.functionssection.importReviewTitle")}
+                {localizeUi("ui.panels.functionssection.executableImportReviewTitle")}
               </h3>
               <p className="mt-0.5 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                {localizeUi("ui.panels.functionssection.importReviewDescription")}
+                {localizeUi("ui.panels.functionssection.executableImportReviewDescription")}
               </p>
             </div>
           </div>
@@ -1910,16 +1931,24 @@ function FunctionsSection({
                   <dt className="sr-only">{localizeUi("ui.panels.functionssection.functionName")}</dt>
                   <dd className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] font-semibold">{review.name}</dd>
                   <span className="shrink-0 rounded bg-[var(--background)] px-1.5 py-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.panels.functionssection.webhook")}
+                    {localizeUi(
+                      review.executionType === "webhook"
+                        ? "ui.panels.functionssection.webhook"
+                        : "ui.panels.functionssection.script",
+                    )}
                   </span>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-0.5 text-[0.625rem]">
-                  <dt className="text-[var(--muted-foreground)]">
-                    {localizeUi("ui.panels.functionssection.destinationOrigin")}
-                  </dt>
-                  <dd className="max-w-40 break-all text-right font-mono text-[var(--foreground)]">
-                    {review.destinationOrigin ?? localizeUi("ui.panels.functionssection.invalidWebhookOrigin")}
-                  </dd>
+                  {review.executionType === "webhook" && (
+                    <>
+                      <dt className="text-[var(--muted-foreground)]">
+                        {localizeUi("ui.panels.functionssection.destinationOrigin")}
+                      </dt>
+                      <dd className="max-w-40 break-all text-right font-mono text-[var(--foreground)]">
+                        {review.destinationOrigin ?? localizeUi("ui.panels.functionssection.invalidWebhookOrigin")}
+                      </dd>
+                    </>
+                  )}
                   <dt className="text-[var(--muted-foreground)]">
                     {localizeUi("ui.panels.functionssection.requestedEnabled")}
                   </dt>

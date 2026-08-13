@@ -82,7 +82,8 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
-import { useUIStore, type MariPanelSortMode } from "../../stores/ui.store";
+import { useUIStore, type MariEditViewMode, type MariPanelSortMode } from "../../stores/ui.store";
+import { MariEditEasyViewer } from "./MariEditEasyViewer";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
   isProfessorMariTranscriptNearBottom,
@@ -112,6 +113,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 const MARI_AVATAR_URL = "/sprites/mari/Mari_profile.png";
 const MARI_CHIBI_URL = "/sprites/mari/chibi-professor-mari.png";
 const PROFESSOR_MARI_WELCOME_MESSAGE_ID = "__professor_mari_home_welcome__";
+const PROFESSOR_MARI_DRAFT_KEY = "__home_professor_mari__";
 const MARI_CONNECTION_STORAGE_KEY = "marinara:home-professor-mari-connection-id";
 const PROFESSOR_MARI_ERROR_TOAST_DURATION_MS = 120_000;
 const WORKSPACE_SETTLE_POLL_MS = 1_500;
@@ -334,6 +336,10 @@ function describeProfessorMariError(error: unknown) {
     return `${formatGenerationParameterError(message)} This message will stay visible long enough to screenshot for troubleshooting.`;
   }
   return "The request failed before Professor Mari could answer. This message will stay visible long enough to screenshot for troubleshooting.";
+}
+
+function isProfessorMariAbortError(error: unknown) {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
 function toMessageExtra(message: Message): Message["extra"] {
@@ -1852,6 +1858,16 @@ function WorkspaceErrorEvent({ message }: { message: string }) {
   );
 }
 
+function getScrollableAncestor(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function DatabaseWorkspaceApprovalCard({
   approval,
   busy,
@@ -1868,6 +1884,36 @@ function DatabaseWorkspaceApprovalCard({
   onRestore: (id: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
+  // flips the rest.
+  const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
+  const setDefaultViewMode = useUIStore((s) => s.setMariEditViewMode);
+  const [viewMode, setViewMode] = useState<MariEditViewMode>(defaultViewMode);
+  const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
+  const cardRef = useRef<HTMLDivElement>(null);
+  const toggleAnchorRef = useRef<number | null>(null);
+  // Keep this card anchored in the scroll viewport across a height change so the toggle doesn't
+  // shove what the user is reading off-screen.
+  const changeViewMode = useCallback(
+    (mode: MariEditViewMode) => {
+      toggleAnchorRef.current = cardRef.current?.getBoundingClientRect().top ?? null;
+      setViewMode(mode);
+      // Persist as the saved default so the choice survives this card remounting and new cards open
+      // the same way. Already-mounted cards keep their own local state, so one card's toggle still
+      // does not flip the others.
+      setDefaultViewMode(mode);
+    },
+    [setDefaultViewMode],
+  );
+  useLayoutEffect(() => {
+    const anchor = toggleAnchorRef.current;
+    toggleAnchorRef.current = null;
+    if (anchor === null || !cardRef.current) return;
+    const delta = cardRef.current.getBoundingClientRect().top - anchor;
+    if (Math.abs(delta) < 1) return;
+    const scroller = getScrollableAncestor(cardRef.current);
+    if (scroller) scroller.scrollTop += delta;
+  }, [viewMode]);
   const deletedRows = approval.diffPreview.filter((change) => change.action === "delete");
   const insertedRows = approval.diffPreview.filter((change) => change.action === "insert");
   // #4851: a saved memory lands disabled; offer "Keep & Enable" to keep AND switch it on.
@@ -1882,7 +1928,10 @@ function DatabaseWorkspaceApprovalCard({
 
   return (
     <TranscriptRow marker={<ShieldAlert size="0.85rem" className="mt-1 text-[var(--primary)]" />}>
-      <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3 text-xs text-[var(--foreground)]">
+      <div
+        ref={cardRef}
+        className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-3 text-xs text-[var(--foreground)]"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <span className="font-semibold">
             {localizeUi("ui.chat.databaseworkspaceapprovalcard.reviewMariSChanges")}
@@ -1890,13 +1939,43 @@ function DatabaseWorkspaceApprovalCard({
           <span className="rounded-full bg-[var(--primary)]/10 px-1.5 py-0.5 text-[0.625rem] text-[var(--primary)]">
             {localizeUi("ui.chat.databaseworkspaceapprovalcard.saved")}
           </span>
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md bg-[var(--background)]/60 p-0.5">
+            <button
+              type="button"
+              onClick={() => changeViewMode("easy")}
+              aria-pressed={viewMode === "easy"}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
+                viewMode === "easy"
+                  ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+              )}
+            >
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.easyView")}
+            </button>
+            <button
+              type="button"
+              onClick={() => changeViewMode("raw")}
+              aria-pressed={viewMode === "raw"}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
+                viewMode === "raw"
+                  ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+              )}
+            >
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.rawView")}
+            </button>
+          </div>
         </div>
         <p className="mt-1 text-[0.6875rem] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.databaseworkspaceapprovalcard.mariAlreadyAppliedThisKeepItOrRestoreThe")}
         </p>
-        <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--background)]/80 p-2 font-mono text-[0.6875rem] text-[var(--muted-foreground)]">
-          {approval.command}
-        </pre>
+        {viewMode === "raw" && (
+          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--background)]/80 p-2 font-mono text-[0.6875rem] text-[var(--muted-foreground)]">
+            {approval.command}
+          </pre>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
           <span className="inline-flex items-center gap-1">
             <Database size="0.7rem" /> {summarizeTables(approval.affectedTables)}
@@ -1906,10 +1985,17 @@ function DatabaseWorkspaceApprovalCard({
             {approval.affectedRows === 1 ? "" : localizeUi("ui.noodle.stageprofileview.s")}
           </span>
         </div>
-        {approval.diffTruncated && (
+        {viewMode === "raw" && approval.diffTruncated && (
           <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}</p>
         )}
-        {deletedRows.length > 0 && (
+        {viewMode === "easy" && (
+          <MariEditEasyViewer
+            approval={approval}
+            hidden={hiddenRows}
+            onDismissRow={(key) => setHiddenRows((prev) => new Set(prev).add(key))}
+          />
+        )}
+        {viewMode === "raw" && deletedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--destructive)]">
               <Trash2 size="0.75rem" />
@@ -1941,7 +2027,7 @@ function DatabaseWorkspaceApprovalCard({
             </div>
           </div>
         )}
-        {insertedRows.length > 0 && (
+        {viewMode === "raw" && insertedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--primary)]">
               <Sparkles size="0.75rem" />{localizeUi("ui.chat.databaseworkspaceapprovalcard.mariCreatedNewItems")}</div>
@@ -2909,7 +2995,16 @@ export function HomeProfessorMariChat({
   const trackAchievement = useTrackAchievement();
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState("");
+  const draft = useChatStore((state) => state.inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "");
+  const setInputDraft = useChatStore((state) => state.setInputDraft);
+  const enterToSend = useUIStore((state) => state.enterToSendProfessorMari);
+  const setDraft = useCallback(
+    (next: string | ((current: string) => string)) => {
+      const current = useChatStore.getState().inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "";
+      setInputDraft(PROFESSOR_MARI_DRAFT_KEY, typeof next === "function" ? next(current) : next);
+    },
+    [setInputDraft],
+  );
   const [attachments, setAttachments] = useState<ProfessorMariAttachment[]>([]);
   const [isReadingAttachments, setIsReadingAttachments] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(() => readStoredConnectionId());
@@ -3728,7 +3823,7 @@ export function HomeProfessorMariChat({
     if (chatHistoryOpen) await loadChatHistory();
     await qc.invalidateQueries({ queryKey: chatKeys.messages(chat.id) });
     toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariSPreviousChatWasSaved"));
-  }, [chatHistoryOpen, clearMariChips, effectiveConnectionId, loadChatHistory, qc, setActiveChatId, localizeUi]);
+  }, [chatHistoryOpen, clearMariChips, effectiveConnectionId, loadChatHistory, qc, setActiveChatId, setDraft, localizeUi]);
 
   const guidedPlan = professorMariSuggestionsEnabled && mariPlanChatId === chatId ? mariPlan : null;
   const guidedPlanStep = guidedPlan ? (guidedPlan[mariPlanCursor] ?? null) : null;
@@ -3761,7 +3856,7 @@ export function HomeProfessorMariChat({
       setDraft((current) => (current.trim() ? `${current.trimEnd()} ${chip.prompt}` : chip.prompt));
       focusComposer();
     },
-    [clearMariPlan, focusComposer, guidedPlanStep, recordMariPlanAnswer],
+    [clearMariPlan, focusComposer, guidedPlanStep, recordMariPlanAnswer, setDraft],
   );
 
   const runRestart = useCallback(async () => {
@@ -4205,7 +4300,7 @@ export function HomeProfessorMariChat({
       }
       return true;
     },
-    [chatId, loadChatHistory, qc, localizeUi],
+    [chatId, loadChatHistory, qc, setDraft, localizeUi],
   );
 
   const handleDeleteProfessorChat = useCallback(
@@ -4561,7 +4656,7 @@ export function HomeProfessorMariChat({
 
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
-      if (!chatId || isBusy || messageMutationBusyRef.current) return;
+      if (!chatId || isBusy) return;
       messageLoadAbortRef.current?.abort();
       setMessages((current) => current.map((m) => (m.id === messageId ? { ...m, content } : m)));
       try {
@@ -4715,6 +4810,7 @@ export function HomeProfessorMariChat({
         });
       }
     } catch (error) {
+      if (isProfessorMariAbortError(error)) return;
       setDraft(text);
       setAttachments(submittedAttachments);
       console.error("[Professor Mari] Failed to send", error);
@@ -4916,7 +5012,11 @@ export function HomeProfessorMariChat({
               if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
             }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
+              const shouldSend =
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                (enterToSend || event.metaKey || event.ctrlKey);
+              if (shouldSend) {
                 event.preventDefault();
                 void handleSubmit();
               }
@@ -5688,7 +5788,11 @@ export function HomeProfessorMariChat({
                                 if (mobileFocusMode) event.currentTarget.scrollIntoView({ block: "end" });
                               }}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter" && !event.shiftKey) {
+                                const shouldSend =
+                                  event.key === "Enter" &&
+                                  !event.shiftKey &&
+                                  (enterToSend || event.metaKey || event.ctrlKey);
+                                if (shouldSend) {
                                   event.preventDefault();
                                   void handleSubmit();
                                 }

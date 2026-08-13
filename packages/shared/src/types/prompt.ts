@@ -287,6 +287,8 @@ export interface ChatMLMessage {
   characterId?: string | null;
   /** Internal Roleplay audience filter. Removed before messages reach a provider. */
   hiddenFromAICharacterIds?: string[];
+  /** Internal per-character Roleplay context boundary. Removed before messages reach a provider. */
+  conversationStartForCharacterIds?: string[];
   /** Base64 data URLs for multimodal image inputs */
   images?: string[];
   /** Base64 data URLs for provider-native file/document inputs */

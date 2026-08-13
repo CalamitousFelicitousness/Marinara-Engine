@@ -27,6 +27,7 @@ import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { cn, copyToClipboard } from "../../lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECRET_STORAGE_KEY, ApiError, api, getPrivilegedActionErrorMessage } from "../../lib/api-client";
+import { ANDROID_BRIDGE_READY_EVENT, getAndroidBridgeToken } from "../../lib/android-bridge";
 import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
 import { forceRefreshSpa } from "@/lib/browser-runtime";
@@ -1300,9 +1301,18 @@ const SETTINGS_PRIMARY_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--
 const SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS =
   "mari-chrome-control mari-chrome-control--compact mari-chrome-control--selected text-[0.625rem]";
 type MarinaraAndroidBridge = {
-  openConsole?: () => void;
-  isStatusBarVisible?: () => boolean;
-  setStatusBarVisible?: (visible: boolean) => void;
+  openConsole?: {
+    (token: string): void;
+    (): void;
+  };
+  isStatusBarVisible?: {
+    (token: string): boolean;
+    (): boolean;
+  };
+  setStatusBarVisible?: {
+    (token: string, visible: boolean): void;
+    (visible: boolean): void;
+  };
 };
 
 function getMarinaraAndroidBridge(): MarinaraAndroidBridge | null {
@@ -1319,7 +1329,8 @@ function readAndroidStatusBarVisibility(): boolean | null {
   const bridge = getMarinaraAndroidBridge();
   if (typeof bridge?.isStatusBarVisible !== "function") return null;
   try {
-    return bridge.isStatusBarVisible();
+    const token = getAndroidBridgeToken();
+    return token ? bridge.isStatusBarVisible(token) : bridge.isStatusBarVisible();
   } catch {
     return null;
   }
@@ -1329,7 +1340,9 @@ function updateAndroidStatusBarVisibility(visible: boolean): boolean {
   const bridge = getMarinaraAndroidBridge();
   if (typeof bridge?.setStatusBarVisible !== "function") return false;
   try {
-    bridge.setStatusBarVisible(visible);
+    const token = getAndroidBridgeToken();
+    if (token) bridge.setStatusBarVisible(token, visible);
+    else bridge.setStatusBarVisible(visible);
     return true;
   } catch {
     return false;
@@ -1340,7 +1353,19 @@ function AndroidStatusBarSetting() {
   const { t } = useTranslation();
   const initialVisibility = readAndroidStatusBarVisibility();
   const [visible, setVisible] = useState(initialVisibility ?? false);
-  const supported = initialVisibility !== null;
+  const [supported, setSupported] = useState(initialVisibility !== null);
+
+  useEffect(() => {
+    const refreshBridge = () => {
+      const nextVisibility = readAndroidStatusBarVisibility();
+      if (nextVisibility === null) return;
+      setVisible(nextVisibility);
+      setSupported(true);
+    };
+    window.addEventListener(ANDROID_BRIDGE_READY_EVENT, refreshBridge);
+    refreshBridge();
+    return () => window.removeEventListener(ANDROID_BRIDGE_READY_EVENT, refreshBridge);
+  }, []);
 
   const handleChange = useCallback(
     (nextVisible: boolean) => {
@@ -3264,6 +3289,8 @@ function GeneralSettings() {
   const setEnterToSendConvo = useUIStore((s) => s.setEnterToSendConvo);
   const enterToSendGame = useUIStore((s) => s.enterToSendGame);
   const setEnterToSendGame = useUIStore((s) => s.setEnterToSendGame);
+  const enterToSendProfessorMari = useUIStore((s) => s.enterToSendProfessorMari);
+  const setEnterToSendProfessorMari = useUIStore((s) => s.setEnterToSendProfessorMari);
   const confirmBeforeDelete = useUIStore((s) => s.confirmBeforeDelete);
   const setConfirmBeforeDelete = useUIStore((s) => s.setConfirmBeforeDelete);
   const achievementsEnabled = useUIStore((s) => s.achievementsEnabled);
@@ -3481,16 +3508,14 @@ function GeneralSettings() {
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--secondary)]/50">
             <div className="flex items-center gap-2">
-              <span className="text-xs">{localize("Send on Enter")}</span>
-              <HelpTooltip
-                text={localize(
-                  "Choose which chat modes send on Enter. When off, Enter creates a new line and you have to press the send button manually.",
-                )}
-              />
+              <span className="text-xs">{localizeUi("settings.controls.sendOnEnter.label")}</span>
+              <HelpTooltip text={localizeUi("settings.controls.sendOnEnter.help")} />
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => setEnterToSendRP(!enterToSendRP)}
+                aria-pressed={enterToSendRP}
                 className={cn(
                   "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all",
                   enterToSendRP
@@ -3498,10 +3523,12 @@ function GeneralSettings() {
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
                 )}
               >
-                {localize("Roleplay")}
+                {localizeUi("settings.modes.roleplay")}
               </button>
               <button
+                type="button"
                 onClick={() => setEnterToSendConvo(!enterToSendConvo)}
+                aria-pressed={enterToSendConvo}
                 className={cn(
                   "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all",
                   enterToSendConvo
@@ -3509,10 +3536,12 @@ function GeneralSettings() {
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
                 )}
               >
-                {localize("Conversations")}
+                {localizeUi("settings.modes.conversations")}
               </button>
               <button
+                type="button"
                 onClick={() => setEnterToSendGame(!enterToSendGame)}
+                aria-pressed={enterToSendGame}
                 className={cn(
                   "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all",
                   enterToSendGame
@@ -3520,7 +3549,20 @@ function GeneralSettings() {
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
                 )}
               >
-                {localize("Game")}
+                {localizeUi("settings.modes.game")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEnterToSendProfessorMari(!enterToSendProfessorMari)}
+                aria-pressed={enterToSendProfessorMari}
+                className={cn(
+                  "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all",
+                  enterToSendProfessorMari
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
+                    : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)]",
+                )}
+              >
+                {localizeUi("settings.modes.professorMari")}
               </button>
             </div>
           </div>
@@ -7216,7 +7258,9 @@ function AdvancedSettings() {
       return;
     }
 
-    bridge.openConsole();
+    const token = getAndroidBridgeToken();
+    if (token) bridge.openConsole(token);
+    else bridge.openConsole();
     toast.info(localizeUi("ui.panels.advancedsettings.openingTermuxConsole"));
   }, [localizeUi]);
 

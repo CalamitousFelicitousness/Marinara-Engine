@@ -9,6 +9,7 @@ export type GenerationPromptMessage = {
   characterId?: string | null;
   personaSnapshotName?: string | null;
   hiddenFromAICharacterIds?: string[];
+  conversationStartForCharacterIds?: string[];
   images?: string[];
   files?: Array<{ type: string; data: string; filename?: string }>;
   providerMetadata?: Record<string, unknown>;
@@ -237,9 +238,23 @@ export function filterPromptMessagesForCharacterAudience(
 ): GenerationPromptMessage[] {
   if (audienceCharacterIds.length === 0) return messages;
   const audience = new Set(audienceCharacterIds);
-  const filtered = messages.filter(
-    (message) => !message.hiddenFromAICharacterIds?.some((characterId) => audience.has(characterId)),
-  );
+  let characterStartIndex = -1;
+  if (audienceCharacterIds.length === 1) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]!;
+      if (
+        message.contextKind === "history" &&
+        message.conversationStartForCharacterIds?.includes(audienceCharacterIds[0]!)
+      ) {
+        characterStartIndex = index;
+        break;
+      }
+    }
+  }
+  const filtered = messages.filter((message, index) => {
+    if (characterStartIndex > 0 && index < characterStartIndex && message.contextKind === "history") return false;
+    return !message.hiddenFromAICharacterIds?.some((characterId) => audience.has(characterId));
+  });
   if (filtered.length === messages.length) return messages;
   reassignHistoryLastMessageWrapper(filtered);
   pruneEmptyPromptWrappers(filtered);

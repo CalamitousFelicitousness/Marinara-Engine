@@ -2,8 +2,8 @@
 // Tool Executor — Handles built-in + custom function calls
 // ──────────────────────────────────────────────
 import type { LLMToolCall } from "../llm/base-provider.js";
-import vm from "node:vm";
 import { createHash } from "node:crypto";
+import { Worker } from "node:worker_threads";
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import {
@@ -288,10 +288,7 @@ export async function executeToolCalls(
   return results;
 }
 
-export async function executeToolCallForModel(
-  toolCall: LLMToolCall,
-  context?: ToolExecutionContext,
-): Promise<string> {
+export async function executeToolCallForModel(toolCall: LLMToolCall, context?: ToolExecutionContext): Promise<string> {
   const [result] = await executeToolCalls([toolCall], context);
   return result ? formatToolExecutionResultForModel(result) : "Tool execution failed";
 }
@@ -364,6 +361,54 @@ function getCustomToolHiddenContext(
   return context?.hiddenContext ?? {};
 }
 
+function executeCustomToolScript(
+  scriptBody: string,
+  args: Record<string, unknown>,
+  hiddenContext: CustomToolHiddenContext | undefined,
+  timeoutMs: number,
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const workerUrl = new URL(
+      import.meta.url.endsWith(".ts") ? "./custom-tool-script.worker.ts" : "./custom-tool-script.worker.js",
+      import.meta.url,
+    );
+    const worker = new Worker(workerUrl, {
+      workerData: {
+        scriptBody,
+        argsJson: JSON.stringify(args ?? {}),
+        contextJson: JSON.stringify(hiddenContext ?? null),
+        timeoutMs,
+      },
+      resourceLimits: { maxOldGenerationSizeMb: 32, maxYoungGenerationSizeMb: 8, stackSizeMb: 2 },
+    });
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate();
+      callback();
+    };
+    const timer = setTimeout(
+      () => finish(() => reject(new Error(`Script exceeded ${timeoutMs}ms timeout`))),
+      timeoutMs,
+    );
+    worker.once("message", (message: unknown) => {
+      finish(() => {
+        if (isJsonRecord(message) && message.ok === true) resolve(message.value);
+        else
+          reject(
+            new Error(isJsonRecord(message) && typeof message.error === "string" ? message.error : "Script failed"),
+          );
+      });
+    });
+    worker.once("error", (error) => finish(() => reject(error)));
+    worker.once("exit", (code) => {
+      if (code !== 0) finish(() => reject(new Error(`Script worker exited with code ${code}`)));
+    });
+  });
+}
+
 async function executeCustomTool(
   tool: CustomToolDef,
   args: Record<string, unknown>,
@@ -418,32 +463,14 @@ async function executeCustomTool(
         return {
           result: {
             error:
-              "Script custom tools are disabled. Set CUSTOM_TOOL_SCRIPT_ENABLED=true to enable trusted in-process script tools.",
+              "Script custom tools are disabled. Set CUSTOM_TOOL_SCRIPT_ENABLED=true to enable trusted isolated script tools.",
           },
           success: false,
         };
       }
       if (!tool.scriptBody) return { result: { error: "No script body configured" }, success: false };
       try {
-        // Keep host-realm objects out of the VM context. Script inputs cross the
-        // boundary as JSON so built-ins stay in the VM realm where process,
-        // require, Buffer, and native bindings are not exposed.
-        const sandbox = vm.createContext(Object.create(null));
-        (sandbox as Record<string, unknown>).__argsJson = JSON.stringify(args ?? {});
-        (sandbox as Record<string, unknown>).__ctxJson = JSON.stringify(hiddenContext ?? null);
-        const wrappedScript = [
-          `"use strict";`,
-          `globalThis.args = JSON.parse(__argsJson);`,
-          `globalThis.context = JSON.parse(__ctxJson);`,
-          `globalThis.console = { log: function () {} };`,
-          `(function() {`,
-          `${tool.scriptBody}`,
-          `})();`,
-        ].join("\n");
-        const result = vm.runInContext(wrappedScript, sandbox, {
-          timeout: customToolTimeoutMs,
-          breakOnSigint: true,
-        });
+        const result = await executeCustomToolScript(tool.scriptBody, args, hiddenContext, customToolTimeoutMs);
         return classifyToolExecution(result ?? { result: "OK" });
       } catch (err) {
         return {
@@ -680,7 +707,7 @@ async function updateAboutMe(
   context?: ToolExecutionContext,
 ): Promise<Record<string, unknown>> {
   const scope = args.scope === "public" ? "public" : args.scope === "chat" ? "chat" : null;
-  if (!scope) return { error: "update_about_me requires scope \"public\" or \"chat\"" };
+  if (!scope) return { error: 'update_about_me requires scope "public" or "chat"' };
   if (typeof args.content !== "string") return { error: "update_about_me requires a string content" };
   const characterId = context?.callingCharacterId;
   if (!characterId) return { error: "update_about_me could not resolve the calling character" };
@@ -1831,7 +1858,8 @@ async function spotifyPlay(
       uris.length > 1 &&
       (repeatAfterPlay === "track" ||
         repeatAfterPlay === "context" ||
-        (repeatAfterPlay === undefined && beforePlayback?.repeatState === "context"));
+        (repeatAfterPlay === undefined &&
+          (beforePlayback?.repeatState === "track" || beforePlayback?.repeatState === "context")));
     const effectiveRepeatAfterPlay = repeatTrackList ? "context" : repeatAfterPlay;
     const fallbackDevice = beforePlayback?.deviceId ? null : await findActiveSpotifyPlaybackDevice(creds.accessToken);
     const targetDeviceId = beforePlayback?.deviceId ?? fallbackDevice?.deviceId ?? null;
@@ -1945,11 +1973,7 @@ async function spotifyPlay(
     if (repeatTrackList && playbackVerified && current?.repeatState !== "context") {
       for (const delay of SPOTIFY_REPEAT_RETRY_DELAYS_MS) {
         if (delay > 0) await wait(delay);
-        repeat = await applySpotifyRepeatAfterPlay(
-          creds.accessToken,
-          "context",
-          current?.deviceId ?? playDeviceId,
-        );
+        repeat = await applySpotifyRepeatAfterPlay(creds.accessToken, "context", current?.deviceId ?? playDeviceId);
         const repeatSnapshot = await fetchSpotifyPlaybackSnapshot(creds.accessToken);
         if (repeatSnapshot) current = repeatSnapshot;
         if (spotifyPlaybackMatches(current, playbackUris, true) && current?.repeatState === "context") break;

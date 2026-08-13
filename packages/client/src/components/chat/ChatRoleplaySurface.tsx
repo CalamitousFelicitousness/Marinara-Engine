@@ -68,6 +68,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { ChatBranchSelector } from "./ChatBranchSelector";
+import { ChatMessageSearch } from "./ChatMessageSearch";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   CHAT_TOOLBAR_OVERFLOW_MENU_SELECTOR,
@@ -1186,7 +1187,11 @@ type RoleplaySurfaceProps = {
   onRegenerate: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe: (messageId: string, index: number) => void;
-  onToggleConversationStart: (messageId: string, current: boolean) => void;
+  onToggleConversationStart: (
+    messageId: string,
+    sharedStart: boolean,
+    conversationStartForCharacterIds: string[],
+  ) => void;
   onToggleHiddenFromAI: (messageId: string, hiddenFromAll: boolean, hiddenFromAICharacterIds?: string[]) => void;
   onPeekPrompt: () => void;
   onBranch?: (messageId: string) => void;
@@ -1353,7 +1358,8 @@ export function ChatRoleplaySurface({
   const { t } = useTranslation();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const activeAgentIds = chatMeta.activeAgentIds;
-  const enabledConversationCapabilities = chatMeta.enableAgents === true
+  const enabledConversationCapabilities =
+    chatMeta.enableAgents === true
     ? installedCapabilities.filter((item) => {
         if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
         if (item.manifest.kind.includes("conversation-calls")) return false;
@@ -1496,6 +1502,30 @@ export function ChatRoleplaySurface({
     () => getTranscriptRenderWindow(messages, { startIndex: transcriptWindowStart }),
     [messages, transcriptWindowStart],
   );
+  const gotoRequest = useChatStore((state) => state.gotoRequest);
+  // ChatArea clears the request after scrolling; only reveal its transcript window once.
+  const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
+
+  useLayoutEffect(() => {
+    handledTranscriptGotoRef.current = null;
+  }, [activeChatId]);
+
+  useLayoutEffect(() => {
+    if (
+      !gotoRequest ||
+      gotoRequest.chatId !== activeChatId ||
+      !messages ||
+      handledTranscriptGotoRef.current === gotoRequest
+    ) {
+      return;
+    }
+    const loadedMessageOffset = totalMessageCount - messages.length;
+    const localIndex = gotoRequest.messageNumber - 1 - loadedMessageOffset;
+    if (localIndex >= 0 && localIndex < messages.length) {
+      handledTranscriptGotoRef.current = gotoRequest;
+      setTranscriptWindowStart(localIndex);
+    }
+  }, [activeChatId, gotoRequest, messages, totalMessageCount]);
 
   const showOlderTranscriptMessages = () => {
     setTranscriptWindowStart((current) => {
@@ -1887,6 +1917,7 @@ export function ChatRoleplaySurface({
                         onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
                       />
                     )}
+                    <ChatMessageSearch chatId={activeChatId} />
                     <ChatToolbarButton
                       icon={<Settings2 size="0.875rem" />}
                       title={t("chat.toolbar.settings")}
@@ -2012,6 +2043,7 @@ export function ChatRoleplaySurface({
                             onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
                           />
                         )}
+                        <ChatMessageSearch chatId={activeChatId} />
                         <ChatToolbarButton
                           icon={<Settings2 size="0.875rem" />}
                           title={t("chat.toolbar.settings")}
@@ -2094,6 +2126,7 @@ export function ChatRoleplaySurface({
                           onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
                         />
                       )}
+                      <ChatMessageSearch chatId={activeChatId} />
                       <ChatToolbarButton
                         icon={<Settings2 size="0.875rem" />}
                         title={t("chat.toolbar.settings")}

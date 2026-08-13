@@ -1308,9 +1308,7 @@ export const ChatArea = memo(function ChatArea() {
   const cardCssPersonas = useMemo<PersonaCssRow[] | undefined>(() => {
     if (chatMode !== "conversation") return undefined;
     const persona = chatPersona ?? activePersonaFallback;
-    return persona?.id
-      ? [{ id: persona.id, creatorNotes: persona.creatorNotes }]
-      : undefined;
+    return persona?.id ? [{ id: persona.id, creatorNotes: persona.creatorNotes }] : undefined;
   }, [chatMode, chatPersona, activePersonaFallback]);
   const cardCssInjector = (
     <CreatorNotesCssInjector
@@ -2016,8 +2014,8 @@ export const ChatArea = memo(function ChatArea() {
   );
 
   const handleToggleConversationStart = useCallback(
-    (messageId: string, current: boolean) => {
-      updateMessageExtra({ messageId, extra: { isConversationStart: !current } });
+    (messageId: string, sharedStart: boolean, conversationStartForCharacterIds: string[]) => {
+      updateMessageExtra({ messageId, extra: { isConversationStart: sharedStart, conversationStartForCharacterIds } });
     },
     [updateMessageExtra],
   );
@@ -2274,11 +2272,7 @@ export const ChatArea = memo(function ChatArea() {
     const handleTouchStart = (event: TouchEvent) => {
       const target = event.target;
       const surface = closestChatScrollSurface(target);
-      if (
-        event.touches.length !== 1 ||
-        !surface ||
-        shouldIgnoreIntuitiveSwipeTarget(target)
-      ) {
+      if (event.touches.length !== 1 || !surface || shouldIgnoreIntuitiveSwipeTarget(target)) {
         intuitiveTouchStartRef.current = null;
         return;
       }
@@ -2974,6 +2968,14 @@ export const ChatArea = memo(function ChatArea() {
             onOpenScheduleEditor={handleOpenScheduleEditor}
             onCloseSettings={handleCloseSettingsPanel}
             onCloseGallery={handleCloseGalleryPanel}
+            onIllustrate={() =>
+              retryAgents(activeChatId, ["illustrator"], {
+                illustratorRetryTargets: ["illustration"],
+              })
+            }
+            onIllustrateWithAgent={async (agentType) => {
+              await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+            }}
             onGenerateSelfie={handleGenerateConversationSelfie}
             onWizardFinish={() => {
               setWizardOpen(false);

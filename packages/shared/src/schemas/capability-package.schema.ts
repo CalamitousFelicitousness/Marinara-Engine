@@ -244,6 +244,13 @@ export const capabilityCatalogSchema = z
     schemaVersion: z.literal(1),
     generatedAt: z.string().datetime(),
     packages: z.array(capabilityCatalogPackageSchema),
+    provenance: z
+      .object({
+        kind: z.enum(["official", "custom"]),
+        url: z.string().url(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -330,6 +337,7 @@ export interface CapabilityPackageUpdate {
   name: string;
   installedVersion: string;
   version: string;
+  artifactSha256: string;
   restartRequired: boolean;
 }
 

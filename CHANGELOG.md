@@ -6,6 +6,15 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added literal message search to Conversation and Roleplay chat headers, with compact results that jump to matching messages anywhere in the current chat (#4922).
+- Added a Roleplay Agents-menu stop control that appears only while the current chat has an active generation and can cancel server-side work that survived navigation or a reload (#4942).
+- Added a persisted Send on Enter toggle for Professor Mari and a reusable setup download on New Game's final step before the game starts (#4928, #4930).
+- Added Markdown previews to Conversation, Game, and section content in the preset editor, matching character and lorebook authoring (#4916).
+- Added Discord-style `__underline__` and `-# subtext` rendering throughout chat history and other shared Markdown surfaces (#4914).
+- Added an Easy Viewer to Professor Mari's Keep/Restore review cards: instead of raw `app_data` JSON, her edits now show as a readable before/after diff with removed text in red and added text in green, lorebook entries laid out like the entry editor (name, keys, content, toggles), and a per-change Dismiss control to hide reviewed items and reduce clutter. Deletions and disables are flagged prominently since they are the most consequential, and you can toggle each card between Easy and Raw independently (#4919).
+- Let Professor Mari set every user-editable lorebook entry setting when she creates or edits entries, not just the keyword-matching controls: activation chance (`probability`, clamped 0-100), timing (`sticky`, `cooldown`, `delay`, `ephemeral`), recursion (`preventRecursion`, `excludeRecursion`, `delayUntilRecursion`), inclusion-group weight, per-entry scan depth, lock, folder placement, character/tag/trigger matching filters, and per-entry vectorization (which she only enables when an embedding model is configured) (#4791).
+- Added shared and per-character New Start context markers to group Roleplay, with an avatar target picker and character-colored dividers that let newly introduced characters begin from a later message without truncating the rest of the cast's history (#4905).
+- Added character-targeted Roleplay message hiding through `/hide <character> <number/range>`, including quoted names and the existing single, range, and comma-separated message selectors (#4906).
 - Added a search box, collapsible entries, and sorting to the Professor Mari Skills and Memories panels. Each entry is now a drawer that expands in place to edit; its description shows on wider screens and collapses to just the name on small screens; both panels can be sorted by name (A to Z or Z to A), newest, or oldest; persistent memories are pinned to the top and marked with a star that stays visible while collapsed; and the open editor stays in view so saving or toggling a row no longer scrolls it away (#4868).
 - Added one-click support diagnostics that copy the current version, build, platform, graphics adapter, and active text model for issue reports (#4878).
 - Added SwarmUI as a video-generation backend, including authenticated distributed ComfyUI workflow submission, base64 reference images, model discovery, and MP4 retrieval (#4885).
@@ -43,6 +52,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Bound downloaded Agent installs and updates to the version and checksum the user reviewed, quarantined imported executable tools until review, and moved custom scripts plus Professor Mari transforms into terminable or OS-sandboxed workers while retaining an explicit reviewed-script fallback on unsupported systems.
+- Repeated local checks now reuse native TypeScript and ESLint caches for unchanged client files (#4938).
 - Manual Agent retries now resolve the same current settings, custom tools, and permitted built-in tools as normal Agent generation while retaining retry-specific historical context and Spotify playback verification (#4894).
 - Localized achievement definitions and official capability-package Home metadata through stable locale-aware contracts with English fallback, and refreshed Home's welcome copy (#4803, #4806).
 - Positioned Professor Mari's navigation helper at the bottom-left on her first appearance while preserving every remembered user placement.
@@ -54,6 +65,34 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Hardened local security without removing extension or remote-access capabilities: made Professor Mari filters data-only, encrypted webhook credentials, bounded ZIP extraction and rich-chat network/CSS behavior, restricted automatic network trust to detected runtimes, privatized local data and backups, verified downloads and release commits, and patched audited dependencies.
+- Authenticated APK-managed Android localhost sessions without restricting manual Termux or LAN use, verified the pinned F-Droid Termux APK before install, bound native bridge calls to the exact Engine origin, and made release signing and bootstrap source commits fail closed.
+- Imported preset regex entries even when they contain unsupported SillyTavern placements, warning about ignored placement values instead of discarding the entire regex, and let Music DJ try the next candidate when Spotify accepts but cannot verify the first selected track (#4959, #4960).
+- Refreshed stale same-version browser clients when the server commit changes, so staging fixes such as NovelAI generation-setting saves and connection imports no longer remain hidden behind an older cached interface (#4957).
+- Kept the Termux-hosted server awake while the launcher is running and released the Android wake lock when it stops, preventing backgrounded Termux sessions from freezing until the terminal is reopened (#4956).
+- Kept Professor Mari's generated continuation suggestions available after opening and closing a lorebook (#4953).
+- Made SwarmUI image requests honor the configured ComfyUI timeout instead of inheriting a shorter transport timeout (#4954).
+- Kept canceled Professor Mari prompts out of the composer, made the first message edit persist, and retained retry for the latest response (#4947).
+- Preserved the complete provider-ready prompt produced by Game Mode's dynamic image prompt generator through prompt review and image submission (#4948).
+- Stopped Professor Mari's workspace verification guard from treating ordinary task-completion wording as an unverified data mutation (#4949).
+- Enforced each connection's Max Parallel Agent Jobs limit across separate post-processing Agent batches (#4950).
+- Removed deleted lorebooks from the active chat context immediately instead of leaving a stale cached attachment label (#4951).
+- Made turn-game bot move prompts visible when UI debug mode or `DEBUG_AGENTS` is enabled (follow-up to #4945).
+- Included custom world fields and persona inventory in Agent Suite tracker editing without replacing adjacent tracker data (#4937).
+- Exposed active custom image agents in Conversation Gallery's Illustrate picker, matching the existing Roleplay and Game action (#4940).
+- Resumed pending turn-game bot seats after a regular Conversation reply so UNO cannot remain frozen when a chat send wins the per-chat generation lock (#4941).
+- Made the Game minimap's zoom icons follow the selected interface accent instead of retaining a fixed color (#4944).
+- Matched embedded Long-Term Memory chat settings to the compact spacing, control sizing, typography, and surfaces used by other Agent menus (Pasta-Devs/Marinara-Agents#309).
+- Repaired common malformed JSON in Roleplay and Conversation summaries through the shared JSON-repair path instead of falling back to raw model output (#4925).
+- Kept NovelAI generation defaults from reverting when Save follows a newly committed setup field (#4929).
+- Cleared embedded character-book data and pointers when Professor Mari deletes a whole lorebook, then restored both to the actual embedding character on Restore, including empty and multi-linked books (#4932).
+- Preserved an enabled Spotify repeat setting when Music DJ replaces playback with a multi-song selection, looping the selected set as one context (#4934).
+- Kept a character's embedded lorebook in sync when Professor Mari edits it: adding, updating, or deleting an entry (or restoring one of those changes) in a lorebook embedded in a character card now rebuilds that character's copy, instead of leaving it stale as only her edits did before (#4927).
+- Gave Professor Mari a safe way to delete a single lorebook entry (`lorebook.deleteEntry`) and told her to use it instead of a raw `mari db delete`, which previously let her remove far more entries than intended when asked to delete just one (#4924).
+- Preserved unsent Home Professor Mari messages across editor navigation and app restarts until they are sent or explicitly cleared (#4915).
+- Taught workspace Professor Mari to revise an existing saved memory when asked, instead of declining that a matching memory "already exists": her guidance now includes a read-then-rewrite recipe and worked example for editing a memory's content in place (the same pattern she uses for preset sections), which also works on an enabled or persistent memory without turning it off (#4917).
+- Made Force To Call Tool serialize native required-tool controls for Google Gemini, Vertex AI, and compatible Anthropic requests, while safely falling back to automatic choice for manual Claude extended thinking and Mythos (#4907).
+- Fixed the open-issues regression failing on Windows checkouts: its chat-summary reorder check matched the entry container and the touch-reorder row within a fixed character distance that CRLF line endings pushed just over the limit, so it now verifies the shared desktop and touch reorder surface on the row element directly, independent of line endings and where the row is defined (#4911).
 - Restored Music DJ Spotify playback by clearing the previous repeat mode before replacing a multi-song context, reapplying repeat only after the selected first track is verified, and surfacing persistent URI mismatches as failures instead of false pending successes (#4903).
 - Made persona saves reliable: the editor now sends only the fields you actually changed, keeps edits made while a save is still running, prevents saves and avatar replacements from overlapping, blocks its own Back and Discard controls mid-write, and explains exactly which field a rejected save objected to — including an empty persona name.
 - Made Reduce Ambient Animations & Effects flatten costly backdrop blur on desktop as well as mobile, including shared Conversation overlays (#4897).

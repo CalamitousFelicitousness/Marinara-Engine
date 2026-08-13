@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import crypto, { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,6 +56,24 @@ function writeRegistry(packages: ReturnType<typeof installedPackage>[]) {
     writeFileSync(join(versionRoot, "server.mjs"), "x");
     writeFileSync(join(versionRoot, "client.js"), "x");
   }
+}
+
+function refreshRegistryFileIntegrity() {
+  const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+    schemaVersion: number;
+    packages: Array<ReturnType<typeof installedPackage>>;
+  };
+  for (const item of registry.packages) {
+    const versionRoot = join(packagesRoot, "versions", item.id, item.version);
+    for (const declaration of item.manifest.files) {
+      const path = join(versionRoot, declaration.path);
+      if (!existsSync(path)) continue;
+      const data = readFileSync(path);
+      declaration.bytes = data.byteLength;
+      declaration.sha256 = createHash("sha256").update(data).digest("hex");
+    }
+  }
+  writeFileSync(registryPath, JSON.stringify(registry, null, 2));
 }
 
 function seedWhisperModels() {
@@ -186,8 +206,15 @@ try {
     resolveCapabilityCatalogUrl,
     resolveCapabilityPackageArtifactUrl,
     resolveCapabilityPackageIconUrl,
-  } = await import(
-    "../../packages/server/src/services/capability-packages/package-manager.service.js"
+    validatePackageArchiveEntries,
+  } = await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+  const directoryFloodArchive = {
+    getEntries: () => Array.from({ length: 8_193 }, (_, index) => ({ isDirectory: true, entryName: `dir-${index}/` })),
+  } as unknown as Parameters<typeof validatePackageArchiveEntries>[0];
+  assert.throws(
+    () => validatePackageArchiveEntries(directoryFloodArchive),
+    /Package contains too many files/u,
+    "directory-only ZIP entries count toward the archive entry limit",
   );
   assert.equal(
     resolveCapabilityCatalogUrl("2.3.1", "", "main"),
@@ -389,10 +416,7 @@ try {
   assert.ok(Date.now() - timeoutStartedAt < 1_000, "Long-term memory capability calls must have a total-duration cap");
 
   const capabilityLanguageModelSource = readFileSync(
-    join(
-      repositoryRoot,
-      "packages/server/src/services/capability-packages/capability-language-model.service.ts",
-    ),
+    join(repositoryRoot, "packages/server/src/services/capability-packages/capability-language-model.service.ts"),
     "utf8",
   );
   assert.match(
@@ -705,10 +729,7 @@ try {
   );
   await capabilityPackageManager.completeHierarchicalMapsSelectionCorrection();
   assert.equal(await capabilityPackageManager.isHierarchicalMapsSelectionCorrectionComplete(), true);
-  writeFileSync(
-    mapsCorrectionPath,
-    JSON.stringify({ schemaVersion: 2, completedAt: new Date().toISOString() }),
-  );
+  writeFileSync(mapsCorrectionPath, JSON.stringify({ schemaVersion: 2, completedAt: new Date().toISOString() }));
   assert.equal(
     await capabilityPackageManager.isHierarchicalMapsSelectionCorrectionComplete(),
     false,
@@ -870,6 +891,7 @@ try {
         name: "conversation-calls",
         installedVersion: "1.0.0",
         version: "1.0.2",
+        artifactSha256: "1".repeat(64),
         restartRequired: true,
       },
     ],
@@ -943,12 +965,60 @@ try {
     ]),
   );
   writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
-  const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
-  assert.equal(browserTabAsset?.contentType, "image/png");
-  assert.equal(
-    browserTabAsset?.file,
-    join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
-  );
+  refreshRegistryFileIntegrity();
+  const originalCreateHash = crypto.createHash;
+  let assetHashCount = 0;
+  Object.defineProperty(crypto, "createHash", {
+    configurable: true,
+    value: (...args: Parameters<typeof createHash>) => {
+      assetHashCount += 1;
+      return originalCreateHash(...args);
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
+    assert.equal(browserTabAsset?.contentType, "image/png");
+    assert.equal(
+      browserTabAsset?.file,
+      join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
+    );
+    assert.deepEqual(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"), browserTabAsset);
+    assert.equal(assetHashCount, 1, "An unchanged browser-tab asset must reuse its successful verification");
+
+    const changedRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+      packages: Array<ReturnType<typeof installedPackage>>;
+    };
+    const changedAssetDeclaration = changedRegistry.packages
+      .find((item) => item.id === agentSuite.id)
+      ?.manifest.files.find((item) => item.path === "suite-tab.png");
+    assert.ok(changedAssetDeclaration);
+    const originalAssetSha256 = changedAssetDeclaration.sha256;
+    changedAssetDeclaration.sha256 = "0".repeat(64);
+    writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
+    await assert.rejects(
+      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      /integrity verification/u,
+      "Changed manifest integrity metadata must not reuse an older successful verification",
+    );
+    assert.equal(assetHashCount, 2, "Changed manifest integrity metadata must force a fresh integrity check");
+
+    changedAssetDeclaration.sha256 = originalAssetSha256;
+    writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
+    assert.ok(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"));
+    writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "y");
+    await assert.rejects(
+      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      /integrity verification/u,
+      "Capability assets changed outside the reviewed package must not be served",
+    );
+    assert.equal(assetHashCount, 4, "Changed asset metadata must force a fresh integrity check");
+  } finally {
+    Object.defineProperty(crypto, "createHash", { configurable: true, value: originalCreateHash });
+    syncBuiltinESMExports();
+  }
+  writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
+  refreshRegistryFileIntegrity();
   assert.equal(
     await capabilityPackageManager.browserTabAsset(agentSuite.id, "server.mjs"),
     null,
@@ -1022,6 +1092,7 @@ try {
   const blocked = installedPackage("hierarchical-maps", ["agent", "maps"]);
   const failing = installedPackage("readiness-failure", ["agent"]);
   const ready = installedPackage("readiness-success", ["agent"]);
+  ready.manifest.files.push({ path: "runtime-dependency.mjs", sha256: "0".repeat(64), bytes: 1 });
   writeRegistry([blocked, failing, ready]);
   writeFileSync(
     join(packagesRoot, "versions", failing.id, failing.version, "server.mjs"),
@@ -1035,6 +1106,8 @@ try {
   writeFileSync(
     join(packagesRoot, "versions", ready.id, ready.version, "server.mjs"),
     `export async function activate({ api }) {
+      const dependency = await import("./runtime-dependency.mjs");
+      if (dependency.value !== "verified") throw new Error("Capability dependency bytes changed after verification");
       const methods = ["debug", "info", "warn", "error", "debugOverride"];
       if (!methods.every((method) => typeof api.runtime?.logger?.[method] === "function")) {
         throw new Error("Capability runtime logger is incomplete");
@@ -1079,7 +1152,18 @@ try {
       await api.runtime.resources.listEligibleLorebookEntries({ lorebookIds: [], entryIds: [] });
       api.registerService("readiness:success", { active: true, debugAgentsEnabled });
     }
-    export async function selfCheck() {}`,
+    export async function selfCheck({ api }) {
+      const dependency = await import("./runtime-dependency.mjs");
+      const ownSource = await (await import("node:fs/promises")).readFile(new URL(import.meta.url), "utf8");
+      if (dependency.value !== "verified" || !ownSource.includes("runtime-dependency.mjs")) {
+        throw new Error("Capability snapshot did not retain verified runtime files");
+      }
+      api.registerService("readiness:late-import", { active: true });
+    }`,
+  );
+  writeFileSync(
+    join(packagesRoot, "versions", ready.id, ready.version, "runtime-dependency.mjs"),
+    `export const value = "verified";`,
   );
 
   const { capabilityModuleRuntime, prepareCapabilityRuntimeEnvironment } =
@@ -1461,7 +1545,46 @@ try {
   });
   assert.equal((await persistence.spatialSnapshots.getBootstrap(rollbackChat.id))?.id, "committed-definition-snapshot");
 
-  await capabilityModuleRuntime.start({ db } as Parameters<typeof capabilityModuleRuntime.start>[0]);
+  refreshRegistryFileIntegrity();
+  const verifiedRuntimeFiles = capabilityPackageManager.verifiedRuntimeFiles.bind(capabilityPackageManager);
+  let replacedVerifiedEntrypoint = false;
+  capabilityPackageManager.verifiedRuntimeFiles = async (installed) => {
+    const verified = await verifiedRuntimeFiles(installed);
+    if (installed.id === "readiness-success") {
+      writeFileSync(
+        join(packagesRoot, "versions", installed.id, installed.version, "server.mjs"),
+        `export async function activate({ api }) {
+          api.registerService("readiness:tampered", { active: true });
+        }`,
+      );
+      writeFileSync(
+        join(packagesRoot, "versions", installed.id, installed.version, "runtime-dependency.mjs"),
+        `export const value = "tampered";`,
+      );
+      replacedVerifiedEntrypoint = true;
+    }
+    return verified;
+  };
+  try {
+    await capabilityModuleRuntime.start({ db } as Parameters<typeof capabilityModuleRuntime.start>[0]);
+  } finally {
+    capabilityPackageManager.verifiedRuntimeFiles = verifiedRuntimeFiles;
+  }
+  assert.equal(
+    replacedVerifiedEntrypoint,
+    true,
+    "the runtime replacement regression reached the verification boundary",
+  );
+  assert.equal(
+    getCapabilityService("readiness:tampered"),
+    null,
+    "runtime activation imports the verified bytes even if the installed entrypoint is replaced afterward",
+  );
+  assert.deepEqual(
+    getCapabilityService("readiness:late-import"),
+    { active: true },
+    "late relative imports and import.meta.url reads remain available from the retained verified snapshot",
+  );
 
   const readinessById = new Map((await capabilityPackageManager.installed()).map((item) => [item.id, item]));
   assert.equal(readinessById.get("hierarchical-maps")?.status, "error");
@@ -1503,6 +1626,12 @@ try {
 
   await capabilityModuleRuntime.stop();
   assert.equal(getCapabilityService("readiness:success"), null, "Runtime stop must remove ready contributions");
+  const runtimeSnapshotsRoot = join(dataDir, "capability-runtime-snapshots");
+  assert.equal(
+    existsSync(runtimeSnapshotsRoot) ? readdirSync(runtimeSnapshotsRoot).length : 0,
+    0,
+    "runtime snapshots are retained during activation and removed at stop",
+  );
   const hotGame = installedPackage("hot-game", ["agent", "turn-game"], "1.0.0", true);
   writeRegistry([hotGame]);
   mkdirSync(join(packagesRoot, "versions", hotGame.id, hotGame.version), { recursive: true });
@@ -1512,6 +1641,7 @@ try {
       return api.registerService("hot-game:runtime", { active: true });
     }`,
   );
+  refreshRegistryFileIntegrity();
   const activatedHotGame = await capabilityModuleRuntime.activatePackage(
     {} as Parameters<typeof capabilityModuleRuntime.activatePackage>[0],
     hotGame.id,

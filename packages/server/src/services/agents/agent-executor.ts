@@ -1059,8 +1059,12 @@ export async function executeAgentBatch(
   provider: BaseLLMProvider,
   model: string,
   resolveAgentContext?: (config: AgentExecConfig, context: AgentContext) => AgentContext | Promise<AgentContext>,
+  runWithProviderLimit?: <R>(job: () => Promise<R>) => Promise<R>,
 ): Promise<AgentResult[]> {
   if (configs.length === 0) return [];
+  const runProviderJob = <R>(job: () => Promise<R>) => (runWithProviderLimit ? runWithProviderLimit(job) : job());
+  const executeIndividualAgent = async (config: AgentExecConfig, agentContext: AgentContext) =>
+    runProviderJob(() => executeAgent(config, agentContext, provider, model));
   const isolatedConfigs = configs.filter(shouldRunAgentIndividually);
   if (isolatedConfigs.length === configs.length) {
     logger.info(
@@ -1078,7 +1082,8 @@ export async function executeAgentBatch(
     const isolatedSettled = await settleAgentJobsWithConcurrencyLimit(
       isolatedConfigs,
       AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-      async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
+      async (config) =>
+        executeIndividualAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context),
     );
     return isolatedSettled.map((entry, index) =>
       entry.status === "fulfilled"
@@ -1098,13 +1103,13 @@ export async function executeAgentBatch(
     );
     const batchedConfigs = configs.filter((config) => !shouldRunAgentIndividually(config));
     const [batchedResults, isolatedSettled] = await Promise.all([
-      executeAgentBatch(batchedConfigs, context, provider, model, resolveAgentContext),
+      executeAgentBatch(batchedConfigs, context, provider, model, resolveAgentContext, runWithProviderLimit),
       settleAgentJobsWithConcurrencyLimit(isolatedConfigs, AGENT_BATCH_FALLBACK_MAX_CONCURRENT, (config) =>
         resolveAgentContext
           ? Promise.resolve(resolveAgentContext(config, context)).then((agentContext) =>
-              executeAgent(config, agentContext, provider, model),
+              executeIndividualAgent(config, agentContext),
             )
-          : executeAgent(config, context, provider, model),
+          : executeIndividualAgent(config, context),
       ),
     ]);
     const isolatedResults = isolatedSettled.map((entry, index) =>
@@ -1121,7 +1126,7 @@ export async function executeAgentBatch(
   if (configs.length === 1) {
     logger.info(`[agent-batch] Only 1 agent (${configs[0]!.type}), running individually`);
     const agentContext = resolveAgentContext ? await resolveAgentContext(configs[0]!, context) : context;
-    return [await executeAgent(configs[0]!, agentContext, provider, model)];
+    return [await executeIndividualAgent(configs[0]!, agentContext)];
   }
 
   const requestOptionGroups = new Map<string, AgentExecConfig[]>();
@@ -1139,7 +1144,9 @@ export async function executeAgentBatch(
     );
     const groupedResults: AgentResult[] = [];
     for (const group of requestOptionGroups.values()) {
-      groupedResults.push(...(await executeAgentBatch(group, context, provider, model, resolveAgentContext)));
+      groupedResults.push(
+        ...(await executeAgentBatch(group, context, provider, model, resolveAgentContext, runWithProviderLimit)),
+      );
     }
     return groupedResults;
   }
@@ -1219,27 +1226,29 @@ export async function executeAgentBatch(
     // Use streaming (onToken) to keep the connection alive — avoids proxy
     // timeouts (e.g. Cloudflare 524) on large batch responses.
     let responseText = "";
-    const result = await provider.chatComplete(messages, {
-      model,
-      temperature,
-      maxTokens: batchMaxTokens,
-      enableCaching,
-      anthropicExtendedCacheTtl,
-      cachingAtDepth,
-      customParameters,
-      enabledParameters: configs[0]!.enabledParameters,
-      suppressModelParameters: configs[0]!.suppressModelParameters,
-      stream: streamResponses,
-      onToken: streamResponses
-        ? (chunk) => {
-            responseText += chunk;
-          }
-        : undefined,
-      signal: agentCallSignal(
-        context.signal,
-        configs.some((config) => config.type === "illustrator") ? "illustrator" : undefined,
-      ),
-    });
+    const result = await runProviderJob(() =>
+      provider.chatComplete(messages, {
+        model,
+        temperature,
+        maxTokens: batchMaxTokens,
+        enableCaching,
+        anthropicExtendedCacheTtl,
+        cachingAtDepth,
+        customParameters,
+        enabledParameters: configs[0]!.enabledParameters,
+        suppressModelParameters: configs[0]!.suppressModelParameters,
+        stream: streamResponses,
+        onToken: streamResponses
+          ? (chunk) => {
+              responseText += chunk;
+            }
+          : undefined,
+        signal: agentCallSignal(
+          context.signal,
+          configs.some((config) => config.type === "illustrator") ? "illustrator" : undefined,
+        ),
+      }),
+    );
 
     // chatComplete also accumulates content, but streaming via onToken is
     // the primary path — use whichever is populated.
@@ -1290,7 +1299,8 @@ export async function executeAgentBatch(
       const retrySettled = await settleAgentJobsWithConcurrencyLimit(
         failed,
         AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
-        async (config) => executeAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context, provider, model),
+        async (config) =>
+          executeIndividualAgent(config, resolveAgentContext ? await resolveAgentContext(config, context) : context),
       );
       const retries: AgentResult[] = [];
       for (let i = 0; i < retrySettled.length; i++) {

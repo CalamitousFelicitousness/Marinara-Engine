@@ -457,6 +457,7 @@ Please restart your computer and run this installer again."
     nsExec::ExecToStack 'git rev-parse ${RELEASE_TAG}^{commit}'
     Pop $0
     Pop $3
+    ${StrTrimNewLines} $3 "$3"
     ${If} $0 != 0
       ${If} $5 == "1"
         nsExec::ExecToLog 'git stash apply -q'
@@ -477,7 +478,12 @@ Please restart your computer and run this installer again."
 
     ${If} "${RELEASE_COMMIT}" != ""
     ${AndIf} $3 != "${RELEASE_COMMIT}"
-      DetailPrint "Warning: ${RELEASE_TAG} resolved to $3, not the installer-expected ${RELEASE_COMMIT}. Continuing with fetched tag."
+      ${If} $5 == "1"
+        nsExec::ExecToLog 'git stash apply -q'
+        Pop $1
+      ${EndIf}
+      MessageBox MB_OK|MB_ICONSTOP "Release ${RELEASE_TAG} resolved to an unexpected commit.$\r$\n$\r$\nExpected: ${RELEASE_COMMIT}$\r$\nReceived: $3$\r$\n$\r$\nInstallation was stopped before updating files."
+      Abort
     ${EndIf}
 
     nsExec::ExecToLog 'cmd /c git cat-file -e $3 >nul 2>&1'
@@ -635,6 +641,7 @@ ${APP_URL}"
     nsExec::ExecToStack 'cmd /c cd /d "$CLONE_DIR" && git rev-parse HEAD'
     Pop $0
     Pop $2
+    ${StrTrimNewLines} $2 "$2"
     ${If} $0 != 0
       ${If} $CLONE_DIR_CREATED == "1"
         RMDir /r "$CLONE_DIR"
@@ -657,7 +664,14 @@ ${APP_URL}"
     ${EndIf}
     ${If} "${RELEASE_COMMIT}" != ""
     ${AndIf} $2 != "${RELEASE_COMMIT}"
-      DetailPrint "Warning: ${RELEASE_TAG} resolved to $2, not the installer-expected ${RELEASE_COMMIT}. Continuing with fetched tag."
+      ${If} $CLONE_DIR_CREATED == "1"
+        RMDir /r "$CLONE_DIR"
+      ${EndIf}
+      ${If} $STAGE_DIR_CREATED == "1"
+        RMDir /r "$STAGE_DIR"
+      ${EndIf}
+      MessageBox MB_OK|MB_ICONSTOP "Downloaded release ${RELEASE_TAG} resolved to an unexpected commit.$\r$\n$\r$\nExpected: ${RELEASE_COMMIT}$\r$\nReceived: $2$\r$\n$\r$\nInstallation was stopped before publishing files."
+      Abort
     ${EndIf}
     DetailPrint "Staging downloaded files..."
     ; robocopy returns 0-7 for success, 8+ for errors

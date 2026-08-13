@@ -20,7 +20,7 @@ import {
   type AgentToolContext,
 } from "./agent-executor.js";
 import { logger } from "../../lib/logger.js";
-import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
+import { createAgentConcurrencyLimiter, settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 export { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 
 /** A fully resolved agent ready for execution. */
@@ -169,6 +169,7 @@ function buildAgentContext(agent: ResolvedAgent, context: AgentContext): AgentCo
 async function executeGroup(
   group: AgentGroup,
   context: AgentContext,
+  runWithConnectionLimit: <R>(job: () => Promise<R>) => Promise<R>,
   onResult?: AgentResultCallback,
   resolveAgentContext?: AgentContextResolver,
 ): Promise<AgentResult[]> {
@@ -197,7 +198,14 @@ async function executeGroup(
 
   const batchResultsPromise =
     batchAgents.length > 0
-      ? executeAgentBatch(batchAgents, groupContext, group.provider, group.model, resolveAgentContext).then((results) => {
+      ? executeAgentBatch(
+          batchAgents,
+          groupContext,
+          group.provider,
+          group.model,
+          resolveAgentContext,
+          runWithConnectionLimit,
+        ).then((results) => {
           for (const result of results) {
             safeOnResult(result);
           }
@@ -218,10 +226,16 @@ async function executeGroup(
       (resolveAgentContext
         ? Promise.resolve(resolveAgentContext(agent, buildAgentContext(agent, context)))
         : Promise.resolve(buildAgentContext(agent, context))
-      ).then((agentContext) => executeAgent(agent, agentContext, agent.provider, agent.model, agent.toolContext)).then((result) => {
-        safeOnResult(result);
-        return result;
-      }),
+      )
+        .then((agentContext) =>
+          runWithConnectionLimit(() =>
+            executeAgent(agent, agentContext, agent.provider, agent.model, agent.toolContext),
+          ),
+        )
+        .then((result) => {
+          safeOnResult(result);
+          return result;
+        }),
   ).then((settled) =>
     settled.map((entry, index) => {
       if (entry.status === "fulfilled") return entry.value;
@@ -266,6 +280,14 @@ async function executePhase(
   if (phaseAgents.length === 0) return [];
 
   const groups = groupByProviderModel(phaseAgents).flatMap(splitGroupForParallelJobs);
+  const connectionLimits = new Map<number, number>();
+  for (const group of groups) {
+    const key = providerKey(group.provider);
+    connectionLimits.set(key, Math.min(connectionLimits.get(key) ?? group.maxParallelJobs, group.maxParallelJobs));
+  }
+  const connectionLimiters = new Map(
+    Array.from(connectionLimits, ([key, limit]) => [key, createAgentConcurrencyLimiter(limit)]),
+  );
 
   logger.debug(
     '[agent-pipeline] Phase "%s": %d agents → %d job group(s) %j',
@@ -284,10 +306,8 @@ async function executePhase(
     );
   }
 
-  const settled = await settleAgentJobsWithConcurrencyLimit(
-    groups,
-    AGENT_PHASE_MAX_CONCURRENT_GROUPS,
-    (group) => executeGroup(group, context, onResult, resolveAgentContext),
+  const settled = await settleAgentJobsWithConcurrencyLimit(groups, AGENT_PHASE_MAX_CONCURRENT_GROUPS, (group) =>
+    executeGroup(group, context, connectionLimiters.get(providerKey(group.provider))!, onResult, resolveAgentContext),
   );
 
   const results: AgentResult[] = [];

@@ -14,6 +14,20 @@ export interface FieldChange {
   kind: "added" | "removed" | "changed";
 }
 
+export type LorebookVectorStatus = "excluded" | "vectorized" | "notVectorized";
+
+/** Resolve the vector state shown in Professor Mari's lorebook-entry review. */
+export function resolveLorebookVectorStatus(row: Record<string, unknown> | null | undefined): LorebookVectorStatus {
+  const excluded =
+    row?.excludeFromVectorization === true ||
+    row?.excludeFromVectorization === 1 ||
+    row?.excludeFromVectorization === "true" ||
+    row?.excludeFromVectorization === "1";
+  if (excluded) return "excluded";
+  const embedding = row?.embedding;
+  return Array.isArray(embedding) && embedding.length > 0 ? "vectorized" : "notVectorized";
+}
+
 // Columns/keys that are bookkeeping, identical by construction, or too noisy to show as edits.
 const NOISE_KEYS = new Set([
   "id",

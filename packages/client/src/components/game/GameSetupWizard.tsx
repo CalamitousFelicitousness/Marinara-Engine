@@ -494,6 +494,7 @@ export function GameSetupWizard({
   const [rating, setRating] = useState<"sfw" | "nsfw">("sfw");
   const [useLocalScene, setUseLocalScene] = useState(true);
   const [enableSpriteGeneration, setEnableSpriteGeneration] = useState(false);
+  const [gameImageDynamicPromptEnabled, setGameImageDynamicPromptEnabled] = useState(false);
   const [enableAgents, setEnableAgents] = useState(false);
   const [enableSpotifyDj, setEnableSpotifyDj] = useState(false);
   const [gameSpotifySourceType, setGameSpotifySourceType] = useState<GameSpotifySourceType>("liked");
@@ -1025,6 +1026,7 @@ export function GameSetupWizard({
           Boolean(config.spatialMapInstructions?.trim()),
       );
       setEnableSpriteGeneration(visualGenerationEnabled);
+      setGameImageDynamicPromptEnabled(config.gameImageDynamicPromptEnabled === true);
       setImageConnectionId(config.imageConnectionId ?? null);
       setVideoConnectionId(config.videoConnectionId ?? null);
       setActiveLorebookIds(config.activeLorebookIds ?? []);
@@ -1114,7 +1116,8 @@ export function GameSetupWizard({
       personaId: personaId ?? undefined,
       sceneConnectionId: sceneModelValue && sceneModelValue !== "local" ? sceneModelValue : undefined,
       enableAgents: enableAgents || undefined,
-      enableSpriteGeneration: illustratorEnabled || undefined,
+      enableSpriteGeneration: illustratorEnabled,
+      gameImageDynamicPromptEnabled: illustratorEnabled && gameImageDynamicPromptEnabled,
       imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
       videoConnectionId: illustratorEnabled && videoConnectionId ? videoConnectionId : undefined,
       ...(importedArtStyleSettingsRef.current ?? {}),
@@ -2287,6 +2290,38 @@ export function GameSetupWizard({
                         <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">{localizeUi("ui.game.gamesetupwizard.noImageGenerationConnectionsFoundAddOneInSettings")}</p>
                       )}
                       <p className="mt-1 text-[0.55rem] text-[var(--muted-foreground)]">{localizeUi("ui.game.gamesetupwizard.powersAutomaticPortraitsBackgroundsAndSceneIllustrations")}</p>
+                      <button
+                        type="button"
+                        aria-pressed={gameImageDynamicPromptEnabled}
+                        onClick={() => setGameImageDynamicPromptEnabled((enabled) => !enabled)}
+                        className="mt-3 flex w-full items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-left"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-[0.625rem] font-medium text-[var(--foreground)]">
+                            {localizeUi(
+                              "ui.chat.chatsettingsdrawer.dynamicLlmPromptGenerationForGmModeAssets",
+                            )}
+                          </span>
+                          <span className="mt-0.5 block text-[0.55rem] leading-snug text-[var(--muted-foreground)]">
+                            {localizeUi("ui.chat.chatsettingsdrawer.askThePromptModelToRewriteGameNpcPortrait")}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                            gameImageDynamicPromptEnabled
+                              ? "bg-[var(--primary)]"
+                              : "bg-[var(--muted-foreground)]/50",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "block h-4 w-4 rounded-full bg-white transition-transform",
+                              gameImageDynamicPromptEnabled && "translate-x-3.5",
+                            )}
+                          />
+                        </span>
+                      </button>
                       <div className="mt-3 border-t border-[var(--border)] pt-3">
                         <label className="mb-1 flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
                           <Film size={11} />{localizeUi("ui.game.gamesetupwizard.videoGenerationConnection")}</label>

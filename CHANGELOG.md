@@ -6,7 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- Added always-visible activation and vectorization status to lorebook entries in Professor Mari's Easy Viewer review cards: each entry now shows whether it is Constant, Selective, or Normal (using the lorebook editor's dot colors) and whether it is Vectorized or Vector excluded, with the before and after shown when Mari's edit changes them, so an entry's kind is clear at a glance instead of only when a setting happens to change (#4931).
+- Let Game setup enable Illustrator's Dynamic LLM Prompt Generation before the first image request (#4964).
+- Added always-visible activation and vectorization status to lorebook entries in Professor Mari's Easy Viewer review cards: each entry now shows whether it is Constant, Selective, or Normal (using the lorebook editor's dot colors) and whether it is Vectorized, Not vectorized, or Vector excluded, with the before and after shown when Mari's edit changes them, so an entry's kind is clear at a glance instead of only when a setting happens to change (#4931).
 - Added a per-entry Reject control to Professor Mari's Easy Viewer: revert a single lorebook entry of a multi-entry change while keeping the rest applied, instead of only being able to Restore the whole change. Rejecting is refused for anything that could leave a dangling reference (an entry removed as part of deleting its lorebook, or a non-entry row), and the review card shrinks to the entries that remain (#4931).
 - Added a "View as prompt" preview to Professor Mari's Easy Viewer for character and preset edits: a before/after view of how the edit appears in the assembled prompt, with additions in green and removals in red. It is a synthetic preview assembled on its own (default preset, no persona or chat history), not a live chat prompt (#4931).
 - Added literal message search to Conversation and Roleplay chat headers, with compact results that jump to matching messages anywhere in the current chat (#4922).
@@ -70,9 +71,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Kept automatic and downloadable backups working when local media exceeds the profile importer's ordinary per-file limit, while preserving bounded streaming imports and omitting only an individual unreadable or unarchivable asset instead of failing the whole backup.
+- Kept visible Android browsers connected to a same-device Termux server responsive with a lightweight loopback-only heartbeat, without restoring hidden-tab or remote-client polling (#4968).
+- Kept long-running SwarmUI image requests alive across idle container networking while retaining the configured ComfyUI generation deadline (#4969).
+- Restored Professor Mari preset creation while keeping Engine-owned preset identifiers protected from user input.
+- Updated Roleplay message-edit shortcut hints to mention Ctrl+Enter on Windows as well as Cmd+Enter on macOS (#4965).
 - Kept the Message Avatar Scale and related art-size sliders wide enough to remain visible and repeatedly adjustable in Chrome, including at larger interface display sizes (#4974).
 - Kept an already-installed Noodle Agent visible and usable after downloading an update while its replacement waits for the required Marinara Engine restart (#4976).
 - Prevented crafted profile archives from retargeting saved credentials, serving active files as trusted app content, escaping asset directories through imported metadata, reconstructing blocked theme CSS, or exhausting the importer with oversized metadata.
+- Kept Professor Mari suggestion chips in a single horizontally scrollable row on mobile instead of stacking them above the composer.
 - Hardened local security without removing extension or remote-access capabilities: made Professor Mari filters data-only, encrypted webhook credentials, bounded ZIP extraction and rich-chat network/CSS behavior, restricted automatic network trust to detected runtimes, privatized local data and backups, verified downloads and release commits, and patched audited dependencies.
 - Authenticated APK-managed Android localhost sessions without restricting manual Termux or LAN use, verified the pinned F-Droid Termux APK before install, bound native bridge calls to the exact Engine origin, and made release signing and bootstrap source commits fail closed.
 - Imported preset regex entries even when they contain unsupported SillyTavern placements, warning about ignored placement values instead of discarding the entire regex, and let Music DJ try the next candidate when Spotify accepts but cannot verify the first selected track (#4959, #4960).

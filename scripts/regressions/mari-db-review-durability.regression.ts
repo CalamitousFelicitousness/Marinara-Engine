@@ -8,10 +8,12 @@
 //   - a sidecar past its retention deadline is pruned on load,
 //   - the persisted set is capped so it cannot grow without bound.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
+import { eq } from "../../packages/server/src/db/file-query.js";
+import { lorebookEntries } from "../../packages/server/src/db/schema/lorebooks.js";
 import { MariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
 
 // Mirrors PENDING_REVIEW_LIMIT in mari-db.service.ts (module-local constant).
@@ -154,6 +156,7 @@ try {
   {
     const dir = tempStorageDir();
     const db = await createFileNativeDB();
+    const pendingDir = join(dir, "journal", "pending");
     try {
       const mari = new MariDbService(db);
       let firstReviewId = "";
@@ -186,11 +189,27 @@ try {
         "the newest review is retained, never evicted by its own creation",
       );
       assert.equal(
-        readdirSync(join(dir, "journal", "pending")).filter((file) => file.endsWith(".json")).length,
+        readdirSync(pendingDir).filter((file) => file.endsWith(".json")).length,
         PENDING_REVIEW_LIMIT,
         "the persisted sidecars are capped in lockstep with the in-memory set",
       );
+
+      chmodSync(pendingDir, 0o500);
+      const appliedPastLockedCap = await mari.executeAction({
+        action: "character.create",
+        characterId: "capped-character-locked-sidecar",
+        data: { name: "Applied despite locked retention" },
+        apply: true,
+      });
+      assert.ok(appliedPastLockedCap.approval?.id, "retention cleanup cannot report an applied mutation as failed");
+      assert.equal(
+        mari.getPendingApprovals().length,
+        PENDING_REVIEW_LIMIT + 1,
+        "a locked oldest sidecar is retained temporarily instead of losing its undo",
+      );
+      chmodSync(pendingDir, 0o700);
     } finally {
+      chmodSync(pendingDir, 0o700);
       await db._fileStore.close();
       rmSync(dir, { recursive: true, force: true });
     }
@@ -359,6 +378,125 @@ try {
         "a refused (state_changed) Restore leaves its pending review in place for a fresh review",
       );
       assert.ok(existsSync(sidecarPath(dir, staleReviewId)), "a refused Restore keeps the pending sidecar on disk");
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── Sidecar retirement failure leaves Keep pending and restart-durable ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    const pendingDir = join(dir, "journal", "pending");
+    try {
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "character.create",
+        characterId: "retire-failure",
+        data: { name: "Retire failure" },
+        apply: true,
+      });
+      const reviewId = created.approval?.id;
+      assert.ok(reviewId);
+      chmodSync(pendingDir, 0o500);
+      await assert.rejects(mari.keepAppliedReview(reviewId), /EACCES|EPERM|permission denied/iu);
+      assert.ok(mari.getPendingApprovals().some((approval) => approval.id === reviewId));
+      chmodSync(pendingDir, 0o700);
+      assert.ok(
+        new MariDbService(db).getPendingApprovals().some((approval) => approval.id === reviewId),
+        "failed Keep survives restart",
+      );
+    } finally {
+      chmodSync(pendingDir, 0o700);
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── Failed partial-review replacement cannot resurrect its obsolete full plan ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "lorebook.create",
+        lorebookId: "write-failure",
+        data: {
+          name: "Write failure",
+          entries: [
+            { name: "Reject", content: "a" },
+            { name: "Keep", content: "b" },
+          ],
+        },
+        apply: true,
+      });
+      const reviewId = created.approval?.id;
+      assert.ok(reviewId);
+      const approval = mari.getPendingApprovals().find((candidate) => candidate.id === reviewId);
+      const index =
+        approval?.diffPreview.findIndex(
+          (change) => change.table === "lorebook_entries" && change.after?.name === "Reject",
+        ) ?? -1;
+      assert.ok(approval && index >= 0);
+      const change = approval.diffPreview[index]!;
+      const tempPath = `${sidecarPath(dir, reviewId)}.${process.pid}.tmp`;
+      mkdirSync(tempPath);
+      await assert.rejects(
+        mari.rejectRows(reviewId, [{ index, table: change.table, id: change.id, action: change.action }]),
+        /remaining review could not be saved safely/iu,
+      );
+      rmSync(tempPath, { recursive: true, force: true });
+      assert.ok(!existsSync(sidecarPath(dir, reviewId)), "obsolete sidecar is not hydratable");
+      assert.ok(
+        !new MariDbService(db).getPendingApprovals().some((candidate) => candidate.id === reviewId),
+        "obsolete review stays gone after restart",
+      );
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── apply:false cascade snapshots cannot overwrite a newer same-id child on Restore ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "lorebook.create",
+        lorebookId: "cascade-supersede",
+        data: { name: "Cascade", entries: [{ name: "Original", content: "old" }] },
+        apply: true,
+      });
+      await mari.keepAppliedReview(created.approval?.id ?? "");
+      const child = (
+        (await mari.executeAction({ action: "lorebook.entries", lorebookId: "cascade-supersede" })).output as Array<{
+          id: string;
+        }>
+      )[0]!;
+      const deleted = await mari.executeCli({ argv: ["lorebooks", "delete", "cascade-supersede", "--cascade", "--apply"] });
+      const reviewId = deleted.approval?.id;
+      assert.ok(reviewId);
+      const timestamp = new Date().toISOString();
+      await db.insert(lorebookEntries).values({
+        id: child.id,
+        lorebookId: "cascade-supersede",
+        name: "Newer",
+        content: "new",
+        keys: "[]",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      const outcome = await mari.restoreAppliedReview(reviewId);
+      assert.ok(outcome && "outcome" in outcome && outcome.outcome === "state_changed", "cascade supersede is refused");
+      assert.equal(
+        (await db.select().from(lorebookEntries).where(eq(lorebookEntries.id, child.id)))[0]?.content,
+        "new",
+        "newer child survives",
+      );
     } finally {
       await db._fileStore.close();
       rmSync(dir, { recursive: true, force: true });

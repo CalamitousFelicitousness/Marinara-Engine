@@ -223,6 +223,7 @@ function resolveImageBackend(source: string, baseUrl: string, serviceHint: strin
 /** Default 30-minute timeout for image generation API calls (overridable via env). */
 const IMAGE_GEN_TIMEOUT = Number(process.env.IMAGE_GEN_TIMEOUT_MS ?? 1_800_000);
 const COMFYUI_GEN_TIMEOUT_SECONDS = Number(process.env.COMFYUI_GEN_TIMEOUT ?? 2400);
+const SWARMUI_KEEP_ALIVE_INITIAL_DELAY_MS = 10_000;
 
 export function resolveComfyUiImageGenerationTimeoutMs(
   imageTimeoutMs = IMAGE_GEN_TIMEOUT,
@@ -636,6 +637,7 @@ type ImageFetchOptions = {
   allowLoopback?: boolean;
   allowedOrigins?: string[];
   agentOptions?: SafeFetchOptions["agentOptions"];
+  keepAliveInitialDelayMs?: number;
 };
 
 function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOptions = {}) {
@@ -649,22 +651,23 @@ function imageFetch(url: string | URL, init?: RequestInit, options: ImageFetchOp
       flagName: "IMAGE_LOCAL_URLS_ENABLED",
     },
     agentOptions: options.agentOptions,
+    keepAliveInitialDelayMs: options.keepAliveInitialDelayMs,
     maxResponseBytes: MAX_IMAGE_RESPONSE_BYTES,
     decodeCompressedResponse: true,
   });
 }
 
-function localImageBackendFetch(url: string | URL, init?: RequestInit, timeoutMs?: number) {
+function localImageBackendFetch(
+  url: string | URL,
+  init?: RequestInit,
+  options: { timeoutMs?: number; keepAliveInitialDelayMs?: number } = {},
+) {
   return imageFetch(url, init, {
     allowLocal: true,
-    ...(timeoutMs
-      ? {
-          agentOptions: {
-            bodyTimeout: timeoutMs,
-            headersTimeout: timeoutMs,
-          },
-        }
-      : {}),
+    agentOptions: options.timeoutMs
+      ? { bodyTimeout: options.timeoutMs, headersTimeout: options.timeoutMs }
+      : undefined,
+    keepAliveInitialDelayMs: options.keepAliveInitialDelayMs,
   });
 }
 
@@ -3311,7 +3314,10 @@ async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGe
       body: JSON.stringify(body),
       signal: imageRequestSignal(request),
     },
-    resolveComfyUiImageGenerationTimeoutMs(),
+    {
+      timeoutMs: resolveComfyUiImageGenerationTimeoutMs(),
+      keepAliveInitialDelayMs: SWARMUI_KEEP_ALIVE_INITIAL_DELAY_MS,
+    },
   );
   const text = await response.text();
   if (!response.ok) {

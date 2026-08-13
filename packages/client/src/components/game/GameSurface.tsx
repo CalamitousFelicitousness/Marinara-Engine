@@ -132,6 +132,7 @@ import type {
   EncounterInitResponse,
   EncounterSettings,
   GameInitialSetupSnapshot,
+  GameSetupConfig,
   HudWidget,
   SceneSpotifyTrackCandidate,
   SceneSpotifyTrackSelection,
@@ -152,6 +153,8 @@ import {
   normalizeStoryboardAgentSettings,
   normalizeRpgStatPools,
   normalizeTextForMatch,
+  resolveGameImageDynamicPromptEnabled,
+  mergeGameSetupConfigPreservingDynamicPrompt,
   resolveGameSetupArtStylePrompt,
   scoreMusic,
   scoreAmbient,
@@ -10315,8 +10318,9 @@ function GameSurfaceComponent({
                   chatMeta.gameSetupConfig &&
                   typeof chatMeta.gameSetupConfig === "object" &&
                   !Array.isArray(chatMeta.gameSetupConfig)
-                    ? (chatMeta.gameSetupConfig as Record<string, unknown>)
+                    ? (chatMeta.gameSetupConfig as Partial<GameSetupConfig>)
                     : {};
+                const effectiveSetupConfig = mergeGameSetupConfigPreservingDynamicPrompt(storedSetupConfig, config);
                 try {
                   await Promise.all([
                     updateChat.mutateAsync({
@@ -10326,7 +10330,8 @@ function GameSurfaceComponent({
                     }),
                     updateChatMetadata.mutateAsync({
                       id: chatId,
-                      gameSetupConfig: { ...storedSetupConfig, ...config },
+                      gameSetupConfig: effectiveSetupConfig,
+                      gameImageDynamicPromptEnabled: resolveGameImageDynamicPromptEnabled(effectiveSetupConfig),
                     }),
                   ]);
                   if (mapPlan) {

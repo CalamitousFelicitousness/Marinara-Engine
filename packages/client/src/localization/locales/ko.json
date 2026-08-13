@@ -2852,7 +2852,7 @@
   "ui.chat.echochamberpanel.waitingForReactions": "반응 기다리는 중…",
   "ui.chat.edittextarea.cancelEdit": "편집 취소",
   "ui.chat.edittextarea.cancelEsc": "취소 (Esc)",
-  "ui.chat.edittextarea.saveCmdEnter": "저장 (Cmd+Enter)",
+  "ui.chat.edittextarea.saveCmdEnter": "저장 (Cmd/Ctrl+Enter)",
   "ui.chat.edittextarea.saveEdit": "편집 내용 저장",
   "ui.chat.encounterconfig.attachASpellbookSoTheAiKnowsWhichSpells": "AI가 전투에서 사용할 수 있는 주문과 능력을 알 수 있도록 스펠북을 첨부합니다.",
   "ui.chat.encounterconfig.beginCombat": "전투 시작",

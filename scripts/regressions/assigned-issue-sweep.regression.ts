@@ -10,13 +10,149 @@ import {
   getServerRuntimeBuild,
   isRuntimeBuildCurrent,
 } from "../../packages/client/src/lib/runtime-build.js";
+import {
+  ANDROID_HOST_HEARTBEAT_INTERVAL_MS,
+  createAndroidHostHeartbeat,
+  isLoopbackHostname,
+  shouldRunAndroidHostHeartbeat,
+} from "../../packages/client/src/lib/keep-alive.js";
 import { useAgentStore } from "../../packages/client/src/stores/agent.store.js";
 import {
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
 } from "../../packages/shared/src/types/prompt.js";
+import {
+  mergeGameSetupConfigPreservingDynamicPrompt,
+  resolveGameImageDynamicPromptEnabled,
+} from "../../packages/shared/src/types/game.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+
+assert.equal(
+  resolveGameImageDynamicPromptEnabled({}),
+  false,
+  "dynamic Game Illustrator prompts remain off when setup does not choose them",
+);
+const retainedExistingImageSetup = mergeGameSetupConfigPreservingDynamicPrompt(
+  {
+    enableSpriteGeneration: true,
+    gameImageDynamicPromptEnabled: true,
+    enableSpotifyDj: true,
+    activeLorebookIds: ["old-lorebook"],
+    sceneConnectionId: "old-connection",
+  },
+  {
+    enableSpriteGeneration: true,
+    gameImageDynamicPromptEnabled: undefined,
+    enableSpotifyDj: undefined,
+    activeLorebookIds: undefined,
+    sceneConnectionId: undefined,
+  },
+);
+assert.equal(
+  resolveGameImageDynamicPromptEnabled(retainedExistingImageSetup),
+  true,
+  "an omitted wizard field preserves the effective stored Illustrator prompt choice",
+);
+assert.equal(retainedExistingImageSetup.enableSpotifyDj, undefined, "an established omitted toggle still clears");
+assert.equal(retainedExistingImageSetup.activeLorebookIds, undefined, "an established omitted selection still clears");
+assert.equal(retainedExistingImageSetup.sceneConnectionId, undefined, "an established omitted connection still clears");
+const disabledExistingImageSetup = mergeGameSetupConfigPreservingDynamicPrompt(retainedExistingImageSetup, {
+  enableSpriteGeneration: false,
+  gameImageDynamicPromptEnabled: false,
+});
+assert.equal(
+  resolveGameImageDynamicPromptEnabled(disabledExistingImageSetup),
+  false,
+  "an explicit wizard toggle-off still disables the Illustrator prompt choice",
+);
+assert.equal(
+  resolveGameImageDynamicPromptEnabled({ gameImageDynamicPromptEnabled: true }),
+  false,
+  "the dynamic-prompt choice cannot enable a disabled Illustrator",
+);
+assert.equal(
+  resolveGameImageDynamicPromptEnabled({
+    enableSpriteGeneration: true,
+    gameImageDynamicPromptEnabled: true,
+  }),
+  true,
+  "an enabled Illustrator carries the explicit dynamic-prompt choice into runtime metadata",
+);
+
+assert.equal(
+  ANDROID_HOST_HEARTBEAT_INTERVAL_MS,
+  10_000,
+  "the Android host heartbeat stays slower than the removed 2-second extension polling",
+);
+assert.equal(
+  shouldRunAndroidHostHeartbeat({ isAndroid: true, isHostDevice: true, pageVisible: true, requestPending: false }),
+  true,
+  "a visible Android client on the host device receives the lightweight heartbeat",
+);
+for (const hostname of [
+  "localhost",
+  "marinara.localhost",
+  "127.0.0.1",
+  "127.0.0.2",
+  "127.255.255.255",
+  "::1",
+  "[::1]",
+]) {
+  assert.equal(isLoopbackHostname(hostname), true, `${hostname} is an explicit loopback host`);
+}
+for (const hostname of [
+  "",
+  "0.0.0.0",
+  "127.0.0",
+  "127.0.0.256",
+  "127.0.0.1.2",
+  "192.168.1.7",
+  "100.64.0.7",
+  "marinara.example",
+]) {
+  assert.equal(isLoopbackHostname(hostname), false, `${hostname || "an empty hostname"} is not a loopback client`);
+}
+for (const blocked of [
+  { isAndroid: false, isHostDevice: true, pageVisible: true, requestPending: false },
+  { isAndroid: true, isHostDevice: false, pageVisible: true, requestPending: false },
+  { isAndroid: true, isHostDevice: true, pageVisible: false, requestPending: false },
+  { isAndroid: true, isHostDevice: true, pageVisible: true, requestPending: true },
+]) {
+  assert.equal(
+    shouldRunAndroidHostHeartbeat(blocked),
+    false,
+    "non-Android, remote, hidden, and in-flight heartbeat paths remain quiet",
+  );
+}
+
+let heartbeatRequests = 0;
+let releaseHeartbeatRequest: (() => void) | undefined;
+let heartbeatVisible = true;
+const runHeartbeat = createAndroidHostHeartbeat({
+  isAndroid: true,
+  isHostDevice: true,
+  isPageVisible: () => heartbeatVisible,
+  request: () => {
+    heartbeatRequests += 1;
+    return new Promise<void>((resolve) => {
+      releaseHeartbeatRequest = resolve;
+    });
+  },
+});
+runHeartbeat();
+runHeartbeat();
+assert.equal(heartbeatRequests, 1, "an in-flight health request suppresses overlapping heartbeats");
+releaseHeartbeatRequest?.();
+await Promise.resolve();
+await Promise.resolve();
+heartbeatVisible = false;
+runHeartbeat();
+assert.equal(heartbeatRequests, 1, "a hidden page does not send a heartbeat");
+heartbeatVisible = true;
+runHeartbeat();
+assert.equal(heartbeatRequests, 2, "a visible-page resume can send a heartbeat immediately");
+releaseHeartbeatRequest?.();
 
 const clientBuild = formatRuntimeBuild("2.4.2", "aaaaaaaaaaaa");
 assert.equal(clientBuild, "2.4.2+aaaaaaaaaaaa");
@@ -240,6 +376,57 @@ assert.match(
   successfulRegexImportWarning,
   /localizeUi\("ui\.panels\.presetspanel\.ignoredUnsupportedRegexPlacements"/u,
   "unsupported placement warnings must use the localized message",
+);
+
+const gameSetupWizardSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/game/GameSetupWizard.tsx"),
+  "utf8",
+);
+assert.match(
+  gameSetupWizardSource,
+  /const \[gameImageDynamicPromptEnabled, setGameImageDynamicPromptEnabled\] = useState\(false\)/u,
+  "new games keep the existing dynamic-prompt default until the player chooses otherwise",
+);
+assert.match(
+  gameSetupWizardSource,
+  /aria-pressed=\{gameImageDynamicPromptEnabled\}/u,
+  "the Game Illustrator exposes its dynamic-prompt choice as an accessible wizard toggle",
+);
+assert.match(
+  gameSetupWizardSource,
+  /gameImageDynamicPromptEnabled:\s*illustratorEnabled && gameImageDynamicPromptEnabled/u,
+  "the wizard carries an explicit dynamic-prompt choice into game setup",
+);
+
+const gameSurfaceSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/game/GameSurface.tsx"),
+  "utf8",
+);
+assert.match(
+  gameSurfaceSource,
+  /gameSetupConfig:\s*effectiveSetupConfig,[\s\S]*gameImageDynamicPromptEnabled:\s*resolveGameImageDynamicPromptEnabled\(effectiveSetupConfig\)/u,
+  "continuing setup for an existing game resolves the Illustrator choice from the same effective config it persists",
+);
+
+const gameRoutesSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/game.routes.ts"), "utf8");
+assert.match(
+  gameRoutesSource,
+  /gameImageDynamicPromptEnabled: z\.boolean\(\)\.optional\(\)/u,
+  "new-game setup accepts the dynamic Illustrator prompt choice",
+);
+assert.match(
+  gameRoutesSource,
+  /gameImageDynamicPromptEnabled:\s*resolveGameImageDynamicPromptEnabled\(setupConfig\)/u,
+  "new-game creation stores the choice before initial Illustrator generation",
+);
+
+const canonicalEnglish = JSON.parse(
+  readFileSync(join(repositoryRoot, "packages/client/src/localization/locales/en.json"), "utf8"),
+) as Record<string, string>;
+assert.equal(
+  canonicalEnglish["ui.chat.edittextarea.saveCmdEnter"],
+  "Save (Cmd/Ctrl+Enter)",
+  "the message editor shortcut hint covers both macOS and Windows modifiers",
 );
 
 console.info("Assigned issue-sweep regressions passed.");

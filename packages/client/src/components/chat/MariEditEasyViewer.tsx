@@ -5,6 +5,7 @@
 // snapshots) — no server call. Per-row Dismiss hides a reviewed change to reduce clutter; the
 // card's Keep/Restore still governs the whole batch.
 
+import type { ReactNode } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
@@ -122,9 +123,10 @@ function KeyChips({ before, after }: { before: string[]; after: string[] }) {
   );
 }
 
+// `enabled`/`constant`/`selective` are shown as prominent status (the Disabled badge + activation
+// pill), not as generic on/off chips; the rest stay here as small "changed" chips.
 const LOREBOOK_TOGGLES: Array<{ key: string; labelKey: string }> = [
   { key: "enabled", labelKey: "ui.chat.mariediteasyviewer.toggleEnabled" },
-  { key: "constant", labelKey: "ui.chat.mariediteasyviewer.toggleConstant" },
   { key: "matchWholeWords", labelKey: "ui.chat.mariediteasyviewer.toggleWholeWords" },
   { key: "caseSensitive", labelKey: "ui.chat.mariediteasyviewer.toggleCaseSensitive" },
   { key: "useRegex", labelKey: "ui.chat.mariediteasyviewer.toggleRegex" },
@@ -132,8 +134,12 @@ const LOREBOOK_TOGGLES: Array<{ key: string; labelKey: string }> = [
 ];
 
 // Fields the lorebook layout renders itself; anything else Mari changes (probability, timing,
-// recursion, group weight, scan depth, folder, filters, vectorization) falls through to a generic
-// field diff so no editable setting is silently missing from the view.
+// recursion, group weight, scan depth, folder, filters, selective logic) falls through to a generic
+// field diff so no editable setting is silently missing from the view. `constant` is always shown by
+// the activation pill (flipping it always moves the activation type) and `excludeFromVectorization`
+// by the vectorization pill, so they are handled here. `selective` is NOT — it is dominated by
+// `constant` in the pill, so it is filtered dynamically below (only when it actually moved the
+// activation type) to avoid dropping a `selective` flip on a constant entry.
 const LOREBOOK_HANDLED_PATHS = new Set([
   "name",
   "keys",
@@ -142,11 +148,94 @@ const LOREBOOK_HANDLED_PATHS = new Set([
   "description",
   "enabled",
   "constant",
+  "excludeFromVectorization",
   "matchWholeWords",
   "caseSensitive",
   "useRegex",
   "locked",
 ]);
+
+// ── Lorebook entry activation + vectorization status ────────────────────────
+// Mirror the engine's own lorebook editor (LorebookEntryRow / ChatRoleplayPanels): activation is a
+// 3-way constant/selective/normal enum shown as a colored dot, "disabled" is the orthogonal `enabled`
+// flag, and vectorization is the `excludeFromVectorization` opt-out. Render them as always-visible
+// status pills so a reviewer can tell an entry's kind at a glance, not only when Mari's edit happens
+// to change one. Dots reuse the engine's colors (constant = yellow, selective = red, normal =
+// emerald, vector = cyan); the pill background stays neutral so those colors are never confused with
+// the diff's added-green / removed-red text.
+type ActivationType = "constant" | "selective" | "normal";
+
+const ACTIVATION_DOT: Record<ActivationType, string> = {
+  constant: "bg-yellow-300",
+  selective: "bg-red-400",
+  normal: "bg-emerald-400",
+};
+
+const ACTIVATION_LABEL_KEY: Record<ActivationType, string> = {
+  constant: "ui.chat.mariediteasyviewer.toggleConstant",
+  selective: "ui.chat.mariediteasyviewer.modeSelective",
+  normal: "ui.chat.mariediteasyviewer.modeNormal",
+};
+
+const ACTIVATION_HINT_KEY: Record<ActivationType, string> = {
+  constant: "ui.chat.mariediteasyviewer.modeConstantHint",
+  selective: "ui.chat.mariediteasyviewer.modeSelectiveHint",
+  normal: "ui.chat.mariediteasyviewer.modeNormalHint",
+};
+
+function activationType(row: Row): ActivationType {
+  if (truthy(row?.constant)) return "constant";
+  if (truthy(row?.selective)) return "selective";
+  return "normal";
+}
+
+// The reviewable vectorization setting (the opt-out flag). We deliberately do not read the derived
+// `embedding` array (whether bulk vectorization has run yet) — it isn't carried in the review
+// snapshot and is a runtime state, not something Mari's edit decides.
+function isVectorExcluded(row: Row): boolean {
+  return truthy(row?.excludeFromVectorization);
+}
+
+function StatusPill({ dot, label, title, faded }: { dot?: string; label: string; title?: string; faded?: boolean }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md bg-[var(--secondary)]/60 px-1.5 py-0.5 text-[0.625rem] font-medium text-[var(--foreground)]",
+        faded && "opacity-55 line-through",
+      )}
+    >
+      {dot && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
+      {label}
+    </span>
+  );
+}
+
+// Render one status as a single pill, or `from → to` when Mari's edit changes it. `before`/`after`
+// are null on the missing side of an insert/delete, so those collapse to a single pill. The `before`
+// pill's strikethrough + the arrow are visual-only, so `srChangedTo` gives assistive tech the
+// direction ("changed to") between the two labels.
+function renderStatusSlot<T>(
+  before: T | null,
+  after: T | null,
+  pill: (value: T, faded?: boolean) => ReactNode,
+  srChangedTo: string,
+): ReactNode {
+  if (before !== null && after !== null && before !== after) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        {pill(before, true)}
+        <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+          <span aria-hidden>→</span>
+          <span className="sr-only"> {srChangedTo} </span>
+        </span>
+        {pill(after)}
+      </span>
+    );
+  }
+  const value = after ?? before;
+  return value !== null ? pill(value) : null;
+}
 
 function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
   const { t: localizeUi } = useUiTranslation();
@@ -178,7 +267,43 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
         )
       : [];
 
-  const remainingFields = computeFieldChanges(change).filter((field) => !LOREBOOK_HANDLED_PATHS.has(field.path));
+  // Activation (constant / selective / normal) and vectorization are shown as always-visible status
+  // pills so an entry's kind is obvious even when Mari's edit didn't touch them; a change renders as
+  // `from → to`.
+  const beforeAct = before ? activationType(before) : null;
+  const afterAct = after ? activationType(after) : null;
+  const beforeVec = before ? isVectorExcluded(before) : null;
+  const afterVec = after ? isVectorExcluded(after) : null;
+  const activationPill = (type: ActivationType, faded?: boolean) => (
+    <StatusPill
+      key={`act-${type}-${faded ? "from" : "to"}`}
+      dot={ACTIVATION_DOT[type]}
+      label={localizeUi(ACTIVATION_LABEL_KEY[type])}
+      title={localizeUi(ACTIVATION_HINT_KEY[type])}
+      faded={faded}
+    />
+  );
+  const vectorPill = (excluded: boolean, faded?: boolean) => (
+    <StatusPill
+      key={`vec-${excluded}-${faded ? "from" : "to"}`}
+      dot={excluded ? undefined : "bg-cyan-300"}
+      label={localizeUi(
+        excluded ? "ui.chat.mariediteasyviewer.vectorExcluded" : "ui.chat.mariediteasyviewer.vectorized",
+      )}
+      title={localizeUi(
+        excluded ? "ui.chat.mariediteasyviewer.vectorExcludedHint" : "ui.chat.mariediteasyviewer.vectorizedHint",
+      )}
+      faded={faded}
+    />
+  );
+
+  // `selective` is shown by the activation pill only when it actually moved the type; when `constant`
+  // dominates on both sides (the pill stays "constant"), keep the raw selective change in the generic
+  // diff so a selective flip on a constant entry is never silently dropped.
+  const activationChanged = beforeAct !== null && afterAct !== null && beforeAct !== afterAct;
+  const remainingFields = computeFieldChanges(change).filter(
+    (field) => !LOREBOOK_HANDLED_PATHS.has(field.path) && (field.path !== "selective" || !activationChanged),
+  );
 
   return (
     <div className="mari-editor-panel mari-editor-panel--soft space-y-2 rounded-lg p-2">
@@ -202,6 +327,8 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
               : localizeUi("ui.chat.mariediteasyviewer.toggleEnabled")}
           </span>
         )}
+        {renderStatusSlot(beforeAct, afterAct, activationPill, localizeUi("ui.chat.mariediteasyviewer.changedTo"))}
+        {renderStatusSlot(beforeVec, afterVec, vectorPill, localizeUi("ui.chat.mariediteasyviewer.changedTo"))}
       </div>
 
       <div>

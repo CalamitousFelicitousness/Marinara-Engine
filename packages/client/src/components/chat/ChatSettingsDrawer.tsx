@@ -340,7 +340,11 @@ function getMusicProviderLabel(provider: MusicProvider): string {
 
 function normalizeCustomMusicFolder(value: unknown): string {
   const raw = typeof value === "string" ? value.trim().replace(/\\/g, "/") : "";
-  const normalized = raw.replace(/^\/+/, "").replace(/\/+$/g, "");
+  let start = 0;
+  let end = raw.length;
+  while (raw[start] === "/") start++;
+  while (end > start && raw[end - 1] === "/") end--;
+  const normalized = raw.slice(start, end);
   if (!normalized || normalized.includes("..")) return "music";
   return normalized.startsWith("music") ? normalized : `music/${normalized}`;
 }

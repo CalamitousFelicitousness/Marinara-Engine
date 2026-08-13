@@ -152,7 +152,12 @@ const DEFAULT_PROSE_GUARDIAN_AVOID =
   "no repetition of any phrases or sentence structure from the last messages, if the last output started with dialogue line, this one needs to start with narration, no purple prose";
 
 function normalizeCustomMusicFolderInput(value: string): string {
-  const normalized = value.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/g, "");
+  const raw = value.trim().replace(/\\/g, "/");
+  let start = 0;
+  let end = raw.length;
+  while (raw[start] === "/") start++;
+  while (end > start && raw[end - 1] === "/") end--;
+  const normalized = raw.slice(start, end);
   if (!normalized || normalized.includes("..")) return "music";
   return normalized.startsWith("music") ? normalized : `music/${normalized}`;
 }

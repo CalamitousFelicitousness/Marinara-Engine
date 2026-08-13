@@ -212,10 +212,7 @@ function detectVariableGroups(prompts: STPromptEntry[]): PromptVariableGroup[] {
   // Look for setvar patterns in content
   for (const entry of prompts) {
     if (!entry.content) continue;
-    const matches = entry.content.matchAll(/\{\{setvar::(\w+)::([^}]+)\}\}/gi);
-    for (const match of matches) {
-      const varName = match[1]!;
-      const varValue = match[2]!;
+    for (const [varName, varValue] of extractSetvarAssignments(entry.content)) {
       if (!groups.has(varName)) {
         groups.set(varName, {
           name: varName,
@@ -231,6 +228,49 @@ function detectVariableGroups(prompts: STPromptEntry[]): PromptVariableGroup[] {
   }
 
   return Array.from(groups.values());
+}
+
+export function extractSetvarAssignments(content: string): Array<[name: string, value: string]> {
+  const assignments: Array<[string, string]> = [];
+  const prefix = "{{setvar::";
+  const prefixPattern = /\{\{setvar::/gi;
+  let cursor = 0;
+
+  while (cursor < content.length) {
+    prefixPattern.lastIndex = cursor;
+    const match = prefixPattern.exec(content);
+    if (!match) break;
+    const start = match.index;
+    const nameStart = start + prefix.length;
+    prefixPattern.lastIndex = nameStart;
+    const nestedStart = prefixPattern.exec(content)?.index ?? -1;
+    const separator = content.indexOf("::", nameStart);
+    if (nestedStart >= 0 && (separator < 0 || nestedStart < separator)) {
+      cursor = nestedStart;
+      continue;
+    }
+    if (separator < 0) break;
+    const name = content.slice(nameStart, separator);
+    if (!/^\w+$/u.test(name)) {
+      cursor = start + prefix.length;
+      continue;
+    }
+    const firstClose = content.indexOf("}", separator + 2);
+    if (firstClose < 0) break;
+    if (nestedStart >= 0 && nestedStart < firstClose) {
+      cursor = nestedStart;
+      continue;
+    }
+
+    if (firstClose > separator + 2 && content[firstClose + 1] === "}") {
+      assignments.push([name, content.slice(separator + 2, firstClose)]);
+      cursor = firstClose + 2;
+    } else {
+      cursor = firstClose + 1;
+    }
+  }
+
+  return assignments;
 }
 
 /**
@@ -275,7 +315,10 @@ function guessPresetName(raw: Record<string, unknown>, fileName?: string): strin
     // Match {{// PresetName ... }} comment on first line
     const commentMatch = readme.content.match(/\{\{\/\/\s*([^(\n{]+)/);
     if (commentMatch) {
-      const name = commentMatch[1]!.replace(/[,!]+\s*$/, "").trim();
+      const rawName = commentMatch[1]!.trimEnd();
+      let nameEnd = rawName.length;
+      while (nameEnd > 0 && (rawName[nameEnd - 1] === "," || rawName[nameEnd - 1] === "!")) nameEnd--;
+      const name = rawName.slice(0, nameEnd).trim();
       if (name.length > 2) return name;
     }
     // Fallback: match "name:" or "title:" or "preset:" patterns

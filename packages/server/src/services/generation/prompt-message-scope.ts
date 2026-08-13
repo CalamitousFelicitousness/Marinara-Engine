@@ -161,19 +161,55 @@ function removeOtherCharacterProfileContent(content: string, otherCharacters: Ch
 }
 
 function stripChatHistoryXmlWrappers(content: string): string {
-  return content
-    .replace(/^\s*<chat_history>\s*\n?/i, "")
-    .replace(/\n?\s*<\/chat_history>\s*$/i, "")
-    .replace(/^\s*<last_message>\s*\n?/i, "")
-    .replace(/\n?\s*<\/last_message>\s*$/i, "")
-    .trim();
+  let stripped = content;
+  for (const tagName of ["chat_history", "last_message"]) {
+    const openingTag = `<${tagName}>`;
+    const withoutLeadingWhitespace = stripped.trimStart();
+    if (withoutLeadingWhitespace.slice(0, openingTag.length).toLowerCase() === openingTag) {
+      stripped = withoutLeadingWhitespace.slice(openingTag.length).trimStart();
+    }
+
+    const closingTag = `</${tagName}>`;
+    const withoutTrailingWhitespace = stripped.trimEnd();
+    if (withoutTrailingWhitespace.slice(-closingTag.length).toLowerCase() === closingTag) {
+      stripped = withoutTrailingWhitespace.slice(0, -closingTag.length).trimEnd();
+    }
+  }
+  return stripped.trim();
 }
 
 function stripChatHistoryMarkdownWrappers(content: string): string {
-  return content
-    .replace(/^\s*##\s+Chat History\s*\n/i, "")
-    .replace(/^\s*##\s+Last Message\s*\n/i, "")
-    .trim();
+  let stripped = content;
+  for (const heading of ["chat history", "last message"]) {
+    const withoutLeadingWhitespace = stripped.trimStart();
+    const lineEnd = withoutLeadingWhitespace.indexOf("\n");
+    if (lineEnd < 0 || normalizeHistoryMarkdownHeading(withoutLeadingWhitespace.slice(0, lineEnd)) !== heading) {
+      continue;
+    }
+    stripped = withoutLeadingWhitespace.slice(lineEnd + 1).trimStart();
+  }
+  return stripped.trim();
+}
+
+function normalizeHistoryMarkdownHeading(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("##")) return null;
+  const boundary = trimmed[2];
+  if (!boundary || boundary.trim() !== "") return null;
+  const heading = trimmed.slice(3).trim().toLowerCase();
+  return heading === "chat history" || heading === "last message" ? heading : null;
+}
+
+function hasChatHistoryMarkdownWrapper(content: string): boolean {
+  let lineStart = 0;
+  while (lineStart <= content.length) {
+    const newlineIndex = content.indexOf("\n", lineStart);
+    const lineEnd = newlineIndex < 0 ? content.length : newlineIndex;
+    if (normalizeHistoryMarkdownHeading(content.slice(lineStart, lineEnd))) return true;
+    if (newlineIndex < 0) return false;
+    lineStart = newlineIndex + 1;
+  }
+  return false;
 }
 
 function reassignHistoryLastMessageWrapper(messages: GenerationPromptMessage[]): void {
@@ -185,9 +221,7 @@ function reassignHistoryLastMessageWrapper(messages: GenerationPromptMessage[]):
   const hasXmlWrappers = historyIndexes.some((index) =>
     /<\/?(?:chat_history|last_message)>/i.test(messages[index]!.content),
   );
-  const hasMarkdownWrappers = historyIndexes.some((index) =>
-    /(?:^|\n)\s*##\s+(?:Chat History|Last Message)\s*(?:\n|$)/i.test(messages[index]!.content),
-  );
+  const hasMarkdownWrappers = historyIndexes.some((index) => hasChatHistoryMarkdownWrapper(messages[index]!.content));
   if (!hasXmlWrappers && !hasMarkdownWrappers) return;
 
   for (const index of historyIndexes) {

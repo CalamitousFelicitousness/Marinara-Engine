@@ -174,6 +174,7 @@ import { generateIllustratorImageVariants } from "../../packages/server/src/serv
 import { fetchBotBrowserJson } from "../../packages/server/src/services/bot-browser/fetch-json.js";
 import { isAllowedResponseContentType, validateOutboundUrl } from "../../packages/server/src/utils/security.js";
 import { seedDefaultBackgrounds } from "../../packages/server/src/db/seed-backgrounds.js";
+import { normalizeBackgroundMeta } from "../../packages/server/src/routes/backgrounds.routes.js";
 import {
   DEFAULT_CHAT_GENERATION_TIMEOUT_MS,
   DEFAULT_GAME_DYNAMIC_IMAGE_PROMPT_TIMEOUT_MS,
@@ -3555,6 +3556,25 @@ assert.deepEqual(professorMariAboutMeCommands[1], {
   name: "Alex Storm",
   aboutMe: "",
 });
+const strictCharacterNumberCommands = parseCharacterCommands(
+  '[create_character: name="Decimal", talkativeness=0.5]\n' +
+    '[create_character: name="Not Decimal", talkativeness=0x5]',
+).commands;
+assert.equal(strictCharacterNumberCommands[0]?.type, "create_character");
+assert.equal(
+  strictCharacterNumberCommands[0]?.type === "create_character"
+    ? strictCharacterNumberCommands[0].talkativeness
+    : undefined,
+  0.5,
+);
+assert.equal(strictCharacterNumberCommands[1]?.type, "create_character");
+assert.equal(
+  strictCharacterNumberCommands[1]?.type === "create_character"
+    ? strictCharacterNumberCommands[1].talkativeness
+    : undefined,
+  undefined,
+  "Non-decimal separators must not be accepted as character numeric parameters",
+);
 
 const generatedLorebookEntry = buildLorebookEntryCreateRow(
   {
@@ -7541,6 +7561,14 @@ try {
 } finally {
   rmSync(backgroundSeedRoot, { recursive: true, force: true });
 }
+const reservedBackgroundMeta = normalizeBackgroundMeta(
+  JSON.parse('{"__proto__":{"tags":["kept"]},"normal.png":{"tags":["normal",7]}}'),
+);
+assert.equal(Object.getPrototypeOf(reservedBackgroundMeta), null);
+assert.deepEqual(reservedBackgroundMeta.__proto__?.tags, ["kept"]);
+assert.deepEqual(reservedBackgroundMeta["normal.png"]?.tags, ["normal"]);
+reservedBackgroundMeta.__proto__ = { tags: ["updated"] };
+assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata must not mutate Object.prototype");
 
 // Issue #3993 — ComfyUI model fetch must list the DiffusionModels (UNETLoader)
 // folder and keep missing loader metadata distinguishable from an empty list.

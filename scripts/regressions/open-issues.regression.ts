@@ -2510,6 +2510,67 @@ try {
     await lorebookStorage.remove(reparentTargetLorebook.id);
   }
 
+  // #4931 (reject serialization): keepAppliedReview / restoreAppliedReview / rejectRows each read
+  // pending.get(id), revert across await points, then rewrite the pending record + durable sidecar.
+  // Two concurrent requests for the SAME review (two devices, or a double-submit that slips the
+  // client busy guard) must not clobber each other. Without the per-review lock, both rejectRows
+  // calls read the same record, both revert their row, and the last writer leaves a PHANTOM entry in
+  // the pending card that was already reverted from the DB. Invariant: the pending card's entry rows
+  // always match the entries actually present in the DB.
+  const raceLorebookId = "professor-mari-reject-race-regression";
+  try {
+    const raceApprovalsBefore = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const raceCreate = await mariDb.executeAction({
+      action: "lorebook.create",
+      lorebookId: raceLorebookId,
+      data: {
+        name: "Reject-race regression",
+        entries: [
+          { name: "Race A", content: "row A" },
+          { name: "Race B", content: "row B" },
+        ],
+      },
+      apply: true,
+    });
+    assert.equal(raceCreate.ok, true, `reject-race create must succeed: ${JSON.stringify(raceCreate)}`);
+    const raceEntries = await lorebookStorage.listEntries(raceLorebookId);
+    assert.equal(raceEntries.length, 2, "two entries created before the concurrent reject");
+    const raceApproval = mariDb.getPendingApprovals().find((approval) => !raceApprovalsBefore.has(approval.id));
+    assert.ok(raceApproval, "the create produced a reviewable approval");
+    const raceSelectionFor = (entryName: string) => {
+      const entry = raceEntries.find((candidate) => candidate.name === entryName);
+      assert.ok(entry, `${entryName} present before reject`);
+      const index = raceApproval.diffPreview.findIndex(
+        (change) => change.table === "lorebook_entries" && change.id === entry.id,
+      );
+      assert.ok(index >= 0, `${entryName} appears in the diff preview`);
+      return { index, table: "lorebook_entries", id: entry.id, action: raceApproval.diffPreview[index].action };
+    };
+    // Fire both rejects at once. They interleave at restoreChanges' await; the per-review lock must
+    // serialize the read-modify-write so neither overwrites the other's shrunken plan.
+    const [resA, resB] = await Promise.all([
+      mariDb.rejectRows(raceApproval.id, [raceSelectionFor("Race A")]),
+      mariDb.rejectRows(raceApproval.id, [raceSelectionFor("Race B")]),
+    ]);
+    assert.ok(resA, "the first concurrent reject returned a result (did not throw)");
+    assert.ok(resB, "the second concurrent reject returned a result (did not throw)");
+    // Core invariant: the pending card's entry rows exactly match the entries still in the DB. A
+    // clobbering lost-update would leave a phantom entry row in the card that was already reverted.
+    const raceCard = mariDb.getPendingApprovals().find((approval) => approval.id === raceApproval.id);
+    const pendingEntryIds = (raceCard?.diffPreview ?? [])
+      .filter((change) => change.table === "lorebook_entries")
+      .map((change) => change.id)
+      .sort();
+    const liveEntryIds = (await lorebookStorage.listEntries(raceLorebookId)).map((entry) => entry.id).sort();
+    assert.deepEqual(
+      pendingEntryIds,
+      liveEntryIds,
+      "the pending card's entry rows match the DB after concurrent rejects (no phantom row from a lost update)",
+    );
+  } finally {
+    await lorebookStorage.remove(raceLorebookId);
+  }
+
   // #4931: the synthetic prompt-render DB proxy substitutes the target character's row (so the
   // assembler reads a before/after snapshot instead of the live row) while passing every other read
   // through untouched. Validated through the exact storage path the assembler uses (getById).

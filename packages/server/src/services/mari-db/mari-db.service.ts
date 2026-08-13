@@ -2399,6 +2399,11 @@ export class MariDbService {
   private history: MariDbHistoryEntry[] = [];
   private writeQueue: Promise<unknown> = Promise.resolve();
   private characterFolderMutationQueue: Promise<void> = Promise.resolve();
+  // Per-review serialization queue. keepAppliedReview / restoreAppliedReview / rejectRows each do a
+  // read-modify-write over pending.get(id) + the durable sidecar across await points; two concurrent
+  // requests for the SAME review id would both read the same record and clobber each other on write.
+  // Keyed by id so unrelated reviews stay concurrent; entries self-evict once the queue drains.
+  private reviewLocks = new Map<string, Promise<unknown>>();
 
   constructor(private readonly db: DB) {}
 
@@ -4789,6 +4794,10 @@ export class MariDbService {
 
   async keepAppliedReview(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.keepAppliedReviewLocked(id, opts));
+  }
+
+  private async keepAppliedReviewLocked(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     const record = this.pending.get(id);
     if (!record) return null;
     // #4851 "Keep & Enable": a Mari-authored memory lands disabled; flip it on when the
@@ -4830,6 +4839,16 @@ export class MariDbService {
     | null
   > {
     this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.restoreAppliedReviewLocked(id));
+  }
+
+  private async restoreAppliedReviewLocked(
+    id: string,
+  ): Promise<
+    | { approval: MariDbPendingApproval; history: MariDbHistoryEntry }
+    | { approval: MariDbPendingApproval; outcome: "state_changed"; error: string }
+    | null
+  > {
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
@@ -4882,6 +4901,18 @@ export class MariDbService {
     | null
   > {
     this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.rejectRowsLocked(id, selections));
+  }
+
+  private async rejectRowsLocked(
+    id: string,
+    selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
+  ): Promise<
+    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | { outcome: "state_changed"; error: string }
+    | { outcome: "invalid_selection"; error: string }
+    | null
+  > {
     const record = this.pending.get(id);
     if (!record) return null;
 
@@ -7293,6 +7324,26 @@ export class MariDbService {
     return run;
   }
 
+  // Serialize an operation against all others touching the SAME review id (see reviewLocks). The
+  // stored tail never rejects, so a failed operation cannot wedge the id's queue; the next waiter
+  // still runs. The tail self-evicts from the map once it is the last holder, so ids do not
+  // accumulate. Distinct ids never block each other. Callers must NOT nest this on the same id
+  // (keepAppliedReviewAndWait deliberately does its read-only snapshot outside the lock, then
+  // delegates the mutation to keepAppliedReview, which takes the lock once).
+  private withReviewLock<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    const prev = this.reviewLocks.get(id) ?? Promise.resolve();
+    const run = prev.then(operation);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.reviewLocks.set(id, tail);
+    void tail.then(() => {
+      if (this.reviewLocks.get(id) === tail) this.reviewLocks.delete(id);
+    });
+    return run;
+  }
+
   private async planDelete(request: ParsedMutationRequest, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
     if (!request.id && !request.where?.trim()) {
@@ -8069,13 +8120,21 @@ export class MariDbService {
     // entries are the oldest reviews; evicting them never touches the review that was just added.
     const evictable = Array.from(this.pending.values()).slice(0, this.pending.size - PENDING_REVIEW_LIMIT);
     for (const record of evictable) {
-      this.pending.delete(record.id);
-      await this.deletePendingSidecar(record.id);
-      logger.info(
-        "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
-        record.id,
-        PENDING_REVIEW_LIMIT,
-      );
+      // Serialize eviction against a concurrent keep/restore/reject on the SAME id (the withReviewLock
+      // contract). Otherwise a partial rejectRows whose trailing writePendingSidecar is mid-flight
+      // (mkdir/writeFile await before the atomic rename) could recreate the sidecar this eviction just
+      // retired, resurrecting a phantom review on the next restart. Re-check membership inside the lock
+      // in case that concurrent op already resolved the review.
+      await this.withReviewLock(record.id, async () => {
+        if (!this.pending.has(record.id)) return;
+        this.pending.delete(record.id);
+        await this.deletePendingSidecar(record.id);
+        logger.info(
+          "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
+          record.id,
+          PENDING_REVIEW_LIMIT,
+        );
+      });
     }
   }
 

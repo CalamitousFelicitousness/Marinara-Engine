@@ -54,10 +54,27 @@ assert.equal(
   true,
   "a visible Android client on the host device receives the lightweight heartbeat",
 );
-for (const hostname of ["localhost", "marinara.localhost", "127.0.0.1", "::1", "[::1]"]) {
+for (const hostname of [
+  "localhost",
+  "marinara.localhost",
+  "127.0.0.1",
+  "127.0.0.2",
+  "127.255.255.255",
+  "::1",
+  "[::1]",
+]) {
   assert.equal(isLoopbackHostname(hostname), true, `${hostname} is an explicit loopback host`);
 }
-for (const hostname of ["", "0.0.0.0", "192.168.1.7", "100.64.0.7", "marinara.example"]) {
+for (const hostname of [
+  "",
+  "0.0.0.0",
+  "127.0.0",
+  "127.0.0.256",
+  "127.0.0.1.2",
+  "192.168.1.7",
+  "100.64.0.7",
+  "marinara.example",
+]) {
   assert.equal(isLoopbackHostname(hostname), false, `${hostname || "an empty hostname"} is not a loopback client`);
 }
 for (const blocked of [

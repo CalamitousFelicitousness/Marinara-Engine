@@ -18,6 +18,7 @@
 import { api } from "./api-client";
 
 export const ANDROID_HOST_HEARTBEAT_INTERVAL_MS = 10_000;
+const IPV4_LOOPBACK_HOSTNAME_RE = /^127(?:\.(?:0|[1-9]\d?|1\d{2}|2[0-4]\d|25[0-5])){3}$/u;
 
 let started = false;
 
@@ -35,7 +36,7 @@ export function isLoopbackHostname(hostname: string): boolean {
   return (
     normalized === "localhost" ||
     normalized.endsWith(".localhost") ||
-    normalized === "127.0.0.1" ||
+    IPV4_LOOPBACK_HOSTNAME_RE.test(normalized) ||
     normalized === "::1" ||
     normalized === "[::1]"
   );

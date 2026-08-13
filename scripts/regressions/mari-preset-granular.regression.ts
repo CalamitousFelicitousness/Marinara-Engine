@@ -29,7 +29,7 @@ try {
       action: "preset.create",
       data: {
         name: "Granular Preset",
-        systemKey: "marinara-universal-preset",
+        system_key: "marinara-universal-preset",
         groups: [{ name: "Formatting" }],
         sections: [
           { name: "Intro", content: "You are a helpful assistant.", role: "system" },

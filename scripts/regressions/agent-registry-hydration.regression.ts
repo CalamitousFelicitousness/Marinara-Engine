@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { replaceBuiltInAgentDefinitions, type BuiltInAgentManifest } from "../../packages/shared/dist/index.js";
+import {
+  replaceBuiltInAgentDefinitions,
+  type BuiltInAgentManifest,
+  type InstalledCapabilityPackage,
+} from "../../packages/shared/dist/index.js";
 import { buildRoleplayAgentSettingsOrder } from "../../packages/client/src/lib/agent-settings-order.js";
-import { selectVisibleTrackerCapabilityAgents } from "../../packages/client/src/hooks/use-capability-packages.js";
+import {
+  isCapabilityPackageAvailableUntilRestart,
+  selectHomeBrowserPackages,
+  selectVisibleTrackerCapabilityAgents,
+} from "../../packages/client/src/hooks/use-capability-packages.js";
 import { isReviewableWriterAgentType } from "../../packages/server/src/services/generation/runtime-agent-sections.js";
 
 const manifests: BuiltInAgentManifest[] = [
@@ -135,6 +143,32 @@ assert.deepEqual(
   "Connections must use refreshed capability-agent definitions while it remains mounted",
 );
 
+const pendingNoodleUpdate = {
+  id: "noodle",
+  version: "1.0.9",
+  manifest: {
+    entrypoints: { client: "client.js" },
+    contributions: {
+      slots: ["home-browser-tab"],
+      homeBrowserTab: { label: "Noodle", ariaLabel: "Open Noodle" },
+    },
+  },
+  status: "restart-required",
+  readiness: "pending",
+  previousVersion: "1.0.8",
+} as unknown as InstalledCapabilityPackage;
+assert.equal(isCapabilityPackageAvailableUntilRestart(pendingNoodleUpdate), true);
+assert.deepEqual(
+  selectHomeBrowserPackages([pendingNoodleUpdate]).map((item) => item.id),
+  ["noodle"],
+  "A Noodle update waiting for restart must keep the already-loaded Home tab visible",
+);
+assert.deepEqual(
+  selectHomeBrowserPackages([{ ...pendingNoodleUpdate, previousVersion: undefined }]).map((item) => item.id),
+  [],
+  "A first install waiting for restart must not expose a client module that has never loaded",
+);
+
 const connectionsPanelSource = await readFile(
   new URL("../../packages/client/src/components/panels/ConnectionsPanel.tsx", import.meta.url),
   "utf8",
@@ -158,9 +192,22 @@ assert.match(
   /const trackerLocalCount = useMemo\(\(\) => \{[\s\S]*?return trackerAgents\.filter\([\s\S]*?\}, \[agentConfigs, trackerAgents\]\);/u,
   "the Sidecar count must consume the reactive tracker list",
 );
+
+const capabilityPackageRoutesSource = await readFile(
+  new URL("../../packages/server/src/routes/capability-packages.routes.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  capabilityPackageRoutesSource,
+  /if \(installed\.status !== "restart-required"\) await refreshCapabilityAgentRegistry\(\);/u,
+  "A restart-required update must retain the current session's agent registry until restart",
+);
 const assignHandlerStart = sidecarCardSource.indexOf("const handleAssignTrackersToLocal = async () => {");
 const assignHandlerEnd = sidecarCardSource.indexOf("\n  const handleModelLoadToggle", assignHandlerStart);
-assert.ok(assignHandlerStart >= 0 && assignHandlerEnd > assignHandlerStart, "Connections must retain assign-all handling");
+assert.ok(
+  assignHandlerStart >= 0 && assignHandlerEnd > assignHandlerStart,
+  "Connections must retain assign-all handling",
+);
 assert.match(
   sidecarCardSource.slice(assignHandlerStart, assignHandlerEnd),
   /trackerAgents\.map\(async \(agent\) => \{/u,

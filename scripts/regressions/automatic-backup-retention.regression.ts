@@ -159,13 +159,15 @@ try {
     }),
   );
   await writeFile(zip64RestorePath, buildBackupRestoreNotes());
+  const zip64ManifestSize = (await stat(zip64ManifestPath)).size;
+  const zip64RestoreSize = (await stat(zip64RestorePath)).size;
   await writeStoredBackupArchiveForRegression(
     zip64Archive,
     [
       {
         entryName: "marinara-automatic-backup/marinara-profile.json",
         filePath: zip64ManifestPath,
-        size: (await stat(zip64ManifestPath)).size,
+        size: zip64ManifestSize,
       },
       {
         entryName: "marinara-automatic-backup/backgrounds/large.gif",
@@ -176,10 +178,14 @@ try {
       {
         entryName: "marinara-automatic-backup/RESTORE.txt",
         filePath: zip64RestorePath,
-        size: (await stat(zip64RestorePath)).size,
+        size: zip64RestoreSize,
       },
     ],
-    { entryLimitBytes: 1024, unlimitedArchiveSize: true, forceZip64: true },
+    {
+      entryLimitBytes: Math.max(zip64ManifestSize, zip64RestoreSize),
+      unlimitedArchiveSize: true,
+      forceZip64: true,
+    },
   );
   const zip64Inspection = await inspectStoredBackupArchiveForRegression(zip64Archive);
   assert.equal(zip64Inspection.isFullBackup, true, "a stored ZIP64 full backup must receive the restore policy");
@@ -198,9 +204,12 @@ try {
     [{ path: "backgrounds/large.gif", expectedSize: logicalSize, read: () => zip64Import.asset }],
     zip64Import.assetTotalByteLimit,
   );
-  await promoteStagedProfileAssets(zip64Restore);
-  assert.equal((await stat(join(zipFixtureRoot, "zip64-restored", "backgrounds", "large.gif"))).size, logicalSize);
-  await cleanupStagedProfileAssets(zip64Restore);
+  try {
+    await promoteStagedProfileAssets(zip64Restore);
+    assert.equal((await stat(join(zipFixtureRoot, "zip64-restored", "backgrounds", "large.gif"))).size, logicalSize);
+  } finally {
+    await cleanupStagedProfileAssets(zip64Restore);
+  }
 
   const retainedSource = join(zipFixtureRoot, "retained.gif");
   const missingSource = join(zipFixtureRoot, "missing.gif");

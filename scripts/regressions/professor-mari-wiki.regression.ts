@@ -7,6 +7,7 @@ import {
   wikiApiUrl,
   wikiRefFromInput,
 } from "../../packages/server/src/services/professor-mari/fandom-mediawiki/fandom-url.js";
+import { stripHtml } from "../../packages/server/src/services/professor-mari/fandom-mediawiki/html-text.js";
 
 const wikipedia = wikiRefFromInput("en.wikipedia.org");
 assert.equal(wikipedia.host, "en.wikipedia.org");
@@ -22,8 +23,12 @@ assert.equal(
 );
 
 assert.equal(wikiRefFromInput("genshin-impact").host, "genshin-impact.fandom.com");
+assert.equal(wikiRefFromInput("genshin-impact").slug, "genshin-impact");
 assert.throws(() => wikiRefFromInput("http://en.wikipedia.org/wiki/Test"), /Only HTTPS/u);
-assert.throws(() => wikiRefFromInput("https://wikipedia.org/wiki/Test"), /Only \*\.fandom\.com and \*\.wikipedia\.org/u);
+assert.throws(
+  () => wikiRefFromInput("https://wikipedia.org/wiki/Test"),
+  /Only \*\.fandom\.com and \*\.wikipedia\.org/u,
+);
 assert.throws(() => wikiRefFromInput("https://example.com/wiki/Test"), /Only \*\.fandom\.com and \*\.wikipedia\.org/u);
 assert.throws(() => wikiRefFromInput("https://127.0.0.1/wiki/Test"), /IP literal/u);
 assert.equal(
@@ -34,6 +39,8 @@ assert.throws(
   () => serviceUrl("https://en.wikipedia.org/w/api.php", { action: "query" }),
   /must stay on services\.fandom\.com/u,
 );
+assert.equal(stripHtml('<script type="text/javascript">hidden()</script >Visible'), "Visible");
+assert.equal(stripHtml('<style type="text/css">.hidden { display: none }</style >Readable'), "Readable");
 assert.throws(
   () => assertSafeRedirect(new URL(wikipedia.apiUrl), new URL("https://fr.wikipedia.org/w/api.php")),
   /crossed to a different host/u,

@@ -70,6 +70,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Hardened imported and model-authored content against pathological parsing inputs and reserved metadata keys without removing supported import formats or local tools.
 - Kept visible Android browsers connected to a same-device Termux server responsive with a lightweight loopback-only heartbeat, without restoring hidden-tab or remote-client polling (#4968).
 - Kept long-running SwarmUI image requests alive across idle container networking while retaining the configured ComfyUI generation deadline (#4969).
 - Restored Professor Mari preset creation while keeping Engine-owned preset identifiers protected from user input.

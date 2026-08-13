@@ -319,14 +319,14 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
   expect(squareRadius).toBeLessThan(squareWidth / 3);
 });
 
-test("Message avatar scale stays interactive at the largest display size", async ({ page }) => {
+test("Art scale sliders stay interactive at the largest display size", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-tour="panel-settings"]').click();
   await page.getByRole("tab", { name: "Appearance" }).click();
 
-  const control = page.locator("#settings-control-roleplay-avatar-scale");
-  const slider = control.locator('input[type="range"]');
-  const exerciseSlider = async () => {
+  const exerciseSlider = async (controlId: string) => {
+    const control = page.locator(`#${controlId}`);
+    const slider = control.locator('input[type="range"]');
     await control.scrollIntoViewIfNeeded();
     await expect(slider).toBeVisible();
 
@@ -348,9 +348,14 @@ test("Message avatar scale stays interactive at the largest display size", async
     }
   };
 
-  await exerciseSlider();
+  const controlIds = [
+    "settings-control-roleplay-avatar-scale",
+    "settings-control-game-dialogue-portrait-scale",
+    "settings-control-game-full-body-sprite-scale",
+  ];
+  for (const controlId of controlIds) await exerciseSlider(controlId);
   await page.locator("#settings-control-display-size select").selectOption("22");
-  await exerciseSlider();
+  for (const controlId of controlIds) await exerciseSlider(controlId);
 });
 
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {

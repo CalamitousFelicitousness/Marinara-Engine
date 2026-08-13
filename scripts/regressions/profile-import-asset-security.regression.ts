@@ -53,6 +53,10 @@ const entitySvg = Buffer.from(
   '<!DOCTYPE svg [<!ENTITY payload SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg"><text>&payload;</text></svg>',
   "utf8",
 );
+const whitespaceHeavyActiveSvg = Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg"><a href=${" ".repeat(100_000)}"javascript:alert(1)"/></svg>`,
+  "utf8",
+);
 const validMp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0]);
 const videoManifest = Buffer.from('{"version":1,"videos":[]}', "utf8");
 
@@ -62,10 +66,17 @@ try {
   assert.equal(validateImageAssetBuffer(javascript, "payload.js"), null);
   assert.ok(validateImageAssetBuffer(passiveSvgWithDoctype, "sprite.svg", { allowSvg: true }));
   assert.equal(validateImageAssetBuffer(entitySvg, "sprite.svg", { allowSvg: true }), null);
+  assert.equal(validateImageAssetBuffer(whitespaceHeavyActiveSvg, "sprite.svg", { allowSvg: true }), null);
   const passiveSvgPath = join(dataDir, "passive.svg");
   writeFileSync(passiveSvgPath, passiveSvgWithDoctype);
   assert.equal(await validateImageAssetFile(passiveSvgPath, "passive.svg"), null);
   assert.ok(await validateImageAssetFile(passiveSvgPath, "passive.svg", { allowSvg: true }));
+  writeFileSync(outsideFile, validPng);
+  assert.equal(
+    await validateImageAssetFile(outsideFile, "outside.png"),
+    null,
+    "media validation must not read a file outside Marinara's configured media roots",
+  );
   const oversizedSvgPath = join(dataDir, "oversized.svg");
   writeFileSync(oversizedSvgPath, "<svg>");
   truncateSync(oversizedSvgPath, 50 * 1024 * 1024 + 1);
@@ -240,6 +251,17 @@ try {
     assert.equal(textAsset.statusCode, 200);
     assert.equal(textAsset.headers["content-type"], "application/octet-stream");
     assert.match(textAsset.headers["content-disposition"] ?? "", /^attachment;/u);
+
+    const nestedAssetDir = join(dataDir, "game-assets", "backgrounds", "fantasy");
+    mkdirSync(nestedAssetDir, { recursive: true });
+    writeFileSync(join(nestedAssetDir, "valid.png"), validPng);
+    const nestedAsset = await app.inject({
+      method: "GET",
+      url: "/api/game-assets/file/backgrounds/fantasy/valid.png",
+    });
+    assert.equal(nestedAsset.statusCode, 200);
+    assert.equal(nestedAsset.headers["content-type"], "image/png");
+    assert.deepEqual(nestedAsset.rawPayload, validPng);
   } finally {
     await app.close();
     await db._fileStore.close();

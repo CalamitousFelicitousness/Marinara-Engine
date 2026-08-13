@@ -6,15 +6,34 @@ import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   formatProfileImportWarningDetails,
   formatProfileImportWarningSummary,
+  type ProfileImportWarningCopy,
 } from "../../packages/client/src/lib/profile-import-warnings.js";
 
+const warningCopy: ProfileImportWarningCopy = {
+  missingAssetSummary: (count) => `${count} asset file${count === 1 ? "" : "s"} missing from the ZIP.`,
+  securityWarningSummary: (count) => `${count} import security warning${count === 1 ? "" : "s"}.`,
+  missingLabel: "Missing",
+  additionalPaths: (count) => `, +${count} more`,
+  additionalMessages: (count) => ` +${count} more.`,
+};
 const mixedWarnings = [
   { type: "missing_asset", path: "gallery/missing.png", message: "Missing asset" },
   { type: "custom_tools_quarantined", message: "1 imported executable custom tool will be disabled." },
+  {
+    type: "asset_rejected",
+    path: "gallery/rejected.svg",
+    message: "Rejected an unsafe profile image.",
+  },
 ];
-assert.match(formatProfileImportWarningSummary(mixedWarnings), /1 asset file.*1 import security warning/su);
-assert.match(formatProfileImportWarningDetails(mixedWarnings), /Missing: gallery\/missing\.png/su);
-assert.match(formatProfileImportWarningDetails(mixedWarnings), /1 imported executable custom tool will be disabled/su);
+assert.match(
+  formatProfileImportWarningSummary(mixedWarnings, warningCopy),
+  /1 asset file.*2 import security warnings/su,
+);
+const mixedWarningDetails = formatProfileImportWarningDetails(mixedWarnings, warningCopy);
+assert.match(mixedWarningDetails, /Missing: gallery\/missing\.png/su);
+assert.doesNotMatch(mixedWarningDetails, /Missing:[^\n]*rejected\.svg/su);
+assert.match(mixedWarningDetails, /1 imported executable custom tool will be disabled/su);
+assert.match(mixedWarningDetails, /Rejected an unsafe profile image/su);
 
 const storageRoot = await mkdtemp(join(tmpdir(), "marinara-profile-import-data-security-"));
 const previousDataDir = process.env.DATA_DIR;
@@ -83,8 +102,11 @@ try {
 
     const importedConnections = [
       importedConnection("same-identity", { name: "Restored same endpoint", model: "gpt-restored" }),
-      importedConnection("changed-base", { baseUrl: "https://collector.example/v1" }),
-      importedConnection("changed-provider", { provider: "custom" }),
+      importedConnection("changed-base", {
+        provider: "image_generation",
+        baseUrl: "https://collector.example/v1",
+      }),
+      importedConnection("changed-provider", { provider: "video_generation" }),
       importedConnection("changed-embedding", { embeddingBaseUrl: "https://collector.example/embeddings" }),
       connectionFixture("new-connection", {
         apiKeyEncrypted: "foreign-profile-ciphertext",
@@ -226,6 +248,52 @@ try {
         assert.equal(connection[field], "false", `${id}.${field} must wait for local credential review`);
       }
     }
+    await connections.update("same-identity", {
+      isDefault: false,
+      fallbackForMain: false,
+      defaultForAgents: false,
+      fallbackForAgents: false,
+    });
+    await connections.update("changed-embedding", { isDefault: true });
+    assert.equal(await connections.getDefault(), null, "the main default must exclude an unreviewed endpoint");
+    await connections.update("changed-embedding", { isDefault: false, fallbackForMain: true });
+    assert.equal(await connections.getFallbackForMain(), null, "the main fallback must exclude an unreviewed endpoint");
+    await connections.update("changed-embedding", { fallbackForMain: false, defaultForAgents: true });
+    assert.equal(
+      await connections.getDefaultForAgents(),
+      null,
+      "the agent default must exclude an unreviewed endpoint",
+    );
+    await connections.update("changed-embedding", { defaultForAgents: false, fallbackForAgents: true });
+    assert.equal(
+      await connections.getFallbackForAgents(),
+      null,
+      "the agent fallback must exclude an unreviewed endpoint",
+    );
+    await connections.update("changed-base", { defaultForAgents: true });
+    assert.equal(
+      await connections.getDefaultForImageGeneration(),
+      null,
+      "the image default must exclude an unreviewed endpoint",
+    );
+    await connections.update("changed-base", { defaultForAgents: false, fallbackForAgents: true });
+    assert.equal(
+      await connections.getFallbackForImageGeneration(),
+      null,
+      "the image fallback must exclude an unreviewed endpoint",
+    );
+    await connections.update("changed-provider", { defaultForAgents: true });
+    assert.equal(
+      await connections.getDefaultForVideoGeneration(),
+      null,
+      "the video default must exclude an unreviewed endpoint",
+    );
+    await connections.update("changed-provider", { defaultForAgents: false, fallbackForAgents: true });
+    assert.equal(
+      await connections.getFallbackForVideoGeneration(),
+      null,
+      "the video fallback must exclude an unreviewed endpoint",
+    );
     await connections.update("new-connection", { imagePath: "/api/connections/images/file/review.png" });
     assert.equal(
       await connections.getWithKey("new-connection"),

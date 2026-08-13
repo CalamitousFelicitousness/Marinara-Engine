@@ -39,13 +39,19 @@ export function createConnectionsStorage(db: DB) {
     },
 
     async getDefault() {
-      const rows = await db.select().from(apiConnections).where(eq(apiConnections.isDefault, "true"));
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(and(eq(apiConnections.isDefault, "true"), ne(apiConnections.profileImportReviewRequired, "true")));
       return rows[0] ?? null;
     },
 
     /** Get the language connection used after a main generation failure. */
     async getFallbackForMain() {
-      const rows = await db.select().from(apiConnections).where(eq(apiConnections.fallbackForMain, "true"));
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(and(eq(apiConnections.fallbackForMain, "true"), ne(apiConnections.profileImportReviewRequired, "true")));
       const row = rows.find((candidate) => defaultCategoryForProvider(candidate.provider) === "language");
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -53,7 +59,12 @@ export function createConnectionsStorage(db: DB) {
 
     /** Get the connection marked as default for agents (with decrypted key). */
     async getDefaultForAgents() {
-      const rows = await db.select().from(apiConnections).where(eq(apiConnections.defaultForAgents, "true"));
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(
+          and(eq(apiConnections.defaultForAgents, "true"), ne(apiConnections.profileImportReviewRequired, "true")),
+        );
       const row = rows.find((candidate) => defaultCategoryForProvider(candidate.provider) === "language");
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -61,7 +72,12 @@ export function createConnectionsStorage(db: DB) {
 
     /** Get the language connection used after an agent generation failure. */
     async getFallbackForAgents() {
-      const rows = await db.select().from(apiConnections).where(eq(apiConnections.fallbackForAgents, "true"));
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(
+          and(eq(apiConnections.fallbackForAgents, "true"), ne(apiConnections.profileImportReviewRequired, "true")),
+        );
       const row = rows.find((candidate) => defaultCategoryForProvider(candidate.provider) === "language");
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -72,7 +88,13 @@ export function createConnectionsStorage(db: DB) {
       const rows = await db
         .select()
         .from(apiConnections)
-        .where(and(eq(apiConnections.defaultForAgents, "true"), eq(apiConnections.provider, "image_generation")));
+        .where(
+          and(
+            eq(apiConnections.defaultForAgents, "true"),
+            eq(apiConnections.provider, "image_generation"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
       const row = rows[0] ?? null;
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -83,7 +105,13 @@ export function createConnectionsStorage(db: DB) {
       const rows = await db
         .select()
         .from(apiConnections)
-        .where(and(eq(apiConnections.fallbackForAgents, "true"), eq(apiConnections.provider, "image_generation")));
+        .where(
+          and(
+            eq(apiConnections.fallbackForAgents, "true"),
+            eq(apiConnections.provider, "image_generation"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
       const row = rows[0] ?? null;
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -94,7 +122,13 @@ export function createConnectionsStorage(db: DB) {
       const rows = await db
         .select()
         .from(apiConnections)
-        .where(and(eq(apiConnections.defaultForAgents, "true"), eq(apiConnections.provider, "video_generation")));
+        .where(
+          and(
+            eq(apiConnections.defaultForAgents, "true"),
+            eq(apiConnections.provider, "video_generation"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
       const row = rows[0] ?? null;
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
@@ -105,7 +139,13 @@ export function createConnectionsStorage(db: DB) {
       const rows = await db
         .select()
         .from(apiConnections)
-        .where(and(eq(apiConnections.fallbackForAgents, "true"), eq(apiConnections.provider, "video_generation")));
+        .where(
+          and(
+            eq(apiConnections.fallbackForAgents, "true"),
+            eq(apiConnections.provider, "video_generation"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
       const row = rows[0] ?? null;
       if (!row) return null;
       return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };

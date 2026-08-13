@@ -28,6 +28,20 @@ assert.match(imageSetAsset, /url\(about:invalid\)/u, "blocked image-set sources 
 assert.match(imageSetAsset, /"data:image\/png;base64,AA=="/u, "embedded image-set sources remain available");
 assert.doesNotMatch(imageSetAsset, /image-set\s*\(\s*var\(/iu, "indirect image-set sources cannot bypass filtering");
 
+const mixedImageSetAsset = sanitizeAppCss(
+  '.mixed { --track: "https://example.invalid/mixed.png"; background-image: image-set("data:image/png;base64,AA==" 1x, var(--track) 2x); }',
+);
+assert.match(
+  mixedImageSetAsset,
+  /background-image:\s*url\(about:invalid\)/u,
+  "one unsafe image-set candidate rejects the complete expression",
+);
+assert.doesNotMatch(
+  mixedImageSetAsset,
+  /background-image:\s*image-set/iu,
+  "a mixed image-set cannot retain its embedded candidate",
+);
+
 for (const reconstructingCss of [
   '@imexpression(x)port uexpression(x)rl("https://example.invalid/expression.css"); .safe { color: red; }',
   '@im@import url("https://example.invalid/nested.css");port url("https://example.invalid/outer.css"); .safe { color: red; }',

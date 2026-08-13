@@ -1,5 +1,6 @@
-import { open } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { open, realpath } from "node:fs/promises";
+import { basename, extname, join, resolve, sep } from "node:path";
+import { getDataDir, getFileStorageDir } from "../config/runtime-config.js";
 import { assertInsideDir, isAllowedImageBuffer } from "./security.js";
 
 const RASTER_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"]);
@@ -18,6 +19,84 @@ export type ValidatedVideoAsset = {
 
 function normalizedRasterExtension(extension: string): string {
   return extension === ".jpeg" ? "jpg" : extension.slice(1);
+}
+
+function isXmlNameCharacter(character: string | undefined): boolean {
+  if (!character) return false;
+  const code = character.charCodeAt(0);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    character === "." ||
+    character === "-" ||
+    character === "_" ||
+    character === ":"
+  );
+}
+
+function skipXmlWhitespace(source: string, start: number): number {
+  let cursor = start;
+  while (
+    source[cursor] === " " ||
+    source[cursor] === "\t" ||
+    source[cursor] === "\n" ||
+    source[cursor] === "\r" ||
+    source[cursor] === "\f"
+  ) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+/** Scan URL-valued SVG attributes without backtracking over attacker-controlled whitespace. */
+function hasUnsafeSvgHref(source: string): boolean {
+  const normalized = source.toLowerCase();
+  for (const attribute of ["href", "xlink:href"] as const) {
+    let searchFrom = 0;
+    while (searchFrom < normalized.length) {
+      const start = normalized.indexOf(attribute, searchFrom);
+      if (start < 0) break;
+      searchFrom = start + attribute.length;
+      if (isXmlNameCharacter(normalized[start - 1]) || isXmlNameCharacter(normalized[searchFrom])) continue;
+
+      let cursor = skipXmlWhitespace(normalized, searchFrom);
+      if (normalized[cursor] !== "=") continue;
+      cursor = skipXmlWhitespace(normalized, cursor + 1);
+      if (normalized[cursor] === '"' || normalized[cursor] === "'") {
+        cursor = skipXmlWhitespace(normalized, cursor + 1);
+      }
+      if (
+        normalized.startsWith("javascript", cursor) ||
+        normalized.startsWith("vbscript", cursor) ||
+        normalized.startsWith("data:text/html", cursor)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Resolve symlinks and permit reads only from Marinara's configured media roots. */
+async function resolveAllowedMediaPath(filePath: string): Promise<string | null> {
+  let canonicalPath: string;
+  try {
+    canonicalPath = await realpath(resolve(filePath));
+  } catch {
+    return null;
+  }
+
+  for (const configuredRoot of new Set([getDataDir(), getFileStorageDir()])) {
+    try {
+      const canonicalRoot = await realpath(resolve(configuredRoot));
+      const rootPrefix = canonicalRoot.endsWith(sep) ? canonicalRoot : `${canonicalRoot}${sep}`;
+      if (canonicalPath === canonicalRoot || canonicalPath.startsWith(rootPrefix)) return canonicalPath;
+    } catch {
+      // A configured root may not exist yet; it cannot contain this file.
+    }
+  }
+  return null;
 }
 
 /**
@@ -49,7 +128,7 @@ export function isSafeSvgImageBuffer(buffer: Buffer): boolean {
     /<!doctype|<!entity/iu.test(withoutPassiveDoctype) ||
     /<(?:script|foreignObject|iframe|object|embed)(?:\s|>)/iu.test(source) ||
     /\bon[a-z][a-z0-9_-]*\s*=/iu.test(source) ||
-    /\b(?:href|xlink:href)\s*=\s*["']?\s*(?:javascript|vbscript|data:text\/html)/iu.test(source) ||
+    hasUnsafeSvgHref(source) ||
     /(?:@import|expression\s*\(|-moz-binding\s*:)/iu.test(source)
   );
 }
@@ -95,11 +174,13 @@ export async function validateImageAssetFile(
   filename = basename(filePath),
   options: { allowSvg?: boolean } = {},
 ): Promise<ValidatedImageAsset | null> {
+  const safeFilePath = await resolveAllowedMediaPath(filePath);
+  if (!safeFilePath) return null;
   if (extname(filename).toLowerCase() === SVG_EXTENSION) {
     if (!options.allowSvg) return null;
     let handle;
     try {
-      handle = await open(filePath, "r");
+      handle = await open(safeFilePath, "r");
       const file = await handle.stat();
       if (!file.isFile() || file.size > SVG_IMAGE_MAX_BYTES) return null;
       const bytes = Buffer.alloc(file.size + 1);
@@ -115,7 +196,7 @@ export async function validateImageAssetFile(
 
   let handle;
   try {
-    handle = await open(filePath, "r");
+    handle = await open(safeFilePath, "r");
     const header = Buffer.alloc(IMAGE_HEADER_BYTES);
     const { bytesRead } = await handle.read(header, 0, header.length, 0);
     return validateImageAssetBuffer(header.subarray(0, bytesRead), filename, options);
@@ -127,9 +208,11 @@ export async function validateImageAssetFile(
 }
 
 export async function validateVideoAssetFile(filePath: string, filename = basename(filePath)) {
+  const safeFilePath = await resolveAllowedMediaPath(filePath);
+  if (!safeFilePath) return null;
   let handle;
   try {
-    handle = await open(filePath, "r");
+    handle = await open(safeFilePath, "r");
     const header = Buffer.alloc(IMAGE_HEADER_BYTES);
     const { bytesRead } = await handle.read(header, 0, header.length, 0);
     return validateVideoAssetBuffer(header.subarray(0, bytesRead), filename);

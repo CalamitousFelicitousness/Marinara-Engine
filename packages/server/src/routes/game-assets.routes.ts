@@ -15,10 +15,11 @@ import {
   renameSync,
   copyFileSync,
   readFileSync,
+  realpathSync,
   rmSync,
   unlinkSync,
 } from "fs";
-import { join, extname, basename, dirname } from "path";
+import { join, extname, basename, dirname, resolve, sep } from "path";
 import { execFile } from "child_process";
 import { platform } from "os";
 import { z } from "zod";
@@ -485,8 +486,20 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Invalid path" });
     }
 
-    const filePath = assertInsideDir(GAME_ASSETS_DIR, join(GAME_ASSETS_DIR, wildcard));
-    if (!existsSync(filePath)) {
+    const safeRelativePath = wildcard
+      .split("/")
+      .map((segment) => basename(segment))
+      .join("/");
+    if (safeRelativePath !== wildcard) {
+      return reply.status(400).send({ error: "Invalid path" });
+    }
+    let filePath: string;
+    try {
+      const canonicalRoot = realpathSync(resolve(GAME_ASSETS_DIR));
+      filePath = realpathSync(resolve(GAME_ASSETS_DIR, safeRelativePath));
+      const rootPrefix = canonicalRoot.endsWith(sep) ? canonicalRoot : `${canonicalRoot}${sep}`;
+      if (!filePath.startsWith(rootPrefix)) throw new Error("Asset path escapes the game-assets directory");
+    } catch {
       return reply.status(404).send({ error: "Asset not found" });
     }
 
@@ -504,23 +517,23 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
         .send(createReadStream(thumbPath));
     }
     if (IMAGE_EXTS.has(ext)) {
-      const image = await validateImageAssetFile(filePath, wildcard, { allowSvg: true });
+      const image = await validateImageAssetFile(filePath, safeRelativePath, { allowSvg: true });
       if (!image) return reply.status(404).send({ error: "Asset not found" });
       if (image.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
       return reply
         .header("Content-Type", image.mimeType)
         .header("Cache-Control", "public, max-age=604800")
-        .send(createReadStream(filePath));
+        .sendFile(safeRelativePath, GAME_ASSETS_DIR);
     }
     if (MUSIC_FILE_EXTENSIONS.has(ext)) {
       return reply
         .header("Content-Type", mime)
         .header("Cache-Control", "public, max-age=604800")
-        .send(createReadStream(filePath));
+        .sendFile(safeRelativePath, GAME_ASSETS_DIR);
     }
     return reply
       .header("Content-Type", "application/octet-stream")
-      .header("Content-Disposition", `attachment; filename="${basename(wildcard).replace(/["\\]/g, "_")}"`)
+      .header("Content-Disposition", `attachment; filename="${basename(safeRelativePath).replace(/["\\]/g, "_")}"`)
       .header("Cache-Control", "no-store")
       .send(createReadStream(filePath));
   });

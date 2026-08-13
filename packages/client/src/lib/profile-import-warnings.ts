@@ -4,6 +4,14 @@ export type ProfileImportWarning = {
   message?: string;
 };
 
+export type ProfileImportWarningCopy = {
+  missingAssetSummary: (count: number) => string;
+  securityWarningSummary: (count: number) => string;
+  missingLabel: string;
+  additionalPaths: (count: number) => string;
+  additionalMessages: (count: number) => string;
+};
+
 export function normalizeProfileImportWarnings(warnings: unknown): ProfileImportWarning[] {
   if (!Array.isArray(warnings)) return [];
   return warnings.flatMap((warning) => {
@@ -17,29 +25,30 @@ export function normalizeProfileImportWarnings(warnings: unknown): ProfileImport
   });
 }
 
-export function formatProfileImportWarningSummary(warnings: ProfileImportWarning[]) {
-  const missingAssets = warnings.filter((warning) => warning.type === "missing_asset" || warning.path);
-  const securityWarnings = warnings.length - missingAssets.length;
+export function formatProfileImportWarningSummary(warnings: ProfileImportWarning[], copy: ProfileImportWarningCopy) {
+  const missingAssets = warnings.filter((warning) => warning.type === "missing_asset");
+  const securityWarnings = warnings.filter((warning) => warning.type !== "missing_asset");
   return [
-    missingAssets.length > 0
-      ? `${missingAssets.length} asset file${missingAssets.length === 1 ? "" : "s"} missing from the ZIP. Imported the rest.`
-      : "",
-    securityWarnings > 0 ? `${securityWarnings} import security warning${securityWarnings === 1 ? "" : "s"}.` : "",
+    missingAssets.length > 0 ? copy.missingAssetSummary(missingAssets.length) : "",
+    securityWarnings.length > 0 ? copy.securityWarningSummary(securityWarnings.length) : "",
   ]
     .filter(Boolean)
     .join(" ");
 }
 
-export function formatProfileImportWarningDetails(warnings: ProfileImportWarning[]) {
-  const paths = warnings.map((warning) => warning.path).filter((path): path is string => !!path);
+export function formatProfileImportWarningDetails(warnings: ProfileImportWarning[], copy: ProfileImportWarningCopy) {
+  const paths = warnings
+    .filter((warning) => warning.type === "missing_asset")
+    .map((warning) => warning.path)
+    .filter((path): path is string => !!path);
   const messages = warnings
-    .filter((warning) => !warning.path)
+    .filter((warning) => warning.type !== "missing_asset")
     .map((warning) => warning.message)
     .filter((message): message is string => !!message);
   const missing =
     paths.length > 0
-      ? `Missing: ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, +${paths.length - 3} more` : ""}`
+      ? `${copy.missingLabel}: ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? copy.additionalPaths(paths.length - 3) : ""}`
       : "";
-  const security = `${messages.slice(0, 3).join(" ")}${messages.length > 3 ? ` +${messages.length - 3} more.` : ""}`;
+  const security = `${messages.slice(0, 3).join(" ")}${messages.length > 3 ? copy.additionalMessages(messages.length - 3) : ""}`;
   return [missing, security].filter(Boolean).join("\n");
 }

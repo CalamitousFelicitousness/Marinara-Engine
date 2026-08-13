@@ -457,6 +457,7 @@ Please restart your computer and run this installer again."
     nsExec::ExecToStack 'git rev-parse ${RELEASE_TAG}^{commit}'
     Pop $0
     Pop $3
+    ${StrTrimNewLines} $3 "$3"
     ${If} $0 != 0
       ${If} $5 == "1"
         nsExec::ExecToLog 'git stash apply -q'
@@ -640,6 +641,7 @@ ${APP_URL}"
     nsExec::ExecToStack 'cmd /c cd /d "$CLONE_DIR" && git rev-parse HEAD'
     Pop $0
     Pop $2
+    ${StrTrimNewLines} $2 "$2"
     ${If} $0 != 0
       ${If} $CLONE_DIR_CREATED == "1"
         RMDir /r "$CLONE_DIR"

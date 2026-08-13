@@ -101,18 +101,39 @@ const PRIVATE_FILE_MODE = 0o600;
 function hardenPrivateStorageTree(rootDir: string) {
   if (process.platform === "win32") return;
   const pending = [rootDir];
+  const failures: Error[] = [];
+  const applyPrivateMode = (path: string, mode: number) => {
+    try {
+      if ((statSync(path).mode & 0o077) !== 0) chmodSync(path, mode);
+      if ((statSync(path).mode & 0o077) !== 0) throw new Error("group or other permission bits remain set");
+    } catch (error) {
+      try {
+        if ((statSync(path).mode & 0o077) === 0) return;
+      } catch {
+        // Retain the original permission failure below.
+      }
+      failures.push(new Error(`Could not apply private permissions to ${path}`, { cause: error }));
+    }
+  };
   while (pending.length > 0) {
     const current = pending.pop()!;
+    applyPrivateMode(current, PRIVATE_DIRECTORY_MODE);
+    let entries: import("node:fs").Dirent[];
     try {
-      chmodSync(current, PRIVATE_DIRECTORY_MODE);
-      for (const entry of readdirSync(current, { withFileTypes: true })) {
-        const path = join(current, entry.name);
-        if (entry.isDirectory()) pending.push(path);
-        else if (entry.isFile()) chmodSync(path, PRIVATE_FILE_MODE);
-      }
-    } catch (err) {
-      logger.warn(err, "[file-storage] Could not apply private permissions to %s", current);
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch (error) {
+      failures.push(new Error(`Could not inspect storage directory ${current}`, { cause: error }));
+      continue;
     }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile()) applyPrivateMode(path, PRIVATE_FILE_MODE);
+      else failures.push(new Error(`Storage contains an unsupported filesystem entry: ${path}`));
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "[file-storage] Private storage permissions could not be established");
   }
 }
 
@@ -776,6 +797,7 @@ async function preserveMalformedRowSource(path: string, table: string): Promise<
   const to = quarantinePath(path, corruptionTimestamp());
   try {
     await copyFile(path, to);
+    if (process.platform !== "win32") await chmod(to, PRIVATE_FILE_MODE);
     return [{ from: path, to }];
   } catch (err) {
     logger.error(
@@ -1305,6 +1327,7 @@ class FileTableStore {
         );
         if (preservedSource) {
           await copyFile(preservedSource, monolithPath);
+          if (process.platform !== "win32") await chmod(monolithPath, PRIVATE_FILE_MODE);
           monolithPresent = true;
           logger.warn(
             "[file-storage] Restoring %s from its preserved pre-shard backup because the manifest expects %d rows but no shard files exist",

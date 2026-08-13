@@ -133,11 +133,11 @@ try {
     /updateInstalledPackagesToLatest/u,
     "App startup must never download and execute Agent updates without user consent",
   );
-  assert.ok(
-    appSource.indexOf('app.addHook("onRequest", rateLimitHook)') <
-      appSource.indexOf('app.addHook("onRequest", androidLocalAuthHook)'),
-    "API rate limiting must run before Android authorization",
-  );
+  const rateLimitHookIndex = appSource.indexOf('app.addHook("onRequest", rateLimitHook)');
+  const androidLocalAuthHookIndex = appSource.indexOf('app.addHook("onRequest", androidLocalAuthHook)');
+  assert.ok(rateLimitHookIndex >= 0, "API rate limiting must be registered");
+  assert.ok(androidLocalAuthHookIndex >= 0, "Android authorization must be registered");
+  assert.ok(rateLimitHookIndex < androidLocalAuthHookIndex, "API rate limiting must run before Android authorization");
 
   const composeSource = readFileSync(join(repositoryRoot, "docker-compose.yml"), "utf8");
   for (const name of ["TRUSTED_HOSTS", "CORS_ORIGINS", "CSRF_TRUSTED_ORIGINS"]) {

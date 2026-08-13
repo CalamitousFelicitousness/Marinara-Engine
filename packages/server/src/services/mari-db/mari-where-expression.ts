@@ -147,23 +147,31 @@ function callSafeMethod(value: unknown, method: string, argument?: unknown): unk
   if (method === "toUpperCase" && typeof value === "string") return value.toUpperCase();
   if (method === "trim" && typeof value === "string") return value.trim();
   if (method === "includes") {
-    if (typeof value === "string") return value.includes(String(argument ?? ""));
+    if (typeof value === "string") return typeof argument === "string" && value.includes(argument);
     if (Array.isArray(value)) return value.some((entry) => scalarEquals(entry, argument, false));
   }
-  if (method === "startsWith" && typeof value === "string") return value.startsWith(String(argument ?? ""));
-  if (method === "endsWith" && typeof value === "string") return value.endsWith(String(argument ?? ""));
+  if (method === "startsWith" && typeof value === "string") {
+    return typeof argument === "string" && value.startsWith(argument);
+  }
+  if (method === "endsWith" && typeof value === "string") {
+    return typeof argument === "string" && value.endsWith(argument);
+  }
   return false;
 }
 
 class Parser {
   private index = 0;
   private nesting = 0;
+  private readonly rowIdentityExpressions = new WeakSet<ValueExpression>();
 
   constructor(private readonly tokens: Token[]) {}
 
   parse(): ValueExpression {
     const expression = this.parseOr();
     if (this.peek().kind !== "eof") throw new Error("Unexpected content at the end of --where expression");
+    if (this.rowIdentityExpressions.has(expression)) {
+      throw new Error("A bare row object is not a valid --where predicate");
+    }
     return expression;
   }
 
@@ -261,6 +269,7 @@ class Parser {
       if (token.value === "undefined") return () => undefined;
       if (token.value !== "row") throw new Error(`Only row properties are available in --where expressions`);
       let expression: ValueExpression = (row) => row;
+      this.rowIdentityExpressions.add(expression);
       while (true) {
         let property: string | number;
         if (this.takeOperator(".")) {

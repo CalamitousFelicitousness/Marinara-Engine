@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Storage: Custom Tools
 // ──────────────────────────────────────────────
-import { asc, desc, eq } from "../../db/file-query.js";
+import { and, asc, desc, eq } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { agentConfigs, customTools } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -22,7 +22,7 @@ export function createCustomToolsStorage(db: DB) {
         await db
           .update(customTools)
           .set({ webhookUrl: encryptCustomToolWebhookUrl(stored) })
-          .where(eq(customTools.id, row.id));
+          .where(and(eq(customTools.id, row.id), eq(customTools.webhookUrl, stored)));
       }
     }
     return rows;

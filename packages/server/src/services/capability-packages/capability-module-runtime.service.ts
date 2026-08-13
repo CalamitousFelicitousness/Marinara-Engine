@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
-import { mkdir, symlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -139,24 +140,52 @@ class CapabilityModuleRuntime {
     }
   }
 
+  private async createVerifiedRuntimeSnapshot(
+    installed: InstalledCapabilityPackage,
+    verified: Awaited<ReturnType<typeof capabilityPackageManager.verifiedRuntimeFiles>>,
+  ) {
+    const snapshotsRoot = join(DATA_DIR, "capability-runtime-snapshots");
+    const root = join(snapshotsRoot, `${installed.id}-${installed.version}-${randomUUID()}`);
+    await mkdir(snapshotsRoot, { recursive: true, mode: 0o700 });
+    await mkdir(root, { mode: 0o700 });
+    try {
+      for (const [relativePath, data] of verified.files) {
+        const output = join(root, relativePath);
+        await mkdir(dirname(output), { recursive: true, mode: 0o700 });
+        await writeFile(output, data, { flag: "wx", mode: 0o400 });
+      }
+      await writeFile(join(root, "manifest.json"), JSON.stringify(installed.manifest), { flag: "wx", mode: 0o400 });
+      const nodeModules = join(DATA_DIR, "capability-packages", "node_modules");
+      if (existsSync(nodeModules) && !existsSync(join(root, "node_modules"))) {
+        await symlink(nodeModules, join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+      }
+      return {
+        entrypoint: join(root, verified.entrypoint),
+        cleanup: () => rm(root, { recursive: true, force: true }),
+      };
+    } catch (error) {
+      await rm(root, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
   private async activateOne(
     app: FastifyInstance,
     runtimePackage: Awaited<ReturnType<typeof capabilityPackageManager.runtimePackages>>[number],
     allowRollback: boolean,
     throwOnFailure: boolean,
   ): Promise<void> {
-    const { installed, serverEntrypoint } = runtimePackage;
+    const { installed } = runtimePackage;
     const registeredCleanups: Cleanup[] = [];
     let moduleCleanup: Cleanup | undefined;
     try {
       await capabilityPackageManager.markRuntimeReadiness(installed.id, "pending");
       const blockReason = capabilityPackageManager.runtimeBlockReason(installed);
       if (blockReason) throw new Error(blockReason);
-      await capabilityPackageManager.verifyRuntimeFiles(installed);
-
-      const moduleUrl = new URL(pathToFileURL(serverEntrypoint).href);
-      moduleUrl.searchParams.set("activation", `${installed.version}-${Date.now()}`);
-      const module = (await import(moduleUrl.href)) as CapabilityModule;
+      const verified = await capabilityPackageManager.verifiedRuntimeFiles(installed);
+      const runtimeSnapshot = await this.createVerifiedRuntimeSnapshot(installed, verified);
+      registeredCleanups.push(runtimeSnapshot.cleanup);
+      const module = (await import(pathToFileURL(runtimeSnapshot.entrypoint).href)) as CapabilityModule;
       if (typeof module.activate !== "function") throw new Error("Server entrypoint must export activate(context)");
       const trackCleanup = (cleanup: Cleanup) => {
         let called = false;

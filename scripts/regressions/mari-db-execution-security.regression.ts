@@ -48,6 +48,16 @@ assert.deepEqual(
   "common string and array selectors remain available without exposing arbitrary calls",
 );
 assert.throws(
+  () => createMariWherePredicate("(((row)))"),
+  /bare row object/u,
+  "a bare row reference cannot become an accidental all-row predicate",
+);
+assert.equal(
+  createMariWherePredicate("row.data.name.startsWith(null)")(rows[0]!),
+  false,
+  "string selectors reject non-string arguments instead of coercing null to an empty string",
+);
+assert.throws(
   () => createMariWherePredicate('row.data.name.constructor("return process")()'),
   /Unexpected content/u,
   "non-whitelisted calls remain unavailable",
@@ -198,6 +208,58 @@ try {
     assert.equal(explicitDeletePreview.summary?.deletedRows, 1);
 
     const webhookCredential = "https://hooks.example.test/services/private-token";
+    const multiToolRequest = {
+      kind: "insert" as const,
+      table: "custom_tools",
+      row: {
+        id: "shared-ciphertext-primary",
+        name: "shared_ciphertext_primary",
+        executionType: "webhook",
+        webhookUrl: webhookCredential,
+        sortOrder: 5,
+      },
+      relatedInserts: [
+        {
+          table: "custom_tools",
+          row: {
+            id: "shared-ciphertext-related",
+            name: "shared_ciphertext_related",
+            executionType: "webhook",
+            webhookUrl: webhookCredential,
+            sortOrder: 6,
+          },
+        },
+      ],
+      apply: false,
+      cascade: false,
+      reason: null,
+    };
+    const multiToolPlan = await (
+      mari as unknown as {
+        planMutation(
+          request: typeof multiToolRequest,
+          command: string,
+        ): Promise<{
+          changes: Array<{ table: string; afterRaw?: Record<string, unknown> | null }>;
+          request: typeof multiToolRequest;
+        }>;
+      }
+    ).planMutation(multiToolRequest, "mari db insert custom_tools [webhook credential redacted]");
+    const plannedWebhookCiphertexts = multiToolPlan.changes
+      .filter((change) => change.table === "custom_tools")
+      .map((change) => change.afterRaw?.webhookUrl);
+    assert.equal(new Set(plannedWebhookCiphertexts).size, 1, "one plaintext webhook is encrypted once per plan");
+    assert.equal(
+      multiToolPlan.request.row.webhookUrl,
+      plannedWebhookCiphertexts[0],
+      "the stored request reuses the exact ciphertext from the planned row",
+    );
+    assert.equal(
+      multiToolPlan.request.relatedInserts[0]!.row.webhookUrl,
+      plannedWebhookCiphertexts[0],
+      "related custom-tool inserts reuse the same ciphertext too",
+    );
+
     const insertedTool = await mari.executeCli({
       argv: [
         "db",

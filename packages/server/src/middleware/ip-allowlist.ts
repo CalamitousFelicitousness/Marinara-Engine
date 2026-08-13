@@ -220,6 +220,40 @@ function readContainerPeerInterfaceNames(
 }
 
 const dockerContainerInterfaceNames = isDockerRuntime() ? readContainerPeerInterfaceNames() : new Set<string>();
+const DOCKER_INTERFACE_CACHE_TTL_MS = 5_000;
+type ParsedDockerInterfaceCidr = { interfaceName: string; cidr: CIDREntry };
+let cachedDockerInterfaces:
+  | {
+      expiresAt: number;
+      interfaces: ReturnType<typeof networkInterfaces>;
+      parsedCidrs: ParsedDockerInterfaceCidr[];
+    }
+  | undefined;
+
+function parseDockerInterfaceCidrs(interfaces: ReturnType<typeof networkInterfaces>): ParsedDockerInterfaceCidr[] {
+  const entries: ParsedDockerInterfaceCidr[] = [];
+  for (const [interfaceName, addresses] of Object.entries(interfaces)) {
+    for (const address of addresses ?? []) {
+      if (address.internal || typeof address.cidr !== "string") continue;
+      const cidr = parseCIDR(address.cidr);
+      if (cidr) entries.push({ interfaceName, cidr });
+    }
+  }
+  return entries;
+}
+
+function getDockerInterfaceSnapshot() {
+  const timestamp = Date.now();
+  if (!cachedDockerInterfaces || cachedDockerInterfaces.expiresAt <= timestamp) {
+    const interfaces = networkInterfaces();
+    cachedDockerInterfaces = {
+      expiresAt: timestamp + DOCKER_INTERFACE_CACHE_TTL_MS,
+      interfaces,
+      parsedCidrs: parseDockerInterfaceCidrs(interfaces),
+    };
+  }
+  return cachedDockerInterfaces;
+}
 
 function matchesIp(ip: string, cidr: string): boolean {
   const bytes = ipToBytes(ip);
@@ -230,22 +264,24 @@ function matchesIp(ip: string, cidr: string): boolean {
 /** True only when the client matches an actual container network or its exact gateway. */
 export function isDockerRuntimeNetworkIp(
   ip: string,
-  interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces(),
+  interfaces?: ReturnType<typeof networkInterfaces>,
   gatewayIp: string | null = dockerDefaultGatewayIp,
   containerInterfaceNames: ReadonlySet<string> = dockerContainerInterfaceNames,
+  parsedInterfaceCidrs?: readonly ParsedDockerInterfaceCidr[],
 ): boolean {
-  const hasContainerInterface = Object.keys(interfaces).some((interfaceName) =>
+  const defaultNetwork = interfaces === undefined ? getDockerInterfaceSnapshot() : undefined;
+  const resolvedInterfaces = interfaces ?? defaultNetwork!.interfaces;
+  const resolvedCidrs =
+    parsedInterfaceCidrs ?? defaultNetwork?.parsedCidrs ?? parseDockerInterfaceCidrs(resolvedInterfaces);
+  const hasContainerInterface = Object.keys(resolvedInterfaces).some((interfaceName) =>
     containerInterfaceNames.has(interfaceName),
   );
   if (!hasContainerInterface) return false;
   if (gatewayIp && matchesIp(ip, gatewayIp)) return true;
-  return Object.entries(interfaces).some(
-    ([interfaceName, addresses]) =>
-      containerInterfaceNames.has(interfaceName) &&
-      addresses?.some((entry) => {
-        const cidr = entry.cidr;
-        return !entry.internal && typeof cidr === "string" && matchesIp(ip, cidr);
-      }),
+  const bytes = ipToBytes(ip);
+  return Boolean(
+    bytes &&
+    resolvedCidrs.some((entry) => containerInterfaceNames.has(entry.interfaceName) && matchesCIDR(bytes, entry.cidr)),
   );
 }
 
@@ -253,14 +289,11 @@ function isDockerCompatibilityNetworkIp(
   ip: string,
   interfaces: ReturnType<typeof networkInterfaces>,
   gatewayIp: string | null,
+  parsedInterfaceCidrs: readonly ParsedDockerInterfaceCidr[] = parseDockerInterfaceCidrs(interfaces),
 ): boolean {
   if (gatewayIp && matchesIp(ip, gatewayIp)) return true;
-  return Object.values(interfaces).some((addresses) =>
-    addresses?.some((entry) => {
-      const cidr = entry.cidr;
-      return !entry.internal && typeof cidr === "string" && matchesIp(ip, cidr);
-    }),
-  );
+  const bytes = ipToBytes(ip);
+  return Boolean(bytes && parsedInterfaceCidrs.some((entry) => matchesCIDR(bytes, entry.cidr)));
 }
 
 // ── Private / non-routable network CIDRs ──
@@ -457,7 +490,9 @@ export function isTrustedInterfaceRequest(
       (tailscaleMode === "auto" && typeof localAddress === "string" && isTailscaleIp(localAddress)));
 
   const dockerMode = getDockerBypassMode();
-  const dockerInterfaces = dockerNetwork.interfaces ?? networkInterfaces();
+  const defaultDockerNetwork = dockerNetwork.interfaces === undefined ? getDockerInterfaceSnapshot() : undefined;
+  const dockerInterfaces = dockerNetwork.interfaces ?? defaultDockerNetwork!.interfaces;
+  const parsedDockerCidrs = defaultDockerNetwork?.parsedCidrs;
   const dockerGatewayIp = dockerNetwork.gatewayIp === undefined ? dockerDefaultGatewayIp : dockerNetwork.gatewayIp;
   const dockerRuntimeMatch =
     isDockerRuntime() &&
@@ -466,12 +501,14 @@ export function isTrustedInterfaceRequest(
       dockerInterfaces,
       dockerGatewayIp,
       dockerNetwork.containerInterfaceNames ?? dockerContainerInterfaceNames,
+      parsedDockerCidrs,
     );
   const dockerTrusted =
     dockerMode === "enabled"
       ? isDockerIp(request.ip) ||
         dockerRuntimeMatch ||
-        (isDockerRuntime() && isDockerCompatibilityNetworkIp(request.ip, dockerInterfaces, dockerGatewayIp))
+        (isDockerRuntime() &&
+          isDockerCompatibilityNetworkIp(request.ip, dockerInterfaces, dockerGatewayIp, parsedDockerCidrs))
       : dockerMode === "auto" && dockerRuntimeMatch;
   const dockerProxyForwarded = dockerTrusted && hasProxyForwardingHeaders(request);
   if (dockerProxyForwarded && isDockerProxyAuthRequired()) return false;

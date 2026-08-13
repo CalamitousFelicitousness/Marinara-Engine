@@ -662,8 +662,8 @@ export function AgentCatalogView() {
                   <ShieldCheck size="0.8rem" />
                   {localizeUi(
                     catalog.data?.provenance?.kind === "custom"
-                      ? "ui.agents.agentcatalogview.customChecksumVerifiedPackage"
-                      : "ui.agents.agentcatalogview.officialChecksumVerifiedPackage",
+                      ? "ui.agents.agentcatalogview.customChecksumWillBeVerifiedDuringInstallation"
+                      : "ui.agents.agentcatalogview.officialChecksumWillBeVerifiedDuringInstallation",
                   )}
                 </span>
                 {selectedInstalled ? (

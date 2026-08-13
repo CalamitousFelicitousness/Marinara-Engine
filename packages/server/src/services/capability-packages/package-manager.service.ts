@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import AdmZip from "adm-zip";
 import {
@@ -380,19 +380,47 @@ async function readInstalledAgentDefinitions(installed: InstalledCapabilityPacka
   return packagedAgentDefinitionsSchema.parse(JSON.parse(await readFile(file, "utf8")));
 }
 
+type VerifiedInstalledPackageFile = { file: string; data: Buffer };
+
+async function readVerifiedInstalledPackageFile(
+  installed: InstalledCapabilityPackage,
+  relativePath: string,
+): Promise<VerifiedInstalledPackageFile> {
+  const normalized = normalizeArchivePath(relativePath);
+  const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalized);
+  if (!declaration) throw new Error(`Package ${installed.id} requested undeclared file ${normalized}`);
+  const packageRoot = inside(VERSIONS, join(VERSIONS, installed.id, installed.version));
+  const file = inside(packageRoot, join(packageRoot, normalized));
+  const [canonicalRoot, canonicalFile, before] = await Promise.all([
+    realpath(packageRoot),
+    realpath(file),
+    lstat(file, { bigint: true }),
+  ]);
+  if (!before.isFile() || canonicalFile !== inside(canonicalRoot, join(canonicalRoot, normalized))) {
+    throw new Error(`Installed package ${installed.id} contains a non-canonical file for ${normalized}`);
+  }
+  const data = await readFile(file);
+  const after = await lstat(file, { bigint: true });
+  if (
+    !after.isFile() ||
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeNs !== after.mtimeNs ||
+    before.ctimeNs !== after.ctimeNs ||
+    data.byteLength !== declaration.bytes ||
+    createHash("sha256").update(data).digest("hex") !== declaration.sha256
+  ) {
+    throw new Error(`Installed package ${installed.id} failed integrity verification for ${normalized}`);
+  }
+  return { file, data };
+}
+
 async function verifyInstalledPackageFile(
   installed: InstalledCapabilityPackage,
   relativePath: string,
 ): Promise<string> {
-  const normalized = normalizeArchivePath(relativePath);
-  const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalized);
-  if (!declaration) throw new Error(`Package ${installed.id} requested undeclared file ${normalized}`);
-  const file = inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalized));
-  const data = await readFile(file);
-  if (data.byteLength !== declaration.bytes || createHash("sha256").update(data).digest("hex") !== declaration.sha256) {
-    throw new Error(`Installed package ${installed.id} failed integrity verification for ${normalized}`);
-  }
-  return file;
+  return (await readVerifiedInstalledPackageFile(installed, relativePath)).file;
 }
 
 function invalidateBrowserTabAssetVerifications(packageId: string) {
@@ -448,10 +476,17 @@ async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, rela
   return file;
 }
 
-async function verifyInstalledPackageFiles(installed: InstalledCapabilityPackage): Promise<void> {
+async function verifyInstalledPackageFiles(
+  installed: InstalledCapabilityPackage,
+): Promise<Map<string, VerifiedInstalledPackageFile>> {
+  const verified = new Map<string, VerifiedInstalledPackageFile>();
   for (const declaration of installed.manifest.files) {
-    await verifyInstalledPackageFile(installed, declaration.path);
+    verified.set(
+      normalizeArchivePath(declaration.path),
+      await readVerifiedInstalledPackageFile(installed, declaration.path),
+    );
   }
+  return verified;
 }
 
 async function readInstalledAgentIds(installed: InstalledCapabilityPackage): Promise<string[]> {
@@ -710,8 +745,16 @@ export const capabilityPackageManager = {
       }));
   },
 
-  async verifyRuntimeFiles(installed: InstalledCapabilityPackage) {
-    await verifyInstalledPackageFiles(installed);
+  async verifiedRuntimeFiles(installed: InstalledCapabilityPackage) {
+    const verified = await verifyInstalledPackageFiles(installed);
+    const entrypoint = installed.manifest.entrypoints.server;
+    if (!entrypoint) throw new Error(`Capability package ${installed.id} has no server entrypoint`);
+    const runtimeEntrypoint = verified.get(normalizeArchivePath(entrypoint));
+    if (!runtimeEntrypoint) throw new Error(`Capability package ${installed.id} has no verified server entrypoint`);
+    return {
+      entrypoint: normalizeArchivePath(entrypoint),
+      files: new Map([...verified].map(([path, file]) => [path, file.data])),
+    };
   },
 
   async clientEntrypoint(packageId: string) {

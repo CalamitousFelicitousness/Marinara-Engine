@@ -186,24 +186,43 @@ echo  [OK] Git found
 
 :: -- Clone repository --
 echo.
+set "FRESH_CLONE_CREATED=0"
 if exist "%INSTALL_DIR%\.git" goto :update_repo
+if not exist "%INSTALL_DIR%\" set "FRESH_CLONE_CREATED=1"
 echo  [..] Cloning Marinara Engine to %INSTALL_DIR%...
 git clone --branch "%RELEASE_TAG%" --depth 1 https://github.com/Pasta-Devs/Marinara-Engine.git "%INSTALL_DIR%"
 if errorlevel 1 (
-    set "INSTALL_ERROR=Failed to clone release %RELEASE_TAG%. Check your internet connection and try again."
+    call :discard_unverified_fresh_clone
+    if exist "%INSTALL_DIR%\" (
+        set "INSTALL_ERROR=Failed to clone release %RELEASE_TAG%. The target folder was left in place; preserve any existing files before removing the incomplete checkout, then retry."
+    ) else (
+        set "INSTALL_ERROR=Failed to clone release %RELEASE_TAG%. The incomplete checkout was removed; check your internet connection and try again."
+    )
     goto :fatal
 )
 cd /d "%INSTALL_DIR%"
 set "NEW_HEAD="
 for /f "tokens=*" %%i in ('git rev-parse HEAD 2^>nul') do set "NEW_HEAD=%%i"
 if not defined NEW_HEAD (
-    set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% could not be verified."
+    call :discard_unverified_fresh_clone
+    if exist "%INSTALL_DIR%\" (
+        set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% could not be verified. The target folder was left untouched; choose an empty folder or preserve its files before removing the incomplete checkout, then retry."
+    ) else (
+        set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% could not be verified. The incomplete checkout was removed; run the installer again."
+    )
     goto :fatal
 )
 if defined RELEASE_COMMIT if /I not "!NEW_HEAD!"=="%RELEASE_COMMIT%" (
-    set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% resolved to !NEW_HEAD!, not the installer-expected %RELEASE_COMMIT%."
+    set "RECEIVED_HEAD=!NEW_HEAD!"
+    call :discard_unverified_fresh_clone
+    if exist "%INSTALL_DIR%\" (
+        set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% resolved to !RECEIVED_HEAD!, not the installer-expected %RELEASE_COMMIT%. The target folder was left untouched; choose an empty folder or preserve its files before removing the incomplete checkout, then retry."
+    ) else (
+        set "INSTALL_ERROR=Downloaded release %RELEASE_TAG% resolved to !RECEIVED_HEAD!, not the installer-expected %RELEASE_COMMIT%. The incomplete checkout was removed; run the installer again."
+    )
     goto :fatal
 )
+set "FRESH_CLONE_CREATED=0"
 goto :deps
 
 :update_repo
@@ -468,6 +487,14 @@ if errorlevel 1 (
     goto :eof
 )
 git stash drop -q "!STASH_REF!" >nul 2>&1
+goto :eof
+
+:discard_unverified_fresh_clone
+if not "!FRESH_CLONE_CREATED!"=="1" goto :eof
+cd /d "%TEMP%"
+rmdir /s /q "%INSTALL_DIR%" 2>nul
+if exist "%INSTALL_DIR%\" goto :eof
+set "FRESH_CLONE_CREATED=0"
 goto :eof
 
 :: -- Fatal error handler: always visible, never silent --

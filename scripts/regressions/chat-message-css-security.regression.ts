@@ -28,6 +28,15 @@ assert.match(
 assert.match(positionedCss, /\.safe\s*\{[^}]*position:relative/u, "safe positioning remains available");
 assert.match(positionedCss, /background-position:\s*fixed/u, "unrelated position properties are not rewritten");
 
+const contentCss = sanitizeChatMessageCss(`
+  .layout { align-content: center; justify-content: space-between; place-content: stretch; }
+  .label::before { content: "Untrusted label"; }
+`);
+assert.match(contentCss, /align-content:\s*center/u, "align-content remains available");
+assert.match(contentCss, /justify-content:\s*space-between/u, "justify-content remains available");
+assert.match(contentCss, /place-content:\s*stretch/u, "place-content remains available");
+assert.doesNotMatch(contentCss, /(?<![-\w])content\s*:/iu, "standalone content declarations remain blocked");
+
 const quotedComment = sanitizeChatMessageCss('[data-label="/* literal */"] { color: red; }');
 assert.match(quotedComment, /"\/\* literal \*\/"/u, "comment-like text inside strings remains intact");
 

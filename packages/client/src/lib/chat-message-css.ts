@@ -420,7 +420,7 @@ export function sanitizeChatMessageCss(css: string): string {
     .replace(/-moz-binding\s*:/gi, "x-moz-binding:")
     .replace(/url\s*\(\s*(?!['"]?(?:data:image\/|https?:\/\/))(['"]?)[^)]+\)/gi, "none")
     .replace(/!important/gi, " ")
-    .replace(/\bcontent\s*:[^;}]*/gi, " ")
+    .replace(/(?<![-\w])content\s*:[^;}]*/gi, " ")
     .replace(/</g, "\\3c ");
   return sanitizePositionDeclarations(sanitized).trim();
 }

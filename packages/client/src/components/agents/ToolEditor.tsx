@@ -164,32 +164,32 @@ export function ToolEditor() {
   const currentEnabled = dbTool ? dbTool.enabled === "true" || dbTool.enabled === "1" : true;
 
   const handleSave = useCallback(async () => {
-    if (!toolDetailId) return;
+    if (!toolDetailId) return false;
     setSaveError(null);
 
     if (!localName.trim()) {
       setSaveError("Tool name is required.");
-      return;
+      return false;
     }
     if (!/^[a-z][a-z0-9_]*$/.test(localName)) {
       setSaveError("Tool name must be lowercase snake_case (e.g. my_tool).");
-      return;
+      return false;
     }
     if (!localDesc.trim()) {
       setSaveError("Description is required.");
-      return;
+      return false;
     }
     if (localExecType === "script" && !scriptToolsEnabled) {
       setSaveError(scriptToolsDisabledMessage);
-      return;
+      return false;
     }
     if (localExecType === "webhook" && !localWebhookUrl.trim()) {
       setSaveError("Webhook URL is required.");
-      return;
+      return false;
     }
     if (localExecType === "script" && !localScriptBody.trim()) {
       setSaveError("Script body is required.");
-      return;
+      return false;
     }
 
     const payload = {
@@ -214,8 +214,10 @@ export function ToolEditor() {
       setDirty(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
+      return true;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save tool");
+      return false;
     }
   }, [
     toolDetailId,
@@ -413,8 +415,7 @@ export function ToolEditor() {
             </button>
             <button
               onClick={async () => {
-                await handleSave();
-                closeToolDetail();
+                if (await handleSave()) closeToolDetail();
               }}
               className="rounded-lg bg-amber-500/20 px-3 py-1 hover:bg-amber-500/30"
             >

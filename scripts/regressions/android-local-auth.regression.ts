@@ -73,7 +73,9 @@ try {
   });
   assert.equal(sessionResponse.statusCode, 303);
   assert.equal(sessionResponse.headers.location, "/");
-  const sessionCookie = sessionResponse.headers["set-cookie"]?.split(";", 1)[0];
+  const setCookieHeader = sessionResponse.headers["set-cookie"];
+  const firstSetCookieHeader = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
+  const sessionCookie = typeof firstSetCookieHeader === "string" ? firstSetCookieHeader.split(";", 1)[0] : undefined;
   assert.ok(sessionCookie?.startsWith("MarinaraAndroidSession="));
 
   const accepted = await app.inject({
@@ -183,6 +185,11 @@ try {
   assert.doesNotMatch(activitySource, /url\.startsWith\("http:\/\/(?:localhost|127\.0\.0\.1)"\)/u);
   assert.match(
     activitySource,
+    /textEquals\(serverUri\.getScheme\(\), candidateUri\.getScheme\(\)\)[\s\S]*textEquals\(serverUri\.getHost\(\), candidateUri\.getHost\(\)\)[\s\S]*serverUri\.getPort\(\) == candidateUri\.getPort\(\)/u,
+    "the WebView must keep only the exact configured origin, including scheme, host, and port",
+  );
+  assert.match(
+    activitySource,
     /TERMUX_APK_SHA256[\s\S]*e6265a57eb5ca363808488e3b01955958bed93bc0c8a0d281849b363b11027ec/u,
   );
   assert.match(
@@ -206,6 +213,30 @@ try {
     "the persistent Android secret must never be copied to the clipboard",
   );
   assert.match(activitySource, /BuildConfig\.MARINARA_RELEASE_COMMIT/u);
+  const bootstrapGuardIndex = activitySource.indexOf("protect-launcher-data.mjs check-target");
+  const bootstrapCheckoutIndex = activitySource.indexOf("git checkout --detach -f");
+  assert.ok(
+    bootstrapGuardIndex >= 0 && bootstrapGuardIndex < bootstrapCheckoutIndex,
+    "the APK bootstrap must reject storage-format downgrades before forcing the embedded checkout",
+  );
+  assert.match(
+    activitySource,
+    /guard_status[\s\S]*-eq 2[\s\S]*Install a newer APK\.[\s\S]*exit 1/u,
+    "a blocked APK bootstrap target must stop before startup",
+  );
+  const unverifiableGuardIndex = activitySource.indexOf(String.raw`elif [ \"$guard_status\" -ne 0 ]`);
+  const unverifiableMessageIndex = activitySource.indexOf(
+    "Could not verify that this Marinara Android build can safely read your stored data.",
+    unverifiableGuardIndex,
+  );
+  const unverifiableExitIndex = activitySource.indexOf(String.raw`+ "    exit 1\n"`, unverifiableMessageIndex);
+  assert.ok(
+    unverifiableGuardIndex >= 0 &&
+      unverifiableMessageIndex > unverifiableGuardIndex &&
+      unverifiableExitIndex > unverifiableMessageIndex &&
+      unverifiableExitIndex < bootstrapCheckoutIndex,
+    "an unverifiable APK bootstrap target must also stop before checkout",
+  );
   assert.doesNotMatch(
     activitySource,
     /git clone[^\n]+\|\| git clone/u,

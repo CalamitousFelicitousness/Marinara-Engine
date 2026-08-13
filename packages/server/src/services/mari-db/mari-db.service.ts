@@ -552,10 +552,13 @@ function normalizeCustomToolWriteRow(row: Row): Row {
   return out;
 }
 
-function secureCustomToolRequestForStorage(request: ParsedMutationRequest): void {
+function secureCustomToolRequestForStorage(
+  request: ParsedMutationRequest,
+  encryptedWebhooks: ReadonlyMap<string, string>,
+): void {
   const secureRow = (row: Row | undefined) => {
     if (!row || typeof row.webhookUrl !== "string") return;
-    row.webhookUrl = encryptCustomToolWebhookUrl(row.webhookUrl);
+    row.webhookUrl = encryptedWebhooks.get(row.webhookUrl) ?? encryptCustomToolWebhookUrl(row.webhookUrl);
   };
   if (request.table === "custom_tools") {
     secureRow(request.row);
@@ -6732,6 +6735,7 @@ export class MariDbService {
     // Keep/Restore review. Keep executable tool authoring available, but never
     // let that path arm a webhook/script or grant it hidden chat context. The
     // user can inspect and enable the saved draft in the privileged Tools UI.
+    const encryptedWebhooks = new Map<string, string>();
     for (const change of changes.filter((candidate) => candidate.table === "custom_tools")) {
       const before = change.beforeRaw;
       const beforeWebhookUrl = before?.webhookUrl;
@@ -6780,11 +6784,15 @@ export class MariDbService {
         });
       }
       if (typeof after.webhookUrl === "string") {
-        after.webhookUrl = encryptCustomToolWebhookUrl(after.webhookUrl);
+        const originalWebhookUrl = after.webhookUrl;
+        const encryptedWebhookUrl =
+          encryptedWebhooks.get(originalWebhookUrl) ?? encryptCustomToolWebhookUrl(originalWebhookUrl);
+        after.webhookUrl = encryptedWebhookUrl;
+        if (encryptedWebhookUrl) encryptedWebhooks.set(originalWebhookUrl, encryptedWebhookUrl);
         change.after = parseRow("custom_tools", after);
       }
     }
-    secureCustomToolRequestForStorage(request);
+    secureCustomToolRequestForStorage(request, encryptedWebhooks);
 
     // Memories (mari_instructions) are a normal file-backed table, so the generic raw path would
     // otherwise reach them and skip the length caps + enabled=0 forcing that only the instruction.*

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   importCustomToolEntries,
   normalizeCustomToolImportEntry,
@@ -128,19 +129,6 @@ const localWebhookExport = serializeCustomToolForTransfer({
 assert.equal(localWebhookExport.enabled, true, "local tool state must remain exportable");
 assert.equal(localWebhookExport.includeHiddenContext, true, "local hidden-context choices must remain exportable");
 
-const profileImportSource = await readFile(
-  new URL("../../packages/server/src/routes/backup.routes.ts", import.meta.url),
-  "utf8",
-);
-assert.match(profileImportSource, /quarantineProfileCustomToolRow/u);
-assert.match(profileImportSource, /tableName === "custom_tools"/u);
-const customToolStorageSource = await readFile(
-  new URL("../../packages/server/src/services/storage/custom-tools.storage.ts", import.meta.url),
-  "utf8",
-);
-assert.match(customToolStorageSource, /encryptCustomToolWebhookUrl/u);
-assert.match(customToolStorageSource, /ENCRYPTED_WEBHOOK_PREFIX/u);
-
 const storageRoot = await mkdtemp(join(tmpdir(), "marinara-custom-tool-security-"));
 const previousDataDir = process.env.DATA_DIR;
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
@@ -148,20 +136,24 @@ try {
   process.env.DATA_DIR = storageRoot;
   process.env.FILE_STORAGE_DIR = join(storageRoot, "storage");
   const [
-    { createFileNativeDB },
+    { getDB, closeDB },
     { customTools },
     { createCustomToolsStorage },
-    { quarantineProfileCustomToolRow },
+    { backupRoutes },
     { ENCRYPTED_WEBHOOK_PREFIX },
   ] = await Promise.all([
-    import("../../packages/server/src/db/file-backed-store.js"),
+    import("../../packages/server/src/db/connection.js"),
     import("../../packages/server/src/db/schema/index.js"),
     import("../../packages/server/src/services/storage/custom-tools.storage.js"),
     import("../../packages/server/src/routes/backup.routes.js"),
     import("../../packages/server/src/utils/custom-tool-webhook.js"),
   ]);
-  const db = await createFileNativeDB();
+  const db = await getDB();
+  const app = Fastify();
+  app.decorate("db", db);
   try {
+    await app.register(backupRoutes, { prefix: "/api/backup" });
+    await app.ready();
     const storage = createCustomToolsStorage(db);
     const createdWebhook = await storage.create({
       name: "encrypted_webhook",
@@ -182,7 +174,7 @@ try {
     );
 
     const importedAt = new Date(0).toISOString();
-    const importedProfileTool = quarantineProfileCustomToolRow({
+    const importedProfileTool = {
       id: "foreign-encrypted-webhook",
       name: "foreign_encrypted_webhook",
       description: "Foreign encrypted profile fixture",
@@ -196,16 +188,32 @@ try {
       sortOrder: 20,
       createdAt: importedAt,
       updatedAt: importedAt,
-    }) as typeof customTools.$inferInsert;
-    assert.equal(importedProfileTool.webhookUrl, null, "foreign encrypted webhook values are cleared on import");
-    await db.insert(customTools).values(importedProfileTool);
+    };
+    const importResponse = await app.inject({
+      method: "POST",
+      url: "/api/backup/import-profile",
+      payload: {
+        type: "marinara_profile",
+        version: 1,
+        exportedAt: importedAt,
+        data: {
+          fileStorage: {
+            version: 1,
+            tables: { custom_tools: [importedProfileTool] },
+            files: [],
+          },
+        },
+      },
+    });
+    assert.equal(importResponse.statusCode, 200, importResponse.body);
     const importedRead = await storage.getById("foreign-encrypted-webhook");
     assert.ok(importedRead, "a tool with a cleared foreign credential remains readable after profile import");
-    assert.equal(importedRead.webhookUrl, null);
-    assert.equal(importedRead.enabled, "false");
-    assert.equal(importedRead.includeHiddenContext, "false");
+    assert.equal(importedRead.webhookUrl, null, "profile import clears credentials encrypted by another install");
+    assert.equal(importedRead.enabled, "false", "profile import quarantines executable tools");
+    assert.equal(importedRead.includeHiddenContext, "false", "profile import removes private-context access");
   } finally {
-    await db._fileStore.close();
+    await app.close();
+    await closeDB();
   }
 } finally {
   if (previousDataDir === undefined) delete process.env.DATA_DIR;

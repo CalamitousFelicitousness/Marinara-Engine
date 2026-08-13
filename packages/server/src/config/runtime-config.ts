@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import { logger as sharedLogger } from "../lib/logger.js";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -110,9 +110,19 @@ function ensureEnvFileExists(envPath: string) {
   if (existsSync(envPath)) {
     if (process.platform !== "win32") {
       try {
-        chmodSync(envPath, 0o600);
-      } catch {
-        // Best effort for read-only mounts; dotenv can still read the file.
+        if ((statSync(envPath).mode & 0o077) !== 0) chmodSync(envPath, 0o600);
+      } catch (error) {
+        // Read-only mounts may reject chmod even when the mounted file is
+        // already private. Only fail when the resulting mode is unsafe.
+        try {
+          if ((statSync(envPath).mode & 0o077) === 0) return;
+        } catch {
+          // The original chmod failure remains the useful startup error.
+        }
+        throw new Error(`Cannot enforce private permissions on ${envPath}`, { cause: error });
+      }
+      if ((statSync(envPath).mode & 0o077) !== 0) {
+        throw new Error(`Cannot enforce private permissions on ${envPath}`);
       }
     }
     return;

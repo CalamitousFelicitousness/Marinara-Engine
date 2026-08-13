@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import crypto, { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -1092,6 +1092,7 @@ try {
   const blocked = installedPackage("hierarchical-maps", ["agent", "maps"]);
   const failing = installedPackage("readiness-failure", ["agent"]);
   const ready = installedPackage("readiness-success", ["agent"]);
+  ready.manifest.files.push({ path: "runtime-dependency.mjs", sha256: "0".repeat(64), bytes: 1 });
   writeRegistry([blocked, failing, ready]);
   writeFileSync(
     join(packagesRoot, "versions", failing.id, failing.version, "server.mjs"),
@@ -1105,6 +1106,8 @@ try {
   writeFileSync(
     join(packagesRoot, "versions", ready.id, ready.version, "server.mjs"),
     `export async function activate({ api }) {
+      const dependency = await import("./runtime-dependency.mjs");
+      if (dependency.value !== "verified") throw new Error("Capability dependency bytes changed after verification");
       const methods = ["debug", "info", "warn", "error", "debugOverride"];
       if (!methods.every((method) => typeof api.runtime?.logger?.[method] === "function")) {
         throw new Error("Capability runtime logger is incomplete");
@@ -1149,7 +1152,18 @@ try {
       await api.runtime.resources.listEligibleLorebookEntries({ lorebookIds: [], entryIds: [] });
       api.registerService("readiness:success", { active: true, debugAgentsEnabled });
     }
-    export async function selfCheck() {}`,
+    export async function selfCheck({ api }) {
+      const dependency = await import("./runtime-dependency.mjs");
+      const ownSource = await (await import("node:fs/promises")).readFile(new URL(import.meta.url), "utf8");
+      if (dependency.value !== "verified" || !ownSource.includes("runtime-dependency.mjs")) {
+        throw new Error("Capability snapshot did not retain verified runtime files");
+      }
+      api.registerService("readiness:late-import", { active: true });
+    }`,
+  );
+  writeFileSync(
+    join(packagesRoot, "versions", ready.id, ready.version, "runtime-dependency.mjs"),
+    `export const value = "verified";`,
   );
 
   const { capabilityModuleRuntime, prepareCapabilityRuntimeEnvironment } =
@@ -1532,7 +1546,45 @@ try {
   assert.equal((await persistence.spatialSnapshots.getBootstrap(rollbackChat.id))?.id, "committed-definition-snapshot");
 
   refreshRegistryFileIntegrity();
-  await capabilityModuleRuntime.start({ db } as Parameters<typeof capabilityModuleRuntime.start>[0]);
+  const verifiedRuntimeFiles = capabilityPackageManager.verifiedRuntimeFiles.bind(capabilityPackageManager);
+  let replacedVerifiedEntrypoint = false;
+  capabilityPackageManager.verifiedRuntimeFiles = async (installed) => {
+    const verified = await verifiedRuntimeFiles(installed);
+    if (installed.id === "readiness-success") {
+      writeFileSync(
+        join(packagesRoot, "versions", installed.id, installed.version, "server.mjs"),
+        `export async function activate({ api }) {
+          api.registerService("readiness:tampered", { active: true });
+        }`,
+      );
+      writeFileSync(
+        join(packagesRoot, "versions", installed.id, installed.version, "runtime-dependency.mjs"),
+        `export const value = "tampered";`,
+      );
+      replacedVerifiedEntrypoint = true;
+    }
+    return verified;
+  };
+  try {
+    await capabilityModuleRuntime.start({ db } as Parameters<typeof capabilityModuleRuntime.start>[0]);
+  } finally {
+    capabilityPackageManager.verifiedRuntimeFiles = verifiedRuntimeFiles;
+  }
+  assert.equal(
+    replacedVerifiedEntrypoint,
+    true,
+    "the runtime replacement regression reached the verification boundary",
+  );
+  assert.equal(
+    getCapabilityService("readiness:tampered"),
+    null,
+    "runtime activation imports the verified bytes even if the installed entrypoint is replaced afterward",
+  );
+  assert.deepEqual(
+    getCapabilityService("readiness:late-import"),
+    { active: true },
+    "late relative imports and import.meta.url reads remain available from the retained verified snapshot",
+  );
 
   const readinessById = new Map((await capabilityPackageManager.installed()).map((item) => [item.id, item]));
   assert.equal(readinessById.get("hierarchical-maps")?.status, "error");
@@ -1574,6 +1626,12 @@ try {
 
   await capabilityModuleRuntime.stop();
   assert.equal(getCapabilityService("readiness:success"), null, "Runtime stop must remove ready contributions");
+  const runtimeSnapshotsRoot = join(dataDir, "capability-runtime-snapshots");
+  assert.equal(
+    existsSync(runtimeSnapshotsRoot) ? readdirSync(runtimeSnapshotsRoot).length : 0,
+    0,
+    "runtime snapshots are retained during activation and removed at stop",
+  );
   const hotGame = installedPackage("hot-game", ["agent", "turn-game"], "1.0.0", true);
   writeRegistry([hotGame]);
   mkdirSync(join(packagesRoot, "versions", hotGame.id, hotGame.version), { recursive: true });

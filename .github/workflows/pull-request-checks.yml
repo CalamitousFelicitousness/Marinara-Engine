@@ -38,6 +38,9 @@ jobs:
       - name: Run project checks
         run: pnpm check
 
+      - name: Test dependency update handoff
+        run: pnpm regression:launcher-update
+
       - name: Test Android local authentication
         run: pnpm regression:android-local-auth
 

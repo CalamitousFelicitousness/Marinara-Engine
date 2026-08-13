@@ -81,10 +81,11 @@ export async function sendValidatedMediaFile(
   reply.header("Content-Length", String(contentLength));
   if (range) reply.status(206).header("Content-Range", `bytes ${start}-${end}/${media.size}`);
 
-  if (options.method === "HEAD" || media.size === 0) {
+  if (media.size === 0) {
     await media.handle.close().catch(() => undefined);
     return reply.send();
   }
+  // Fastify suppresses this stream body for HEAD while retaining Content-Length.
   return reply.send(media.handle.createReadStream({ start, end }));
 }
 

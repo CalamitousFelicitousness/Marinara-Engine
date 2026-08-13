@@ -84,6 +84,7 @@ import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useUIStore, type MariEditViewMode, type MariPanelSortMode } from "../../stores/ui.store";
 import { MariEditEasyViewer } from "./MariEditEasyViewer";
+import { MariPromptPreviewModal, type MariPromptRenderSide } from "./MariPromptPreviewModal";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
   isProfessorMariTranscriptNearBottom,
@@ -1875,6 +1876,8 @@ function DatabaseWorkspaceApprovalCard({
   onKeep,
   onKeepEnable,
   onRestore,
+  onRejectRows,
+  onRenderPrompt,
 }: {
   approval: MariDbPendingApproval;
   busy: boolean;
@@ -1882,14 +1885,56 @@ function DatabaseWorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
+  onRenderPrompt?: (
+    id: string,
+    row: { index: number; table: string; id: string; action: string },
+  ) => Promise<{ before: MariPromptRenderSide; after: MariPromptRenderSide } | null>;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // #4931: synthetic prompt-preview modal state for a character/preset row.
+  const [promptPreview, setPromptPreview] = useState<{
+    loading: boolean;
+    error: boolean;
+    before: MariPromptRenderSide;
+    after: MariPromptRenderSide;
+  } | null>(null);
+  // Each open/close bumps the token so a late render resolve can't re-open a modal the user closed.
+  const renderTokenRef = useRef(0);
+  const closePromptPreview = useCallback(() => {
+    renderTokenRef.current += 1;
+    setPromptPreview(null);
+  }, []);
+  const handleRenderRow = useCallback(
+    async (change: MariDbPendingApproval["diffPreview"][number], index: number) => {
+      if (!onRenderPrompt) return;
+      const token = (renderTokenRef.current += 1);
+      setPromptPreview({ loading: true, error: false, before: null, after: null });
+      try {
+        const result = await onRenderPrompt(approval.id, {
+          index,
+          table: change.table,
+          id: change.id,
+          action: change.action,
+        });
+        if (renderTokenRef.current !== token) return; // closed or superseded while assembling
+        if (result) setPromptPreview({ loading: false, error: false, before: result.before, after: result.after });
+        else setPromptPreview({ loading: false, error: true, before: null, after: null });
+      } catch {
+        if (renderTokenRef.current !== token) return;
+        setPromptPreview({ loading: false, error: true, before: null, after: null });
+      }
+    },
+    [onRenderPrompt, approval.id],
+  );
   // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
   // flips the rest.
   const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
   const setDefaultViewMode = useUIStore((s) => s.setMariEditViewMode);
   const [viewMode, setViewMode] = useState<MariEditViewMode>(defaultViewMode);
-  const [hiddenRows, setHiddenRows] = useState<Set<string>>(() => new Set());
+  // #4931: which rows are collapsed (folded to their name + status summary). Reversible — unlike the
+  // old one-way Dismiss.
+  const [collapsedRows, setCollapsedRows] = useState<Set<string>>(() => new Set());
   const cardRef = useRef<HTMLDivElement>(null);
   const toggleAnchorRef = useRef<number | null>(null);
   // Keep this card anchored in the scroll viewport across a height change so the toggle doesn't
@@ -1991,8 +2036,32 @@ function DatabaseWorkspaceApprovalCard({
         {viewMode === "easy" && (
           <MariEditEasyViewer
             approval={approval}
-            hidden={hiddenRows}
-            onDismissRow={(key) => setHiddenRows((prev) => new Set(prev).add(key))}
+            collapsed={collapsedRows}
+            onToggleCollapse={(key) =>
+              setCollapsedRows((prev) => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                return next;
+              })
+            }
+            onRejectRow={
+              onRejectRows
+                ? (change, index) => {
+                    void (async () => {
+                      const reverted = await onRejectRows(approval.id, [
+                        { index, table: change.table, id: change.id, action: change.action },
+                      ]);
+                      // A successful reject prunes the row, shifting every later index, so the
+                      // positional collapse keys go stale — reset them then. On a no-op (state_changed
+                      // / invalid_selection) diffPreview is unchanged, so keep the collapse state.
+                      if (reverted) setCollapsedRows(new Set());
+                    })();
+                  }
+                : undefined
+            }
+            onRenderRow={onRenderPrompt ? handleRenderRow : undefined}
+            busy={busy || disabled}
           />
         )}
         {viewMode === "raw" && deletedRows.length > 0 && (
@@ -2089,6 +2158,16 @@ function DatabaseWorkspaceApprovalCard({
           </button>
         </div>
       </div>
+      {promptPreview && (
+        <MariPromptPreviewModal
+          title={localizeUi("ui.chat.maripromptpreviewmodal.title")}
+          loading={promptPreview.loading}
+          error={promptPreview.error}
+          before={promptPreview.before}
+          after={promptPreview.after}
+          onClose={closePromptPreview}
+        />
+      )}
     </TranscriptRow>
   );
 }
@@ -2263,6 +2342,8 @@ function WorkspaceApprovalCard({
   onKeep,
   onKeepEnable,
   onRestore,
+  onRejectRows,
+  onRenderPrompt,
 }: {
   approval: MariWorkspacePendingApproval;
   busy: boolean;
@@ -2270,6 +2351,11 @@ function WorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
+  onRenderPrompt?: (
+    id: string,
+    row: { index: number; table: string; id: string; action: string },
+  ) => Promise<{ before: MariPromptRenderSide; after: MariPromptRenderSide } | null>;
 }) {
   if (approval.kind === "dependency_install") {
     return (
@@ -2301,6 +2387,8 @@ function WorkspaceApprovalCard({
       onKeep={onKeep}
       onKeepEnable={onKeepEnable}
       onRestore={onRestore}
+      onRejectRows={onRejectRows}
+      onRenderPrompt={onRenderPrompt}
     />
   );
 }
@@ -3955,6 +4043,76 @@ export function HomeProfessorMariChat({
     [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
   );
 
+  // #4931: reject a single reviewed row (revert just that lorebook entry). Mirrors
+  // restoreWorkspaceChange but posts the row's diffPreview index + identity tuple; the server reverts
+  // only that row and either shrinks the pending card or resolves it.
+  const rejectWorkspaceRows = useCallback(
+    async (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>): Promise<boolean> => {
+      if (workspaceReviewActionId) return false;
+      setWorkspaceReviewActionId(id);
+      try {
+        const result = await api.post<{
+          ok?: boolean;
+          outcome?: string;
+          error?: string | null;
+          rejected?: number;
+          remaining?: number;
+          completed?: boolean;
+        }>(`/professor-mari/workspace/approvals/${id}/reject-rows`, { rows });
+        await refreshWorkspaceStatus().catch(() => undefined);
+        // A rejected entry is deleted, so refresh any panel that mirrors app data.
+        await loadMemories().catch(() => undefined);
+        if (result.ok) {
+          await invalidateWorkspaceData();
+          toast.success(localizeUi("ui.chat.homeprofessormarichat.revertedTheSelectedEntry"));
+          return true;
+        }
+        if (result.outcome === "state_changed") {
+          toast.error(
+            localizeUi("ui.chat.homeprofessormarichat.theWorkspaceChangedAfterProfessorMariStagedThisProposal"),
+            { description: result.error ?? undefined, duration: 12_000 },
+          );
+        } else {
+          toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRejectThatEntry"), {
+            description: result.error ?? undefined,
+            duration: 12_000,
+          });
+        }
+        return false;
+      } catch (error) {
+        console.error("[Professor Mari] Failed to reject workspace rows", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRejectThatEntry"), {
+          description: describeProfessorMariError(error),
+          duration: 12_000,
+        });
+        return false;
+      } finally {
+        setWorkspaceReviewActionId((current) => (current === id ? null : current));
+      }
+    },
+    [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
+  );
+
+  // #4931: fetch the synthetic Peek-Prompt render of one reviewed character/preset row. Read-only,
+  // so it needs no review-action lock and can run while other reviews are in flight.
+  const renderWorkspacePrompt = useCallback(
+    async (id: string, row: { index: number; table: string; id: string; action: string }) => {
+      try {
+        const result = await api.post<{
+          ok?: boolean;
+          before?: MariPromptRenderSide;
+          after?: MariPromptRenderSide;
+        }>(`/professor-mari/workspace/approvals/${id}/render-prompt`, row);
+        if (!result.ok) return null;
+        return { before: result.before ?? null, after: result.after ?? null };
+      } catch (error) {
+        console.error("[Professor Mari] Failed to render workspace prompt", error);
+        return null;
+      }
+    },
+    [],
+  );
+
   const stopWorkspace = useCallback(async () => {
     workspaceAbortRef.current?.abort();
     try {
@@ -4871,6 +5029,8 @@ export function HomeProfessorMariChat({
                 onKeep={(id) => void keepWorkspaceChange(id)}
                 onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                 onRestore={(id) => void restoreWorkspaceChange(id)}
+                onRejectRows={(id, rows) => rejectWorkspaceRows(id, rows)}
+                onRenderPrompt={renderWorkspacePrompt}
               />
             ))}
           </>
@@ -5630,6 +5790,8 @@ export function HomeProfessorMariChat({
                                   onKeep={(id) => void keepWorkspaceChange(id)}
                                   onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                                   onRestore={(id) => void restoreWorkspaceChange(id)}
+                                  onRejectRows={(id, rows) => rejectWorkspaceRows(id, rows)}
+                                  onRenderPrompt={renderWorkspacePrompt}
                                 />
                               ))}
                             </>

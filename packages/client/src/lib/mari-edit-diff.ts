@@ -29,6 +29,9 @@ const NOISE_KEYS = new Set([
   "generated_by",
   "operationHash",
   "operation_hash",
+  // Derived embedding vectors (lorebook entries, memories) are large float arrays and never a
+  // meaningful user-facing edit — never render them as a field diff.
+  "embedding",
 ]);
 
 const MAX_FLATTEN_DEPTH = 2;

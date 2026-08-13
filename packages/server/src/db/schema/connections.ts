@@ -29,6 +29,8 @@ export const apiConnections = fileTable("api_connections", {
   baseUrl: text("base_url").notNull().default(""),
   /** Encrypted API key */
   apiKeyEncrypted: text("api_key_encrypted").notNull().default(""),
+  /** Imported endpoints stay unavailable until the user reviews and saves them locally. */
+  profileImportReviewRequired: text("profile_import_review_required").notNull().default("false"),
   model: text("model").notNull().default(""),
   imagePath: text("image_path"),
   maxContext: integer("max_context").notNull().default(128000),

@@ -5,7 +5,7 @@ import {
   registerCapabilityConversationCommand,
   stripCapabilityConversationCommands,
 } from "../../packages/server/src/services/capability-packages/capability-command-registry.service.js";
-import { visibleTo } from "../../packages/server/src/services/capability-packages/capability-roleplay-events.service.js";
+import { engineEventOwner, visibleTo } from "../../packages/server/src/services/capability-packages/capability-roleplay-events.service.js";
 
 // Audience filter: public always shows; user-only never reaches a model; a private event shows only when
 // every character the turn can write is in its audience (so a group turn cannot leak it).
@@ -14,6 +14,11 @@ assert.equal(visibleTo("user-only", ["a"]), false);
 assert.equal(visibleTo({ characterIds: ["a"] }, ["a"]), true);
 assert.equal(visibleTo({ characterIds: ["a"] }, ["a", "b"]), false);
 assert.equal(visibleTo({ characterIds: ["a"] }, []), false);
+
+// Event storage is scoped per chat, so a read for chat A can never surface chat B's events, and the
+// idempotency check on write never scans across chats either.
+assert.equal(engineEventOwner("chat-a"), "__engine__:chat-a");
+assert.notEqual(engineEventOwner("chat-a"), engineEventOwner("chat-b"));
 
 let handled = 0;
 const release = registerCapabilityConversationCommand({

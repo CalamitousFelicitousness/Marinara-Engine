@@ -17,6 +17,7 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { and, desc, eq, inArray, ne, or } from "../../db/file-query.js";
+import { engineEventOwner } from "./capability-roleplay-events.service.js";
 import { ensureTimestampAfter } from "../import/import-timestamps.js";
 import {
   chats,
@@ -400,10 +401,15 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
       return rows[0] ? mapGameState(rows[0]) : null;
     },
     async appendRoleplayEvent(input: CapabilityRoleplayEventInput): Promise<CapabilityRoleplayEventRecord | null> {
+      // packageId is scoped per chat (`__engine__:<chatId>`) so both this idempotency check and the
+      // prompt-time read (capability-roleplay-events.service.ts) filter by an indexed column instead of
+      // scanning a global, cross-chat window that a busy multi-chat instance could push this chat's own
+      // recent events out of.
+      const scopedOwner = engineEventOwner(input.chatId);
       const existing = await db
         .select()
         .from(capabilityDocuments)
-        .where(and(eq(capabilityDocuments.packageId, "__engine__"), eq(capabilityDocuments.kind, "roleplay-event")))
+        .where(and(eq(capabilityDocuments.packageId, scopedOwner), eq(capabilityDocuments.kind, "roleplay-event")))
         .limit(1000);
       if (existing.some((row) => {
         try { return (JSON.parse(row.data) as { idempotencyKey?: unknown }).idempotencyKey === input.idempotencyKey; }
@@ -412,7 +418,7 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
       const now = input.createdAt;
       await db.insert(capabilityDocuments).values({
         id: input.id,
-        packageId: "__engine__",
+        packageId: scopedOwner,
         kind: "roleplay-event",
         name: input.eventType,
         description: input.sourcePackageId,

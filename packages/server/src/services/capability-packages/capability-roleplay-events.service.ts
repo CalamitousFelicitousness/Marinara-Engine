@@ -11,8 +11,14 @@ import { and, desc, eq } from "../../db/file-query.js";
 import { capabilityDocuments } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 
-const ENGINE_EVENT_OWNER = "__engine__";
 const EVENT_KIND = "roleplay-event";
+
+/** Scopes the synthetic document owner to one chat, so both the write-side idempotency check
+ *  (capability-persistence.service.ts) and this read filter by an indexed column instead of a
+ *  global, cross-chat scan. */
+export function engineEventOwner(chatId: string): string {
+  return `__engine__:${chatId}`;
+}
 /** Durable history is meant to survive, but the model only needs the recent tail — the rest is noise it
  *  learns to skip, and it costs tokens every turn. */
 const MAX_EVENTS = 6;
@@ -47,19 +53,17 @@ export async function collectRoleplayEventContext(
     const rows = await db
       .select()
       .from(capabilityDocuments)
-      .where(and(eq(capabilityDocuments.packageId, ENGINE_EVENT_OWNER), eq(capabilityDocuments.kind, EVENT_KIND)))
+      .where(and(eq(capabilityDocuments.packageId, engineEventOwner(chatId)), eq(capabilityDocuments.kind, EVENT_KIND)))
       .orderBy(desc(capabilityDocuments.createdAt))
-      .limit(200);
+      .limit(MAX_EVENTS);
     const lines: string[] = [];
     for (const row of rows) {
-      if (lines.length >= MAX_EVENTS) break;
       let event: StoredEvent;
       try {
         event = JSON.parse(row.data) as StoredEvent;
       } catch {
         continue;
       }
-      if (event.chatId !== chatId) continue;
       if (!visibleTo(event.audience, targetCharacterIds)) continue;
       const text = String(event.text ?? "").replace(/\s+/gu, " ").trim();
       if (text) lines.push(`- ${text}`);

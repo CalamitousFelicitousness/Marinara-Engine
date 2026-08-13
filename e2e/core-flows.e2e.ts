@@ -319,6 +319,48 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
   expect(squareRadius).toBeLessThan(squareWidth / 3);
 });
 
+test("Art scale sliders stay interactive at the largest display size", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-tour="panel-settings"]').click();
+  await page.getByRole("tab", { name: "Appearance" }).click();
+
+  const exerciseSlider = async (controlId: string) => {
+    const control = page.locator(`#${controlId}`);
+    const slider = control.locator('input[type="range"]');
+    await control.scrollIntoViewIfNeeded();
+    await expect(slider).toBeVisible();
+
+    const box = await slider.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(80);
+    const min = Number((await slider.getAttribute("min")) ?? 0);
+    const max = Number((await slider.getAttribute("max")) ?? 100);
+    const midpoint = min + (max - min) / 2;
+
+    for (const [fraction, direction] of [
+      [0.8, "high"],
+      [0.25, "low"],
+      [0.65, "high"],
+    ] as const) {
+      await page.mouse.click(box!.x + box!.width * fraction, box!.y + box!.height / 2);
+      if (direction === "high") {
+        await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(midpoint);
+      } else {
+        await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(midpoint);
+      }
+    }
+  };
+
+  const controlIds = [
+    "settings-control-roleplay-avatar-scale",
+    "settings-control-game-dialogue-portrait-scale",
+    "settings-control-game-full-body-sprite-scale",
+  ];
+  for (const controlId of controlIds) await exerciseSlider(controlId);
+  await page.locator("#settings-control-display-size select").selectOption("22");
+  for (const controlId of controlIds) await exerciseSlider(controlId);
+});
+
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-tour="panel-settings"]').click();

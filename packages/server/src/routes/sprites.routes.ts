@@ -587,12 +587,14 @@ function normalizeSpriteExpression(raw: string): string {
 
 function sanitizeSpriteExportName(raw: unknown, fallback: string): string {
   const value = typeof raw === "string" ? raw.trim() : "";
-  const sanitized = value
-    .replace(/[\\/]/g, "_")
-    .replace(SPRITE_EXPORT_NAME_RE, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^[.\s_-]+|[.\s_-]+$/g, "");
+  const normalized = value.replace(/[\\/]/g, "_").replace(SPRITE_EXPORT_NAME_RE, "_").replace(/\s+/g, " ").trim();
+  let start = 0;
+  let end = normalized.length;
+  const isUnsafeEdge = (character: string | undefined) =>
+    character === "." || character === "_" || character === "-" || character?.trim() === "";
+  while (start < end && isUnsafeEdge(normalized[start])) start++;
+  while (end > start && isUnsafeEdge(normalized[end - 1])) end--;
+  const sanitized = normalized.slice(start, end);
   return sanitized || fallback;
 }
 

@@ -38,7 +38,7 @@ function normalizeHostInput(value: string) {
 }
 
 function keyFromHost(host: string) {
-  return host.replace(new RegExp(`${FANDOM_HOST_SUFFIX.replace(".", "\\.")}$`), "");
+  return host.endsWith(FANDOM_HOST_SUFFIX) ? host.slice(0, -FANDOM_HOST_SUFFIX.length) : host;
 }
 
 export function isFandomHost(host: string) {

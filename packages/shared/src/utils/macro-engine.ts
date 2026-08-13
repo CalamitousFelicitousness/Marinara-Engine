@@ -142,7 +142,6 @@ export const DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE = new RegExp(
   `${DEFERRED_RELOCATION_CONDITIONAL_TOKEN_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\x1f]+)\\x1f`,
   "g",
 );
-const MACRO_COMMENT_PATTERN = /\{\{\/\/[^}]*\}\}/g;
 const DEFERRED_CHARACTER_MACRO_TOKENS = {
   char: `${DEFERRED_CHARACTER_MACRO_TOKEN_PREFIX}CHAR\x1f`,
   charPhonetic: `${DEFERRED_CHARACTER_MACRO_TOKEN_PREFIX}CHAR_PHONETIC\x1f`,
@@ -189,7 +188,17 @@ export type MacroResolutionBudget = {
 };
 
 export function stripMacroComments(template: string): string {
-  return template.replace(MACRO_COMMENT_PATTERN, "");
+  let result = "";
+  let cursor = 0;
+  while (cursor < template.length) {
+    const start = template.indexOf("{{//", cursor);
+    if (start < 0) break;
+    const firstClose = template.indexOf("}}", start + 4);
+    if (firstClose < 0) break;
+    result += template.slice(cursor, start);
+    cursor = firstClose + 2;
+  }
+  return result + template.slice(cursor);
 }
 
 function getMacroBudget(options: ResolveMacroOptions): MacroResolutionBudget {

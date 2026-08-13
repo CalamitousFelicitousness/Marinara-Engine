@@ -70,6 +70,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Hardened imported and model-authored content against pathological parsing inputs and reserved metadata keys without removing supported import formats or local tools.
 - Kept automatic and downloadable backups working when local media exceeds the profile importer's ordinary per-file limit, while preserving bounded streaming imports and omitting only an individual unreadable or unarchivable asset instead of failing the whole backup; any omissions are listed in `RESTORE.txt` and automatic-backup status.
 - Kept visible Android browsers connected to a same-device Termux server responsive with a lightweight loopback-only heartbeat, without restoring hidden-tab or remote-client polling (#4968).
 - Kept long-running SwarmUI image requests alive across idle container networking while retaining the configured ComfyUI generation deadline (#4969).

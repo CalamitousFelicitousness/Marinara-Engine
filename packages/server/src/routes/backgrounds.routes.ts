@@ -52,13 +52,26 @@ interface BgMeta {
 }
 type MetaMap = Record<string, BgMeta>;
 
+export function normalizeBackgroundMeta(value: unknown): MetaMap {
+  const meta = Object.create(null) as MetaMap;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return meta;
+
+  for (const [filename, entry] of Object.entries(value)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const tags = (entry as { tags?: unknown }).tags;
+    if (!Array.isArray(tags)) continue;
+    meta[filename] = { tags: tags.filter((tag): tag is string => typeof tag === "string") };
+  }
+  return meta;
+}
+
 function readMeta(): MetaMap {
   ensureDir();
-  if (!existsSync(META_PATH)) return {};
+  if (!existsSync(META_PATH)) return normalizeBackgroundMeta(undefined);
   try {
-    return JSON.parse(readFileSync(META_PATH, "utf-8")) as MetaMap;
+    return normalizeBackgroundMeta(JSON.parse(readFileSync(META_PATH, "utf-8")));
   } catch {
-    return {};
+    return normalizeBackgroundMeta(undefined);
   }
 }
 

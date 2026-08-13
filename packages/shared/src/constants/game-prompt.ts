@@ -55,7 +55,7 @@ export function unwrapGameInstructions(prompt: string): string {
   if (openingBoundary !== ">" && openingBoundary?.trim() !== "") return trimmed;
   const openingEnd = trimmed.indexOf(">", openingPrefix.length);
   const bodyEnd = trimmed.length - closingTag.length;
-  if (openingEnd < 0 || openingEnd >= bodyEnd) return trimmed;
+  if (openingEnd < 0 || openingEnd > bodyEnd) return trimmed;
   return trimmed.slice(openingEnd + 1, bodyEnd).trim();
 }
 

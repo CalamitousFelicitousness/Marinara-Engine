@@ -124,7 +124,8 @@ function stripSimpleGmTags(content: string): string {
         const newline = content.indexOf("\n", head.delimiterIndex + 1);
         endExclusive = newline < 0 ? content.length : newline + 1;
       } else {
-        break;
+        searchCursor = start + 1;
+        continue;
       }
     } else {
       const close = content.indexOf("]", head.delimiterIndex + 1);
@@ -161,7 +162,7 @@ function stripUnknownGmTags(content: string): string {
     const start = content.indexOf("[", searchCursor);
     if (start < 0) break;
     const head = readGmTagHead(content, start, false);
-    if (!head || head.delimiter !== ":" || head.rawName === "Note" || head.rawName === "Book") {
+    if (!head || head.delimiter !== ":" || head.name === "note" || head.name === "book") {
       searchCursor = start + 1;
       continue;
     }

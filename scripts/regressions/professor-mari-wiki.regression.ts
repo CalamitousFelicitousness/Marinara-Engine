@@ -43,6 +43,15 @@ assert.equal(stripHtml('<script type="text/javascript">hidden()</script >Visible
 assert.equal(stripHtml('<style type="text/css">.hidden { display: none }</style >Readable'), "Readable");
 assert.equal(stripHtml("<script>hidden()</script\t\n ignored>Visible"), "Visible");
 assert.equal(stripHtml("<style>.hidden { display: none }</style\t\n ignored>Readable"), "Readable");
+const malformedScriptClosings = "</script".repeat(50_000);
+const malformedStyleClosings = "</style".repeat(50_000);
+const malformedClosingScanStartedAt = performance.now();
+assert.equal(stripHtml(`<script>hidden${malformedScriptClosings}`), `hidden${malformedScriptClosings}`);
+assert.equal(stripHtml(`<style>hidden${malformedStyleClosings}`), `hidden${malformedStyleClosings}`);
+assert.ok(
+  performance.now() - malformedClosingScanStartedAt < 2_000,
+  "repeated unterminated script and style closing prefixes should be scanned in linear time",
+);
 assert.throws(
   () => assertSafeRedirect(new URL(wikipedia.apiUrl), new URL("https://fr.wikipedia.org/w/api.php")),
   /crossed to a different host/u,

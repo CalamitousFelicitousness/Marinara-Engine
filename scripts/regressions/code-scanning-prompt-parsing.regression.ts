@@ -27,6 +27,9 @@ assert.equal(
   "instruction-like prefixes must not be mistaken for an envelope",
 );
 assert.equal(wrapConversationInstructions("<instructions></instructions>"), "<instructions></instructions>");
+assert.equal(unwrapConversationInstructions("<instructions></instructions>"), "");
+assert.equal(unwrapGameInstructions("<instructions></instructions>"), "");
+assert.equal(wrapGameInstructions("<instructions></instructions>"), "<instructions></instructions>");
 assert.equal(
   wrapGameInstructions("<instructions priority=high>Keep moving.</instructions>"),
   "<instructions>\nKeep moving.\n</instructions>",

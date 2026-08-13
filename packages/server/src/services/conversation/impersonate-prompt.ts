@@ -21,7 +21,8 @@ function normalizeDirection(direction: string | null | undefined): string {
   if (!rawDirection.endsWith("]")) return rawDirection;
   const prefix = LEGACY_IMPERSONATION_DIRECTION_PREFIXES.find((candidate) => rawDirection.startsWith(candidate));
   if (!prefix || rawDirection.length === prefix.length + 1) return rawDirection;
-  return rawDirection.slice(prefix.length, -1).trim();
+  const normalized = rawDirection.slice(prefix.length, -1).trim();
+  return normalized || rawDirection;
 }
 
 function punctuateDirection(direction: string): string {

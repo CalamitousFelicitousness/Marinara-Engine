@@ -45,6 +45,12 @@ assert.equal(
   "wanted",
 );
 assert.equal(extractJannyAstroCharacterProps('<astro-island props="character fallback"></astro-island>'), "character fallback");
+assert.equal(
+  extractJannyAstroCharacterProps(
+    '<astro-island data-props="stale" props="wanted" component-export="CharacterButtons"></astro-island>',
+  ),
+  "wanted",
+);
 assert.equal(decodeAstroPropsAttribute("&quot;x&amp;y&quot;"), '"x&y"');
 assert.equal(decodeAstroPropsAttribute("&amp;quot;"), "&quot;");
 const nestedAlt = "(".repeat(50_000) + "portrait)[card://self/gallery/a.png]";
@@ -55,6 +61,19 @@ const approval = parseLorebookWriteApprovalText(
 );
 assert.equal(approval[0]?.name, "Entry");
 assert.deepEqual(approval[0]?.keys, ["one", "two"]);
+assert.deepEqual(parseLorebookWriteApprovalText("### Heading only\nBody text"), [
+  { action: "append", name: "Heading only", content: "Body text", keys: [], tag: "" },
+]);
+assert.deepEqual(parseLorebookWriteApprovalText("### Keys only\nKeys: one, two\n\nBody text"), [
+  { action: "append", name: "Keys only", content: "Body text", keys: ["one", "two"], tag: "" },
+]);
+assert.deepEqual(
+  parseLorebookWriteApprovalText("### First\nFirst body\n\n### Second\nKeys: two\n\nSecond body"),
+  [
+    { action: "append", name: "First", content: "First body", keys: [], tag: "" },
+    { action: "append", name: "Second", content: "Second body", keys: ["two"], tag: "" },
+  ],
+);
 
 const wrappedMessages = [
   { content: `${"\n".repeat(50_000)}  ## Last Message  \nOld` },
@@ -76,15 +95,23 @@ assert.equal(
   buildImpersonateInstruction({ customPrompt: "Direction:", direction: legacyDirection }),
   "Direction: Go north.",
 );
+const whitespaceLegacyDirection =
+  "[Impersonation instruction — write {{user}}'s next response, steering it toward the following:   ]";
+assert.equal(
+  buildImpersonateInstruction({ customPrompt: "Direction:", direction: whitespaceLegacyDirection }),
+  `Direction: ${whitespaceLegacyDirection}`,
+);
 
 assert.equal(stripGmCommandTags(`[skill_check:${" ".repeat(50_000)}]Visible`), "Visible");
 assert.equal(stripGmCommandTags(`İ [SKILL_CHECK:${" ".repeat(50_000)}]Visible`), "İ Visible");
 assert.equal(stripGmCommandTags("[[music: x]]"), "[]");
 assert.equal(stripGmCommandTags("[choices: [A] | [B]]Visible"), "Visible");
+assert.equal(stripGmCommandTags("[choices: [A]\n[music: x]Visible"), "Visible");
 assert.equal(stripGmCommandTags('[map_update: {"a": 1}\nVisible'), "Visible");
 assert.equal(stripGmCommandTags("[map_update:x"), "");
 assert.equal(stripGmCommandTags("[map_update:"), "");
 assert.equal(stripGmCommandTags("[party-turn]A[party-chat]B"), "AB");
+assert.equal(stripGmCommandTags("[note: remember the key]\n[book: chapter text]"), "[note: remember the key]\n[book: chapter text]");
 const malformedBracketNoise = "[".repeat(100_000) + ":]";
 assert.equal(stripGmCommandTags(malformedBracketNoise), malformedBracketNoise);
 assert.equal(

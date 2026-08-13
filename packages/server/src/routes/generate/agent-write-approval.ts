@@ -38,16 +38,15 @@ function scanApprovalHeadings(value: string): ApprovalHeading[] {
   if (explicit.length > 0) return explicit;
 
   const legacy: ApprovalHeading[] = [];
-  for (let index = 0; index + 2 < lines.length; index++) {
+  for (let index = 0; index < lines.length; index++) {
     const headingLine = lines[index]!;
     const name = readApprovalHeading(headingLine.text);
-    if (!name) continue;
-    const keysLine = lines[index + 1]!.text;
-    const tagLine = lines[index + 2]!.text;
-    if (!/^Keys:/iu.test(keysLine) || !/^Tag:/iu.test(tagLine)) continue;
-    legacy.push({ index: headingLine.start, end: headingLine.end, name });
+    if (name) legacy.push({ index: headingLine.start, end: headingLine.end, name });
   }
-  return legacy;
+  // Pre-delimiter approval text always started with its first entry heading.
+  // Keeping that boundary lets users remove either or both metadata lines while
+  // avoiding reinterpretation of arbitrary prose that merely contains a heading.
+  return legacy[0]?.index === 0 ? legacy : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

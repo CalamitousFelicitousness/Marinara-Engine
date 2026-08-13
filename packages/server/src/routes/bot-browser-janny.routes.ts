@@ -165,11 +165,19 @@ interface JannyMeiliHit {
 
 function readDoubleQuotedHtmlAttribute(tag: string, name: string): string | null {
   const prefix = `${name}="`;
-  const start = tag.indexOf(prefix);
-  if (start < 0) return null;
-  const valueStart = start + prefix.length;
-  const end = tag.indexOf('"', valueStart);
-  return end < 0 ? null : tag.slice(valueStart, end);
+  let searchIndex = 0;
+  while (searchIndex < tag.length) {
+    const start = tag.indexOf(prefix, searchIndex);
+    if (start < 0) return null;
+    if (start > 0 && !/\s/u.test(tag[start - 1]!)) {
+      searchIndex = start + prefix.length;
+      continue;
+    }
+    const valueStart = start + prefix.length;
+    const end = tag.indexOf('"', valueStart);
+    return end < 0 ? null : tag.slice(valueStart, end);
+  }
+  return null;
 }
 
 export function decodeAstroPropsAttribute(value: string): string {

@@ -5284,7 +5284,7 @@ function AppearanceSettings() {
               ))}
             </div>
             <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-black/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
                   {roleplayAvatarStyle === "none" ? (
                     <div
@@ -5320,7 +5320,7 @@ function AppearanceSettings() {
                     }}
                   />
                 </div>
-                <div className="grid min-w-0 flex-1 gap-3">
+                <div className="grid min-w-0 flex-1 gap-3 sm:min-w-[9rem]">
                   <label
                     id={getSettingsControlAnchorId("roleplay-avatar-scale")}
                     className="flex scroll-mt-3 min-w-0 flex-col gap-1"
@@ -5391,7 +5391,7 @@ function AppearanceSettings() {
               />
             </div>
             <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <div className="flex h-20 w-full shrink-0 items-end justify-center gap-3 overflow-hidden rounded-md bg-black/30 p-2 ring-1 ring-[var(--border)]/70 sm:w-28">
                   <div
                     className="shrink-0 rounded-lg border border-white/20 bg-gradient-to-b from-sky-300/80 via-cyan-200/65 to-slate-800/90 shadow-lg transition-all"
@@ -5408,7 +5408,7 @@ function AppearanceSettings() {
                     }}
                   />
                 </div>
-                <div className="grid min-w-0 flex-1 gap-3">
+                <div className="grid min-w-0 flex-1 gap-3 sm:min-w-[9rem]">
                   <label
                     id={getSettingsControlAnchorId("game-dialogue-portrait-scale")}
                     className="flex scroll-mt-3 min-w-0 flex-col gap-1"

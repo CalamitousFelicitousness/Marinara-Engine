@@ -118,7 +118,7 @@ function stripForbiddenStatementAtRules(css: string): string {
       continue;
     }
 
-    result += css.slice(cursor, index);
+    result += `${css.slice(cursor, index)} `;
     index += keyword.length;
     let depth = 0;
     let statementQuote: '"' | "'" | null = null;
@@ -165,14 +165,14 @@ function sanitizePositionDeclarations(css: string): string {
 export function sanitizeChatMessageCss(css: string): string {
   let sanitized = canonicalizeKeywordEscapes(stripCssComments(css));
   sanitized = stripForbiddenStatementAtRules(sanitized)
-    .replace(/expression\s*\([^)]*\)/gi, "")
-    .replace(/javascript\s*:/gi, "")
-    .replace(/vbscript\s*:/gi, "")
+    .replace(/expression\s*\([^)]*\)/gi, " ")
+    .replace(/javascript\s*:/gi, " ")
+    .replace(/vbscript\s*:/gi, " ")
     .replace(/behavior\s*:/gi, "x-behavior:")
     .replace(/-moz-binding\s*:/gi, "x-moz-binding:")
     .replace(/url\s*\(\s*(?!['"]?(?:data:image\/|https?:\/\/))(['"]?)[^)]+\)/gi, "none")
-    .replace(/!important/gi, "")
-    .replace(/\bcontent\s*:[^;}]*/gi, "")
+    .replace(/!important/gi, " ")
+    .replace(/\bcontent\s*:[^;}]*/gi, " ")
     .replace(/</g, "\\3c ");
   return sanitizePositionDeclarations(sanitized).trim();
 }

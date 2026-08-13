@@ -28,13 +28,13 @@ assert.equal(parseRequestHostname("attacker.example, localhost:7860"), null);
 
 const rateLimitedApp = Fastify();
 rateLimitedApp.addHook("onRequest", rateLimitHook);
-rateLimitedApp.post("/api/backup", async () => ({ ok: true }));
+rateLimitedApp.post("/api/backup/", async () => ({ ok: true }));
 try {
   for (let requestNumber = 1; requestNumber <= 30; requestNumber += 1) {
-    const response = await rateLimitedApp.inject({ method: "POST", url: "/api/backup" });
+    const response = await rateLimitedApp.inject({ method: "POST", url: "/api/backup/" });
     assert.equal(response.statusCode, 200, `backup request ${requestNumber} remains within its explicit limit`);
   }
-  const rejectedBackup = await rateLimitedApp.inject({ method: "POST", url: "/api/backup" });
+  const rejectedBackup = await rateLimitedApp.inject({ method: "POST", url: "/api/backup/" });
   assert.equal(rejectedBackup.statusCode, 429, "expensive backup routes are capped at 30 requests per minute and IP");
 } finally {
   await rateLimitedApp.close();

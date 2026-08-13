@@ -35,6 +35,15 @@ const reconstructedStyleTag = sanitizeChatMessageCss("<sty<style>le>.safe { colo
 assert.doesNotMatch(reconstructedStyleTag, /</u, "tag-like text cannot reconstruct an HTML style element");
 assert.match(reconstructedStyleTag, /\\3c /u, "literal angle brackets retain their CSS meaning through escaping");
 
+for (const reconstructingImport of [
+  '@imexpression(x)port url("https://example.invalid/expression.css"); .safe { color: red; }',
+  '@im@import url("https://example.invalid/nested.css");port url("https://example.invalid/outer.css"); .safe { color: red; }',
+]) {
+  const reconstructedCss = sanitizeChatMessageCss(reconstructingImport);
+  assert.doesNotMatch(reconstructedCss, /@import\b/iu, "removed syntax cannot concatenate into an import rule");
+  assert.match(reconstructedCss, /\.safe\s*\{/u, "safe CSS after a rejected import remains available");
+}
+
 const scopedCss = scopeChatMessageCss(
   '@namespace svg url("https://example.invalid/ns"); .safe { color: red; }',
   ".message-scope",

@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import AdmZip from "adm-zip";
 import { closeSync, mkdtempSync, openSync, readSync, writeSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildBackupRestoreNotes,
+  inspectStoredBackupArchiveForRegression,
   isPermittedLargeStoredBackupEntry,
+  readStoredBackupImportForRegression,
   readStoredBackupAssetForRegression,
   writeStoredBackupArchiveForRegression,
 } from "../../packages/server/src/routes/backup.routes.js";
@@ -136,6 +139,77 @@ try {
     "a production backup entry above the ordinary limit must restore through the production streaming importer",
   );
   await cleanupStagedProfileAssets(largeStage);
+
+  const zip64ManifestPath = join(zipFixtureRoot, "marinara-profile.json");
+  const zip64RestorePath = join(zipFixtureRoot, "RESTORE.txt");
+  const zip64Archive = join(zipFixtureRoot, "full-backup-zip64.zip");
+  await writeFile(
+    zip64ManifestPath,
+    JSON.stringify({
+      type: "marinara_profile",
+      version: 1,
+      exportedAt: "2026-08-13T00:00:00.000Z",
+      data: {
+        fileStorage: {
+          version: 2,
+          tables: {},
+          files: [{ path: "backgrounds/large.gif", size: logicalSize }],
+        },
+      },
+    }),
+  );
+  await writeFile(zip64RestorePath, buildBackupRestoreNotes());
+  const zip64ManifestSize = (await stat(zip64ManifestPath)).size;
+  const zip64RestoreSize = (await stat(zip64RestorePath)).size;
+  await writeStoredBackupArchiveForRegression(
+    zip64Archive,
+    [
+      {
+        entryName: "marinara-automatic-backup/marinara-profile.json",
+        filePath: zip64ManifestPath,
+        size: zip64ManifestSize,
+      },
+      {
+        entryName: "marinara-automatic-backup/backgrounds/large.gif",
+        filePath: sourcePath,
+        size: logicalSize,
+        tolerateSourceChanges: true,
+      },
+      {
+        entryName: "marinara-automatic-backup/RESTORE.txt",
+        filePath: zip64RestorePath,
+        size: zip64RestoreSize,
+      },
+    ],
+    {
+      entryLimitBytes: Math.max(zip64ManifestSize, zip64RestoreSize),
+      unlimitedArchiveSize: true,
+      forceZip64: true,
+    },
+  );
+  const zip64Inspection = await inspectStoredBackupArchiveForRegression(zip64Archive);
+  assert.equal(zip64Inspection.isFullBackup, true, "a stored ZIP64 full backup must receive the restore policy");
+  assert.equal(zip64Inspection.entries.length, 3);
+  assert.equal(
+    new AdmZip(zip64Archive).test(),
+    true,
+    "the streamed ZIP64 backup must be readable by standard ZIP tools",
+  );
+  const zip64Import = await readStoredBackupImportForRegression(zip64Archive, "backgrounds/large.gif");
+  assert.equal(zip64Import.isFullBackup, true);
+  assert.equal(zip64Import.assetTotalByteLimit, Number.MAX_SAFE_INTEGER);
+  assert.ok(zip64Import.asset && !Buffer.isBuffer(zip64Import.asset));
+  const zip64Restore = await stageProfileImportAssets(
+    join(zipFixtureRoot, "zip64-restored"),
+    [{ path: "backgrounds/large.gif", expectedSize: logicalSize, read: () => zip64Import.asset }],
+    zip64Import.assetTotalByteLimit,
+  );
+  try {
+    await promoteStagedProfileAssets(zip64Restore);
+    assert.equal((await stat(join(zipFixtureRoot, "zip64-restored", "backgrounds", "large.gif"))).size, logicalSize);
+  } finally {
+    await cleanupStagedProfileAssets(zip64Restore);
+  }
 
   const retainedSource = join(zipFixtureRoot, "retained.gif");
   const missingSource = join(zipFixtureRoot, "missing.gif");

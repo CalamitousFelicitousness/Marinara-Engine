@@ -5,6 +5,11 @@ export interface CapabilityConversationCommandRegistration {
   description?: string;
   payloadExample?: string;
   validatePayload?: (payload: string | null) => boolean;
+  /**
+   * Handlers must be idempotent. A completed in-memory dispatch is released,
+   * and a durable claim can fail after the handler has run, so a later retry
+   * may invoke the handler again.
+   */
   handler?: (action: CapabilityConversationAction) => void | Promise<void>;
 }
 

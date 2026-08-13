@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promise
 import { dirname, join } from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { finishCrc32, updateCrc32State } from "../../utils/crc32.js";
 import { assertInsideDir } from "../../utils/security.js";
 import { validateImageAssetFile, validateVideoAssetFile } from "../../utils/media-file-security.js";
 
@@ -75,11 +76,11 @@ function isProfileVideoAssetPath(path: string): boolean {
   );
 }
 
-async function validateProfileImportAsset(path: string, stagedPath: string): Promise<void> {
+async function validateProfileImportAsset(path: string, stagedPath: string, stagedRoot: string): Promise<void> {
   const normalized = path.replace(/\\/g, "/");
   if (isProfileVideoAssetPath(normalized)) {
     if (/\.json$/iu.test(normalized)) return;
-    const video = await validateVideoAssetFile(stagedPath, normalized, { additionalRoot: dirname(stagedPath) });
+    const video = await validateVideoAssetFile(stagedPath, normalized, { additionalRoot: stagedRoot });
     if (!video) {
       throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported video file.`);
     }
@@ -98,29 +99,11 @@ async function validateProfileImportAsset(path: string, stagedPath: string): Pro
     }
     return;
   }
-  const image = await validateImageAssetFile(stagedPath, path, { ...imagePolicy, additionalRoot: dirname(stagedPath) });
+  const image = await validateImageAssetFile(stagedPath, path, { ...imagePolicy, additionalRoot: stagedRoot });
   if (!image) {
     throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported image file.`);
   }
   await image.handle.close();
-}
-
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < 256; index++) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit++) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[index] = value >>> 0;
-  }
-  return table;
-})();
-
-function updateCrc32State(state: number, chunk: Buffer): number {
-  let crc = state >>> 0;
-  for (const byte of chunk) crc = CRC32_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
-  return crc >>> 0;
 }
 
 async function stageStreamedAsset(
@@ -152,7 +135,7 @@ async function stageStreamedAsset(
   if (bytesRead !== expectedSize) {
     throw new ProfileImportAssetValidationError("Profile asset does not match its manifest size.");
   }
-  const crc32 = (crcState ^ 0xffffffff) >>> 0;
+  const crc32 = finishCrc32(crcState);
   if (crc32 !== source.expectedCrc32) {
     throw new ProfileImportAssetValidationError("Profile asset failed its archive CRC check.");
   }
@@ -209,7 +192,7 @@ export async function stageProfileImportAssets(
           throw error;
         }
       }
-      await validateProfileImportAsset(input.path, stagedPath);
+      await validateProfileImportAsset(input.path, stagedPath, stagedDataDir);
       totalBytes += input.expectedSize;
       assets.push({
         path: input.path,

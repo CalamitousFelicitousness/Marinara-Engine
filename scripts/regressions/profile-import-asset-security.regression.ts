@@ -12,6 +12,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Readable } from "node:stream";
+import { finishCrc32, updateCrc32State } from "../../packages/server/src/utils/crc32.js";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import fastifyStatic from "../../packages/server/node_modules/@fastify/static/index.js";
 
@@ -228,18 +229,7 @@ try {
 
   const streamedGif = Buffer.concat([Buffer.from("GIF89a", "ascii"), Buffer.alloc(128, 0x5a)]);
   let streamedGifCrcState = 0xffffffff;
-  const crc32Table = (() => {
-    const table = new Uint32Array(256);
-    for (let index = 0; index < 256; index++) {
-      let value = index;
-      for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-      table[index] = value >>> 0;
-    }
-    return table;
-  })();
-  for (const byte of streamedGif) {
-    streamedGifCrcState = crc32Table[(streamedGifCrcState ^ byte) & 0xff]! ^ (streamedGifCrcState >>> 8);
-  }
+  streamedGifCrcState = updateCrc32State(streamedGifCrcState, streamedGif);
   const streamedStage = await stageProfileImportAssets(
     dataDir,
     [
@@ -248,7 +238,7 @@ try {
         expectedSize: streamedGif.length,
         read: () => ({
           stream: Readable.from([streamedGif.subarray(0, 32), streamedGif.subarray(32)]),
-          expectedCrc32: (streamedGifCrcState ^ 0xffffffff) >>> 0,
+          expectedCrc32: finishCrc32(streamedGifCrcState),
         }),
       },
     ],

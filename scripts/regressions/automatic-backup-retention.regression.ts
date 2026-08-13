@@ -76,28 +76,37 @@ assert.equal(
   false,
   "compressed large assets must not bypass ZIP-bomb defenses",
 );
-assert.match(backupRouteSource, /writeStoredZipArchive\(outputPath, sources, \{ skipFailedFileEntries: true \}\)/u);
+assert.match(backupRouteSource, /writeStoredZipArchive\(outputPath, sources, \{[\s\S]*skipFailedFileEntries: true,/u);
+assert.match(backupRouteSource, /onOmittedEntry: \(entryName\) => omittedEntries\.add\(entryName\)/u);
+assert.match(backupRouteSource, /buildData: \(\) => Buffer\.from\(buildBackupRestoreNotes\(\[\.\.\.omittedEntries\]\)/u);
+assert.match(backupRouteSource, /lastOmittedEntries: omittedEntries/u);
 assert.match(backupRouteSource, /await output\.truncate\(entryStart\)/u);
 
 const zipFixtureRoot = mkdtempSync(join(tmpdir(), "marinara-large-backup-regression-"));
 try {
   const sourcePath = join(zipFixtureRoot, "large.gif");
   const archivePath = join(zipFixtureRoot, "large.zip");
-  const logicalSize = 256 * 1024 * 1024 + 1;
+  const useReportedBackgroundSize = process.env.MARINARA_REAL_LARGE_BACKUP_REGRESSION === "1";
+  const entryLimitBytes = useReportedBackgroundSize ? 256 * 1024 * 1024 : 1024 * 1024;
+  const logicalSize = useReportedBackgroundSize ? 376_363_985 : entryLimitBytes + 1;
   const descriptor = openSync(sourcePath, "w");
   writeSync(descriptor, Buffer.from("GIF89a", "ascii"), 0, 6, 0);
   writeSync(descriptor, Buffer.from([0]), 0, 1, logicalSize - 1);
   closeSync(descriptor);
-  await writeStoredBackupArchiveForRegression(archivePath, [
-    {
-      entryName: "marinara-automatic-backup/backgrounds/large.gif",
-      filePath: sourcePath,
-      size: logicalSize,
-      tolerateSourceChanges: true,
-    },
-  ]);
+  await writeStoredBackupArchiveForRegression(
+    archivePath,
+    [
+      {
+        entryName: "marinara-automatic-backup/backgrounds/large.gif",
+        filePath: sourcePath,
+        size: logicalSize,
+        tolerateSourceChanges: true,
+      },
+    ],
+    { entryLimitBytes },
+  );
   const archiveSize = (await stat(archivePath)).size;
-  assert.ok(archiveSize > logicalSize, "the >256 MiB streamed media entry should produce a valid ZIP");
+  assert.ok(archiveSize > logicalSize, "the streamed media entry above the ordinary limit should produce a valid ZIP");
   const archiveHandle = openSync(archivePath, "r");
   const end = Buffer.alloc(22);
   readSync(archiveHandle, end, 0, end.length, archiveSize - end.length);
@@ -107,6 +116,7 @@ try {
   const restoredAsset = await readStoredBackupAssetForRegression(
     archivePath,
     "marinara-automatic-backup/backgrounds/large.gif",
+    entryLimitBytes,
   );
   const restoreRoot = join(zipFixtureRoot, "restored");
   const largeStage = await stageProfileImportAssets(
@@ -118,27 +128,28 @@ try {
         read: restoredAsset.read,
       },
     ],
-    512 * 1024 * 1024,
+    logicalSize * 2,
   );
   await promoteStagedProfileAssets(largeStage);
   assert.equal(
     (await stat(join(restoreRoot, "backgrounds", "large.gif"))).size,
     logicalSize,
-    "a >256 MiB production backup entry must restore through the production streaming importer",
+    "a production backup entry above the ordinary limit must restore through the production streaming importer",
   );
   await cleanupStagedProfileAssets(largeStage);
 
-  const retainedSource = join(zipFixtureRoot, "retained.txt");
+  const retainedSource = join(zipFixtureRoot, "retained.gif");
   const missingSource = join(zipFixtureRoot, "missing.gif");
   const partialArchive = join(zipFixtureRoot, "partial.zip");
-  await writeFile(retainedSource, "retained", "utf8");
-  await writeStoredBackupArchiveForRegression(
+  const retainedGif = Buffer.concat([Buffer.from("GIF89a", "ascii"), Buffer.alloc(32, 0x2a)]);
+  await writeFile(retainedSource, retainedGif);
+  const partialResult = await writeStoredBackupArchiveForRegression(
     partialArchive,
     [
       {
-        entryName: "marinara-automatic-backup/RESTORE.txt",
+        entryName: "marinara-automatic-backup/backgrounds/retained.gif",
         filePath: retainedSource,
-        size: 8,
+        size: retainedGif.length,
       },
       {
         entryName: "marinara-automatic-backup/backgrounds/missing.gif",
@@ -153,8 +164,12 @@ try {
         tolerateSourceChanges: true,
       },
     ],
-    true,
+    { skipFailedFileEntries: true, entryLimitBytes },
   );
+  assert.deepEqual(partialResult.omittedEntries.sort(), [
+    "marinara-automatic-backup/backgrounds/missing.gif",
+    "marinara-automatic-backup/storage/oversized.data",
+  ]);
   const partialSize = (await stat(partialArchive)).size;
   const partialHandle = openSync(partialArchive, "r");
   const partialEnd = Buffer.alloc(22);
@@ -166,14 +181,34 @@ try {
     1,
     "unreadable assets and oversized non-media must be omitted without losing valid entries",
   );
+  const retainedAsset = await readStoredBackupAssetForRegression(
+    partialArchive,
+    "marinara-automatic-backup/backgrounds/retained.gif",
+  );
+  const partialRestore = await stageProfileImportAssets(
+    join(zipFixtureRoot, "partial-restored"),
+    [{ path: "backgrounds/retained.gif", expectedSize: retainedAsset.expectedSize, read: retainedAsset.read }],
+    1024 * 1024,
+  );
+  await promoteStagedProfileAssets(partialRestore);
+  assert.deepEqual(
+    await readFile(join(zipFixtureRoot, "partial-restored", "backgrounds", "retained.gif")),
+    retainedGif,
+    "a strict file entry must retain a valid single-pass CRC when other sources are omitted",
+  );
+  await cleanupStagedProfileAssets(partialRestore);
   await assert.rejects(
-    writeStoredBackupArchiveForRegression(join(zipFixtureRoot, "invalid-direct.zip"), [
-      {
-        entryName: "storage/oversized.data",
-        filePath: sourcePath,
-        size: logicalSize,
-      },
-    ]),
+    writeStoredBackupArchiveForRegression(
+      join(zipFixtureRoot, "invalid-direct.zip"),
+      [
+        {
+          entryName: "storage/oversized.data",
+          filePath: sourcePath,
+          size: logicalSize,
+        },
+      ],
+      { entryLimitBytes },
+    ),
     /too large for profile ZIP import\/export/u,
     "a strict profile export must fail instead of emitting a non-media entry its importer rejects",
   );

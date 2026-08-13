@@ -966,6 +966,7 @@ function isCharacterConditionalOperand(raw: string): boolean {
 }
 
 type ParsedConditionExpression = { left: string; operator: string; right?: string };
+const CONDITION_WORD_OPERATOR_RE = /(?:is\s+not|not\s+contains|not\s+includes|contains|includes|is)(?=\s|$)/iyu;
 
 function parseConditionExpression(condition: string): ParsedConditionExpression {
   const symbolicOperators = [">=", "<=", "==", "!=", ">", "<", "="] as const;
@@ -1010,9 +1011,8 @@ function parseConditionExpression(condition: string): ParsedConditionExpression 
     }
 
     if (index === 0 || /\s/u.test(condition[index - 1]!)) {
-      const wordMatch = condition
-        .slice(index)
-        .match(/^(is\s+not|not\s+contains|not\s+includes|contains|includes|is)(?=\s|$)/iu);
+      CONDITION_WORD_OPERATOR_RE.lastIndex = index;
+      const wordMatch = CONDITION_WORD_OPERATOR_RE.exec(condition);
       if (wordMatch?.[0]) {
         const left = condition.slice(0, index).trim();
         const right = condition.slice(index + wordMatch[0].length).trim();

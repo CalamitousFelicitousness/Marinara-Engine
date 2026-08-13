@@ -20,6 +20,7 @@ import { ConversationInput } from "./ConversationInput";
 import { ConversationGamesPicker } from "./ConversationGamesPicker";
 import { SceneBanner, EndSceneBar } from "./SceneBanner";
 import { ChatBranchSelector } from "./ChatBranchSelector";
+import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
 import { ChatToolbarButton, ChatToolbarMenu, getChatToolbarButtonClass } from "./ChatToolbarControls";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
@@ -478,6 +479,7 @@ export function ConversationView({
           onClick={onSwitchChat}
         />
       )}
+      <ChatMessageSearch chatId={chatId} />
       <ChatToolbarButton
         icon={<Settings2 size="0.875rem" />}
         title={t("chat.toolbar.settings")}
@@ -687,6 +689,14 @@ export function ConversationView({
     () => getTranscriptRenderWindow(messages, { startIndex: transcriptWindowStart }),
     [messages, transcriptWindowStart],
   );
+  const gotoRequest = useChatStore((state) => state.gotoRequest);
+
+  useLayoutEffect(() => {
+    if (!gotoRequest || gotoRequest.chatId !== chatId || !messages) return;
+    const loadedMessageOffset = totalMessageCount - messages.length;
+    const localIndex = gotoRequest.messageNumber - 1 - loadedMessageOffset;
+    if (localIndex >= 0 && localIndex < messages.length) setTranscriptWindowStart(localIndex);
+  }, [chatId, gotoRequest, messages, totalMessageCount]);
 
   const showOlderTranscriptMessages = useCallback(() => {
     setTranscriptWindowStart((current) => {

@@ -7904,6 +7904,12 @@ export class MariDbService {
   }
 
   private pendingSidecarPath(id: string) {
+    // Defense-in-depth against path traversal: every caller already passes a server-generated
+    // newId() (a 21-char nanoid) or a route id that first matched a pending record, so a traversal
+    // value can't reach here — but never build a filesystem path from an id that isn't a safe token.
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      throw new Error(`Invalid pending review id: ${id}`);
+    }
     return join(this.pendingDir(), `${id}.json`);
   }
 

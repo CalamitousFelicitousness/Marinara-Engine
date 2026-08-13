@@ -232,6 +232,7 @@ import { ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
 import { createAgentsStorage } from "../../packages/server/src/services/storage/agents.storage.js";
 import { createCustomToolsStorage } from "../../packages/server/src/services/storage/custom-tools.storage.js";
 import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
+import { characterOverrideDb } from "../../packages/server/src/services/professor-mari/workspace-edit-render.js";
 import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { createChatPresetsStorage } from "../../packages/server/src/services/storage/chat-presets.storage.js";
@@ -2378,6 +2379,45 @@ try {
     );
   } finally {
     await lorebookStorage.remove(rejectLorebookId);
+  }
+
+  // #4931: the synthetic prompt-render DB proxy substitutes the target character's row (so the
+  // assembler reads a before/after snapshot instead of the live row) while passing every other read
+  // through untouched. Validated through the exact storage path the assembler uses (getById).
+  const proxyTargetCharacter = await characterStorage.create(
+    characterDataSchema.parse({ name: "Proxy target", description: "live description" }),
+  );
+  const proxyOtherCharacter = await characterStorage.create(characterDataSchema.parse({ name: "Proxy other" }));
+  try {
+    const liveTarget = await characterStorage.getById(proxyTargetCharacter.id);
+    assert.ok(liveTarget, "proxy target character exists");
+    const snapshot = {
+      ...liveTarget,
+      data: JSON.stringify({ ...JSON.parse(String(liveTarget.data)), name: "Snapshot name" }),
+    };
+    const overrideDb = characterOverrideDb(db, proxyTargetCharacter.id, snapshot);
+    const seenTarget = await createCharactersStorage(overrideDb).getById(proxyTargetCharacter.id);
+    assert.equal(
+      JSON.parse(String(seenTarget?.data)).name,
+      "Snapshot name",
+      "the proxy substitutes the target character row with the snapshot",
+    );
+    const seenOther = await createCharactersStorage(overrideDb).getById(proxyOtherCharacter.id);
+    assert.equal(seenOther?.id, proxyOtherCharacter.id, "the proxy passes other character reads through untouched");
+    assert.equal(
+      JSON.parse(String(seenOther?.data)).name,
+      "Proxy other",
+      "a non-target character keeps its live data through the proxy",
+    );
+    const removeDb = characterOverrideDb(db, proxyTargetCharacter.id, null);
+    assert.equal(
+      await createCharactersStorage(removeDb).getById(proxyTargetCharacter.id),
+      null,
+      "a null substitute drops the target row (before-side of an insert)",
+    );
+  } finally {
+    await characterStorage.remove(proxyTargetCharacter.id);
+    await characterStorage.remove(proxyOtherCharacter.id);
   }
 
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";

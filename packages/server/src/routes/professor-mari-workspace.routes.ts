@@ -8,6 +8,7 @@ import { startSseKeepalive, startSseReply, trySendSseEvent } from "./generate/ss
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
+import { renderMariEditPrompt } from "../services/professor-mari/workspace-edit-render.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
 import {
   createMariInstructionsStorage,
@@ -87,18 +88,19 @@ const approveSchema = z.object({
 
 // #4931: per-row reject. Each row is the diffPreview index plus a {table,id,action} consistency
 // tuple the server re-checks against plan.changes[index] before reverting.
-const rejectRowsSchema = z.object({
-  rows: z
-    .array(
-      z.object({
-        index: z.number().int().nonnegative(),
-        table: z.string().min(1),
-        id: z.string().min(1),
-        action: z.enum(["insert", "update", "replace", "delete"]),
-      }),
-    )
-    .min(1),
+const rejectRowRowSchema = z.object({
+  index: z.number().int().nonnegative(),
+  table: z.string().min(1),
+  id: z.string().min(1),
+  action: z.enum(["insert", "update", "replace", "delete"]),
 });
+
+const rejectRowsSchema = z.object({
+  rows: z.array(rejectRowRowSchema).min(1),
+});
+
+// #4931: synthetic Peek-Prompt render of one reviewed character/preset row (same identity tuple).
+const renderPromptSchema = rejectRowRowSchema;
 
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
   return requirePrivilegedAccess(request, reply, {
@@ -284,6 +286,19 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
       return { ok: false, ...result };
     }
     return { ok: true, ...result };
+  });
+
+  app.post<{ Params: { id: string } }>("/approvals/:id/render-prompt", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const body = renderPromptSchema.parse(req.body ?? {});
+    const change = getMariDbService(app.db).getPendingChangeRaw(req.params.id, body.index);
+    if (!change) return reply.status(404).send({ error: "Applied change review not found" });
+    if (change.table !== body.table || change.id !== body.id || change.action !== body.action) {
+      return reply.status(409).send({ error: "This review changed since it was shown. Reopen it and try again." });
+    }
+    const render = await renderMariEditPrompt(app.db, change);
+    if (!render) return reply.status(422).send({ error: "This change can't be shown as a prompt preview." });
+    return { ok: true, ...render };
   });
 
   app.get("/history", async (req, reply) => {

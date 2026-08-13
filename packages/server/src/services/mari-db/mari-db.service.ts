@@ -4608,6 +4608,26 @@ export class MariDbService {
     return Array.from(this.pending.values()).map((record) => this.pendingView(record));
   }
 
+  // #4931: the raw (serialized) snapshot of one pending change, for the synthetic prompt render.
+  // diffPreview only carries the parsed before/after; the render needs the raw rows (JSON columns as
+  // strings) to feed the assembler. The client validates its diffPreview index against the tuple, so
+  // this maps 1:1 to plan.changes[index] for the first PREVIEW_LIMIT changes.
+  getPendingChangeRaw(
+    id: string,
+    index: number,
+  ): { table: string; id: string; action: MariDbRowChange["action"]; beforeRaw: Row | null; afterRaw: Row | null } | null {
+    this.ensurePendingHydrated();
+    const change = this.pending.get(id)?.plan.changes[index];
+    if (!change) return null;
+    return {
+      table: change.table,
+      id: change.id,
+      action: change.action,
+      beforeRaw: change.beforeRaw ?? null,
+      afterRaw: change.afterRaw ?? null,
+    };
+  }
+
   async getHistory(): Promise<MariDbHistoryEntry[]> {
     if (this.history.length > 0) return this.history.slice(-HISTORY_LIMIT).reverse();
     const path = this.historyPath();

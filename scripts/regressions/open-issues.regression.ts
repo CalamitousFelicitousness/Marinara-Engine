@@ -2435,6 +2435,18 @@ try {
       !danglingAfter.some((entry) => entry.id === danglingEntry.id),
       "the refused reject did not re-insert the orphaned entry",
     );
+    // The whole-plan Restore path has no pre-check, so the in-transaction parent check is the safety
+    // net (also closing the reject TOCTOU): restoring the review while the parent lorebook is gone
+    // rolls back to state_changed rather than committing a dangling entry.
+    const restoreDangling = await mariDb.restoreAppliedReview(danglingApproval.id);
+    assert.ok(
+      restoreDangling && "outcome" in restoreDangling && restoreDangling.outcome === "state_changed",
+      `restoring an entry delete whose parent lorebook is gone must roll back to state_changed: ${JSON.stringify(restoreDangling)}`,
+    );
+    assert.ok(
+      !(await lorebookStorage.listEntries(rejectDanglingLorebook.id)).some((entry) => entry.id === danglingEntry.id),
+      "the rolled-back restore did not re-insert the orphaned entry",
+    );
   } finally {
     if (!rejectDanglingRemoved) await lorebookStorage.remove(rejectDanglingLorebook.id);
   }

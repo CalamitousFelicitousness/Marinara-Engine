@@ -7831,6 +7831,24 @@ export class MariDbService {
         const meta = getMeta(change.table);
         await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
       }
+
+      // #4931: a re-inserted lorebook entry needs a live parent lorebook. A concurrent lorebook
+      // deletion can land between rejectRows' pre-check and this transaction (TOCTOU), so re-verify
+      // in-tx and roll back rather than committing a dangling reference that only post-commit
+      // validate() would catch (which would leave the bad row + surface a 500). Whole-plan restores
+      // re-insert the parent in the loop above, so this fires only when the parent is genuinely gone.
+      for (const change of deletedRows) {
+        if (change.table !== "lorebook_entries" || !change.beforeRaw) continue;
+        const lorebookId = change.beforeRaw.lorebookId;
+        if (typeof lorebookId !== "string") continue;
+        const meta = getMeta("lorebooks");
+        const pk = getPrimary(meta);
+        const parent = (await tx
+          .select()
+          .from(meta.table as any)
+          .where(eq(meta.byKey.get(pk)!.column as any, lorebookId))) as Row[];
+        if (parent.length === 0) throw new RestoreStateChangedError();
+      }
     });
 
     await this.validateAndFlushRestored(changes);

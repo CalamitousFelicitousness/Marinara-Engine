@@ -9,6 +9,7 @@ import { getProfessorMariWorkspaceService } from "../services/professor-mari/wor
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { renderMariEditPrompt } from "../services/professor-mari/workspace-edit-render.js";
+import { logger } from "../lib/logger.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
 import {
   createMariInstructionsStorage,
@@ -296,7 +297,12 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     if (change.table !== body.table || change.id !== body.id || change.action !== body.action) {
       return reply.status(409).send({ error: "This review changed since it was shown. Reopen it and try again." });
     }
-    const render = await renderMariEditPrompt(app.db, change);
+    // The preview is best-effort: it loads preset rows and assembles two prompts, so it can throw.
+    // Convert any failure into the same unavailable-preview response instead of a 500.
+    const render = await renderMariEditPrompt(app.db, change).catch((err) => {
+      logger.warn(err, "[professor-mari] prompt preview render failed for review %s", req.params.id);
+      return null;
+    });
     if (!render) return reply.status(422).send({ error: "This change can't be shown as a prompt preview." });
     return { ok: true, ...render };
   });

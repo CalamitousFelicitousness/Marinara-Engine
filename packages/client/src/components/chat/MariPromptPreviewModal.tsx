@@ -2,6 +2,7 @@
 // assembled prompt before vs after with the change highlighted (added green, removed red). It is
 // assembled on its own (default preset, no persona, no chat history), so it is a labeled preview,
 // not a real chat prompt.
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, X } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -37,20 +38,38 @@ export function MariPromptPreviewModal({
   onClose: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const segments = diffWords(sideToText(before), sideToText(after));
+  // The word-diff is an O(m*n) LCS pass over the whole assembled prompt; memoize so it is not
+  // recomputed on unrelated re-renders (e.g. while loading).
+  const segments = useMemo(() => diffWords(sideToText(before), sideToText(after)), [before, after]);
   const empty = !loading && !error && segments.every((segment) => !segment.value.trim());
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 max-md:pt-[env(safe-area-inset-top)]"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mari-prompt-preview-title"
+        tabIndex={-1}
         className={cn(NEUTRAL_PANEL_SHELL, "mx-4 flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden")}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={cn(NEUTRAL_PANEL_HEADER, "shrink-0 flex items-center justify-between gap-3 px-5 py-3")}>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className={cn(NEUTRAL_PANEL_TITLE, "shrink-0 text-sm")}>{title}</h3>
+            <h3 id="mari-prompt-preview-title" className={cn(NEUTRAL_PANEL_TITLE, "shrink-0 text-sm")}>
+              {title}
+            </h3>
             <span className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--secondary)]/60 px-2 py-0.5 text-[0.5625rem] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
               {localizeUi("ui.chat.maripromptpreviewmodal.previewBadge")}
             </span>

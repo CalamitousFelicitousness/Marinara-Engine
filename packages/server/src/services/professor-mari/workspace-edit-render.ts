@@ -186,8 +186,16 @@ export async function renderMariEditPrompt(db: DB, target: MariEditRenderTarget)
     if (!loaded) return null;
     // Structural preview: no character fills the markers, so character blocks are empty and the diff
     // reflects the section/order/parameter change itself.
-    const before = await assembleSide(baseInput(db, splicePreset(loaded, target, target.beforeRaw), []));
-    const after = await assembleSide(baseInput(db, splicePreset(loaded, target, target.afterRaw), []));
+    const renderPresetSide = async (raw: RawRow | null): Promise<MariEditPromptSide | null> => {
+      // For a WHOLE-preset (prompt_presets) change, a null snapshot means the preset did not exist on
+      // this side (an insert's before). Render nothing rather than falling back to the live row, which
+      // would show the after-preset on the before side and a misleading empty diff. (A section/group/
+      // choice edit keeps null meaning "row absent on this side", which spliceArray handles correctly.)
+      if (target.table === "prompt_presets" && raw === null) return null;
+      return assembleSide(baseInput(db, splicePreset(loaded, target, raw), []));
+    };
+    const before = await renderPresetSide(target.beforeRaw);
+    const after = await renderPresetSide(target.afterRaw);
     return { before, after };
   }
 

@@ -2362,6 +2362,13 @@ try {
       !shrunkApproval.diffPreview.some((change) => change.table === "lorebook_entries" && change.id === entryB.id),
       "the rejected row is gone from the shrunken diff preview",
     );
+    // The approvals list renders the mirrored affectedRows count, so a partial reject must recompute
+    // it (not leave it at the pre-reject total). With < 50 changes it equals the preview length.
+    assert.equal(
+      shrunkApproval.affectedRows,
+      shrunkApproval.diffPreview.length,
+      "the mirrored affectedRows count matches the shrunken plan",
+    );
 
     // Reject the remaining entries (re-derived from the shrunken preview, since indices shifted).
     // The un-rejectable lorebooks row remains, so the review stays pending rather than resolving.

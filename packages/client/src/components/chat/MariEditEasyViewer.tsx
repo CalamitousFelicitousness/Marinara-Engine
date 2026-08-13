@@ -8,7 +8,7 @@
 import type { ReactNode } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
-import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
+import { computeFieldChanges, resolveLorebookVectorStatus, type FieldChange, type LorebookVectorStatus } from "../../lib/mari-edit-diff";
 import { diffWords } from "../../lib/word-diff";
 import type { MariDbPendingApproval, MariDbRowChange } from "@marinara-engine/shared";
 import { ChevronDown, ChevronRight, Eye, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
@@ -158,9 +158,9 @@ const LOREBOOK_HANDLED_PATHS = new Set([
 // ── Lorebook entry activation + vectorization status ────────────────────────
 // Mirror the engine's own lorebook editor (LorebookEntryRow / ChatRoleplayPanels): activation is a
 // 3-way constant/selective/normal enum shown as a colored dot, "disabled" is the orthogonal `enabled`
-// flag, and vectorization is the `excludeFromVectorization` opt-out. Render them as always-visible
-// status pills so a reviewer can tell an entry's kind at a glance, not only when Mari's edit happens
-// to change one. Dots reuse the engine's colors (constant = yellow, selective = red, normal =
+// flag, and vectorization distinguishes excluded, embedded, and not-yet-embedded entries. Render
+// them as always-visible status pills so a reviewer can tell an entry's kind at a glance, not only
+// when Mari's edit happens to change one. Dots reuse the engine's colors (constant = yellow, selective = red, normal =
 // emerald, vector = cyan); the pill background stays neutral so those colors are never confused with
 // the diff's added-green / removed-red text.
 type ActivationType = "constant" | "selective" | "normal";
@@ -187,13 +187,6 @@ function activationType(row: Row): ActivationType {
   if (truthy(row?.constant)) return "constant";
   if (truthy(row?.selective)) return "selective";
   return "normal";
-}
-
-// The reviewable vectorization setting (the opt-out flag). We deliberately do not read the derived
-// `embedding` array (whether bulk vectorization has run yet) — it isn't carried in the review
-// snapshot and is a runtime state, not something Mari's edit decides.
-function isVectorExcluded(row: Row): boolean {
-  return truthy(row?.excludeFromVectorization);
 }
 
 function StatusPill({ dot, label, title, faded }: { dot?: string; label: string; title?: string; faded?: boolean }) {
@@ -272,8 +265,8 @@ function LorebookEntryDiff({ change, collapsed }: { change: MariDbRowChange; col
   // `from → to`.
   const beforeAct = before ? activationType(before) : null;
   const afterAct = after ? activationType(after) : null;
-  const beforeVec = before ? isVectorExcluded(before) : null;
-  const afterVec = after ? isVectorExcluded(after) : null;
+  const beforeVec = before ? resolveLorebookVectorStatus(before) : null;
+  const afterVec = after ? resolveLorebookVectorStatus(after) : null;
   const activationPill = (type: ActivationType, faded?: boolean) => (
     <StatusPill
       key={`act-${type}-${faded ? "from" : "to"}`}
@@ -283,19 +276,31 @@ function LorebookEntryDiff({ change, collapsed }: { change: MariDbRowChange; col
       faded={faded}
     />
   );
-  const vectorPill = (excluded: boolean, faded?: boolean) => (
-    <StatusPill
-      key={`vec-${excluded}-${faded ? "from" : "to"}`}
-      dot={excluded ? undefined : "bg-cyan-300"}
-      label={localizeUi(
-        excluded ? "ui.chat.mariediteasyviewer.vectorExcluded" : "ui.chat.mariediteasyviewer.vectorized",
-      )}
-      title={localizeUi(
-        excluded ? "ui.chat.mariediteasyviewer.vectorExcludedHint" : "ui.chat.mariediteasyviewer.vectorizedHint",
-      )}
-      faded={faded}
-    />
-  );
+  const vectorPill = (status: LorebookVectorStatus, faded?: boolean) => {
+    const excluded = status === "excluded";
+    const vectorized = status === "vectorized";
+    return (
+      <StatusPill
+        key={`vec-${status}-${faded ? "from" : "to"}`}
+        dot={vectorized ? "bg-cyan-300" : excluded ? undefined : "bg-[var(--muted-foreground)]"}
+        label={localizeUi(
+          excluded
+            ? "ui.chat.mariediteasyviewer.vectorExcluded"
+            : vectorized
+              ? "ui.chat.mariediteasyviewer.vectorized"
+              : "ui.chat.mariediteasyviewer.notVectorized",
+        )}
+        title={localizeUi(
+          excluded
+            ? "ui.chat.mariediteasyviewer.vectorExcludedHint"
+            : vectorized
+              ? "ui.chat.mariediteasyviewer.vectorizedHint"
+              : "ui.chat.mariediteasyviewer.notVectorizedHint",
+        )}
+        faded={faded}
+      />
+    );
+  };
 
   // `selective` is shown by the activation pill only when it actually moved the type; when `constant`
   // dominates on both sides (the pill stays "constant"), keep the raw selective change in the generic

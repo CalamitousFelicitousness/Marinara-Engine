@@ -32,6 +32,7 @@ import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
 import { forceRefreshSpa } from "@/lib/browser-runtime";
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -6425,6 +6426,9 @@ type ProfileImportStats = {
   chats?: number;
   messages?: number;
   connections?: number;
+  customTools?: number;
+  mariInstructions?: number;
+  personalExtensions?: number;
   files?: number;
 };
 
@@ -6503,7 +6507,7 @@ function getProfileImportPercent(progress: ProfileImportProgressState) {
   return Math.min(99, Math.max(progress.status === "running" ? 8 : 0, percent));
 }
 
-function formatProfileImportStats(stats?: ProfileImportStats) {
+function formatProfileImportStats(stats: ProfileImportStats | undefined, localizeUi: TFunction) {
   if (!stats) return "";
   const entries: Array<[number | undefined, string]> = [
     [stats.characters, "characters"],
@@ -6515,6 +6519,9 @@ function formatProfileImportStats(stats?: ProfileImportStats) {
     [stats.chats, "chats"],
     [stats.messages, "messages"],
     [stats.connections, "connections"],
+    [stats.customTools, localizeUi("ui.panels.importsettings.customTools")],
+    [stats.mariInstructions, localizeUi("ui.panels.importsettings.professorMariMemories")],
+    [stats.personalExtensions, localizeUi("ui.panels.importsettings.personalExtensions")],
     [stats.files, "files"],
   ];
   return entries
@@ -6535,6 +6542,9 @@ function getProfileImportItemCount(stats?: ProfileImportStats) {
     stats.chats,
     stats.messages,
     stats.connections,
+    stats.customTools,
+    stats.mariInstructions,
+    stats.personalExtensions,
     stats.files,
   ];
   return counts.reduce<number>((total, count) => total + (typeof count === "number" && count > 0 ? count : 0), 0);
@@ -6579,9 +6589,9 @@ function formatProfileImportWarningDetails(warnings: ProfileImportWarning[]) {
   return `Missing: ${visible}${extra}`;
 }
 
-function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewResult) {
+function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewResult, localizeUi: TFunction) {
   const warnings = normalizeProfileImportWarnings(preview.warnings);
-  const found = formatProfileImportStats(preview.imported) || "no counted records";
+  const found = formatProfileImportStats(preview.imported, localizeUi) || "no counted records";
   const warningDetail =
     warnings.length > 0
       ? `${formatProfileImportWarningSummary(warnings)} ${formatProfileImportWarningDetails(warnings)}`
@@ -6769,7 +6779,7 @@ function ImportSettings() {
 
       const confirmed = await showConfirmDialog({
         title: localizeUi("ui.panels.importsettings.importProfile"),
-        message: formatProfileImportConfirmationMessage(preview),
+        message: formatProfileImportConfirmationMessage(preview, localizeUi),
         confirmLabel: localizeUi("ui.chat.chatbranchselector.import"),
         cancelLabel: "Cancel",
         tone: "destructive",
@@ -6855,7 +6865,7 @@ function ImportSettings() {
           qc.invalidateQueries();
           const imported = event.data?.imported;
           const warnings = normalizeProfileImportWarnings(event.data?.warnings);
-          const summary = formatProfileImportStats(imported);
+          const summary = formatProfileImportStats(imported, localizeUi);
           setProfileImportProgress((current) => {
             const totalItems = Math.max(1, current?.totalItems ?? 1);
             return {
@@ -7005,12 +7015,12 @@ function ImportSettings() {
                       </span>
                     )}
                   </div>
-                  {formatProfileImportStats(profileImportProgress.imported) && (
+                  {formatProfileImportStats(profileImportProgress.imported, localizeUi) && (
                     <div className="text-[0.6875rem] text-[var(--muted-foreground)]">
                       {profileImportProgress.status === "preview"
                         ? localizeUi("ui.panels.importsettings.found")
                         : localizeUi("ui.panels.importsettings.importedSoFar")}
-                      : {formatProfileImportStats(profileImportProgress.imported)}
+                      : {formatProfileImportStats(profileImportProgress.imported, localizeUi)}
                     </div>
                   )}
                   {profileImportProgress.warnings?.length ? (

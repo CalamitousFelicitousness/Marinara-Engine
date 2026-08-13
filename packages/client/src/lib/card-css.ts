@@ -164,9 +164,39 @@ const THEME_TOKEN_BLOCKLIST = [
   "--color-sidebar-accent-foreground",
 ];
 
-/** Strip CSS comments */
+/** Strip CSS comments while retaining the token boundary they represent. */
 function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+  let result = "";
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < css.length; index++) {
+    const ch = css[index]!;
+    const next = css[index + 1];
+    if (quote) {
+      result += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      result += ch;
+      continue;
+    }
+    if (ch !== "/" || next !== "*") {
+      result += ch;
+      continue;
+    }
+
+    result += " ";
+    index += 2;
+    while (index < css.length && !(css[index] === "*" && css[index + 1] === "/")) index++;
+    if (index < css.length) index++;
+  }
+
+  return result;
 }
 
 function sanitizeContentText(text: string): string {
@@ -353,9 +383,9 @@ export function stripDangerousCss(css: string): string {
     "url(about:invalid)",
   );
   // Strip @import (network request + CSS injection)
-  out = out.replace(/@import\b[^;]*;/gi, "");
+  out = out.replace(/@import\b[^;]*(?:;|$)/gi, " ");
   // Strip @namespace
-  out = out.replace(/@namespace\b[^;]*;/gi, "");
+  out = out.replace(/@namespace\b[^;]*(?:;|$)/gi, " ");
   // Keep an @font-face block only if every source is a FONT data: URI. The block must carry
   // at least one url() (an empty url() set would otherwise pass vacuously), every url() must
   // be a font data: URI, and local() sources are rejected — they reference installed fonts
@@ -368,15 +398,17 @@ export function stripDangerousCss(css: string): string {
       urls.length > 0 &&
       urls.every((u) => /url\s*\(\s*(['"]?)\s*data:(?:font\/|application\/(?:font|x-font))/i.test(u));
     const hasLocalSource = /\blocal\s*\(/i.test(block);
-    return allFontData && !hasLocalSource ? block : "";
+    return allFontData && !hasLocalSource ? block : " ";
   });
 
   // ── Script/expression injection ──
-  out = out.replace(/expression\s*\([^)]*\)/gi, "");
-  out = out.replace(/javascript\s*:/gi, "");
-  out = out.replace(/vbscript\s*:/gi, "");
-  out = out.replace(/behavior\s*:[^;]*/gi, "");
-  out = out.replace(/-moz-binding\s*:[^;]*/gi, "");
+  // Preserve a space whenever syntax is removed so surrounding fragments can
+  // never concatenate into a new forbidden token after this pass.
+  out = out.replace(/expression\s*\([^)]*\)/gi, " ");
+  out = out.replace(/javascript\s*:/gi, " ");
+  out = out.replace(/vbscript\s*:/gi, " ");
+  out = out.replace(/behavior\s*:[^;]*/gi, " ");
+  out = out.replace(/-moz-binding\s*:[^;]*/gi, " ");
 
   // ── History probing ──
   // Strip :visited — can detect browsing history via style differences
@@ -402,7 +434,7 @@ function sanitizeChatCss(css: string): string {
 
   // ── Scope escape prevention ──
   // Strip :has() — can probe elements outside the scoped container
-  out = out.replace(/:has\s*\([^)]*\)/gi, "");
+  out = out.replace(/:has\s*\([^)]*\)/gi, " ");
   // Convert position:fixed to position:absolute (prevent viewport overlays)
   out = out.replace(/position\s*:\s*fixed/gi, "position:absolute");
 
@@ -411,7 +443,7 @@ function sanitizeChatCss(css: string): string {
   // Strip HTML-like characters and cap length to prevent phishing/UI spoofing.
   out = sanitizeContentDeclarations(out);
   // Strip </style (prevent injection breakout)
-  out = out.replace(/<\/style/gi, "");
+  out = out.replace(/<\/style/gi, " ");
 
   // ── Theme protection ──
   // Strip theme token declarations
@@ -420,10 +452,10 @@ function sanitizeChatCss(css: string): string {
       `(${THEME_TOKEN_BLOCKLIST.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*:[^;]*;?`,
       "gi",
     ),
-    "",
+    " ",
   );
   // Strip !important (prevent overriding app styles)
-  out = out.replace(/!important/gi, "");
+  out = out.replace(/!important/gi, " ");
 
   return out;
 }

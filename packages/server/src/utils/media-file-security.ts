@@ -1,10 +1,11 @@
-import { open, readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { assertInsideDir, isAllowedImageBuffer } from "./security.js";
 
 const RASTER_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"]);
 const SVG_EXTENSION = ".svg";
 const IMAGE_HEADER_BYTES = 4096;
+const SVG_IMAGE_MAX_BYTES = 50 * 1024 * 1024;
 
 export type ValidatedImageAsset = {
   mimeType: string;
@@ -95,10 +96,20 @@ export async function validateImageAssetFile(
   options: { allowSvg?: boolean } = {},
 ): Promise<ValidatedImageAsset | null> {
   if (extname(filename).toLowerCase() === SVG_EXTENSION) {
+    if (!options.allowSvg) return null;
+    let handle;
     try {
-      return validateImageAssetBuffer(await readFile(filePath), filename, options);
+      handle = await open(filePath, "r");
+      const file = await handle.stat();
+      if (!file.isFile() || file.size > SVG_IMAGE_MAX_BYTES) return null;
+      const bytes = Buffer.alloc(file.size + 1);
+      const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+      if (bytesRead !== file.size) return null;
+      return validateImageAssetBuffer(bytes.subarray(0, bytesRead), filename, options);
     } catch {
       return null;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
   }
 

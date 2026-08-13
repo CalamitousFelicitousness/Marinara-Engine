@@ -919,7 +919,7 @@ type ProfileImportSecuritySummary = {
 };
 
 function isProfileImportActiveFlag(value: unknown) {
-  return value === true || value === "true" || value === 1;
+  return value === true || value === "true" || value === 1 || value === "1";
 }
 
 function buildProfileImportSecuritySummary(
@@ -1173,7 +1173,13 @@ async function importProfileStorageSnapshot(
             // account and its posts on the Noodle timeline.
             if (tableName === "noodle_accounts") cleanRow = migrateLegacyNoodleAccountRow(cleanRow);
             if (tableName === "noodle_posts") cleanRow = migrateLegacyNoodlePostAccessRow(cleanRow);
-            if (tableName === "api_connections") cleanRow = connectionPlans[rowIndex]?.row ?? cleanRow;
+            if (tableName === "api_connections") {
+              const connectionPlan = connectionPlans[rowIndex];
+              if (!connectionPlan) {
+                throw new ProfileImportRequestError("Profile import could not plan an imported API connection.");
+              }
+              cleanRow = connectionPlan.row;
+            }
             if (tableName === "installed_extensions") cleanRow = quarantineProfilePersonalExtensionRow(cleanRow);
             if (tableName === "custom_tools") cleanRow = quarantineProfileCustomToolRow(cleanRow);
             if (tableName === "mari_instructions") cleanRow = quarantineProfileMariInstructionRow(cleanRow);

@@ -86,7 +86,7 @@ import {
   type ImageGenerationDefaultsProfile,
   type ImageStyleProfileSettings,
 } from "@marinara-engine/shared";
-import { isAllowedImageBuffer } from "../utils/security.js";
+import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
 import { validateImageAssetFile } from "../utils/media-file-security.js";
 
 const execFileAsync = promisify(execFile);
@@ -1653,11 +1653,18 @@ export async function spritesRoutes(app: FastifyInstance) {
     const { characterId, filename } = req.params;
 
     // Prevent path traversal
-    if (filename.includes("..") || filename.includes("/") || characterId.includes("..")) {
+    if (
+      filename.includes("..") ||
+      filename.includes("/") ||
+      filename.includes("\\") ||
+      characterId.includes("..") ||
+      characterId.includes("/") ||
+      characterId.includes("\\")
+    ) {
       return reply.status(400).send({ error: "Invalid path" });
     }
 
-    const filePath = join(SPRITES_ROOT, characterId, filename);
+    const filePath = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, characterId, filename));
     if (!existsSync(filePath)) {
       return reply.status(404).send({ error: "Not found" });
     }

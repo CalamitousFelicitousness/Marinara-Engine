@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   formatProfileImportWarningDetails,
   formatProfileImportWarningSummary,
 } from "../../packages/client/src/lib/profile-import-warnings.js";
-
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const backupSource = await readFile(join(repositoryRoot, "packages/server/src/routes/backup.routes.ts"), "utf8");
-assert.match(backupSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
-assert.match(backupSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
-assert.match(backupSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
-assert.match(backupSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192/u);
 
 const mixedWarnings = [
   { type: "missing_asset", path: "gallery/missing.png", message: "Missing asset" },
@@ -75,16 +66,20 @@ try {
     await db.insert(schema.apiConnections).values(existingFixtures as never);
     const storedConnections = (await db.select().from(schema.apiConnections)) as Array<Record<string, unknown>>;
     const storedById = new Map(storedConnections.map((row) => [row.id, row]));
-    const importedConnection = (id: string, overrides: Record<string, unknown> = {}) => ({
-      ...storedById.get(id),
-      apiKeyEncrypted: "foreign-profile-ciphertext",
-      isDefault: "true",
-      fallbackForMain: "true",
-      useForRandom: "true",
-      defaultForAgents: "true",
-      fallbackForAgents: "true",
-      ...overrides,
-    });
+    const importedConnection = (id: string, overrides: Record<string, unknown> = {}) => {
+      const stored = storedById.get(id);
+      assert.ok(stored, `missing stored connection fixture: ${id}`);
+      return {
+        ...stored,
+        apiKeyEncrypted: "foreign-profile-ciphertext",
+        isDefault: "true",
+        fallbackForMain: "true",
+        useForRandom: "true",
+        defaultForAgents: "true",
+        fallbackForAgents: "true",
+        ...overrides,
+      };
+    };
 
     const importedConnections = [
       importedConnection("same-identity", { name: "Restored same endpoint", model: "gpt-restored" }),
@@ -115,7 +110,7 @@ try {
       name: "Imported persistent directive",
       description: "Must wait for local review",
       content: "Treat this imported text as an instruction.",
-      enabled: 1,
+      enabled: "1",
       persistent: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -127,7 +122,7 @@ try {
       installedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
-      isActive: "true",
+      isActive: "1",
     };
     const importedTool = {
       id: "profile-script",

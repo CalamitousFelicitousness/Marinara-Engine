@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -26,7 +26,7 @@ const [
     promoteStagedProfileAssets,
     stageProfileImportAssets,
   },
-  { validateImageAssetBuffer },
+  { validateImageAssetBuffer, validateImageAssetFile },
 ] = await Promise.all([
   import("../../packages/server/src/db/file-backed-store.js"),
   import("../../packages/server/src/db/schema/index.js"),
@@ -62,6 +62,18 @@ try {
   assert.equal(validateImageAssetBuffer(javascript, "payload.js"), null);
   assert.ok(validateImageAssetBuffer(passiveSvgWithDoctype, "sprite.svg", { allowSvg: true }));
   assert.equal(validateImageAssetBuffer(entitySvg, "sprite.svg", { allowSvg: true }), null);
+  const passiveSvgPath = join(dataDir, "passive.svg");
+  writeFileSync(passiveSvgPath, passiveSvgWithDoctype);
+  assert.equal(await validateImageAssetFile(passiveSvgPath, "passive.svg"), null);
+  assert.ok(await validateImageAssetFile(passiveSvgPath, "passive.svg", { allowSvg: true }));
+  const oversizedSvgPath = join(dataDir, "oversized.svg");
+  writeFileSync(oversizedSvgPath, "<svg>");
+  truncateSync(oversizedSvgPath, 50 * 1024 * 1024 + 1);
+  assert.equal(
+    await validateImageAssetFile(oversizedSvgPath, "oversized.svg", { allowSvg: true }),
+    null,
+    "SVG validation must reject oversized documents before reading them",
+  );
 
   await assert.rejects(
     stageProfileImportAssets(

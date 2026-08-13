@@ -45,7 +45,7 @@ type CapabilityActivationContext = {
   api: {
     runtime: CapabilityRuntimeHost;
     registerTurnGameEngine(engine: AnyTurnGameEngine): Cleanup;
-    registerConversationCommand(registration: CapabilityConversationCommandRegistration): Cleanup;
+  registerConversationCommand(registration: CapabilityConversationCommandRegistration): Cleanup;
     registerService<T>(key: string, service: T): Cleanup;
     /** Contribute text to each turn's system prompt. Requires the `prompt-context` permission. */
     registerPromptContext(contributor: CapabilityPromptContextContributor): Cleanup;
@@ -204,8 +204,14 @@ class CapabilityModuleRuntime {
         api: {
           runtime: await createCapabilityRuntimeHost(app, installed.id),
           registerTurnGameEngine: (engine) => trackCleanup(registerTurnGameEngine(engine)),
-          registerConversationCommand: (registration) =>
-            trackCleanup(registerCapabilityConversationCommand(registration)),
+          registerConversationCommand: (registration) => {
+            if (registration.handler && !installed.manifest.permissions?.includes("conversation-actions")) {
+              throw new Error(
+                `Capability package ${installed.id} must declare the "conversation-actions" permission to handle model actions`,
+              );
+            }
+            return trackCleanup(registerCapabilityConversationCommand(registration));
+          },
           registerService: (key, service) => trackCleanup(registerCapabilityService(key, service)),
           // Gated on the permission the manifest already declares, so a package can't reach the prompt
           // without asking for it up front. Contract in capability-prompt-context.service.ts.

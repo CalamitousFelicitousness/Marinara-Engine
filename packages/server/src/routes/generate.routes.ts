@@ -304,6 +304,7 @@ import { prepareConversationPromptHistory } from "./generate/conversation-histor
 import { resolveConversationPresenceRuntime } from "./generate/conversation-presence-runtime.js";
 import { resolveProfessorMariPromptContext } from "./generate/professor-mari-prompt-context.js";
 import { collectCapabilityPromptContext } from "../services/capability-packages/capability-prompt-context.service.js";
+import { collectRoleplayEventContext } from "../services/capability-packages/capability-roleplay-events.service.js";
 import {
   appendToFirstSystemMessage,
   CONVERSATION_NO_REPEAT_INSTRUCTION,
@@ -396,6 +397,7 @@ import {
   handleProfessorMariCommand,
 } from "../services/generation/professor-mari-command-runtime.js";
 import { handleTurnGameCommand } from "../services/generation/turn-game-command-runtime.js";
+import { dispatchCapabilityConversationAction } from "../services/capability-packages/capability-command-registry.service.js";
 import { handleConversationSideEffectCommand } from "../services/generation/conversation-side-effect-command-runtime.js";
 import { handleConversationCallCommand } from "../services/generation/conversation-call-command-runtime.js";
 import { handleConversationMusicCommand } from "../services/generation/conversation-music-command-runtime.js";
@@ -3076,6 +3078,43 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         let canonicalGamePartyNames: string[] = [];
+        let capabilityPromptContext: Awaited<ReturnType<typeof collectCapabilityPromptContext>> = {
+          blocks: [],
+          provides: {},
+        };
+        const injectCapabilityContexts = async ({
+          messages,
+          chatMetadata,
+          mode,
+          targetCharacterIds,
+          selectedPersonaId,
+          db,
+        }: {
+          messages: typeof finalMessages;
+          chatMetadata: typeof chatMeta;
+          mode: typeof chatMode;
+          targetCharacterIds: string[];
+          selectedPersonaId: typeof personaId;
+          db: typeof app.db;
+        }) => {
+          const promptContext = await collectCapabilityPromptContext({
+            chatId: input.chatId,
+            chatMeta: chatMetadata,
+            mode,
+            targetCharacterIds,
+            personaId: selectedPersonaId,
+          });
+          const blocks = [...promptContext.blocks];
+          const eventBlock = await collectRoleplayEventContext(db, input.chatId, targetCharacterIds);
+          if (eventBlock) blocks.push(eventBlock);
+          if (blocks.length > 0) {
+            const context = blocks.join("\n\n");
+            const systemMessage = messages.find((message) => message.role === "system");
+            if (systemMessage) systemMessage.content += "\n\n" + context;
+            else messages.unshift({ role: "system" as const, content: context });
+          }
+          return promptContext;
+        };
         if (chatMode === "game") {
           const selectedGamePrompt =
             resolvedPreset && presetId
@@ -3172,20 +3211,14 @@ export async function generateRoutes(app: FastifyInstance) {
 
           // A package holding `prompt-context` appends its live state to the system message, the same way
           // the lorebook block above does. Nothing registered (the normal case) ⇒ no effect on the prompt.
-          const capabilityPromptContext = await collectCapabilityPromptContext({
-            chatId: input.chatId,
-            chatMeta,
+          capabilityPromptContext = await injectCapabilityContexts({
+            messages: finalMessages,
+            chatMetadata: chatMeta,
             mode: "game",
+            targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+            selectedPersonaId: personaId,
+            db: app.db,
           });
-          if (capabilityPromptContext.blocks.length > 0) {
-            const capabilityBlock = capabilityPromptContext.blocks.join("\n\n");
-            const sysMsg = finalMessages.find((m) => m.role === "system");
-            if (sysMsg) {
-              sysMsg.content += "\n\n" + capabilityBlock;
-            } else {
-              finalMessages.unshift({ role: "system" as const, content: capabilityBlock });
-            }
-          }
 
           // Game bypasses the preset assembler, so card-authored depth and
           // post-history instructions must be injected explicitly before the
@@ -3265,6 +3298,17 @@ export async function generateRoutes(app: FastifyInstance) {
             "[generate/game] Injected format reminder (%d chars) as last user message",
             formatReminder.length,
           );
+        }
+
+        if (chatMode !== "game") {
+          capabilityPromptContext = await injectCapabilityContexts({
+            messages: finalMessages,
+            chatMetadata: chatMeta,
+            mode: chatMode,
+            targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
+            selectedPersonaId: personaId,
+            db: app.db,
+          });
         }
 
         if (chatMode === "conversation" && !conversationScopesAwarenessToResponder) {
@@ -9688,6 +9732,25 @@ export async function generateRoutes(app: FastifyInstance) {
                   signal: abortController.signal,
                   debugLog: turnGameDebugLog,
                 });
+
+                if (command.type === "capability") {
+                  await dispatchCapabilityConversationAction({
+                    type: "capability",
+                    commandType: command.commandType,
+                    payload: command.payload,
+                    chatId: input.chatId,
+                    sourceMessageId: messageId,
+                    swipeIndex,
+                    branchChatId: input.chatId,
+                    characterId,
+                  },
+                  () =>
+                    chats.claimMessageExtraForSwipe(messageId, swipeIndex, `capabilityAction:${command.commandType}`, {
+                      actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
+                      status: "claimed",
+                    }),
+                  );
+                }
 
                 const professorMariResult = await handleProfessorMariCommand({
                   command,

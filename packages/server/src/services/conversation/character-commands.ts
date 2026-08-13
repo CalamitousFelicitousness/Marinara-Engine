@@ -126,6 +126,7 @@ export interface RockPaperScissorsCommand {
 export interface CapabilityConversationCommand {
   type: "capability";
   commandType: string;
+  payload: string | null;
 }
 
 export interface InfluenceCommand {

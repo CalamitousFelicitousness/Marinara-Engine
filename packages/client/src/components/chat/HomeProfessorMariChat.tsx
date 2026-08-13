@@ -84,6 +84,7 @@ import { useAgentStore } from "../../stores/agent.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useUIStore, type MariEditViewMode, type MariPanelSortMode } from "../../stores/ui.store";
 import { MariEditEasyViewer } from "./MariEditEasyViewer";
+import { MariPromptPreviewModal, type MariPromptRenderSide } from "./MariPromptPreviewModal";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../../lib/local-notifications";
 import {
   isProfessorMariTranscriptNearBottom,
@@ -1876,6 +1877,7 @@ function DatabaseWorkspaceApprovalCard({
   onKeepEnable,
   onRestore,
   onRejectRows,
+  onRenderPrompt,
 }: {
   approval: MariDbPendingApproval;
   busy: boolean;
@@ -1884,8 +1886,38 @@ function DatabaseWorkspaceApprovalCard({
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
   onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
+  onRenderPrompt?: (
+    id: string,
+    row: { index: number; table: string; id: string; action: string },
+  ) => Promise<{ before: MariPromptRenderSide; after: MariPromptRenderSide } | null>;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  // #4931: synthetic prompt-preview modal state for a character/preset row.
+  const [promptPreview, setPromptPreview] = useState<{
+    loading: boolean;
+    error: boolean;
+    before: MariPromptRenderSide;
+    after: MariPromptRenderSide;
+  } | null>(null);
+  const handleRenderRow = useCallback(
+    async (change: MariDbPendingApproval["diffPreview"][number], index: number) => {
+      if (!onRenderPrompt) return;
+      setPromptPreview({ loading: true, error: false, before: null, after: null });
+      try {
+        const result = await onRenderPrompt(approval.id, {
+          index,
+          table: change.table,
+          id: change.id,
+          action: change.action,
+        });
+        if (result) setPromptPreview({ loading: false, error: false, before: result.before, after: result.after });
+        else setPromptPreview({ loading: false, error: true, before: null, after: null });
+      } catch {
+        setPromptPreview({ loading: false, error: true, before: null, after: null });
+      }
+    },
+    [onRenderPrompt, approval.id],
+  );
   // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
   // flips the rest.
   const defaultViewMode = useUIStore((s) => s.mariEditViewMode);
@@ -2008,6 +2040,7 @@ function DatabaseWorkspaceApprovalCard({
                   }
                 : undefined
             }
+            onRenderRow={onRenderPrompt ? handleRenderRow : undefined}
             busy={busy || disabled}
           />
         )}
@@ -2105,6 +2138,16 @@ function DatabaseWorkspaceApprovalCard({
           </button>
         </div>
       </div>
+      {promptPreview && (
+        <MariPromptPreviewModal
+          title={localizeUi("ui.chat.maripromptpreviewmodal.title")}
+          loading={promptPreview.loading}
+          error={promptPreview.error}
+          before={promptPreview.before}
+          after={promptPreview.after}
+          onClose={() => setPromptPreview(null)}
+        />
+      )}
     </TranscriptRow>
   );
 }
@@ -2280,6 +2323,7 @@ function WorkspaceApprovalCard({
   onKeepEnable,
   onRestore,
   onRejectRows,
+  onRenderPrompt,
 }: {
   approval: MariWorkspacePendingApproval;
   busy: boolean;
@@ -2288,6 +2332,10 @@ function WorkspaceApprovalCard({
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
   onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
+  onRenderPrompt?: (
+    id: string,
+    row: { index: number; table: string; id: string; action: string },
+  ) => Promise<{ before: MariPromptRenderSide; after: MariPromptRenderSide } | null>;
 }) {
   if (approval.kind === "dependency_install") {
     return (
@@ -2320,6 +2368,7 @@ function WorkspaceApprovalCard({
       onKeepEnable={onKeepEnable}
       onRestore={onRestore}
       onRejectRows={onRejectRows}
+      onRenderPrompt={onRenderPrompt}
     />
   );
 }
@@ -4020,6 +4069,26 @@ export function HomeProfessorMariChat({
     [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
   );
 
+  // #4931: fetch the synthetic Peek-Prompt render of one reviewed character/preset row. Read-only,
+  // so it needs no review-action lock and can run while other reviews are in flight.
+  const renderWorkspacePrompt = useCallback(
+    async (id: string, row: { index: number; table: string; id: string; action: string }) => {
+      try {
+        const result = await api.post<{
+          ok?: boolean;
+          before?: MariPromptRenderSide;
+          after?: MariPromptRenderSide;
+        }>(`/professor-mari/workspace/approvals/${id}/render-prompt`, row);
+        if (!result.ok) return null;
+        return { before: result.before ?? null, after: result.after ?? null };
+      } catch (error) {
+        console.error("[Professor Mari] Failed to render workspace prompt", error);
+        return null;
+      }
+    },
+    [],
+  );
+
   const stopWorkspace = useCallback(async () => {
     workspaceAbortRef.current?.abort();
     try {
@@ -4937,6 +5006,7 @@ export function HomeProfessorMariChat({
                 onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                 onRestore={(id) => void restoreWorkspaceChange(id)}
                 onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
+                onRenderPrompt={renderWorkspacePrompt}
               />
             ))}
           </>
@@ -5697,6 +5767,7 @@ export function HomeProfessorMariChat({
                                   onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                                   onRestore={(id) => void restoreWorkspaceChange(id)}
                                   onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
+                                  onRenderPrompt={renderWorkspacePrompt}
                                 />
                               ))}
                             </>

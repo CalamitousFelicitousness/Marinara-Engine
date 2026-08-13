@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
 import { diffWords } from "../../lib/word-diff";
 import type { MariDbPendingApproval, MariDbRowChange } from "@marinara-engine/shared";
-import { Check, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
+import { Check, Eye, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
 
 type Row = Record<string, unknown> | null | undefined;
 
@@ -439,17 +439,27 @@ function actionMeta(action: MariDbRowChange["action"], localizeUi: (key: string)
   return { label: localizeUi("ui.chat.mariediteasyviewer.actionEdited"), icon: Pencil, tone: "text-[var(--muted-foreground)]" };
 }
 
+// A character or preset edit can be previewed as an assembled prompt. A character DELETE has no live
+// row for the assembler to read on the before side, so it is not offered (the field diff covers it).
+const PROMPT_RENDER_TABLES = new Set(["prompt_presets", "prompt_sections", "prompt_groups", "choice_blocks"]);
+function canRenderPrompt(change: MariDbRowChange): boolean {
+  if (change.table === "characters") return change.action !== "delete";
+  return PROMPT_RENDER_TABLES.has(change.table);
+}
+
 function RowCard({
   change,
   index,
   onDismiss,
   onReject,
+  onRender,
   busy,
 }: {
   change: MariDbRowChange;
   index: number;
   onDismiss: () => void;
   onReject?: (change: MariDbRowChange, index: number) => void;
+  onRender?: (change: MariDbRowChange, index: number) => void;
   busy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -461,6 +471,7 @@ function RowCard({
   // level lorebook entries are individually rejectable — the server refuses anything else — so the
   // control is offered only there.
   const canReject = Boolean(onReject) && change.table === "lorebook_entries";
+  const canRender = Boolean(onRender) && canRenderPrompt(change);
   return (
     <div
       className={cn(
@@ -482,6 +493,19 @@ function RowCard({
           {meta.label}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          {canRender && (
+            <button
+              type="button"
+              onClick={() => onRender?.(change, index)}
+              disabled={busy}
+              title={localizeUi("ui.chat.mariediteasyviewer.viewAsPromptHint")}
+              aria-label={localizeUi("ui.chat.mariediteasyviewer.viewAsPrompt")}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Eye size="0.7rem" />
+              {localizeUi("ui.chat.mariediteasyviewer.viewAsPrompt")}
+            </button>
+          )}
           {canReject && (
             <button
               type="button"
@@ -517,12 +541,14 @@ export function MariEditEasyViewer({
   hidden,
   onDismissRow,
   onRejectRow,
+  onRenderRow,
   busy,
 }: {
   approval: MariDbPendingApproval;
   hidden: ReadonlySet<string>;
   onDismissRow: (key: string) => void;
   onRejectRow?: (change: MariDbRowChange, index: number) => void;
+  onRenderRow?: (change: MariDbRowChange, index: number) => void;
   busy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -555,6 +581,7 @@ export function MariEditEasyViewer({
             index={item.index}
             onDismiss={() => onDismissRow(item.key)}
             onReject={onRejectRow}
+            onRender={onRenderRow}
             busy={busy}
           />
         ))

@@ -6,6 +6,10 @@ import {
 } from "../../packages/server/src/services/agents/agent-executor.js";
 import { createAgentPipeline, type ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
 import { resolveAgentPipelineAgents } from "../../packages/server/src/services/generation/agent-resolution.js";
+import {
+  applySpotifyAgentPlaybackFallbacks,
+  type SpotifyRuntimeAgent,
+} from "../../packages/server/src/services/generation/spotify-agent-runtime.js";
 import { buildLlamaArgs } from "../../packages/server/src/services/sidecar/sidecar-launch-plan.js";
 import {
   BaseLLMProvider,
@@ -14,7 +18,11 @@ import {
   type ChatOptions,
 } from "../../packages/server/src/services/llm/base-provider.js";
 import { agentResultTypeSchema } from "../../packages/shared/src/schemas/agent.schema.js";
-import { AGENT_RESULT_TYPE_VALUES, type AgentContext } from "../../packages/shared/src/types/agent.js";
+import {
+  AGENT_RESULT_TYPE_VALUES,
+  type AgentContext,
+  type AgentResult,
+} from "../../packages/shared/src/types/agent.js";
 
 class RecordingProvider extends BaseLLMProvider {
   calls = 0;
@@ -323,6 +331,78 @@ await createAgentPipeline([spotifyAgent], context).postGenerate("The room settle
 assert.equal(spotifyProvider.calls, 1, "Spotify Music DJ should make one planning request");
 assert.equal(spotifyProvider.options[0]?.tools, undefined, "Spotify planning should not enter the LLM tool loop");
 assert.equal(spotifyToolExecutions, 0, "Spotify tools should run later in the deterministic playback stage");
+
+const spotifyFallbackCalls: string[] = [];
+let spotifyFallbackReportsActiveUri = true;
+const spotifyFallbackAgent = {
+  ...makeAgent("spotify", "spotify_control"),
+  __spotifyCandidateTracks: [
+    { uri: "spotify:track:unavailable", name: "Unavailable", artist: "Regression Artist" },
+    { uri: "spotify:track:fallback", name: "Fallback", artist: "Regression Artist" },
+  ],
+  toolContext: {
+    tools: [],
+    executeToolCall: async (call) => {
+      const args = JSON.parse(call.function.arguments) as { uri?: string };
+      spotifyFallbackCalls.push(args.uri ?? "");
+      if (args.uri === "spotify:track:unavailable") {
+        return JSON.stringify({
+          error: "Spotify playback failed to start the selected track on Regression device.",
+          verification: "failed",
+          ...(spotifyFallbackReportsActiveUri ? { currentUri: "spotify:track:previous" } : {}),
+        });
+      }
+      return JSON.stringify({
+        applied: true,
+        currentUri: "spotify:track:fallback",
+        device: "Regression device",
+        queued: 1,
+      });
+    },
+  },
+} as SpotifyRuntimeAgent;
+const spotifyFallbackPlannerResult: AgentResult = {
+  agentId: "spotify",
+  agentType: "spotify",
+  type: "spotify_control",
+  data: {
+    action: "play",
+    mood: "tense",
+    searchQuery: "game soundtrack",
+    trackUris: [],
+    trackNames: [],
+  },
+  tokensUsed: 12,
+  durationMs: 1,
+  success: true,
+  error: null,
+};
+const [spotifyFallbackResult] = await applySpotifyAgentPlaybackFallbacks(
+  [spotifyFallbackPlannerResult],
+  [spotifyFallbackAgent],
+  { ...context, chatMode: "game" },
+);
+assert.deepEqual(
+  spotifyFallbackCalls,
+  ["spotify:track:unavailable", "spotify:track:fallback"],
+  "Music DJ should try the next deterministic candidate after Spotify accepts but cannot verify the first",
+);
+assert.equal(spotifyFallbackResult?.success, true);
+assert.deepEqual((spotifyFallbackResult?.data as Record<string, unknown>).trackUris, ["spotify:track:fallback"]);
+
+spotifyFallbackReportsActiveUri = false;
+spotifyFallbackCalls.length = 0;
+const [spotifyMissingUriResult] = await applySpotifyAgentPlaybackFallbacks(
+  [spotifyFallbackPlannerResult],
+  [spotifyFallbackAgent],
+  { ...context, chatMode: "game" },
+);
+assert.deepEqual(
+  spotifyFallbackCalls,
+  ["spotify:track:unavailable"],
+  "Music DJ must not switch candidates when Spotify verification reports no active URI",
+);
+assert.equal(spotifyMissingUriResult?.success, false);
 
 const connectionLimitedProvider = new ConcurrencyRecordingProvider();
 const connectionLimitedAgents: ResolvedAgent[] = [

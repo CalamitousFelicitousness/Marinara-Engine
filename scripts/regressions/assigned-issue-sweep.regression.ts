@@ -202,4 +202,44 @@ assert.match(
   "chat navigation uses the continuation-preserving Agent reset",
 );
 
+const presetsPanelSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/panels/PresetsPanel.tsx"),
+  "utf8",
+);
+const unsupportedRegexPlacementGate =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?const normalized =/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(unsupportedRegexPlacementGate, "the preset regex placement import branch remains discoverable");
+assert.doesNotMatch(
+  unsupportedRegexPlacementGate,
+  /continue;/u,
+  "unsupported SillyTavern placements must not discard the entire preset regex entry",
+);
+const regexBeforeSuccessfulImport =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await createRegexScript\.mutateAsync\(normalized\);/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(regexBeforeSuccessfulImport, "the preset regex pre-import path remains discoverable");
+assert.doesNotMatch(
+  regexBeforeSuccessfulImport,
+  /warnings\.push/u,
+  "unsupported placement warnings must not be emitted before the regex imports successfully",
+);
+const successfulRegexImportWarning =
+  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
+    presetsPanelSource,
+  )?.[0];
+assert.ok(successfulRegexImportWarning, "the successful preset regex import warning remains discoverable");
+assert.match(
+  successfulRegexImportWarning,
+  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push/u,
+  "ignored SillyTavern placements produce a warning only after the regex imports successfully",
+);
+assert.match(
+  successfulRegexImportWarning,
+  /localizeUi\("ui\.panels\.presetspanel\.ignoredUnsupportedRegexPlacements"/u,
+  "unsupported placement warnings must use the localized message",
+);
+
 console.info("Assigned issue-sweep regressions passed.");

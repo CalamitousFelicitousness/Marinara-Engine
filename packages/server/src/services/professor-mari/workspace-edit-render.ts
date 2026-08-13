@@ -126,6 +126,10 @@ function baseInput(db: DB, loaded: LoadedPreset, characterIds: string[], withPla
     personaDescription: withPlaceholders ? "[ the active persona's description appears here ]" : "",
     chatMessages: withPlaceholders ? ([{ role: "user", content: "[ chat history appears here ]" }] as never) : [],
     previewOnly: true,
+    // previewOnly stops state consumption but NOT lorebook scanning: the placeholder chat text (or a
+    // character's fields) could match a live lorebook keyword and inject unrelated current data into
+    // the preview. The preview must depend only on the edited snapshot + synthetic placeholders.
+    disableLorebooks: true,
   };
 }
 

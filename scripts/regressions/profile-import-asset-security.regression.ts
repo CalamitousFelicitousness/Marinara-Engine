@@ -1,15 +1,11 @@
 import assert from "node:assert/strict";
 import {
-  closeSync,
-  createReadStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readFileSync,
   renameSync,
   rmSync,
-  statSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
@@ -236,48 +232,6 @@ try {
   await promoteStagedProfileAssets(streamedStage);
   assert.deepEqual(readFileSync(join(dataDir, "backgrounds", "streamed.gif")), streamedGif);
   await cleanupStagedProfileAssets(streamedStage);
-
-  const largeStreamedGifPath = join(dataDir, "large-stream-source.gif");
-  const largeStreamedGifSize = 256 * 1024 * 1024 + 1;
-  const largeStreamDescriptor = openSync(largeStreamedGifPath, "w");
-  writeFileSync(largeStreamDescriptor, "GIF89a", { encoding: "ascii" });
-  truncateSync(largeStreamedGifPath, largeStreamedGifSize);
-  closeSync(largeStreamDescriptor);
-  let zeroFilledGifCrcState = 0xffffffff;
-  const updateCrc = (state: number, buffer: Buffer) => {
-    let next = state;
-    for (const byte of buffer) next = crc32Table[(next ^ byte) & 0xff]! ^ (next >>> 8);
-    return next >>> 0;
-  };
-  zeroFilledGifCrcState = updateCrc(zeroFilledGifCrcState, Buffer.from("GIF89a", "ascii"));
-  const zeroChunk = Buffer.alloc(1024 * 1024);
-  let remainingZeroBytes = largeStreamedGifSize - 6;
-  while (remainingZeroBytes > 0) {
-    const chunk = remainingZeroBytes >= zeroChunk.length ? zeroChunk : zeroChunk.subarray(0, remainingZeroBytes);
-    zeroFilledGifCrcState = updateCrc(zeroFilledGifCrcState, chunk);
-    remainingZeroBytes -= chunk.length;
-  }
-  const largeStreamedStage = await stageProfileImportAssets(
-    dataDir,
-    [
-      {
-        path: "backgrounds/large-streamed.gif",
-        expectedSize: largeStreamedGifSize,
-        read: () => ({
-          stream: createReadStream(largeStreamedGifPath),
-          expectedCrc32: (zeroFilledGifCrcState ^ 0xffffffff) >>> 0,
-        }),
-      },
-    ],
-    512 * 1024 * 1024,
-  );
-  await promoteStagedProfileAssets(largeStreamedStage);
-  assert.equal(
-    statSync(join(dataDir, "backgrounds", "large-streamed.gif")).size,
-    largeStreamedGifSize,
-    "a recognized STORED media entry larger than 256 MiB must restore through the streaming importer",
-  );
-  await cleanupStagedProfileAssets(largeStreamedStage);
 
   const db = await createFileNativeDB();
   const app = Fastify() as ReturnType<typeof Fastify> & { db: typeof db };

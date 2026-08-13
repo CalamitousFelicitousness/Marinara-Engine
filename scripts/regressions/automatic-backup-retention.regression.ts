@@ -5,8 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   isPermittedLargeStoredBackupEntry,
+  readStoredBackupAssetForRegression,
   writeStoredBackupArchiveForRegression,
 } from "../../packages/server/src/routes/backup.routes.js";
+import {
+  cleanupStagedProfileAssets,
+  promoteStagedProfileAssets,
+  stageProfileImportAssets,
+} from "../../packages/server/src/services/import/profile-import-assets.js";
 import {
   AUTOMATIC_BACKUP_FILENAME,
   automaticBackupArchiveFilename,
@@ -61,6 +67,11 @@ assert.equal(
   "large non-media backup entries must keep the untrusted per-entry ceiling",
 );
 assert.equal(
+  isPermittedLargeStoredBackupEntry("marinara-automatic-backup/backgrounds/meta.json", 0, 376_363_985, 376_363_985),
+  false,
+  "a recognized directory must not make oversized metadata eligible for streaming import",
+);
+assert.equal(
   isPermittedLargeStoredBackupEntry("marinara-automatic-backup/backgrounds/violet night.gif", 8, 1_024, 376_363_985),
   false,
   "compressed large assets must not bypass ZIP-bomb defenses",
@@ -93,6 +104,29 @@ try {
   closeSync(archiveHandle);
   assert.equal(end.readUInt32LE(0), 0x06054b50);
   assert.equal(end.readUInt16LE(8), 1);
+  const restoredAsset = await readStoredBackupAssetForRegression(
+    archivePath,
+    "marinara-automatic-backup/backgrounds/large.gif",
+  );
+  const restoreRoot = join(zipFixtureRoot, "restored");
+  const largeStage = await stageProfileImportAssets(
+    restoreRoot,
+    [
+      {
+        path: "backgrounds/large.gif",
+        expectedSize: restoredAsset.expectedSize,
+        read: restoredAsset.read,
+      },
+    ],
+    512 * 1024 * 1024,
+  );
+  await promoteStagedProfileAssets(largeStage);
+  assert.equal(
+    (await stat(join(restoreRoot, "backgrounds", "large.gif"))).size,
+    logicalSize,
+    "a >256 MiB production backup entry must restore through the production streaming importer",
+  );
+  await cleanupStagedProfileAssets(largeStage);
 
   const retainedSource = join(zipFixtureRoot, "retained.txt");
   const missingSource = join(zipFixtureRoot, "missing.gif");

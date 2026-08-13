@@ -28,8 +28,6 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-        with:
-          version: 10.34.5
 
       - name: Audit dependencies
         run: pnpm audit --audit-level high

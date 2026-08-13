@@ -11,6 +11,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { Readable } from "node:stream";
+import { finishCrc32, updateCrc32State } from "../../packages/server/src/utils/crc32.js";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import fastifyStatic from "../../packages/server/node_modules/@fastify/static/index.js";
 
@@ -224,6 +226,27 @@ try {
   assert.deepEqual(readFileSync(join(dataDir, "gallery", "character-videos", "char", "idle.mp4")), validMp4);
   assert.deepEqual(readFileSync(join(dataDir, "gallery", "character-videos", "char", "manifest.json")), videoManifest);
   await cleanupStagedProfileAssets(validStage);
+
+  const streamedGif = Buffer.concat([Buffer.from("GIF89a", "ascii"), Buffer.alloc(128, 0x5a)]);
+  let streamedGifCrcState = 0xffffffff;
+  streamedGifCrcState = updateCrc32State(streamedGifCrcState, streamedGif);
+  const streamedStage = await stageProfileImportAssets(
+    dataDir,
+    [
+      {
+        path: "backgrounds/streamed.gif",
+        expectedSize: streamedGif.length,
+        read: () => ({
+          stream: Readable.from([streamedGif.subarray(0, 32), streamedGif.subarray(32)]),
+          expectedCrc32: finishCrc32(streamedGifCrcState),
+        }),
+      },
+    ],
+    1024 * 1024,
+  );
+  await promoteStagedProfileAssets(streamedStage);
+  assert.deepEqual(readFileSync(join(dataDir, "backgrounds", "streamed.gif")), streamedGif);
+  await cleanupStagedProfileAssets(streamedStage);
 
   const db = await createFileNativeDB();
   const app = Fastify() as ReturnType<typeof Fastify> & { db: typeof db };

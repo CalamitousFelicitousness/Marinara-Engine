@@ -41,6 +41,8 @@ assert.throws(
 );
 assert.equal(stripHtml('<script type="text/javascript">hidden()</script >Visible'), "Visible");
 assert.equal(stripHtml('<style type="text/css">.hidden { display: none }</style >Readable'), "Readable");
+assert.equal(stripHtml("<script>hidden()</script\t\n ignored>Visible"), "Visible");
+assert.equal(stripHtml("<style>.hidden { display: none }</style\t\n ignored>Readable"), "Readable");
 assert.throws(
   () => assertSafeRedirect(new URL(wikipedia.apiUrl), new URL("https://fr.wikipedia.org/w/api.php")),
   /crossed to a different host/u,

@@ -25,8 +25,8 @@ export function decodeHtmlEntities(value: string) {
 export function stripHtml(value: string) {
   return decodeHtmlEntities(
     value
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|aside|h[1-6]|tr|table|ul|ol)>/gi, "\n")
       .replace(/<li\b[^>]*>/gi, "\n- ")

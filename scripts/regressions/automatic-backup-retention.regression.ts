@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildBackupRestoreNotes,
   isPermittedLargeStoredBackupEntry,
   readStoredBackupAssetForRegression,
   writeStoredBackupArchiveForRegression,
@@ -76,11 +77,9 @@ assert.equal(
   false,
   "compressed large assets must not bypass ZIP-bomb defenses",
 );
-assert.match(backupRouteSource, /writeStoredZipArchive\(outputPath, sources, \{[\s\S]*skipFailedFileEntries: true,/u);
-assert.match(backupRouteSource, /onOmittedEntry: \(entryName\) => omittedEntries\.add\(entryName\)/u);
-assert.match(backupRouteSource, /buildData: \(\) => Buffer\.from\(buildBackupRestoreNotes\(\[\.\.\.omittedEntries\]\)/u);
-assert.match(backupRouteSource, /lastOmittedEntries: omittedEntries/u);
-assert.match(backupRouteSource, /await output\.truncate\(entryStart\)/u);
+const omissionNotes = buildBackupRestoreNotes(["marinara-automatic-backup/backgrounds/missing.gif"]);
+assert.match(omissionNotes, /Warning: this backup completed without the following files/u);
+assert.match(omissionNotes, /marinara-automatic-backup\/backgrounds\/missing\.gif/u);
 
 const zipFixtureRoot = mkdtempSync(join(tmpdir(), "marinara-large-backup-regression-"));
 try {

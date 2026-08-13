@@ -1896,12 +1896,14 @@ async function writeStoredZipFileEntry(
       let written = 0;
       for await (const chunk of sourceHandle.createReadStream({ autoClose: false })) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (written + buffer.length > entryLimitBytes) {
+          throw new ProfileArchiveTooLargeError(
+            profileArchiveSizeError(entryName, written + buffer.length, entryLimitBytes),
+          );
+        }
         position = await writeZipFileBuffer(output, buffer, position);
         crcState = updateCrc32State(crcState, buffer);
         written += buffer.length;
-        if (written > entryLimitBytes) {
-          throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, written, entryLimitBytes));
-        }
       }
       record.crc32 = finishCrc32(crcState);
       record.size = written;
@@ -1917,12 +1919,14 @@ async function writeStoredZipFileEntry(
       let written = 0;
       for await (const chunk of createReadStream(fileSource!.filePath)) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        if (written + buffer.length > entryLimitBytes) {
+          throw new ProfileArchiveTooLargeError(
+            profileArchiveSizeError(entryName, written + buffer.length, entryLimitBytes),
+          );
+        }
         position = await writeZipFileBuffer(output, buffer, position);
         crcState = updateCrc32State(crcState, buffer);
         written += buffer.length;
-        if (written > entryLimitBytes) {
-          throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, written, entryLimitBytes));
-        }
       }
       if (written !== fileSource!.size) {
         throw new Error(`Profile ZIP source changed while exporting: ${entryName}`);
@@ -2007,7 +2011,18 @@ async function writeStoredZipArchive(
           ? ZIP32_MAX_VALUE
           : ordinaryEntryLimit;
       const remainingContentBytes = PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES - totalUncompressedBytes;
-      const entryLimit = canSkip ? Math.min(normalEntryLimit, remainingContentBytes) : normalEntryLimit;
+      const normalizedEntryName = normalizeStoredZipEntryName(source.entryName);
+      const filenameBytes = Buffer.byteLength(normalizedEntryName, "utf8");
+      const usesDataDescriptor = "filePath" in source && source.tolerateSourceChanges === true;
+      const remainingArchiveBytes =
+        PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES -
+        position -
+        (30 + filenameBytes) -
+        (usesDataDescriptor ? 16 : 0) -
+        centralDirectorySizeEstimate -
+        (46 + filenameBytes) -
+        ZIP_EOCD_MIN_SIZE;
+      const entryLimit = Math.max(0, Math.min(normalEntryLimit, remainingContentBytes, remainingArchiveBytes));
       const result = await writeStoredZipFileEntry(
         output,
         source,
@@ -2659,7 +2674,7 @@ async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImp
   }
 }
 
-function buildBackupRestoreNotes(omittedEntries: readonly string[] = []) {
+export function buildBackupRestoreNotes(omittedEntries: readonly string[] = []) {
   const lines = [
     "Marinara Engine backup",
     "",
@@ -2797,6 +2812,7 @@ async function writeFullBackupArchive(
     }
   }
 
+  // Keep this deferred note last so it sees every omission discovered while earlier sources are written.
   sources.push({
     entryName: `${backupName}/RESTORE.txt`,
     buildData: () => Buffer.from(buildBackupRestoreNotes([...omittedEntries]), "utf8"),

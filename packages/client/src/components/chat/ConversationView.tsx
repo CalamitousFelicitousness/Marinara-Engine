@@ -690,12 +690,24 @@ export function ConversationView({
     [messages, transcriptWindowStart],
   );
   const gotoRequest = useChatStore((state) => state.gotoRequest);
+  // ChatArea clears the request after scrolling; only reveal its transcript window once.
+  const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
 
   useLayoutEffect(() => {
-    if (!gotoRequest || gotoRequest.chatId !== chatId || !messages) return;
+    if (
+      !gotoRequest ||
+      gotoRequest.chatId !== chatId ||
+      !messages ||
+      handledTranscriptGotoRef.current === gotoRequest
+    ) {
+      return;
+    }
     const loadedMessageOffset = totalMessageCount - messages.length;
     const localIndex = gotoRequest.messageNumber - 1 - loadedMessageOffset;
-    if (localIndex >= 0 && localIndex < messages.length) setTranscriptWindowStart(localIndex);
+    if (localIndex >= 0 && localIndex < messages.length) {
+      handledTranscriptGotoRef.current = gotoRequest;
+      setTranscriptWindowStart(localIndex);
+    }
   }, [chatId, gotoRequest, messages, totalMessageCount]);
 
   const showOlderTranscriptMessages = useCallback(() => {

@@ -72,7 +72,8 @@ export function ChatMessageSearch({ chatId }: { chatId: string }) {
     queryFn: ({ signal }) =>
       api.get<Message[]>(`/chats/${chatId}/messages`, { signal }).then((items) => items.map(normalizeHydratedMessage)),
     enabled: open,
-    staleTime: 0,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   const results = useMemo<SearchResult[]>(() => {

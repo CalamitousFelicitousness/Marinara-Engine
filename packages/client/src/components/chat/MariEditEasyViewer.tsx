@@ -439,12 +439,15 @@ function actionMeta(action: MariDbRowChange["action"], localizeUi: (key: string)
   return { label: localizeUi("ui.chat.mariediteasyviewer.actionEdited"), icon: Pencil, tone: "text-[var(--muted-foreground)]" };
 }
 
-// A character or preset edit can be previewed as an assembled prompt. A character DELETE has no live
-// row for the assembler to read on the before side, so it is not offered (the field diff covers it).
+// A character or preset edit can be previewed as an assembled prompt. Deletes are NOT offered: the
+// field diff already shows the removed content, and a synthetic re-assembly of a deleted row is
+// either impossible (a character delete has no live row for the proxy to substitute) or misleading
+// (Mari's section delete also prunes the id from the preset's sectionOrder, so the assembler skips
+// the re-spliced section and the before/after come out identical).
 const PROMPT_RENDER_TABLES = new Set(["prompt_presets", "prompt_sections", "prompt_groups", "choice_blocks"]);
 function canRenderPrompt(change: MariDbRowChange): boolean {
-  if (change.table === "characters") return change.action !== "delete";
-  return PROMPT_RENDER_TABLES.has(change.table);
+  if (change.action === "delete") return false;
+  return change.table === "characters" || PROMPT_RENDER_TABLES.has(change.table);
 }
 
 function RowCard({

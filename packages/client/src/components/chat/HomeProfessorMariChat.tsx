@@ -1885,7 +1885,7 @@ function DatabaseWorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
-  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
   onRenderPrompt?: (
     id: string,
     row: { index: number; table: string; id: string; action: string },
@@ -1899,9 +1899,16 @@ function DatabaseWorkspaceApprovalCard({
     before: MariPromptRenderSide;
     after: MariPromptRenderSide;
   } | null>(null);
+  // Each open/close bumps the token so a late render resolve can't re-open a modal the user closed.
+  const renderTokenRef = useRef(0);
+  const closePromptPreview = useCallback(() => {
+    renderTokenRef.current += 1;
+    setPromptPreview(null);
+  }, []);
   const handleRenderRow = useCallback(
     async (change: MariDbPendingApproval["diffPreview"][number], index: number) => {
       if (!onRenderPrompt) return;
+      const token = (renderTokenRef.current += 1);
       setPromptPreview({ loading: true, error: false, before: null, after: null });
       try {
         const result = await onRenderPrompt(approval.id, {
@@ -1910,9 +1917,11 @@ function DatabaseWorkspaceApprovalCard({
           id: change.id,
           action: change.action,
         });
+        if (renderTokenRef.current !== token) return; // closed or superseded while assembling
         if (result) setPromptPreview({ loading: false, error: false, before: result.before, after: result.after });
         else setPromptPreview({ loading: false, error: true, before: null, after: null });
       } catch {
+        if (renderTokenRef.current !== token) return;
         setPromptPreview({ loading: false, error: true, before: null, after: null });
       }
     },
@@ -2030,13 +2039,15 @@ function DatabaseWorkspaceApprovalCard({
             onRejectRow={
               onRejectRows
                 ? (change, index) => {
-                    // The server prunes the rejected row, shifting every later row's index, so the
-                    // positional dismiss keys become stale — drop them and let the card re-render
-                    // from the refreshed (shorter) diffPreview.
-                    setHiddenRows(new Set());
-                    onRejectRows(approval.id, [
-                      { index, table: change.table, id: change.id, action: change.action },
-                    ]);
+                    void (async () => {
+                      const reverted = await onRejectRows(approval.id, [
+                        { index, table: change.table, id: change.id, action: change.action },
+                      ]);
+                      // A successful reject prunes the row, shifting every later index, so the
+                      // positional dismiss keys go stale — drop them then. On a no-op (state_changed
+                      // / invalid_selection) diffPreview is unchanged, so keep the dismissals.
+                      if (reverted) setHiddenRows(new Set());
+                    })();
                   }
                 : undefined
             }
@@ -2145,7 +2156,7 @@ function DatabaseWorkspaceApprovalCard({
           error={promptPreview.error}
           before={promptPreview.before}
           after={promptPreview.after}
-          onClose={() => setPromptPreview(null)}
+          onClose={closePromptPreview}
         />
       )}
     </TranscriptRow>
@@ -2331,7 +2342,7 @@ function WorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
-  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
   onRenderPrompt?: (
     id: string,
     row: { index: number; table: string; id: string; action: string },
@@ -4027,8 +4038,8 @@ export function HomeProfessorMariChat({
   // restoreWorkspaceChange but posts the row's diffPreview index + identity tuple; the server reverts
   // only that row and either shrinks the pending card or resolves it.
   const rejectWorkspaceRows = useCallback(
-    async (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => {
-      if (workspaceReviewActionId) return;
+    async (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>): Promise<boolean> => {
+      if (workspaceReviewActionId) return false;
       setWorkspaceReviewActionId(id);
       try {
         const result = await api.post<{
@@ -4045,7 +4056,9 @@ export function HomeProfessorMariChat({
         if (result.ok) {
           await invalidateWorkspaceData();
           toast.success(localizeUi("ui.chat.homeprofessormarichat.revertedTheSelectedEntry"));
-        } else if (result.outcome === "state_changed") {
+          return true;
+        }
+        if (result.outcome === "state_changed") {
           toast.error(
             localizeUi("ui.chat.homeprofessormarichat.theWorkspaceChangedAfterProfessorMariStagedThisProposal"),
             { description: result.error ?? undefined, duration: 12_000 },
@@ -4056,12 +4069,14 @@ export function HomeProfessorMariChat({
             duration: 12_000,
           });
         }
+        return false;
       } catch (error) {
         console.error("[Professor Mari] Failed to reject workspace rows", error);
         toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRejectThatEntry"), {
           description: describeProfessorMariError(error),
           duration: 12_000,
         });
+        return false;
       } finally {
         setWorkspaceReviewActionId((current) => (current === id ? null : current));
       }
@@ -5005,7 +5020,7 @@ export function HomeProfessorMariChat({
                 onKeep={(id) => void keepWorkspaceChange(id)}
                 onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                 onRestore={(id) => void restoreWorkspaceChange(id)}
-                onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
+                onRejectRows={(id, rows) => rejectWorkspaceRows(id, rows)}
                 onRenderPrompt={renderWorkspacePrompt}
               />
             ))}
@@ -5766,7 +5781,7 @@ export function HomeProfessorMariChat({
                                   onKeep={(id) => void keepWorkspaceChange(id)}
                                   onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                                   onRestore={(id) => void restoreWorkspaceChange(id)}
-                                  onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
+                                  onRejectRows={(id, rows) => rejectWorkspaceRows(id, rows)}
                                   onRenderPrompt={renderWorkspacePrompt}
                                 />
                               ))}

@@ -191,6 +191,15 @@ assert.ok(
   performance.now() - nestedCharacterStartedAt < 1_000,
   "deeply wrapped character conditions should complete within one second",
 );
+let nestedAndCondition = "char";
+for (let depth = 0; depth < 1_600; depth += 1) nestedAndCondition = `char && (${nestedAndCondition})`;
+const nestedAndConditional = `[\n{{#if ${nestedAndCondition}}}{{char}}{{else}}missing{{/if}}\n]`;
+const nestedAndStartedAt = performance.now();
+assert.equal(resolveMacros(nestedAndConditional, groupMacroContext), "[\nMiko\n]\n[\nDottore\n]");
+assert.ok(
+  performance.now() - nestedAndStartedAt < 1_000,
+  "deeply nested boolean conditions should complete within one second",
+);
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
 assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));
 const scopedParsingStartedAt = performance.now();

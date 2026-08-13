@@ -967,125 +967,6 @@ function isCharacterConditionalOperand(raw: string): boolean {
 
 type ParsedConditionExpression = { left: string; operator: string; right?: string };
 
-function splitTopLevelCondition(input: string, delimiter: "||" | "&&"): string[] {
-  const parts: string[] = [];
-  let partStart = 0;
-  let quote: "single" | "double" | null = null;
-  let escaped = false;
-  let macroDepth = 0;
-  let parenthesisDepth = 0;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const character = input[index]!;
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (quoteKind(character) === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (macroDepth > 0) {
-      if (character === "{" && input[index + 1] === "{") {
-        macroDepth += 1;
-        index += 1;
-      } else if (character === "}" && input[index + 1] === "}") {
-        macroDepth -= 1;
-        index += 1;
-      }
-      continue;
-    }
-
-    const nextQuote = quoteKind(character);
-    if (nextQuote) {
-      quote = nextQuote;
-      continue;
-    }
-    if (character === "{" && input[index + 1] === "{") {
-      macroDepth = 1;
-      index += 1;
-      continue;
-    }
-    if (character === "(") {
-      parenthesisDepth += 1;
-      continue;
-    }
-    if (character === ")" && parenthesisDepth > 0) {
-      parenthesisDepth -= 1;
-      continue;
-    }
-    if (parenthesisDepth === 0 && input.startsWith(delimiter, index)) {
-      parts.push(input.slice(partStart, index).trim());
-      partStart = index + delimiter.length;
-      index += delimiter.length - 1;
-    }
-  }
-
-  parts.push(input.slice(partStart).trim());
-  return parts;
-}
-
-function unwrapCondition(input: string): string {
-  let start = 0;
-  let end = input.length;
-  while (start < end && /\s/u.test(input[start]!)) start++;
-  while (end > start && /\s/u.test(input[end - 1]!)) end--;
-
-  let quote: "single" | "double" | null = null;
-  let escaped = false;
-  let macroDepth = 0;
-  const parenthesisStack: number[] = [];
-  const matchingParentheses = new Map<number, number>();
-
-  for (let index = start; index < end; index++) {
-    const character = input[index]!;
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (quoteKind(character) === quote) quote = null;
-      continue;
-    }
-    if (macroDepth > 0) {
-      if (character === "{" && input[index + 1] === "{") {
-        macroDepth += 1;
-        index += 1;
-      } else if (character === "}" && input[index + 1] === "}") {
-        macroDepth -= 1;
-        index += 1;
-      }
-      continue;
-    }
-    const nextQuote = quoteKind(character);
-    if (nextQuote) {
-      quote = nextQuote;
-      continue;
-    }
-    if (character === "{" && input[index + 1] === "{") {
-      macroDepth = 1;
-      index += 1;
-      continue;
-    }
-    if (character === "(") {
-      parenthesisStack.push(index);
-    } else if (character === ")") {
-      const opening = parenthesisStack.pop();
-      if (opening !== undefined) matchingParentheses.set(opening, index);
-    }
-  }
-
-  while (start < end && input[start] === "(" && matchingParentheses.get(start) === end - 1) {
-    start++;
-    end--;
-    while (start < end && /\s/u.test(input[start]!)) start++;
-    while (end > start && /\s/u.test(input[end - 1]!)) end--;
-  }
-  return input.slice(start, end);
-}
-
 function parseConditionExpression(condition: string): ParsedConditionExpression {
   const symbolicOperators = [">=", "<=", "==", "!=", ">", "<", "="] as const;
   let quote: "single" | "double" | null = null;
@@ -1145,13 +1026,161 @@ function parseConditionExpression(condition: string): ParsedConditionExpression 
   return { left: condition.trim(), operator: "truthy" };
 }
 
+type ConditionSyntaxNode =
+  | { kind: "atom"; value: string }
+  | { kind: "and" | "or"; children: ConditionSyntaxNode[] }
+  | { kind: "group"; child: ConditionSyntaxNode };
+
+type ConditionSyntaxFrame = {
+  atomStart: number;
+  andChildren: ConditionSyntaxNode[];
+  orChildren: ConditionSyntaxNode[];
+  expectsOperand: boolean;
+  literalParenthesisDepth: number;
+};
+
+function createConditionSyntaxFrame(atomStart: number): ConditionSyntaxFrame {
+  return {
+    atomStart,
+    andChildren: [],
+    orChildren: [],
+    expectsOperand: true,
+    literalParenthesisDepth: 0,
+  };
+}
+
+function appendConditionSyntaxNode(frame: ConditionSyntaxFrame, node: ConditionSyntaxNode): boolean {
+  if (!frame.expectsOperand) return false;
+  frame.andChildren.push(node);
+  frame.expectsOperand = false;
+  return true;
+}
+
+function appendConditionAtom(
+  frame: ConditionSyntaxFrame,
+  condition: string,
+  end: number,
+  forceEmpty: boolean,
+): boolean {
+  const value = condition.slice(frame.atomStart, end).trim();
+  frame.atomStart = end;
+  if (!value && !(forceEmpty && frame.expectsOperand)) return true;
+  return appendConditionSyntaxNode(frame, { kind: "atom", value });
+}
+
+function combineConditionNodes(kind: "and" | "or", children: ConditionSyntaxNode[]): ConditionSyntaxNode {
+  return children.length === 1 ? children[0]! : { kind, children };
+}
+
+function finishConditionSyntaxFrame(frame: ConditionSyntaxFrame): ConditionSyntaxNode {
+  const andNode = combineConditionNodes("and", frame.andChildren);
+  if (frame.orChildren.length === 0) return andNode;
+  return combineConditionNodes("or", [...frame.orChildren, andNode]);
+}
+
+/** Parse the supported boolean grammar in one quote- and macro-aware pass. */
+function parseConditionSyntax(condition: string): ConditionSyntaxNode {
+  const frames = [createConditionSyntaxFrame(0)];
+  let quote: "single" | "double" | null = null;
+  let escaped = false;
+  let macroDepth = 0;
+  let valid = true;
+
+  for (let index = 0; index < condition.length; index += 1) {
+    const character = condition[index]!;
+    const frame = frames[frames.length - 1]!;
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (quoteKind(character) === quote) quote = null;
+      continue;
+    }
+    if (macroDepth > 0) {
+      if (character === "{" && condition[index + 1] === "{") {
+        macroDepth += 1;
+        index += 1;
+      } else if (character === "}" && condition[index + 1] === "}") {
+        macroDepth -= 1;
+        index += 1;
+      }
+      continue;
+    }
+
+    const nextQuote = quoteKind(character);
+    if (nextQuote) {
+      quote = nextQuote;
+      continue;
+    }
+    if (character === "{" && condition[index + 1] === "{") {
+      macroDepth = 1;
+      index += 1;
+      continue;
+    }
+
+    if (character === "(") {
+      const prefix = condition.slice(frame.atomStart, index);
+      if (frame.literalParenthesisDepth === 0 && frame.expectsOperand && prefix.trim().length === 0) {
+        frames.push(createConditionSyntaxFrame(index + 1));
+      } else {
+        frame.literalParenthesisDepth += 1;
+      }
+      continue;
+    }
+
+    if (character === ")") {
+      if (frame.literalParenthesisDepth > 0) {
+        frame.literalParenthesisDepth -= 1;
+        continue;
+      }
+      if (frames.length === 1) continue;
+
+      valid = appendConditionAtom(frame, condition, index, true) && valid;
+      const groupedNode = finishConditionSyntaxFrame(frame);
+      frames.pop();
+      const parent = frames[frames.length - 1]!;
+      const operand = groupedNode.kind === "atom" ? groupedNode : { kind: "group" as const, child: groupedNode };
+      valid = appendConditionSyntaxNode(parent, operand) && valid;
+      parent.atomStart = index + 1;
+      continue;
+    }
+
+    const operator = frame.literalParenthesisDepth === 0 ? condition.slice(index, index + 2) : "";
+    if (operator !== "&&" && operator !== "||") continue;
+
+    valid = appendConditionAtom(frame, condition, index, true) && valid;
+    if (operator === "||") {
+      frame.orChildren.push(combineConditionNodes("and", frame.andChildren));
+      frame.andChildren = [];
+    }
+    frame.expectsOperand = true;
+    frame.atomStart = index + 2;
+    index += 1;
+  }
+
+  // An unmatched opening parenthesis is part of the surrounding atom, matching
+  // the legacy parser's malformed-input behavior. Discard any partial frames;
+  // the parent still points at the opening character.
+  if (frames.length !== 1) frames.length = 1;
+  const root = frames[0]!;
+  valid = appendConditionAtom(root, condition, condition.length, true) && valid;
+  return valid ? finishConditionSyntaxFrame(root) : { kind: "atom", value: condition.trim() };
+}
+
 function parseConditionComparisons(condition: string): ParsedConditionExpression[] {
-  const expression = unwrapCondition(condition);
-  const orParts = splitTopLevelCondition(expression, "||");
-  if (orParts.length > 1) return orParts.flatMap(parseConditionComparisons);
-  const andParts = splitTopLevelCondition(expression, "&&");
-  if (andParts.length > 1) return andParts.flatMap(parseConditionComparisons);
-  return [parseConditionExpression(expression)];
+  const comparisons: ParsedConditionExpression[] = [];
+  const pending = [parseConditionSyntax(condition)];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.kind === "atom") {
+      comparisons.push(parseConditionExpression(node.value));
+    } else if (node.kind === "group") {
+      pending.push(node.child);
+    } else {
+      for (let index = node.children.length - 1; index >= 0; index -= 1) pending.push(node.children[index]!);
+    }
+  }
+  return comparisons;
 }
 
 function conditionDependsOnCharacter(condition: string): boolean {
@@ -1223,50 +1252,122 @@ function evaluateParsedCondition(
   return compareConditionValues(left, parsed.operator, right);
 }
 
-function parseSimpleCondition(
-  condition: string,
+type EqualityShorthand = Pick<ParsedConditionExpression, "left" | "operator">;
+
+type ConditionEvaluationFrame =
+  | { kind: "group" }
+  | { kind: "and"; children: ConditionSyntaxNode[]; index: number }
+  | {
+      kind: "or";
+      children: ConditionSyntaxNode[];
+      index: number;
+      equalityShorthand: EqualityShorthand | null;
+    };
+
+function parseResolvedConditionAtom(
+  atom: string,
   ctx: MacroContext,
   options: ResolveMacroOptions,
-): ParsedConditionExpression | null {
-  const expression = unwrapCondition(condition);
-  if (
-    splitTopLevelCondition(expression, "||").length > 1 ||
-    splitTopLevelCondition(expression, "&&").length > 1
-  ) {
-    return null;
+): ParsedConditionExpression {
+  return parseConditionExpression(resolveConditionMacros(atom, ctx, options));
+}
+
+function evaluateOrConditionAtom(
+  atom: string,
+  equalityShorthand: EqualityShorthand | null,
+  ctx: MacroContext,
+  options: ResolveMacroOptions,
+): { matches: boolean; equalityShorthand: EqualityShorthand | null } {
+  const parsed = parseResolvedConditionAtom(atom, ctx, options);
+  let effective = parsed;
+  let nextShorthand = equalityShorthand;
+  if (["=", "==", "is"].includes(parsed.operator) && parsed.right !== undefined) {
+    nextShorthand = { left: parsed.left, operator: parsed.operator };
+  } else if (equalityShorthand && parsed.operator === "truthy" && stripOuterQuotes(parsed.left) !== null) {
+    effective = { ...equalityShorthand, right: parsed.left };
   }
-  return parseConditionExpression(resolveConditionMacros(expression, ctx, options));
+  return { matches: evaluateParsedCondition(effective, ctx, options), equalityShorthand: nextShorthand };
 }
 
 function evaluateConditionExpression(condition: string, ctx: MacroContext, options: ResolveMacroOptions): boolean {
-  const expression = unwrapCondition(condition);
-  const orParts = splitTopLevelCondition(expression, "||");
-  if (orParts.length > 1) {
-    let equalityShorthand: Pick<ParsedConditionExpression, "left" | "operator"> | null = null;
-    for (const part of orParts) {
-      const parsed = parseSimpleCondition(part, ctx, options);
-      if (parsed) {
-        let effective = parsed;
-        if (["=", "==", "is"].includes(parsed.operator) && parsed.right !== undefined) {
-          equalityShorthand = { left: parsed.left, operator: parsed.operator };
-        } else if (equalityShorthand && parsed.operator === "truthy" && stripOuterQuotes(parsed.left) !== null) {
-          effective = { ...equalityShorthand, right: parsed.left };
+  const frames: ConditionEvaluationFrame[] = [];
+  let current: ConditionSyntaxNode | null = parseConditionSyntax(condition);
+  let result = false;
+
+  while (true) {
+    if (current) {
+      if (current.kind === "atom") {
+        result = evaluateParsedCondition(parseResolvedConditionAtom(current.value, ctx, options), ctx, options);
+        current = null;
+      } else if (current.kind === "group") {
+        frames.push({ kind: "group" });
+        current = current.child;
+        continue;
+      } else if (current.kind === "and") {
+        frames.push({ kind: "and", children: current.children, index: 0 });
+        current = current.children[0]!;
+        continue;
+      } else {
+        const frame: ConditionEvaluationFrame = {
+          kind: "or",
+          children: current.children,
+          index: 0,
+          equalityShorthand: null,
+        };
+        frames.push(frame);
+        const child: ConditionSyntaxNode = current.children[0]!;
+        if (child.kind === "atom") {
+          const evaluated = evaluateOrConditionAtom(child.value, frame.equalityShorthand, ctx, options);
+          frame.equalityShorthand = evaluated.equalityShorthand;
+          result = evaluated.matches;
+          current = null;
+        } else {
+          current = child;
         }
-        if (evaluateParsedCondition(effective, ctx, options)) return true;
-      } else if (evaluateConditionExpression(part, ctx, options)) {
-        return true;
+        continue;
       }
     }
-    return false;
-  }
 
-  const andParts = splitTopLevelCondition(expression, "&&");
-  if (andParts.length > 1) {
-    return andParts.every((part) => evaluateConditionExpression(part, ctx, options));
-  }
+    const frame = frames[frames.length - 1];
+    if (!frame) return result;
+    if (frame.kind === "group") {
+      frames.pop();
+      continue;
+    }
+    if (frame.kind === "and") {
+      if (!result) {
+        frames.pop();
+        continue;
+      }
+      frame.index += 1;
+      if (frame.index >= frame.children.length) {
+        frames.pop();
+        result = true;
+      } else {
+        current = frame.children[frame.index]!;
+      }
+      continue;
+    }
 
-  const parsed = parseSimpleCondition(expression, ctx, options);
-  return parsed ? evaluateParsedCondition(parsed, ctx, options) : false;
+    if (result) {
+      frames.pop();
+      continue;
+    }
+    frame.index += 1;
+    if (frame.index >= frame.children.length) {
+      frames.pop();
+      result = false;
+      continue;
+    }
+    const child = frame.children[frame.index]!;
+    if (child.kind === "atom") {
+      const evaluated = evaluateOrConditionAtom(child.value, frame.equalityShorthand, ctx, options);
+      frame.equalityShorthand = evaluated.equalityShorthand;
+      result = evaluated.matches;
+    } else {
+      current = child;
+    }
+  }
 }
 
 function evaluateCondition(condition: string, ctx: MacroContext, options: ResolveMacroOptions = {}): boolean {

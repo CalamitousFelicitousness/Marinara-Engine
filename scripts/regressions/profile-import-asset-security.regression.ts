@@ -1,0 +1,235 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import fastifyStatic from "../../packages/server/node_modules/@fastify/static/index.js";
+
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-profile-assets-"));
+const storageDir = mkdtempSync(join(tmpdir(), "marinara-profile-assets-storage-"));
+const outsideFile = `${dataDir}-outside.png`;
+const previousDataDir = process.env.DATA_DIR;
+const previousStorageDir = process.env.FILE_STORAGE_DIR;
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = storageDir;
+
+const [
+  { createFileNativeDB },
+  { customEmojis, customStickers },
+  { customEmojisRoutes },
+  { customStickersRoutes },
+  { gameAssetsRoutes },
+  { knowledgeSourcesRoutes },
+  {
+    ProfileImportAssetValidationError,
+    cleanupStagedProfileAssets,
+    promoteStagedProfileAssets,
+    stageProfileImportAssets,
+  },
+  { validateImageAssetBuffer },
+] = await Promise.all([
+  import("../../packages/server/src/db/file-backed-store.js"),
+  import("../../packages/server/src/db/schema/index.js"),
+  import("../../packages/server/src/routes/custom-emojis.routes.js"),
+  import("../../packages/server/src/routes/custom-stickers.routes.js"),
+  import("../../packages/server/src/routes/game-assets.routes.js"),
+  import("../../packages/server/src/routes/knowledge-sources.routes.js"),
+  import("../../packages/server/src/services/import/profile-import-assets.js"),
+  import("../../packages/server/src/utils/media-file-security.js"),
+]);
+
+// A real 1x1 transparent PNG. Legitimate media must keep round-tripping.
+const validPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XxY4WQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const html = Buffer.from("<!doctype html><script>globalThis.pwned=true</script>", "utf8");
+const javascript = Buffer.from("globalThis.pwned=true", "utf8");
+const validMp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0]);
+const videoManifest = Buffer.from('{"version":1,"videos":[]}', "utf8");
+
+try {
+  assert.ok(validateImageAssetBuffer(validPng, "valid.png"));
+  assert.equal(validateImageAssetBuffer(html, "payload.png"), null);
+  assert.equal(validateImageAssetBuffer(javascript, "payload.js"), null);
+
+  await assert.rejects(
+    stageProfileImportAssets(
+      dataDir,
+      [{ path: "gallery/global/payload.html", expectedSize: html.length, read: () => html }],
+      1024 * 1024,
+    ),
+    (error) => error instanceof ProfileImportAssetValidationError && /not a supported image file/u.test(error.message),
+    "a profile must not smuggle executable HTML into a same-origin gallery route",
+  );
+  await assert.rejects(
+    stageProfileImportAssets(
+      dataDir,
+      [{ path: "game-assets/other/payload.svg", expectedSize: html.length, read: () => html }],
+      1024 * 1024,
+    ),
+    ProfileImportAssetValidationError,
+    "a profile must not smuggle active SVG into a game-asset route",
+  );
+  await assert.rejects(
+    stageProfileImportAssets(
+      dataDir,
+      [{ path: "gallery/character-videos/char/payload.mp4", expectedSize: html.length, read: () => html }],
+      1024 * 1024,
+    ),
+    ProfileImportAssetValidationError,
+    "a video extension must not override the imported container bytes",
+  );
+  await assert.rejects(
+    stageProfileImportAssets(
+      dataDir,
+      [{ path: "custom-emojis/payload.png", expectedSize: javascript.length, read: () => javascript }],
+      1024 * 1024,
+    ),
+    ProfileImportAssetValidationError,
+    "a trusted image extension must not override the imported bytes",
+  );
+
+  const validStage = await stageProfileImportAssets(
+    dataDir,
+    [
+      { path: "gallery/global/valid.png", expectedSize: validPng.length, read: () => validPng },
+      { path: "custom-emojis/valid.png", expectedSize: validPng.length, read: () => validPng },
+      {
+        path: "gallery/character-videos/char/idle.mp4",
+        expectedSize: validMp4.length,
+        read: () => validMp4,
+      },
+      {
+        path: "gallery/character-videos/char/manifest.json",
+        expectedSize: videoManifest.length,
+        read: () => videoManifest,
+      },
+    ],
+    1024 * 1024,
+  );
+  await promoteStagedProfileAssets(validStage);
+  assert.deepEqual(readFileSync(join(dataDir, "gallery", "global", "valid.png")), validPng);
+  assert.deepEqual(readFileSync(join(dataDir, "custom-emojis", "valid.png")), validPng);
+  assert.deepEqual(readFileSync(join(dataDir, "gallery", "character-videos", "char", "idle.mp4")), validMp4);
+  assert.deepEqual(readFileSync(join(dataDir, "gallery", "character-videos", "char", "manifest.json")), videoManifest);
+  await cleanupStagedProfileAssets(validStage);
+
+  const db = await createFileNativeDB();
+  const app = Fastify() as ReturnType<typeof Fastify> & { db: typeof db };
+  app.decorate("db", db);
+  await app.register(fastifyStatic, { root: dataDir, decorateReply: true });
+  await app.register(customEmojisRoutes, { prefix: "/api/custom-emojis" });
+  await app.register(customStickersRoutes, { prefix: "/api/custom-stickers" });
+  await app.register(knowledgeSourcesRoutes, { prefix: "/api/knowledge-sources" });
+  await app.register(gameAssetsRoutes, { prefix: "/api/game-assets" });
+
+  try {
+    writeFileSync(outsideFile, validPng);
+    const timestamp = "2026-08-13T00:00:00.000Z";
+    await db.insert(customEmojis).values({
+      id: "unsafe-emoji",
+      name: "unsafe_emoji",
+      filePath: "../outside.png",
+      width: 1,
+      height: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    await db.insert(customStickers).values({
+      id: "unsafe-sticker",
+      name: "unsafe_sticker",
+      filePath: "../outside.png",
+      width: 1,
+      height: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const emojiExport = await app.inject({
+      method: "POST",
+      url: "/api/custom-emojis/export",
+      payload: { ids: ["unsafe-emoji"] },
+    });
+    assert.equal(emojiExport.statusCode, 200);
+    assert.deepEqual(emojiExport.json().emojis, [], "unsafe emoji rows must not read files outside their store");
+    const stickerExport = await app.inject({
+      method: "POST",
+      url: "/api/custom-stickers/export",
+      payload: { ids: ["unsafe-sticker"] },
+    });
+    assert.equal(stickerExport.statusCode, 200);
+    assert.deepEqual(stickerExport.json().stickers, [], "unsafe sticker rows must not read files outside their store");
+
+    assert.equal((await app.inject({ method: "DELETE", url: "/api/custom-emojis/unsafe-emoji" })).statusCode, 200);
+    assert.equal((await app.inject({ method: "DELETE", url: "/api/custom-stickers/unsafe-sticker" })).statusCode, 200);
+    assert.equal(existsSync(outsideFile), true, "unsafe imported media paths must never delete an outside file");
+
+    const sourcesDir = join(dataDir, "knowledge-sources");
+    mkdirSync(sourcesDir, { recursive: true });
+    writeFileSync(
+      join(sourcesDir, "meta.json"),
+      JSON.stringify({
+        unsafe: {
+          id: "unsafe",
+          originalName: "outside.png",
+          filename: "../outside.png",
+          size: validPng.length,
+          uploadedAt: timestamp,
+        },
+      }),
+    );
+    const unsafeSourceDelete = await app.inject({ method: "DELETE", url: "/api/knowledge-sources/unsafe" });
+    assert.equal(
+      unsafeSourceDelete.statusCode,
+      200,
+      `unsafe source deletion should remove metadata only: ${unsafeSourceDelete.statusCode} ${unsafeSourceDelete.body}`,
+    );
+    assert.equal(existsSync(outsideFile), true, "unsafe knowledge-source metadata must never delete an outside file");
+    writeFileSync(
+      join(sourcesDir, "meta.json"),
+      JSON.stringify({
+        unsafe: {
+          id: "unsafe",
+          originalName: "outside.png",
+          filename: "../outside.png",
+          size: validPng.length,
+          uploadedAt: timestamp,
+        },
+      }),
+    );
+    const unsafeSourceRead = await app.inject({ method: "GET", url: "/api/knowledge-sources/unsafe/text" });
+    assert.equal(
+      unsafeSourceRead.statusCode,
+      404,
+      "unsafe knowledge-source metadata must not read outside the source directory",
+    );
+    assert.equal(existsSync(outsideFile), true);
+
+    const validGallery = await app.inject({ method: "GET", url: "/api/custom-emojis/file/valid.png" });
+    assert.equal(validGallery.statusCode, 200);
+    assert.equal(validGallery.headers["content-type"], "image/png");
+    assert.deepEqual(validGallery.rawPayload, validPng);
+
+    const textAssetPath = join(dataDir, "game-assets", "notes.html");
+    mkdirSync(join(dataDir, "game-assets"), { recursive: true });
+    writeFileSync(textAssetPath, html);
+    const textAsset = await app.inject({ method: "GET", url: "/api/game-assets/file/notes.html" });
+    assert.equal(textAsset.statusCode, 200);
+    assert.equal(textAsset.headers["content-type"], "application/octet-stream");
+    assert.match(textAsset.headers["content-disposition"] ?? "", /^attachment;/u);
+  } finally {
+    await app.close();
+    await db._fileStore.close();
+  }
+
+  console.info("Profile import asset security regression passed.");
+} finally {
+  if (previousDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = previousDataDir;
+  if (previousStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
+  else process.env.FILE_STORAGE_DIR = previousStorageDir;
+  rmSync(storageDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(outsideFile, { force: true });
+}

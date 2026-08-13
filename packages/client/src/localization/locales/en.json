@@ -7362,6 +7362,7 @@
   "ui.panels.importsettings.notAValidProfileExportFile": "Not a valid profile export file.",
   "ui.panels.importsettings.personalExtensions": "personal extensions",
   "ui.panels.importsettings.professorMariMemories": "Professor Mari memories",
+  "ui.panels.importsettings.profileImportCompleteWithWarnings": "Profile import complete with warnings",
   "ui.panels.importsettings.profileImported": "Profile imported.",
   "ui.panels.importsettings.scanningProfile": "Scanning Profile...",
   "ui.panels.lorebookrow.deselectLorebook": "Deselect lorebook",

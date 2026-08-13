@@ -19,6 +19,7 @@ import {
   type BackgroundLibraryOrganization,
 } from "../services/background-library-organization.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
+import { validateImageAssetFile } from "../utils/media-file-security.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -700,15 +701,8 @@ export async function backgroundsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    const ext = extname(filename).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".png": "image/png",
-      ".gif": "image/gif",
-      ".webp": "image/webp",
-      ".avif": "image/avif",
-    };
+    const image = await validateImageAssetFile(filePath, filename);
+    if (!image) return reply.status(404).send({ error: "Not found" });
 
     // Downscaled variant when asked for one; falls back to the original on any miss.
     const thumbPath = requestedWidth ? await resolveThumbPath(filePath, requestedWidth) : null;
@@ -716,7 +710,7 @@ export async function backgroundsRoutes(app: FastifyInstance) {
     const { createReadStream } = await import("fs");
     const stream = createReadStream(thumbPath ?? filePath);
     return reply
-      .header("Content-Type", thumbPath ? "image/webp" : (mimeMap[ext] ?? "application/octet-stream"))
+      .header("Content-Type", thumbPath ? "image/webp" : image.mimeType)
       .header("Cache-Control", "no-cache, must-revalidate")
       .send(stream);
   });

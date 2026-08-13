@@ -87,6 +87,7 @@ import {
   type ImageStyleProfileSettings,
 } from "@marinara-engine/shared";
 import { isAllowedImageBuffer } from "../utils/security.js";
+import { validateImageAssetFile } from "../utils/media-file-security.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1661,20 +1662,13 @@ export async function spritesRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    const ext = extname(filename).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".png": "image/png",
-      ".gif": "image/gif",
-      ".webp": "image/webp",
-      ".avif": "image/avif",
-      ".svg": "image/svg+xml",
-    };
+    const image = await validateImageAssetFile(filePath, filename, { allowSvg: true });
+    if (!image) return reply.status(404).send({ error: "Not found" });
 
     const stream = createReadStream(filePath);
+    if (image.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
     return reply
-      .header("Content-Type", mimeMap[ext] ?? "application/octet-stream")
+      .header("Content-Type", image.mimeType)
       .header("Cache-Control", "public, max-age=31536000, immutable")
       .send(stream);
   });

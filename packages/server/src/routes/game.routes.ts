@@ -297,6 +297,7 @@ import { resolveSceneVideoPrompt, SceneVideoPromptReviewError } from "../service
 import { now } from "../utils/id-generator.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir } from "../utils/security.js";
+import { validateVideoAssetFile } from "../utils/media-file-security.js";
 import {
   buildGameSpotifySceneQuery,
   getGameSpotifyCandidates,
@@ -11921,9 +11922,11 @@ export async function gameRoutes(app: FastifyInstance) {
 
       const filePath = assertInsideDir(GAME_SCENE_VIDEOS_ROOT, join(GAME_SCENE_VIDEOS_ROOT, chatId, filename));
       if (!existsSync(filePath)) return reply.status(404).send({ error: "Scene video file not found" });
+      const video = await validateVideoAssetFile(filePath, filename);
+      if (!video) return reply.status(404).send({ error: "Scene video file not found" });
 
       return reply
-        .header("Content-Type", "video/mp4")
+        .header("Content-Type", video.mimeType)
         .sendFile(filename, join(GAME_SCENE_VIDEOS_ROOT, chatId), { maxAge: "1y", immutable: true });
     },
   );

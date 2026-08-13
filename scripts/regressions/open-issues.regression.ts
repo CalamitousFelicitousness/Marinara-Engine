@@ -1933,8 +1933,16 @@ try {
   assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
   assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
   assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
-  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
-  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
+  assert.equal(
+    professorMariParamEntry.excludeRecursion,
+    true,
+    "create must persist an embedded entry's recursion flag",
+  );
+  assert.equal(
+    professorMariParamEntry.characterFilterMode,
+    "include",
+    "create must persist an embedded entry's filter mode",
+  );
   assert.deepEqual(
     professorMariParamEntry.characterFilterIds,
     ["char-embedded"],
@@ -1990,7 +1998,11 @@ try {
     },
     apply: true,
   });
-  assert.equal(professorMariSettingsUpdate.ok, true, `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`);
+  assert.equal(
+    professorMariSettingsUpdate.ok,
+    true,
+    `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`,
+  );
   const professorMariSettingsEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
   assert.ok(professorMariSettingsEntry);
   assert.equal(professorMariSettingsEntry.probability, 100, "probability is clamped to 0-100");
@@ -2257,9 +2269,7 @@ try {
       undefined,
       "whole-lorebook delete clears the embedded lorebook pointer",
     );
-    const wholeDeleteApproval = mariDb
-      .getPendingApprovals()
-      .find((approval) => !pendingBeforeDelete.has(approval.id));
+    const wholeDeleteApproval = mariDb.getPendingApprovals().find((approval) => !pendingBeforeDelete.has(approval.id));
     assert.ok(wholeDeleteApproval, "whole-lorebook delete produced a reviewable approval");
     const restoredWholeDelete = await mariDb.restoreAppliedReview(wholeDeleteApproval.id);
     assert.ok(restoredWholeDelete && "history" in restoredWholeDelete, "whole-lorebook Restore must succeed");
@@ -2268,11 +2278,7 @@ try {
       character_book?: { entries?: unknown[] };
       extensions?: { importMetadata?: { embeddedLorebook?: { lorebookId?: string } } };
     };
-    assert.deepEqual(
-      restoredHostData.character_book?.entries,
-      [],
-      "Restore re-embeds even an empty character book",
-    );
+    assert.deepEqual(restoredHostData.character_book?.entries, [], "Restore re-embeds even an empty character book");
     assert.equal(
       restoredHostData.extensions?.importMetadata?.embeddedLorebook?.lorebookId,
       embeddedSyncLorebook.id,
@@ -3608,14 +3614,14 @@ assert.equal(parseSwarmUiVideoReference({ images: ["View/local/raw/output.mp4"] 
 assert.throws(
   () =>
     buildSwarmUiVideoGenerationBody(
-    {
-      prompt: "video",
-      durationSeconds: 5,
-      aspectRatio: "16:9",
-      comfyWorkflow: '{"image":"%reference_image_name%"}',
-    },
-    "video-session",
-  ),
+      {
+        prompt: "video",
+        durationSeconds: 5,
+        aspectRatio: "16:9",
+        comfyWorkflow: '{"image":"%reference_image_name%"}',
+      },
+      "video-session",
+    ),
   /must use %reference_image%/u,
 );
 assert.deepEqual(
@@ -3699,14 +3705,16 @@ assert.ok(ATLAS_CLOUD_VIDEO_MODELS.some((model) => model.id === "google/veo3.1/t
 
 const profileImportAssetRoot = mkdtempSync(join(tmpdir(), "marinara-profile-import-atomic-"));
 try {
+  const liveAvatar = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x6c, 0x69, 0x76, 0x65]);
+  const importedAvatar = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x6e, 0x65, 0x77]);
   const liveAvatarPath = join(profileImportAssetRoot, "avatars", "character.png");
   mkdirSync(join(profileImportAssetRoot, "avatars"), { recursive: true });
-  writeFileSync(liveAvatarPath, "live-avatar");
+  writeFileSync(liveAvatarPath, liveAvatar);
   await assert.rejects(
     stageProfileImportAssets(
       profileImportAssetRoot,
       [
-        { path: "avatars/character.png", expectedSize: 15, read: () => Buffer.from("imported-avatar") },
+        { path: "avatars/character.png", expectedSize: importedAvatar.length, read: () => importedAvatar },
         {
           path: "gallery/corrupt.png",
           expectedSize: 8,
@@ -3719,17 +3727,17 @@ try {
     ),
     /simulated corrupt archive member/u,
   );
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "live-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), liveAvatar);
 
   const stagedProfileAssets = await stageProfileImportAssets(
     profileImportAssetRoot,
-    [{ path: "avatars/character.png", expectedSize: 15, read: () => Buffer.from("imported-avatar") }],
+    [{ path: "avatars/character.png", expectedSize: importedAvatar.length, read: () => importedAvatar }],
     1024,
   );
   await promoteStagedProfileAssets(stagedProfileAssets);
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "imported-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), importedAvatar);
   await rollbackPromotedProfileAssets(stagedProfileAssets);
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "live-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), liveAvatar);
   await cleanupStagedProfileAssets(stagedProfileAssets);
 } finally {
   rmSync(profileImportAssetRoot, { recursive: true, force: true });
@@ -4924,7 +4932,10 @@ assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"
 assert.match(personaEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
 assert.match(fileDownloadSource, /MarinaraAndroid/u);
 assert.match(spriteDownloadSource, /saveBlobToDevice/u);
-assert.match(androidMainActivitySource, /public void saveFile\(String base64Data, String mimeType, String filename\)/u);
+assert.match(
+  androidMainActivitySource,
+  /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u,
+);
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
   characterEditorSource,
@@ -5016,8 +5027,10 @@ assert.equal(
 assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
-assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
-assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
+assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192/u);
 assert.match(serverAppSource, /const clientIndex = resolve\(clientDist, "index\.html"\)/u);
 assert.match(serverAppSource, /if \(existsSync\(clientIndex\)\)/u);
 assert.match(
@@ -8162,8 +8175,7 @@ try {
     createdAt: "2026-08-12T08:00:00.000Z",
   } satisfies GameState;
   assert.deepEqual(
-    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>)
-      .worldCustomFields,
+    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>).worldCustomFields,
     gameState.worldCustomFields,
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.getValue(gameState), {
@@ -8184,10 +8196,9 @@ try {
     },
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
-  assert.deepEqual(
-    AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }),
-    { error: "World custom fields must be a JSON array" },
-  );
+  assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
+    error: "World custom fields must be a JSON array",
+  });
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
     { personaStats: [] },
@@ -8235,8 +8246,11 @@ try {
   assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
   assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
   assert.equal(
-    (settingsDrawerSource.match(/packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu) ?? [])
-      .length,
+    (
+      settingsDrawerSource.match(
+        /packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu,
+      ) ?? []
+    ).length,
     3,
     "Long-Term Memory must use the same un-nested Agent Settings surface in every chat mode",
   );

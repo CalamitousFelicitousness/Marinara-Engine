@@ -31,6 +31,7 @@ import { assertInsideDir } from "../utils/security.js";
 import { getSharp } from "../utils/sharp.js";
 import { openFolderInFileManager } from "../lib/open-folder-in-file-manager.js";
 import { parseThumbnailWidth, resolveThumbPath } from "../services/image/image-thumbnail.js";
+import { validateImageAssetFile } from "../utils/media-file-security.js";
 
 const META_PATH = join(GAME_ASSETS_DIR, "meta.json");
 
@@ -496,10 +497,27 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
     const width = parseThumbnailWidth((req.query as { w?: string }).w);
     const thumbPath = width ? await resolveThumbPath(filePath, width) : null;
 
-    const stream = createReadStream(thumbPath ?? filePath);
+    const servedPath = thumbPath ?? filePath;
+    const stream = createReadStream(servedPath);
+    if (thumbPath) {
+      return reply.header("Content-Type", "image/webp").header("Cache-Control", "public, max-age=604800").send(stream);
+    }
+    if (IMAGE_EXTS.has(ext)) {
+      const image = await validateImageAssetFile(filePath, wildcard, { allowSvg: true });
+      if (!image) return reply.status(404).send({ error: "Asset not found" });
+      if (image.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
+      return reply
+        .header("Content-Type", image.mimeType)
+        .header("Cache-Control", "public, max-age=604800")
+        .send(stream);
+    }
+    if (MUSIC_FILE_EXTENSIONS.has(ext)) {
+      return reply.header("Content-Type", mime).header("Cache-Control", "public, max-age=604800").send(stream);
+    }
     return reply
-      .header("Content-Type", thumbPath ? "image/webp" : mime)
-      .header("Cache-Control", "public, max-age=604800")
+      .header("Content-Type", "application/octet-stream")
+      .header("Content-Disposition", `attachment; filename="${basename(wildcard).replace(/["\\]/g, "_")}"`)
+      .header("Cache-Control", "no-store")
       .send(stream);
   });
 

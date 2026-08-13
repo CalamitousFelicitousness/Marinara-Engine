@@ -6583,7 +6583,12 @@ function formatProfileImportWarningSummary(warnings: ProfileImportWarning[]) {
 
 function formatProfileImportWarningDetails(warnings: ProfileImportWarning[]) {
   const paths = warnings.map((warning) => warning.path).filter((path): path is string => !!path);
-  if (paths.length === 0) return warnings[0]?.message ?? "";
+  if (paths.length === 0) {
+    const messages = warnings.map((warning) => warning.message).filter((message): message is string => !!message);
+    const visible = messages.slice(0, 3).join(" ");
+    const extra = messages.length > 3 ? ` +${messages.length - 3} more.` : "";
+    return `${visible}${extra}`;
+  }
   const visible = paths.slice(0, 3).join(", ");
   const extra = paths.length > 3 ? `, +${paths.length - 3} more` : "";
   return `Missing: ${visible}${extra}`;
@@ -6870,7 +6875,10 @@ function ImportSettings() {
             const totalItems = Math.max(1, current?.totalItems ?? 1);
             return {
               status: "success",
-              label: warnings.length > 0 ? "Profile import complete with missing assets" : "Profile import complete",
+              label:
+                warnings.length > 0
+                  ? localizeUi("ui.panels.importsettings.profileImportCompleteWithWarnings")
+                  : "Profile import complete",
               completedItems: totalItems,
               totalItems,
               startedAt,

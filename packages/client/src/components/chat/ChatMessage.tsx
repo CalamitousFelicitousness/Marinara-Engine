@@ -823,6 +823,7 @@ const EditTextarea = memo(function EditTextarea({
         defaultValue={formatTextQuotes(initialContent, quoteFormat)}
         readOnly={saving}
         aria-busy={saving}
+        aria-keyshortcuts="Control+Enter Meta+Enter"
         rows={1}
         onInput={(event) => {
           applyTextareaQuoteFormat(event.currentTarget, quoteFormat, event.nativeEvent as InputEvent);

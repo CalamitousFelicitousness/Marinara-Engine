@@ -81,10 +81,11 @@ export async function sendValidatedMediaFile(
   reply.header("Content-Length", String(contentLength));
   if (range) reply.status(206).header("Content-Range", `bytes ${start}-${end}/${media.size}`);
 
-  if (options.method === "HEAD" || media.size === 0) {
+  if (media.size === 0) {
     await media.handle.close().catch(() => undefined);
     return reply.send();
   }
+  // Fastify suppresses this stream body for HEAD while retaining Content-Length.
   return reply.send(media.handle.createReadStream({ start, end }));
 }
 
@@ -120,28 +121,120 @@ function skipXmlWhitespace(source: string, start: number): number {
   return cursor;
 }
 
+const XML_NAMED_CHARACTER_REFERENCES: Readonly<Record<string, string>> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  quot: '"',
+};
+const XML_DECIMAL_REFERENCE_PATTERN = /^[0-9]+$/u;
+const XML_HEXADECIMAL_REFERENCE_PATTERN = /^[0-9a-f]+$/u;
+
+function decodeXmlAttributeValue(value: string): string | null {
+  let decoded = "";
+  for (let cursor = 0; cursor < value.length; cursor += 1) {
+    const character = value[cursor];
+    if (character !== "&") {
+      decoded += character;
+      continue;
+    }
+
+    const semicolon = value.indexOf(";", cursor + 1);
+    if (semicolon < 0 || semicolon - cursor > 12) return null;
+    const reference = value.slice(cursor + 1, semicolon).toLowerCase();
+    let replacement = XML_NAMED_CHARACTER_REFERENCES[reference];
+    if (replacement === undefined && reference.startsWith("#")) {
+      const hexadecimal = reference.startsWith("#x");
+      const digits = reference.slice(hexadecimal ? 2 : 1);
+      const validDigits = hexadecimal
+        ? XML_HEXADECIMAL_REFERENCE_PATTERN.test(digits)
+        : XML_DECIMAL_REFERENCE_PATTERN.test(digits);
+      if (!validDigits) return null;
+      const codePoint = Number.parseInt(digits, hexadecimal ? 16 : 10);
+      if (codePoint <= 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return null;
+      replacement = String.fromCodePoint(codePoint);
+    }
+    if (replacement === undefined) return null;
+    decoded += replacement;
+    cursor = semicolon;
+  }
+  return decoded;
+}
+
+function normalizeSvgUrlScheme(value: string): string | null {
+  const decoded = decodeXmlAttributeValue(value);
+  if (decoded === null) return null;
+  let normalized = "";
+  for (const character of decoded.toLowerCase()) {
+    const code = character.charCodeAt(0);
+    if (code <= 0x20 || code === 0x7f) continue;
+    normalized += character;
+  }
+  return normalized;
+}
+
+/** SMIL may synthesize an active link/event attribute even when no unsafe literal attribute exists. */
+function hasUnsafeSvgAnimatedAttribute(source: string): boolean {
+  const normalized = source.toLowerCase();
+  const attribute = "attributename";
+  let searchFrom = 0;
+  while (searchFrom < normalized.length) {
+    const start = normalized.indexOf(attribute, searchFrom);
+    if (start < 0) return false;
+    searchFrom = start + attribute.length;
+    if (isXmlNameCharacter(normalized[start - 1]) || isXmlNameCharacter(normalized[searchFrom])) continue;
+
+    let cursor = skipXmlWhitespace(normalized, searchFrom);
+    if (normalized[cursor] !== "=") continue;
+    cursor = skipXmlWhitespace(normalized, cursor + 1);
+    const quote = normalized[cursor] === '"' || normalized[cursor] === "'" ? normalized[cursor] : null;
+    if (!quote) return true;
+    const valueStart = cursor + 1;
+    const valueEnd = normalized.indexOf(quote, valueStart);
+    if (valueEnd < 0) return true;
+    const animatedName = normalizeSvgUrlScheme(normalized.slice(valueStart, valueEnd));
+    if (animatedName === null) return true;
+    const localName = animatedName.slice(animatedName.lastIndexOf(":") + 1);
+    if (localName === "href" || localName.startsWith("on")) return true;
+  }
+  return false;
+}
+
 /** Scan URL-valued SVG attributes without backtracking over attacker-controlled whitespace. */
 function hasUnsafeSvgHref(source: string): boolean {
   const normalized = source.toLowerCase();
-  for (const attribute of ["href", "xlink:href"] as const) {
+  for (const attribute of ["href"] as const) {
     let searchFrom = 0;
     while (searchFrom < normalized.length) {
       const start = normalized.indexOf(attribute, searchFrom);
       if (start < 0) break;
       searchFrom = start + attribute.length;
-      if (isXmlNameCharacter(normalized[start - 1]) || isXmlNameCharacter(normalized[searchFrom])) continue;
+      // XML namespace prefixes are arbitrary: `foo:href` can bind the XLink namespace just like
+      // `xlink:href`. Let a preceding colon reach the URL check while still ignoring names such as
+      // `data-href` and `somehref`.
+      const precedingCharacter = normalized[start - 1];
+      if (
+        (isXmlNameCharacter(precedingCharacter) && precedingCharacter !== ":") ||
+        isXmlNameCharacter(normalized[searchFrom])
+      ) {
+        continue;
+      }
 
       let cursor = skipXmlWhitespace(normalized, searchFrom);
       if (normalized[cursor] !== "=") continue;
       cursor = skipXmlWhitespace(normalized, cursor + 1);
-      if (normalized[cursor] === '"' || normalized[cursor] === "'") {
-        cursor = skipXmlWhitespace(normalized, cursor + 1);
+      const quote = normalized[cursor] === '"' || normalized[cursor] === "'" ? normalized[cursor] : null;
+      if (!quote) return true;
+      const valueStart = cursor + 1;
+      let valueEnd = valueStart;
+      while (valueEnd < normalized.length && normalized[valueEnd] !== quote) {
+        valueEnd += 1;
       }
-      if (
-        normalized.startsWith("javascript", cursor) ||
-        normalized.startsWith("vbscript", cursor) ||
-        normalized.startsWith("data:text/html", cursor)
-      ) {
+      if (normalized[valueEnd] !== quote) return true;
+      const url = normalizeSvgUrlScheme(normalized.slice(valueStart, valueEnd));
+      if (url === null) return true;
+      if (url.startsWith("javascript") || url.startsWith("vbscript") || url.startsWith("data:text/html")) {
         return true;
       }
     }
@@ -197,8 +290,9 @@ export function isSafeSvgImageBuffer(buffer: Buffer): boolean {
   }
   return !(
     /<!doctype|<!entity/iu.test(withoutPassiveDoctype) ||
-    /<(?:script|foreignObject|iframe|object|embed)(?:\s|>)/iu.test(source) ||
+    /<(?:[^\s<>/:]+:)?(?:script|foreignObject|iframe|object|embed)(?=[\s/>])/iu.test(source) ||
     /\bon[a-z][a-z0-9_-]*\s*=/iu.test(source) ||
+    hasUnsafeSvgAnimatedAttribute(source) ||
     hasUnsafeSvgHref(source) ||
     /(?:@import|expression\s*\(|-moz-binding\s*:)/iu.test(source)
   );

@@ -4106,6 +4106,8 @@ test("stopped and refused generations keep sent text cleared and accept the firs
       }
       try {
         const saveButton = message.getByLabel("Save edit", { exact: true });
+        await expect(saveButton).toHaveAttribute("title", "Save (Cmd/Ctrl+Enter)");
+        await expect(editor).toHaveAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
         const saveButtonBox = await saveButton.boundingBox();
         expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
         expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
@@ -11393,6 +11395,14 @@ test("Game setup only shows features owned by installed agents", async ({ page, 
     await expect(dialog.getByText("Music DJ", { exact: true })).toBeVisible();
     await expect(dialog.getByText("Lorebook Keeper", { exact: true })).toBeVisible();
     await expect(dialog.getByText("Illustrator", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: /^Illustrator\b/u }).click();
+    const dynamicPromptButton = dialog.getByRole("button", {
+      name: /^Dynamic LLM Prompt Generation for GM Mode Assets\b/u,
+    });
+    await expect(dynamicPromptButton).toBeVisible();
+    await expect(dynamicPromptButton).toHaveAttribute("aria-pressed", "false");
+    await dynamicPromptButton.click();
+    await expect(dynamicPromptButton).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.getByText("Visual Generation", { exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Download Agents", exact: true })).toHaveCount(0);
 

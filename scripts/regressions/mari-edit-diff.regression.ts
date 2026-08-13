@@ -4,7 +4,7 @@
 // find real edits (recursing into the nested `data` column) while skipping noise/unchanged keys.
 import assert from "node:assert/strict";
 import { diffWords, type DiffSegment } from "../../packages/client/src/lib/word-diff.js";
-import { computeFieldChanges } from "../../packages/client/src/lib/mari-edit-diff.js";
+import { computeFieldChanges, resolveLorebookVectorStatus } from "../../packages/client/src/lib/mari-edit-diff.js";
 
 const reconstruct = (segments: DiffSegment[], side: "added" | "removed") =>
   segments
@@ -109,5 +109,33 @@ assert.ok(
   "an unlisted lorebook setting (probability) is surfaced",
 );
 assert.ok(lorebookSetting.some((c) => c.label === "Sticky" && c.after === "3"), "a timing change is surfaced");
+
+// Easy Viewer must distinguish opt-out, completed embedding, and eligible-but-not-yet-embedded.
+// An explicit opt-out wins even if a stale embedding is still present.
+const vectorSnapshots = [
+  { excludeFromVectorization: false, embedding: [] },
+  { excludeFromVectorization: false, embedding: [0.25, 0.5] },
+  { excludeFromVectorization: true, embedding: [0.25, 0.5] },
+];
+assert.deepEqual(
+  vectorSnapshots.map(resolveLorebookVectorStatus),
+  ["notVectorized", "vectorized", "excluded"],
+  "all three lorebook vector states are resolved truthfully",
+);
+assert.deepEqual(
+  [resolveLorebookVectorStatus(vectorSnapshots[0]), resolveLorebookVectorStatus(vectorSnapshots[1])],
+  ["notVectorized", "vectorized"],
+  "generating an embedding transitions from not vectorized to vectorized",
+);
+assert.deepEqual(
+  [resolveLorebookVectorStatus(vectorSnapshots[1]), resolveLorebookVectorStatus(vectorSnapshots[2])],
+  ["vectorized", "excluded"],
+  "opting out transitions from vectorized to excluded",
+);
+assert.deepEqual(
+  [resolveLorebookVectorStatus(vectorSnapshots[2]), resolveLorebookVectorStatus(vectorSnapshots[0])],
+  ["excluded", "notVectorized"],
+  "opting back in without an embedding transitions from excluded to not vectorized",
+);
 
 console.log("Mari Easy Viewer diff regressions passed.");

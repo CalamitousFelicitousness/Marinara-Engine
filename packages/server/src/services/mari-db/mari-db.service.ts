@@ -52,7 +52,7 @@ import {
   type MariDbValidationResult,
 } from "@marinara-engine/shared";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
-import { replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
+import { HomeWidgetCatalogConflictError, replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
 import { createMariWherePredicate } from "./mari-where-expression.js";
 import { runMariTransformSandbox } from "./mari-transform-sandbox.js";
 import { encryptCustomToolWebhookUrl, ENCRYPTED_WEBHOOK_PREFIX } from "../../utils/custom-tool-webhook.js";
@@ -600,6 +600,20 @@ function serializeRow(table: string, row: Row): Row {
     }
   }
   return out;
+}
+
+function protectPromptPresetSystemKeys(changes: PlanChange[]): void {
+  for (const change of changes) {
+    if (change.table !== "prompt_presets" || !change.afterRaw) continue;
+    change.afterRaw.systemKey =
+      change.action === "insert"
+        ? ""
+        : typeof change.beforeRaw?.systemKey === "string"
+          ? change.beforeRaw.systemKey
+          : "";
+    delete change.afterRaw.system_key;
+    change.after = parseRow(change.table, change.afterRaw);
+  }
 }
 
 function parseThemeRow(row: Row): Row {
@@ -1288,6 +1302,8 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
       firstBoolean(input, ["isDefault", "is_default"]) ?? (existing ? existing.isDefault === "true" : false),
     ),
     author: firstString(input, ["author"]) ?? (typeof existing?.author === "string" ? existing.author : ""),
+    // Engine-owned preset identity is never writable through Professor Mari.
+    systemKey: typeof existing?.systemKey === "string" ? existing.systemKey : "",
   };
   delete row.conversation_prompt;
   delete row.game_prompt;
@@ -1299,6 +1315,7 @@ function normalizePromptPresetActionData(input: Row, existing?: Row | null): Row
   delete row.wrap_format;
   delete row.default_choices;
   delete row.is_default;
+  delete row.system_key;
   return row;
 }
 
@@ -4743,6 +4760,7 @@ export class MariDbService {
     index: number,
   ): { table: string; id: string; action: MariDbRowChange["action"]; beforeRaw: Row | null; afterRaw: Row | null } | null {
     this.ensurePendingHydrated();
+    if (!Number.isInteger(index) || index < 0 || index >= PREVIEW_LIMIT) return null;
     const change = this.pending.get(id)?.plan.changes[index];
     if (!change) return null;
     return {
@@ -4800,6 +4818,10 @@ export class MariDbService {
   private async keepAppliedReviewLocked(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     const record = this.pending.get(id);
     if (!record) return null;
+    // Do not resolve memory until the durable undo leaves the hydration set. If retirement fails,
+    // Keep fails closed and the review remains pending both now and after restart.
+    await this.deletePendingSidecar(id);
+    this.pending.delete(id);
     // #4851 "Keep & Enable": a Mari-authored memory lands disabled; flip it on when the
     // user chooses that action, before we drop the pending record. Strictly gated to
     // mari_instructions inserts (deliberately never touches installed_extensions.enabled
@@ -4819,8 +4841,6 @@ export class MariDbService {
         logger.warn(err, "[mari-db] Keep & Enable: could not enable the kept memory");
       }
     }
-    this.pending.delete(id);
-    await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
       plan: record.plan,
       command: record.command,
@@ -4852,10 +4872,12 @@ export class MariDbService {
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
+    const retiredSidecar = this.retirePendingSidecar(id);
     try {
       await this.restorePlan(record.plan);
     } catch (err) {
       if (err instanceof RestoreStateChangedError) {
+        await this.reactivatePendingSidecar(record, retiredSidecar);
         // #4852 F2: a newer edit landed after Mari staged this change, so reverting would
         // overwrite it. Leave the live data AND the pending review in place (do not delete the
         // pending record, drop the sidecar, or record a "restored" history entry) so the user can
@@ -4867,13 +4889,23 @@ export class MariDbService {
             "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
         };
       }
-      throw err;
+      if (err instanceof HomeWidgetCatalogConflictError) {
+        // The catalog compare-and-swap rejected before writing, so this known conflict is safe to
+        // retry and retains its original typed error contract.
+        await this.reactivatePendingSidecar(record, retiredSidecar);
+        throw err;
+      }
+      // An unexpected error may occur after the database transaction committed (for example during
+      // validation/flush). Never reactivate an undo whose live-state correspondence is uncertain.
+      this.pending.delete(id);
+      this.discardRetiredPendingSidecar(retiredSidecar);
+      throw new Error("Restore failed and its review was retired to avoid exposing stale undo.", { cause: err });
     }
+    this.pending.delete(id);
+    this.discardRetiredPendingSidecar(retiredSidecar);
     // #4927: the restore reverted the lorebook rows, so rebuild any embedded character_book from the
     // restored state (no-op for standalone lorebooks).
     await this.syncAffectedCharacterBooks(record.plan.changes);
-    this.pending.delete(id);
-    await this.deletePendingSidecar(id);
     const history = await this.recordHistory({
       plan: record.plan,
       command: record.command,
@@ -4921,10 +4953,27 @@ export class MariDbService {
     }
     const selected = new Set<PlanChange>();
     for (const sel of selections) {
-      const change = record.plan.changes[sel.index];
-      // Reject a stale/shifted selection rather than reverting the wrong row: the index must still
-      // resolve to a change whose identity tuple matches what the client was shown.
-      if (!change || change.table !== sel.table || change.id !== sel.id || change.action !== sel.action) {
+      if (!Number.isInteger(sel.index) || sel.index < 0 || sel.index >= PREVIEW_LIMIT) {
+        return {
+          outcome: "invalid_selection",
+          error: "This review changed since it was shown. Reopen it and try again.",
+        };
+      }
+      const matchesSelection = (candidate: PlanChange | undefined): candidate is PlanChange =>
+        !!candidate && candidate.table === sel.table && candidate.id === sel.id && candidate.action === sel.action;
+      const indexedChange = record.plan.changes[sel.index];
+      // A serialized rejection may shift the second request's index. Resolve only the exact tuple
+      // from the still-visible preview when it has one unique match, never another row or a hidden
+      // change beyond PREVIEW_LIMIT.
+      const shiftedMatches = matchesSelection(indexedChange)
+        ? []
+        : record.plan.changes.slice(0, PREVIEW_LIMIT).filter(matchesSelection);
+      const change = matchesSelection(indexedChange)
+        ? indexedChange
+        : shiftedMatches.length === 1
+          ? shiftedMatches[0]
+          : undefined;
+      if (!change) {
         return {
           outcome: "invalid_selection",
           error: "This review changed since it was shown. Reopen it and try again.",
@@ -4975,10 +5024,12 @@ export class MariDbService {
       summary: summaryForChanges(rejectedChanges),
     };
 
+    const retiredSidecar = this.retirePendingSidecar(id);
     try {
       await this.restoreChanges(rejectedChanges);
     } catch (err) {
       if (err instanceof RestoreStateChangedError) {
+        await this.reactivatePendingSidecar(record, retiredSidecar);
         // #4852 F2: a newer edit landed after Mari staged one of these rows, so reverting would
         // overwrite it. Leave the live data AND the whole pending review intact (nothing was
         // written; the tx rolled back) so the user can re-review against current state.
@@ -4988,20 +5039,39 @@ export class MariDbService {
             "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
         };
       }
-      throw err;
+      this.pending.delete(id);
+      this.discardRetiredPendingSidecar(retiredSidecar);
+      throw new Error("Row rejection failed and its review was retired to avoid exposing stale undo.", { cause: err });
     }
 
-    // #4927: rebuild any embedded character_book from the reverted entries (no-op for standalone).
-    await this.syncAffectedCharacterBooks(rejectedChanges);
+    const remainingPlan = { ...record.plan, changes: remainingChanges, summary: summaryForChanges(remainingChanges) };
+    const remainingRecord: PendingRecord = {
+      ...record,
+      plan: remainingPlan,
+      affectedTables: remainingPlan.summary.affectedTables,
+      affectedRows: remainingPlan.summary.affectedRows,
+      diffPreview: remainingPlan.summary.preview,
+      diffTruncated: remainingPlan.summary.truncated,
+    };
 
-    // Shrink the pending record to the still-applied changes; recompute the summary + the mirrored
-    // top-level fields so the approvals list and hydrated card show correct counts. Mutate in place
-    // (do NOT re-set the map key — that would move the record to the tail and skew retention).
-    record.plan = { ...record.plan, changes: remainingChanges, summary: summaryForChanges(remainingChanges) };
-    record.affectedTables = record.plan.summary.affectedTables;
-    record.affectedRows = record.plan.summary.affectedRows;
-    record.diffPreview = record.plan.summary.preview;
-    record.diffTruncated = record.plan.summary.truncated;
+    try {
+      await this.syncAffectedCharacterBooks(rejectedChanges);
+      if (remainingChanges.length === 0) {
+        this.pending.delete(id);
+      } else {
+        // The old full plan is already retired. Install the replacement sidecar before publishing
+        // its matching in-memory card, so disk and memory cannot disagree across a restart.
+        await this.writePendingSidecar(remainingRecord);
+        this.pending.set(id, remainingRecord);
+      }
+      this.discardRetiredPendingSidecar(retiredSidecar);
+    } catch (err) {
+      // The rows were already restored. Drop both stale review representations and surface the
+      // durability loss instead of keeping an undo that could overwrite newer data after restart.
+      this.pending.delete(id);
+      this.discardRetiredPendingSidecar(retiredSidecar);
+      throw new Error("Rows were restored, but the remaining review could not be saved safely.", { cause: err });
+    }
 
     const history = await this.recordHistory({
       plan: rejectedPlan,
@@ -5013,14 +5083,10 @@ export class MariDbService {
 
     if (remainingChanges.length === 0) {
       // Every row was rejected — resolve the review whole instead of persisting a zero-row card.
-      this.pending.delete(id);
-      await this.deletePendingSidecar(id);
       return { approval: null, history, rejected: rejectedChanges.length, remaining: 0, completed: true };
     }
-    // #4813: atomically overwrite the durable sidecar with the shrunken plan (same-id temp+rename).
-    await this.writePendingSidecar(record);
     return {
-      approval: this.pendingView(record),
+      approval: this.pendingView(remainingRecord),
       history,
       rejected: rejectedChanges.length,
       remaining: remainingChanges.length,
@@ -6887,6 +6953,10 @@ export class MariDbService {
     else if (request.kind === "preset-group-delete") changes = await this.planPresetGroupDelete(request, timestamp);
     else changes = await this.planTransform(request, timestamp, allocateId);
 
+    // systemKey identifies Engine-owned presets. Apply this after every planner so raw writes and
+    // transforms cannot bypass the structured preset-action boundary.
+    protectPromptPresetSystemKeys(changes);
+
     const personalExtensionChanges = changes.filter((change) => change.table === "installed_extensions");
     if (personalExtensionChanges.length > 0 && !request.personalExtensionDraftMutation) {
       issues.push({
@@ -7828,8 +7898,8 @@ export class MariDbService {
   }
 
   // Revert a subset of a plan's changes in one transaction, then validate + flush. Shared by whole-
-  // plan restore (restorePlan) and per-row reject (rejectRows). The `apply` filters and the in-tx
-  // supersede check are the audited #4852 / apply-asymmetry contract (see comments below) — the
+  // plan restore (restorePlan) and per-row reject (rejectRows). The in-tx supersede check is the
+  // audited #4852 / apply-asymmetry contract (see comments below) — the
   // callers must pass a dependency-closed subset; this helper does not compute cascade closure.
   private async restoreChanges(changes: PlanChange[]): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -7838,9 +7908,9 @@ export class MariDbService {
       // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
       // not this direct-service path), so reading here is what closes the race. The throw rolls
       // the tx back before any write, and the caller catches it and leaves the newer data plus the
-      // pending review intact. Only applied changes were written, so skip the rest.
+      // pending review intact. Cascade rows carry apply:false because the parent delete removed
+      // them implicitly, but Restore writes those snapshots back and must protect them too.
       for (const change of changes) {
-        if (!change.apply) continue;
         const meta = getMeta(change.table);
         const pk = getPrimary(meta);
         const rows = (await tx
@@ -7978,7 +8048,12 @@ export class MariDbService {
       journalPath,
     };
     this.pending.set(id, record);
-    await this.writePendingSidecar(record);
+    try {
+      await this.writePendingSidecar(record);
+    } catch {
+      // There is no older sidecar to invalidate on initial creation. Retain the in-memory undo and
+      // let the already-applied action succeed; writePendingSidecar has logged the durability loss.
+    }
     await this.enforcePendingRetention();
     return this.pendingView(record);
   }
@@ -8014,9 +8089,8 @@ export class MariDbService {
       renameSync(tempPath, finalPath);
     } catch (err) {
       this.safeRm(tempPath);
-      // The change is applied and held in memory even if the sidecar write fails; only the
-      // cross-restart durability is lost. Warn rather than fail the user's action.
       logger.warn(err, "[mari-db] failed to persist pending review %s", record.id);
+      throw err;
     }
   }
 
@@ -8030,19 +8104,43 @@ export class MariDbService {
     }
   }
 
-  private async deletePendingSidecar(id: string): Promise<void> {
+  private retirePendingSidecar(id: string): string | null {
     const finalPath = this.pendingSidecarPath(id);
-    // Atomically retire the sidecar out of the .json hydration set FIRST. If the subsequent unlink
-    // fails (Windows lock / AV), the retired file is still never rehydrated, so a resolved or
-    // evicted review can't come back and be Restored again over newer data.
-    const retiredPath = `${finalPath}.done`;
+    if (!existsSync(finalPath)) return null;
+    const retiredPath = `${finalPath}.${process.pid}.${newId()}.done`;
     try {
       renameSync(finalPath, retiredPath);
-    } catch {
-      this.safeRm(finalPath);
-      return;
+      return retiredPath;
+    } catch (err) {
+      logger.warn(err, "[mari-db] failed to retire pending review %s", id);
+      throw err;
     }
-    this.safeRm(retiredPath);
+  }
+
+  private async reactivatePendingSidecar(record: PendingRecord, retiredPath: string | null): Promise<void> {
+    if (!retiredPath) return;
+    try {
+      renameSync(retiredPath, this.pendingSidecarPath(record.id));
+    } catch (renameErr) {
+      logger.warn(renameErr, "[mari-db] failed to reactivate pending review %s by rename", record.id);
+      try {
+        await this.writePendingSidecar(record);
+        this.safeRm(retiredPath);
+      } catch (writeErr) {
+        throw new Error("The review operation failed and its durable undo could not be restored.", {
+          cause: writeErr,
+        });
+      }
+    }
+  }
+
+  private discardRetiredPendingSidecar(retiredPath: string | null): void {
+    if (retiredPath) this.safeRm(retiredPath);
+  }
+
+  private async deletePendingSidecar(id: string): Promise<void> {
+    const retiredPath = this.retirePendingSidecar(id);
+    this.discardRetiredPendingSidecar(retiredPath);
   }
 
   // Load persisted pending reviews on first access so a Keep/Restore card survives a restart.
@@ -8092,18 +8190,27 @@ export class MariDbService {
           stale.push(path);
         }
       }
-      // Oldest first so the in-memory Map stays insertion-ordered oldest->newest; keep the newest
-      // PENDING_REVIEW_LIMIT. Populate the Map BEFORE pruning so a failed delete can't cost the
-      // reviews we just loaded.
+      // Oldest first so the in-memory Map stays insertion-ordered oldest->newest. Hydrate every
+      // valid review first, then retire overflow sidecars before dropping their memory entries.
       loaded.sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
       const dropCount = Math.max(0, loaded.length - PENDING_REVIEW_LIMIT);
-      loaded.slice(dropCount).forEach((record) => this.pending.set(record.id, record));
+      loaded.forEach((record) => this.pending.set(record.id, record));
       for (const path of stale) this.safeRm(path);
-      loaded.slice(0, dropCount).forEach((record) => this.safeRm(this.pendingSidecarPath(record.id)));
-      if (dropCount > 0) {
+      let dropped = 0;
+      for (const record of loaded.slice(0, dropCount)) {
+        try {
+          const retiredPath = this.retirePendingSidecar(record.id);
+          this.pending.delete(record.id);
+          this.discardRetiredPendingSidecar(retiredPath);
+          dropped += 1;
+        } catch {
+          // Keep the matching in-memory record when the sidecar could not be retired safely.
+        }
+      }
+      if (dropped > 0) {
         logger.info(
           "[mari-db] dropped %d persisted pending review(s) over the %d cap on load",
-          dropCount,
+          dropped,
           PENDING_REVIEW_LIMIT,
         );
       }
@@ -8125,16 +8232,23 @@ export class MariDbService {
       // (mkdir/writeFile await before the atomic rename) could recreate the sidecar this eviction just
       // retired, resurrecting a phantom review on the next restart. Re-check membership inside the lock
       // in case that concurrent op already resolved the review.
-      await this.withReviewLock(record.id, async () => {
-        if (!this.pending.has(record.id)) return;
-        this.pending.delete(record.id);
-        await this.deletePendingSidecar(record.id);
-        logger.info(
-          "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
-          record.id,
-          PENDING_REVIEW_LIMIT,
-        );
-      });
+      try {
+        await this.withReviewLock(record.id, async () => {
+          if (!this.pending.has(record.id)) return;
+          await this.deletePendingSidecar(record.id);
+          this.pending.delete(record.id);
+          logger.info(
+            "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
+            record.id,
+            PENDING_REVIEW_LIMIT,
+          );
+        });
+      } catch (err) {
+        // The data mutation and its new in-memory undo already succeeded. A locked old sidecar may
+        // temporarily leave us over the cap, but must not turn that applied mutation into a reported
+        // failure or discard a still-hydratable review.
+        logger.warn(err, "[mari-db] could not evict pending review %s; retaining it temporarily", record.id);
+      }
     }
   }
 

@@ -2552,8 +2552,8 @@ try {
       mariDb.rejectRows(raceApproval.id, [raceSelectionFor("Race A")]),
       mariDb.rejectRows(raceApproval.id, [raceSelectionFor("Race B")]),
     ]);
-    assert.ok(resA, "the first concurrent reject returned a result (did not throw)");
-    assert.ok(resB, "the second concurrent reject returned a result (did not throw)");
+    assert.ok(resA && "history" in resA, "the first concurrent reject must succeed");
+    assert.ok(resB && "history" in resB, "the second concurrent reject must succeed");
     // Core invariant: the pending card's entry rows exactly match the entries still in the DB. A
     // clobbering lost-update would leave a phantom entry row in the card that was already reverted.
     const raceCard = mariDb.getPendingApprovals().find((approval) => approval.id === raceApproval.id);
@@ -2567,8 +2567,33 @@ try {
       liveEntryIds,
       "the pending card's entry rows match the DB after concurrent rejects (no phantom row from a lost update)",
     );
+    assert.deepEqual(liveEntryIds, [], "both concurrent rejects must remove both selected entries");
   } finally {
     await lorebookStorage.remove(raceLorebookId);
+  }
+
+  // Prompt rendering cannot address changes that the capped diff preview never exposed.
+  const previewLimitLorebookId = "professor-mari-preview-limit-regression";
+  try {
+    const created = await mariDb.executeAction({
+      action: "lorebook.create",
+      lorebookId: previewLimitLorebookId,
+      data: {
+        name: "Preview limit",
+        entries: Array.from({ length: 51 }, (_, index) => ({
+          name: `Row ${index}`,
+          content: `row ${index}`,
+        })),
+      },
+      apply: true,
+    });
+    const reviewId = created.approval?.id;
+    assert.ok(reviewId);
+    assert.ok(mariDb.getPendingChangeRaw(reviewId, 49), "the final visible preview change can render");
+    assert.equal(mariDb.getPendingChangeRaw(reviewId, 50), null, "a hidden change cannot render");
+    await mariDb.keepAppliedReview(reviewId);
+  } finally {
+    await lorebookStorage.remove(previewLimitLorebookId);
   }
 
   // #4931: the synthetic prompt-render DB proxy substitutes the target character's row (so the
@@ -5251,7 +5276,11 @@ assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"
 assert.match(personaEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
 assert.match(fileDownloadSource, /MarinaraAndroid/u);
 assert.match(spriteDownloadSource, /saveBlobToDevice/u);
-assert.match(androidMainActivitySource, /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u);
+assert.match(
+  androidMainActivitySource,
+  /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u,
+  "Android file saves must require the authenticated top-frame bridge token",
+);
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
   characterEditorSource,

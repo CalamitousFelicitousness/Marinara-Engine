@@ -189,6 +189,12 @@ try {
       createdAt: importedAt,
       updatedAt: importedAt,
     };
+    const malformedProfileTool = {
+      ...importedProfileTool,
+      id: "malformed-webhook",
+      name: "malformed_webhook",
+      webhookUrl: 42,
+    };
     const importResponse = await app.inject({
       method: "POST",
       url: "/api/backup/import-profile",
@@ -199,7 +205,7 @@ try {
         data: {
           fileStorage: {
             version: 1,
-            tables: { custom_tools: [importedProfileTool] },
+            tables: { custom_tools: [importedProfileTool, malformedProfileTool] },
             files: [],
           },
         },
@@ -211,6 +217,11 @@ try {
     assert.equal(importedRead.webhookUrl, null, "profile import clears credentials encrypted by another install");
     assert.equal(importedRead.enabled, "false", "profile import quarantines executable tools");
     assert.equal(importedRead.includeHiddenContext, "false", "profile import removes private-context access");
+    const malformedRead = await storage.getById("malformed-webhook");
+    assert.ok(malformedRead, "a malformed imported webhook remains readable after normalization");
+    assert.equal(malformedRead.webhookUrl, null, "non-string imported webhook values are cleared");
+    assert.equal(malformedRead.enabled, "false");
+    assert.equal(malformedRead.includeHiddenContext, "false");
   } finally {
     await app.close();
     await closeDB();

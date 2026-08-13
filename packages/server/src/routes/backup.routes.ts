@@ -595,12 +595,10 @@ export function quarantineProfilePersonalExtensionRow(row: Record<string, unknow
 }
 
 export function quarantineProfileCustomToolRow(row: Record<string, unknown>) {
-  let importedWebhookUrl = row.webhookUrl ?? null;
-  if (typeof row.webhookUrl === "string") {
-    importedWebhookUrl = row.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)
-      ? null
-      : encryptCustomToolWebhookUrl(row.webhookUrl);
-  }
+  const importedWebhookUrl =
+    typeof row.webhookUrl === "string" && !row.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)
+      ? encryptCustomToolWebhookUrl(row.webhookUrl)
+      : null;
   const secured = {
     ...row,
     webhookUrl: importedWebhookUrl,

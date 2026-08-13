@@ -4914,6 +4914,24 @@ export class MariDbService {
           error: "This entry was removed as part of deleting its lorebook. Reject the lorebook change instead.",
         };
       }
+      // Rejecting an entry DELETE re-inserts the entry, which needs a live parent lorebook. A plan can
+      // hold a top-level `lorebooks` delete AND a top-level `lorebook_entries` delete with no
+      // cascadeOf link (a transform, or two delete plans merged into one review); rejecting only the
+      // entry would re-insert it under a deleted parent. Post-restore validate() only catches that
+      // dangling reference AFTER restoreChanges has committed (leaving the bad row + an unhandled
+      // error), so refuse it up front.
+      if (change.action === "delete") {
+        const parentLorebookId =
+          typeof change.beforeRaw?.lorebookId === "string" ? change.beforeRaw.lorebookId : null;
+        const parentLive =
+          parentLorebookId !== null && (await this.getRawById(getMeta("lorebooks"), parentLorebookId)) !== null;
+        if (!parentLive) {
+          return {
+            outcome: "invalid_selection",
+            error: "This entry's lorebook was also removed, so it can't be restored on its own. Use Restore to revert the whole change.",
+          };
+        }
+      }
       selected.add(change);
     }
 

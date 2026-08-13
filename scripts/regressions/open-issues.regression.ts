@@ -2388,6 +2388,50 @@ try {
     await lorebookStorage.remove(rejectLorebookId);
   }
 
+  // #4931 (reject guard): a lorebook_entries DELETE cannot be rejected on its own when its parent
+  // lorebook is gone (deleted in the same review, or otherwise) — re-inserting the entry would dangle,
+  // and post-restore validate() would only catch that AFTER restoreChanges committed. rejectRows
+  // refuses it up front with invalid_selection, reverting nothing.
+  const rejectDanglingLorebook = await lorebookStorage.create({ name: "Reject-dangling parent" });
+  let rejectDanglingRemoved = false;
+  try {
+    const danglingEntry = await lorebookStorage.createEntry({
+      lorebookId: rejectDanglingLorebook.id,
+      name: "Doomed entry",
+      content: "about to be orphaned",
+      keys: ["doomed"],
+    });
+    const danglingApprovalsBefore = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const danglingDelete = await mariDb.executeAction({
+      action: "lorebook.deleteEntry",
+      entryId: danglingEntry.id,
+      apply: true,
+    });
+    assert.equal(danglingDelete.ok, true, `deleting the entry must succeed: ${JSON.stringify(danglingDelete)}`);
+    const danglingApproval = mariDb.getPendingApprovals().find((approval) => !danglingApprovalsBefore.has(approval.id));
+    assert.ok(danglingApproval, "the entry delete produced a reviewable approval");
+    // The parent lorebook is gone by review time (simulating a separate top-level lorebook delete).
+    await lorebookStorage.remove(rejectDanglingLorebook.id);
+    rejectDanglingRemoved = true;
+    const danglingIndex = danglingApproval.diffPreview.findIndex(
+      (change) => change.table === "lorebook_entries" && change.id === danglingEntry.id,
+    );
+    assert.ok(danglingIndex >= 0, "the deleted entry appears in the diff preview");
+    const rejectDangling = await mariDb.rejectRows(danglingApproval.id, [
+      { index: danglingIndex, table: "lorebook_entries", id: danglingEntry.id, action: "delete" },
+    ]);
+    assert.ok(
+      rejectDangling && "outcome" in rejectDangling && rejectDangling.outcome === "invalid_selection",
+      `rejecting an entry whose parent lorebook is gone must be refused, not 500: ${JSON.stringify(rejectDangling)}`,
+    );
+    assert.ok(
+      mariDb.getPendingApprovals().some((approval) => approval.id === danglingApproval.id),
+      "the refused reject reverts nothing and leaves the review pending",
+    );
+  } finally {
+    if (!rejectDanglingRemoved) await lorebookStorage.remove(rejectDanglingLorebook.id);
+  }
+
   // #4931: the synthetic prompt-render DB proxy substitutes the target character's row (so the
   // assembler reads a before/after snapshot instead of the live row) while passing every other read
   // through untouched. Validated through the exact storage path the assembler uses (getById).

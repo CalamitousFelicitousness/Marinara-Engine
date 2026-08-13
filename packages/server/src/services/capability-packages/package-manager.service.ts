@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import AdmZip from "adm-zip";
 import {
@@ -83,6 +83,17 @@ const BROWSER_TAB_ASSET_CONTENT_TYPES = new Map([
   [".png", "image/png"],
   [".webp", "image/webp"],
 ]);
+interface VerifiedBrowserTabAsset {
+  packageId: string;
+  expectedBytes: number;
+  expectedSha256: string;
+  dev: bigint;
+  ino: bigint;
+  size: bigint;
+  mtimeNs: bigint;
+  ctimeNs: bigint;
+}
+const verifiedBrowserTabAssets = new Map<string, VerifiedBrowserTabAsset>();
 const KNOWN_INCOMPATIBLE_RUNTIMES = new Map<string, string>([
   ...["1.0.0", "1.0.3", "1.0.6"].map(
     (version) =>
@@ -384,6 +395,59 @@ async function verifyInstalledPackageFile(
   return file;
 }
 
+function invalidateBrowserTabAssetVerifications(packageId: string) {
+  for (const [key, cached] of verifiedBrowserTabAssets) {
+    if (cached.packageId === packageId) verifiedBrowserTabAssets.delete(key);
+  }
+}
+
+async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, relativePath: string): Promise<string> {
+  const normalized = normalizeArchivePath(relativePath);
+  const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalized);
+  if (!declaration) throw new Error(`Package ${installed.id} requested undeclared file ${normalized}`);
+  const file = inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalized));
+  const key = `${installed.id}\0${installed.version}\0${normalized}`;
+  const before = await stat(file, { bigint: true });
+  const cached = verifiedBrowserTabAssets.get(key);
+  if (
+    cached &&
+    cached.expectedBytes === declaration.bytes &&
+    cached.expectedSha256 === declaration.sha256 &&
+    cached.dev === before.dev &&
+    cached.ino === before.ino &&
+    cached.size === before.size &&
+    cached.mtimeNs === before.mtimeNs &&
+    cached.ctimeNs === before.ctimeNs
+  ) {
+    return file;
+  }
+  const data = await readFile(file);
+  const after = await stat(file, { bigint: true });
+  if (
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeNs !== after.mtimeNs ||
+    before.ctimeNs !== after.ctimeNs ||
+    data.byteLength !== declaration.bytes ||
+    createHash("sha256").update(data).digest("hex") !== declaration.sha256
+  ) {
+    verifiedBrowserTabAssets.delete(key);
+    throw new Error(`Installed package ${installed.id} failed integrity verification for ${normalized}`);
+  }
+  verifiedBrowserTabAssets.set(key, {
+    packageId: installed.id,
+    expectedBytes: declaration.bytes,
+    expectedSha256: declaration.sha256,
+    dev: after.dev,
+    ino: after.ino,
+    size: after.size,
+    mtimeNs: after.mtimeNs,
+    ctimeNs: after.ctimeNs,
+  });
+  return file;
+}
+
 async function verifyInstalledPackageFiles(installed: InstalledCapabilityPackage): Promise<void> {
   for (const declaration of installed.manifest.files) {
     await verifyInstalledPackageFile(installed, declaration.path);
@@ -514,6 +578,7 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
     await mkdir(dirname(destination), { recursive: true });
     await rm(destination, { recursive: true, force: true });
     await rename(temporary, destination);
+    invalidateBrowserTabAssetVerifications(manifest.id);
     const registry = await readRegistry();
     const previous = registry.packages.find((item) => item.id === manifest.id);
     assertNotDowngrade(previous, manifest.version);
@@ -586,6 +651,7 @@ export const capabilityPackageManager = {
     if (removed.length === 0) return [];
     await writeRegistry(registry.packages.filter((item) => !NON_DOWNLOADABLE_CORE_PACKAGE_IDS.has(item.id)));
     await Promise.all(removed.map((item) => rm(join(VERSIONS, item.id), { recursive: true, force: true })));
+    for (const item of removed) invalidateBrowserTabAssetVerifications(item.id);
     return removed.map((item) => item.id);
   },
 
@@ -676,7 +742,7 @@ export const capabilityPackageManager = {
     return {
       installed,
       contentType,
-      file: await verifyInstalledPackageFile(installed, normalizedPath),
+      file: await verifyBrowserTabAsset(installed, normalizedPath),
     };
   },
 
@@ -725,6 +791,7 @@ export const capabilityPackageManager = {
     if (runtimeBlockReason(restored)) return null;
     registry.packages[index] = restored;
     await writeRegistry(registry.packages);
+    invalidateBrowserTabAssetVerifications(packageId);
     const server = manifest.entrypoints.server;
     return server
       ? {
@@ -847,6 +914,7 @@ export const capabilityPackageManager = {
     }
     await writeRegistry(registry.packages.filter((item) => item.id !== packageId));
     await rm(join(VERSIONS, packageId), { recursive: true, force: true });
+    invalidateBrowserTabAssetVerifications(packageId);
     try {
       await clearDeclinedUpdate(packageId);
     } catch (error) {

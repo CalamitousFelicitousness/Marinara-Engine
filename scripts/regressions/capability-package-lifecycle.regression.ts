@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import crypto, { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -965,19 +966,59 @@ try {
   );
   writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
   refreshRegistryFileIntegrity();
-  const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
-  assert.equal(browserTabAsset?.contentType, "image/png");
-  assert.equal(
-    browserTabAsset?.file,
-    join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
-  );
-  writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "tampered");
-  await assert.rejects(
-    capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
-    /integrity verification/u,
-    "Capability assets changed outside the reviewed package must not be served",
-  );
+  const originalCreateHash = crypto.createHash;
+  let assetHashCount = 0;
+  Object.defineProperty(crypto, "createHash", {
+    configurable: true,
+    value: (...args: Parameters<typeof createHash>) => {
+      assetHashCount += 1;
+      return originalCreateHash(...args);
+    },
+  });
+  syncBuiltinESMExports();
+  try {
+    const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
+    assert.equal(browserTabAsset?.contentType, "image/png");
+    assert.equal(
+      browserTabAsset?.file,
+      join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
+    );
+    assert.deepEqual(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"), browserTabAsset);
+    assert.equal(assetHashCount, 1, "An unchanged browser-tab asset must reuse its successful verification");
+
+    const changedRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+      packages: Array<ReturnType<typeof installedPackage>>;
+    };
+    const changedAssetDeclaration = changedRegistry.packages
+      .find((item) => item.id === agentSuite.id)
+      ?.manifest.files.find((item) => item.path === "suite-tab.png");
+    assert.ok(changedAssetDeclaration);
+    const originalAssetSha256 = changedAssetDeclaration.sha256;
+    changedAssetDeclaration.sha256 = "0".repeat(64);
+    writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
+    await assert.rejects(
+      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      /integrity verification/u,
+      "Changed manifest integrity metadata must not reuse an older successful verification",
+    );
+    assert.equal(assetHashCount, 2, "Changed manifest integrity metadata must force a fresh integrity check");
+
+    changedAssetDeclaration.sha256 = originalAssetSha256;
+    writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
+    assert.ok(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"));
+    writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "y");
+    await assert.rejects(
+      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      /integrity verification/u,
+      "Capability assets changed outside the reviewed package must not be served",
+    );
+    assert.equal(assetHashCount, 4, "Changed asset metadata must force a fresh integrity check");
+  } finally {
+    Object.defineProperty(crypto, "createHash", { configurable: true, value: originalCreateHash });
+    syncBuiltinESMExports();
+  }
   writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
+  refreshRegistryFileIntegrity();
   assert.equal(
     await capabilityPackageManager.browserTabAsset(agentSuite.id, "server.mjs"),
     null,

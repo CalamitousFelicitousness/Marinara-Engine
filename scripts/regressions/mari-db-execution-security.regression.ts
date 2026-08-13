@@ -473,18 +473,25 @@ if (!status.available) {
     const secretReadScript = join(workspace, "secret-read.mjs");
     writeFileSync(
       secretReadScript,
-      'import { readFileSync } from "node:fs";\nreadFileSync(new URL("./.env", import.meta.url), "utf8");\nexport default row => row;\n',
+      'import { readFileSync } from "node:fs";\nconst secret = readFileSync(new URL("./.env", import.meta.url), "utf8");\nexport default () => ({ update: { label: secret } });\n',
       "utf8",
     );
-    await assert.rejects(
-      runMariTransformSandbox({
-        workspaceRoot: workspace,
-        scriptPath: secretReadScript,
-        timestamp: "2026-08-13T00:00:00.000Z",
-        tables: [{ name: "items", jsonColumns: [], rows: [{ id: "one" }] }],
-      }),
-      /Transform sandbox exited/u,
-    );
+    const secretReadInput = {
+      workspaceRoot: workspace,
+      scriptPath: secretReadScript,
+      timestamp: "2026-08-13T00:00:00.000Z",
+      tables: [{ name: "items", jsonColumns: [], rows: [{ id: "one" }] }],
+    };
+    if (status.backend === "linux-bubblewrap") {
+      const secretRead = await runMariTransformSandbox(secretReadInput);
+      assert.equal(
+        (secretRead[0]?.results[0]?.value as { update?: { label?: string } })?.update?.label,
+        "",
+        "Linux exposes a harmless empty /dev/null in place of forbidden workspace secrets",
+      );
+    } else {
+      await assert.rejects(runMariTransformSandbox(secretReadInput), /Transform sandbox exited/u);
+    }
 
     console.log(`Mari DB execution security regression passed with ${status.backend}.`);
   } finally {

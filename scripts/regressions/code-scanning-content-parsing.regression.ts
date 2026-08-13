@@ -167,6 +167,7 @@ assert.equal(
   resolveMacros("[\n{{group}}\n]", groupMacroContext),
   "[\nDottore\n]\n[\nMiko\n]",
 );
+assert.equal(resolveMacros("[\n{{ char }}\n]", groupMacroContext), "[\nMiko\n]\n[\nDottore\n]");
 assert.equal(
   resolveMacros(
     '[\n{{#if user == "Other"}}Other{{else if char == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]',
@@ -199,6 +200,47 @@ assert.equal(resolveMacros(nestedAndConditional, groupMacroContext), "[\nMiko\n]
 assert.ok(
   performance.now() - nestedAndStartedAt < 1_000,
   "deeply nested boolean conditions should complete within one second",
+);
+for (const condition of ["(char)) && false", "(char || false)) && false", "()char && false", "(char)() && false"]) {
+  assert.equal(
+    resolveMacros(`[\n{{#if ${condition}}}T{{else}}F{{/if}}\n]`, groupMacroContext),
+    "[\nF\n]\n[\nF\n]",
+  );
+}
+for (const condition of ["(false))", "(false)))", "(false)) && true", "()false", "char && ()false", "false || ()false"]) {
+  assert.equal(resolveMacros(`{{#if ${condition}}}T{{else}}F{{/if}}`, groupMacroContext), "T");
+}
+const adjacentGroupCondition = `(char)${"()".repeat(16_000)} && false`;
+const adjacentGroupStartedAt = performance.now();
+assert.equal(
+  resolveMacros(`[\n{{#if ${adjacentGroupCondition}}}T{{else}}F{{/if}}\n]`, groupMacroContext),
+  "[\nF\n]\n[\nF\n]",
+);
+assert.ok(
+  performance.now() - adjacentGroupStartedAt < 1_000,
+  "adjacent malformed condition groups should complete within one second",
+);
+const malformedMacroPrefix = "{{".repeat(16_000);
+const malformedMacroStartedAt = performance.now();
+const recoveredConditional = resolveMacros(
+  `[\n${malformedMacroPrefix}{{#if char == "Miko"}}M{{else}}D{{/if}}\n]`,
+  groupMacroContext,
+);
+const unresolvedMalformedBlock = `${malformedMacroPrefix}{{#if char == "Miko"}}M{{else}}D{{/if}}`;
+assert.equal(recoveredConditional, `[\n${unresolvedMalformedBlock}\n]\n[\n${unresolvedMalformedBlock}\n]`);
+assert.ok(
+  performance.now() - malformedMacroStartedAt < 1_000,
+  "malformed macro prefixes should be scanned only once",
+);
+const unbalancedConditional = '[\n{{#if broken {{#if char == "Miko"}}M{{else}}D{{/if}}\n]';
+assert.equal(resolveMacros(unbalancedConditional, groupMacroContext), `${unbalancedConditional}\n${unbalancedConditional}`);
+assert.equal(
+  resolveMacros("{{unknown::{{#if false}}A{{else}}B{{/if}}}}", groupMacroContext),
+  "{{unknown::{{#if false}}A{{else}}B{{/if}}}}",
+);
+assert.equal(
+  resolveMacros("{{setvar::nested::{{#if false}}A{{else}}B{{/if}}}}{{getvar::nested}}", groupMacroContext),
+  "B",
 );
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
 assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));

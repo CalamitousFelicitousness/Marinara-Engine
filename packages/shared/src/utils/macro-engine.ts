@@ -560,17 +560,17 @@ export function resolveCharacterScopedMacros(
   const scopedContext = macroContextForCharacterProfile(profile, baseContext);
   const scoped = resolveConditionalBlocks(stripMacroComments(template), scopedContext, {});
   return scoped
-    .replace(/\{\{char(?:Name)?\}\}/gi, profile.name)
-    .replace(/\{\{char(?:Name)?Phonetic\}\}/gi, profile.phoneticName ?? profile.name)
-    .replace(/\{\{group\}\}/gi, resolveGroupCharacters(scopedContext))
-    .replace(/\{\{description\}\}/gi, () => resolveCharacterFieldValue(profile, "description", depth, baseContext))
-    .replace(/\{\{personality\}\}/gi, () => resolveCharacterFieldValue(profile, "personality", depth, baseContext))
-    .replace(/\{\{backstory\}\}/gi, () => resolveCharacterFieldValue(profile, "backstory", depth, baseContext))
-    .replace(/\{\{appearance\}\}/gi, () => resolveCharacterFieldValue(profile, "appearance", depth, baseContext))
-    .replace(/\{\{scenario\}\}/gi, () => resolveCharacterFieldValue(profile, "scenario", depth, baseContext))
-    .replace(/\{\{example\}\}/gi, () => resolveCharacterFieldValue(profile, "example", depth, baseContext))
-    .replace(/\{\{charSysInfo\}\}/gi, () => resolveCharacterFieldValue(profile, "systemPrompt", depth, baseContext))
-    .replace(/\{\{charPostHistory\}\}/gi, () =>
+    .replace(/\{\{\s*char(?:Name)?\s*\}\}/gi, profile.name)
+    .replace(/\{\{\s*char(?:Name)?Phonetic\s*\}\}/gi, profile.phoneticName ?? profile.name)
+    .replace(/\{\{\s*group\s*\}\}/gi, resolveGroupCharacters(scopedContext))
+    .replace(/\{\{\s*description\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "description", depth, baseContext))
+    .replace(/\{\{\s*personality\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "personality", depth, baseContext))
+    .replace(/\{\{\s*backstory\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "backstory", depth, baseContext))
+    .replace(/\{\{\s*appearance\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "appearance", depth, baseContext))
+    .replace(/\{\{\s*scenario\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "scenario", depth, baseContext))
+    .replace(/\{\{\s*example\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "example", depth, baseContext))
+    .replace(/\{\{\s*charSysInfo\s*\}\}/gi, () => resolveCharacterFieldValue(profile, "systemPrompt", depth, baseContext))
+    .replace(/\{\{\s*charPostHistory\s*\}\}/gi, () =>
       resolveCharacterFieldValue(profile, "postHistoryInstructions", depth, baseContext),
     );
 }
@@ -707,10 +707,44 @@ function hasCharacterMacro(template: string): boolean {
 
   let searchIndex = 0;
   while (searchIndex < template.length) {
-    const tag = readNextMacroTag(template, searchIndex);
-    if (!tag) return false;
+    const start = template.indexOf("{{", searchIndex);
+    if (start === -1) return false;
+    let bodyStart = start + 2;
+    while (bodyStart < template.length && /\s/u.test(template[bodyStart]!)) bodyStart++;
+    let nameEnd = bodyStart;
+    while (nameEnd < template.length && /[A-Za-z_]/u.test(template[nameEnd]!)) nameEnd++;
+    const name = template.slice(bodyStart, nameEnd).toLowerCase();
+    let directEnd = nameEnd;
+    while (directEnd < template.length && /\s/u.test(template[directEnd]!)) directEnd++;
+    if (template.startsWith("}}", directEnd) && CHARACTER_MACRO_NAMES.has(name)) return true;
 
-    const condition = parseIfCondition(tag.body) ?? parseElseIfCondition(tag.body);
+    const ifEnd = bodyStart + 3;
+    const elseIfEnd = directEnd + 2;
+    const isIf =
+      template.slice(bodyStart, ifEnd).toLowerCase() === "#if" &&
+      (template.startsWith("}}", ifEnd) || (ifEnd < template.length && /\s/u.test(template[ifEnd]!)));
+    const isElseIf =
+      name === "else" &&
+      directEnd > nameEnd &&
+      template.slice(directEnd, elseIfEnd).toLowerCase() === "if" &&
+      (template.startsWith("}}", elseIfEnd) ||
+        (elseIfEnd < template.length && /\s/u.test(template[elseIfEnd]!)));
+    if (!isIf && !isElseIf) {
+      searchIndex = Math.max(start + 2, nameEnd);
+      continue;
+    }
+
+    const end = findBalancedMacroEnd(template, start);
+    if (end === -1) {
+      return (
+        hasCharacterConditionalOperandCandidate(template.slice(bodyStart)) ||
+        [...CHARACTER_MACRO_NAMES].some((macroName) =>
+          lowerTemplate.includes(`{{${macroName}}}`, start + 2),
+        )
+      );
+    }
+    const body = template.slice(start + 2, end - 2).trim();
+    const condition = parseIfCondition(body) ?? parseElseIfCondition(body);
     if (
       condition !== null &&
       hasCharacterConditionalOperandCandidate(condition) &&
@@ -718,7 +752,7 @@ function hasCharacterMacro(template: string): boolean {
     ) {
       return true;
     }
-    searchIndex = tag.end;
+    searchIndex = end;
   }
   return false;
 }
@@ -1029,7 +1063,8 @@ function parseConditionExpression(condition: string): ParsedConditionExpression 
 type ConditionSyntaxNode =
   | { kind: "atom"; value: string }
   | { kind: "and" | "or"; children: ConditionSyntaxNode[] }
-  | { kind: "group"; child: ConditionSyntaxNode };
+  | { kind: "group"; child: ConditionSyntaxNode }
+  | { kind: "adjacent"; children: ConditionSyntaxNode[] };
 
 type ConditionSyntaxFrame = {
   atomStart: number;
@@ -1049,11 +1084,42 @@ function createConditionSyntaxFrame(atomStart: number): ConditionSyntaxFrame {
   };
 }
 
-function appendConditionSyntaxNode(frame: ConditionSyntaxFrame, node: ConditionSyntaxNode): boolean {
-  if (!frame.expectsOperand) return false;
+function appendConditionSyntaxNode(frame: ConditionSyntaxFrame, node: ConditionSyntaxNode): void {
+  if (!frame.expectsOperand) {
+    const previous = frame.andChildren.pop()!;
+    if (previous.kind === "adjacent") {
+      previous.children.push(node);
+      frame.andChildren.push(previous);
+    } else {
+      frame.andChildren.push({ kind: "adjacent", children: [previous, node] });
+    }
+    frame.expectsOperand = false;
+    return;
+  }
   frame.andChildren.push(node);
   frame.expectsOperand = false;
-  return true;
+}
+
+function conditionSyntaxNodeText(node: ConditionSyntaxNode): string {
+  const parts: string[] = [];
+  const pending: Array<ConditionSyntaxNode | string> = [node];
+  while (pending.length > 0) {
+    const part = pending.pop()!;
+    if (typeof part === "string") {
+      parts.push(part);
+    } else if (part.kind === "atom") {
+      parts.push(part.value);
+    } else if (part.kind === "group") {
+      pending.push(")", part.child, "(");
+    } else {
+      const separator = part.kind === "and" ? " && " : part.kind === "or" ? " || " : "";
+      for (let index = part.children.length - 1; index >= 0; index -= 1) {
+        pending.push(part.children[index]!);
+        if (index > 0 && separator) pending.push(separator);
+      }
+    }
+  }
+  return parts.join("");
 }
 
 function appendConditionAtom(
@@ -1061,11 +1127,11 @@ function appendConditionAtom(
   condition: string,
   end: number,
   forceEmpty: boolean,
-): boolean {
+): void {
   const value = condition.slice(frame.atomStart, end).trim();
   frame.atomStart = end;
-  if (!value && !(forceEmpty && frame.expectsOperand)) return true;
-  return appendConditionSyntaxNode(frame, { kind: "atom", value });
+  if (!value && !(forceEmpty && frame.expectsOperand)) return;
+  appendConditionSyntaxNode(frame, { kind: "atom", value });
 }
 
 function combineConditionNodes(kind: "and" | "or", children: ConditionSyntaxNode[]): ConditionSyntaxNode {
@@ -1084,7 +1150,6 @@ function parseConditionSyntax(condition: string): ConditionSyntaxNode {
   let quote: "single" | "double" | null = null;
   let escaped = false;
   let macroDepth = 0;
-  let valid = true;
 
   for (let index = 0; index < condition.length; index += 1) {
     const character = condition[index]!;
@@ -1133,14 +1198,19 @@ function parseConditionSyntax(condition: string): ConditionSyntaxNode {
         frame.literalParenthesisDepth -= 1;
         continue;
       }
-      if (frames.length === 1) continue;
+      if (frames.length === 1) {
+        if (frame.andChildren.length > 0) {
+          appendConditionSyntaxNode(frame, { kind: "atom", value: ")" });
+          frame.atomStart = index + 1;
+        }
+        continue;
+      }
 
-      valid = appendConditionAtom(frame, condition, index, true) && valid;
+      appendConditionAtom(frame, condition, index, true);
       const groupedNode = finishConditionSyntaxFrame(frame);
       frames.pop();
       const parent = frames[frames.length - 1]!;
-      const operand = groupedNode.kind === "atom" ? groupedNode : { kind: "group" as const, child: groupedNode };
-      valid = appendConditionSyntaxNode(parent, operand) && valid;
+      appendConditionSyntaxNode(parent, { kind: "group", child: groupedNode });
       parent.atomStart = index + 1;
       continue;
     }
@@ -1148,7 +1218,7 @@ function parseConditionSyntax(condition: string): ConditionSyntaxNode {
     const operator = frame.literalParenthesisDepth === 0 ? condition.slice(index, index + 2) : "";
     if (operator !== "&&" && operator !== "||") continue;
 
-    valid = appendConditionAtom(frame, condition, index, true) && valid;
+    appendConditionAtom(frame, condition, index, true);
     if (operator === "||") {
       frame.orChildren.push(combineConditionNodes("and", frame.andChildren));
       frame.andChildren = [];
@@ -1158,13 +1228,16 @@ function parseConditionSyntax(condition: string): ConditionSyntaxNode {
     index += 1;
   }
 
-  // An unmatched opening parenthesis is part of the surrounding atom, matching
-  // the legacy parser's malformed-input behavior. Discard any partial frames;
-  // the parent still points at the opening character.
-  if (frames.length !== 1) frames.length = 1;
+  // An unmatched opening parenthesis makes every operator after it nested in
+  // the legacy grammar. Treat that suffix as one atom without rescanning it.
+  if (frames.length !== 1) {
+    const root = frames[0]!;
+    appendConditionAtom(root, condition, condition.length, true);
+    return finishConditionSyntaxFrame(root);
+  }
   const root = frames[0]!;
-  valid = appendConditionAtom(root, condition, condition.length, true) && valid;
-  return valid ? finishConditionSyntaxFrame(root) : { kind: "atom", value: condition.trim() };
+  appendConditionAtom(root, condition, condition.length, true);
+  return finishConditionSyntaxFrame(root);
 }
 
 function parseConditionComparisons(condition: string): ParsedConditionExpression[] {
@@ -1272,6 +1345,11 @@ function parseResolvedConditionAtom(
   return parseConditionExpression(resolveConditionMacros(atom, ctx, options));
 }
 
+function conditionSyntaxAtomValue(node: ConditionSyntaxNode): string | null {
+  if (node.kind === "atom") return node.value;
+  return node.kind === "adjacent" ? conditionSyntaxNodeText(node) : null;
+}
+
 function evaluateOrConditionAtom(
   atom: string,
   equalityShorthand: EqualityShorthand | null,
@@ -1296,8 +1374,12 @@ function evaluateConditionExpression(condition: string, ctx: MacroContext, optio
 
   while (true) {
     if (current) {
-      if (current.kind === "atom") {
-        result = evaluateParsedCondition(parseResolvedConditionAtom(current.value, ctx, options), ctx, options);
+      if (current.kind === "atom" || current.kind === "adjacent") {
+        result = evaluateParsedCondition(
+          parseResolvedConditionAtom(conditionSyntaxAtomValue(current)!, ctx, options),
+          ctx,
+          options,
+        );
         current = null;
       } else if (current.kind === "group") {
         frames.push({ kind: "group" });
@@ -1316,8 +1398,13 @@ function evaluateConditionExpression(condition: string, ctx: MacroContext, optio
         };
         frames.push(frame);
         const child: ConditionSyntaxNode = current.children[0]!;
-        if (child.kind === "atom") {
-          const evaluated = evaluateOrConditionAtom(child.value, frame.equalityShorthand, ctx, options);
+        if (child.kind === "atom" || child.kind === "adjacent") {
+          const evaluated = evaluateOrConditionAtom(
+            conditionSyntaxAtomValue(child)!,
+            frame.equalityShorthand,
+            ctx,
+            options,
+          );
           frame.equalityShorthand = evaluated.equalityShorthand;
           result = evaluated.matches;
           current = null;
@@ -1360,8 +1447,13 @@ function evaluateConditionExpression(condition: string, ctx: MacroContext, optio
       continue;
     }
     const child = frame.children[frame.index]!;
-    if (child.kind === "atom") {
-      const evaluated = evaluateOrConditionAtom(child.value, frame.equalityShorthand, ctx, options);
+    if (child.kind === "atom" || child.kind === "adjacent") {
+      const evaluated = evaluateOrConditionAtom(
+        conditionSyntaxAtomValue(child)!,
+        frame.equalityShorthand,
+        ctx,
+        options,
+      );
       frame.equalityShorthand = evaluated.equalityShorthand;
       result = evaluated.matches;
     } else {

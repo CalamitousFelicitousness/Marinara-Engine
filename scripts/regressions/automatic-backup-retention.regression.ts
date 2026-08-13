@@ -166,6 +166,17 @@ try {
     1,
     "unreadable assets and oversized non-media must be omitted without losing valid entries",
   );
+  await assert.rejects(
+    writeStoredBackupArchiveForRegression(join(zipFixtureRoot, "invalid-direct.zip"), [
+      {
+        entryName: "storage/oversized.data",
+        filePath: sourcePath,
+        size: logicalSize,
+      },
+    ]),
+    /too large for profile ZIP import\/export/u,
+    "a strict profile export must fail instead of emitting a non-media entry its importer rejects",
+  );
 } finally {
   await rm(zipFixtureRoot, { recursive: true, force: true });
 }

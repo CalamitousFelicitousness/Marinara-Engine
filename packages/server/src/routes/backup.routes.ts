@@ -1881,6 +1881,9 @@ async function writeStoredZipFileEntry(
       sourceHandle = await open(source.filePath, "r");
       const currentStat = await sourceHandle.stat();
       if (!currentStat.isFile()) throw new Error(`Profile ZIP source is not a regular file: ${entryName}`);
+      if (currentStat.size !== source.size) {
+        throw new Error(`Profile ZIP source changed while exporting: ${entryName}`);
+      }
       assertZip32Value(currentStat.size, `${entryName} size`);
       if (currentStat.size > entryLimitBytes) {
         throw new ProfileArchiveTooLargeError(profileArchiveSizeError(entryName, currentStat.size, entryLimitBytes));
@@ -1926,6 +1929,9 @@ async function writeStoredZipFileEntry(
       }
       record.crc32 = finishCrc32(crcState);
       record.size = written;
+      if (record.size !== source.size) {
+        throw new Error(`Profile ZIP source changed while exporting: ${entryName}`);
+      }
       assertZip32Value(record.size, `${entryName} size`);
       assertZip32Value(position, `${entryName} offset`);
       const descriptor = buildStoredZipDataDescriptor(record);
@@ -2026,8 +2032,12 @@ async function writeStoredZipArchive(
                 nextTotalBytes,
                 PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES,
               )
-            : result.position > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES
-              ? profileArchiveSizeError("Profile archive", result.position, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES)
+            : result.position + nextCentralDirectorySize + ZIP_EOCD_MIN_SIZE > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES
+              ? profileArchiveSizeError(
+                  "Profile archive",
+                  result.position + nextCentralDirectorySize + ZIP_EOCD_MIN_SIZE,
+                  PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES,
+                )
               : nextCentralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES
                 ? profileArchiveSizeError(
                     "Profile archive central directory",
@@ -2719,6 +2729,14 @@ async function writeFullBackupArchive(
   workingDir: string,
 ) {
   const dataDir = getDataDir();
+  const filesystemSources: StoredZipEntrySource[] = [];
+  for (const dirName of BACKUP_DIRS) {
+    const sourceDir = resolveBackupDir(dataDir, dirName);
+    filesystemSources.push(...(await collectDirectoryZipSources(sourceDir, `${backupName}/${dirName}`)));
+  }
+
+  // Capture the manifest after filesystem source sizes so a later change makes
+  // the writer omit that source instead of creating a manifest-size mismatch.
   const sources = await withOptionalNoodleAutoPostPaused(() =>
     buildProfileArchiveSources(app, backupName, workingDir, false, true),
   );
@@ -2726,11 +2744,7 @@ async function writeFullBackupArchive(
     entryName: `${backupName}/RESTORE.txt`,
     data: Buffer.from(buildBackupRestoreNotes(), "utf8"),
   });
-
-  for (const dirName of BACKUP_DIRS) {
-    const sourceDir = resolveBackupDir(dataDir, dirName);
-    sources.push(...(await collectDirectoryZipSources(sourceDir, `${backupName}/${dirName}`)));
-  }
+  sources.push(...filesystemSources);
 
   const keyPath = resolvePersistedEncryptionKeyPath(dataDir);
   if (existsSync(keyPath)) {

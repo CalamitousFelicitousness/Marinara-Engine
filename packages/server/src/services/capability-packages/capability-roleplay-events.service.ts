@@ -64,7 +64,11 @@ export async function collectRoleplayEventContext(
       } catch {
         continue;
       }
-      if (!visibleTo(event.audience, targetCharacterIds)) continue;
+      try {
+        if (!visibleTo(event.audience, targetCharacterIds)) continue;
+      } catch {
+        continue;
+      }
       const text = String(event.text ?? "").replace(/\s+/gu, " ").trim();
       if (text) lines.push(`- ${text}`);
     }

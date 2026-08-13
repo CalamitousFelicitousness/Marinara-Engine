@@ -66,8 +66,34 @@ try {
     characterId: "char1",
   };
   assert.equal(await dispatchCapabilityConversationAction(action), true);
-  assert.equal(await dispatchCapabilityConversationAction(action), false);
-  assert.equal(handled, 1);
+  assert.equal(await dispatchCapabilityConversationAction(action, async () => false), false);
+  assert.equal(handled, 2);
+
+  const failedAction = { ...action, commandType: "failing-phone", sourceMessageId: "m2" };
+  const releaseFailure = registerCapabilityConversationCommand({
+    commandType: "failing-phone",
+    tags: ["failing-phone"],
+    handler: () => {
+      throw new Error("temporary failure");
+    },
+  });
+  await assert.rejects(() => dispatchCapabilityConversationAction(failedAction));
+  releaseFailure();
+
+  let retried = 0;
+  const releaseRetry = registerCapabilityConversationCommand({
+    commandType: "failing-phone",
+    tags: ["failing-phone"],
+    handler: () => {
+      retried += 1;
+    },
+  });
+  try {
+    assert.equal(await dispatchCapabilityConversationAction(failedAction), true);
+    assert.equal(retried, 1);
+  } finally {
+    releaseRetry();
+  }
 
   console.log("Capability conversation action regression passed.");
 } finally {

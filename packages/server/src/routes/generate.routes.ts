@@ -3075,6 +3075,39 @@ export async function generateRoutes(app: FastifyInstance) {
           blocks: [],
           provides: {},
         };
+        const injectCapabilityContexts = async ({
+          messages,
+          chatMetadata,
+          mode,
+          targetCharacterIds,
+          selectedPersonaId,
+          db,
+        }: {
+          messages: typeof finalMessages;
+          chatMetadata: typeof chatMeta;
+          mode: typeof chatMode;
+          targetCharacterIds: string[];
+          selectedPersonaId: typeof personaId;
+          db: typeof app.db;
+        }) => {
+          const promptContext = await collectCapabilityPromptContext({
+            chatId: input.chatId,
+            chatMeta: chatMetadata,
+            mode,
+            targetCharacterIds,
+            personaId: selectedPersonaId,
+          });
+          const blocks = [...promptContext.blocks];
+          const eventBlock = await collectRoleplayEventContext(db, input.chatId, targetCharacterIds);
+          if (eventBlock) blocks.push(eventBlock);
+          if (blocks.length > 0) {
+            const context = blocks.join("\n\n");
+            const systemMessage = messages.find((message) => message.role === "system");
+            if (systemMessage) systemMessage.content += "\n\n" + context;
+            else messages.unshift({ role: "system" as const, content: context });
+          }
+          return promptContext;
+        };
         if (chatMode === "game") {
           const selectedGamePrompt =
             resolvedPreset && presetId
@@ -3171,37 +3204,14 @@ export async function generateRoutes(app: FastifyInstance) {
 
           // A package holding `prompt-context` appends its live state to the system message, the same way
           // the lorebook block above does. Nothing registered (the normal case) ⇒ no effect on the prompt.
-          capabilityPromptContext = await collectCapabilityPromptContext({
-            chatId: input.chatId,
-            chatMeta,
+          capabilityPromptContext = await injectCapabilityContexts({
+            messages: finalMessages,
+            chatMetadata: chatMeta,
             mode: "game",
             targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
-            personaId,
+            selectedPersonaId: personaId,
+            db: app.db,
           });
-          if (capabilityPromptContext.blocks.length > 0) {
-            const capabilityBlock = capabilityPromptContext.blocks.join("\n\n");
-            const sysMsg = finalMessages.find((m) => m.role === "system");
-            if (sysMsg) {
-              sysMsg.content += "\n\n" + capabilityBlock;
-            } else {
-              finalMessages.unshift({ role: "system" as const, content: capabilityBlock });
-            }
-          }
-
-          // The read half of roleplay events: durable phone facts the transient context has dropped,
-          // audience-filtered so a private event never reaches a turn that can write another character.
-          {
-            const eventBlock = await collectRoleplayEventContext(
-              app.db,
-              input.chatId,
-              promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
-            );
-            if (eventBlock) {
-              const sysMsg = finalMessages.find((m) => m.role === "system");
-              if (sysMsg) sysMsg.content += "\n\n" + eventBlock;
-              else finalMessages.unshift({ role: "system" as const, content: eventBlock });
-            }
-          }
 
           // Game bypasses the preset assembler, so card-authored depth and
           // post-history instructions must be injected explicitly before the
@@ -3284,32 +3294,14 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         if (chatMode !== "game") {
-          capabilityPromptContext = await collectCapabilityPromptContext({
-            chatId: input.chatId,
-            chatMeta,
+          capabilityPromptContext = await injectCapabilityContexts({
+            messages: finalMessages,
+            chatMetadata: chatMeta,
             mode: chatMode,
             targetCharacterIds: promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
-            personaId,
+            selectedPersonaId: personaId,
+            db: app.db,
           });
-          if (capabilityPromptContext.blocks.length > 0) {
-            const capabilityBlock = capabilityPromptContext.blocks.join("\n\n");
-            const sysMsg = finalMessages.find((m) => m.role === "system");
-            if (sysMsg) {
-              sysMsg.content += "\n\n" + capabilityBlock;
-            } else {
-              finalMessages.unshift({ role: "system" as const, content: capabilityBlock });
-            }
-          }
-          const eventBlock = await collectRoleplayEventContext(
-            app.db,
-            input.chatId,
-            promptTargetCharacterId ? [promptTargetCharacterId] : characterIds,
-          );
-          if (eventBlock) {
-            const sysMsg = finalMessages.find((m) => m.role === "system");
-            if (sysMsg) sysMsg.content += "\n\n" + eventBlock;
-            else finalMessages.unshift({ role: "system" as const, content: eventBlock });
-          }
         }
 
         if (chatMode === "conversation" && !conversationScopesAwarenessToResponder) {
@@ -9740,25 +9732,13 @@ export async function generateRoutes(app: FastifyInstance) {
                     swipeIndex,
                     branchChatId: input.chatId,
                     characterId,
-                  }, async () => {
-                    const current = await chats.getMessage(messageId);
-                    if (!current) return false;
-                    try {
-                      const existing = JSON.parse(current.extra as string) as Record<string, unknown>;
-                      const marker = existing[`capabilityAction:${command.commandType}`];
-                      if (marker && typeof marker === "object") return false;
-                    } catch {
-                      // Treat malformed legacy extra data as empty.
-                    }
-                    const claimed = await chats.updateMessageExtraForSwipe(messageId, swipeIndex, {
-                      [`capabilityAction:${command.commandType}`]: {
-                        actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
-                        status: "claimed",
-                      },
-                    });
-                    if (!claimed) return false;
-                    return true;
-                  });
+                  },
+                  () =>
+                    chats.claimMessageExtraForSwipe(messageId, swipeIndex, `capabilityAction:${command.commandType}`, {
+                      actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
+                      status: "claimed",
+                    }),
+                  );
                 }
 
                 const professorMariResult = await handleProfessorMariCommand({

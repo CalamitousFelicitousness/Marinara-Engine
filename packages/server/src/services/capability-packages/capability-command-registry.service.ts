@@ -35,6 +35,9 @@ export function registerCapabilityConversationCommand(
   if (tags.length === 0 || tags.some((tag) => !/^[a-z][a-z0-9_-]*$/.test(tag))) {
     throw new Error("Capability command tag is invalid");
   }
+  if (payloadLimitsByCommandType.has(commandType)) {
+    throw new Error(`Capability command type ${commandType} is already registered`);
+  }
   for (const tag of tags) {
     if (tagToCommandType.has(tag)) throw new Error(`Conversation command tag ${tag} is already registered`);
     tagToCommandType.set(tag, commandType);
@@ -96,10 +99,14 @@ export async function dispatchCapabilityConversationAction(
   if (!handler) return false;
   const actionKey = `${action.branchChatId}:${action.sourceMessageId}:${action.swipeIndex}:${action.commandType}`;
   if (dispatchedActions.has(actionKey)) return false;
-  if (claim && !(await claim())) return false;
   dispatchedActions.add(actionKey);
-  await handler(action);
-  return true;
+  try {
+    await handler(action);
+    return !claim || (await claim());
+  } finally {
+    // In-flight keys serialize local dispatches; neither failures nor completed actions remain resident.
+    dispatchedActions.delete(actionKey);
+  }
 }
 
 export function stripCapabilityConversationCommands(content: string) {

@@ -17,6 +17,7 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { and, desc, eq, inArray, ne, or } from "../../db/file-query.js";
+import { FileUniqueConstraintError } from "../../db/file-schema.js";
 import { engineEventOwner } from "./capability-roleplay-events.service.js";
 import { ensureTimestampAfter } from "../import/import-timestamps.js";
 import {
@@ -59,6 +60,9 @@ function parseMetadata(value: unknown): Record<string, unknown> | null {
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
+
+const MAX_ROLEPLAY_EVENT_TEXT_CHARS = 1_000;
+const MAX_ROLEPLAY_EVENT_PAYLOAD_CHARS = 8_000;
 
 function mapBranchMetadata(value: unknown): CapabilityChatRecord["branch"] {
   const metadata = parseMetadata(value);
@@ -401,33 +405,31 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
       return rows[0] ? mapGameState(rows[0]) : null;
     },
     async appendRoleplayEvent(input: CapabilityRoleplayEventInput): Promise<CapabilityRoleplayEventRecord | null> {
-      // packageId is scoped per chat (`__engine__:<chatId>`) so both this idempotency check and the
-      // prompt-time read (capability-roleplay-events.service.ts) filter by an indexed column instead of
-      // scanning a global, cross-chat window that a busy multi-chat instance could push this chat's own
-      // recent events out of.
       const scopedOwner = engineEventOwner(input.chatId);
-      const existing = await db
-        .select()
-        .from(capabilityDocuments)
-        .where(and(eq(capabilityDocuments.packageId, scopedOwner), eq(capabilityDocuments.kind, "roleplay-event")))
-        .limit(1000);
-      if (existing.some((row) => {
-        try { return (JSON.parse(row.data) as { idempotencyKey?: unknown }).idempotencyKey === input.idempotencyKey; }
-        catch { return false; }
-      })) return null;
+      const text = input.text.trim().slice(0, MAX_ROLEPLAY_EVENT_TEXT_CHARS);
+      if (!text || input.idempotencyKey.length === 0) return null;
+      const event = { ...input, text };
+      const data = JSON.stringify(event);
+      if (data.length > MAX_ROLEPLAY_EVENT_PAYLOAD_CHARS) return null;
       const now = input.createdAt;
-      await db.insert(capabilityDocuments).values({
-        id: input.id,
-        packageId: scopedOwner,
-        kind: "roleplay-event",
-        name: input.eventType,
-        description: input.sourcePackageId,
-        data: JSON.stringify(input),
-        revision: 1,
-        createdAt: now,
-        updatedAt: now,
-      });
-      return input;
+      try {
+        await db.insert(capabilityDocuments).values({
+          id: input.id,
+          packageId: scopedOwner,
+          kind: "roleplay-event",
+          name: input.eventType,
+          description: input.sourcePackageId,
+          data,
+          idempotencyKey: input.idempotencyKey,
+          revision: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (error) {
+        if (error instanceof FileUniqueConstraintError) return null;
+        throw error;
+      }
+      return event;
     },
     async listExistingLorebookEntryIds(entryIds) {
       const requestedIds = Array.from(new Set(entryIds.filter((entryId) => entryId.length > 0)));

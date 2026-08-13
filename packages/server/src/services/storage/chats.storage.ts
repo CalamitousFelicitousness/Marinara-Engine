@@ -92,6 +92,13 @@ export async function withChatMetadataPatchQueue<T>(chatId: string, operation: (
   return withPatchQueue(metadataPatchQueues, chatId, operation);
 }
 
+export async function withMessageExtraPatchQueue<T>(
+  messageId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return withPatchQueue(messageExtraPatchQueues, messageId, operation);
+}
+
 function parseMetadata(raw: unknown): MetadataPatch {
   if (!raw) return {};
   if (typeof raw === "string") {
@@ -1277,6 +1284,31 @@ export function createChatsStorage(db: DB) {
         }
 
         return this.getMessage(id);
+      });
+    },
+
+    /** Atomically claim a marker in one swipe's extra data. */
+    async claimMessageExtraForSwipe(id: string, swipeIndex: number, key: string, value: unknown) {
+      return withMessageExtraPatchQueue(id, async () => {
+        const msg = await this.getMessage(id);
+        if (!msg) return false;
+        const swipes = await this.getSwipes(id);
+        const targetSwipe = swipes.find((swipe: any) => swipe.index === swipeIndex);
+        if (!targetSwipe) return false;
+        const swipeExtra = parseExtraRecord(targetSwipe.extra);
+        if (swipeExtra[key] && typeof swipeExtra[key] === "object") return false;
+        await db
+          .update(messageSwipes)
+          .set({ extra: JSON.stringify({ ...swipeExtra, [key]: value }) })
+          .where(eq(messageSwipes.id, targetSwipe.id));
+        if (msg.activeSwipeIndex === swipeIndex) {
+          const messageExtra = parseExtraRecord(msg.extra);
+          await db
+            .update(messages)
+            .set({ extra: JSON.stringify({ ...messageExtra, [key]: value }) })
+            .where(eq(messages.id, id));
+        }
+        return true;
       });
     },
 

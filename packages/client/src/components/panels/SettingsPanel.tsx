@@ -31,6 +31,12 @@ import { ANDROID_BRIDGE_READY_EVENT, getAndroidBridgeToken } from "../../lib/and
 import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
 import { forceRefreshSpa } from "@/lib/browser-runtime";
+import {
+  formatProfileImportWarningDetails,
+  formatProfileImportWarningSummary,
+  normalizeProfileImportWarnings,
+  type ProfileImportWarning,
+} from "@/lib/profile-import-warnings";
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -6432,12 +6438,6 @@ type ProfileImportStats = {
   files?: number;
 };
 
-type ProfileImportWarning = {
-  type?: string;
-  path?: string;
-  message?: string;
-};
-
 type ProfileImportProgressData = {
   phase: string;
   label: string;
@@ -6558,40 +6558,6 @@ function getProfileImportErrorMessage(data: unknown) {
     if (typeof record.error === "string") return record.error;
   }
   return "Unknown error";
-}
-
-function normalizeProfileImportWarnings(warnings: unknown): ProfileImportWarning[] {
-  if (!Array.isArray(warnings)) return [];
-  return warnings.flatMap((warning) => {
-    if (!warning || typeof warning !== "object") return [];
-    const record = warning as { type?: unknown; path?: unknown; message?: unknown };
-    const path = typeof record.path === "string" ? record.path : undefined;
-    const message = typeof record.message === "string" ? record.message : undefined;
-    const type = typeof record.type === "string" ? record.type : undefined;
-    if (!path && !message) return [];
-    return [{ type, path, message }];
-  });
-}
-
-function formatProfileImportWarningSummary(warnings: ProfileImportWarning[]) {
-  const missingAssets = warnings.filter((warning) => warning.type === "missing_asset" || warning.path);
-  if (missingAssets.length > 0) {
-    return `${missingAssets.length} asset file${missingAssets.length === 1 ? "" : "s"} missing from the ZIP. Imported the rest.`;
-  }
-  return `${warnings.length} import warning${warnings.length === 1 ? "" : "s"}.`;
-}
-
-function formatProfileImportWarningDetails(warnings: ProfileImportWarning[]) {
-  const paths = warnings.map((warning) => warning.path).filter((path): path is string => !!path);
-  if (paths.length === 0) {
-    const messages = warnings.map((warning) => warning.message).filter((message): message is string => !!message);
-    const visible = messages.slice(0, 3).join(" ");
-    const extra = messages.length > 3 ? ` +${messages.length - 3} more.` : "";
-    return `${visible}${extra}`;
-  }
-  const visible = paths.slice(0, 3).join(", ");
-  const extra = paths.length > 3 ? `, +${paths.length - 3} more` : "";
-  return `Missing: ${visible}${extra}`;
 }
 
 function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewResult, localizeUi: TFunction) {

@@ -34,7 +34,7 @@ export function createConnectionsStorage(db: DB) {
     /** Get connection with decrypted API key (for internal use only). */
     async getWithKey(id: string) {
       const conn = await this.getById(id);
-      if (!conn) return null;
+      if (!conn || conn.profileImportReviewRequired === "true") return null;
       return { ...conn, apiKey: decryptApiKey(conn.apiKeyEncrypted) };
     },
 
@@ -121,6 +121,7 @@ export function createConnectionsStorage(db: DB) {
         provider: input.provider,
         baseUrl: input.baseUrl ?? "",
         apiKeyEncrypted: encryptApiKey(input.apiKey ?? ""),
+        profileImportReviewRequired: "false",
         model: input.model ?? "",
         imagePath: input.imagePath ?? null,
         maxContext: input.maxContext ?? 128000,
@@ -217,7 +218,12 @@ export function createConnectionsStorage(db: DB) {
 
       const effectiveProvider = data.provider ?? existing.provider;
       const effectiveProviderCategory = defaultCategoryForProvider(effectiveProvider);
-      const updateFields: Record<string, unknown> = { updatedAt: now() };
+      // Saving through the connection editor is the explicit local review
+      // boundary for a connection restored from someone else's profile.
+      const updateFields: Record<string, unknown> = {
+        updatedAt: now(),
+        profileImportReviewRequired: "false",
+      };
       const shouldClearDefault = data.isDefault === true;
       const shouldClearMainFallback = effectiveProviderCategory === "language" && data.fallbackForMain === true;
       const shouldClearAgentDefaults =
@@ -402,6 +408,7 @@ export function createConnectionsStorage(db: DB) {
         provider: source.provider,
         baseUrl: source.baseUrl,
         apiKeyEncrypted: source.apiKeyEncrypted,
+        profileImportReviewRequired: source.profileImportReviewRequired,
         model: source.model,
         imagePath: source.imagePath,
         maxContext: source.maxContext,
@@ -439,7 +446,10 @@ export function createConnectionsStorage(db: DB) {
 
     /** Get all connections marked for the random pool (with decrypted keys). */
     async listRandomPool() {
-      const rows = await db.select().from(apiConnections).where(eq(apiConnections.useForRandom, "true"));
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(and(eq(apiConnections.useForRandom, "true"), ne(apiConnections.profileImportReviewRequired, "true")));
       return rows.map((r: any) => ({ ...r, apiKey: decryptApiKey(r.apiKeyEncrypted) }));
     },
 

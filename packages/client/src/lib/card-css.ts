@@ -354,6 +354,45 @@ function canonicalizeKeywordEscapes(css: string): string {
   });
 }
 
+function neutralizeUnsafeImageSets(css: string): string {
+  const startPattern = /(?:-webkit-)?image-set\s*\(/giu;
+  let result = "";
+  let cursor = 0;
+  for (let match = startPattern.exec(css); match; match = startPattern.exec(css)) {
+    let quote: '"' | "'" | null = null;
+    let escaped = false;
+    let depth = 1;
+    let index = startPattern.lastIndex;
+    for (; index < css.length && depth > 0; index++) {
+      const ch = css[index]!;
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+    }
+    if (depth !== 0) break;
+    const expression = css.slice(match.index, index);
+    const sources = expression.match(/(?:url\s*\(\s*)?["']?data:image\/[^")'\s]+["']?\s*\)?/giu) ?? [];
+    const remainder = expression
+      .replace(/^(?:-webkit-)?image-set\s*\(/iu, "")
+      .replace(/\)$/u, "")
+      .replace(/(?:url\s*\(\s*)?["']?data:image\/[^")'\s]+["']?\s*\)?/giu, "")
+      .replace(/\btype\s*\([^)]*\)/giu, "")
+      .replace(/(?:\d+(?:\.\d+)?x|\d+dpi|\d+dpcm|\d+dppx)/giu, "")
+      .replace(/[\s,]/gu, "");
+    result += css.slice(cursor, match.index);
+    result += sources.length > 0 && remainder.length === 0 ? expression : "url(about:invalid)";
+    cursor = index;
+    startPattern.lastIndex = index;
+  }
+  return result + css.slice(cursor);
+}
+
 /**
  * Strip the CSS constructs that are dangerous no matter where the CSS is injected:
  * network exfiltration (url()/@import/@namespace/@font-face), script execution
@@ -382,6 +421,10 @@ export function stripDangerousCss(css: string): string {
     /url\s*\(\s*(['"]?)\s*(?!['"]?\s*data:(?:image\/|font\/|application\/(?:font|x-font)))[^)]*\)/gi,
     "url(about:invalid)",
   );
+  // CSS Images also accepts a bare quoted URL inside image-set(). Normalize
+  // those sources to url() so the same allowlist above governs them. Embedded
+  // data:image choices remain usable; external/relative sources become inert.
+  out = neutralizeUnsafeImageSets(out);
   // Strip @import (network request + CSS injection)
   out = out.replace(/@import\b[^;]*(?:;|$)/gi, " ");
   // Strip @namespace

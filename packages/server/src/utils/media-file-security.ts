@@ -26,8 +26,14 @@ function normalizedRasterExtension(extension: string): string {
 export function isSafeSvgImageBuffer(buffer: Buffer): boolean {
   const source = buffer.toString("utf8");
   if (source.includes("\ufffd") || !/<svg(?:\s|>)/iu.test(source)) return false;
+  // Preserve ordinary SVG 1.1 exports while rejecting internal subsets and
+  // non-SVG declarations. Entity declarations remain forbidden below.
+  const withoutPassiveDoctype = source.replace(
+    /<!doctype\s+svg(?:\s+(?:public\s+["']-\/\/W3C\/\/DTD SVG [^"']+["']\s+["']https?:\/\/www\.w3\.org\/Graphics\/SVG\/[^"']+["']|system\s+["']https?:\/\/www\.w3\.org\/Graphics\/SVG\/[^"']+["']))?\s*>/giu,
+    " ",
+  );
   return !(
-    /<!doctype|<!entity/iu.test(source) ||
+    /<!doctype|<!entity/iu.test(withoutPassiveDoctype) ||
     /<(?:script|foreignObject|iframe|object|embed)(?:\s|>)/iu.test(source) ||
     /\bon[a-z][a-z0-9_-]*\s*=/iu.test(source) ||
     /\b(?:href|xlink:href)\s*=\s*["']?\s*(?:javascript|vbscript|data:text\/html)/iu.test(source) ||

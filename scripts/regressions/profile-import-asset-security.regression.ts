@@ -45,6 +45,14 @@ const validPng = Buffer.from(
 );
 const html = Buffer.from("<!doctype html><script>globalThis.pwned=true</script>", "utf8");
 const javascript = Buffer.from("globalThis.pwned=true", "utf8");
+const passiveSvgWithDoctype = Buffer.from(
+  '<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>',
+  "utf8",
+);
+const entitySvg = Buffer.from(
+  '<!DOCTYPE svg [<!ENTITY payload SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg"><text>&payload;</text></svg>',
+  "utf8",
+);
 const validMp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0]);
 const videoManifest = Buffer.from('{"version":1,"videos":[]}', "utf8");
 
@@ -52,6 +60,8 @@ try {
   assert.ok(validateImageAssetBuffer(validPng, "valid.png"));
   assert.equal(validateImageAssetBuffer(html, "payload.png"), null);
   assert.equal(validateImageAssetBuffer(javascript, "payload.js"), null);
+  assert.ok(validateImageAssetBuffer(passiveSvgWithDoctype, "sprite.svg", { allowSvg: true }));
+  assert.equal(validateImageAssetBuffer(entitySvg, "sprite.svg", { allowSvg: true }), null);
 
   await assert.rejects(
     stageProfileImportAssets(

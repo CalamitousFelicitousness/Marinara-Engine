@@ -16,6 +16,18 @@ const externalAsset = sanitizeAppCss(
 assert.doesNotMatch(externalAsset, /example\.invalid/u, "theme CSS cannot make external requests");
 assert.match(externalAsset, /url\(about:invalid\)/u, "blocked URLs leave a valid inert declaration");
 
+const imageSetAsset = sanitizeAppCss(
+  '.remote { background-image: image-set("https://example.invalid/leak.png" 1x); } .indirect { --track: "https://example.invalid/indirect.png"; background-image: image-set(var(--track) 1x); } .embedded { background-image: image-set("data:image/png;base64,AA==" 1x); }',
+);
+assert.doesNotMatch(
+  imageSetAsset,
+  /image-set\s*\([^)]*example\.invalid/iu,
+  "quoted image-set sources cannot make external requests",
+);
+assert.match(imageSetAsset, /url\(about:invalid\)/u, "blocked image-set sources remain syntactically inert");
+assert.match(imageSetAsset, /"data:image\/png;base64,AA=="/u, "embedded image-set sources remain available");
+assert.doesNotMatch(imageSetAsset, /image-set\s*\(\s*var\(/iu, "indirect image-set sources cannot bypass filtering");
+
 for (const reconstructingCss of [
   '@imexpression(x)port uexpression(x)rl("https://example.invalid/expression.css"); .safe { color: red; }',
   '@im@import url("https://example.invalid/nested.css");port url("https://example.invalid/outer.css"); .safe { color: red; }',

@@ -5,6 +5,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdtemp, rm } from "node:fs/promises";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import {
+  formatProfileImportWarningDetails,
+  formatProfileImportWarningSummary,
+} from "../../packages/client/src/lib/profile-import-warnings.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const backupSource = await readFile(join(repositoryRoot, "packages/server/src/routes/backup.routes.ts"), "utf8");
@@ -12,6 +16,14 @@ assert.match(backupSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 10
 assert.match(backupSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
 assert.match(backupSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
 assert.match(backupSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192/u);
+
+const mixedWarnings = [
+  { type: "missing_asset", path: "gallery/missing.png", message: "Missing asset" },
+  { type: "custom_tools_quarantined", message: "1 imported executable custom tool will be disabled." },
+];
+assert.match(formatProfileImportWarningSummary(mixedWarnings), /1 asset file.*1 import security warning/su);
+assert.match(formatProfileImportWarningDetails(mixedWarnings), /Missing: gallery\/missing\.png/su);
+assert.match(formatProfileImportWarningDetails(mixedWarnings), /1 imported executable custom tool will be disabled/su);
 
 const storageRoot = await mkdtemp(join(tmpdir(), "marinara-profile-import-data-security-"));
 const previousDataDir = process.env.DATA_DIR;
@@ -21,12 +33,13 @@ try {
   process.env.DATA_DIR = storageRoot;
   process.env.FILE_STORAGE_DIR = join(storageRoot, "storage");
 
-  const [dbModule, schema, backupModule, cryptoModule, themesModule] = await Promise.all([
+  const [dbModule, schema, backupModule, cryptoModule, themesModule, connectionsModule] = await Promise.all([
     import("../../packages/server/src/db/connection.js"),
     import("../../packages/server/src/db/schema/index.js"),
     import("../../packages/server/src/routes/backup.routes.js"),
     import("../../packages/server/src/utils/crypto.js"),
     import("../../packages/server/src/services/storage/themes.storage.js"),
+    import("../../packages/server/src/services/storage/connections.storage.js"),
   ]);
   const db = await dbModule.getDB();
   const app = Fastify();
@@ -189,6 +202,7 @@ try {
 
     const afterImport = (await db.select().from(schema.apiConnections)) as Array<Record<string, unknown>>;
     const afterById = new Map(afterImport.map((row) => [row.id, row]));
+    const connections = connectionsModule.createConnectionsStorage(db);
     const sameIdentity = afterById.get("same-identity")!;
     assert.equal(
       cryptoModule.decryptApiKey(String(sameIdentity.apiKeyEncrypted)),
@@ -196,14 +210,20 @@ try {
       "a matching local endpoint may retain its existing credential",
     );
     assert.equal(sameIdentity.isDefault, "true", "a credential-backed matching restore may retain its selection state");
+    assert.equal(sameIdentity.profileImportReviewRequired, "false");
+    assert.ok(await connections.getWithKey("same-identity"));
 
     for (const id of ["changed-base", "changed-provider", "changed-embedding", "new-connection"]) {
       const connection = afterById.get(id)!;
       assert.equal(connection.apiKeyEncrypted, "", `${id} must not reuse or accept an imported credential`);
+      assert.equal(connection.profileImportReviewRequired, "true", `${id} must wait for explicit local review`);
+      assert.equal(await connections.getWithKey(id), null, `${id} must not make requests before review`);
       for (const field of ["isDefault", "fallbackForMain", "useForRandom", "defaultForAgents", "fallbackForAgents"]) {
         assert.equal(connection[field], "false", `${id}.${field} must wait for local credential review`);
       }
     }
+    await connections.update("new-connection", { name: "Reviewed imported connection" });
+    assert.ok(await connections.getWithKey("new-connection"), "saving locally must preserve the imported capability");
 
     const [instruction] = await db.select().from(schema.mariInstructions);
     assert.equal(instruction?.enabled, 0, "imported Professor Mari memories must start disabled");

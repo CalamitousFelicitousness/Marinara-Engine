@@ -656,7 +656,7 @@ function profileConnectionCredentialIdentityMatches(
 
 type ProfileApiConnectionImportPlan = {
   row: Record<string, unknown>;
-  credentialPreserved: boolean;
+  trustedIdentity: boolean;
 };
 
 export function quarantineProfileApiConnectionRow(
@@ -664,15 +664,15 @@ export function quarantineProfileApiConnectionRow(
   existing?: Record<string, unknown>,
 ): ProfileApiConnectionImportPlan {
   const existingCredential = typeof existing?.apiKeyEncrypted === "string" ? existing.apiKeyEncrypted : "";
-  const credentialPreserved =
-    existingCredential.length > 0 && !!existing && profileConnectionCredentialIdentityMatches(existing, row);
+  const trustedIdentity = !!existing && profileConnectionCredentialIdentityMatches(existing, row);
   const secured: Record<string, unknown> = {
     ...row,
-    apiKeyEncrypted: credentialPreserved ? existingCredential : "",
+    apiKeyEncrypted: trustedIdentity ? existingCredential : "",
+    profileImportReviewRequired: trustedIdentity ? "false" : "true",
   };
-  if (credentialPreserved) return { row: secured, credentialPreserved };
+  if (trustedIdentity) return { row: secured, trustedIdentity };
   for (const field of PROFILE_CONNECTION_AUTOMATIC_SELECTION_FIELDS) secured[field] = "false";
-  return { row: secured, credentialPreserved };
+  return { row: secured, trustedIdentity };
 }
 
 async function planProfileApiConnectionImports(
@@ -932,7 +932,7 @@ function buildProfileImportSecuritySummary(
 ): ProfileImportSecuritySummary {
   const rows = (tableName: string) => snapshot.tables[tableName] ?? [];
   return {
-    connectionsQuarantined: connectionPlans.filter((plan) => !plan.credentialPreserved).length,
+    connectionsQuarantined: connectionPlans.filter((plan) => !plan.trustedIdentity).length,
     customToolsQuarantined: rows("custom_tools").filter((row) => row.executionType !== "static").length,
     mariInstructionsQuarantined: rows("mari_instructions").filter(
       (row) => isProfileImportActiveFlag(row.enabled) || isProfileImportActiveFlag(row.persistent),
@@ -950,7 +950,7 @@ function addProfileImportSecurityWarnings(warnings: ProfileImportWarning[], summ
   if (summary.connectionsQuarantined > 0) {
     addProfileImportWarning(warnings, {
       type: "connection_credentials_quarantined",
-      message: `${profileImportCountLabel(summary.connectionsQuarantined, "imported connection")} had no matching local credential. API keys and automatic-selection flags were cleared; review each connection and re-enter its credential before enabling it.`,
+      message: `${profileImportCountLabel(summary.connectionsQuarantined, "imported connection")} had no matching local endpoint. It will stay unavailable until opened, reviewed, and saved; API keys and automatic-selection flags were cleared.`,
     });
   }
   if (summary.customToolsQuarantined > 0) {

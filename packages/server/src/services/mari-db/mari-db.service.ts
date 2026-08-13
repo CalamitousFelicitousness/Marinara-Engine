@@ -4724,6 +4724,120 @@ export class MariDbService {
     return { approval, history };
   }
 
+  // Reject a dependency-closed SUBSET of a pending review's rows (revert just those, keep the rest
+  // applied), scoped to top-level `lorebook_entries` changes. The client sends each row's
+  // diffPreview index plus a {table,id,action} consistency tuple; the index maps 1:1 to
+  // plan.changes[index] for the first PREVIEW_LIMIT changes, where the real PlanChange still carries
+  // apply/cascadeOf/beforeRaw that diffPreview drops. Mirrors restoreAppliedReview's audited
+  // contract (#4852 supersede via restoreChanges, #4927 charbook sync, #4813 durable sidecar),
+  // shrinking the pending record in place instead of resolving it whole.
+  async rejectRows(
+    id: string,
+    selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
+  ): Promise<
+    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | { outcome: "state_changed"; error: string }
+    | { outcome: "invalid_selection"; error: string }
+    | null
+  > {
+    this.ensurePendingHydrated();
+    const record = this.pending.get(id);
+    if (!record) return null;
+
+    if (selections.length === 0) {
+      return { outcome: "invalid_selection", error: "No rows were selected to reject." };
+    }
+    const selected = new Set<PlanChange>();
+    for (const sel of selections) {
+      const change = record.plan.changes[sel.index];
+      // Reject a stale/shifted selection rather than reverting the wrong row: the index must still
+      // resolve to a change whose identity tuple matches what the client was shown.
+      if (!change || change.table !== sel.table || change.id !== sel.id || change.action !== sel.action) {
+        return {
+          outcome: "invalid_selection",
+          error: "This review changed since it was shown. Reopen it and try again.",
+        };
+      }
+      // v1: only individually-authored lorebook entries can be rejected one at a time. A whole-
+      // lorebook delete's cascade children (cascadeOf set) would re-insert an entry whose parent
+      // lorebook is still deleted (dangling reference) — reject the parent change instead.
+      if (change.table !== "lorebook_entries") {
+        return {
+          outcome: "invalid_selection",
+          error: "Only lorebook entries can be rejected individually. Use Restore to revert the whole change.",
+        };
+      }
+      if (change.cascadeOf) {
+        return {
+          outcome: "invalid_selection",
+          error: "This entry was removed as part of deleting its lorebook. Reject the lorebook change instead.",
+        };
+      }
+      selected.add(change);
+    }
+
+    // lorebook_entries is a cascade leaf, so the closure is exactly the selected rows.
+    const rejectedChanges = record.plan.changes.filter((change) => selected.has(change));
+    const remainingChanges = record.plan.changes.filter((change) => !selected.has(change));
+    const rejectedPlan: Plan = {
+      ...record.plan,
+      changes: rejectedChanges,
+      summary: summaryForChanges(rejectedChanges),
+    };
+
+    try {
+      await this.restoreChanges(rejectedChanges);
+    } catch (err) {
+      if (err instanceof RestoreStateChangedError) {
+        // #4852 F2: a newer edit landed after Mari staged one of these rows, so reverting would
+        // overwrite it. Leave the live data AND the whole pending review intact (nothing was
+        // written; the tx rolled back) so the user can re-review against current state.
+        return {
+          outcome: "state_changed",
+          error:
+            "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
+        };
+      }
+      throw err;
+    }
+
+    // #4927: rebuild any embedded character_book from the reverted entries (no-op for standalone).
+    await this.syncAffectedCharacterBooks(rejectedChanges);
+
+    // Shrink the pending record to the still-applied changes; recompute the summary + the mirrored
+    // top-level fields so the approvals list and hydrated card show correct counts. Mutate in place
+    // (do NOT re-set the map key — that would move the record to the tail and skew retention).
+    record.plan = { ...record.plan, changes: remainingChanges, summary: summaryForChanges(remainingChanges) };
+    record.affectedTables = record.plan.summary.affectedTables;
+    record.affectedRows = record.plan.summary.affectedRows;
+    record.diffPreview = record.plan.summary.preview;
+    record.diffTruncated = record.plan.summary.truncated;
+
+    const history = await this.recordHistory({
+      plan: rejectedPlan,
+      command: record.command,
+      sessionId: record.sessionId,
+      status: "restored",
+      journalPath: record.journalPath,
+    });
+
+    if (remainingChanges.length === 0) {
+      // Every row was rejected — resolve the review whole instead of persisting a zero-row card.
+      this.pending.delete(id);
+      await this.deletePendingSidecar(id);
+      return { approval: null, history, rejected: rejectedChanges.length, remaining: 0, completed: true };
+    }
+    // #4813: atomically overwrite the durable sidecar with the shrunken plan (same-id temp+rename).
+    await this.writePendingSidecar(record);
+    return {
+      approval: this.pendingView(record),
+      history,
+      rejected: rejectedChanges.length,
+      remaining: remainingChanges.length,
+      completed: false,
+    };
+  }
+
   async validate(table?: string | null): Promise<MariDbValidationResult> {
     const tables = table ? [table] : [...FILE_BACKED_TABLES];
     const issues: MariDbValidationIssue[] = [];
@@ -7352,63 +7466,76 @@ export class MariDbService {
       const before = homeWidgetCatalogFromPlanRow(homeWidgetChange.beforeRaw);
       const after = homeWidgetCatalogFromPlanRow(homeWidgetChange.afterRaw);
       await replaceHomeWidgetCatalog(this.db, after.revision, before.widgets);
+      await this.validateAndFlushRestored(plan.changes);
     } else {
-      await this.db.transaction(async (tx) => {
-        // #4852 F2: abort the whole restore if any row it would revert was changed by a newer
-        // write after this review applied. Read inside the tx, because restore is NOT serialized against
-        // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
-        // not this direct-service path), so reading here is what closes the race. The throw rolls
-        // the tx back before any write, and restoreAppliedReview catches it and leaves the newer
-        // data plus the pending review intact. Only applied changes were written, so skip the rest.
-        for (const change of plan.changes) {
-          if (!change.apply) continue;
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          const rows = (await tx
-            .select()
-            .from(meta.table as any)
-            .where(eq(meta.byKey.get(pk)!.column as any, change.id))) as Row[];
-          const current = rows[0] ? { ...rows[0] } : null;
-          if (restoreRowSuperseded(meta, current, change.afterRaw ?? null)) {
-            throw new RestoreStateChangedError();
-          }
-        }
-
-        const insertedRows = [...plan.changes].reverse().filter((change) => change.action === "insert");
-        for (const change of insertedRows) {
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-
-        const updatedRows = plan.changes.filter((change) => change.action === "update" || change.action === "replace");
-        for (const change of updatedRows) {
-          if (!change.beforeRaw) continue;
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx
-            .update(meta.table as any)
-            .set(knownColumnPatch(meta, change.beforeRaw))
-            .where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-
-        const deletedRows = plan.changes.filter((change) => change.action === "delete");
-        for (const change of [...deletedRows].reverse()) {
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-        for (const change of deletedRows) {
-          if (!change.beforeRaw) continue;
-          const meta = getMeta(change.table);
-          await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
-        }
-      });
+      await this.restoreChanges(plan.changes);
     }
+  }
 
+  // Revert a subset of a plan's changes in one transaction, then validate + flush. Shared by whole-
+  // plan restore (restorePlan) and per-row reject (rejectRows). The `apply` filters and the in-tx
+  // supersede check are the audited #4852 / apply-asymmetry contract (see comments below) — the
+  // callers must pass a dependency-closed subset; this helper does not compute cascade closure.
+  private async restoreChanges(changes: PlanChange[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // #4852 F2: abort the whole restore if any row it would revert was changed by a newer
+      // write after this review applied. Read inside the tx, because restore is NOT serialized against
+      // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
+      // not this direct-service path), so reading here is what closes the race. The throw rolls
+      // the tx back before any write, and the caller catches it and leaves the newer data plus the
+      // pending review intact. Only applied changes were written, so skip the rest.
+      for (const change of changes) {
+        if (!change.apply) continue;
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        const rows = (await tx
+          .select()
+          .from(meta.table as any)
+          .where(eq(meta.byKey.get(pk)!.column as any, change.id))) as Row[];
+        const current = rows[0] ? { ...rows[0] } : null;
+        if (restoreRowSuperseded(meta, current, change.afterRaw ?? null)) {
+          throw new RestoreStateChangedError();
+        }
+      }
+
+      const insertedRows = [...changes].reverse().filter((change) => change.action === "insert");
+      for (const change of insertedRows) {
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+
+      const updatedRows = changes.filter((change) => change.action === "update" || change.action === "replace");
+      for (const change of updatedRows) {
+        if (!change.beforeRaw) continue;
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx
+          .update(meta.table as any)
+          .set(knownColumnPatch(meta, change.beforeRaw))
+          .where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+
+      const deletedRows = changes.filter((change) => change.action === "delete");
+      for (const change of [...deletedRows].reverse()) {
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+      for (const change of deletedRows) {
+        if (!change.beforeRaw) continue;
+        const meta = getMeta(change.table);
+        await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
+      }
+    });
+
+    await this.validateAndFlushRestored(changes);
+  }
+
+  private async validateAndFlushRestored(changes: PlanChange[]): Promise<void> {
     const validation = await this.validate();
     if (validation.status === "blocked") {
-      const touchedRows = new Set(plan.changes.map((change) => `${change.table}:${change.id}`));
+      const touchedRows = new Set(changes.map((change) => `${change.table}:${change.id}`));
       const touchedErrors = validation.errors.filter(
         (issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`),
       );

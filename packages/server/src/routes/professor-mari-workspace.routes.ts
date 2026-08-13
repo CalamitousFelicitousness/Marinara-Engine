@@ -85,6 +85,21 @@ const approveSchema = z.object({
   enable: z.boolean().optional(),
 });
 
+// #4931: per-row reject. Each row is the diffPreview index plus a {table,id,action} consistency
+// tuple the server re-checks against plan.changes[index] before reverting.
+const rejectRowsSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        table: z.string().min(1),
+        id: z.string().min(1),
+        action: z.enum(["insert", "update", "replace", "delete"]),
+      }),
+    )
+    .min(1),
+});
+
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
   return requirePrivilegedAccess(request, reply, {
     loopbackOnly,
@@ -255,6 +270,22 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     }
     if (result.approval.affectedTables.installed_extensions) await personalServerExtensionRuntime.reloadAll();
     return { ok: true, ...result, completed: true };
+  });
+
+  app.post<{ Params: { id: string } }>("/approvals/:id/reject-rows", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const { rows } = rejectRowsSchema.parse(req.body ?? {});
+    const result = await getMariDbService(app.db).rejectRows(req.params.id, rows);
+    if (!result) return reply.status(404).send({ error: "Applied change review not found" });
+    if ("outcome" in result && result.outcome === "state_changed") {
+      // #4852 F2 (per-row): mirror the whole-batch reject — 200 ok:false so the client renders the
+      // state_changed notice instead of a generic error, and nothing was reverted.
+      return { ok: false, completed: true, ...result };
+    }
+    if ("outcome" in result && result.outcome === "invalid_selection") {
+      return reply.status(409).send({ ok: false, ...result });
+    }
+    return { ok: true, ...result };
   });
 
   app.get("/history", async (req, reply) => {

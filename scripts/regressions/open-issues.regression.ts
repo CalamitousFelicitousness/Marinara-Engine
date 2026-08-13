@@ -2285,6 +2285,101 @@ try {
     if (embeddedLinkDecoyId) await characterStorage.remove(embeddedLinkDecoyId);
   }
 
+  // #4931: rejectRows reverts a dependency-closed SUBSET of a pending review's lorebook entries,
+  // keeping the rest applied, and shrinks (or resolves) the pending card. Guards the audited undo
+  // path: a stale tuple and a non-lorebook_entries row are both refused without reverting anything.
+  const rejectLorebookId = "professor-mari-reject-rows-regression";
+  try {
+    const rejectApprovalsBefore = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const rejectCreate = await mariDb.executeAction({
+      action: "lorebook.create",
+      lorebookId: rejectLorebookId,
+      data: {
+        name: "Reject-rows regression",
+        entries: [
+          { name: "Entry A", content: "keep A" },
+          { name: "Entry B", content: "reject B" },
+          { name: "Entry C", content: "keep C" },
+        ],
+      },
+      apply: true,
+    });
+    assert.equal(rejectCreate.ok, true, `reject-rows create must succeed: ${JSON.stringify(rejectCreate)}`);
+
+    const rejectEntries = await lorebookStorage.listEntries(rejectLorebookId);
+    assert.equal(rejectEntries.length, 3, "three entries created before reject");
+    const entryB = rejectEntries.find((entry) => entry.name === "Entry B");
+    assert.ok(entryB, "Entry B present before reject");
+
+    const rejectApproval = mariDb.getPendingApprovals().find((approval) => !rejectApprovalsBefore.has(approval.id));
+    assert.ok(rejectApproval, "lorebook create produced a reviewable approval");
+    const entryBIndex = rejectApproval.diffPreview.findIndex(
+      (change) => change.table === "lorebook_entries" && change.id === entryB.id,
+    );
+    assert.ok(entryBIndex >= 0, "Entry B appears in the approval diff preview");
+    const lorebookRowIndex = rejectApproval.diffPreview.findIndex((change) => change.table === "lorebooks");
+    assert.ok(lorebookRowIndex >= 0, "the lorebook row appears in the approval diff preview");
+
+    // A stale/mismatched identity tuple is refused, not misapplied to the wrong row.
+    const rejectStale = await mariDb.rejectRows(rejectApproval.id, [
+      { index: entryBIndex, table: "lorebook_entries", id: entryB.id, action: "delete" },
+    ]);
+    assert.ok(
+      rejectStale && "outcome" in rejectStale && rejectStale.outcome === "invalid_selection",
+      "a mismatched action tuple is refused as invalid_selection",
+    );
+
+    // Rejecting the parent lorebook row (not a lorebook_entries change) is refused in v1.
+    const rejectLorebookRow = await mariDb.rejectRows(rejectApproval.id, [
+      { index: lorebookRowIndex, table: "lorebooks", id: rejectLorebookId, action: "insert" },
+    ]);
+    assert.ok(
+      rejectLorebookRow && "outcome" in rejectLorebookRow && rejectLorebookRow.outcome === "invalid_selection",
+      "rejecting a non-lorebook_entries row is refused",
+    );
+    assert.equal(
+      (await lorebookStorage.listEntries(rejectLorebookId)).length,
+      3,
+      "a refused reject reverts nothing",
+    );
+
+    // Reject only Entry B: it is removed, A and C stay, the lorebook stays, the card shrinks.
+    const rejectB = await mariDb.rejectRows(rejectApproval.id, [
+      { index: entryBIndex, table: "lorebook_entries", id: entryB.id, action: "insert" },
+    ]);
+    assert.ok(rejectB && "history" in rejectB, `rejecting Entry B must succeed: ${JSON.stringify(rejectB)}`);
+    assert.equal(rejectB.completed, false, "the review still has rows after a partial reject");
+    assert.equal(rejectB.rejected, 1, "exactly one row was rejected");
+    assert.deepEqual(
+      (await lorebookStorage.listEntries(rejectLorebookId)).map((entry) => entry.name).sort(),
+      ["Entry A", "Entry C"],
+      "only Entry B was reverted; A and C remain",
+    );
+    const shrunkApproval = mariDb.getPendingApprovals().find((approval) => approval.id === rejectApproval.id);
+    assert.ok(shrunkApproval, "the partially-rejected review is still pending");
+    assert.ok(
+      !shrunkApproval.diffPreview.some((change) => change.table === "lorebook_entries" && change.id === entryB.id),
+      "the rejected row is gone from the shrunken diff preview",
+    );
+
+    // Reject the remaining entries (re-derived from the shrunken preview, since indices shifted).
+    // The un-rejectable lorebooks row remains, so the review stays pending rather than resolving.
+    const remainingEntryRows = shrunkApproval.diffPreview
+      .map((change, index) => ({ change, index }))
+      .filter((row) => row.change.table === "lorebook_entries")
+      .map((row) => ({ index: row.index, table: row.change.table, id: row.change.id, action: row.change.action }));
+    const rejectRest = await mariDb.rejectRows(rejectApproval.id, remainingEntryRows);
+    assert.ok(rejectRest && "history" in rejectRest, "rejecting the remaining entries must succeed");
+    assert.equal(rejectRest.completed, false, "the un-rejectable lorebook row keeps the review pending");
+    assert.equal(
+      (await lorebookStorage.listEntries(rejectLorebookId)).length,
+      0,
+      "all entries reverted; the empty lorebook shell survives for Keep/Restore",
+    );
+  } finally {
+    await lorebookStorage.remove(rejectLorebookId);
+  }
+
   const professorMariCliLorebookId = "professor-mari-cli-lorebook-create-regression";
   const professorMariCliLorebookResult = await mariDb.executeCli({
     argv: [

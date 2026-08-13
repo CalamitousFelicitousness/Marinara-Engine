@@ -1507,6 +1507,10 @@ export function ChatRoleplaySurface({
   const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
 
   useLayoutEffect(() => {
+    handledTranscriptGotoRef.current = null;
+  }, [activeChatId]);
+
+  useLayoutEffect(() => {
     if (
       !gotoRequest ||
       gotoRequest.chatId !== activeChatId ||

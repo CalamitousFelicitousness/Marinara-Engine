@@ -694,6 +694,10 @@ export function ConversationView({
   const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
 
   useLayoutEffect(() => {
+    handledTranscriptGotoRef.current = null;
+  }, [chatId]);
+
+  useLayoutEffect(() => {
     if (
       !gotoRequest ||
       gotoRequest.chatId !== chatId ||

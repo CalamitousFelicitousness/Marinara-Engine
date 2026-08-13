@@ -333,6 +333,9 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
     const box = await slider.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(80);
+    const min = Number((await slider.getAttribute("min")) ?? 0);
+    const max = Number((await slider.getAttribute("max")) ?? 100);
+    const midpoint = min + (max - min) / 2;
 
     for (const [fraction, direction] of [
       [0.8, "high"],
@@ -341,9 +344,9 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
     ] as const) {
       await page.mouse.click(box!.x + box!.width * fraction, box!.y + box!.height / 2);
       if (direction === "high") {
-        await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(1.5);
+        await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(midpoint);
       } else {
-        await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(1.5);
+        await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(midpoint);
       }
     }
   };

@@ -2451,6 +2451,65 @@ try {
     if (!rejectDanglingRemoved) await lorebookStorage.remove(rejectDanglingLorebook.id);
   }
 
+  // #4931 (reject guard, update branch): rejecting a lorebook_entries UPDATE reverts the entry to its
+  // pre-edit lorebookId. If that former parent lorebook was deleted concurrently, the revert would
+  // write a dangling reference. The in-transaction parent check now covers every non-insert entry
+  // change (not just deletes), so the reject rolls back to state_changed instead of committing bad
+  // data that only post-commit validate() would catch.
+  const reparentSourceLorebook = await lorebookStorage.create({ name: "Reparent-reject source" });
+  const reparentTargetLorebook = await lorebookStorage.create({ name: "Reparent-reject target" });
+  let reparentSourceRemoved = false;
+  try {
+    const reparentEntry = await lorebookStorage.createEntry({
+      lorebookId: reparentSourceLorebook.id,
+      name: "Reparented entry",
+      content: "moved between lorebooks",
+      keys: ["reparent-reject"],
+    });
+    const reparentApprovalsBefore = new Set(mariDb.getPendingApprovals().map((approval) => approval.id));
+    const reparentPatch = await mariDb.executeCli({
+      argv: [
+        "db",
+        "patch",
+        "lorebook_entries",
+        reparentEntry.id,
+        "--json",
+        JSON.stringify({ lorebookId: reparentTargetLorebook.id }),
+        "--apply",
+      ],
+    });
+    assert.equal(reparentPatch.ok, true, `reparenting the entry must succeed: ${JSON.stringify(reparentPatch)}`);
+    const reparentApproval = mariDb.getPendingApprovals().find((approval) => !reparentApprovalsBefore.has(approval.id));
+    assert.ok(reparentApproval, "the reparent produced a reviewable approval");
+    const reparentIndex = reparentApproval.diffPreview.findIndex(
+      (change) => change.table === "lorebook_entries" && change.id === reparentEntry.id && change.action === "update",
+    );
+    assert.ok(reparentIndex >= 0, "the reparent appears as an update in the diff preview");
+    // The FORMER parent lorebook is deleted before review (a separate top-level delete). Reverting the
+    // reparent would point the entry back at it, so the in-tx check must roll the reject back.
+    await lorebookStorage.remove(reparentSourceLorebook.id);
+    reparentSourceRemoved = true;
+    const rejectReparent = await mariDb.rejectRows(reparentApproval.id, [
+      { index: reparentIndex, table: "lorebook_entries", id: reparentEntry.id, action: "update" },
+    ]);
+    assert.ok(
+      rejectReparent && "outcome" in rejectReparent && rejectReparent.outcome === "state_changed",
+      `rejecting a reparent whose former lorebook is gone must roll back to state_changed, not 500: ${JSON.stringify(rejectReparent)}`,
+    );
+    assert.ok(
+      mariDb.getPendingApprovals().some((approval) => approval.id === reparentApproval.id),
+      "the rolled-back reject left the review pending",
+    );
+    // The entry stays in its CURRENT (target) lorebook — the revert to the deleted source rolled back.
+    assert.ok(
+      (await lorebookStorage.listEntries(reparentTargetLorebook.id)).some((entry) => entry.id === reparentEntry.id),
+      "the entry remains in the target lorebook after the rolled-back reject",
+    );
+  } finally {
+    if (!reparentSourceRemoved) await lorebookStorage.remove(reparentSourceLorebook.id);
+    await lorebookStorage.remove(reparentTargetLorebook.id);
+  }
+
   // #4931: the synthetic prompt-render DB proxy substitutes the target character's row (so the
   // assembler reads a before/after snapshot instead of the live row) while passing every other read
   // through untouched. Validated through the exact storage path the assembler uses (getById).

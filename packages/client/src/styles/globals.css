@@ -977,6 +977,29 @@
   font-size: 0.6875rem;
 }
 
+@media (max-width: 767px) {
+  .mari-suggestion-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+
+  .mari-suggestion-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mari-suggestion-chip {
+    flex: 0 0 auto;
+    max-width: calc(100% - 1rem);
+    scroll-snap-align: start;
+  }
+}
+
 .mari-suggestion-chip--neutral {
   --chip-tint: var(--muted-foreground);
 }

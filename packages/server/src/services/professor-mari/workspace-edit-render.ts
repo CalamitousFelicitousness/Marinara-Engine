@@ -107,9 +107,12 @@ async function defaultPresetId(db: DB): Promise<string | null> {
   return chosen ? String(chosen.id) : null;
 }
 
-// The smallest valid AssemblerInput: default preset structure, no persona, no history, previewOnly so
-// lorebook timing/ephemeral state is never consumed. `chatChoices` is a Record (use {}, not []).
-function baseInput(db: DB, loaded: LoadedPreset, characterIds: string[]): AssemblerInput {
+// The smallest valid AssemblerInput: default preset structure, no real persona or history, previewOnly
+// so lorebook timing/ephemeral state is never consumed. `chatChoices` is a Record (use {}, not []).
+// When `withPlaceholders` is set (the preset preview), the persona + chat-history markers are fed
+// visible placeholder text so a reviewer sees WHERE those inject; the character preview leaves them
+// blank because it filters those markers out of the section order entirely.
+function baseInput(db: DB, loaded: LoadedPreset, characterIds: string[], withPlaceholders = false): AssemblerInput {
   return {
     db,
     preset: loaded.preset as never,
@@ -119,10 +122,33 @@ function baseInput(db: DB, loaded: LoadedPreset, characterIds: string[]): Assemb
     chatChoices: {},
     chatId: "mari-preview",
     characterIds,
-    personaName: "",
-    personaDescription: "",
-    chatMessages: [],
+    personaName: "User",
+    personaDescription: withPlaceholders ? "[ the active persona's description appears here ]" : "",
+    chatMessages: withPlaceholders ? ([{ role: "user", content: "[ chat history appears here ]" }] as never) : [],
     previewOnly: true,
+  };
+}
+
+// Filter a loaded preset down to only its character-info marker so the assembler emits ONLY the
+// character's block — not the preset's role/instructions/output-format/etc. `sectionOrder` is the
+// assembler's emission gate; dropping groups removes the outer group wrapper. Falls back to the full
+// preset when there is no character marker (so the preview degrades to the whole prompt rather than
+// nothing).
+function characterOnlyPreset(loaded: LoadedPreset): LoadedPreset {
+  const characterSection = loaded.sections.find((section) => {
+    if (section.isMarker !== "true" || !section.markerConfig) return false;
+    try {
+      return (JSON.parse(String(section.markerConfig)) as { type?: string }).type === "character";
+    } catch {
+      return false;
+    }
+  });
+  if (!characterSection) return loaded;
+  return {
+    ...loaded,
+    preset: { ...loaded.preset, sectionOrder: JSON.stringify([characterSection.id]) },
+    sections: [characterSection],
+    groups: [],
   };
 }
 
@@ -163,13 +189,15 @@ export async function renderMariEditPrompt(db: DB, target: MariEditRenderTarget)
     if (!presetId) return null;
     const loaded = await loadPreset(db, presetId);
     if (!loaded) return null;
+    // Show ONLY the character's rendered block, not the whole assembled prompt.
+    const charPreset = characterOnlyPreset(loaded);
     // A character delete has no live row to override on the before side, so the client does not offer
     // render there; here we simply render whichever side has a snapshot.
     const before = target.beforeRaw
-      ? await assembleSide(baseInput(characterOverrideDb(db, target.id, target.beforeRaw), loaded, [target.id]))
+      ? await assembleSide(baseInput(characterOverrideDb(db, target.id, target.beforeRaw), charPreset, [target.id]))
       : null;
     const after = target.afterRaw
-      ? await assembleSide(baseInput(characterOverrideDb(db, target.id, target.afterRaw), loaded, [target.id]))
+      ? await assembleSide(baseInput(characterOverrideDb(db, target.id, target.afterRaw), charPreset, [target.id]))
       : null;
     return { before, after };
   }
@@ -184,15 +212,16 @@ export async function renderMariEditPrompt(db: DB, target: MariEditRenderTarget)
     if (!presetId) return null;
     const loaded = await loadPreset(db, presetId);
     if (!loaded) return null;
-    // Structural preview: no character fills the markers, so character blocks are empty and the diff
-    // reflects the section/order/parameter change itself.
+    // Structural preview of the preset's own sections, with placeholders where persona + chat history
+    // inject (the character marker stays empty — a synthetic character can't be conjured without a real
+    // row). The diff reflects the section/order/parameter change itself.
     const renderPresetSide = async (raw: RawRow | null): Promise<MariEditPromptSide | null> => {
       // For a WHOLE-preset (prompt_presets) change, a null snapshot means the preset did not exist on
       // this side (an insert's before). Render nothing rather than falling back to the live row, which
       // would show the after-preset on the before side and a misleading empty diff. (A section/group/
       // choice edit keeps null meaning "row absent on this side", which spliceArray handles correctly.)
       if (target.table === "prompt_presets" && raw === null) return null;
-      return assembleSide(baseInput(db, splicePreset(loaded, target, raw), []));
+      return assembleSide(baseInput(db, splicePreset(loaded, target, raw), [], true));
     };
     const before = await renderPresetSide(target.beforeRaw);
     const after = await renderPresetSide(target.afterRaw);

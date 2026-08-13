@@ -3,6 +3,7 @@
 // assembled on its own (default preset, no persona, no chat history), so it is a labeled preview,
 // not a real chat prompt.
 import { useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Loader2, X } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -44,14 +45,46 @@ export function MariPromptPreviewModal({
   const empty = !loading && !error && segments.every((segment) => !segment.value.trim());
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      // aria-modal hides the background, so keep Tab / Shift+Tab inside the dialog.
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === panelRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      // Restore focus to whatever opened the dialog (the "View as prompt" button).
+      previouslyFocused?.focus?.();
+    };
   }, [onClose]);
-  return (
+  // Portal to the body so the fixed overlay escapes the Home browser chrome's stacking context
+  // (otherwise the bookmarks bar clips the top of the modal).
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 max-md:pt-[env(safe-area-inset-top)]"
       onClick={onClose}
@@ -120,6 +153,7 @@ export function MariPromptPreviewModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

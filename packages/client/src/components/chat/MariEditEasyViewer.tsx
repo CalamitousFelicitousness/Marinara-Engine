@@ -484,6 +484,10 @@ function RowCard({
   // individually rejectable — the server refuses anything else — so the control is offered only there.
   const canReject = Boolean(onReject) && change.table === "lorebook_entries";
   const canRender = Boolean(onRender) && canRenderPrompt(change);
+  // rowTitle is the generic "Lorebook entry" for every entry row, so include the entry's own name in
+  // the toggle's accessible name; otherwise every collapse button reads identically to a screen reader.
+  const entryName = change.table === "lorebook_entries" ? stringField(change.after ?? change.before, "name") : "";
+  const accessibleName = entryName || rowTitle(change, localizeUi);
   return (
     <div
       className={cn(
@@ -497,7 +501,9 @@ function RowCard({
           type="button"
           onClick={onToggleCollapse}
           aria-expanded={!collapsed}
-          aria-label={localizeUi(collapsed ? "ui.chat.mariediteasyviewer.expand" : "ui.chat.mariediteasyviewer.collapse")}
+          aria-label={localizeUi(collapsed ? "ui.chat.mariediteasyviewer.expand" : "ui.chat.mariediteasyviewer.collapse", {
+            name: accessibleName,
+          })}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
           {collapsed ? (

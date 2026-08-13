@@ -2951,7 +2951,10 @@ export async function backupRoutes(app: FastifyInstance) {
     }
   };
 
-  app.get("/automatic", async () => automaticBackupResponse(await loadAutomaticBackupSettings()));
+  app.get("/automatic", async (req, reply) => {
+    if (!requirePrivilegedAccess(req, reply, { feature: "Automatic backup settings" })) return;
+    return automaticBackupResponse(await loadAutomaticBackupSettings());
+  });
 
   app.put<{
     Body: { enabled?: unknown; frequency?: unknown; retentionCount?: unknown };

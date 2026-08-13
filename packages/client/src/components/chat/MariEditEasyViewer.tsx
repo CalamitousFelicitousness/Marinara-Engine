@@ -11,7 +11,7 @@ import { cn } from "../../lib/utils";
 import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
 import { diffWords } from "../../lib/word-diff";
 import type { MariDbPendingApproval, MariDbRowChange } from "@marinara-engine/shared";
-import { Check, FileText, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { Check, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
 
 type Row = Record<string, unknown> | null | undefined;
 
@@ -439,12 +439,28 @@ function actionMeta(action: MariDbRowChange["action"], localizeUi: (key: string)
   return { label: localizeUi("ui.chat.mariediteasyviewer.actionEdited"), icon: Pencil, tone: "text-[var(--muted-foreground)]" };
 }
 
-function RowCard({ change, onDismiss }: { change: MariDbRowChange; onDismiss: () => void }) {
+function RowCard({
+  change,
+  index,
+  onDismiss,
+  onReject,
+  busy,
+}: {
+  change: MariDbRowChange;
+  index: number;
+  onDismiss: () => void;
+  onReject?: (change: MariDbRowChange, index: number) => void;
+  busy?: boolean;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const meta = actionMeta(change.action, localizeUi);
   const MetaIcon = meta.icon;
   // A delete is Mari's most destructive action — make the whole row unmistakably red.
   const isDelete = change.action === "delete";
+  // Reject actually reverts the row on the server (unlike Dismiss, which only hides it). Only top-
+  // level lorebook entries are individually rejectable — the server refuses anything else — so the
+  // control is offered only there.
+  const canReject = Boolean(onReject) && change.table === "lorebook_entries";
   return (
     <div
       className={cn(
@@ -465,16 +481,31 @@ function RowCard({ change, onDismiss }: { change: MariDbRowChange; onDismiss: ()
         >
           {meta.label}
         </span>
-        <button
-          type="button"
-          onClick={onDismiss}
-          title={localizeUi("ui.chat.mariediteasyviewer.dismissHint")}
-          aria-label={localizeUi("ui.chat.mariediteasyviewer.dismiss")}
-          className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-        >
-          <Check size="0.7rem" />
-          {localizeUi("ui.chat.mariediteasyviewer.dismiss")}
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {canReject && (
+            <button
+              type="button"
+              onClick={() => onReject?.(change, index)}
+              disabled={busy}
+              title={localizeUi("ui.chat.mariediteasyviewer.rejectHint")}
+              aria-label={localizeUi("ui.chat.mariediteasyviewer.reject")}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Undo2 size="0.7rem" />
+              {localizeUi("ui.chat.mariediteasyviewer.reject")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDismiss}
+            title={localizeUi("ui.chat.mariediteasyviewer.dismissHint")}
+            aria-label={localizeUi("ui.chat.mariediteasyviewer.dismiss")}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          >
+            <Check size="0.7rem" />
+            {localizeUi("ui.chat.mariediteasyviewer.dismiss")}
+          </button>
+        </div>
       </div>
       {change.table === "lorebook_entries" ? <LorebookEntryDiff change={change} /> : <GenericRowDiff change={change} />}
     </div>
@@ -485,15 +516,20 @@ export function MariEditEasyViewer({
   approval,
   hidden,
   onDismissRow,
+  onRejectRow,
+  busy,
 }: {
   approval: MariDbPendingApproval;
   hidden: ReadonlySet<string>;
   onDismissRow: (key: string) => void;
+  onRejectRow?: (change: MariDbRowChange, index: number) => void;
+  busy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   // Key by the row's stable diffPreview index too: planTransform can emit multiple rows sharing
-  // table/id/action, so the index guarantees a unique React key AND dismiss/hidden-Set key.
-  const keyed = approval.diffPreview.map((change, index) => ({ change, key: `${index}:${rowKey(change)}` }));
+  // table/id/action, so the index guarantees a unique React key AND dismiss/hidden-Set key. The
+  // index is also the identifier a reject sends — it maps 1:1 to the server's plan.changes[index].
+  const keyed = approval.diffPreview.map((change, index) => ({ change, index, key: `${index}:${rowKey(change)}` }));
   const rows = keyed.filter((item) => !hidden.has(item.key));
 
   if (approval.diffPreview.length === 0) {
@@ -513,7 +549,14 @@ export function MariEditEasyViewer({
         </p>
       ) : (
         rows.map((item) => (
-          <RowCard key={item.key} change={item.change} onDismiss={() => onDismissRow(item.key)} />
+          <RowCard
+            key={item.key}
+            change={item.change}
+            index={item.index}
+            onDismiss={() => onDismissRow(item.key)}
+            onReject={onRejectRow}
+            busy={busy}
+          />
         ))
       )}
       {approval.diffTruncated && (

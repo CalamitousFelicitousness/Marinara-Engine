@@ -277,13 +277,11 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     const { rows } = rejectRowsSchema.parse(req.body ?? {});
     const result = await getMariDbService(app.db).rejectRows(req.params.id, rows);
     if (!result) return reply.status(404).send({ error: "Applied change review not found" });
-    if ("outcome" in result && result.outcome === "state_changed") {
-      // #4852 F2 (per-row): mirror the whole-batch reject — 200 ok:false so the client renders the
-      // state_changed notice instead of a generic error, and nothing was reverted.
-      return { ok: false, completed: true, ...result };
-    }
-    if ("outcome" in result && result.outcome === "invalid_selection") {
-      return reply.status(409).send({ ok: false, ...result });
+    if ("outcome" in result) {
+      // state_changed (#4852 F2) or invalid_selection: nothing was reverted. Return 200 with
+      // ok:false so the client shows result.error inline instead of a generic catch, mirroring the
+      // whole-batch reject's convention.
+      return { ok: false, ...result };
     }
     return { ok: true, ...result };
   });

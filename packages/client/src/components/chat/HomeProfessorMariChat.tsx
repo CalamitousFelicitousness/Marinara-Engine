@@ -1875,6 +1875,7 @@ function DatabaseWorkspaceApprovalCard({
   onKeep,
   onKeepEnable,
   onRestore,
+  onRejectRows,
 }: {
   approval: MariDbPendingApproval;
   busy: boolean;
@@ -1882,6 +1883,7 @@ function DatabaseWorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   // Easy/Raw is toggled PER CARD (seeded from the saved default), so flipping one card no longer
@@ -1993,6 +1995,20 @@ function DatabaseWorkspaceApprovalCard({
             approval={approval}
             hidden={hiddenRows}
             onDismissRow={(key) => setHiddenRows((prev) => new Set(prev).add(key))}
+            onRejectRow={
+              onRejectRows
+                ? (change, index) => {
+                    // The server prunes the rejected row, shifting every later row's index, so the
+                    // positional dismiss keys become stale — drop them and let the card re-render
+                    // from the refreshed (shorter) diffPreview.
+                    setHiddenRows(new Set());
+                    onRejectRows(approval.id, [
+                      { index, table: change.table, id: change.id, action: change.action },
+                    ]);
+                  }
+                : undefined
+            }
+            busy={busy || disabled}
           />
         )}
         {viewMode === "raw" && deletedRows.length > 0 && (
@@ -2263,6 +2279,7 @@ function WorkspaceApprovalCard({
   onKeep,
   onKeepEnable,
   onRestore,
+  onRejectRows,
 }: {
   approval: MariWorkspacePendingApproval;
   busy: boolean;
@@ -2270,6 +2287,7 @@ function WorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
+  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => void;
 }) {
   if (approval.kind === "dependency_install") {
     return (
@@ -2301,6 +2319,7 @@ function WorkspaceApprovalCard({
       onKeep={onKeep}
       onKeepEnable={onKeepEnable}
       onRestore={onRestore}
+      onRejectRows={onRejectRows}
     />
   );
 }
@@ -3955,6 +3974,52 @@ export function HomeProfessorMariChat({
     [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
   );
 
+  // #4931: reject a single reviewed row (revert just that lorebook entry). Mirrors
+  // restoreWorkspaceChange but posts the row's diffPreview index + identity tuple; the server reverts
+  // only that row and either shrinks the pending card or resolves it.
+  const rejectWorkspaceRows = useCallback(
+    async (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => {
+      if (workspaceReviewActionId) return;
+      setWorkspaceReviewActionId(id);
+      try {
+        const result = await api.post<{
+          ok?: boolean;
+          outcome?: string;
+          error?: string | null;
+          rejected?: number;
+          remaining?: number;
+          completed?: boolean;
+        }>(`/professor-mari/workspace/approvals/${id}/reject-rows`, { rows });
+        await refreshWorkspaceStatus().catch(() => undefined);
+        // A rejected entry is deleted, so refresh any panel that mirrors app data.
+        await loadMemories().catch(() => undefined);
+        if (result.ok) {
+          await invalidateWorkspaceData();
+          toast.success(localizeUi("ui.chat.homeprofessormarichat.revertedTheSelectedEntry"));
+        } else if (result.outcome === "state_changed") {
+          toast.error(
+            localizeUi("ui.chat.homeprofessormarichat.theWorkspaceChangedAfterProfessorMariStagedThisProposal"),
+            { description: result.error ?? undefined, duration: 12_000 },
+          );
+        } else {
+          toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRejectThatEntry"), {
+            description: result.error ?? undefined,
+            duration: 12_000,
+          });
+        }
+      } catch (error) {
+        console.error("[Professor Mari] Failed to reject workspace rows", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotRejectThatEntry"), {
+          description: describeProfessorMariError(error),
+          duration: 12_000,
+        });
+      } finally {
+        setWorkspaceReviewActionId((current) => (current === id ? null : current));
+      }
+    },
+    [invalidateWorkspaceData, loadMemories, refreshWorkspaceStatus, workspaceReviewActionId, localizeUi],
+  );
+
   const stopWorkspace = useCallback(async () => {
     workspaceAbortRef.current?.abort();
     try {
@@ -4871,6 +4936,7 @@ export function HomeProfessorMariChat({
                 onKeep={(id) => void keepWorkspaceChange(id)}
                 onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                 onRestore={(id) => void restoreWorkspaceChange(id)}
+                onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
               />
             ))}
           </>
@@ -5630,6 +5696,7 @@ export function HomeProfessorMariChat({
                                   onKeep={(id) => void keepWorkspaceChange(id)}
                                   onKeepEnable={(id) => void keepWorkspaceChange(id, { enable: true })}
                                   onRestore={(id) => void restoreWorkspaceChange(id)}
+                                  onRejectRows={(id, rows) => void rejectWorkspaceRows(id, rows)}
                                 />
                               ))}
                             </>

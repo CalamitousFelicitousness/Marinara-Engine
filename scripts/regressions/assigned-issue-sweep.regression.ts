@@ -21,7 +21,10 @@ import {
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
 } from "../../packages/shared/src/types/prompt.js";
-import { resolveGameImageDynamicPromptEnabled } from "../../packages/shared/src/types/game.js";
+import {
+  mergeGameSetupConfigPreservingDynamicPrompt,
+  resolveGameImageDynamicPromptEnabled,
+} from "../../packages/shared/src/types/game.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -29,6 +32,39 @@ assert.equal(
   resolveGameImageDynamicPromptEnabled({}),
   false,
   "dynamic Game Illustrator prompts remain off when setup does not choose them",
+);
+const retainedExistingImageSetup = mergeGameSetupConfigPreservingDynamicPrompt(
+  {
+    enableSpriteGeneration: true,
+    gameImageDynamicPromptEnabled: true,
+    enableSpotifyDj: true,
+    activeLorebookIds: ["old-lorebook"],
+    sceneConnectionId: "old-connection",
+  },
+  {
+    enableSpriteGeneration: true,
+    gameImageDynamicPromptEnabled: undefined,
+    enableSpotifyDj: undefined,
+    activeLorebookIds: undefined,
+    sceneConnectionId: undefined,
+  },
+);
+assert.equal(
+  resolveGameImageDynamicPromptEnabled(retainedExistingImageSetup),
+  true,
+  "an omitted wizard field preserves the effective stored Illustrator prompt choice",
+);
+assert.equal(retainedExistingImageSetup.enableSpotifyDj, undefined, "an established omitted toggle still clears");
+assert.equal(retainedExistingImageSetup.activeLorebookIds, undefined, "an established omitted selection still clears");
+assert.equal(retainedExistingImageSetup.sceneConnectionId, undefined, "an established omitted connection still clears");
+const disabledExistingImageSetup = mergeGameSetupConfigPreservingDynamicPrompt(retainedExistingImageSetup, {
+  enableSpriteGeneration: false,
+  gameImageDynamicPromptEnabled: false,
+});
+assert.equal(
+  resolveGameImageDynamicPromptEnabled(disabledExistingImageSetup),
+  false,
+  "an explicit wizard toggle-off still disables the Illustrator prompt choice",
 );
 assert.equal(
   resolveGameImageDynamicPromptEnabled({ gameImageDynamicPromptEnabled: true }),
@@ -358,8 +394,8 @@ assert.match(
 );
 assert.match(
   gameSetupWizardSource,
-  /gameImageDynamicPromptEnabled:\s*illustratorEnabled && gameImageDynamicPromptEnabled \? true : undefined/u,
-  "the wizard carries an enabled dynamic-prompt choice into game setup",
+  /gameImageDynamicPromptEnabled:\s*illustratorEnabled && gameImageDynamicPromptEnabled/u,
+  "the wizard carries an explicit dynamic-prompt choice into game setup",
 );
 
 const gameSurfaceSource = readFileSync(
@@ -368,8 +404,8 @@ const gameSurfaceSource = readFileSync(
 );
 assert.match(
   gameSurfaceSource,
-  /gameImageDynamicPromptEnabled:\s*resolveGameImageDynamicPromptEnabled\(config\)/u,
-  "continuing setup for an existing game stores the Illustrator dynamic-prompt choice before generation",
+  /gameSetupConfig:\s*effectiveSetupConfig,[\s\S]*gameImageDynamicPromptEnabled:\s*resolveGameImageDynamicPromptEnabled\(effectiveSetupConfig\)/u,
+  "continuing setup for an existing game resolves the Illustrator choice from the same effective config it persists",
 );
 
 const gameRoutesSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/game.routes.ts"), "utf8");

@@ -7,6 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
+import { eq } from "../../packages/server/src/db/file-query.js";
+import { promptPresets } from "../../packages/server/src/db/schema/prompts.js";
 import { MariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
@@ -48,6 +50,69 @@ try {
       systemKey?: string;
     };
     assert.equal(createdPreset.systemKey, "", "preset.create cannot claim an Engine-owned system key");
+
+    // Raw DB writes must obey the same Engine-owned systemKey boundary.
+    const rawPreset = (await mari.executeCli({ argv: ["db", "get", "prompt_presets", presetId] })).output as Record<
+      string,
+      unknown
+    >;
+    const rawInsertId = "raw-system-key-preset";
+    const rawInsert = await mari.executeCli({
+      argv: [
+        "db",
+        "insert",
+        "prompt_presets",
+        "--json",
+        JSON.stringify({ ...rawPreset, id: rawInsertId, name: "Raw insert", systemKey: "claimed" }),
+        "--apply",
+      ],
+    });
+    assert.equal(rawInsert.ok, true);
+    await drainKeep(mari);
+    assert.equal(
+      ((await mari.executeCli({ argv: ["db", "get", "prompt_presets", rawInsertId] })).output as {
+        systemKey?: string;
+      }).systemKey,
+      "",
+      "raw insert cannot claim systemKey",
+    );
+
+    await db.update(promptPresets).set({ systemKey: "engine-owned-regression" }).where(eq(promptPresets.id, presetId));
+    const rawPatch = await mari.executeCli({
+      argv: [
+        "db",
+        "patch",
+        "prompt_presets",
+        presetId,
+        "--json",
+        JSON.stringify({ description: "patched", systemKey: "claimed" }),
+        "--apply",
+      ],
+    });
+    assert.equal(rawPatch.ok, true);
+    await drainKeep(mari);
+    const afterPatch = (await mari.executeCli({ argv: ["db", "get", "prompt_presets", presetId] })).output as Record<string, unknown>;
+    assert.equal(afterPatch.systemKey, "engine-owned-regression", "raw patch preserves systemKey");
+    const rawReplace = await mari.executeCli({
+      argv: [
+        "db",
+        "replace",
+        "prompt_presets",
+        presetId,
+        "--json",
+        JSON.stringify({ ...afterPatch, description: "replaced", systemKey: "claimed" }),
+        "--apply",
+      ],
+    });
+    assert.equal(rawReplace.ok, true);
+    await drainKeep(mari);
+    assert.equal(
+      ((await mari.executeCli({ argv: ["db", "get", "prompt_presets", presetId] })).output as {
+        systemKey?: string;
+      }).systemKey,
+      "engine-owned-regression",
+      "raw replace preserves systemKey",
+    );
 
     // (1) SEE: preset.sections lists every section with an id + content preview (the #4812 fix).
     const sections = (await mari.executeAction({ action: "preset.sections", presetId })).output as Array<{

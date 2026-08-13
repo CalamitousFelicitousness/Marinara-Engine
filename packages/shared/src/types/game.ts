@@ -276,6 +276,18 @@ export function resolveGameImageDynamicPromptEnabled(
   return config.enableSpriteGeneration === true && config.gameImageDynamicPromptEnabled === true;
 }
 
+/** Retain the new prompt choice when an older/imported setup omits it; other undefined fields still clear as before. */
+export function mergeGameSetupConfigPreservingDynamicPrompt(
+  stored: Readonly<Partial<GameSetupConfig>>,
+  submitted: Readonly<Partial<GameSetupConfig>>,
+): Partial<GameSetupConfig> {
+  const merged = { ...stored, ...submitted };
+  if (submitted.gameImageDynamicPromptEnabled === undefined) {
+    merged.gameImageDynamicPromptEnabled = stored.gameImageDynamicPromptEnabled;
+  }
+  return merged;
+}
+
 /** Safe, immutable connection details retained for sharing a game's original setup. */
 export interface GameInitialSetupConnectionSnapshot {
   name: string;

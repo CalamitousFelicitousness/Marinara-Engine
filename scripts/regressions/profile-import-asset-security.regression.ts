@@ -66,6 +66,26 @@ const whitespaceHeavyActiveSvg = Buffer.from(
   `<svg xmlns="http://www.w3.org/2000/svg"><a href=${" ".repeat(100_000)}"javascript:alert(1)"/></svg>`,
   "utf8",
 );
+const encodedActiveSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg"><a href="&#x6a;avascript:alert(1)"/></svg>',
+  "utf8",
+);
+const arbitraryXlinkPrefixSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:foo="http://www.w3.org/1999/xlink"><a foo:href="javascript:alert(1)"/></svg>',
+  "utf8",
+);
+const animatedActiveHrefSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg"><a><rect width="1" height="1"/><set attributeName="href" to="javascript:alert(1)" begin="0s" fill="freeze"/></a></svg>',
+  "utf8",
+);
+const namespacedScriptSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:foo="http://www.w3.org/2000/svg"><foo:script>alert(1)</foo:script></svg>',
+  "utf8",
+);
+const passiveEncodedSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.invalid/image?a=1&amp;b=2"><rect width="1" height="1"/></a></svg>',
+  "utf8",
+);
 const validMp4 = Buffer.from([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0]);
 const videoManifest = Buffer.from('{"version":1,"videos":[]}', "utf8");
 
@@ -76,6 +96,11 @@ try {
   assert.ok(validateImageAssetBuffer(passiveSvgWithDoctype, "sprite.svg", { allowSvg: true }));
   assert.equal(validateImageAssetBuffer(entitySvg, "sprite.svg", { allowSvg: true }), null);
   assert.equal(validateImageAssetBuffer(whitespaceHeavyActiveSvg, "sprite.svg", { allowSvg: true }), null);
+  assert.equal(validateImageAssetBuffer(encodedActiveSvg, "sprite.svg", { allowSvg: true }), null);
+  assert.equal(validateImageAssetBuffer(arbitraryXlinkPrefixSvg, "sprite.svg", { allowSvg: true }), null);
+  assert.equal(validateImageAssetBuffer(animatedActiveHrefSvg, "sprite.svg", { allowSvg: true }), null);
+  assert.equal(validateImageAssetBuffer(namespacedScriptSvg, "sprite.svg", { allowSvg: true }), null);
+  assert.ok(validateImageAssetBuffer(passiveEncodedSvg, "sprite.svg", { allowSvg: true }));
   const passiveSvgPath = join(dataDir, "passive.svg");
   writeFileSync(passiveSvgPath, passiveSvgWithDoctype);
   assert.equal(await validateImageAssetFile(passiveSvgPath, "passive.svg"), null);

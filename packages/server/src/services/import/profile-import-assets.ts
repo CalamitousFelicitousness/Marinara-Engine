@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertInsideDir } from "../../utils/security.js";
+import { validateImageAssetBuffer, validateVideoAssetBuffer } from "../../utils/media-file-security.js";
 
 export class ProfileImportAssetValidationError extends Error {}
 
@@ -34,6 +35,65 @@ function safeRelativeAssetParts(path: string): string[] {
   return parts;
 }
 
+function profileAssetImagePolicy(path: string): { allowSvg?: boolean } | null {
+  const normalized = path.replace(/\\/g, "/");
+  if (
+    normalized.startsWith("avatars/") ||
+    normalized.startsWith("custom-emojis/") ||
+    normalized.startsWith("custom-stickers/") ||
+    normalized.startsWith("lorebooks/images/") ||
+    normalized.startsWith("prompts/images/") ||
+    normalized.startsWith("agents/images/") ||
+    normalized.startsWith("connections/images/")
+  ) {
+    return {};
+  }
+  if (normalized.startsWith("gallery/")) return {};
+  if (normalized.startsWith("backgrounds/")) {
+    return normalized === "backgrounds/meta.json" || normalized === "backgrounds/organization.json" ? null : {};
+  }
+  if (normalized.startsWith("sprites/") || normalized.startsWith("game-assets/sprites/")) {
+    return { allowSvg: true };
+  }
+  if (normalized.startsWith("game-assets/backgrounds/")) return {};
+  return null;
+}
+
+function isProfileVideoAssetPath(path: string): boolean {
+  return (
+    path.startsWith("gallery/character-videos/") ||
+    path.startsWith("gallery/persona-videos/") ||
+    path.startsWith("game-scene-videos/") ||
+    path.startsWith("conversation-call-character-videos/")
+  );
+}
+
+function validateProfileImportAsset(path: string, buffer: Buffer): void {
+  const normalized = path.replace(/\\/g, "/");
+  if (isProfileVideoAssetPath(normalized)) {
+    if (/\.json$/iu.test(normalized)) return;
+    if (!validateVideoAssetBuffer(buffer, normalized)) {
+      throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported video file.`);
+    }
+    return;
+  }
+
+  const imagePolicy = profileAssetImagePolicy(normalized);
+  if (!imagePolicy) {
+    const leafName = normalized.split("/").pop() ?? "";
+    const looksLikeServedImage =
+      /\.(?:avif|gif|jpe?g|png|svg|webp)$/iu.test(leafName) &&
+      (normalized.startsWith("game-assets/") || normalized.startsWith("sprites/"));
+    if (looksLikeServedImage) {
+      throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported image file.`);
+    }
+    return;
+  }
+  if (!validateImageAssetBuffer(buffer, path, imagePolicy)) {
+    throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported image file.`);
+  }
+}
+
 export async function stageProfileImportAssets(
   dataDir: string,
   inputs: ProfileImportAssetInput[],
@@ -57,10 +117,9 @@ export async function stageProfileImportAssets(
       const buffer = await input.read();
       if (!buffer) continue;
       if (buffer.byteLength !== input.expectedSize) {
-        throw new ProfileImportAssetValidationError(
-          `Profile asset ${input.path} does not match its manifest size.`,
-        );
+        throw new ProfileImportAssetValidationError(`Profile asset ${input.path} does not match its manifest size.`);
       }
+      validateProfileImportAsset(input.path, buffer);
 
       totalBytes += buffer.byteLength;
       if (totalBytes > totalByteLimit) {

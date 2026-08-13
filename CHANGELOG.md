@@ -55,6 +55,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Expanded profile-import previews and quarantine to cover executable tools, personal extensions, persistent Professor Mari memories, and active themes, preserving their contents for deliberate review and re-enabling.
 - Bound downloaded Agent installs and updates to the version and checksum the user reviewed, quarantined imported executable tools until review, and moved custom scripts plus Professor Mari transforms into terminable or OS-sandboxed workers while retaining an explicit reviewed-script fallback on unsupported systems.
 - Repeated local checks now reuse native TypeScript and ESLint caches for unchanged client files (#4938).
 - Manual Agent retries now resolve the same current settings, custom tools, and permitted built-in tools as normal Agent generation while retaining retry-specific historical context and Spotify playback verification (#4894).
@@ -68,6 +69,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Prevented crafted profile archives from retargeting saved credentials, serving active files as trusted app content, escaping asset directories through imported metadata, reconstructing blocked theme CSS, or exhausting the importer with oversized metadata.
 - Hardened local security without removing extension or remote-access capabilities: made Professor Mari filters data-only, encrypted webhook credentials, bounded ZIP extraction and rich-chat network/CSS behavior, restricted automatic network trust to detected runtimes, privatized local data and backups, verified downloads and release commits, and patched audited dependencies.
 - Authenticated APK-managed Android localhost sessions without restricting manual Termux or LAN use, verified the pinned F-Droid Termux APK before install, bound native bridge calls to the exact Engine origin, and made release signing and bootstrap source commits fail closed.
 - Imported preset regex entries even when they contain unsupported SillyTavern placements, warning about ignored placement values instead of discarding the entire regex, and let Music DJ try the next candidate when Spotify accepts but cannot verify the first selected track (#4959, #4960).

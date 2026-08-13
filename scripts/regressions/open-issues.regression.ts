@@ -3933,14 +3933,14 @@ assert.equal(parseSwarmUiVideoReference({ images: ["View/local/raw/output.mp4"] 
 assert.throws(
   () =>
     buildSwarmUiVideoGenerationBody(
-    {
-      prompt: "video",
-      durationSeconds: 5,
-      aspectRatio: "16:9",
-      comfyWorkflow: '{"image":"%reference_image_name%"}',
-    },
-    "video-session",
-  ),
+      {
+        prompt: "video",
+        durationSeconds: 5,
+        aspectRatio: "16:9",
+        comfyWorkflow: '{"image":"%reference_image_name%"}',
+      },
+      "video-session",
+    ),
   /must use %reference_image%/u,
 );
 assert.deepEqual(
@@ -4024,14 +4024,16 @@ assert.ok(ATLAS_CLOUD_VIDEO_MODELS.some((model) => model.id === "google/veo3.1/t
 
 const profileImportAssetRoot = mkdtempSync(join(tmpdir(), "marinara-profile-import-atomic-"));
 try {
+  const liveAvatar = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x6c, 0x69, 0x76, 0x65]);
+  const importedAvatar = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x6e, 0x65, 0x77]);
   const liveAvatarPath = join(profileImportAssetRoot, "avatars", "character.png");
   mkdirSync(join(profileImportAssetRoot, "avatars"), { recursive: true });
-  writeFileSync(liveAvatarPath, "live-avatar");
+  writeFileSync(liveAvatarPath, liveAvatar);
   await assert.rejects(
     stageProfileImportAssets(
       profileImportAssetRoot,
       [
-        { path: "avatars/character.png", expectedSize: 15, read: () => Buffer.from("imported-avatar") },
+        { path: "avatars/character.png", expectedSize: importedAvatar.length, read: () => importedAvatar },
         {
           path: "gallery/corrupt.png",
           expectedSize: 8,
@@ -4044,17 +4046,17 @@ try {
     ),
     /simulated corrupt archive member/u,
   );
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "live-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), liveAvatar);
 
   const stagedProfileAssets = await stageProfileImportAssets(
     profileImportAssetRoot,
-    [{ path: "avatars/character.png", expectedSize: 15, read: () => Buffer.from("imported-avatar") }],
+    [{ path: "avatars/character.png", expectedSize: importedAvatar.length, read: () => importedAvatar }],
     1024,
   );
   await promoteStagedProfileAssets(stagedProfileAssets);
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "imported-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), importedAvatar);
   await rollbackPromotedProfileAssets(stagedProfileAssets);
-  assert.equal(readFileSync(liveAvatarPath, "utf8"), "live-avatar");
+  assert.deepEqual(readFileSync(liveAvatarPath), liveAvatar);
   await cleanupStagedProfileAssets(stagedProfileAssets);
 } finally {
   rmSync(profileImportAssetRoot, { recursive: true, force: true });
@@ -5341,8 +5343,10 @@ assert.equal(
 assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
-assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
-assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = ZIP32_MAX_VALUE/u);
+assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
+assert.match(backupRoutesSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192/u);
 assert.match(serverAppSource, /const clientIndex = resolve\(clientDist, "index\.html"\)/u);
 assert.match(serverAppSource, /if \(existsSync\(clientIndex\)\)/u);
 assert.match(

@@ -31,7 +31,15 @@ import { ANDROID_BRIDGE_READY_EVENT, getAndroidBridgeToken } from "../../lib/and
 import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
 import { forceRefreshSpa } from "@/lib/browser-runtime";
+import {
+  formatProfileImportWarningDetails,
+  formatProfileImportWarningSummary,
+  normalizeProfileImportWarnings,
+  type ProfileImportWarningCopy,
+  type ProfileImportWarning,
+} from "@/lib/profile-import-warnings";
 import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -117,7 +125,13 @@ import {
   LifeBuoy,
   SlidersHorizontal,
 } from "lucide-react";
-import { useChat, useClearAllData, useExpungeData, useUpdateChatMetadata, type ExpungeScope } from "../../hooks/use-chats";
+import {
+  useChat,
+  useClearAllData,
+  useExpungeData,
+  useUpdateChatMetadata,
+  type ExpungeScope,
+} from "../../hooks/use-chats";
 import { useConnections } from "../../hooks/use-connections";
 import { useChatStore } from "../../stores/chat.store";
 import { useOpenGameAssetsFolder, useRescanGameAssets } from "../../hooks/use-game-assets";
@@ -6425,13 +6439,10 @@ type ProfileImportStats = {
   chats?: number;
   messages?: number;
   connections?: number;
+  customTools?: number;
+  mariInstructions?: number;
+  personalExtensions?: number;
   files?: number;
-};
-
-type ProfileImportWarning = {
-  type?: string;
-  path?: string;
-  message?: string;
 };
 
 type ProfileImportProgressData = {
@@ -6503,7 +6514,7 @@ function getProfileImportPercent(progress: ProfileImportProgressState) {
   return Math.min(99, Math.max(progress.status === "running" ? 8 : 0, percent));
 }
 
-function formatProfileImportStats(stats?: ProfileImportStats) {
+function formatProfileImportStats(stats: ProfileImportStats | undefined, localizeUi: TFunction) {
   if (!stats) return "";
   const entries: Array<[number | undefined, string]> = [
     [stats.characters, "characters"],
@@ -6515,6 +6526,9 @@ function formatProfileImportStats(stats?: ProfileImportStats) {
     [stats.chats, "chats"],
     [stats.messages, "messages"],
     [stats.connections, "connections"],
+    [stats.customTools, localizeUi("ui.panels.importsettings.customTools")],
+    [stats.mariInstructions, localizeUi("ui.panels.importsettings.professorMariMemories")],
+    [stats.personalExtensions, localizeUi("ui.panels.importsettings.personalExtensions")],
     [stats.files, "files"],
   ];
   return entries
@@ -6535,9 +6549,22 @@ function getProfileImportItemCount(stats?: ProfileImportStats) {
     stats.chats,
     stats.messages,
     stats.connections,
+    stats.customTools,
+    stats.mariInstructions,
+    stats.personalExtensions,
     stats.files,
   ];
   return counts.reduce<number>((total, count) => total + (typeof count === "number" && count > 0 ? count : 0), 0);
+}
+
+function getProfileImportWarningCopy(localizeUi: TFunction): ProfileImportWarningCopy {
+  return {
+    missingAssetSummary: (count) => localizeUi("ui.panels.importsettings.profileImportMissingAssets", { count }),
+    securityWarningSummary: (count) => localizeUi("ui.panels.importsettings.profileImportSecurityWarnings", { count }),
+    missingLabel: localizeUi("ui.panels.importsettings.profileImportMissingLabel"),
+    additionalPaths: (count) => localizeUi("ui.panels.importsettings.profileImportAdditionalPaths", { count }),
+    additionalMessages: (count) => localizeUi("ui.panels.importsettings.profileImportAdditionalMessages", { count }),
+  };
 }
 
 function getProfileImportErrorMessage(data: unknown) {
@@ -6550,41 +6577,13 @@ function getProfileImportErrorMessage(data: unknown) {
   return "Unknown error";
 }
 
-function normalizeProfileImportWarnings(warnings: unknown): ProfileImportWarning[] {
-  if (!Array.isArray(warnings)) return [];
-  return warnings.flatMap((warning) => {
-    if (!warning || typeof warning !== "object") return [];
-    const record = warning as { type?: unknown; path?: unknown; message?: unknown };
-    const path = typeof record.path === "string" ? record.path : undefined;
-    const message = typeof record.message === "string" ? record.message : undefined;
-    const type = typeof record.type === "string" ? record.type : undefined;
-    if (!path && !message) return [];
-    return [{ type, path, message }];
-  });
-}
-
-function formatProfileImportWarningSummary(warnings: ProfileImportWarning[]) {
-  const missingAssets = warnings.filter((warning) => warning.type === "missing_asset" || warning.path);
-  if (missingAssets.length > 0) {
-    return `${missingAssets.length} asset file${missingAssets.length === 1 ? "" : "s"} missing from the ZIP. Imported the rest.`;
-  }
-  return `${warnings.length} import warning${warnings.length === 1 ? "" : "s"}.`;
-}
-
-function formatProfileImportWarningDetails(warnings: ProfileImportWarning[]) {
-  const paths = warnings.map((warning) => warning.path).filter((path): path is string => !!path);
-  if (paths.length === 0) return warnings[0]?.message ?? "";
-  const visible = paths.slice(0, 3).join(", ");
-  const extra = paths.length > 3 ? `, +${paths.length - 3} more` : "";
-  return `Missing: ${visible}${extra}`;
-}
-
-function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewResult) {
+function formatProfileImportConfirmationMessage(preview: ProfileImportPreviewResult, localizeUi: TFunction) {
   const warnings = normalizeProfileImportWarnings(preview.warnings);
-  const found = formatProfileImportStats(preview.imported) || "no counted records";
+  const found = formatProfileImportStats(preview.imported, localizeUi) || "no counted records";
+  const warningCopy = getProfileImportWarningCopy(localizeUi);
   const warningDetail =
     warnings.length > 0
-      ? `${formatProfileImportWarningSummary(warnings)} ${formatProfileImportWarningDetails(warnings)}`
+      ? `${formatProfileImportWarningSummary(warnings, warningCopy)} ${formatProfileImportWarningDetails(warnings, warningCopy)}`
       : "";
   return [
     `Found: ${found}.`,
@@ -6665,6 +6664,7 @@ async function* readProfileImportStream(res: Response): AsyncGenerator<ProfileIm
 
 function ImportSettings() {
   const { t: localizeUi } = useUiTranslation();
+  const profileImportWarningCopy = getProfileImportWarningCopy(localizeUi);
   const openModal = useUIStore((s) => s.openModal);
   const qc = useQueryClient();
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
@@ -6769,7 +6769,7 @@ function ImportSettings() {
 
       const confirmed = await showConfirmDialog({
         title: localizeUi("ui.panels.importsettings.importProfile"),
-        message: formatProfileImportConfirmationMessage(preview),
+        message: formatProfileImportConfirmationMessage(preview, localizeUi),
         confirmLabel: localizeUi("ui.chat.chatbranchselector.import"),
         cancelLabel: "Cancel",
         tone: "destructive",
@@ -6855,12 +6855,15 @@ function ImportSettings() {
           qc.invalidateQueries();
           const imported = event.data?.imported;
           const warnings = normalizeProfileImportWarnings(event.data?.warnings);
-          const summary = formatProfileImportStats(imported);
+          const summary = formatProfileImportStats(imported, localizeUi);
           setProfileImportProgress((current) => {
             const totalItems = Math.max(1, current?.totalItems ?? 1);
             return {
               status: "success",
-              label: warnings.length > 0 ? "Profile import complete with missing assets" : "Profile import complete",
+              label:
+                warnings.length > 0
+                  ? localizeUi("ui.panels.importsettings.profileImportCompleteWithWarnings")
+                  : "Profile import complete",
               completedItems: totalItems,
               totalItems,
               startedAt,
@@ -6870,7 +6873,7 @@ function ImportSettings() {
             };
           });
           if (warnings.length > 0) {
-            const warningSummary = formatProfileImportWarningSummary(warnings);
+            const warningSummary = formatProfileImportWarningSummary(warnings, profileImportWarningCopy);
             toast.warning(
               summary
                 ? localizeUi("ui.panels.importsettings.importedValue1Value2", {
@@ -7005,22 +7008,22 @@ function ImportSettings() {
                       </span>
                     )}
                   </div>
-                  {formatProfileImportStats(profileImportProgress.imported) && (
+                  {formatProfileImportStats(profileImportProgress.imported, localizeUi) && (
                     <div className="text-[0.6875rem] text-[var(--muted-foreground)]">
                       {profileImportProgress.status === "preview"
                         ? localizeUi("ui.panels.importsettings.found")
                         : localizeUi("ui.panels.importsettings.importedSoFar")}
-                      : {formatProfileImportStats(profileImportProgress.imported)}
+                      : {formatProfileImportStats(profileImportProgress.imported, localizeUi)}
                     </div>
                   )}
                   {profileImportProgress.warnings?.length ? (
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[0.6875rem] text-amber-700 dark:text-amber-200">
                       <div className="font-medium">
-                        {formatProfileImportWarningSummary(profileImportProgress.warnings)}
+                        {formatProfileImportWarningSummary(profileImportProgress.warnings, profileImportWarningCopy)}
                       </div>
-                      {formatProfileImportWarningDetails(profileImportProgress.warnings) && (
+                      {formatProfileImportWarningDetails(profileImportProgress.warnings, profileImportWarningCopy) && (
                         <div className="mt-0.5 break-words text-amber-700/80 dark:text-amber-100/80">
-                          {formatProfileImportWarningDetails(profileImportProgress.warnings)}
+                          {formatProfileImportWarningDetails(profileImportProgress.warnings, profileImportWarningCopy)}
                         </div>
                       )}
                     </div>
@@ -7519,8 +7522,8 @@ function AdvancedSettings() {
   });
   const connections = (rawConnections ?? []) as APIConnection[];
   const activeConnection = activeChat?.connectionId
-    ? connections.find((connection) => connection.id === activeChat.connectionId) ?? null
-    : connections.find((connection) => connection.isDefault) ?? null;
+    ? (connections.find((connection) => connection.id === activeChat.connectionId) ?? null)
+    : (connections.find((connection) => connection.isDefault) ?? null);
   const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading);
 
   const handleCopySupportDiagnostics = useCallback(async () => {

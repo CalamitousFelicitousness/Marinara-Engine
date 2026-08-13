@@ -32,7 +32,7 @@ import {
 import { getDataDir } from "../utils/data-dir.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
-import { flushDB } from "../db/connection.js";
+import { flushDB, type DB } from "../db/connection.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
@@ -85,10 +85,11 @@ const ENCRYPTION_KEY_FILENAME = ".encryption-key";
 const PROFILE_ASSET_DIRS = BACKUP_DIRS.filter((dirName) => dirName !== "storage");
 const ZIP32_MAX_VALUE = 0xffffffff;
 const PROFILE_IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
-const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = ZIP32_MAX_VALUE;
+const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
-const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 64 * 1024 * 1024;
-const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = ZIP32_MAX_VALUE;
+const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 * 1024 * 1024;
+const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
+const PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192;
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 
@@ -235,7 +236,18 @@ type ProfileInlineJsonBudget = {
 };
 type ProfileAssetReader = (safePath: string) => Buffer | null | Promise<Buffer | null>;
 type ProfileArchiveAssetIndex = Map<string, { entryName: string; expectedSize: number }>;
-type ProfileImportWarning = ProfileNoodleImportWarning | { type: "missing_asset"; path: string; message: string };
+type ProfileImportWarning =
+  | ProfileNoodleImportWarning
+  | { type: "missing_asset"; path: string; message: string }
+  | {
+      type:
+        | "connection_credentials_quarantined"
+        | "custom_tools_quarantined"
+        | "mari_instructions_quarantined"
+        | "personal_extensions_quarantined"
+        | "custom_themes_quarantined";
+      message: string;
+    };
 type ProfileZipEntry = {
   entryName: string;
   isDirectory: boolean;
@@ -287,6 +299,9 @@ type ProfileImportStats = {
   chats?: number;
   messages?: number;
   connections?: number;
+  customTools?: number;
+  mariInstructions?: number;
+  personalExtensions?: number;
   files?: number;
   tables?: Record<string, number>;
 };
@@ -599,7 +614,7 @@ export function quarantineProfileCustomToolRow(row: Record<string, unknown>) {
     typeof row.webhookUrl === "string" && !row.webhookUrl.startsWith(ENCRYPTED_WEBHOOK_PREFIX)
       ? encryptCustomToolWebhookUrl(row.webhookUrl)
       : null;
-  const secured = {
+  const secured: Record<string, unknown> = {
     ...row,
     webhookUrl: importedWebhookUrl,
   };
@@ -607,15 +622,86 @@ export function quarantineProfileCustomToolRow(row: Record<string, unknown>) {
   return { ...secured, enabled: "false", includeHiddenContext: "false" };
 }
 
+const PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS = [
+  "provider",
+  "baseUrl",
+  "embeddingBaseUrl",
+  "imageGenerationSource",
+  "imageService",
+  "imageEndpointId",
+  "videoGenerationSource",
+  "videoService",
+] as const;
+
+const PROFILE_CONNECTION_AUTOMATIC_SELECTION_FIELDS = [
+  "isDefault",
+  "fallbackForMain",
+  "useForRandom",
+  "defaultForAgents",
+  "fallbackForAgents",
+] as const;
+
+function profileConnectionIdentityValue(value: unknown) {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function profileConnectionCredentialIdentityMatches(
+  existing: Record<string, unknown>,
+  imported: Record<string, unknown>,
+) {
+  return PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS.every(
+    (field) => profileConnectionIdentityValue(existing[field]) === profileConnectionIdentityValue(imported[field]),
+  );
+}
+
+type ProfileApiConnectionImportPlan = {
+  row: Record<string, unknown>;
+  trustedIdentity: boolean;
+};
+
+export function quarantineProfileApiConnectionRow(
+  row: Record<string, unknown>,
+  existing?: Record<string, unknown>,
+): ProfileApiConnectionImportPlan {
+  const existingCredential = typeof existing?.apiKeyEncrypted === "string" ? existing.apiKeyEncrypted : "";
+  const trustedIdentity = !!existing && profileConnectionCredentialIdentityMatches(existing, row);
+  const secured: Record<string, unknown> = {
+    ...row,
+    apiKeyEncrypted: trustedIdentity ? existingCredential : "",
+    profileImportReviewRequired: trustedIdentity ? "false" : "true",
+  };
+  if (trustedIdentity) return { row: secured, trustedIdentity };
+  for (const field of PROFILE_CONNECTION_AUTOMATIC_SELECTION_FIELDS) secured[field] = "false";
+  return { row: secured, trustedIdentity };
+}
+
+async function planProfileApiConnectionImports(
+  db: DB,
+  rows: Array<Record<string, unknown>>,
+): Promise<ProfileApiConnectionImportPlan[]> {
+  const existingRows = (await db.select().from(schema.apiConnections)) as Array<Record<string, unknown>>;
+  const existingById = new Map<unknown, Record<string, unknown>>(existingRows.map((row) => [row.id, row]));
+  return rows.map((row) => quarantineProfileApiConnectionRow(row, existingById.get(row.id)));
+}
+
+export function quarantineProfileMariInstructionRow(row: Record<string, unknown>) {
+  return { ...row, enabled: 0, persistent: 0 };
+}
+
+export function quarantineProfileThemeRow(row: Record<string, unknown>) {
+  return { ...row, isActive: "false" };
+}
+
 // Secret-bearing columns to omit on the conflict-UPDATE path so an existing row
 // keeps its stored secret (the file store leaves an unmentioned column untouched); only
-// the fresh-insert path carries the export's redacted values. For
-// api_connections/custom_tools the export blanks the whole column; for
-// agent_configs the export redacts secret keys *inside* the settings JSON, so we
+// the fresh-insert path carries the export's redacted values. For custom_tools the
+// export blanks the whole column; for agent_configs the export redacts secret keys
+// *inside* the settings JSON, so we
 // omit the entire settings column on update rather than overwrite live secrets
-// with the redacted blob (an existing row's non-secret settings are left as-is).
+// with the redacted blob (an existing row's non-secret settings are left as-is). API
+// connection credentials are handled separately: they are retained only when the
+// imported credential destination matches the existing row exactly.
 const REDACTED_UPDATE_COLUMNS: Record<string, string> = {
-  api_connections: "apiKeyEncrypted",
   agent_configs: "settings",
   custom_tools: "webhookUrl",
 };
@@ -672,10 +758,10 @@ function assertProfileArchiveEntryLimit(label: string, size: number) {
   }
 }
 
-function assertProfileArchiveTotalLimit(total: number) {
+function assertProfileArchiveTotalLimit(total: number, label = "Profile archive restored assets") {
   if (total > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES) {
     throw new ProfileImportRequestError(
-      profileArchiveSizeError("Profile archive restored assets", total, PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES),
+      profileArchiveSizeError(label, total, PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES),
     );
   }
 }
@@ -784,6 +870,9 @@ function buildProfileImportStats(tableCounts: Record<string, number>, files: num
     chats: tableCounts.chats ?? 0,
     messages: tableCounts.messages ?? 0,
     connections: tableCounts.api_connections ?? 0,
+    customTools: tableCounts.custom_tools ?? 0,
+    mariInstructions: tableCounts.mari_instructions ?? 0,
+    personalExtensions: tableCounts.installed_extensions ?? 0,
     files,
     tables: tableCounts,
   };
@@ -810,8 +899,90 @@ function profileMissingAssetWarningPathSet(warnings: ProfileImportWarning[]) {
 }
 
 function addProfileImportWarning(warnings: ProfileImportWarning[], warning: ProfileImportWarning) {
-  if (warnings.some((existing) => existing.type === warning.type && existing.path === warning.path)) return;
+  const warningPath = "path" in warning ? warning.path : undefined;
+  if (
+    warnings.some(
+      (existing) => existing.type === warning.type && ("path" in existing ? existing.path : undefined) === warningPath,
+    )
+  ) {
+    return;
+  }
   warnings.push(warning);
+}
+
+type ProfileImportSecuritySummary = {
+  connectionsQuarantined: number;
+  customToolsQuarantined: number;
+  mariInstructionsQuarantined: number;
+  personalExtensionsQuarantined: number;
+  customThemesQuarantined: number;
+};
+
+function isProfileImportActiveFlag(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function buildProfileImportSecuritySummary(
+  snapshot: Pick<ProfileStorageSnapshot, "tables">,
+  connectionPlans: ProfileApiConnectionImportPlan[],
+): ProfileImportSecuritySummary {
+  const rows = (tableName: string) => snapshot.tables[tableName] ?? [];
+  return {
+    connectionsQuarantined: connectionPlans.filter((plan) => !plan.trustedIdentity).length,
+    customToolsQuarantined: rows("custom_tools").filter((row) => row.executionType !== "static").length,
+    mariInstructionsQuarantined: rows("mari_instructions").filter(
+      (row) => isProfileImportActiveFlag(row.enabled) || isProfileImportActiveFlag(row.persistent),
+    ).length,
+    personalExtensionsQuarantined: rows("installed_extensions").length,
+    customThemesQuarantined: rows("custom_themes").filter((row) => isProfileImportActiveFlag(row.isActive)).length,
+  };
+}
+
+function profileImportCountLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function addProfileImportSecurityWarnings(warnings: ProfileImportWarning[], summary: ProfileImportSecuritySummary) {
+  if (summary.connectionsQuarantined > 0) {
+    addProfileImportWarning(warnings, {
+      type: "connection_credentials_quarantined",
+      message: `${profileImportCountLabel(summary.connectionsQuarantined, "imported connection")} had no matching local endpoint. It will stay unavailable until opened, reviewed, and saved; API keys and automatic-selection flags were cleared.`,
+    });
+  }
+  if (summary.customToolsQuarantined > 0) {
+    addProfileImportWarning(warnings, {
+      type: "custom_tools_quarantined",
+      message: `${profileImportCountLabel(summary.customToolsQuarantined, "imported executable custom tool")} will be disabled and denied hidden-context access until reviewed.`,
+    });
+  }
+  if (summary.mariInstructionsQuarantined > 0) {
+    addProfileImportWarning(warnings, {
+      type: "mari_instructions_quarantined",
+      message: `${profileImportCountLabel(summary.mariInstructionsQuarantined, "active Professor Mari memory", "active Professor Mari memories")} will be imported disabled and non-persistent until reviewed.`,
+    });
+  }
+  if (summary.personalExtensionsQuarantined > 0) {
+    addProfileImportWarning(warnings, {
+      type: "personal_extensions_quarantined",
+      message: `${profileImportCountLabel(summary.personalExtensionsQuarantined, "personal extension")} will be imported disabled and require local approval before they can run.`,
+    });
+  }
+  if (summary.customThemesQuarantined > 0) {
+    addProfileImportWarning(warnings, {
+      type: "custom_themes_quarantined",
+      message: `${profileImportCountLabel(summary.customThemesQuarantined, "active custom theme")} will be imported inactive so profile CSS cannot take effect before review.`,
+    });
+  }
+}
+
+async function addProfileStoragePreviewSecurityWarnings(
+  db: DB,
+  snapshot: ProfileStorageSnapshot,
+  warnings: ProfileImportWarning[],
+) {
+  const importedConnections = snapshot.tables.api_connections ?? [];
+  const connectionPlans = await planProfileApiConnectionImports(db, importedConnections);
+  addProfileImportSecurityWarnings(warnings, buildProfileImportSecuritySummary(snapshot, connectionPlans));
 }
 
 function previewProfileStorageSnapshotStats(
@@ -846,7 +1017,25 @@ function previewProfileStorageSnapshotStats(
   return buildProfileImportStats(tableCounts, files);
 }
 
-function previewLegacyProfileImportStats(data: Record<string, any>): ProfileImportStats {
+function addLegacyProfileThemeSecurityWarning(data: Record<string, any>, warnings: ProfileImportWarning[]) {
+  const activeThemes = Array.isArray(data.themes)
+    ? data.themes.filter((theme: Record<string, unknown>) => isProfileImportActiveFlag(theme?.isActive)).length
+    : 0;
+  if (activeThemes === 0) return;
+  addProfileImportSecurityWarnings(warnings, {
+    connectionsQuarantined: 0,
+    customToolsQuarantined: 0,
+    mariInstructionsQuarantined: 0,
+    personalExtensionsQuarantined: 0,
+    customThemesQuarantined: activeThemes,
+  });
+}
+
+function previewLegacyProfileImportStats(
+  data: Record<string, any>,
+  warnings: ProfileImportWarning[],
+): ProfileImportStats {
+  addLegacyProfileThemeSecurityWarning(data, warnings);
   return {
     characters: Array.isArray(data.characters) ? data.characters.length : 0,
     personas: Array.isArray(data.personas) ? data.personas.length : 0,
@@ -961,7 +1150,13 @@ async function importProfileStorageSnapshot(
     let rollbackFailed = false;
     try {
       await app.db.transaction(async (tx) => {
-        const plannedSnapshot = await planProfileNoodleImport(tx, snapshot, warnings);
+        const plannedSnapshot = await planProfileNoodleImport(
+          tx,
+          snapshot,
+          warnings as Parameters<typeof planProfileNoodleImport>[2],
+        );
+        const connectionPlans = await planProfileApiConnectionImports(tx, plannedSnapshot.tables.api_connections ?? []);
+        addProfileImportSecurityWarnings(warnings, buildProfileImportSecuritySummary(plannedSnapshot, connectionPlans));
         for (const tableName of FILE_BACKED_TABLES) {
           const table = profileTableObjects.get(tableName);
           const rows = plannedSnapshot.tables[tableName];
@@ -971,22 +1166,30 @@ async function importProfileStorageSnapshot(
           }
 
           emit("tables", `Importing ${tableName.replace(/_/g, " ")}`);
-          for (const row of rows) {
+          for (const [rowIndex, row] of rows.entries()) {
             let cleanRow = { ...row };
             // A pre-rename snapshot carries `visibility`/`publicAccountId`. Inserting it raw
             // lets the column default fill `platform: "noodle"`, putting a restored NoodleR
             // account and its posts on the Noodle timeline.
             if (tableName === "noodle_accounts") cleanRow = migrateLegacyNoodleAccountRow(cleanRow);
             if (tableName === "noodle_posts") cleanRow = migrateLegacyNoodlePostAccessRow(cleanRow);
-            if (tableName === "api_connections") cleanRow.apiKeyEncrypted = "";
+            if (tableName === "api_connections") {
+              const connectionPlan = connectionPlans[rowIndex];
+              if (!connectionPlan) {
+                throw new ProfileImportRequestError("Profile import could not plan an imported API connection.");
+              }
+              cleanRow = connectionPlan.row;
+            }
             if (tableName === "installed_extensions") cleanRow = quarantineProfilePersonalExtensionRow(cleanRow);
             if (tableName === "custom_tools") cleanRow = quarantineProfileCustomToolRow(cleanRow);
+            if (tableName === "mari_instructions") cleanRow = quarantineProfileMariInstructionRow(cleanRow);
+            if (tableName === "custom_themes") cleanRow = quarantineProfileThemeRow(cleanRow);
             const insert = tx.insert(table as any).values(cleanRow as any) as any;
             const conflictTarget = schemaPrimaryKeyColumn(table);
             if (conflictTarget) {
-              // Preserve live secrets on rows that still exist: the export redacts secret
-              // columns, so upserting the blanks would wipe them unrecoverably. The fresh
-              // insert above still carries the blanks (no prior secret to keep).
+              // Exported secrets are redacted. The table-specific update set preserves
+              // agent/tool secrets, while the connection plan above retains a credential
+              // only when its provider and destination still match.
               await insert.onConflictDoUpdate({
                 target: conflictTarget,
                 set: buildProfileUpdateSet(tableName, cleanRow),
@@ -1521,7 +1724,11 @@ function buildStoredZipDataDescriptor(record: StoredZipEntryRecord) {
 }
 
 function buildEndOfCentralDirectory(entryCount: number, centralDirectorySize: number, centralDirectoryOffset: number) {
-  if (entryCount > 0xffff) throw new Error("Profile ZIP contains too many entries.");
+  if (entryCount > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
+    throw new ProfileArchiveTooLargeError(
+      `Profile ZIP contains too many entries (${entryCount}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
+    );
+  }
   const header = Buffer.alloc(22);
   header.writeUInt32LE(0x06054b50, 0);
   header.writeUInt16LE(0, 4);
@@ -1549,6 +1756,11 @@ async function writeStoredZipFileEntry(
         sourceHandle = await open(source.filePath, "r");
         const currentStat = await sourceHandle.stat();
         assertZip32Value(currentStat.size, `${entryName} size`);
+        if (currentStat.size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+          throw new ProfileArchiveTooLargeError(
+            profileArchiveSizeError(entryName, currentStat.size, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
+          );
+        }
         sourceMtime = currentStat.mtime;
       } catch (error) {
         await sourceHandle?.close().catch(() => {});
@@ -1564,6 +1776,11 @@ async function writeStoredZipFileEntry(
     const { dosTime, dosDate } = getZipDosTimeDate(sourceMtime);
     const size = "data" in source ? source.data.length : tolerateSourceChanges ? 0 : source.size;
     assertZip32Value(size, `${entryName} size`);
+    if (size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+      throw new ProfileArchiveTooLargeError(
+        profileArchiveSizeError(entryName, size, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
+      );
+    }
     assertZip32Value(position, `${entryName} offset`);
 
     const crc32 =
@@ -1592,6 +1809,11 @@ async function writeStoredZipFileEntry(
         await writeZipBuffer(stream, buffer);
         crcState = updateCrc32State(crcState, buffer);
         written += buffer.length;
+        if (written > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+          throw new ProfileArchiveTooLargeError(
+            profileArchiveSizeError(entryName, written, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
+          );
+        }
         position += buffer.length;
       }
       record.crc32 = finishCrc32(crcState);
@@ -1607,6 +1829,11 @@ async function writeStoredZipFileEntry(
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         await writeZipBuffer(stream, buffer);
         written += buffer.length;
+        if (written > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+          throw new ProfileArchiveTooLargeError(
+            profileArchiveSizeError(entryName, written, PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES),
+          );
+        }
         position += buffer.length;
       }
       if (written !== source.size) {
@@ -1640,13 +1867,34 @@ async function writeStoredZipArchive(outputPath: string, sources: StoredZipEntry
   const stream = createWriteStream(outputPath, { mode: PRIVATE_FILE_MODE });
   const records: StoredZipEntryRecord[] = [];
   let position = 0;
+  let totalUncompressedBytes = 0;
 
   try {
     for (const source of sources) {
       const result = await writeStoredZipFileEntry(stream, source, position);
       if (!result) continue;
       records.push(result.record);
+      if (records.length > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
+        throw new ProfileArchiveTooLargeError(
+          `Profile ZIP contains too many entries (${records.length}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
+        );
+      }
+      totalUncompressedBytes += result.record.size;
+      if (totalUncompressedBytes > PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES) {
+        throw new ProfileArchiveTooLargeError(
+          profileArchiveSizeError(
+            "Profile ZIP contents",
+            totalUncompressedBytes,
+            PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES,
+          ),
+        );
+      }
       position = result.position;
+      if (position > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES) {
+        throw new ProfileArchiveTooLargeError(
+          profileArchiveSizeError("Profile archive", position, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES),
+        );
+      }
     }
 
     const centralDirectoryOffset = position;
@@ -1658,7 +1906,21 @@ async function writeStoredZipArchive(outputPath: string, sources: StoredZipEntry
     }
     const centralDirectorySize = position - centralDirectoryOffset;
     assertZip32Value(centralDirectorySize, "central directory size");
+    if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+      throw new ProfileArchiveTooLargeError(
+        profileArchiveSizeError(
+          "Profile archive central directory",
+          centralDirectorySize,
+          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+        ),
+      );
+    }
     const end = buildEndOfCentralDirectory(records.length, centralDirectorySize, centralDirectoryOffset);
+    if (position + end.length > PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES) {
+      throw new ProfileArchiveTooLargeError(
+        profileArchiveSizeError("Profile archive", position + end.length, PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES),
+      );
+    }
     await writeZipBuffer(stream, end);
     await finishZipStream(stream);
   } catch (err) {
@@ -1745,6 +2007,11 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
     if (totalEntries === 0xffff) {
       throw new ProfileImportRequestError("Profile archive uses unsupported ZIP64 metadata.");
     }
+    if (totalEntries > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
+      throw new ProfileImportRequestError(
+        `Profile archive contains too many entries (${totalEntries}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
+      );
+    }
 
     const centralDirectorySize = readZip32Value(eocdSearch, eocdOffset + 12, "central directory size");
     const centralDirectoryOffset = readZip32Value(eocdSearch, eocdOffset + 16, "central directory offset");
@@ -1767,6 +2034,7 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
     const entries: ProfileZipEntry[] = [];
     const entriesByName = new Map<string, ProfileZipEntry>();
     let offset = 0;
+    let totalUncompressedBytes = 0;
     for (let index = 0; index < totalEntries; index++) {
       if (
         offset + 46 > centralDirectory.length ||
@@ -1783,6 +2051,17 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       const crc32 = centralDirectory.readUInt32LE(offset + 16);
       const compressedSize = readZip32Value(centralDirectory, offset + 20, "entry compressed size");
       const size = readZip32Value(centralDirectory, offset + 24, "entry size");
+      if (compressedSize > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES || size > PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES) {
+        throw new ProfileImportRequestError(
+          profileArchiveSizeError(
+            "Profile archive entry",
+            Math.max(compressedSize, size),
+            PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES,
+          ),
+        );
+      }
+      totalUncompressedBytes += size;
+      assertProfileArchiveTotalLimit(totalUncompressedBytes, "Profile archive contents");
       const fileNameLength = centralDirectory.readUInt16LE(offset + 28);
       const extraLength = centralDirectory.readUInt16LE(offset + 30);
       const commentLength = centralDirectory.readUInt16LE(offset + 32);
@@ -2607,7 +2886,12 @@ export async function backupRoutes(app: FastifyInstance) {
         ? previewProfileStorageSnapshotStats(data.fileStorage, importInput.readAsset, warnings)
         : null;
       if (previewOnly && isProfileStorageSnapshot(data.fileStorage)) {
-        await planProfileNoodleImport(app.db, data.fileStorage, warnings);
+        await planProfileNoodleImport(
+          app.db,
+          data.fileStorage,
+          warnings as Parameters<typeof planProfileNoodleImport>[2],
+        );
+        await addProfileStoragePreviewSecurityWarnings(app.db, data.fileStorage, warnings);
       }
       if (!previewOnly && expectedFingerprint && importInput.fileFingerprint !== expectedFingerprint) {
         return reply.status(409).send({
@@ -2623,7 +2907,7 @@ export async function backupRoutes(app: FastifyInstance) {
         : Math.max(1, countLegacyProfileImportItems(data));
 
       if (previewOnly) {
-        const imported = profileStoragePreviewStats ?? previewLegacyProfileImportStats(data);
+        const imported = profileStoragePreviewStats ?? previewLegacyProfileImportStats(data, warnings);
         return {
           success: true,
           preview: true,
@@ -2683,6 +2967,7 @@ export async function backupRoutes(app: FastifyInstance) {
         const themes = createThemesStorage(app.db);
 
         const stats = { characters: 0, personas: 0, lorebooks: 0, presets: 0, agents: 0, themes: 0 };
+        addLegacyProfileThemeSecurityWarning(data, warnings);
         let completedItems = 0;
         const emitLegacyProgress = (phase: string, label: string) => {
           if (!wantsProgressStream) return;
@@ -3055,7 +3340,6 @@ export async function backupRoutes(app: FastifyInstance) {
         }
 
         // Import synced custom themes
-        let importedActiveThemeId: string | null = null;
         if (Array.isArray(data.themes)) {
           for (const theme of data.themes) {
             try {
@@ -3072,23 +3356,11 @@ export async function backupRoutes(app: FastifyInstance) {
               if (!duplicate && syncedTheme) {
                 stats.themes++;
               }
-
-              if (syncedTheme && (theme.isActive === true || theme.isActive === "true")) {
-                importedActiveThemeId = syncedTheme.id;
-              }
             } catch {
               /* skip */
             }
             completedItems++;
             emitLegacyProgress("themes", "Importing themes");
-          }
-        }
-
-        if (importedActiveThemeId) {
-          try {
-            await themes.setActive(importedActiveThemeId);
-          } catch {
-            /* skip */
           }
         }
 

@@ -59,6 +59,11 @@ import { DATA_DIR } from "../utils/data-dir.js";
 import { createWriteStream, existsSync, rmSync, unlinkSync } from "fs";
 import { normalizeTimestampOverrides } from "../services/import/import-timestamps.js";
 import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../utils/security.js";
+import {
+  sendValidatedMediaFile,
+  validateImageAssetFile,
+  validateVideoAssetFile,
+} from "../utils/media-file-security.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
@@ -1534,7 +1539,10 @@ export async function charactersRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    return reply.sendFile(filename, dir);
+    const video = await validateVideoAssetFile(filePath, filename);
+    if (!video) return reply.status(404).send({ error: "Not found" });
+
+    return sendValidatedMediaFile(reply, video, { method: req.method, rangeHeader: req.headers.range });
   });
 
   app.post<{ Params: { id: string } }>("/:id/gallery/upload", async (req, reply) => {
@@ -1600,7 +1608,10 @@ export async function charactersRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    return reply.sendFile(storedFile.filename, storedFile.directory);
+    const validatedImage = await validateImageAssetFile(storedFile.absolutePath, storedFile.filename);
+    if (!validatedImage) return reply.status(404).send({ error: "Not found" });
+
+    return sendValidatedMediaFile(reply, validatedImage, { method: req.method, rangeHeader: req.headers.range });
   });
 
   app.delete<{ Params: { id: string; imageId: string } }>("/:id/gallery/:imageId", async (req, reply) => {
@@ -2592,7 +2603,10 @@ export async function charactersRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: "Not found" });
       }
 
-      return reply.sendFile(filename, dir);
+      const video = await validateVideoAssetFile(filePath, filename);
+      if (!video) return reply.status(404).send({ error: "Not found" });
+
+      return sendValidatedMediaFile(reply, video, { method: req.method, rangeHeader: req.headers.range });
     },
   );
 
@@ -2715,7 +2729,10 @@ export async function charactersRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Not found" });
     }
 
-    return reply.sendFile(storedFile.filename, storedFile.directory);
+    const validatedImage = await validateImageAssetFile(storedFile.absolutePath, storedFile.filename);
+    if (!validatedImage) return reply.status(404).send({ error: "Not found" });
+
+    return sendValidatedMediaFile(reply, validatedImage, { method: req.method, rangeHeader: req.headers.range });
   });
 
   app.delete<{ Params: { id: string; imageId: string } }>("/personas/:id/gallery/:imageId", async (req, reply) => {

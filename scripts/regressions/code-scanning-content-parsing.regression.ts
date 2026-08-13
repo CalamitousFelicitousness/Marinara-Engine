@@ -159,6 +159,10 @@ assert.equal(
   resolveMacros('[\n{{#if char == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]', groupMacroContext),
   "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
 );
+assert.equal(
+  resolveMacros('[\n{{#if {{char}} == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]', groupMacroContext),
+  "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
+);
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
 assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));
 const scopedParsingStartedAt = performance.now();

@@ -652,11 +652,15 @@ function resolveDeferredCharacterConditionals(template: string, ctx: MacroContex
 }
 
 function hasCharacterMacro(template: string): boolean {
+  const lowerTemplate = template.toLowerCase();
+  for (const name of CHARACTER_MACRO_NAMES) {
+    if (lowerTemplate.includes(`{{${name}}}`)) return true;
+  }
+
   let searchIndex = 0;
   while (searchIndex < template.length) {
     const tag = readNextMacroTag(template, searchIndex);
     if (!tag) return false;
-    if (CHARACTER_MACRO_NAMES.has(tag.body.toLowerCase())) return true;
 
     const condition = parseIfCondition(tag.body);
     if (condition !== null && conditionDependsOnCharacter(condition)) return true;

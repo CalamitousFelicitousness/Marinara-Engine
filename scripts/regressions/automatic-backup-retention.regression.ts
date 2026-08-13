@@ -157,6 +157,12 @@ try {
         tolerateSourceChanges: true,
       },
       {
+        entryName: "marinara-automatic-backup/backgrounds/../invalid.gif",
+        filePath: retainedSource,
+        size: retainedGif.length,
+        tolerateSourceChanges: true,
+      },
+      {
         entryName: "marinara-automatic-backup/storage/oversized.data",
         filePath: sourcePath,
         size: logicalSize,
@@ -166,6 +172,7 @@ try {
     { skipFailedFileEntries: true, entryLimitBytes },
   );
   assert.deepEqual(partialResult.omittedEntries.sort(), [
+    "marinara-automatic-backup/backgrounds/../invalid.gif",
     "marinara-automatic-backup/backgrounds/missing.gif",
     "marinara-automatic-backup/storage/oversized.data",
   ]);
@@ -196,6 +203,33 @@ try {
     "a strict file entry must retain a valid single-pass CRC when other sources are omitted",
   );
   await cleanupStagedProfileAssets(partialRestore);
+  const mismatchedStoredArchive = join(zipFixtureRoot, "mismatched-stored-size.zip");
+  const mismatchedStoredBytes = await readFile(partialArchive);
+  const endOffset = mismatchedStoredBytes.length - 22;
+  const centralDirectoryOffset = mismatchedStoredBytes.readUInt32LE(endOffset + 16);
+  const storedSize = mismatchedStoredBytes.readUInt32LE(centralDirectoryOffset + 20);
+  mismatchedStoredBytes.writeUInt32LE(storedSize - 1, centralDirectoryOffset + 20);
+  await writeFile(mismatchedStoredArchive, mismatchedStoredBytes);
+  await assert.rejects(
+    readStoredBackupAssetForRegression(mismatchedStoredArchive, "marinara-automatic-backup/backgrounds/retained.gif"),
+    /stored entry size does not match/u,
+    "a stored asset must not stream beyond the compressed range declared by its ZIP entry",
+  );
+  await assert.rejects(
+    writeStoredBackupArchiveForRegression(
+      join(zipFixtureRoot, "invalid-name.zip"),
+      [
+        {
+          entryName: "marinara-automatic-backup/backgrounds/../invalid.gif",
+          filePath: retainedSource,
+          size: retainedGif.length,
+        },
+      ],
+      { skipFailedFileEntries: true, entryLimitBytes },
+    ),
+    /Invalid profile ZIP entry name/u,
+    "strict exports must continue rejecting invalid entry names",
+  );
   await assert.rejects(
     writeStoredBackupArchiveForRegression(
       join(zipFixtureRoot, "invalid-direct.zip"),

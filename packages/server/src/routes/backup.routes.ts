@@ -2011,7 +2011,16 @@ async function writeStoredZipArchive(
           ? ZIP32_MAX_VALUE
           : ordinaryEntryLimit;
       const remainingContentBytes = PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES - totalUncompressedBytes;
-      const normalizedEntryName = normalizeStoredZipEntryName(source.entryName);
+      let normalizedEntryName: string;
+      try {
+        normalizedEntryName = normalizeStoredZipEntryName(source.entryName);
+      } catch (error) {
+        if (!canSkip) throw error;
+        const logError = error instanceof Error ? error : new Error(String(error));
+        logger.warn(logError, "[backup] Omitting ZIP source %s because its entry name is unusable", source.entryName);
+        recordOmission(source.entryName);
+        continue;
+      }
       const filenameBytes = Buffer.byteLength(normalizedEntryName, "utf8");
       const usesDataDescriptor = "filePath" in source && source.tolerateSourceChanges === true;
       const remainingArchiveBytes =
@@ -2300,6 +2309,9 @@ export async function readStoredBackupAssetForRegression(
   const compressedSize = getZipEntryCompressedSize(entry);
   const size = getZipEntryUncompressedSize(entry);
   if (compressedSize === null || size === null) throw new Error("Backup ZIP entry has an invalid size");
+  if (entry.header.method === 0 && compressedSize !== size) {
+    throw new Error(`Backup ZIP stored entry size does not match: ${entryName}`);
+  }
   if (!isPermittedLargeStoredBackupEntry(entry.entryName, entry.header.method, compressedSize, size, entryLimitBytes)) {
     throw new Error(`Backup ZIP entry is not a permitted stored media asset: ${entryName}`);
   }
@@ -2611,6 +2623,10 @@ async function readProfileArchiveAsset(
   const entry = getProfileZipEntry(zip, asset.entryName);
   if (!entry || entry.isDirectory) return null;
   if (entry.header.method === 0) {
+    const compressedSize = getZipEntryCompressedSize(entry);
+    if (compressedSize === null || compressedSize !== asset.expectedSize) {
+      throw new ProfileImportRequestError(`Profile archive asset ${safePath} does not match its stored entry size.`);
+    }
     if (asset.expectedSize === 0) return Buffer.alloc(0);
     return {
       stream: createReadStream(zip.filePath, {

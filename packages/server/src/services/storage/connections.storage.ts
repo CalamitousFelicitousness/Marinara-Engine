@@ -222,8 +222,15 @@ export function createConnectionsStorage(db: DB) {
       // boundary for a connection restored from someone else's profile.
       const updateFields: Record<string, unknown> = {
         updatedAt: now(),
-        profileImportReviewRequired: "false",
       };
+      if (
+        data.provider !== undefined ||
+        data.baseUrl !== undefined ||
+        data.apiKey !== undefined ||
+        data.model !== undefined
+      ) {
+        updateFields.profileImportReviewRequired = "false";
+      }
       const shouldClearDefault = data.isDefault === true;
       const shouldClearMainFallback = effectiveProviderCategory === "language" && data.fallbackForMain === true;
       const shouldClearAgentDefaults =

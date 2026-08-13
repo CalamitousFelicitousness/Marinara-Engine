@@ -99,6 +99,15 @@ try {
         defaultForAgents: "true",
         fallbackForAgents: "true",
       }),
+      connectionFixture("new-connection", {
+        name: "Duplicate imported endpoint",
+        apiKeyEncrypted: "second-foreign-profile-ciphertext",
+        isDefault: "true",
+        fallbackForMain: "true",
+        useForRandom: "true",
+        defaultForAgents: "true",
+        fallbackForAgents: "true",
+      }),
     ];
 
     const importedInstruction = {
@@ -180,14 +189,14 @@ try {
     });
     assert.equal(previewResponse.statusCode, 200, previewResponse.body);
     const preview = previewResponse.json();
-    assert.equal(preview.imported.connections, 5);
+    assert.equal(preview.imported.connections, 6);
     assert.equal(preview.imported.customTools, 1);
     assert.equal(preview.imported.mariInstructions, 1);
     assert.equal(preview.imported.personalExtensions, 1);
     const previewWarnings = new Map(
       (preview.warnings as Array<{ type: string; message: string }>).map((warning) => [warning.type, warning.message]),
     );
-    assert.match(previewWarnings.get("connection_credentials_quarantined") ?? "", /4 imported connections/u);
+    assert.match(previewWarnings.get("connection_credentials_quarantined") ?? "", /5 imported connections/u);
     assert.ok(previewWarnings.has("custom_tools_quarantined"));
     assert.ok(previewWarnings.has("mari_instructions_quarantined"));
     assert.ok(previewWarnings.has("personal_extensions_quarantined"));
@@ -222,7 +231,13 @@ try {
         assert.equal(connection[field], "false", `${id}.${field} must wait for local credential review`);
       }
     }
-    await connections.update("new-connection", { name: "Reviewed imported connection" });
+    await connections.update("new-connection", { imagePath: "/api/connections/images/file/review.png" });
+    assert.equal(
+      await connections.getWithKey("new-connection"),
+      null,
+      "changing connection artwork alone must not approve an imported endpoint",
+    );
+    await connections.update("new-connection", { baseUrl: String(afterById.get("new-connection")!.baseUrl) });
     assert.ok(await connections.getWithKey("new-connection"), "saving locally must preserve the imported capability");
 
     const [instruction] = await db.select().from(schema.mariInstructions);

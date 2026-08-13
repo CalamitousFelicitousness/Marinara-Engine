@@ -680,12 +680,8 @@ async function planProfileApiConnectionImports(
   rows: Array<Record<string, unknown>>,
 ): Promise<ProfileApiConnectionImportPlan[]> {
   const existingRows = (await db.select().from(schema.apiConnections)) as Array<Record<string, unknown>>;
-  const connectionState = new Map<unknown, Record<string, unknown>>(existingRows.map((row) => [row.id, row]));
-  return rows.map((row) => {
-    const plan = quarantineProfileApiConnectionRow(row, connectionState.get(row.id));
-    connectionState.set(row.id, plan.row);
-    return plan;
-  });
+  const existingById = new Map<unknown, Record<string, unknown>>(existingRows.map((row) => [row.id, row]));
+  return rows.map((row) => quarantineProfileApiConnectionRow(row, existingById.get(row.id)));
 }
 
 export function quarantineProfileMariInstructionRow(row: Record<string, unknown>) {

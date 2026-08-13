@@ -2428,6 +2428,13 @@ try {
       mariDb.getPendingApprovals().some((approval) => approval.id === danglingApproval.id),
       "the refused reject reverts nothing and leaves the review pending",
     );
+    // The refusal must revert nothing: the entry stays deleted (a faulty path that re-inserts it AND
+    // returns invalid_selection would otherwise pass the checks above).
+    const danglingAfter = await lorebookStorage.listEntries(rejectDanglingLorebook.id);
+    assert.ok(
+      !danglingAfter.some((entry) => entry.id === danglingEntry.id),
+      "the refused reject did not re-insert the orphaned entry",
+    );
   } finally {
     if (!rejectDanglingRemoved) await lorebookStorage.remove(rejectDanglingLorebook.id);
   }

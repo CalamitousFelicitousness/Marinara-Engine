@@ -7,11 +7,11 @@ import {
 import { parseLorebookWriteApprovalText } from "../../packages/server/src/routes/generate/agent-write-approval.js";
 import { dedupeLastMessageWrappers } from "../../packages/server/src/routes/generate/generate-route-utils.js";
 import { buildImpersonateInstruction } from "../../packages/server/src/services/conversation/impersonate-prompt.js";
-import { stripGmCommandTags } from "../../packages/server/src/services/game/segment-edits.js";
+import { applySegmentEdits, stripGmCommandTags } from "../../packages/server/src/services/game/segment-edits.js";
 import { parseTrustedTimestamp } from "../../packages/server/src/services/import/import-timestamps.js";
 import { extractSetvarAssignments } from "../../packages/server/src/services/import/st-prompt.importer.js";
 import { stripGenerationGuideInstruction } from "../../packages/shared/src/utils/generation-guide.js";
-import { stripMacroComments } from "../../packages/shared/src/utils/macro-engine.js";
+import { resolveMacros, stripMacroComments } from "../../packages/shared/src/utils/macro-engine.js";
 import { sanitizeFolderSegment } from "../../packages/shared/src/features/folder-packages/manifest-package.js";
 import {
   decodeEncodedSpeakerTags,
@@ -124,6 +124,12 @@ assert.equal(stripGmCommandTags("[map_update:x"), "");
 assert.equal(stripGmCommandTags("[map_update:"), "");
 assert.equal(stripGmCommandTags("[party-turn]A[party-chat]B"), "AB");
 assert.equal(stripGmCommandTags("[note: remember the key]\n[book: chapter text]"), "[note: remember the key]\n[book: chapter text]");
+assert.equal(
+  applySegmentEdits('Narration before   [Miko] [main] [smile]: "Hello"   Narration after', {
+    1: { content: "Edited" },
+  }),
+  'Narration before\n\n[Miko] [main] [smile]: "Edited"\n\nNarration after',
+);
 const malformedBracketNoise = "[".repeat(100_000) + ":]";
 assert.equal(stripGmCommandTags(malformedBracketNoise), malformedBracketNoise);
 assert.equal(
@@ -138,12 +144,30 @@ assert.equal(
 );
 assert.equal(stripMacroComments("Before{{//".repeat(20_000) + "comment}}After"), "BeforeAfter");
 assert.equal(stripMacroComments("Before{{// comment with } a lone brace }}After"), "BeforeAfter");
+const groupMacroContext = {
+  user: "Mari",
+  char: "Miko",
+  characters: ["Miko", "Dottore"],
+  characterProfiles: [{ name: "Miko" }, { name: "Dottore" }],
+  variables: {},
+};
+assert.equal(
+  resolveMacros("[\n{{char}} greets Mari.\n]", groupMacroContext),
+  "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
+);
+assert.equal(
+  resolveMacros('[\n{{#if char == "Miko"}}Miko{{else}}Dottore{{/if}} greets Mari.\n]', groupMacroContext),
+  "[\nMiko greets Mari.\n]\n[\nDottore greets Mari.\n]",
+);
 assert.equal(sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback"), "package");
 assert.equal(sanitizeFolderSegment(`${"a".repeat(79)} rest`, "fallback"), "a".repeat(79));
 const scopedParsingStartedAt = performance.now();
 extractSetvarAssignments("{{setvar::broken::".repeat(20_000) + "{{setvar::mode::gm}}");
 stripMacroComments("Before{{//".repeat(20_000) + "comment with } a lone brace }}After");
 sanitizeFolderSegment("-".repeat(50_000) + "package" + "-".repeat(50_000), "fallback");
+applySegmentEdits(`Narration${" ".repeat(100_000)}not-a-tag`, { 0: { content: "Edited" } });
+applySegmentEdits(`Narration ${"x [".repeat(50_000)}not-a-tag`, { 0: { content: "Edited" } });
+resolveMacros(`[\n{{#if ${" ".repeat(100_000)}unknown}}text{{/if}}\n]`, groupMacroContext);
 assert.ok(performance.now() - scopedParsingStartedAt < 5_000, "adversarial parsing should complete within five seconds");
 const encodedSpeakerNoise = "&lt;;".repeat(20_000);
 assert.equal(decodeEncodedSpeakerTags(encodedSpeakerNoise), encodedSpeakerNoise);

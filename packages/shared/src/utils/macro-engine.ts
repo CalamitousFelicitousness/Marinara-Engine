@@ -117,8 +117,23 @@ export interface SupportedMacroDefinition {
 
 export const CHARACTER_REFERENCE_ID_PATTERN = /\{\{([A-Za-z0-9_-]{21})\}\}/g;
 
-const CHARACTER_MACRO_PATTERN =
-  /\{\{(?:char|charName|charNamePhonetic|charPhonetic|description|personality|backstory|appearance|scenario|example|charSysInfo|charPostHistory|convo_display|char_about|convo_behavior)\}\}|\{\{\s*#if\s+[^}]*\b(?:char|charName|charNamePhonetic|charPhonetic|character|speaker|description|personality|backstory|appearance|scenario|example|charSysInfo|charPostHistory|convo_display|char_about|convo_behavior)\b/i;
+const CHARACTER_MACRO_NAMES = new Set([
+  "appearance",
+  "backstory",
+  "char",
+  "char_about",
+  "charname",
+  "charnamephonetic",
+  "charphonetic",
+  "charposthistory",
+  "charsysinfo",
+  "convo_behavior",
+  "convo_display",
+  "description",
+  "example",
+  "personality",
+  "scenario",
+]);
 const MAX_CHARACTER_FIELD_RESOLUTION_DEPTH = 4;
 const MAX_DICE_COUNT = 1000;
 const MAX_DICE_SIDES = 1_000_000;
@@ -636,9 +651,23 @@ function resolveDeferredCharacterConditionals(template: string, ctx: MacroContex
   });
 }
 
+function hasCharacterMacro(template: string): boolean {
+  let searchIndex = 0;
+  while (searchIndex < template.length) {
+    const tag = readNextMacroTag(template, searchIndex);
+    if (!tag) return false;
+    if (CHARACTER_MACRO_NAMES.has(tag.body.toLowerCase())) return true;
+
+    const condition = parseIfCondition(tag.body);
+    if (condition !== null && conditionDependsOnCharacter(condition)) return true;
+    searchIndex = tag.end;
+  }
+  return false;
+}
+
 function expandBracketedCharacterBlocks(template: string, ctx: MacroContext): string {
   const profiles = ctx.characterProfiles ?? [];
-  if (profiles.length <= 1 || !CHARACTER_MACRO_PATTERN.test(template)) {
+  if (profiles.length <= 1 || !hasCharacterMacro(template)) {
     return template;
   }
 
@@ -664,7 +693,7 @@ function expandBracketedCharacterBlocks(template: string, ctx: MacroContext): st
     }
 
     const block = lines.slice(index, endIndex + 1).join("\n");
-    if (!CHARACTER_MACRO_PATTERN.test(block)) {
+    if (!hasCharacterMacro(block)) {
       expandedLines.push(...lines.slice(index, endIndex + 1));
       index = endIndex;
       continue;

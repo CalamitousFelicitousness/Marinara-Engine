@@ -6234,6 +6234,76 @@ test("chat toolbar panels close when their trigger is clicked again across modes
   }
 });
 
+test("message search stays before Chat Settings and jumps to unloaded history", async ({ page, request }) => {
+  const chats: Array<{ id: string; mode: "conversation" | "roleplay" }> = [];
+
+  for (const mode of ["conversation", "roleplay"] as const) {
+    const chatResponse = await request.post("/api/chats", {
+      data: { name: `${mode} Message Search Smoke`, mode, characterIds: [] },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    for (let index = 0; index < 85; index += 1) {
+      const content =
+        index === 4
+          ? "Ancient clue: needle.* is a literal phrase."
+          : index === 5
+            ? "Ancient clue: needleXYZ would match a regular expression."
+            : `${mode} history message ${index + 1}.`;
+      const messageResponse = await request.post(`/api/chats/${chat.id}/messages`, {
+        data: { role: "user", content },
+      });
+      expect(messageResponse.ok()).toBeTruthy();
+    }
+
+    chats.push({ id: chat.id, mode });
+  }
+
+  await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chats[0]!.id);
+
+  try {
+    await page.goto("/");
+
+    for (const [index, chat] of chats.entries()) {
+      if (index > 0) {
+        await page.evaluate((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+        await page.reload();
+      }
+
+      if ((page.viewportSize()?.width ?? 0) < 768) {
+        await page.getByRole("button", { name: "More options", exact: true }).filter({ visible: true }).click();
+      }
+      const searchButton = page.getByRole("button", { name: "Search messages", exact: true }).filter({ visible: true });
+
+      await expect(searchButton, `${chat.mode} search trigger`).toHaveCount(1);
+      const targetMessage = page
+        .locator("[data-chat-scroll]")
+        .getByText("Ancient clue: needle.* is a literal phrase.", { exact: true });
+      await expect(targetMessage).toHaveCount(0);
+      expect(
+        await searchButton.evaluate(
+          (button) => button.nextElementSibling?.getAttribute("data-chat-toolbar-panel-action") ?? null,
+        ),
+      ).toBe("settings");
+
+      await searchButton.click();
+      const searchPanel = page.getByRole("dialog", { name: "Search messages", exact: true });
+      await expect(searchPanel).toBeVisible();
+      await searchPanel.getByRole("searchbox", { name: "Search messages in this chat" }).fill("NEEDLE.*");
+      await expect(searchPanel.getByRole("status")).toHaveText("1 match");
+      const result = searchPanel.locator("button").filter({ hasText: "needle.* is a literal phrase" });
+      await expect(result).toHaveCount(1);
+      await result.click();
+
+      await expect(targetMessage).toBeVisible({ timeout: 30_000 });
+      await expect(targetMessage).toBeInViewport();
+      await searchPanel.getByRole("button", { name: "Close message search" }).click();
+    }
+  } finally {
+    await Promise.allSettled(chats.map((chat) => request.delete(`/api/chats/${chat.id}`)));
+  }
+});
+
 test("prompt preset transfers discard deprecated generation parameters", async ({ request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Prompt preset transfer contracts are covered once.");
 

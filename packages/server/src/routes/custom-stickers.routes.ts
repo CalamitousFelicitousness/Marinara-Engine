@@ -12,6 +12,7 @@ import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir } from "../utils/security.js";
 import {
   resolveFlatMediaFile,
+  sendValidatedMediaFile,
   validateImageAssetBuffer,
   validateImageAssetFile,
 } from "../utils/media-file-security.js";
@@ -173,7 +174,7 @@ export async function customStickersRoutes(app: FastifyInstance) {
     if (!filePath || !existsSync(filePath)) return reply.status(404).send({ error: "Not found" });
     const image = await validateImageAssetFile(filePath, filename);
     if (!image) return reply.status(404).send({ error: "Not found" });
-    return reply.header("Content-Type", image.mimeType).sendFile(filename, CUSTOM_STICKERS_ROOT);
+    return sendValidatedMediaFile(reply, image, { method: req.method, rangeHeader: req.headers.range });
   });
 
   // ── Rename ──

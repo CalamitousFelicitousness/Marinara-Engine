@@ -19,7 +19,7 @@ import {
   type BackgroundLibraryOrganization,
 } from "../services/background-library-organization.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
-import { validateImageAssetFile } from "../utils/media-file-security.js";
+import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -707,12 +707,19 @@ export async function backgroundsRoutes(app: FastifyInstance) {
     // Downscaled variant when asked for one; falls back to the original on any miss.
     const thumbPath = requestedWidth ? await resolveThumbPath(filePath, requestedWidth) : null;
 
-    const { createReadStream } = await import("fs");
-    const stream = createReadStream(thumbPath ?? filePath);
-    return reply
-      .header("Content-Type", thumbPath ? "image/webp" : image.mimeType)
-      .header("Cache-Control", "no-cache, must-revalidate")
-      .send(stream);
+    if (thumbPath) {
+      await image.handle.close().catch(() => undefined);
+      const { createReadStream } = await import("fs");
+      return reply
+        .header("Content-Type", "image/webp")
+        .header("Cache-Control", "no-cache, must-revalidate")
+        .send(createReadStream(thumbPath));
+    }
+    return sendValidatedMediaFile(reply, image, {
+      method: req.method,
+      rangeHeader: req.headers.range,
+      cacheControl: "no-cache, must-revalidate",
+    });
   });
 
   // Delete a background

@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -26,7 +35,7 @@ const [
     promoteStagedProfileAssets,
     stageProfileImportAssets,
   },
-  { validateImageAssetBuffer, validateImageAssetFile },
+  { sendValidatedMediaFile, validateImageAssetBuffer, validateImageAssetFile, validateVideoAssetFile },
 ] = await Promise.all([
   import("../../packages/server/src/db/file-backed-store.js"),
   import("../../packages/server/src/db/schema/index.js"),
@@ -70,7 +79,9 @@ try {
   const passiveSvgPath = join(dataDir, "passive.svg");
   writeFileSync(passiveSvgPath, passiveSvgWithDoctype);
   assert.equal(await validateImageAssetFile(passiveSvgPath, "passive.svg"), null);
-  assert.ok(await validateImageAssetFile(passiveSvgPath, "passive.svg", { allowSvg: true }));
+  const validatedSvg = await validateImageAssetFile(passiveSvgPath, "passive.svg", { allowSvg: true });
+  assert.ok(validatedSvg);
+  await validatedSvg.handle.close();
   writeFileSync(outsideFile, validPng);
   assert.equal(
     await validateImageAssetFile(outsideFile, "outside.png"),
@@ -85,6 +96,47 @@ try {
     null,
     "SVG validation must reject oversized documents before reading them",
   );
+
+  const raceSafePath = join(dataDir, "race-safe.png");
+  writeFileSync(raceSafePath, validPng);
+  const validatedRaceSafeImage = await validateImageAssetFile(raceSafePath, "race-safe.png");
+  assert.ok(validatedRaceSafeImage);
+  const replacementPath = join(dataDir, "replacement.html");
+  writeFileSync(replacementPath, html);
+  renameSync(replacementPath, raceSafePath);
+  const descriptorApp = Fastify();
+  descriptorApp.get("/validated-image", (req, reply) =>
+    sendValidatedMediaFile(reply, validatedRaceSafeImage, { method: req.method, rangeHeader: req.headers.range }),
+  );
+  await descriptorApp.ready();
+  const descriptorResponse = await descriptorApp.inject({ method: "GET", url: "/validated-image" });
+  assert.equal(descriptorResponse.statusCode, 200);
+  assert.deepEqual(
+    descriptorResponse.rawPayload,
+    validPng,
+    "serving must use the validated descriptor even when its path is replaced",
+  );
+  await descriptorApp.close();
+
+  const videoPath = join(dataDir, "range.mp4");
+  const rangeVideo = Buffer.concat([validMp4, Buffer.from(Array.from({ length: 128 }, (_, index) => index))]);
+  writeFileSync(videoPath, rangeVideo);
+  const validatedVideo = await validateVideoAssetFile(videoPath, "range.mp4");
+  assert.ok(validatedVideo);
+  const rangeApp = Fastify();
+  rangeApp.get("/video", (req, reply) =>
+    sendValidatedMediaFile(reply, validatedVideo, { method: req.method, rangeHeader: req.headers.range }),
+  );
+  await rangeApp.ready();
+  const rangeResponse = await rangeApp.inject({
+    method: "GET",
+    url: "/video",
+    headers: { range: "bytes=4-11" },
+  });
+  assert.equal(rangeResponse.statusCode, 206);
+  assert.equal(rangeResponse.headers["content-range"], `bytes 4-11/${rangeVideo.length}`);
+  assert.deepEqual(rangeResponse.rawPayload, rangeVideo.subarray(4, 12));
+  await rangeApp.close();
 
   await assert.rejects(
     stageProfileImportAssets(

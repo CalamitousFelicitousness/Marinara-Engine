@@ -1,5 +1,6 @@
-import { open, realpath } from "node:fs/promises";
+import { open, realpath, type FileHandle } from "node:fs/promises";
 import { basename, extname, join, resolve, sep } from "node:path";
+import type { FastifyReply } from "fastify";
 import { getDataDir, getFileStorageDir } from "../config/runtime-config.js";
 import { assertInsideDir, isAllowedImageBuffer } from "./security.js";
 
@@ -13,9 +14,79 @@ export type ValidatedImageAsset = {
   isSvg: boolean;
 };
 
+export type ValidatedImageFile = ValidatedImageAsset & {
+  handle: FileHandle;
+  size: number;
+};
+
 export type ValidatedVideoAsset = {
   mimeType: string;
 };
+
+export type ValidatedVideoFile = ValidatedVideoAsset & {
+  handle: FileHandle;
+  size: number;
+};
+
+type ByteRange = { start: number; end: number } | "unsatisfiable" | null;
+
+function parseSingleByteRange(header: string | undefined, size: number): ByteRange {
+  if (!header?.startsWith("bytes=")) return null;
+  const value = header.slice("bytes=".length).trim();
+  if (!value || value.includes(",")) return null;
+  const separatorIndex = value.indexOf("-");
+  if (separatorIndex < 0 || value.indexOf("-", separatorIndex + 1) >= 0) return null;
+
+  const startText = value.slice(0, separatorIndex).trim();
+  const endText = value.slice(separatorIndex + 1).trim();
+  if (!/^\d*$/u.test(startText) || !/^\d*$/u.test(endText) || (!startText && !endText)) {
+    return "unsatisfiable";
+  }
+
+  if (!startText) {
+    const suffixLength = Number(endText);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0 || size <= 0) return "unsatisfiable";
+    return { start: Math.max(0, size - suffixLength), end: size - 1 };
+  }
+
+  const start = Number(startText);
+  if (!Number.isSafeInteger(start) || start < 0 || start >= size) return "unsatisfiable";
+  if (!endText) return { start, end: size - 1 };
+
+  const requestedEnd = Number(endText);
+  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) return "unsatisfiable";
+  return { start, end: Math.min(requestedEnd, size - 1) };
+}
+
+/** Send the already-validated descriptor, retaining ordinary single-range video playback. */
+export async function sendValidatedMediaFile(
+  reply: FastifyReply,
+  media: ValidatedImageFile | ValidatedVideoFile,
+  options: { method?: string; rangeHeader?: string; cacheControl?: string } = {},
+) {
+  const range = parseSingleByteRange(options.rangeHeader, media.size);
+  reply
+    .header("Content-Type", media.mimeType)
+    .header("Cache-Control", options.cacheControl ?? "public, max-age=0")
+    .header("Accept-Ranges", "bytes");
+
+  if (range === "unsatisfiable") {
+    await media.handle.close().catch(() => undefined);
+    return reply.status(416).header("Content-Range", `bytes */${media.size}`).send();
+  }
+
+  const start = range?.start ?? 0;
+  const end = range?.end ?? Math.max(0, media.size - 1);
+  const contentLength = media.size === 0 ? 0 : end - start + 1;
+  reply.header("Content-Length", String(contentLength));
+  if (range) reply.status(206).header("Content-Range", `bytes ${start}-${end}/${media.size}`);
+
+  if (options.method === "HEAD" || media.size === 0) {
+    await media.handle.close().catch(() => undefined);
+    return reply.send();
+  }
+  return reply.send(media.handle.createReadStream({ start, end }));
+}
 
 function normalizedRasterExtension(extension: string): string {
   return extension === ".jpeg" ? "jpg" : extension.slice(1);
@@ -173,53 +244,62 @@ export async function validateImageAssetFile(
   filePath: string,
   filename = basename(filePath),
   options: { allowSvg?: boolean } = {},
-): Promise<ValidatedImageAsset | null> {
+): Promise<ValidatedImageFile | null> {
   const safeFilePath = await resolveAllowedMediaPath(filePath);
   if (!safeFilePath) return null;
+  let handle: FileHandle | null = null;
   if (extname(filename).toLowerCase() === SVG_EXTENSION) {
     if (!options.allowSvg) return null;
-    let handle;
     try {
       handle = await open(safeFilePath, "r");
       const file = await handle.stat();
-      if (!file.isFile() || file.size > SVG_IMAGE_MAX_BYTES) return null;
+      if (!file.isFile() || file.size > SVG_IMAGE_MAX_BYTES) throw new Error("Invalid SVG file");
       const bytes = Buffer.alloc(file.size + 1);
       const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
-      if (bytesRead !== file.size) return null;
-      return validateImageAssetBuffer(bytes.subarray(0, bytesRead), filename, options);
+      if (bytesRead !== file.size) throw new Error("Incomplete SVG read");
+      const image = validateImageAssetBuffer(bytes.subarray(0, bytesRead), filename, options);
+      if (!image) throw new Error("Unsafe SVG file");
+      return { ...image, handle, size: file.size };
     } catch {
-      return null;
-    } finally {
       await handle?.close().catch(() => undefined);
+      return null;
     }
   }
 
-  let handle;
   try {
     handle = await open(safeFilePath, "r");
     const header = Buffer.alloc(IMAGE_HEADER_BYTES);
     const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    return validateImageAssetBuffer(header.subarray(0, bytesRead), filename, options);
+    const image = validateImageAssetBuffer(header.subarray(0, bytesRead), filename, options);
+    if (!image) throw new Error("Invalid image file");
+    const file = await handle.stat();
+    if (!file.isFile()) throw new Error("Invalid image file");
+    return { ...image, handle, size: file.size };
   } catch {
-    return null;
-  } finally {
     await handle?.close().catch(() => undefined);
+    return null;
   }
 }
 
-export async function validateVideoAssetFile(filePath: string, filename = basename(filePath)) {
+export async function validateVideoAssetFile(
+  filePath: string,
+  filename = basename(filePath),
+): Promise<ValidatedVideoFile | null> {
   const safeFilePath = await resolveAllowedMediaPath(filePath);
   if (!safeFilePath) return null;
-  let handle;
+  let handle: FileHandle | null = null;
   try {
     handle = await open(safeFilePath, "r");
     const header = Buffer.alloc(IMAGE_HEADER_BYTES);
     const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    return validateVideoAssetBuffer(header.subarray(0, bytesRead), filename);
+    const video = validateVideoAssetBuffer(header.subarray(0, bytesRead), filename);
+    if (!video) throw new Error("Invalid video file");
+    const file = await handle.stat();
+    if (!file.isFile()) throw new Error("Invalid video file");
+    return { ...video, handle, size: file.size };
   } catch {
-    return null;
-  } finally {
     await handle?.close().catch(() => undefined);
+    return null;
   }
 }
 

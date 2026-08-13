@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
-import { validateImageAssetFile } from "../utils/media-file-security.js";
+import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 import { npcAvatarSlug } from "../services/game/npc-avatar-utils.js";
 
 const AVATAR_DIR = join(DATA_DIR, "avatars");
@@ -39,12 +39,11 @@ export async function avatarsRoutes(app: FastifyInstance) {
 
     const image = await validateImageAssetFile(filePath, filename);
     if (!image) return reply.status(404).send({ error: "Not found" });
-    const { createReadStream } = await import("fs");
-    const stream = createReadStream(filePath);
-    return reply
-      .header("Content-Type", image.mimeType)
-      .header("Cache-Control", "public, max-age=31536000, immutable")
-      .send(stream);
+    return sendValidatedMediaFile(reply, image, {
+      method: req.method,
+      rangeHeader: req.headers.range,
+      cacheControl: "public, max-age=31536000, immutable",
+    });
   });
 
   /** Serve an NPC avatar image by chatId and filename. */
@@ -62,9 +61,11 @@ export async function avatarsRoutes(app: FastifyInstance) {
 
     const image = await validateImageAssetFile(filePath, filename);
     if (!image) return reply.status(404).send({ error: "Not found" });
-    const { createReadStream } = await import("fs");
-    const stream = createReadStream(filePath);
-    return reply.header("Content-Type", image.mimeType).header("Cache-Control", "public, max-age=604800").send(stream);
+    return sendValidatedMediaFile(reply, image, {
+      method: req.method,
+      rangeHeader: req.headers.range,
+      cacheControl: "public, max-age=604800",
+    });
   });
 
   /** Upload an NPC avatar (base64 data URL). */

@@ -4,7 +4,7 @@
 import type { FastifyInstance } from "fastify";
 import AdmZip from "adm-zip";
 import { execFile } from "child_process";
-import { existsSync, mkdirSync, createReadStream, readdirSync, unlinkSync, statSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync } from "fs";
 import { randomUUID } from "crypto";
 import { writeFile, mkdir, unlink, copyFile, rm, readFile, mkdtemp } from "fs/promises";
 import { tmpdir } from "os";
@@ -87,7 +87,7 @@ import {
   type ImageStyleProfileSettings,
 } from "@marinara-engine/shared";
 import { assertInsideDir, isAllowedImageBuffer } from "../utils/security.js";
-import { validateImageAssetFile } from "../utils/media-file-security.js";
+import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1672,12 +1672,12 @@ export async function spritesRoutes(app: FastifyInstance) {
     const image = await validateImageAssetFile(filePath, filename, { allowSvg: true });
     if (!image) return reply.status(404).send({ error: "Not found" });
 
-    const stream = createReadStream(filePath);
     if (image.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
-    return reply
-      .header("Content-Type", image.mimeType)
-      .header("Cache-Control", "public, max-age=31536000, immutable")
-      .send(stream);
+    return sendValidatedMediaFile(reply, image, {
+      method: req.method,
+      rangeHeader: req.headers.range,
+      cacheControl: "public, max-age=31536000, immutable",
+    });
   });
 
   /**

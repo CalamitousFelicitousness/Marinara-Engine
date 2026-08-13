@@ -32,7 +32,7 @@ import { assertInsideDir } from "../utils/security.js";
 import { getSharp } from "../utils/sharp.js";
 import { openFolderInFileManager } from "../lib/open-folder-in-file-manager.js";
 import { parseThumbnailWidth, resolveThumbPath } from "../services/image/image-thumbnail.js";
-import { validateImageAssetFile } from "../utils/media-file-security.js";
+import { sendValidatedMediaFile, validateImageAssetFile } from "../utils/media-file-security.js";
 
 const META_PATH = join(GAME_ASSETS_DIR, "meta.json");
 
@@ -506,24 +506,25 @@ export async function gameAssetsRoutes(app: FastifyInstance) {
     const ext = extname(wildcard).toLowerCase();
     const mime = MIME_MAP[ext] ?? "application/octet-stream";
 
-    // Downscaled variant when asked for one; falls back to the original on any miss.
-    const width = parseThumbnailWidth((req.query as { w?: string }).w);
-    const thumbPath = width ? await resolveThumbPath(filePath, width) : null;
-
-    if (thumbPath) {
-      return reply
-        .header("Content-Type", "image/webp")
-        .header("Cache-Control", "public, max-age=604800")
-        .send(createReadStream(thumbPath));
-    }
     if (IMAGE_EXTS.has(ext)) {
       const image = await validateImageAssetFile(filePath, safeRelativePath, { allowSvg: true });
       if (!image) return reply.status(404).send({ error: "Asset not found" });
+      // A generated WebP is passive even if the source path is swapped after validation.
+      const width = parseThumbnailWidth((req.query as { w?: string }).w);
+      const thumbPath = width ? await resolveThumbPath(filePath, width) : null;
+      if (thumbPath) {
+        await image.handle.close().catch(() => undefined);
+        return reply
+          .header("Content-Type", "image/webp")
+          .header("Cache-Control", "public, max-age=604800")
+          .send(createReadStream(thumbPath));
+      }
       if (image.isSvg) reply.header("Content-Security-Policy", "sandbox; default-src 'none'");
-      return reply
-        .header("Content-Type", image.mimeType)
-        .header("Cache-Control", "public, max-age=604800")
-        .sendFile(safeRelativePath, GAME_ASSETS_DIR);
+      return sendValidatedMediaFile(reply, image, {
+        method: req.method,
+        rangeHeader: req.headers.range,
+        cacheControl: "public, max-age=604800",
+      });
     }
     if (MUSIC_FILE_EXTENSIONS.has(ext)) {
       return reply

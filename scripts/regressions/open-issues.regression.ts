@@ -1933,16 +1933,8 @@ try {
   assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
   assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
   assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
-  assert.equal(
-    professorMariParamEntry.excludeRecursion,
-    true,
-    "create must persist an embedded entry's recursion flag",
-  );
-  assert.equal(
-    professorMariParamEntry.characterFilterMode,
-    "include",
-    "create must persist an embedded entry's filter mode",
-  );
+  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
+  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
   assert.deepEqual(
     professorMariParamEntry.characterFilterIds,
     ["char-embedded"],
@@ -1998,11 +1990,7 @@ try {
     },
     apply: true,
   });
-  assert.equal(
-    professorMariSettingsUpdate.ok,
-    true,
-    `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`,
-  );
+  assert.equal(professorMariSettingsUpdate.ok, true, `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`);
   const professorMariSettingsEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
   assert.ok(professorMariSettingsEntry);
   assert.equal(professorMariSettingsEntry.probability, 100, "probability is clamped to 0-100");
@@ -2269,7 +2257,9 @@ try {
       undefined,
       "whole-lorebook delete clears the embedded lorebook pointer",
     );
-    const wholeDeleteApproval = mariDb.getPendingApprovals().find((approval) => !pendingBeforeDelete.has(approval.id));
+    const wholeDeleteApproval = mariDb
+      .getPendingApprovals()
+      .find((approval) => !pendingBeforeDelete.has(approval.id));
     assert.ok(wholeDeleteApproval, "whole-lorebook delete produced a reviewable approval");
     const restoredWholeDelete = await mariDb.restoreAppliedReview(wholeDeleteApproval.id);
     assert.ok(restoredWholeDelete && "history" in restoredWholeDelete, "whole-lorebook Restore must succeed");
@@ -2278,7 +2268,11 @@ try {
       character_book?: { entries?: unknown[] };
       extensions?: { importMetadata?: { embeddedLorebook?: { lorebookId?: string } } };
     };
-    assert.deepEqual(restoredHostData.character_book?.entries, [], "Restore re-embeds even an empty character book");
+    assert.deepEqual(
+      restoredHostData.character_book?.entries,
+      [],
+      "Restore re-embeds even an empty character book",
+    );
     assert.equal(
       restoredHostData.extensions?.importMetadata?.embeddedLorebook?.lorebookId,
       embeddedSyncLorebook.id,
@@ -4932,10 +4926,7 @@ assert.match(characterEditorSource, /className="flex flex-col gap-2 sm:flex-row"
 assert.match(personaEditorSource, /className="flex flex-col gap-2 sm:flex-row"/u);
 assert.match(fileDownloadSource, /MarinaraAndroid/u);
 assert.match(spriteDownloadSource, /saveBlobToDevice/u);
-assert.match(
-  androidMainActivitySource,
-  /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u,
-);
+assert.match(androidMainActivitySource, /public void saveFile\(String token, String base64Data, String mimeType, String filename\)/u);
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
   characterEditorSource,
@@ -8175,7 +8166,8 @@ try {
     createdAt: "2026-08-12T08:00:00.000Z",
   } satisfies GameState;
   assert.deepEqual(
-    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>).worldCustomFields,
+    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>)
+      .worldCustomFields,
     gameState.worldCustomFields,
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.getValue(gameState), {
@@ -8196,9 +8188,10 @@ try {
     },
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
-  assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
-    error: "World custom fields must be a JSON array",
-  });
+  assert.deepEqual(
+    AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }),
+    { error: "World custom fields must be a JSON array" },
+  );
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
     { personaStats: [] },
@@ -8246,11 +8239,8 @@ try {
   assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
   assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
   assert.equal(
-    (
-      settingsDrawerSource.match(
-        /packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu,
-      ) ?? []
-    ).length,
+    (settingsDrawerSource.match(/packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu) ?? [])
+      .length,
     3,
     "Long-Term Memory must use the same un-nested Agent Settings surface in every chat mode",
   );

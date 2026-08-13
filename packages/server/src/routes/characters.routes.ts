@@ -113,7 +113,11 @@ const ALLOWED_CALL_VIDEO_CLIP_UPLOAD_EXTS = new Set([".mp4"]);
 const renameCardVersionSchema = z.object({ version: z.string().trim().min(1).max(100) });
 type UploadedMultipartFile = NonNullable<Awaited<ReturnType<FastifyRequest["file"]>>>;
 
-function applyTrackerCardPaint(currentValue: unknown, paint: Record<string, unknown>, preserveStatIcons = true) {
+function applyTrackerCardPaint(
+  currentValue: unknown,
+  paint: Record<string, unknown>,
+  preserveStatIcons = true,
+) {
   const current = parseCharacterDataRecord(currentValue);
   const next = { ...paint };
   const preservedKeys = preserveStatIcons
@@ -128,32 +132,10 @@ function applyTrackerCardPaint(currentValue: unknown, paint: Record<string, unkn
 
 // Exactly { mode: "chat" } is the bare-chat clear sentinel: it clears paint/stat-icon state while preserving stored portrait framing.
 function isTrackerCardClear(value: unknown): boolean {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 1 &&
-    (value as Record<string, unknown>).mode === "chat"
-  );
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && (value as Record<string, unknown>).mode === "chat";
 }
 
-const TRACKER_CARD_PAINT_FIELDS = [
-  "mode",
-  "displayEnabled",
-  "nameColor",
-  "nameColorOpacity",
-  "accentEnabled",
-  "dialogueColor",
-  "dialogueColorOpacity",
-  "surfaceEnabled",
-  "boxColor",
-  "boxColorOpacity",
-  "tintIntensity",
-  "materialBrightness",
-  "glowIntensity",
-  "contrastIntensity",
-  "portraitStageBackground",
-] as const;
+const TRACKER_CARD_PAINT_FIELDS = ["mode", "displayEnabled", "nameColor", "nameColorOpacity", "accentEnabled", "dialogueColor", "dialogueColorOpacity", "surfaceEnabled", "boxColor", "boxColorOpacity", "tintIntensity", "materialBrightness", "glowIntensity", "contrastIntensity", "portraitStageBackground"] as const;
 
 function applyPersonaTrackerCardPaint(currentValue: unknown, paint: Record<string, unknown>) {
   const current = normalizeTrackerCardColorConfig(parseCharacterDataRecord(currentValue));
@@ -167,8 +149,7 @@ function applyPersonaTrackerCardPaint(currentValue: unknown, paint: Record<strin
 }
 
 function mergePersonaTrackerCardColors(currentValue: unknown, patch: Record<string, unknown>) {
-  const current = parseCharacterDataRecord(currentValue),
-    next = { ...current, ...patch };
+  const current = parseCharacterDataRecord(currentValue), next = { ...current, ...patch };
   for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom"] as const) {
     if (Object.hasOwn(current, key)) next[key] = current[key];
     else delete next[key];
@@ -177,10 +158,8 @@ function mergePersonaTrackerCardColors(currentValue: unknown, patch: Record<stri
 }
 
 function buildTrackerCardPortraitClear(currentValue: unknown): Record<string, unknown> {
-  const current = normalizeTrackerCardColorConfig(currentValue),
-    result: Record<string, unknown> = { mode: "chat" };
-  for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom"] as const)
-    if (Object.hasOwn(current, key)) result[key] = current[key];
+  const current = normalizeTrackerCardColorConfig(currentValue), result: Record<string, unknown> = { mode: "chat" };
+  for (const key of ["portraitFocusX", "portraitFocusY", "portraitZoom"] as const) if (Object.hasOwn(current, key)) result[key] = current[key];
   return result;
 }
 
@@ -693,7 +672,8 @@ async function buildNativePersonaEnvelope(
     ...personaData
   } = persona;
   const personaId = typeof _id === "string" ? _id : "";
-  const characterSheetImageId = typeof rawCharacterSheetImageId === "string" ? rawCharacterSheetImageId : null;
+  const characterSheetImageId =
+    typeof rawCharacterSheetImageId === "string" ? rawCharacterSheetImageId : null;
   const [avatar, sprites, gallery] = await Promise.all([
     readAvatarDataUrl(typeof avatarPath === "string" ? avatarPath : null),
     personaId ? readSpritesForId(personaId) : Promise.resolve([] as Array<{ filename: string; data: string }>),
@@ -759,10 +739,7 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   if (usesFallbackName) validationFields.name = "Unnamed Persona";
   const topLevelPaintFields = ["nameColor", "dialogueColor", "boxColor"] as const;
   for (const field of topLevelPaintFields) {
-    if (
-      typeof validationFields[field] === "string" &&
-      !personaLocalPaintSchema.safeParse(validationFields[field]).success
-    ) {
+    if (typeof validationFields[field] === "string" && !personaLocalPaintSchema.safeParse(validationFields[field]).success) {
       delete validationFields[field];
     }
   }
@@ -824,7 +801,11 @@ export async function charactersRoutes(app: FastifyInstance) {
   const characterUpdateQueues = new Map<string, Promise<unknown>>();
   const personaUpdateQueues = new Map<string, Promise<unknown>>();
 
-  function enqueueUpdate<T>(queues: Map<string, Promise<unknown>>, id: string, update: () => Promise<T>): Promise<T> {
+  function enqueueUpdate<T>(
+    queues: Map<string, Promise<unknown>>,
+    id: string,
+    update: () => Promise<T>,
+  ): Promise<T> {
     const previous = queues.get(id);
     const next = previous ? previous.catch(() => undefined).then(update) : update();
     queues.set(id, next);
@@ -895,7 +876,9 @@ export async function charactersRoutes(app: FastifyInstance) {
       styleProfiles: imageSettings.styleProfiles,
       styleProfileId: body.styleProfileId,
       imageDefaults,
-      hardNegative: isCharacterSheet ? CHARACTER_SHEET_HARD_NEGATIVE_PROMPT : AVATAR_GENERATION_HARD_NEGATIVE_PROMPT,
+      hardNegative: isCharacterSheet
+        ? CHARACTER_SHEET_HARD_NEGATIVE_PROMPT
+        : AVATAR_GENERATION_HARD_NEGATIVE_PROMPT,
     });
     const previewSize = resolveImagePromptReviewSize({
       connection: resolved.conn,
@@ -1063,7 +1046,9 @@ export async function charactersRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Params: { id: string } }>("/:id/versions/reset", async (req, reply) => {
-    const reset = await enqueueUpdate(characterUpdateQueues, req.params.id, () => storage.resetVersions(req.params.id));
+    const reset = await enqueueUpdate(characterUpdateQueues, req.params.id, () =>
+      storage.resetVersions(req.params.id),
+    );
     if (!reset) return reply.status(404).send({ error: "Character not found" });
     return reset;
   });
@@ -1136,11 +1121,16 @@ export async function charactersRoutes(app: FastifyInstance) {
         applyTrackerCardPaint(currentExtensions.trackerCardColors, body.paint as Record<string, unknown>),
       );
       const extensions: Record<string, unknown> = { trackerCardColors };
-      return storage.update(req.params.id, { extensions } as Partial<CharacterData>, undefined, {
-        skipVersionSnapshot: true,
-        versionSource: "settings-tracker-card-colors",
-        mergeExtensions: true,
-      });
+      return storage.update(
+        req.params.id,
+        { extensions } as Partial<CharacterData>,
+        undefined,
+        {
+          skipVersionSnapshot: true,
+          versionSource: "settings-tracker-card-colors",
+          mergeExtensions: true,
+        },
+      );
     });
     if (!updated) return reply.status(404).send({ error: "Character not found" });
     return updated;
@@ -1986,8 +1976,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     try {
       await mkdir(avatarsDir, { recursive: true });
       await writeFile(filepath, imageBuffer);
-      const characterData =
-        body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
+      const characterData = body.data === undefined ? {} : (updateCharacterSchema.parse({ data: body.data }).data ?? {});
       const updated = await enqueueUpdate(characterUpdateQueues, id, async () => {
         const validatedData = await validateCharacterGalleryReferences(id, characterData, (imageId) =>
           characterGallery.getById(imageId),
@@ -2068,12 +2057,15 @@ export async function charactersRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.patch<{ Params: { id: string; versionId: string } }>("/personas/:id/versions/:versionId", async (req, reply) => {
-    const { version } = renameCardVersionSchema.parse(req.body);
-    const renamed = await storage.renamePersonaVersion(req.params.id, req.params.versionId, version);
-    if (!renamed) return reply.status(404).send({ error: "Persona version not found" });
-    return renamed;
-  });
+  app.patch<{ Params: { id: string; versionId: string } }>(
+    "/personas/:id/versions/:versionId",
+    async (req, reply) => {
+      const { version } = renameCardVersionSchema.parse(req.body);
+      const renamed = await storage.renamePersonaVersion(req.params.id, req.params.versionId, version);
+      if (!renamed) return reply.status(404).send({ error: "Persona version not found" });
+      return renamed;
+    },
+  );
 
   app.post<{ Params: { id: string } }>("/personas/:id/versions/reset", async (req, reply) => {
     const reset = await enqueueUpdate(personaUpdateQueues, req.params.id, () =>
@@ -2188,10 +2180,12 @@ export async function charactersRoutes(app: FastifyInstance) {
         parsed.data.portraitFocusY === undefined ||
         parsed.data.portraitZoom === undefined
       ) {
-        return reply.status(400).send({
-          error: "Tracker-card portrait contains invalid values",
-          ...(parsed.success ? {} : { issues: parsed.error.issues }),
-        });
+        return reply
+          .status(400)
+          .send({
+            error: "Tracker-card portrait contains invalid values",
+            ...(parsed.success ? {} : { issues: parsed.error.issues }),
+          });
       }
       portrait = {
         portraitFocusX: parsed.data.portraitFocusX,
@@ -2758,32 +2752,35 @@ export async function charactersRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
-  app.post<{ Params: { id: string; imageId: string } }>("/personas/:id/gallery/:imageId/avatar", async (req, reply) => {
-    const { id, imageId } = req.params;
-    const image = await personaGallery.getById(imageId);
-    if (!image || image.personaId !== id) {
-      return reply.status(404).send({ error: "Gallery image not found" });
-    }
-
-    let avatarPath: string | null = null;
-    try {
-      avatarPath = await copyGalleryImageToAvatar("persona", id, image.filePath);
-      // The previous crop was normalized against the old image's framing, so
-      // it must not carry over to the replacement avatar.
-      const updated = await enqueueUpdate(personaUpdateQueues, id, () =>
-        storage.updatePersona(id, { avatarPath, avatarCrop: "" }, { versionReason: "Avatar update" }),
-      );
-      if (!updated) {
-        await removeUnattachedAvatarFile({ avatarPath });
-        return reply.status(404).send({ error: "Persona not found" });
+  app.post<{ Params: { id: string; imageId: string } }>(
+    "/personas/:id/gallery/:imageId/avatar",
+    async (req, reply) => {
+      const { id, imageId } = req.params;
+      const image = await personaGallery.getById(imageId);
+      if (!image || image.personaId !== id) {
+        return reply.status(404).send({ error: "Gallery image not found" });
       }
-      return projectPersona(updated);
-    } catch (error) {
-      if (avatarPath) await removeUnattachedAvatarFile({ avatarPath });
-      logger.warn(error, "Failed to set persona %s avatar from gallery image %s", id, imageId);
-      return reply.status(400).send({ error: "Gallery image could not be used as an avatar" });
-    }
-  });
+
+      let avatarPath: string | null = null;
+      try {
+        avatarPath = await copyGalleryImageToAvatar("persona", id, image.filePath);
+        // The previous crop was normalized against the old image's framing, so
+        // it must not carry over to the replacement avatar.
+        const updated = await enqueueUpdate(personaUpdateQueues, id, () =>
+          storage.updatePersona(id, { avatarPath, avatarCrop: "" }, { versionReason: "Avatar update" }),
+        );
+        if (!updated) {
+          await removeUnattachedAvatarFile({ avatarPath });
+          return reply.status(404).send({ error: "Persona not found" });
+        }
+        return projectPersona(updated);
+      } catch (error) {
+        if (avatarPath) await removeUnattachedAvatarFile({ avatarPath });
+        logger.warn(error, "Failed to set persona %s avatar from gallery image %s", id, imageId);
+        return reply.status(400).send({ error: "Gallery image could not be used as an avatar" });
+      }
+    },
+  );
 
   app.patch<{
     Params: { id: string; imageId: string };

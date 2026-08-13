@@ -8,6 +8,8 @@ import { startSseKeepalive, startSseReply, trySendSseEvent } from "./generate/ss
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
+import { renderMariEditPrompt } from "../services/professor-mari/workspace-edit-render.js";
+import { logger } from "../lib/logger.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
 import {
   createMariInstructionsStorage,
@@ -84,6 +86,22 @@ const instructionUpdateSchema = z.object({
 const approveSchema = z.object({
   enable: z.boolean().optional(),
 });
+
+// #4931: per-row reject. Each row is the diffPreview index plus a {table,id,action} consistency
+// tuple the server re-checks against plan.changes[index] before reverting.
+const rejectRowRowSchema = z.object({
+  index: z.number().int().nonnegative(),
+  table: z.string().min(1),
+  id: z.string().min(1),
+  action: z.enum(["insert", "update", "replace", "delete"]),
+});
+
+const rejectRowsSchema = z.object({
+  rows: z.array(rejectRowRowSchema).min(1),
+});
+
+// #4931: synthetic Peek-Prompt render of one reviewed character/preset row (same identity tuple).
+const renderPromptSchema = rejectRowRowSchema;
 
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
   return requirePrivilegedAccess(request, reply, {
@@ -254,6 +272,38 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     }
     if (result.approval.affectedTables.installed_extensions) await personalServerExtensionRuntime.reloadAll();
     return { ok: true, ...result, completed: true };
+  });
+
+  app.post<{ Params: { id: string } }>("/approvals/:id/reject-rows", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const { rows } = rejectRowsSchema.parse(req.body ?? {});
+    const result = await getMariDbService(app.db).rejectRows(req.params.id, rows);
+    if (!result) return reply.status(404).send({ error: "Applied change review not found" });
+    if ("outcome" in result) {
+      // state_changed (#4852 F2) or invalid_selection: nothing was reverted. Return 200 with
+      // ok:false so the client shows result.error inline instead of a generic catch, mirroring the
+      // whole-batch reject's convention.
+      return { ok: false, ...result };
+    }
+    return { ok: true, ...result };
+  });
+
+  app.post<{ Params: { id: string } }>("/approvals/:id/render-prompt", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const body = renderPromptSchema.parse(req.body ?? {});
+    const change = getMariDbService(app.db).getPendingChangeRaw(req.params.id, body.index);
+    if (!change) return reply.status(404).send({ error: "Applied change review not found" });
+    if (change.table !== body.table || change.id !== body.id || change.action !== body.action) {
+      return reply.status(409).send({ error: "This review changed since it was shown. Reopen it and try again." });
+    }
+    // The preview is best-effort: it loads preset rows and assembles two prompts, so it can throw.
+    // Convert any failure into the same unavailable-preview response instead of a 500.
+    const render = await renderMariEditPrompt(app.db, change).catch((err) => {
+      logger.warn(err, "[professor-mari] prompt preview render failed for review %s", req.params.id);
+      return null;
+    });
+    if (!render) return reply.status(422).send({ error: "This change can't be shown as a prompt preview." });
+    return { ok: true, ...render };
   });
 
   app.get("/history", async (req, reply) => {

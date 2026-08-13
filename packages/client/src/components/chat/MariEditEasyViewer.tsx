@@ -5,12 +5,13 @@
 // snapshots) — no server call. Per-row Dismiss hides a reviewed change to reduce clutter; the
 // card's Keep/Restore still governs the whole batch.
 
+import type { ReactNode } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { computeFieldChanges, type FieldChange } from "../../lib/mari-edit-diff";
 import { diffWords } from "../../lib/word-diff";
 import type { MariDbPendingApproval, MariDbRowChange } from "@marinara-engine/shared";
-import { Check, FileText, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, FileText, Pencil, Sparkles, Trash2, Undo2 } from "lucide-react";
 
 type Row = Record<string, unknown> | null | undefined;
 
@@ -122,9 +123,10 @@ function KeyChips({ before, after }: { before: string[]; after: string[] }) {
   );
 }
 
+// `enabled`/`constant`/`selective` are shown as prominent status (the Disabled badge + activation
+// pill), not as generic on/off chips; the rest stay here as small "changed" chips.
 const LOREBOOK_TOGGLES: Array<{ key: string; labelKey: string }> = [
   { key: "enabled", labelKey: "ui.chat.mariediteasyviewer.toggleEnabled" },
-  { key: "constant", labelKey: "ui.chat.mariediteasyviewer.toggleConstant" },
   { key: "matchWholeWords", labelKey: "ui.chat.mariediteasyviewer.toggleWholeWords" },
   { key: "caseSensitive", labelKey: "ui.chat.mariediteasyviewer.toggleCaseSensitive" },
   { key: "useRegex", labelKey: "ui.chat.mariediteasyviewer.toggleRegex" },
@@ -132,8 +134,12 @@ const LOREBOOK_TOGGLES: Array<{ key: string; labelKey: string }> = [
 ];
 
 // Fields the lorebook layout renders itself; anything else Mari changes (probability, timing,
-// recursion, group weight, scan depth, folder, filters, vectorization) falls through to a generic
-// field diff so no editable setting is silently missing from the view.
+// recursion, group weight, scan depth, folder, filters, selective logic) falls through to a generic
+// field diff so no editable setting is silently missing from the view. `constant` is always shown by
+// the activation pill (flipping it always moves the activation type) and `excludeFromVectorization`
+// by the vectorization pill, so they are handled here. `selective` is NOT — it is dominated by
+// `constant` in the pill, so it is filtered dynamically below (only when it actually moved the
+// activation type) to avoid dropping a `selective` flip on a constant entry.
 const LOREBOOK_HANDLED_PATHS = new Set([
   "name",
   "keys",
@@ -142,13 +148,96 @@ const LOREBOOK_HANDLED_PATHS = new Set([
   "description",
   "enabled",
   "constant",
+  "excludeFromVectorization",
   "matchWholeWords",
   "caseSensitive",
   "useRegex",
   "locked",
 ]);
 
-function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
+// ── Lorebook entry activation + vectorization status ────────────────────────
+// Mirror the engine's own lorebook editor (LorebookEntryRow / ChatRoleplayPanels): activation is a
+// 3-way constant/selective/normal enum shown as a colored dot, "disabled" is the orthogonal `enabled`
+// flag, and vectorization is the `excludeFromVectorization` opt-out. Render them as always-visible
+// status pills so a reviewer can tell an entry's kind at a glance, not only when Mari's edit happens
+// to change one. Dots reuse the engine's colors (constant = yellow, selective = red, normal =
+// emerald, vector = cyan); the pill background stays neutral so those colors are never confused with
+// the diff's added-green / removed-red text.
+type ActivationType = "constant" | "selective" | "normal";
+
+const ACTIVATION_DOT: Record<ActivationType, string> = {
+  constant: "bg-yellow-300",
+  selective: "bg-red-400",
+  normal: "bg-emerald-400",
+};
+
+const ACTIVATION_LABEL_KEY: Record<ActivationType, string> = {
+  constant: "ui.chat.mariediteasyviewer.toggleConstant",
+  selective: "ui.chat.mariediteasyviewer.modeSelective",
+  normal: "ui.chat.mariediteasyviewer.modeNormal",
+};
+
+const ACTIVATION_HINT_KEY: Record<ActivationType, string> = {
+  constant: "ui.chat.mariediteasyviewer.modeConstantHint",
+  selective: "ui.chat.mariediteasyviewer.modeSelectiveHint",
+  normal: "ui.chat.mariediteasyviewer.modeNormalHint",
+};
+
+function activationType(row: Row): ActivationType {
+  if (truthy(row?.constant)) return "constant";
+  if (truthy(row?.selective)) return "selective";
+  return "normal";
+}
+
+// The reviewable vectorization setting (the opt-out flag). We deliberately do not read the derived
+// `embedding` array (whether bulk vectorization has run yet) — it isn't carried in the review
+// snapshot and is a runtime state, not something Mari's edit decides.
+function isVectorExcluded(row: Row): boolean {
+  return truthy(row?.excludeFromVectorization);
+}
+
+function StatusPill({ dot, label, title, faded }: { dot?: string; label: string; title?: string; faded?: boolean }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md bg-[var(--secondary)]/60 px-1.5 py-0.5 text-[0.625rem] font-medium text-[var(--foreground)]",
+        faded && "opacity-55 line-through",
+      )}
+    >
+      {dot && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
+      {label}
+    </span>
+  );
+}
+
+// Render one status as a single pill, or `from → to` when Mari's edit changes it. `before`/`after`
+// are null on the missing side of an insert/delete, so those collapse to a single pill. The `before`
+// pill's strikethrough + the arrow are visual-only, so `srChangedTo` gives assistive tech the
+// direction ("changed to") between the two labels.
+function renderStatusSlot<T>(
+  before: T | null,
+  after: T | null,
+  pill: (value: T, faded?: boolean) => ReactNode,
+  srChangedTo: string,
+): ReactNode {
+  if (before !== null && after !== null && before !== after) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        {pill(before, true)}
+        <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+          <span aria-hidden>→</span>
+          <span className="sr-only"> {srChangedTo} </span>
+        </span>
+        {pill(after)}
+      </span>
+    );
+  }
+  const value = after ?? before;
+  return value !== null ? pill(value) : null;
+}
+
+function LorebookEntryDiff({ change, collapsed }: { change: MariDbRowChange; collapsed?: boolean }) {
   const { t: localizeUi } = useUiTranslation();
   const before = change.before ?? null;
   const after = change.after ?? null;
@@ -178,7 +267,43 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
         )
       : [];
 
-  const remainingFields = computeFieldChanges(change).filter((field) => !LOREBOOK_HANDLED_PATHS.has(field.path));
+  // Activation (constant / selective / normal) and vectorization are shown as always-visible status
+  // pills so an entry's kind is obvious even when Mari's edit didn't touch them; a change renders as
+  // `from → to`.
+  const beforeAct = before ? activationType(before) : null;
+  const afterAct = after ? activationType(after) : null;
+  const beforeVec = before ? isVectorExcluded(before) : null;
+  const afterVec = after ? isVectorExcluded(after) : null;
+  const activationPill = (type: ActivationType, faded?: boolean) => (
+    <StatusPill
+      key={`act-${type}-${faded ? "from" : "to"}`}
+      dot={ACTIVATION_DOT[type]}
+      label={localizeUi(ACTIVATION_LABEL_KEY[type])}
+      title={localizeUi(ACTIVATION_HINT_KEY[type])}
+      faded={faded}
+    />
+  );
+  const vectorPill = (excluded: boolean, faded?: boolean) => (
+    <StatusPill
+      key={`vec-${excluded}-${faded ? "from" : "to"}`}
+      dot={excluded ? undefined : "bg-cyan-300"}
+      label={localizeUi(
+        excluded ? "ui.chat.mariediteasyviewer.vectorExcluded" : "ui.chat.mariediteasyviewer.vectorized",
+      )}
+      title={localizeUi(
+        excluded ? "ui.chat.mariediteasyviewer.vectorExcludedHint" : "ui.chat.mariediteasyviewer.vectorizedHint",
+      )}
+      faded={faded}
+    />
+  );
+
+  // `selective` is shown by the activation pill only when it actually moved the type; when `constant`
+  // dominates on both sides (the pill stays "constant"), keep the raw selective change in the generic
+  // diff so a selective flip on a constant entry is never silently dropped.
+  const activationChanged = beforeAct !== null && afterAct !== null && beforeAct !== afterAct;
+  const remainingFields = computeFieldChanges(change).filter(
+    (field) => !LOREBOOK_HANDLED_PATHS.has(field.path) && (field.path !== "selective" || !activationChanged),
+  );
 
   return (
     <div className="mari-editor-panel mari-editor-panel--soft space-y-2 rounded-lg p-2">
@@ -202,8 +327,13 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
               : localizeUi("ui.chat.mariediteasyviewer.toggleEnabled")}
           </span>
         )}
+        {renderStatusSlot(beforeAct, afterAct, activationPill, localizeUi("ui.chat.mariediteasyviewer.changedTo"))}
+        {renderStatusSlot(beforeVec, afterVec, vectorPill, localizeUi("ui.chat.mariediteasyviewer.changedTo"))}
       </div>
 
+      {/* Collapsing keeps the name + status summary above and folds away the bulky details. */}
+      {!collapsed && (
+        <>
       <div>
         <div className="mb-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.mariediteasyviewer.primaryKeys")}
@@ -267,12 +397,17 @@ function LorebookEntryDiff({ change }: { change: MariDbRowChange }) {
       )}
 
       {!source && <EmptyValue />}
+        </>
+      )}
     </div>
   );
 }
 
-function GenericRowDiff({ change }: { change: MariDbRowChange }) {
+function GenericRowDiff({ change, collapsed }: { change: MariDbRowChange; collapsed?: boolean }) {
   const { t: localizeUi } = useUiTranslation();
+  // A character/preset row is identified by the card header (its name), so collapsing hides the whole
+  // field diff.
+  if (collapsed) return null;
   const fields = computeFieldChanges(change);
   if (fields.length === 0) {
     return <p className="text-[0.6875rem] italic text-[var(--muted-foreground)]">{localizeUi("ui.chat.mariediteasyviewer.noFieldChanges")}</p>;
@@ -312,12 +447,47 @@ function actionMeta(action: MariDbRowChange["action"], localizeUi: (key: string)
   return { label: localizeUi("ui.chat.mariediteasyviewer.actionEdited"), icon: Pencil, tone: "text-[var(--muted-foreground)]" };
 }
 
-function RowCard({ change, onDismiss }: { change: MariDbRowChange; onDismiss: () => void }) {
+// A character or preset edit can be previewed as an assembled prompt. Deletes are NOT offered: the
+// field diff already shows the removed content, and a synthetic re-assembly of a deleted row is
+// either impossible (a character delete has no live row for the proxy to substitute) or misleading
+// (Mari's section delete also prunes the id from the preset's sectionOrder, so the assembler skips
+// the re-spliced section and the before/after come out identical).
+const PROMPT_RENDER_TABLES = new Set(["prompt_presets", "prompt_sections", "prompt_groups", "choice_blocks"]);
+function canRenderPrompt(change: MariDbRowChange): boolean {
+  if (change.action === "delete") return false;
+  return change.table === "characters" || PROMPT_RENDER_TABLES.has(change.table);
+}
+
+function RowCard({
+  change,
+  index,
+  collapsed,
+  onToggleCollapse,
+  onReject,
+  onRender,
+  busy,
+}: {
+  change: MariDbRowChange;
+  index: number;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onReject?: (change: MariDbRowChange, index: number) => void;
+  onRender?: (change: MariDbRowChange, index: number) => void;
+  busy?: boolean;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const meta = actionMeta(change.action, localizeUi);
   const MetaIcon = meta.icon;
   // A delete is Mari's most destructive action — make the whole row unmistakably red.
   const isDelete = change.action === "delete";
+  // Reject reverts the row on the server (a real undo). Only top-level lorebook entries are
+  // individually rejectable — the server refuses anything else — so the control is offered only there.
+  const canReject = Boolean(onReject) && change.table === "lorebook_entries";
+  const canRender = Boolean(onRender) && canRenderPrompt(change);
+  // rowTitle is the generic "Lorebook entry" for every entry row, so include the entry's own name in
+  // the toggle's accessible name; otherwise every collapse button reads identically to a screen reader.
+  const entryName = change.table === "lorebook_entries" ? stringField(change.after ?? change.before, "name") : "";
+  const accessibleName = entryName || rowTitle(change, localizeUi);
   return (
     <div
       className={cn(
@@ -326,48 +496,95 @@ function RowCard({ change, onDismiss }: { change: MariDbRowChange; onDismiss: ()
       )}
     >
       <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
-        <MetaIcon size="0.75rem" className={cn("shrink-0", meta.tone)} />
-        <span className="truncate text-[0.6875rem] font-semibold text-[var(--foreground)]">
-          {rowTitle(change, localizeUi)}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 text-[0.625rem]",
-            isDelete ? "font-semibold uppercase tracking-wide text-[var(--destructive)]" : meta.tone,
-          )}
-        >
-          {meta.label}
-        </span>
+        {/* The header is the accordion toggle: click to fold the details away and re-open later. */}
         <button
           type="button"
-          onClick={onDismiss}
-          title={localizeUi("ui.chat.mariediteasyviewer.dismissHint")}
-          aria-label={localizeUi("ui.chat.mariediteasyviewer.dismiss")}
-          className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-label={localizeUi(collapsed ? "ui.chat.mariediteasyviewer.expand" : "ui.chat.mariediteasyviewer.collapse", {
+            name: accessibleName,
+          })}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
         >
-          <Check size="0.7rem" />
-          {localizeUi("ui.chat.mariediteasyviewer.dismiss")}
+          {collapsed ? (
+            <ChevronRight size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
+          ) : (
+            <ChevronDown size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
+          )}
+          <MetaIcon size="0.75rem" className={cn("shrink-0", meta.tone)} />
+          <span className="truncate text-[0.6875rem] font-semibold text-[var(--foreground)]">
+            {rowTitle(change, localizeUi)}
+          </span>
+          <span
+            className={cn(
+              "shrink-0 text-[0.625rem]",
+              isDelete ? "font-semibold uppercase tracking-wide text-[var(--destructive)]" : meta.tone,
+            )}
+          >
+            {meta.label}
+          </span>
         </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {canRender && (
+            <button
+              type="button"
+              onClick={() => onRender?.(change, index)}
+              disabled={busy}
+              title={localizeUi("ui.chat.mariediteasyviewer.viewAsPromptHint")}
+              aria-label={localizeUi("ui.chat.mariediteasyviewer.viewAsPrompt")}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Eye size="0.7rem" />
+              {localizeUi("ui.chat.mariediteasyviewer.viewAsPrompt")}
+            </button>
+          )}
+          {canReject && (
+            <button
+              type="button"
+              onClick={() => onReject?.(change, index)}
+              disabled={busy}
+              title={localizeUi("ui.chat.mariediteasyviewer.rejectHint")}
+              aria-label={localizeUi("ui.chat.mariediteasyviewer.reject")}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.625rem] text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/15 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Undo2 size="0.7rem" />
+              {localizeUi("ui.chat.mariediteasyviewer.reject")}
+            </button>
+          )}
+        </div>
       </div>
-      {change.table === "lorebook_entries" ? <LorebookEntryDiff change={change} /> : <GenericRowDiff change={change} />}
+      {change.table === "lorebook_entries" ? (
+        <LorebookEntryDiff change={change} collapsed={collapsed} />
+      ) : (
+        <GenericRowDiff change={change} collapsed={collapsed} />
+      )}
     </div>
   );
 }
 
 export function MariEditEasyViewer({
   approval,
-  hidden,
-  onDismissRow,
+  collapsed,
+  onToggleCollapse,
+  onRejectRow,
+  onRenderRow,
+  busy,
 }: {
   approval: MariDbPendingApproval;
-  hidden: ReadonlySet<string>;
-  onDismissRow: (key: string) => void;
+  collapsed: ReadonlySet<string>;
+  onToggleCollapse: (key: string) => void;
+  onRejectRow?: (change: MariDbRowChange, index: number) => void;
+  onRenderRow?: (change: MariDbRowChange, index: number) => void;
+  busy?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   // Key by the row's stable diffPreview index too: planTransform can emit multiple rows sharing
-  // table/id/action, so the index guarantees a unique React key AND dismiss/hidden-Set key.
-  const keyed = approval.diffPreview.map((change, index) => ({ change, key: `${index}:${rowKey(change)}` }));
-  const rows = keyed.filter((item) => !hidden.has(item.key));
+  // table/id/action, so the index guarantees a unique React key AND collapse-Set key. The index is
+  // also the identifier a reject sends — it maps 1:1 to the server's plan.changes[index].
+  const rows = approval.diffPreview.map((change, index) => ({ change, index, key: `${index}:${rowKey(change)}` }));
+  // Reject reverts one row and keeps the rest; on a single-row change that is identical to the whole-
+  // card Restore, so don't offer the redundant per-row control there.
+  const rejectRow = onRejectRow && approval.diffPreview.length > 1 ? onRejectRow : undefined;
 
   if (approval.diffPreview.length === 0) {
     return (
@@ -380,15 +597,18 @@ export function MariEditEasyViewer({
 
   return (
     <div className="mt-2 space-y-2">
-      {rows.length === 0 ? (
-        <p className="text-[0.6875rem] italic text-[var(--muted-foreground)]">
-          {localizeUi("ui.chat.mariediteasyviewer.allDismissed")}
-        </p>
-      ) : (
-        rows.map((item) => (
-          <RowCard key={item.key} change={item.change} onDismiss={() => onDismissRow(item.key)} />
-        ))
-      )}
+      {rows.map((item) => (
+        <RowCard
+          key={item.key}
+          change={item.change}
+          index={item.index}
+          collapsed={collapsed.has(item.key)}
+          onToggleCollapse={() => onToggleCollapse(item.key)}
+          onReject={rejectRow}
+          onRender={onRenderRow}
+          busy={busy}
+        />
+      ))}
       {approval.diffTruncated && (
         <p className="text-[0.625rem] text-[var(--muted-foreground)]">
           {localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}

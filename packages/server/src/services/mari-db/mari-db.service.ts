@@ -2402,6 +2402,11 @@ export class MariDbService {
   private history: MariDbHistoryEntry[] = [];
   private writeQueue: Promise<unknown> = Promise.resolve();
   private characterFolderMutationQueue: Promise<void> = Promise.resolve();
+  // Per-review serialization queue. keepAppliedReview / restoreAppliedReview / rejectRows each do a
+  // read-modify-write over pending.get(id) + the durable sidecar across await points; two concurrent
+  // requests for the SAME review id would both read the same record and clobber each other on write.
+  // Keyed by id so unrelated reviews stay concurrent; entries self-evict once the queue drains.
+  private reviewLocks = new Map<string, Promise<unknown>>();
 
   constructor(private readonly db: DB) {}
 
@@ -4732,6 +4737,26 @@ export class MariDbService {
     return Array.from(this.pending.values()).map((record) => this.pendingView(record));
   }
 
+  // #4931: the raw (serialized) snapshot of one pending change, for the synthetic prompt render.
+  // diffPreview only carries the parsed before/after; the render needs the raw rows (JSON columns as
+  // strings) to feed the assembler. The client validates its diffPreview index against the tuple, so
+  // this maps 1:1 to plan.changes[index] for the first PREVIEW_LIMIT changes.
+  getPendingChangeRaw(
+    id: string,
+    index: number,
+  ): { table: string; id: string; action: MariDbRowChange["action"]; beforeRaw: Row | null; afterRaw: Row | null } | null {
+    this.ensurePendingHydrated();
+    const change = this.pending.get(id)?.plan.changes[index];
+    if (!change) return null;
+    return {
+      table: change.table,
+      id: change.id,
+      action: change.action,
+      beforeRaw: change.beforeRaw ?? null,
+      afterRaw: change.afterRaw ?? null,
+    };
+  }
+
   async getHistory(): Promise<MariDbHistoryEntry[]> {
     if (this.history.length > 0) return this.history.slice(-HISTORY_LIMIT).reverse();
     const path = this.historyPath();
@@ -4772,6 +4797,10 @@ export class MariDbService {
 
   async keepAppliedReview(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.keepAppliedReviewLocked(id, opts));
+  }
+
+  private async keepAppliedReviewLocked(id: string, opts?: { enable?: boolean }): Promise<MariDbHistoryEntry | null> {
     const record = this.pending.get(id);
     if (!record) return null;
     // #4851 "Keep & Enable": a Mari-authored memory lands disabled; flip it on when the
@@ -4813,6 +4842,16 @@ export class MariDbService {
     | null
   > {
     this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.restoreAppliedReviewLocked(id));
+  }
+
+  private async restoreAppliedReviewLocked(
+    id: string,
+  ): Promise<
+    | { approval: MariDbPendingApproval; history: MariDbHistoryEntry }
+    | { approval: MariDbPendingApproval; outcome: "state_changed"; error: string }
+    | null
+  > {
     const record = this.pending.get(id);
     if (!record) return null;
     const approval = this.pendingView(record);
@@ -4846,6 +4885,150 @@ export class MariDbService {
       journalPath: record.journalPath,
     });
     return { approval, history };
+  }
+
+  // Reject a dependency-closed SUBSET of a pending review's rows (revert just those, keep the rest
+  // applied), scoped to top-level `lorebook_entries` changes. The client sends each row's
+  // diffPreview index plus a {table,id,action} consistency tuple; the index maps 1:1 to
+  // plan.changes[index] for the first PREVIEW_LIMIT changes, where the real PlanChange still carries
+  // apply/cascadeOf/beforeRaw that diffPreview drops. Mirrors restoreAppliedReview's audited
+  // contract (#4852 supersede via restoreChanges, #4927 charbook sync, #4813 durable sidecar),
+  // shrinking the pending record in place instead of resolving it whole.
+  async rejectRows(
+    id: string,
+    selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
+  ): Promise<
+    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | { outcome: "state_changed"; error: string }
+    | { outcome: "invalid_selection"; error: string }
+    | null
+  > {
+    this.ensurePendingHydrated();
+    return this.withReviewLock(id, () => this.rejectRowsLocked(id, selections));
+  }
+
+  private async rejectRowsLocked(
+    id: string,
+    selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
+  ): Promise<
+    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | { outcome: "state_changed"; error: string }
+    | { outcome: "invalid_selection"; error: string }
+    | null
+  > {
+    const record = this.pending.get(id);
+    if (!record) return null;
+
+    if (selections.length === 0) {
+      return { outcome: "invalid_selection", error: "No rows were selected to reject." };
+    }
+    const selected = new Set<PlanChange>();
+    for (const sel of selections) {
+      const change = record.plan.changes[sel.index];
+      // Reject a stale/shifted selection rather than reverting the wrong row: the index must still
+      // resolve to a change whose identity tuple matches what the client was shown.
+      if (!change || change.table !== sel.table || change.id !== sel.id || change.action !== sel.action) {
+        return {
+          outcome: "invalid_selection",
+          error: "This review changed since it was shown. Reopen it and try again.",
+        };
+      }
+      // v1: only individually-authored lorebook entries can be rejected one at a time. A whole-
+      // lorebook delete's cascade children (cascadeOf set) would re-insert an entry whose parent
+      // lorebook is still deleted (dangling reference) — reject the parent change instead.
+      if (change.table !== "lorebook_entries") {
+        return {
+          outcome: "invalid_selection",
+          error: "Only lorebook entries can be rejected individually. Use Restore to revert the whole change.",
+        };
+      }
+      if (change.cascadeOf) {
+        return {
+          outcome: "invalid_selection",
+          error: "This entry was removed as part of deleting its lorebook. Reject the lorebook change instead.",
+        };
+      }
+      // Rejecting an entry DELETE re-inserts the entry, which needs a live parent lorebook. A plan can
+      // hold a top-level `lorebooks` delete AND a top-level `lorebook_entries` delete with no
+      // cascadeOf link (a transform, or two delete plans merged into one review); rejecting only the
+      // entry would re-insert it under a deleted parent. Post-restore validate() only catches that
+      // dangling reference AFTER restoreChanges has committed (leaving the bad row + an unhandled
+      // error), so refuse it up front.
+      if (change.action === "delete") {
+        const parentLorebookId =
+          typeof change.beforeRaw?.lorebookId === "string" ? change.beforeRaw.lorebookId : null;
+        const parentLive =
+          parentLorebookId !== null && (await this.getRawById(getMeta("lorebooks"), parentLorebookId)) !== null;
+        if (!parentLive) {
+          return {
+            outcome: "invalid_selection",
+            error: "This entry's lorebook was also removed, so it can't be restored on its own. Use Restore to revert the whole change.",
+          };
+        }
+      }
+      selected.add(change);
+    }
+
+    // lorebook_entries is a cascade leaf, so the closure is exactly the selected rows.
+    const rejectedChanges = record.plan.changes.filter((change) => selected.has(change));
+    const remainingChanges = record.plan.changes.filter((change) => !selected.has(change));
+    const rejectedPlan: Plan = {
+      ...record.plan,
+      changes: rejectedChanges,
+      summary: summaryForChanges(rejectedChanges),
+    };
+
+    try {
+      await this.restoreChanges(rejectedChanges);
+    } catch (err) {
+      if (err instanceof RestoreStateChangedError) {
+        // #4852 F2: a newer edit landed after Mari staged one of these rows, so reverting would
+        // overwrite it. Leave the live data AND the whole pending review intact (nothing was
+        // written; the tx rolled back) so the user can re-review against current state.
+        return {
+          outcome: "state_changed",
+          error:
+            "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
+        };
+      }
+      throw err;
+    }
+
+    // #4927: rebuild any embedded character_book from the reverted entries (no-op for standalone).
+    await this.syncAffectedCharacterBooks(rejectedChanges);
+
+    // Shrink the pending record to the still-applied changes; recompute the summary + the mirrored
+    // top-level fields so the approvals list and hydrated card show correct counts. Mutate in place
+    // (do NOT re-set the map key — that would move the record to the tail and skew retention).
+    record.plan = { ...record.plan, changes: remainingChanges, summary: summaryForChanges(remainingChanges) };
+    record.affectedTables = record.plan.summary.affectedTables;
+    record.affectedRows = record.plan.summary.affectedRows;
+    record.diffPreview = record.plan.summary.preview;
+    record.diffTruncated = record.plan.summary.truncated;
+
+    const history = await this.recordHistory({
+      plan: rejectedPlan,
+      command: record.command,
+      sessionId: record.sessionId,
+      status: "restored",
+      journalPath: record.journalPath,
+    });
+
+    if (remainingChanges.length === 0) {
+      // Every row was rejected — resolve the review whole instead of persisting a zero-row card.
+      this.pending.delete(id);
+      await this.deletePendingSidecar(id);
+      return { approval: null, history, rejected: rejectedChanges.length, remaining: 0, completed: true };
+    }
+    // #4813: atomically overwrite the durable sidecar with the shrunken plan (same-id temp+rename).
+    await this.writePendingSidecar(record);
+    return {
+      approval: this.pendingView(record),
+      history,
+      rejected: rejectedChanges.length,
+      remaining: remainingChanges.length,
+      completed: false,
+    };
   }
 
   async validate(table?: string | null): Promise<MariDbValidationResult> {
@@ -7144,6 +7327,26 @@ export class MariDbService {
     return run;
   }
 
+  // Serialize an operation against all others touching the SAME review id (see reviewLocks). The
+  // stored tail never rejects, so a failed operation cannot wedge the id's queue; the next waiter
+  // still runs. The tail self-evicts from the map once it is the last holder, so ids do not
+  // accumulate. Distinct ids never block each other. Callers must NOT nest this on the same id
+  // (keepAppliedReviewAndWait deliberately does its read-only snapshot outside the lock, then
+  // delegates the mutation to keepAppliedReview, which takes the lock once).
+  private withReviewLock<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    const prev = this.reviewLocks.get(id) ?? Promise.resolve();
+    const run = prev.then(operation);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.reviewLocks.set(id, tail);
+    void tail.then(() => {
+      if (this.reviewLocks.get(id) === tail) this.reviewLocks.delete(id);
+    });
+    return run;
+  }
+
   private async planDelete(request: ParsedMutationRequest, issues: MariDbValidationIssue[]): Promise<PlanChange[]> {
     const meta = getMeta(String(request.table));
     if (!request.id && !request.where?.trim()) {
@@ -7621,63 +7824,96 @@ export class MariDbService {
       const before = homeWidgetCatalogFromPlanRow(homeWidgetChange.beforeRaw);
       const after = homeWidgetCatalogFromPlanRow(homeWidgetChange.afterRaw);
       await replaceHomeWidgetCatalog(this.db, after.revision, before.widgets);
+      await this.validateAndFlushRestored(plan.changes);
     } else {
-      await this.db.transaction(async (tx) => {
-        // #4852 F2: abort the whole restore if any row it would revert was changed by a newer
-        // write after this review applied. Read inside the tx, because restore is NOT serialized against
-        // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
-        // not this direct-service path), so reading here is what closes the race. The throw rolls
-        // the tx back before any write, and restoreAppliedReview catches it and leaves the newer
-        // data plus the pending review intact. Only applied changes were written, so skip the rest.
-        for (const change of plan.changes) {
-          if (!change.apply) continue;
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          const rows = (await tx
-            .select()
-            .from(meta.table as any)
-            .where(eq(meta.byKey.get(pk)!.column as any, change.id))) as Row[];
-          const current = rows[0] ? { ...rows[0] } : null;
-          if (restoreRowSuperseded(meta, current, change.afterRaw ?? null)) {
-            throw new RestoreStateChangedError();
-          }
-        }
-
-        const insertedRows = [...plan.changes].reverse().filter((change) => change.action === "insert");
-        for (const change of insertedRows) {
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-
-        const updatedRows = plan.changes.filter((change) => change.action === "update" || change.action === "replace");
-        for (const change of updatedRows) {
-          if (!change.beforeRaw) continue;
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx
-            .update(meta.table as any)
-            .set(knownColumnPatch(meta, change.beforeRaw))
-            .where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-
-        const deletedRows = plan.changes.filter((change) => change.action === "delete");
-        for (const change of [...deletedRows].reverse()) {
-          const meta = getMeta(change.table);
-          const pk = getPrimary(meta);
-          await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
-        }
-        for (const change of deletedRows) {
-          if (!change.beforeRaw) continue;
-          const meta = getMeta(change.table);
-          await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
-        }
-      });
+      await this.restoreChanges(plan.changes);
     }
+  }
 
+  // Revert a subset of a plan's changes in one transaction, then validate + flush. Shared by whole-
+  // plan restore (restorePlan) and per-row reject (rejectRows). The `apply` filters and the in-tx
+  // supersede check are the audited #4852 / apply-asymmetry contract (see comments below) — the
+  // callers must pass a dependency-closed subset; this helper does not compute cascade closure.
+  private async restoreChanges(changes: PlanChange[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // #4852 F2: abort the whole restore if any row it would revert was changed by a newer
+      // write after this review applied. Read inside the tx, because restore is NOT serialized against
+      // a concurrent Mari apply (serializeWorkspaceMutation wraps only Mari's own tool mutations,
+      // not this direct-service path), so reading here is what closes the race. The throw rolls
+      // the tx back before any write, and the caller catches it and leaves the newer data plus the
+      // pending review intact. Only applied changes were written, so skip the rest.
+      for (const change of changes) {
+        if (!change.apply) continue;
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        const rows = (await tx
+          .select()
+          .from(meta.table as any)
+          .where(eq(meta.byKey.get(pk)!.column as any, change.id))) as Row[];
+        const current = rows[0] ? { ...rows[0] } : null;
+        if (restoreRowSuperseded(meta, current, change.afterRaw ?? null)) {
+          throw new RestoreStateChangedError();
+        }
+      }
+
+      const insertedRows = [...changes].reverse().filter((change) => change.action === "insert");
+      for (const change of insertedRows) {
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+
+      const updatedRows = changes.filter((change) => change.action === "update" || change.action === "replace");
+      for (const change of updatedRows) {
+        if (!change.beforeRaw) continue;
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx
+          .update(meta.table as any)
+          .set(knownColumnPatch(meta, change.beforeRaw))
+          .where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+
+      const deletedRows = changes.filter((change) => change.action === "delete");
+      for (const change of [...deletedRows].reverse()) {
+        const meta = getMeta(change.table);
+        const pk = getPrimary(meta);
+        await tx.delete(meta.table as any).where(eq(meta.byKey.get(pk)!.column as any, change.id));
+      }
+      for (const change of deletedRows) {
+        if (!change.beforeRaw) continue;
+        const meta = getMeta(change.table);
+        await tx.insert(meta.table as any).values(knownColumnPatch(meta, change.beforeRaw));
+      }
+
+      // #4931: a restored lorebook entry needs a live parent lorebook. A concurrent lorebook deletion
+      // can land between rejectRows' pre-check and this transaction (TOCTOU), so re-verify in-tx and
+      // roll back rather than committing a dangling reference that only post-commit validate() would
+      // catch (which would leave the bad row + surface a 500). This covers every non-insert entry
+      // change — a delete re-inserts the row, and an update/replace revert can rewrite lorebookId (e.g.
+      // reverting a reparent whose original lorebook is now gone). Whole-plan restores re-insert the
+      // parent in the loops above, so this fires only when the parent is genuinely gone.
+      for (const change of changes) {
+        if (change.action === "insert" || change.table !== "lorebook_entries" || !change.beforeRaw) continue;
+        const lorebookId = change.beforeRaw.lorebookId;
+        if (typeof lorebookId !== "string") continue;
+        const meta = getMeta("lorebooks");
+        const pk = getPrimary(meta);
+        const parent = (await tx
+          .select()
+          .from(meta.table as any)
+          .where(eq(meta.byKey.get(pk)!.column as any, lorebookId))) as Row[];
+        if (parent.length === 0) throw new RestoreStateChangedError();
+      }
+    });
+
+    await this.validateAndFlushRestored(changes);
+  }
+
+  private async validateAndFlushRestored(changes: PlanChange[]): Promise<void> {
     const validation = await this.validate();
     if (validation.status === "blocked") {
-      const touchedRows = new Set(plan.changes.map((change) => `${change.table}:${change.id}`));
+      const touchedRows = new Set(changes.map((change) => `${change.table}:${change.id}`));
       const touchedErrors = validation.errors.filter(
         (issue) => issue.table && issue.id != null && touchedRows.has(`${issue.table}:${String(issue.id)}`),
       );
@@ -7760,6 +7996,12 @@ export class MariDbService {
   }
 
   private pendingSidecarPath(id: string) {
+    // Defense-in-depth against path traversal: every caller already passes a server-generated
+    // newId() (a 21-char nanoid) or a route id that first matched a pending record, so a traversal
+    // value can't reach here — but never build a filesystem path from an id that isn't a safe token.
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      throw new Error(`Invalid pending review id: ${id}`);
+    }
     return join(this.pendingDir(), `${id}.json`);
   }
 
@@ -7881,13 +8123,21 @@ export class MariDbService {
     // entries are the oldest reviews; evicting them never touches the review that was just added.
     const evictable = Array.from(this.pending.values()).slice(0, this.pending.size - PENDING_REVIEW_LIMIT);
     for (const record of evictable) {
-      this.pending.delete(record.id);
-      await this.deletePendingSidecar(record.id);
-      logger.info(
-        "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
-        record.id,
-        PENDING_REVIEW_LIMIT,
-      );
+      // Serialize eviction against a concurrent keep/restore/reject on the SAME id (the withReviewLock
+      // contract). Otherwise a partial rejectRows whose trailing writePendingSidecar is mid-flight
+      // (mkdir/writeFile await before the atomic rename) could recreate the sidecar this eviction just
+      // retired, resurrecting a phantom review on the next restart. Re-check membership inside the lock
+      // in case that concurrent op already resolved the review.
+      await this.withReviewLock(record.id, async () => {
+        if (!this.pending.has(record.id)) return;
+        this.pending.delete(record.id);
+        await this.deletePendingSidecar(record.id);
+        logger.info(
+          "[mari-db] dropped oldest pending review %s to stay within the %d-review cap; its change stays applied",
+          record.id,
+          PENDING_REVIEW_LIMIT,
+        );
+      });
     }
   }
 

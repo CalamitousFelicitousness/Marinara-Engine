@@ -13,6 +13,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Changed
 
 - Advanced the staging version identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, and release references. Android now uses `versionName` `2.4.3` with `versionCode` `44`.
+- Kept README's stable-release pointer tied to the latest published tag instead of rewriting it during staging version preparation.
 
 ### Fixed
 

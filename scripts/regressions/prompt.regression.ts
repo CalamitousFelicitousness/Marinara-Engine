@@ -7853,27 +7853,23 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         ]),
         ["description", "personality", "backstory", "appearance", "scenario", "mes_example", "system_prompt", "stats"],
       );
-      assert.deepEqual(resolveCharacterMarkerFields(undefined, false), [
+      assert.deepEqual(resolveCharacterMarkerFields(undefined), [
         "description",
         "personality",
         "backstory",
         "appearance",
         "scenario",
-        "mes_example",
         "system_prompt",
       ]);
-      assert.deepEqual(resolveCharacterMarkerFields(undefined, true), [
+      assert.deepEqual(resolveCharacterMarkerFields(["scenario", "mes_example", "description"]), [
         "description",
-        "personality",
-        "backstory",
-        "appearance",
         "scenario",
-        "system_prompt",
+        "mes_example",
       ]);
     },
   },
   {
-    name: "character markers append Example Dialogue only when no enabled dialogue marker owns it",
+    name: "character markers omit removed or disabled Example Dialogue sections",
     async run() {
       const characterRow = {
         id: "char-example-fallback",
@@ -7908,13 +7904,17 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
       } as unknown as DB;
 
-      const assemble = (wrapFormat: "xml" | "markdown" | "none", withDialogueMarker: boolean) =>
+      const assemble = (
+        wrapFormat: "xml" | "markdown" | "none",
+        dialogueMarker: "absent" | "enabled" | "disabled",
+        characterFields?: string[],
+      ) =>
         assemblePrompt({
           db,
           preset: {
             id: `preset-example-fallback-${wrapFormat}`,
             name: "Example Dialogue Fallback Fixture",
-            sectionOrder: JSON.stringify(withDialogueMarker ? ["character", "examples"] : ["character"]),
+            sectionOrder: JSON.stringify(dialogueMarker === "absent" ? ["character"] : ["character", "examples"]),
             groupOrder: JSON.stringify([]),
             wrapFormat,
             parameters: JSON.stringify({}),
@@ -7927,9 +7927,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
               identifier: "characterInfo",
               name: "Character Info",
               isMarker: "true",
-              markerConfig: JSON.stringify({ type: "character" }),
+              markerConfig: JSON.stringify({ type: "character", ...(characterFields ? { characterFields } : {}) }),
             }),
-            ...(withDialogueMarker
+            ...(dialogueMarker !== "absent"
               ? [
                   promptSection({
                     id: "examples",
@@ -7938,6 +7938,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
                     isMarker: "true",
                     markerConfig: JSON.stringify({ type: "dialogue_examples" }),
                     injectionOrder: 1,
+                    enabled: dialogueMarker === "disabled" ? "false" : "true",
                   }),
                 ]
               : []),
@@ -7953,17 +7954,21 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         });
 
       for (const wrapFormat of ["xml", "markdown", "none"] as const) {
-        const result = await assemble(wrapFormat, false);
-        const promptText = result.messages.map((message) => message.content).join("\n");
-        assert.equal(promptText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
-        assert.ok(promptText.indexOf("CHARACTER_SCENARIO") < promptText.indexOf("CHARACTER_EXAMPLE_DIALOGUE"));
-        assert.ok(promptText.indexOf("CHARACTER_EXAMPLE_DIALOGUE") < promptText.indexOf("CHARACTER_SYSTEM_PROMPT"));
-        if (wrapFormat === "xml") assert.match(promptText, /<mes_example>/);
-        if (wrapFormat === "markdown") assert.match(promptText, /#### mes_example/);
-        if (wrapFormat === "none") assert.equal(promptText.includes("mes_example"), false);
+        for (const dialogueMarker of ["absent", "disabled"] as const) {
+          const result = await assemble(wrapFormat, dialogueMarker);
+          const promptText = result.messages.map((message) => message.content).join("\n");
+          assert.equal(promptText.includes("CHARACTER_EXAMPLE_DIALOGUE"), false);
+          assert.equal(promptText.includes("mes_example"), false);
+          assert.equal(promptText.includes("dialogue_examples"), false);
+        }
       }
 
-      const explicitMarker = await assemble("xml", true);
+      const explicitCharacterField = await assemble("xml", "absent", ["mes_example"]);
+      const explicitCharacterFieldText = explicitCharacterField.messages.map((message) => message.content).join("\n");
+      assert.equal(explicitCharacterFieldText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
+      assert.match(explicitCharacterFieldText, /<mes_example>/);
+
+      const explicitMarker = await assemble("xml", "enabled");
       const explicitPromptText = explicitMarker.messages.map((message) => message.content).join("\n");
       assert.equal(explicitPromptText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
       assert.match(explicitPromptText, /<dialogue_examples>/);

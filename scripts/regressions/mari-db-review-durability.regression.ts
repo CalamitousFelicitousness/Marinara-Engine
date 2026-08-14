@@ -8,7 +8,7 @@
 //   - a sidecar past its retention deadline is pruned on load,
 //   - the persisted set is capped so it cannot grow without bound.
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
@@ -30,6 +30,48 @@ const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 const sidecarPath = (dir: string, id: string) => join(dir, "journal", "pending", `${id}.json`);
 
 try {
+  // ── Professor Mari can create a persona with every required storage default ──
+  {
+    const previousBlockStorageDir = process.env.FILE_STORAGE_DIR;
+    const dir = tempStorageDir();
+    let db: Awaited<ReturnType<typeof createFileNativeDB>> | null = null;
+    try {
+      db = await createFileNativeDB();
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "persona.create",
+        personaId: "created-persona",
+        data: { name: "Created Persona", description: "A durable identity." },
+        apply: true,
+      });
+      assert.equal(created.ok, true, "Professor Mari's persona.create action passes storage validation");
+      assert.equal(created.mode, "apply");
+      assert.equal(created.approval?.status, "pending", "the applied persona still receives a review card");
+      const reviewId = created.approval?.id;
+      assert.ok(reviewId, "the applied persona review has an id");
+      const reviewPath = sidecarPath(dir, reviewId);
+      assert.ok(existsSync(reviewPath), "the persona review is persisted to a sidecar");
+      assert.equal(
+        (JSON.parse(readFileSync(reviewPath, "utf8")) as { id?: string }).id,
+        reviewId,
+        "the sidecar contains the registered persona review",
+      );
+
+      const fetched = await mari.executeAction({ action: "persona.get", personaId: "created-persona" });
+      assert.equal(fetched.ok, true, "the created persona is persisted");
+      assert.equal(
+        (fetched.output as Record<string, unknown>).useCharacterSheetAsReference,
+        "false",
+        "the persona stores the required character-sheet reference default",
+      );
+    } finally {
+      if (db) await db._fileStore.close();
+      if (previousBlockStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
+      else process.env.FILE_STORAGE_DIR = previousBlockStorageDir;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   // ── A pending review persists to a sidecar, rehydrates after a restart, and Restore works ──
   {
     const dir = tempStorageDir();

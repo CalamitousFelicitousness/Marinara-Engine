@@ -1194,6 +1194,7 @@ export function buildPersonaCreateRow(data: Row, id: string, timestamp: string):
     scenario: firstString(data, ["scenario"]) ?? "",
     backstory: firstString(data, ["backstory"]) ?? "",
     appearance: firstString(data, ["appearance"]) ?? "",
+    useCharacterSheetAsReference: "false",
     isActive: "false",
     nameColor: "",
     dialogueColor: "",

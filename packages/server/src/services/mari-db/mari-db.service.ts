@@ -8445,13 +8445,7 @@ export class MariDbService {
 }
 
 let singleton: MariDbService | null = null;
-let singletonDb: DB | null = null;
 export function getMariDbService(db: DB) {
-  // App/DB recreation inside one Node process must never leave Professor Mari
-  // reading and mutating the closed store while flushDB targets the new one.
-  if (!singleton || singletonDb !== db) {
-    singleton = new MariDbService(db);
-    singletonDb = db;
-  }
+  if (!singleton) singleton = new MariDbService(db);
   return singleton;
 }

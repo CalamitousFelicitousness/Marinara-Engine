@@ -3146,10 +3146,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
 
     await page.goto("/");
     await page.locator('[data-tour="panel-characters"]').click();
-    await page
-      .getByText(characterName, { exact: true })
-      .first()
-      .click({ position: { x: 2, y: 2 } });
+    await page.getByText(characterName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
     await editor
@@ -3182,11 +3179,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .getByRole("navigation", { name: "Editor sections" })
       .getByRole("button", { name: "Gallery", exact: true })
       .click();
-    await expect(
-      editor.getByText(
-        "Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.",
-      ),
-    ).toBeVisible();
+    await expect(editor.getByText("Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.")).toBeVisible();
     await editor.getByRole("button", { name: "Select All", exact: true }).click();
     await expect(editor.getByText("1 selected", { exact: true })).toBeVisible();
     await expect(editor.getByRole("button", { name: "Toggle image selection" })).toHaveAttribute(
@@ -3208,10 +3201,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .evaluate((button: HTMLButtonElement) => button.click());
     await expect(editor).toHaveCount(0);
     await page.locator('[data-tour="panel-personas"]').click();
-    await page
-      .getByText(personaName, { exact: true })
-      .first()
-      .click({ position: { x: 2, y: 2 } });
+    await page.getByText(personaName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
     const personaEditor = page.locator(".mari-editor-shell");
     await expect(personaEditor).toBeVisible();
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
@@ -4373,10 +4363,7 @@ test("empty focused chat composers keep keyboard swipe navigation", async ({ pag
   }
 });
 
-test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({
-  page,
-  request,
-}, testInfo) => {
+test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch swipe navigation is covered on mobile.");
 
   const fixtures: Array<{ chatId: string; messageId: string; first: string; second: string }> = [];
@@ -6108,13 +6095,13 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
     await expect(menu.getByRole("menuitem", { name: "Illustrator", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: activeAgentName, exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: inactiveAgentName, exact: true })).toHaveCount(0);
-    await drawer.getByRole("searchbox", { name: "Search gallery images", exact: true }).dispatchEvent("pointerdown");
+    await drawer
+      .getByRole("searchbox", { name: "Search gallery images", exact: true })
+      .dispatchEvent("pointerdown");
     await expect(menu).toHaveCount(0);
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
-    await Promise.all(
-      createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)),
-    );
+    await Promise.all(createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)));
   }
 });
 
@@ -7320,8 +7307,13 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   await page.goto("/");
   const result = await page.evaluate(async () => {
     const module = (await import("/src/components/game/GameSurface.tsx")) as unknown as {
-      combatSkillsFromSheet(value: unknown): Array<{ name: string; type: string; description?: string }> | undefined;
-      findGameCombatCard(cards: Array<{ name?: string }>, targetName: string): { name?: string } | undefined;
+      combatSkillsFromSheet(value: unknown):
+        | Array<{ name: string; type: string; description?: string }>
+        | undefined;
+      findGameCombatCard(
+        cards: Array<{ name?: string }>,
+        targetName: string,
+      ): { name?: string } | undefined;
       generatedPartyMemberToCombatant(
         member: Record<string, unknown>,
         index: number,
@@ -7360,7 +7352,11 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
         [],
         1,
       ),
-      enemy: module.generatedEnemyToCombatant({ name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] }, 0, 1),
+      enemy: module.generatedEnemyToCombatant(
+        { name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] },
+        0,
+        1,
+      ),
       invalidPartyHp: module.generatedPartyMemberToCombatant(
         { name: "Mika", hp: false, maxHp: 12, attacks: [], statuses: [] },
         0,
@@ -13111,9 +13107,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       const entries = (await response.json()) as Array<Record<string, unknown>>;
       await route.fulfill({
         response,
-        json: entries.map((candidate) =>
-          candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate,
-        ),
+        json: entries.map((candidate) => (candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate)),
       });
     });
 
@@ -13121,8 +13115,8 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       vectorizeRequestCount += 1;
       const savedResponse = await request.get(`/api/lorebooks/${lorebook.id}`);
       expect(savedResponse.ok()).toBeTruthy();
-      excludedAtVectorization =
-        ((await savedResponse.json()) as { excludeFromVectorization?: boolean }).excludeFromVectorization ?? null;
+      excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
+        .excludeFromVectorization ?? null;
       reportStoredVector = true;
       await route.fulfill({
         status: 200,
@@ -14395,7 +14389,9 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     const [widgetBounds, shortcutBounds] = await Promise.all([widget.boundingBox(), lastShortcut.boundingBox()]);
     expect(widgetBounds).not.toBeNull();
     expect(shortcutBounds).not.toBeNull();
-    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(widgetBounds!.y + widgetBounds!.height + 1);
+    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(
+      widgetBounds!.y + widgetBounds!.height + 1,
+    );
   }
 
   if (mobile) {
@@ -14747,10 +14743,10 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
     module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
   });
   await expect(sprite).toBeVisible({ timeout: 1_000 });
-  await expect(
-    page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true }),
-  ).toBeVisible();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1"))).toBeNull();
+  await expect(page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1")))
+    .toBeNull();
   const resetPosition = await sprite.boundingBox();
   expect(resetPosition).not.toBeNull();
   expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);

@@ -8472,7 +8472,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "unused runtime agent sections preserve surrounding prompt text",
+    name: "unused runtime agent sections omit surrounding prompt text",
     run() {
       const tokens = makeRuntimeAgentSectionTokens("knowledge-router", "regression");
       const messages = [
@@ -8483,11 +8483,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       clearUnusedRuntimeAgentSectionsForTest(messages, [["knowledge-router", tokens]]);
 
-      assert.equal(messages.length, 1);
-      assert.match(messages[0]?.content ?? "", /This is where additional lore will be:/);
-      assert.equal(messages[0]?.content.includes(tokens.placeholder), false);
-      assert.equal(messages[0]?.content.includes(tokens.start), false);
-      assert.equal(messages[0]?.content.includes(tokens.end), false);
+      assert.equal(messages.length, 0);
     },
   },
   {

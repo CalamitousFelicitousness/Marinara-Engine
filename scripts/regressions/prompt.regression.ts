@@ -1444,6 +1444,13 @@ const cases: RegressionCase[] = [
     run() {
       const publicReference = readFileSync(new URL("../../docs/agents/built-in-agents.md", import.meta.url), "utf8");
       const publicReferenceLines = new Set(publicReference.split(/\r?\n/u));
+      const frontendArchitecture = readFileSync(
+        new URL("../../docs/development/frontend.md", import.meta.url),
+        "utf8",
+      );
+      const frontendAgentCatalog = frontendArchitecture.match(
+        /### First-party downloadable agents([\s\S]*?)### Agent result types/u,
+      );
       const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
       const seededMariSource = readFileSync(
         new URL("../../packages/server/src/db/seed-mari.ts", import.meta.url),
@@ -1454,8 +1461,16 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 31);
-      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 31);
+      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 32);
+      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 32);
+      assert.deepEqual(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"), {
+        id: "noodle",
+        name: "Noodle",
+        category: "misc",
+        modes: "Home",
+        summary:
+          "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
+      });
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "long-term-memory"));
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "storyboard"));
       assert.deepEqual(
@@ -1465,7 +1480,12 @@ const cases: RegressionCase[] = [
             OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.filter((entry) => entry.category === category).length,
           ]),
         ),
-        { writer: 6, tracker: 8, misc: 17 },
+        { writer: 6, tracker: 8, misc: 18 },
+      );
+      assert.ok(frontendAgentCatalog, "Frontend architecture is missing the first-party agent catalog");
+      assert.deepEqual(
+        [...frontendAgentCatalog[1].matchAll(/^\| `([^`]+)`\s+\|/gmu)].map((match) => match[1]).sort(),
+        OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id).sort(),
       );
 
       for (const entry of OFFICIAL_AGENT_KNOWLEDGE_ENTRIES) {

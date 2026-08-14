@@ -19,7 +19,7 @@ Choose the least-powerful runtime that can do the job:
 | ---------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Sandboxed Browser Extension  | Private state, active-chat context, buttons, menu actions, and Marinara-rendered panels | No Marinara DOM, cookies, browser storage, network, or arbitrary HTML                        |
 | Server Extension             | Background logic that needs managed timers and private extension storage                | Separate OS sandbox; no Marinara files, secrets, network, child processes, or native modules |
-| Full page External Extension | Legacy code that genuinely needs Marinara's page or same-origin APIs                    | Not sandboxed; use only for exact code you fully trust                                       |
+| Full-page External Extension | Legacy code that genuinely needs Marinara's page or same-origin APIs                    | Not sandboxed; use only for exact code you fully trust                                       |
 
 Browser Extensions work on every supported platform. Server Extensions require macOS Seatbelt or Linux Bubblewrap. See the [platform table](personal-extensions.md#platform-support) before choosing a Server Extension.
 
@@ -128,7 +128,7 @@ Use [Marinara-rendered panels](personal-extensions.md#add-a-marinara-rendered-pa
 
 `showWindow({ title, elements, onEvent, onClose })` returns a handle with `update({ title?, elements? })` and `close()`. Package CSS styles these sandboxed iframe windows; host-rendered contributions always use Marinara's own theme and controls.
 
-The safe Browser runtime has no DOM or network API. Do not work around that boundary. If a useful capability is missing, request a narrow host capability rather than switching to full page access by default.
+The safe Browser runtime has no DOM or network API. Do not work around that boundary. If a useful capability is missing, request a narrow host capability rather than switching to full-page access by default.
 
 ### Context capabilities
 
@@ -233,7 +233,7 @@ The ZIP, request, sandbox-message, and storage limits protect separate transport
 - Re-importing the same name updates the existing record after confirmation. A byte-identical re-import keeps its current hash and approval; changed executable content clears approval. Marinara warns when numeric versions indicate a downgrade.
 - **Export** writes the current manifest and source files to a portable package. Approval is never exported.
 - Restoring a revision, importing a profile, or restoring a backup leaves the extension disabled until reviewed again.
-- **Disable** stops the runtime and registered cleanup. Full page code may require a page reload if it created unregistered side effects.
+- **Disable** stops the runtime and registered cleanup. Full-page code may require a page reload if it created unregistered side effects.
 - **Delete** removes the installed record. Export first if you may need the source later.
 
 ## Debugging

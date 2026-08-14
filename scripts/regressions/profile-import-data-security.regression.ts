@@ -324,6 +324,8 @@ try {
     assert.equal(extensions.length, 2);
     const browserExtension = extensions.find((candidate) => candidate.id === importedExtension.id);
     const serverExtension = extensions.find((candidate) => candidate.id === importedServerExtension.id);
+    assert.equal(browserExtension?.runtime, "client");
+    assert.equal(serverExtension?.runtime, "server");
     assert.equal(browserExtension?.js, sourceOverOneMiB);
     assert.equal(serverExtension?.serverJs, sourceOverOneMiB);
     for (const extension of extensions) {

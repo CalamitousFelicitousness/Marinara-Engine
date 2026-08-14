@@ -234,105 +234,12 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
   await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
-  await expect(announcement.getByRole("heading", { name: "Hello and welcome to the new version!" })).toBeVisible();
-  await expect(
-    announcement.getByText(
-      "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  const exactReleaseCopy = [
-    "Hello and welcome to the new version!",
-    "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
-    "Your home page is now a fully customizable hub with widgets. You can add, remove, and rearrange them however you want. These include widgets with recent chats, useful help centers, Professor Mari, clock and calendar, and many others. You can also ask Professor Mari to create new, custom ones for you.",
-    "You probably also noticed that there's a small new Professor Mari on the home page. She is your new personal navigator, that will take you to different parts of Marinara Engine, including your lorebooks, chats, characters, and even agents. Hopefully, no more trouble with finding the Chats tab anymore.",
-    "Be gentle when moving her around, though…",
-    "Additionally, Professor Mari (the assistant version) now has Memories that you can access on her tab (right, forgot to mention, she has her tab now accessible from Home; check at the top of the screen). She will remember your instructions and important details between the chats.",
-    "One significant change is that Noodle is now moved to be an Agent (don't worry, it will be there i you already had it installed). You can access it as a separate tab from the Home page menu. This should declutter the main top bar a little, plus allow you to uninstall it if you would rather not use it.",
-    "You may have noticed that the Browser tab was removed: don't worry, the option to download characters was merged into the Characters and Personas tabs.",
-    "These are the most significant changes in this version and we hope you will enjoy them. Read the entire list of changes here:",
-    "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
-    "Thank you for supporting the project. Cheers.",
-  ];
-  await expect.poll(() => announcement.locator("[data-release-copy]").allTextContents()).toEqual(exactReleaseCopy);
-
-  await expect(announcement.locator("[data-release-story='2.4.2']")).toBeAttached();
-  const releaseVideos = announcement.locator('video[data-release-media-kind="video"]');
-  await expect(releaseVideos).toHaveCount(3);
+  await expect(announcement.getByRole("heading", { name: "Wlecome to Marinara Engine's v2.4.3 Beta!" })).toBeVisible();
   await expect
-    .poll(() =>
-      releaseVideos.evaluateAll((videos) =>
-        videos.map((video) => {
-          const media = video as HTMLVideoElement;
-          return {
-            autoplay: media.autoplay,
-            controls: media.controls,
-            loop: media.loop,
-            muted: media.muted,
-            playsInline: media.playsInline,
-            src: new URL(media.currentSrc || media.src).pathname,
-          };
-        }),
-      ),
-    )
-    .toEqual([
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-widgets.mp4",
-      },
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-widgets-custom.mp4",
-      },
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-navigator.mp4",
-      },
-    ]);
-
-  const releaseImages = announcement.locator('img[data-release-media-kind="image"]');
-  await expect(releaseImages).toHaveCount(3);
-  await expect
-    .poll(() =>
-      releaseImages.evaluateAll((images) =>
-        images.map(
-          (image) => new URL((image as HTMLImageElement).currentSrc || (image as HTMLImageElement).src).pathname,
-        ),
-      ),
-    )
-    .toEqual([
-      "/releases/2.4.2/professor-mari-memories.png",
-      "/releases/2.4.2/noodle-agent.png",
-      "/releases/2.4.2/character-downloads.png",
-    ]);
-  for (const asset of [
-    "/releases/2.4.2/home-widgets.mp4",
-    "/releases/2.4.2/home-widgets-custom.mp4",
-    "/releases/2.4.2/home-navigator.mp4",
-    "/releases/2.4.2/professor-mari-memories.png",
-    "/releases/2.4.2/noodle-agent.png",
-    "/releases/2.4.2/character-downloads.png",
-  ]) {
-    expect((await page.request.get(asset)).ok(), `${asset} should be bundled and served`).toBe(true);
-  }
-
-  await expect(
-    announcement.getByRole("link", {
-      name: "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
-    }),
-  ).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2");
+    .poll(() => announcement.locator("[data-release-copy]").allTextContents())
+    .toEqual(["Wlecome to Marinara Engine's v2.4.3 Beta!"]);
+  await expect(announcement.locator("[data-release-story]")).toHaveCount(0);
+  await expect(announcement.locator("[data-release-media-kind]")).toHaveCount(0);
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))
@@ -3239,7 +3146,10 @@ test("Character and persona sheets persist an explicit reference choice and fall
 
     await page.goto("/");
     await page.locator('[data-tour="panel-characters"]').click();
-    await page.getByText(characterName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    await page
+      .getByText(characterName, { exact: true })
+      .first()
+      .click({ position: { x: 2, y: 2 } });
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
     await editor
@@ -3272,7 +3182,11 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .getByRole("navigation", { name: "Editor sections" })
       .getByRole("button", { name: "Gallery", exact: true })
       .click();
-    await expect(editor.getByText("Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.")).toBeVisible();
+    await expect(
+      editor.getByText(
+        "Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.",
+      ),
+    ).toBeVisible();
     await editor.getByRole("button", { name: "Select All", exact: true }).click();
     await expect(editor.getByText("1 selected", { exact: true })).toBeVisible();
     await expect(editor.getByRole("button", { name: "Toggle image selection" })).toHaveAttribute(
@@ -3294,7 +3208,10 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .evaluate((button: HTMLButtonElement) => button.click());
     await expect(editor).toHaveCount(0);
     await page.locator('[data-tour="panel-personas"]').click();
-    await page.getByText(personaName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    await page
+      .getByText(personaName, { exact: true })
+      .first()
+      .click({ position: { x: 2, y: 2 } });
     const personaEditor = page.locator(".mari-editor-shell");
     await expect(personaEditor).toBeVisible();
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
@@ -4456,7 +4373,10 @@ test("empty focused chat composers keep keyboard swipe navigation", async ({ pag
   }
 });
 
-test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({ page, request }, testInfo) => {
+test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({
+  page,
+  request,
+}, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch swipe navigation is covered on mobile.");
 
   const fixtures: Array<{ chatId: string; messageId: string; first: string; second: string }> = [];
@@ -6188,13 +6108,13 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
     await expect(menu.getByRole("menuitem", { name: "Illustrator", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: activeAgentName, exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: inactiveAgentName, exact: true })).toHaveCount(0);
-    await drawer
-      .getByRole("searchbox", { name: "Search gallery images", exact: true })
-      .dispatchEvent("pointerdown");
+    await drawer.getByRole("searchbox", { name: "Search gallery images", exact: true }).dispatchEvent("pointerdown");
     await expect(menu).toHaveCount(0);
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
-    await Promise.all(createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)));
+    await Promise.all(
+      createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)),
+    );
   }
 });
 
@@ -7400,13 +7320,8 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   await page.goto("/");
   const result = await page.evaluate(async () => {
     const module = (await import("/src/components/game/GameSurface.tsx")) as unknown as {
-      combatSkillsFromSheet(value: unknown):
-        | Array<{ name: string; type: string; description?: string }>
-        | undefined;
-      findGameCombatCard(
-        cards: Array<{ name?: string }>,
-        targetName: string,
-      ): { name?: string } | undefined;
+      combatSkillsFromSheet(value: unknown): Array<{ name: string; type: string; description?: string }> | undefined;
+      findGameCombatCard(cards: Array<{ name?: string }>, targetName: string): { name?: string } | undefined;
       generatedPartyMemberToCombatant(
         member: Record<string, unknown>,
         index: number,
@@ -7445,11 +7360,7 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
         [],
         1,
       ),
-      enemy: module.generatedEnemyToCombatant(
-        { name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] },
-        0,
-        1,
-      ),
+      enemy: module.generatedEnemyToCombatant({ name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] }, 0, 1),
       invalidPartyHp: module.generatedPartyMemberToCombatant(
         { name: "Mika", hp: false, maxHp: 12, attacks: [], statuses: [] },
         0,
@@ -13200,7 +13111,9 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       const entries = (await response.json()) as Array<Record<string, unknown>>;
       await route.fulfill({
         response,
-        json: entries.map((candidate) => (candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate)),
+        json: entries.map((candidate) =>
+          candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate,
+        ),
       });
     });
 
@@ -13208,8 +13121,8 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       vectorizeRequestCount += 1;
       const savedResponse = await request.get(`/api/lorebooks/${lorebook.id}`);
       expect(savedResponse.ok()).toBeTruthy();
-      excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
-        .excludeFromVectorization ?? null;
+      excludedAtVectorization =
+        ((await savedResponse.json()) as { excludeFromVectorization?: boolean }).excludeFromVectorization ?? null;
       reportStoredVector = true;
       await route.fulfill({
         status: 200,
@@ -14349,7 +14262,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(content).toHaveCSS("overflow-y", "auto");
   expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
   await expect(page.getByRole("heading", { name: "Recent chats" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What's new in v2.4.2" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `What's new in v${APP_VERSION}` })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Something new for your engine" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Character of the Day" })).toBeVisible();
   await expect(
@@ -14482,9 +14395,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     const [widgetBounds, shortcutBounds] = await Promise.all([widget.boundingBox(), lastShortcut.boundingBox()]);
     expect(widgetBounds).not.toBeNull();
     expect(shortcutBounds).not.toBeNull();
-    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(
-      widgetBounds!.y + widgetBounds!.height + 1,
-    );
+    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(widgetBounds!.y + widgetBounds!.height + 1);
   }
 
   if (mobile) {
@@ -14836,10 +14747,10 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
     module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
   });
   await expect(sprite).toBeVisible({ timeout: 1_000 });
-  await expect(page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true })).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1")))
-    .toBeNull();
+  await expect(
+    page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1"))).toBeNull();
   const resetPosition = await sprite.boundingBox();
   expect(resetPosition).not.toBeNull();
   expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);

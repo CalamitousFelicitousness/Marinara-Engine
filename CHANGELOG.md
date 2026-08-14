@@ -22,6 +22,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
 - Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
+- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
 - Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
 
 ## [2.4.2]

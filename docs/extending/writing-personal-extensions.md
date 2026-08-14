@@ -86,7 +86,7 @@ marinara.onCleanup(() => panel.remove());
 Use this `extension.css` to style the constrained iframe window opened by the button:
 
 ```css
-#marinara-personal-extension-root {
+[data-ext-root] {
   font-size: 16px;
 }
 ```

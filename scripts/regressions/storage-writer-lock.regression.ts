@@ -8,7 +8,6 @@ import {
   createFileNativeDB,
   STORAGE_WRITER_LEASE_FILENAME,
   STORAGE_WRITER_OWNER_FILENAME,
-  StorageConcurrentWriterError,
   StorageWriterLeaseError,
 } from "../../packages/server/src/db/file-backed-store.js";
 import { appSettings, lorebookEntries, lorebooks } from "../../packages/server/src/db/schema/index.js";
@@ -87,6 +86,10 @@ try {
     await db._fileStore.close();
     assert.equal(existsSync(leasePath(dir)), false, "a clean close removes its verified lease");
 
+    const externallyReleased = await createFileNativeDB();
+    rmSync(leasePath(dir), { recursive: true });
+    await externallyReleased._fileStore.close();
+
     // A same-host stale lock is reclaimed only after its PID is definitely
     // absent. Restricted hosts without a stable host ID deliberately require
     // manual stale-lock removal instead.
@@ -129,28 +132,20 @@ try {
     }
   }
 
-  // A non-cooperating/older process that advances the manifest cannot have
-  // that evidence covered by this process's stale in-memory snapshot.
+  // A shutdown write failure still removes the process-owned lease so the
+  // next clean start is not blocked by a store that has already detached.
   {
-    const dir = useTempStorage("manifest-guard");
-    const db = await createFileNativeDB();
-    let conflictDetected = false;
-    try {
-      await db.insert(appSettings).values({ key: "base", value: "one", updatedAt: "2026-08-14" });
-      await db._fileStore.flush();
-      await db.insert(appSettings).values({ key: "local", value: "two", updatedAt: "2026-08-14" });
-      const path = join(dir, "manifest.json");
-      const external = readJson<Record<string, unknown>>(path);
-      external.savedAt = "2099-01-01T00:00:00.000Z";
-      const externalBytes = JSON.stringify(external, null, 2);
-      writeFileSync(path, externalBytes);
-      await assert.rejects(db._fileStore.flush(), StorageConcurrentWriterError);
-      conflictDetected = true;
-      assert.equal(readFileSync(path, "utf8"), externalBytes, "the external manifest is not overwritten");
-      await assert.rejects(db._fileStore.close(), StorageConcurrentWriterError);
-    } finally {
-      if (!conflictDetected) await db._fileStore.close().catch(() => undefined);
-    }
+    const dir = useTempStorage("writer-close-failure");
+    let failWrites = false;
+    const db = await createFileNativeDB({
+      beforeTableWrite: () => {
+        if (failWrites) throw new Error("forced shutdown write failure");
+      },
+    });
+    await db.insert(appSettings).values({ key: "local", value: "two", updatedAt: "2026-08-14" });
+    failWrites = true;
+    await assert.rejects(db._fileStore.close(), /forced shutdown write failure/);
+    assert.equal(existsSync(leasePath(dir)), false, "a failed close still releases its writer lease");
   }
 
   // The Professor Mari service follows the current DB identity after a clean
@@ -159,6 +154,7 @@ try {
     useTempStorage("mari-db-rebind");
     const firstDb = await getDB();
     const firstService = getMariDbService(firstDb);
+    assert.strictEqual(getMariDbService(firstDb), firstService, "the same DB keeps one Mari service");
     await closeDB();
     const secondDb = await getDB();
     const secondService = getMariDbService(secondDb);

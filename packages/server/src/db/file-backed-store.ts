@@ -935,16 +935,6 @@ export class StorageWriterLeaseError extends Error {
   }
 }
 
-export class StorageConcurrentWriterError extends Error {
-  constructor(rootDir: string) {
-    super(
-      `Marinara Engine detected that manifest.json changed outside this process for ${rootDir} and refused to overwrite it. ` +
-        "Close every other process using this data directory, then restart Marinara Engine.",
-    );
-    this.name = "StorageConcurrentWriterError";
-  }
-}
-
 function shardDirPath(rootDir: string, table: string) {
   return join(rootDir, "tables", table);
 }
@@ -986,15 +976,6 @@ function writerLeaseOwnerPath(path: string) {
   return join(path, STORAGE_WRITER_OWNER_FILENAME);
 }
 
-function fingerprintFile(path: string) {
-  try {
-    return createHash("sha256").update(readFileSync(path)).digest("hex");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
-    throw err;
-  }
-}
-
 const CURRENT_HOSTNAME = hostname();
 const CURRENT_HOST_ID = (() => {
   const machineId = ["/etc/machine-id", "/var/lib/dbus/machine-id"].flatMap((path) => {
@@ -1015,9 +996,28 @@ const CURRENT_HOST_ID = (() => {
     .digest("hex");
 })();
 
+class WriterLeasePendingError extends Error {}
+
+const WRITER_LEASE_RETRY_DELAY_MS = 10;
+
+function invalidWriterLeaseError(path: string, cause: unknown) {
+  return new StorageWriterLeaseError(
+    `The storage writer lease at ${path} is incomplete or invalid. Stop every Marinara Engine process using this data directory, remove only that lease directory, then retry.`,
+    { cause },
+  );
+}
+
 function parseWriterLease(path: string): { raw: string; record: StorageWriterLeaseRecord } {
+  let raw: string;
   try {
-    const raw = readFileSync(writerLeaseOwnerPath(path), "utf8");
+    raw = readFileSync(writerLeaseOwnerPath(path), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new WriterLeasePendingError(`The storage writer lease at ${path} has no owner record yet.`);
+    }
+    throw new StorageWriterLeaseError(`Could not read the storage writer lease at ${path}.`, { cause: err });
+  }
+  try {
     const record = JSON.parse(raw) as StorageWriterLeaseRecord;
     if (
       record.version !== 1 ||
@@ -1032,10 +1032,7 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
     }
     return { raw, record };
   } catch (err) {
-    throw new StorageWriterLeaseError(
-      `The storage writer lease at ${path} is incomplete or invalid. Stop every Marinara Engine process using this data directory, remove only that lease directory, then retry.`,
-      { cause: err },
-    );
+    throw invalidWriterLeaseError(path, err);
   }
 }
 
@@ -1331,7 +1328,6 @@ class FileTableStore {
   private pendingTransactionFlush = false;
   private quarantinedTables: QuarantinedStorageTable[] = [];
   private writerLease: ActiveStorageWriterLease | null = null;
-  private expectedManifestFingerprint = "missing";
 
   constructor(
     private readonly rootDir: string,
@@ -1342,9 +1338,9 @@ class FileTableStore {
     }
   }
 
-  private acquireWriterLease() {
+  private async acquireWriterLease() {
     const path = writerLeasePath(this.rootDir);
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 10; attempt++) {
       const token = randomUUID();
       let created = false;
       try {
@@ -1374,7 +1370,19 @@ class FileTableStore {
         }
       }
 
-      const existing = parseWriterLease(path);
+      let existing: ReturnType<typeof parseWriterLease>;
+      try {
+        existing = parseWriterLease(path);
+      } catch (err) {
+        if (err instanceof WriterLeasePendingError) {
+          if (attempt < 9) {
+            await new Promise((resolve) => setTimeout(resolve, WRITER_LEASE_RETRY_DELAY_MS));
+            continue;
+          }
+          throw invalidWriterLeaseError(path, err);
+        }
+        throw err;
+      }
       const sameHost = Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID);
       if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
         throw new StorageWriterLeaseError(
@@ -1415,12 +1423,31 @@ class FileTableStore {
   private releaseWriterLease() {
     const active = this.writerLease;
     if (!active) return;
-    const current = parseWriterLease(active.path);
+    if (!existsSync(active.path)) {
+      logger.warn({ path: active.path }, "[file-storage] The writer lease was already removed.");
+      this.writerLease = null;
+      return;
+    }
+    let current: ReturnType<typeof parseWriterLease>;
+    try {
+      current = parseWriterLease(active.path);
+    } catch (err) {
+      if (err instanceof WriterLeasePendingError) throw invalidWriterLeaseError(active.path, err);
+      throw err;
+    }
     if (current.record.token !== active.token) {
       throw new StorageWriterLeaseError(`The storage writer lease at ${active.path} belongs to another process.`);
     }
     const releasedPath = `${active.path}.released-${active.token}`;
-    renameSync(active.path, releasedPath);
+    try {
+      renameSync(active.path, releasedPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.writerLease = null;
+        return;
+      }
+      throw err;
+    }
     let moved: ReturnType<typeof parseWriterLease>;
     try {
       moved = parseWriterLease(releasedPath);
@@ -1436,17 +1463,10 @@ class FileTableStore {
     this.writerLease = null;
   }
 
-  private assertManifestUnchanged() {
-    if (fingerprintFile(manifestPath(this.rootDir)) !== this.expectedManifestFingerprint) {
-      throw new StorageConcurrentWriterError(this.rootDir);
-    }
-  }
-
   async initialize() {
     mkdirSync(this.rootDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-    this.acquireWriterLease();
+    await this.acquireWriterLease();
     try {
-      this.expectedManifestFingerprint = fingerprintFile(manifestPath(this.rootDir));
       hardenPrivateStorageTree(this.rootDir);
 
       // Refuse newer-format data BEFORE any migration side effect: the
@@ -2079,10 +2099,19 @@ class FileTableStore {
       process.off("beforeExit", this.beforeExitHandler);
       this.beforeExitHandler = null;
     }
-    if (this.activeFlush) await this.activeFlush;
-    while (this.dirty || this.dirtyTables.size > 0) {
-      await this.flush(true);
-      if (this.lastFlushError) throw this.lastFlushError;
+    try {
+      if (this.activeFlush) await this.activeFlush;
+      while (this.dirty || this.dirtyTables.size > 0) {
+        await this.flush(true);
+        if (this.lastFlushError) throw this.lastFlushError;
+      }
+    } catch (err) {
+      try {
+        this.releaseWriterLease();
+      } catch (releaseError) {
+        throw new AggregateError([err, releaseError], "Storage shutdown and writer-lease release both failed");
+      }
+      throw err;
     }
     this.releaseWriterLease();
   }
@@ -2780,7 +2809,6 @@ class FileTableStore {
   }
 
   private async saveFileSnapshots(dirtyTables: Set<string>, dirtyShards: Map<string, Set<string>>) {
-    this.assertManifestUnchanged();
     mkdirSync(join(this.rootDir, "tables"), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     const tables: Record<string, number> = {};
     const shards: Record<string, number> = {};
@@ -2811,12 +2839,10 @@ class FileTableStore {
       shards,
     };
     const path = manifestPath(this.rootDir);
-    this.assertManifestUnchanged();
     const serializedManifest = JSON.stringify(manifest, null, 2);
     await atomicWriteFile(path, serializedManifest, {
       refreshBackup: !this.backupRecoveredPaths.has(path),
     });
-    this.expectedManifestFingerprint = createHash("sha256").update(serializedManifest).digest("hex");
     this.backupRecoveredPaths.clear();
   }
 

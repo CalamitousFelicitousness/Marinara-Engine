@@ -255,6 +255,10 @@ try {
       `${invalidReleaseRef} must not be treated as a canonical release tag`,
     );
   }
+  const adversarialReleaseRef = `v0.0.0-0.${"--.".repeat(100_000)}!`;
+  const releaseRefStartedAt = performance.now();
+  assert.equal(resolveOfficialAgentBranch(adversarialReleaseRef), "staging");
+  assert.ok(performance.now() - releaseRefStartedAt < 1_000, "Malformed release-tag classification must stay linear");
   assert.equal(
     resolveOfficialAgentBranch("feature/catalog-ui"),
     "staging",

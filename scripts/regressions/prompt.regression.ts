@@ -1444,6 +1444,13 @@ const cases: RegressionCase[] = [
     run() {
       const publicReference = readFileSync(new URL("../../docs/agents/built-in-agents.md", import.meta.url), "utf8");
       const publicReferenceLines = new Set(publicReference.split(/\r?\n/u));
+      const frontendArchitecture = readFileSync(
+        new URL("../../docs/development/frontend.md", import.meta.url),
+        "utf8",
+      );
+      const frontendAgentCatalog = frontendArchitecture.match(
+        /### First-party downloadable agents([\s\S]*?)### Agent result types/u,
+      );
       const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
       const seededMariSource = readFileSync(
         new URL("../../packages/server/src/db/seed-mari.ts", import.meta.url),
@@ -1467,6 +1474,11 @@ const cases: RegressionCase[] = [
           ]),
         ),
         { writer: 6, tracker: 8, misc: 18 },
+      );
+      assert.ok(frontendAgentCatalog, "Frontend architecture is missing the first-party agent catalog");
+      assert.deepEqual(
+        [...frontendAgentCatalog[1].matchAll(/^\| `([^`]+)`\s+\|/gmu)].map((match) => match[1]).sort(),
+        OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id).sort(),
       );
 
       for (const entry of OFFICIAL_AGENT_KNOWLEDGE_ENTRIES) {

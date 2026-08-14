@@ -302,7 +302,21 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
       },
     ]);
 
-  await expect(announcement.locator('img[data-release-media-kind="image"]')).toHaveCount(3);
+  const releaseImages = announcement.locator('img[data-release-media-kind="image"]');
+  await expect(releaseImages).toHaveCount(3);
+  await expect
+    .poll(() =>
+      releaseImages.evaluateAll((images) =>
+        images.map(
+          (image) => new URL((image as HTMLImageElement).currentSrc || (image as HTMLImageElement).src).pathname,
+        ),
+      ),
+    )
+    .toEqual([
+      "/releases/2.4.2/professor-mari-memories.png",
+      "/releases/2.4.2/noodle-agent.png",
+      "/releases/2.4.2/character-downloads.png",
+    ]);
   for (const asset of [
     "/releases/2.4.2/home-widgets.mp4",
     "/releases/2.4.2/home-widgets-custom.mp4",

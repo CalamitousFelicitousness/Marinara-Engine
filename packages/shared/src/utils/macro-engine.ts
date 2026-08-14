@@ -1681,9 +1681,10 @@ function resolveVariableOperationMacros(input: string, ctx: MacroContext, option
         const addedValue = Number(
           resolveMacros(writeMatch?.[3] ?? "", ctx, { ...nestedMacroOptions(options), trimResult: false }),
         );
-        ctx.variables[name] = String(
-          (Number.isFinite(currentValue) ? currentValue : 0) + (Number.isFinite(addedValue) ? addedValue : 0),
-        );
+        const currentNumber = Number.isFinite(currentValue) ? currentValue : 0;
+        const addedNumber = Number.isFinite(addedValue) ? addedValue : 0;
+        const sum = currentNumber + addedNumber;
+        ctx.variables[name] = String(Number.isFinite(sum) ? sum : currentNumber);
         return "";
       }
       case "incvar":

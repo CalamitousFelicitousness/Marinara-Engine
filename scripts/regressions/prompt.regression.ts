@@ -2711,7 +2711,21 @@ const cases: RegressionCase[] = [
       assert.equal(resolve("{{addnumvar::score::4}}{{getvar::score}}"), "4");
       assert.equal(resolve("{{setvar::score::invalid}}{{addnumvar::score::5}}{{getvar::score}}"), "5");
       assert.equal(resolve("{{setvar::score::7}}{{addnumvar::score::invalid}}{{getvar::score}}"), "7");
+      assert.equal(resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{getvar::score}}"), "1e+308");
+      assert.equal(
+        resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{addnumvar::score::-1e308}}{{getvar::score}}"),
+        "0",
+      );
       assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "20-2");
+
+      const conditionalVariables = { score: "10" };
+      resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: conditionalVariables,
+      });
+      assert.equal(conditionalVariables.score, "10", "conditional operands must not execute numeric writes");
 
       const variables = { score: "0" };
       const resolveMessage = createMessageMacroResolver({ variables });

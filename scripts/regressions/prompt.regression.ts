@@ -7904,7 +7904,11 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
       } as unknown as DB;
 
-      const assemble = (wrapFormat: "xml" | "markdown" | "none", dialogueMarker: "absent" | "enabled" | "disabled") =>
+      const assemble = (
+        wrapFormat: "xml" | "markdown" | "none",
+        dialogueMarker: "absent" | "enabled" | "disabled",
+        characterFields?: string[],
+      ) =>
         assemblePrompt({
           db,
           preset: {
@@ -7923,7 +7927,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
               identifier: "characterInfo",
               name: "Character Info",
               isMarker: "true",
-              markerConfig: JSON.stringify({ type: "character" }),
+              markerConfig: JSON.stringify({ type: "character", ...(characterFields ? { characterFields } : {}) }),
             }),
             ...(dialogueMarker !== "absent"
               ? [
@@ -7958,6 +7962,11 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           assert.equal(promptText.includes("dialogue_examples"), false);
         }
       }
+
+      const explicitCharacterField = await assemble("xml", "absent", ["mes_example"]);
+      const explicitCharacterFieldText = explicitCharacterField.messages.map((message) => message.content).join("\n");
+      assert.equal(explicitCharacterFieldText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
+      assert.match(explicitCharacterFieldText, /<mes_example>/);
 
       const explicitMarker = await assemble("xml", "enabled");
       const explicitPromptText = explicitMarker.messages.map((message) => message.content).join("\n");

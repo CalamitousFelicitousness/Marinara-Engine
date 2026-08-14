@@ -402,6 +402,15 @@ assert.doesNotMatch(
   /warnings\.push/u,
   "character-scoped placement warnings must not be emitted before the regex imports successfully",
 );
+const scopedSupportedImportPath = scopedRegexBeforeSuccessfulImport.replace(
+  /if \(!normalized\) \{[\s\S]*?continue;\s*\}/u,
+  "",
+);
+assert.doesNotMatch(
+  scopedSupportedImportPath,
+  /continue;/u,
+  "supported character-scoped regex entries must reach the import even when some placements are unsupported",
+);
 const successfulScopedRegexImportWarning =
   /await createRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
     characterRegexSectionSource,

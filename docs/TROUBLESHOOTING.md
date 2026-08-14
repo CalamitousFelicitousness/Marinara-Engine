@@ -249,6 +249,27 @@ Check both of these local locations for a `storage` folder:
 
 The server prints the data and storage directories it resolved on startup.
 
+### Chats show no messages after switching to an older version
+
+Newer versions of Marinara store each chat's data (messages, swipes, memories, images, and other per-chat records) in its own files instead of one big file per table, which makes saving long chats much faster. Older versions do not understand that layout. If you switch to an older version, your chats look empty — the data is still on disk, the older version just cannot see it.
+
+Marinara refuses obvious downgrades on its own: the launcher skips an auto-update that would land on an incompatible version, and the in-app updater blocks it with an error that points here.
+
+To downgrade anyway:
+
+1. Stop the Marinara server.
+2. From the Marinara folder, run:
+
+   ```bash
+   node scripts/protect-launcher-data.mjs unshard
+   ```
+
+3. Switch to the older version and start it normally.
+
+The command rebuilds the old single-file layout from the per-chat files. Nothing is deleted: the per-chat files are kept next to each rebuilt file in folders named `<table>.post-unshard-<timestamp>` (for example `messages.post-unshard-…`), and any pre-migration originals stay as `.pre-shard` files. When you upgrade again later, Marinara converts your data back automatically.
+
+Docker and Podman keep data in the `marinara-data` volume, so run the command in a one-off container instead: stop the running container, then `docker compose run --rm marinara node scripts/protect-launcher-data.mjs unshard`, then start the older image.
+
 ### Backup or Export returns 403
 
 Loopback sessions can make backups without an admin secret. From another device, a network address, or Docker, backups and profile exports need more. Set `ADMIN_SECRET` on the server and save the same value in **Settings** > **Advanced** > **Admin Access**. If you want loopback to require the secret too, set `MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK=true`.
@@ -265,6 +286,16 @@ The Android app is a small shell around Termux. Termux is a Linux terminal app f
 4. Wait for the launcher to finish and start the server, then return to the app.
 
 Also confirm the app and Termux use the same port. The default is `7860`. If you built the app with a different port, set the matching `PORT` in the Termux `.env` too.
+
+### Android localhost opens the login page or returns 401/503
+
+APK-managed Termux installs protect localhost with a private per-install secret. The Android app authenticates automatically. In another browser on the same phone, open `/android-login` and paste the value shown by this Termux command:
+
+```bash
+cat ~/.marinara-engine/android-secret
+```
+
+The local `mari` CLI reads the same file automatically. A 401 means the pasted secret or an authentication challenge was rejected; reload `/android-login` and paste the current value. A 503 means the server received a malformed configured secret. Restart through `./start-termux.sh`; if the launcher reports that its secret file is invalid or empty, return to the Android app and tap **Install / Start Marinara** so the APK provisions it again. Do not put this secret in screenshots or issue reports.
 
 ### Android update stops with exit status 134
 

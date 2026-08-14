@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevented multiple Marinara processes from silently overwriting the same local data directory, while preserving all stored rows and automatically repairing stale diagnostic table counts (#5013).
+
 ## [2.4.2]
 
 ### Added

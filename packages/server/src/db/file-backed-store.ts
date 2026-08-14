@@ -12,14 +12,17 @@ import {
   closeSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   readSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { chmod, copyFile, open, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { performance } from "node:perf_hooks";
+import { arch, hostname, networkInterfaces, platform } from "node:os";
 import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
@@ -85,6 +88,45 @@ type TableSnapshotManifest = {
   tables: Record<string, number>;
   /** Shard-file count per sharded table — human diagnostics only, never read back. */
   shards?: Record<string, number>;
+  /** Identifies the lease owner that wrote this snapshot; older builds safely ignore it. */
+  writerToken?: string;
+};
+
+type StorageWriterLeaseRecord = {
+  version: 2;
+  reclaimable: boolean;
+  pid: number;
+  processStartedAt: number;
+  processStartIdentity: string | null;
+  hostIdentity: string;
+  hostname: string;
+  bootIdentity: string;
+  pidNamespaceIdentity: string | null;
+  token: string;
+  acquiredAt: string;
+};
+
+type ActiveStorageWriterLease = {
+  path: string;
+  token: string;
+};
+
+type StorageWriterSystemIdentity = {
+  hostIdentity: string | null;
+  hostname: string;
+  bootIdentity: string | null;
+  pidNamespaceIdentity: string | null;
+  processStartIdentity: string | null;
+};
+
+type SnapshotOperation =
+  | { kind: "write"; path: string; tableLabel: string; serializedRows: string }
+  | { kind: "delete"; path: string };
+
+type ShardedSnapshotPlan = {
+  operations: SnapshotOperation[];
+  nextKnown: Set<string>;
+  hadRepairState: boolean;
 };
 
 type FileTransactionContext = {
@@ -174,6 +216,11 @@ export type FileNativeDB = {
 
 export type FileNativeStoreTestHooks = {
   beforeTableWrite?: (table: string, serializedRows: string) => Promise<void> | void;
+  beforeSnapshotDeleteCommit?: (path: string) => Promise<void> | void;
+  afterWriterLeaseReclaimClaim?: () => Promise<void> | void;
+  beforeWriterLeaseRelease?: () => Promise<void> | void;
+  /** Test-only simulation for restricted hosts such as Termux with hidden host identifiers. */
+  writerLeaseIdentity?: Partial<StorageWriterSystemIdentity>;
 };
 
 type SelectFromBuilder<TProjection extends Projection | undefined> = {
@@ -221,8 +268,12 @@ type InsertValuesBuilder = Executable<void> & {
 // without chasing literals on every bump. Must equal root storage-format.json
 // (the launcher-format-guard regression pins the pairing).
 export const STORAGE_VERSION = 4;
+export const STORAGE_WRITER_LEASE_FILENAME = ".writer-lease.json";
+const STORAGE_WRITER_RECLAIM_FILENAME = ".writer-lease-reclaim.json";
+export const STORAGE_WRITER_OWNER_FILENAME = "owner.json";
 const SAVE_DEBOUNCE_MS = 750;
 const SAFETY_SAVE_MS = 10_000;
+const PROCESS_STARTED_AT = performance.timeOrigin;
 
 // #4708: tables persisted as one file PER CHAT (storage/tables/<table>/<key>.json)
 // instead of one monolith. On the per-message write path the monolith meant
@@ -664,11 +715,28 @@ function looksNulFilled(path: string): boolean {
   }
 }
 
-async function atomicWriteFile(path: string, content: string, options: { refreshBackup?: boolean } = {}) {
+async function atomicWriteFile(
+  path: string,
+  content: string,
+  options: {
+    refreshBackup?: boolean;
+    beforeBackupReplace?: () => void;
+    afterBackupReplace?: () => void;
+    beforeReplace?: () => void;
+  } = {},
+) {
   mkdirSync(dirname(path), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
   const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
   const refreshBackup = options.refreshBackup ?? true;
   try {
+    // Prepare and flush the replacement before reading the current primary.
+    // Optimistic callers can therefore validate immediately before any
+    // backup refresh and again immediately before the atomic rename, instead
+    // of leaving an entire temp-file write between validation and commit.
+    await writeFile(tmpPath, content, { mode: PRIVATE_FILE_MODE });
+    await flushFile(tmpPath);
+    options.beforeReplace?.();
+
     // Refresh the .bak via tmp + fsync + rename so a hard crash mid-write
     // can't leave both main and backup zero-filled (NTFS allocates blocks
     // and updates metadata before the cache manager flushes data).
@@ -686,7 +754,9 @@ async function atomicWriteFile(path: string, content: string, options: { refresh
         await copyFile(path, bakTmpPath);
         if (process.platform !== "win32") await chmod(bakTmpPath, PRIVATE_FILE_MODE);
         await flushFile(bakTmpPath);
+        options.beforeBackupReplace?.();
         await rename(bakTmpPath, bakPath);
+        options.afterBackupReplace?.();
         await flushDirectory(dirname(bakPath));
       } catch (err) {
         try {
@@ -701,8 +771,7 @@ async function atomicWriteFile(path: string, content: string, options: { refresh
         );
       }
     }
-    await writeFile(tmpPath, content, { mode: PRIVATE_FILE_MODE });
-    await flushFile(tmpPath);
+    options.beforeReplace?.();
     await rename(tmpPath, path);
     await flushDirectory(dirname(path));
   } catch (err) {
@@ -912,6 +981,36 @@ export class StorageFormatTooNewError extends Error {
   }
 }
 
+/** Thrown when another live process already owns the file-native data directory. */
+export class StorageWriterLeaseError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "StorageWriterLeaseError";
+  }
+}
+
+/** Thrown when storage changed outside the process after its snapshot was loaded. */
+export class StorageConcurrentWriterError extends Error {
+  constructor(rootDir: string, detail: string) {
+    super(
+      `Marinara Engine detected another writer for ${rootDir} and refused to overwrite newer on-disk data (${detail}). ` +
+        "Close every other Marinara Engine process that uses this data directory, then restart this instance.",
+    );
+    this.name = "StorageConcurrentWriterError";
+  }
+}
+
+function findStorageConcurrentWriterError(error: unknown): StorageConcurrentWriterError | null {
+  if (error instanceof StorageConcurrentWriterError) return error;
+  if (error instanceof AggregateError) {
+    for (const nested of error.errors) {
+      const conflict = findStorageConcurrentWriterError(nested);
+      if (conflict) return conflict;
+    }
+  }
+  return null;
+}
+
 function shardDirPath(rootDir: string, table: string) {
   return join(rootDir, "tables", table);
 }
@@ -943,6 +1042,245 @@ function discoverShardPrimaries(entries: string[]): string[] {
 
 function manifestPath(rootDir: string) {
   return join(rootDir, "manifest.json");
+}
+
+function writerLeasePath(rootDir: string) {
+  return join(rootDir, STORAGE_WRITER_LEASE_FILENAME);
+}
+
+function writerLeaseReclaimPath(rootDir: string) {
+  return join(rootDir, STORAGE_WRITER_RECLAIM_FILENAME);
+}
+
+function writerLeaseOwnerPath(path: string) {
+  return join(path, STORAGE_WRITER_OWNER_FILENAME);
+}
+
+function contentFingerprint(content: string | Buffer) {
+  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
+}
+
+function fileFingerprint(path: string): string {
+  try {
+    return contentFingerprint(readFileSync(path));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return "missing";
+    throw err;
+  }
+}
+
+function readOptionalSystemIdentity(path: string) {
+  try {
+    const value = readFileSync(path, "utf8").trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function readPidNamespaceIdentity() {
+  if (process.platform !== "linux") return null;
+  try {
+    return readlinkSync("/proc/self/ns/pid");
+  } catch {
+    return null;
+  }
+}
+
+function readLinuxProcessStartIdentity(pid: number) {
+  if (process.platform !== "linux") return null;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const afterCommand = stat
+      .slice(stat.lastIndexOf(")") + 2)
+      .trim()
+      .split(/\s+/u);
+    const startTicks = afterCommand[19]; // proc(5) field 22; field 3 is index 0 here.
+    return startTicks ? `linux-start-ticks:${startTicks}` : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentHostIdentity() {
+  const machineId =
+    readOptionalSystemIdentity("/etc/machine-id") ?? readOptionalSystemIdentity("/var/lib/dbus/machine-id");
+  const macs = Object.values(networkInterfaces())
+    .flatMap((interfaces) => interfaces ?? [])
+    .map((entry) => entry.mac.toLowerCase())
+    .filter((mac) => mac !== "00:00:00:00:00:00")
+    .sort();
+  // Hostname separates ordinary Docker containers that share machine-id;
+  // MACs distinguish separate hosts/containers that happen to reuse it.
+  if (!machineId && macs.length === 0) return null;
+  return contentFingerprint([platform(), arch(), hostname(), machineId ?? "", ...macs].join("\n"));
+}
+
+const CURRENT_HOSTNAME = hostname();
+const CURRENT_HOST_IDENTITY = currentHostIdentity();
+const CURRENT_BOOT_IDENTITY = readOptionalSystemIdentity("/proc/sys/kernel/random/boot_id");
+const CURRENT_PID_NAMESPACE_IDENTITY = readPidNamespaceIdentity();
+const CURRENT_PROCESS_START_IDENTITY = readLinuxProcessStartIdentity(process.pid);
+const PROCESS_LOCAL_HOST_IDENTITY = `process-local:${randomUUID()}`;
+const CURRENT_STORAGE_WRITER_IDENTITY: StorageWriterSystemIdentity = {
+  hostIdentity: CURRENT_HOST_IDENTITY,
+  hostname: CURRENT_HOSTNAME,
+  bootIdentity: CURRENT_BOOT_IDENTITY,
+  pidNamespaceIdentity: CURRENT_PID_NAMESPACE_IDENTITY,
+  processStartIdentity: CURRENT_PROCESS_START_IDENTITY,
+};
+
+function currentStorageWriterLeaseRecord(
+  token: string,
+  identity: StorageWriterSystemIdentity,
+): StorageWriterLeaseRecord {
+  const reclaimable = identity.hostIdentity !== null;
+  return {
+    version: 2,
+    reclaimable,
+    pid: process.pid,
+    processStartedAt: PROCESS_STARTED_AT,
+    processStartIdentity: identity.processStartIdentity,
+    // Restricted Android/Termux environments can hide both machine-id and
+    // network identifiers. They may still start and release cleanly with a
+    // process-local identity; only crash reclamation then fails closed and
+    // requires the explicitly named lease directory to be removed manually.
+    hostIdentity: identity.hostIdentity ?? PROCESS_LOCAL_HOST_IDENTITY,
+    hostname: identity.hostname,
+    bootIdentity: identity.bootIdentity ?? "unavailable",
+    pidNamespaceIdentity: identity.pidNamespaceIdentity,
+    token,
+    acquiredAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Publishes a complete lease directory with one same-parent atomic rename.
+ * The candidate directory already contains its flushed owner record, so a
+ * crash before rename leaves no authoritative lease and a crash after rename
+ * leaves a complete one. Renaming a directory over the winner's non-empty
+ * directory fails on Windows, POSIX, FAT/exFAT, Android storage, and SMB.
+ */
+async function publishCompleteExclusiveDirectory(path: string, content: string, token: string): Promise<boolean> {
+  const candidatePath = `${path}.candidate-${process.pid}-${token}`;
+  try {
+    mkdirSync(candidatePath, { mode: PRIVATE_DIRECTORY_MODE });
+    const ownerPath = writerLeaseOwnerPath(candidatePath);
+    await writeFile(ownerPath, content, { encoding: "utf8", flag: "wx", mode: PRIVATE_FILE_MODE });
+    await flushFile(ownerPath);
+    await flushDirectory(candidatePath);
+    try {
+      await rename(candidatePath, path);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (
+        code === "EEXIST" ||
+        code === "ENOTEMPTY" ||
+        (code === "ENOENT" && existsSync(writerLeaseOwnerPath(path))) ||
+        ((code === "EPERM" || code === "EACCES") && existsSync(path))
+      ) {
+        return false;
+      }
+      throw err;
+    }
+    await flushDirectory(dirname(path));
+    return true;
+  } finally {
+    await rm(candidatePath, { recursive: true, force: true }).catch((err) => {
+      logger.warn(err, "[file-storage] Could not remove this process's writer-lease candidate %s", candidatePath);
+    });
+  }
+}
+
+function isStorageWriterLeaseRecord(value: unknown): value is StorageWriterLeaseRecord {
+  if (!isRowRecord(value)) return false;
+  return (
+    value.version === 2 &&
+    typeof value.reclaimable === "boolean" &&
+    Number.isSafeInteger(value.pid) &&
+    value.pid > 0 &&
+    typeof value.processStartedAt === "number" &&
+    Number.isFinite(value.processStartedAt) &&
+    value.processStartedAt > 0 &&
+    (value.processStartIdentity === null || typeof value.processStartIdentity === "string") &&
+    typeof value.hostIdentity === "string" &&
+    value.hostIdentity.length > 0 &&
+    typeof value.hostname === "string" &&
+    value.hostname.length > 0 &&
+    typeof value.bootIdentity === "string" &&
+    value.bootIdentity.length > 0 &&
+    (value.pidNamespaceIdentity === null || typeof value.pidNamespaceIdentity === "string") &&
+    typeof value.token === "string" &&
+    value.token.length > 0 &&
+    typeof value.acquiredAt === "string" &&
+    value.acquiredAt.length > 0
+  );
+}
+
+function readStorageWriterLease(path: string): { raw: string; record: StorageWriterLeaseRecord } | null {
+  let raw: string;
+  try {
+    raw = readFileSync(writerLeaseOwnerPath(path), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT" && !existsSync(path)) return null;
+    throw new StorageWriterLeaseError(
+      `Marinara Engine could not inspect the storage writer lease at ${path}. Stop every Marinara Engine process using this data directory before retrying.`,
+      { cause: err },
+    );
+  }
+  try {
+    const record = JSON.parse(raw) as unknown;
+    if (!isStorageWriterLeaseRecord(record)) throw new Error("invalid lease fields");
+    return { raw, record };
+  } catch (err) {
+    throw new StorageWriterLeaseError(
+      `The storage writer lease at ${path} is incomplete or invalid, so Marinara refused to guess whether its owner is still running. ` +
+        "Stop every Marinara Engine process using this data directory, verify none remain, then remove only this lease directory and retry.",
+      { cause: err },
+    );
+  }
+}
+
+function leaseOwnerDefinitelyExited(record: StorageWriterLeaseRecord, identity: StorageWriterSystemIdentity): boolean {
+  // Never interpret a PID from another host or PID namespace. In particular,
+  // two Docker containers may both be PID 1 while sharing the same DATA_DIR.
+  if (
+    !record.reclaimable ||
+    !identity.hostIdentity ||
+    record.hostIdentity !== identity.hostIdentity ||
+    record.hostname !== identity.hostname
+  ) {
+    return false;
+  }
+  if (identity.bootIdentity && record.bootIdentity !== "unavailable" && record.bootIdentity !== identity.bootIdentity) {
+    // Stable host identity plus a different kernel boot id proves every owner
+    // from that boot exited. A different host never reaches this branch.
+    return true;
+  }
+  if (
+    process.platform === "linux" &&
+    (!identity.pidNamespaceIdentity || record.pidNamespaceIdentity !== identity.pidNamespaceIdentity)
+  ) {
+    return false;
+  }
+
+  const observedStartIdentity = readLinuxProcessStartIdentity(record.pid);
+  if (record.pid === process.pid) {
+    return Boolean(
+      record.processStartIdentity && observedStartIdentity && record.processStartIdentity !== observedStartIdentity,
+    );
+  }
+  try {
+    process.kill(record.pid, 0);
+    if (record.processStartIdentity && observedStartIdentity && record.processStartIdentity !== observedStartIdentity) {
+      return true;
+    }
+    return false;
+  } catch (err) {
+    // ESRCH is the only portable evidence that the PID no longer exists.
+    // EPERM and every unfamiliar platform error fail closed as "possibly live".
+    return (err as NodeJS.ErrnoException)?.code === "ESRCH";
+  }
 }
 
 function fileStoreManifestExists(rootDir: string) {
@@ -1227,41 +1565,415 @@ class FileTableStore {
   private transactionIdleWaiters = new Set<() => void>();
   private pendingTransactionFlush = false;
   private quarantinedTables: QuarantinedStorageTable[] = [];
+  private writerLease: ActiveStorageWriterLease | null = null;
+  private writerLeaseReclaim: ActiveStorageWriterLease | null = null;
+  private expectedManifestFingerprint = "missing";
+  /** Primary snapshot bytes this process loaded or last committed, keyed by absolute path. */
+  private expectedSnapshotFingerprints = new Map<string, string>();
+  private concurrentWriterError: StorageConcurrentWriterError | null = null;
+  private readonly writerLeaseIdentity: StorageWriterSystemIdentity;
+  private closing = false;
+  private closed = false;
 
   constructor(
     private readonly rootDir: string,
     private readonly testHooks?: FileNativeStoreTestHooks,
   ) {
+    this.writerLeaseIdentity = {
+      ...CURRENT_STORAGE_WRITER_IDENTITY,
+      ...testHooks?.writerLeaseIdentity,
+    };
     for (const table of FILE_BACKED_TABLES) {
       this.tables.set(table, []);
     }
   }
 
+  private async acquireWriterLease() {
+    const path = writerLeasePath(this.rootDir);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const token = randomUUID();
+      const record = currentStorageWriterLeaseRecord(token, this.writerLeaseIdentity);
+      try {
+        if (await publishCompleteExclusiveDirectory(path, JSON.stringify(record, null, 2), token)) {
+          this.writerLease = { path, token };
+          return;
+        }
+      } catch (err) {
+        throw new StorageWriterLeaseError(
+          `Marinara Engine could not atomically acquire the storage writer lease at ${path}. Check that the data directory is writable and supports same-directory renames, then retry.`,
+          { cause: err },
+        );
+      }
+
+      const existing = readStorageWriterLease(path);
+      if (!existing) continue;
+      if (!leaseOwnerDefinitelyExited(existing.record, this.writerLeaseIdentity)) {
+        if (!existing.record.reclaimable) {
+          throw new StorageWriterLeaseError(
+            `A non-reclaimable storage writer lease remains at ${path}. This can happen after an unclean shutdown on a restricted filesystem. ` +
+              "Stop every Marinara Engine process using this data directory, verify none remain, remove only that lease directory, then retry.",
+          );
+        }
+        throw new StorageWriterLeaseError(
+          `Another Marinara Engine process (PID ${existing.record.pid}, lease acquired ${existing.record.acquiredAt}) is already using ${this.rootDir}. ` +
+            `Close that process before starting another one. The lease is ${path}.`,
+        );
+      }
+
+      await this.acquireWriterLeaseReclaim(existing.record);
+      try {
+        await this.testHooks?.afterWriterLeaseReclaimClaim?.();
+        // The atomic reclaim record elects one reclaimer. Validate the exact
+        // dead generation again while holding it, then atomically move that
+        // exact generation out of the active path. Contenders never unlink
+        // from a stale observation alone.
+        const latest = readStorageWriterLease(path);
+        if (
+          !latest ||
+          latest.raw !== existing.raw ||
+          !leaseOwnerDefinitelyExited(latest.record, this.writerLeaseIdentity)
+        ) {
+          continue;
+        }
+        const reclaimedPath = await this.moveLeaseGeneration(
+          { path, token: existing.record.token },
+          existing.raw,
+          "reclaimed",
+        );
+        try {
+          if (await publishCompleteExclusiveDirectory(path, JSON.stringify(record, null, 2), token)) {
+            this.writerLease = { path, token };
+            await rm(reclaimedPath, { recursive: true, force: true });
+            logger.warn(
+              { path, previousPid: existing.record.pid, acquiredAt: existing.record.acquiredAt },
+              "[file-storage] Reclaimed a writer lease after the operating system confirmed its owner exited.",
+            );
+            return;
+          }
+        } catch (err) {
+          throw new StorageWriterLeaseError(
+            `The stale storage writer lease at ${path} was moved aside, but Marinara could not atomically publish its replacement. Retry startup.`,
+            { cause: err },
+          );
+        } finally {
+          await rm(reclaimedPath, { recursive: true, force: true });
+        }
+      } finally {
+        await this.releaseWriterLeaseReclaim();
+      }
+    }
+    throw new StorageWriterLeaseError(
+      `The storage writer lease at ${path} changed repeatedly while Marinara was starting. Stop every process using ${this.rootDir}, then retry.`,
+    );
+  }
+
+  private async moveLeaseGeneration(
+    active: ActiveStorageWriterLease,
+    expectedRaw: string,
+    disposition: "released" | "reclaimed",
+  ) {
+    const movedPath = `${active.path}.${disposition}-${process.pid}-${randomUUID()}`;
+    try {
+      await rename(active.path, movedPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        throw new StorageConcurrentWriterError(this.rootDir, `the writer lease disappeared during ${disposition}`);
+      }
+      throw err;
+    }
+
+    let movedMatches = false;
+    try {
+      const moved = readStorageWriterLease(movedPath);
+      movedMatches = Boolean(moved && moved.record.token === active.token && moved.raw === expectedRaw);
+    } catch {
+      // Restore the atomically moved generation below when possible. The
+      // original concurrent-writer error is more actionable than a parse
+      // failure for a lease that changed under this process.
+    }
+    if (!movedMatches) {
+      if (!existsSync(active.path)) {
+        try {
+          await rename(movedPath, active.path);
+        } catch {
+          // Preserve the moved record at its unique path if another owner has
+          // already occupied the active name; never delete an unproven token.
+        }
+      }
+      throw new StorageConcurrentWriterError(this.rootDir, `the writer lease changed during ${disposition}`);
+    }
+    await flushDirectory(this.rootDir);
+    return movedPath;
+  }
+
+  private async acquireWriterLeaseReclaim(staleOwner: StorageWriterLeaseRecord) {
+    const path = writerLeaseReclaimPath(this.rootDir);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const token = randomUUID();
+      const record = currentStorageWriterLeaseRecord(token, this.writerLeaseIdentity);
+      try {
+        if (await publishCompleteExclusiveDirectory(path, JSON.stringify(record, null, 2), token)) {
+          this.writerLeaseReclaim = { path, token };
+          return;
+        }
+      } catch (err) {
+        throw new StorageWriterLeaseError(
+          `Marinara Engine could not claim stale-lease recovery at ${path}. Check that the data directory is writable, then retry.`,
+          { cause: err },
+        );
+      }
+
+      const existing = readStorageWriterLease(path);
+      if (!existing) continue;
+      if (!leaseOwnerDefinitelyExited(existing.record, this.writerLeaseIdentity)) {
+        throw new StorageWriterLeaseError(
+          `Another Marinara Engine process (PID ${existing.record.pid}) is already checking the exited writer lease for PID ${staleOwner.pid} in ${this.rootDir}. Retry after it finishes.`,
+        );
+      }
+      const latest = readStorageWriterLease(path);
+      if (!latest || latest.raw !== existing.raw) continue;
+      try {
+        const reclaimedPath = await this.moveLeaseGeneration(
+          { path, token: existing.record.token },
+          existing.raw,
+          "reclaimed",
+        );
+        await rm(reclaimedPath, { recursive: true, force: true });
+      } catch (err) {
+        if (err instanceof StorageConcurrentWriterError) continue;
+        throw new StorageWriterLeaseError(
+          `A stale recovery claim at ${path} belongs to an exited process, but Marinara could not remove it safely.`,
+          { cause: err },
+        );
+      }
+      await flushDirectory(this.rootDir);
+    }
+    throw new StorageWriterLeaseError(
+      `The stale-lease recovery claim at ${path} changed repeatedly. Stop every process using ${this.rootDir}, then retry.`,
+    );
+  }
+
+  private async releaseWriterLeaseReclaim() {
+    const active = this.writerLeaseReclaim;
+    if (!active) return;
+    const current = readStorageWriterLease(active.path);
+    if (!current || current.record.token !== active.token) {
+      this.writerLeaseReclaim = null;
+      throw new StorageConcurrentWriterError(this.rootDir, "the stale-lease recovery claim changed");
+    }
+    let releasedPath: string;
+    try {
+      releasedPath = await this.moveLeaseGeneration(active, current.raw, "released");
+    } catch (err) {
+      if (err instanceof StorageConcurrentWriterError) this.writerLeaseReclaim = null;
+      throw err;
+    }
+    await rm(releasedPath, { recursive: true, force: true });
+    await flushDirectory(this.rootDir);
+    this.writerLeaseReclaim = null;
+  }
+
+  private async releaseWriterLease() {
+    const active = this.writerLease;
+    if (!active) return;
+    const current = readStorageWriterLease(active.path);
+    if (!current) {
+      this.writerLease = null;
+      return;
+    }
+    if (current.record.token !== active.token) {
+      this.writerLease = null;
+      throw new StorageConcurrentWriterError(this.rootDir, "the writer lease owner changed");
+    }
+    const latest = readStorageWriterLease(active.path);
+    if (!latest || latest.record.token !== active.token || latest.raw !== current.raw) {
+      this.writerLease = null;
+      throw new StorageConcurrentWriterError(this.rootDir, "the writer lease changed during release");
+    }
+    await this.testHooks?.beforeWriterLeaseRelease?.();
+    let releasedPath: string;
+    try {
+      releasedPath = await this.moveLeaseGeneration(active, latest.raw, "released");
+    } catch (err) {
+      if (err instanceof StorageConcurrentWriterError) this.writerLease = null;
+      throw err;
+    }
+    await rm(releasedPath, { recursive: true, force: true });
+    await flushDirectory(this.rootDir);
+    this.writerLease = null;
+  }
+
+  private assertExclusiveWriteState() {
+    const active = this.writerLease;
+    let current: ReturnType<typeof readStorageWriterLease>;
+    try {
+      current = active ? readStorageWriterLease(active.path) : null;
+    } catch (err) {
+      throw new StorageConcurrentWriterError(
+        this.rootDir,
+        err instanceof Error ? err.message : "the writer lease became unreadable",
+      );
+    }
+    if (!active || !current || current.record.token !== active.token) {
+      throw new StorageConcurrentWriterError(this.rootDir, "the exclusive writer lease was removed or replaced");
+    }
+
+    let currentManifestFingerprint: string;
+    try {
+      currentManifestFingerprint = fileFingerprint(manifestPath(this.rootDir));
+    } catch (err) {
+      throw new StorageConcurrentWriterError(
+        this.rootDir,
+        `manifest.json became unreadable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (currentManifestFingerprint !== this.expectedManifestFingerprint) {
+      throw new StorageConcurrentWriterError(this.rootDir, "manifest.json changed after this process loaded it");
+    }
+  }
+
+  private rememberSnapshotFingerprint(path: string) {
+    this.expectedSnapshotFingerprints.set(path, fileFingerprint(path));
+    this.expectedSnapshotFingerprints.set(`${path}.bak`, fileFingerprint(`${path}.bak`));
+  }
+
+  private assertSnapshotUnchanged(path: string) {
+    const expected = this.expectedSnapshotFingerprints.get(path) ?? "missing";
+    let current: string;
+    try {
+      current = fileFingerprint(path);
+    } catch (err) {
+      throw new StorageConcurrentWriterError(
+        this.rootDir,
+        `${path} became unreadable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (current !== expected) {
+      throw new StorageConcurrentWriterError(this.rootDir, `${path} changed after this process loaded it`);
+    }
+  }
+
+  private async writeSnapshotFile(path: string, serializedRows: string) {
+    this.assertSnapshotUnchanged(path);
+    const backupPath = `${path}.bak`;
+    this.assertSnapshotUnchanged(backupPath);
+    await atomicWriteFile(path, serializedRows, {
+      refreshBackup: !this.backupRecoveredPaths.has(path),
+      beforeBackupReplace: () => this.assertSnapshotUnchanged(backupPath),
+      // Track our own backup generation immediately. If a later primary in
+      // the batch conflicts, rollback can now distinguish this backup from
+      // an external replacement and restore the exact preflight bytes.
+      afterBackupReplace: () => this.expectedSnapshotFingerprints.set(backupPath, fileFingerprint(backupPath)),
+      // Run synchronously immediately before both backup refresh and rename.
+      // This catches an older build that ignores the lease and writes its
+      // table while our temp snapshot is being prepared.
+      beforeReplace: () => this.assertSnapshotUnchanged(path),
+    });
+    this.expectedSnapshotFingerprints.set(path, contentFingerprint(serializedRows));
+    this.expectedSnapshotFingerprints.set(backupPath, fileFingerprint(backupPath));
+  }
+
+  private async deleteSnapshotGeneration(path: string) {
+    const expected = this.expectedSnapshotFingerprints.get(path) ?? "missing";
+    this.assertSnapshotUnchanged(path);
+    if (expected === "missing") return;
+    await this.testHooks?.beforeSnapshotDeleteCommit?.(path);
+
+    const movedPath = `${path}.deleted-${process.pid}-${randomUUID()}`;
+    try {
+      await rename(path, movedPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        throw new StorageConcurrentWriterError(this.rootDir, `${path} disappeared during deletion`);
+      }
+      throw err;
+    }
+
+    let movedFingerprint: string;
+    try {
+      movedFingerprint = fileFingerprint(movedPath);
+    } catch (err) {
+      if (!existsSync(path)) await rename(movedPath, path).catch(() => undefined);
+      throw new StorageConcurrentWriterError(
+        this.rootDir,
+        `${path} became unreadable during deletion: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (movedFingerprint !== expected) {
+      if (!existsSync(path)) await rename(movedPath, path).catch(() => undefined);
+      throw new StorageConcurrentWriterError(this.rootDir, `${path} changed during deletion`);
+    }
+
+    const replacementFingerprint = fileFingerprint(path);
+    await unlinkIgnoringMissing(movedPath);
+    this.expectedSnapshotFingerprints.set(path, replacementFingerprint);
+    if (replacementFingerprint !== "missing") {
+      throw new StorageConcurrentWriterError(this.rootDir, `${path} was replaced during deletion`);
+    }
+  }
+
+  private async deleteSnapshotFile(path: string) {
+    await this.deleteSnapshotGeneration(path);
+    await this.deleteSnapshotGeneration(`${path}.bak`);
+  }
+
+  private assertAcceptingWrites() {
+    if (this.concurrentWriterError) throw this.concurrentWriterError;
+    if (this.closing || this.closed) throw new Error("File-native storage is closing or already closed");
+  }
+
   async initialize() {
     mkdirSync(this.rootDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-    hardenPrivateStorageTree(this.rootDir);
+    try {
+      await this.acquireWriterLease();
+      this.expectedManifestFingerprint = fileFingerprint(manifestPath(this.rootDir));
+      hardenPrivateStorageTree(this.rootDir);
 
-    // Refuse newer-format data BEFORE any migration side effect: the
-    // migration renames monoliths and writes shard files, which must never
-    // happen in a directory this build cannot read (#4708).
-    this.assertStorageFormatSupported();
+      // Refuse newer-format data BEFORE any migration side effect: the
+      // migration renames monoliths and writes shard files, which must never
+      // happen in a directory this build cannot read (#4708).
+      this.assertStorageFormatSupported();
 
-    await this.migrateShardedTables();
+      await this.migrateShardedTables();
 
-    if (fileStoreManifestExists(this.rootDir) || tableSnapshotsExist(this.rootDir)) {
-      await this.loadFileSnapshots();
+      if (fileStoreManifestExists(this.rootDir) || tableSnapshotsExist(this.rootDir)) {
+        await this.loadFileSnapshots();
+      }
+
+      // AFTER the load (the row must land in the loaded table) and BEFORE the
+      // startup flush persists it alongside the migrated shards.
+      this.recordMigrationNotice();
+
+      if (this.dirty || this.dirtyTables.size > 0) {
+        await this.flush(true, true);
+      }
+
+      // Do not begin serving reads from a snapshot that a legacy writer
+      // advanced while startup was loading it.
+      this.assertExclusiveWriteState();
+
+      this.installAutosave();
+      logger.info(`[file-storage] Using file-native storage at ${this.rootDir}`);
+    } catch (err) {
+      const cleanupErrors: unknown[] = [];
+      try {
+        await this.releaseWriterLease();
+      } catch (releaseError) {
+        cleanupErrors.push(releaseError);
+      }
+      try {
+        await this.releaseWriterLeaseReclaim();
+      } catch (releaseError) {
+        cleanupErrors.push(releaseError);
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [err, ...cleanupErrors],
+          "Storage initialization and writer-lease cleanup both failed",
+        );
+      }
+      throw err;
     }
-
-    // AFTER the load (the row must land in the loaded table) and BEFORE the
-    // startup flush persists it alongside the migrated shards.
-    this.recordMigrationNotice();
-
-    if (this.dirty || this.dirtyTables.size > 0) {
-      await this.flush(true);
-    }
-
-    this.installAutosave();
-    logger.info(`[file-storage] Using file-native storage at ${this.rootDir}`);
   }
 
   rows(table: Table | string) {
@@ -1645,9 +2357,11 @@ class FileTableStore {
   }
 
   private async waitForWritableTurn(): Promise<void> {
+    this.assertAcceptingWrites();
     if (this.activeTransactionCount > 0 && !this.txContext.getStore()) {
       await this.waitForTransactions();
     }
+    this.assertAcceptingWrites();
   }
 
   /**
@@ -1800,6 +2514,11 @@ class FileTableStore {
   }
 
   async flush(force = false, throwOnError = false) {
+    if (this.closed) throw new Error("File-native storage is already closed");
+    if (this.concurrentWriterError) {
+      if (force || throwOnError) throw this.concurrentWriterError;
+      return;
+    }
     const transactionContext = this.txContext.getStore();
     if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
@@ -1829,6 +2548,8 @@ class FileTableStore {
         this.lastFlushError = null;
       } catch (err) {
         this.lastFlushError = err;
+        const concurrentWriterError = findStorageConcurrentWriterError(err);
+        if (concurrentWriterError) this.concurrentWriterError = concurrentWriterError;
         this.dirty = true;
         // Re-mark the tables we failed to persist so they retry on the next flush
         // (without clobbering any tables marked dirty during the failed write).
@@ -1851,6 +2572,8 @@ class FileTableStore {
   }
 
   async close() {
+    if (this.closed) return;
+    this.closing = true;
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -1863,10 +2586,36 @@ class FileTableStore {
       process.off("beforeExit", this.beforeExitHandler);
       this.beforeExitHandler = null;
     }
-    if (this.activeFlush) await this.activeFlush;
-    while (this.dirty || this.dirtyTables.size > 0) {
-      await this.flush(true);
-      if (this.lastFlushError) throw this.lastFlushError;
+    try {
+      if (this.activeFlush) await this.activeFlush;
+      if (this.concurrentWriterError) throw this.concurrentWriterError;
+      while (this.dirty || this.dirtyTables.size > 0) {
+        await this.flush(true, true);
+      }
+      await this.releaseWriterLease();
+      this.closed = true;
+    } catch (err) {
+      if (err instanceof StorageConcurrentWriterError || this.concurrentWriterError) {
+        const conflict = this.concurrentWriterError ?? err;
+        try {
+          await this.releaseWriterLease();
+        } catch (releaseError) {
+          this.closed = true;
+          throw new AggregateError(
+            [conflict, releaseError],
+            "Concurrent storage-writer detection and writer-lease cleanup both failed",
+          );
+        }
+        this.closed = true;
+        throw conflict;
+      }
+      // Shutdown has already removed the debounce, safety timer, and
+      // beforeExit hook. If the final durable write fails, keep this store
+      // terminal instead of silently reopening a writer with no durability
+      // machinery. The still-owned lease also prevents a second process from
+      // treating the unsaved in-memory state as a clean handoff.
+      this.closed = true;
+      throw err;
     }
   }
 
@@ -2160,6 +2909,7 @@ class FileTableStore {
     // .bak when possible, then fall back to [] only when both files are
     // unreadable so startup can still reach the UI.
     let needsManifestRewrite = false;
+    let declaredTableCounts: Record<string, unknown> | null = null;
     try {
       const path = manifestPath(this.rootDir);
       const result = parseJsonFile<TableSnapshotManifest | null>(path, null);
@@ -2169,6 +2919,12 @@ class FileTableStore {
       // never read the version at all, which is why the primary downgrade
       // guard lives in the launcher/updater.
       const manifestVersion = result.value?.version;
+      const manifestTables = result.value?.tables;
+      if (isRowRecord(manifestTables)) {
+        declaredTableCounts = manifestTables as Record<string, unknown>;
+      } else {
+        needsManifestRewrite = true;
+      }
       if (typeof manifestVersion === "number" && manifestVersion > STORAGE_VERSION) {
         throw new StorageFormatTooNewError(manifestVersion, STORAGE_VERSION);
       }
@@ -2179,7 +2935,7 @@ class FileTableStore {
       // launcher/updater downgrade guard trusts manifest.version, and a
       // lagging or missing value would let it approve a downgrade onto data
       // the older build cannot read (#4708).
-      needsManifestRewrite =
+      needsManifestRewrite ||=
         result.recoveredFromBackup || result.recoveredFromFallback || manifestVersion !== STORAGE_VERSION;
       if (result.recoveredFromBackup || result.recoveredFromFallback) {
         this.backupRecoveredPaths.add(path);
@@ -2275,6 +3031,7 @@ class FileTableStore {
           );
         }
       }
+      this.rememberSnapshotFingerprint(path);
     }
 
     // Sharded tables (#4708): discover shards by directory listing — readdir
@@ -2325,7 +3082,10 @@ class FileTableStore {
           // Fully quarantined -> not a known shard. If the primary rename
           // failed it is still on disk, so fall through to the copy-preserve
           // path below rather than lose the file.
-          if (!existsSync(path)) continue;
+          if (!existsSync(path)) {
+            this.rememberSnapshotFingerprint(path);
+            continue;
+          }
         }
         if (malformedRowCount > 0) {
           const sourcePath = recoveredFromBackup && existsSync(`${path}.bak`) ? `${path}.bak` : path;
@@ -2401,6 +3161,7 @@ class FileTableStore {
           stale.add(encoded);
           this.staleShardFiles.set(table, stale);
         }
+        this.rememberSnapshotFingerprint(path);
       }
       // Belt-and-braces: the monolith preserved one global insertion order;
       // concatenated shards interleave differently. Normalize the order so
@@ -2460,27 +3221,46 @@ class FileTableStore {
       if (entries.length > 0) this.shardDirsCreated.add(table);
       if (table === "messages") this.rebuildMessageShardIndex();
     }
+    if (declaredTableCounts) {
+      const mismatches = FILE_BACKED_TABLES.flatMap((table) => {
+        const declared = declaredTableCounts?.[table];
+        const actual = counts[table] ?? 0;
+        // Older/hand-authored diagnostic manifests may omit empty tables;
+        // there is no user-data disagreement to heal in that case.
+        if (declared === undefined && actual === 0) return [];
+        return typeof declared === "number" && Number.isFinite(declared) && declared === actual
+          ? []
+          : [{ table, declared: typeof declared === "number" && Number.isFinite(declared) ? declared : null, actual }];
+      });
+      if (mismatches.length > 0) {
+        // Manifest counts are diagnostics only: actual table/shard rows stay
+        // authoritative and are never filtered or dropped to match them.
+        logger.warn(
+          { mismatches: mismatches.slice(0, 25), mismatchCount: mismatches.length },
+          "[file-storage] Manifest table counts differ from loaded rows; preserving every loaded row and rewriting diagnostics.",
+        );
+        this.dirty = true;
+      }
+    }
     logger.info({ tables: counts }, `[file-storage] Loaded file-native data from ${this.rootDir}`);
   }
 
   /**
-   * Persists one sharded table (#4708): only dirty shards and shards whose
-   * file is not yet on disk are written — zero existsSync calls for clean
-   * shards, which is the entire point on a 750ms flush cadence. Shards whose
-   * row count reached zero are deleted (file and .bak) rather than written as
-   * [], so deleted chats leave no permanent litter. Returns the shard-file
-   * count for the manifest diagnostics.
+   * Freezes one sharded table into an immutable write plan. Planning every
+   * touched primary before the first write lets saveFileSnapshots preflight
+   * the complete table set, and defers in-memory shard bookkeeping until the
+   * manifest commit succeeds.
    */
-  private async saveShardedTable(table: string, rows: Row[], dirtyKeys: Set<string>): Promise<number> {
+  private planShardedTable(table: string, rows: Row[], dirtyKeys: Set<string>): ShardedSnapshotPlan {
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
-    this.knownShardFiles.set(table, known);
+    const nextKnown = new Set(known);
     const stale = this.staleShardFiles.get(table);
     // Nothing dirty and nothing to repair: skip the O(rows) regroup — this
     // runs for BOTH sharded tables on every flush, so an unrelated
     // flat-table write must not scan every message and swipe on the 750ms
     // flush cadence.
     if (dirtyKeys.size === 0 && (!stale || stale.size === 0)) {
-      return known.size;
+      return { operations: [], nextKnown, hadRepairState: false };
     }
     const rowsByShard = new Map<string, Row[]>();
     for (const row of rows) {
@@ -2488,10 +3268,6 @@ class FileTableStore {
       const bucket = rowsByShard.get(key);
       if (bucket) bucket.push(row);
       else rowsByShard.set(key, [row]);
-    }
-    if (!this.shardDirsCreated.has(table)) {
-      mkdirSync(shardDirPath(this.rootDir, table), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-      this.shardDirsCreated.add(table);
     }
     // Stale physical files (foreign-row holders found at load): force a
     // canonical rewrite when an in-memory shard still maps to the name; the
@@ -2509,46 +3285,119 @@ class FileTableStore {
         if (key !== undefined) effectiveDirty.add(key);
       }
     }
+    const operations: SnapshotOperation[] = [];
     for (const [key, shardRows] of rowsByShard) {
       const encoded = encodeShardKey(key);
       if (!effectiveDirty.has(key) && known.has(encoded)) continue;
-      const serializedRows = JSON.stringify(shardRows);
-      await this.testHooks?.beforeTableWrite?.(`${table}/${encoded}`, serializedRows);
-      const path = shardFilePath(this.rootDir, table, encoded);
-      await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
-      known.add(encoded);
+      operations.push({
+        kind: "write",
+        path: shardFilePath(this.rootDir, table, encoded),
+        tableLabel: `${table}/${encoded}`,
+        serializedRows: JSON.stringify(shardRows),
+      });
+      nextKnown.add(encoded);
     }
     if (stale && stale.size > 0) {
       for (const encoded of stale) {
         if (encodedToKey.has(encoded)) continue; // rewritten canonically above
-        const path = shardFilePath(this.rootDir, table, encoded);
-        // Only a MISSING file is an acceptable unlink outcome: any other
-        // failure (EBUSY/EPERM from a scanner holding the handle) must
-        // propagate so the flush error path keeps the dirty/stale marks and
-        // retries — swallowing it would let `known` claim the file is gone
-        // while its rows reload on the next restart.
-        await unlinkIgnoringMissing(path);
-        await unlinkIgnoringMissing(`${path}.bak`);
-        known.delete(encoded);
+        operations.push({ kind: "delete", path: shardFilePath(this.rootDir, table, encoded) });
+        nextKnown.delete(encoded);
       }
     }
     for (const key of effectiveDirty) {
       if (rowsByShard.has(key)) continue;
       const encoded = encodeShardKey(key);
       if (!known.has(encoded)) continue;
-      const path = shardFilePath(this.rootDir, table, encoded);
-      await unlinkIgnoringMissing(path);
-      await unlinkIgnoringMissing(`${path}.bak`);
-      known.delete(encoded);
+      operations.push({ kind: "delete", path: shardFilePath(this.rootDir, table, encoded) });
+      nextKnown.delete(encoded);
     }
-    this.staleShardFiles.delete(table);
-    return known.size;
+    return { operations, nextKnown, hadRepairState: Boolean(stale?.size) };
+  }
+
+  /** Captures and validates every primary/backup generation before a batch. */
+  private preflightSnapshotPaths(primaryPaths: Set<string>) {
+    const originals = new Map<string, Buffer | null>();
+    for (const primaryPath of primaryPaths) {
+      for (const path of [primaryPath, `${primaryPath}.bak`]) {
+        this.assertSnapshotUnchanged(path);
+        let original: Buffer | null;
+        try {
+          original = readFileSync(path);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+            throw new StorageConcurrentWriterError(
+              this.rootDir,
+              `${path} became unreadable during the write-set preflight: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+          original = null;
+        }
+        const capturedFingerprint = original === null ? "missing" : contentFingerprint(original);
+        const expectedFingerprint = this.expectedSnapshotFingerprints.get(path) ?? "missing";
+        if (capturedFingerprint !== expectedFingerprint) {
+          throw new StorageConcurrentWriterError(this.rootDir, `${path} changed during the write-set preflight`);
+        }
+        originals.set(path, original);
+      }
+    }
+    return originals;
+  }
+
+  /**
+   * Best-effort transactional rollback for a detected/ordinary batch error.
+   * A generation is restored only while it still matches the exact bytes
+   * this process last wrote; an external replacement always wins and turns
+   * the rollback into a visible failure instead of being overwritten.
+   */
+  private async rollbackSnapshotPaths(originals: Map<string, Buffer | null>) {
+    const errors: unknown[] = [];
+    for (const [path, original] of [...originals].reverse()) {
+      const originalFingerprint = original === null ? "missing" : contentFingerprint(original);
+      let currentFingerprint: string;
+      try {
+        currentFingerprint = fileFingerprint(path);
+      } catch (err) {
+        errors.push(err);
+        continue;
+      }
+      if (currentFingerprint === originalFingerprint) {
+        this.expectedSnapshotFingerprints.set(path, originalFingerprint);
+        continue;
+      }
+      const processFingerprint = this.expectedSnapshotFingerprints.get(path) ?? "missing";
+      if (currentFingerprint !== processFingerprint) {
+        errors.push(
+          new StorageConcurrentWriterError(this.rootDir, `${path} changed externally while a failed batch rolled back`),
+        );
+        continue;
+      }
+      try {
+        if (original === null) {
+          await this.deleteSnapshotGeneration(path);
+        } else {
+          await atomicWriteFile(path, original.toString("utf8"), {
+            refreshBackup: false,
+            beforeReplace: () => this.assertSnapshotUnchanged(path),
+          });
+          this.expectedSnapshotFingerprints.set(path, originalFingerprint);
+        }
+      } catch (err) {
+        errors.push(err);
+      }
+    }
+    return errors;
   }
 
   private async saveFileSnapshots(dirtyTables: Set<string>, dirtyShards: Map<string, Set<string>>) {
+    // The lease prevents cooperating builds from sharing a data directory;
+    // the fingerprint additionally catches older/bypassed writers before any
+    // dirty table from this in-memory snapshot can overwrite their work.
+    this.assertExclusiveWriteState();
     mkdirSync(join(this.rootDir, "tables"), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     const tables: Record<string, number> = {};
     const shards: Record<string, number> = {};
+    const operations: SnapshotOperation[] = [];
+    const shardedPlans = new Map<string, ShardedSnapshotPlan>();
 
     for (const table of FILE_BACKED_TABLES) {
       const rows = this.rows(table);
@@ -2557,29 +3406,85 @@ class FileTableStore {
         // Sharded tables never touch the flat path — leaving them in this
         // loop's recreate-if-missing branch would silently regrow a full
         // monolith on the very next flush (#4708).
-        shards[table] = await this.saveShardedTable(table, rows, dirtyShards.get(table) ?? new Set());
+        const plan = this.planShardedTable(table, rows, dirtyShards.get(table) ?? new Set());
+        shardedPlans.set(table, plan);
+        operations.push(...plan.operations);
+        shards[table] = plan.nextKnown.size;
         continue;
       }
       const path = tableFilePath(this.rootDir, table);
       if (dirtyTables.has(table) || !existsSync(path)) {
-        const serializedRows = JSON.stringify(rows);
-        await this.testHooks?.beforeTableWrite?.(table, serializedRows);
-        await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
+        operations.push({ kind: "write", path, tableLabel: table, serializedRows: JSON.stringify(rows) });
       }
     }
 
-    const manifest: TableSnapshotManifest = {
-      version: STORAGE_VERSION,
-      savedAt: new Date().toISOString(),
-      backend: "file-native",
-      tables,
-      shards,
-    };
-    const path = manifestPath(this.rootDir);
-    await atomicWriteFile(path, JSON.stringify(manifest, null, 2), {
-      refreshBackup: !this.backupRecoveredPaths.has(path),
-    });
-    this.backupRecoveredPaths.clear();
+    const touchedPaths = new Set(operations.map((operation) => operation.path));
+    const originals = this.preflightSnapshotPaths(touchedPaths);
+    // Nothing may have advanced the manifest while the whole write set was
+    // serialized and preflighted.
+    this.assertExclusiveWriteState();
+
+    try {
+      for (const operation of operations) {
+        if (operation.kind === "write") {
+          await this.testHooks?.beforeTableWrite?.(operation.tableLabel, operation.serializedRows);
+          await this.writeSnapshotFile(operation.path, operation.serializedRows);
+        } else {
+          // Only a missing file is an acceptable delete outcome; every other
+          // failure retains the dirty/stale marks and rolls the batch back.
+          await this.deleteSnapshotFile(operation.path);
+        }
+      }
+
+      const manifest: TableSnapshotManifest = {
+        version: STORAGE_VERSION,
+        savedAt: new Date().toISOString(),
+        backend: "file-native",
+        tables,
+        shards,
+        writerToken: this.writerLease!.token,
+      };
+      const path = manifestPath(this.rootDir);
+      // Re-check after table I/O as well. A legacy writer can ignore the
+      // lease; if it advanced any touched generation during this flush,
+      // never cover that evidence with our manifest snapshot.
+      this.assertExclusiveWriteState();
+      for (const touchedPath of touchedPaths) {
+        this.assertSnapshotUnchanged(touchedPath);
+        this.assertSnapshotUnchanged(`${touchedPath}.bak`);
+      }
+      const serializedManifest = JSON.stringify(manifest, null, 2);
+      await atomicWriteFile(path, serializedManifest, {
+        refreshBackup: !this.backupRecoveredPaths.has(path),
+        beforeReplace: () => {
+          this.assertExclusiveWriteState();
+          for (const touchedPath of touchedPaths) this.assertSnapshotUnchanged(touchedPath);
+        },
+      });
+      this.expectedManifestFingerprint = contentFingerprint(serializedManifest);
+      for (const [table, plan] of shardedPlans) {
+        this.knownShardFiles.set(table, plan.nextKnown);
+        if (plan.hadRepairState) this.staleShardFiles.delete(table);
+        if (plan.operations.some((operation) => operation.kind === "write")) this.shardDirsCreated.add(table);
+      }
+      this.backupRecoveredPaths.clear();
+    } catch (err) {
+      const rollbackErrors = await this.rollbackSnapshotPaths(originals);
+      if (rollbackErrors.length > 0) {
+        const nonConcurrentRollbackErrors = rollbackErrors.filter(
+          (rollbackError) => !(rollbackError instanceof StorageConcurrentWriterError),
+        );
+        if (nonConcurrentRollbackErrors.length === 0) {
+          // Preserving an external replacement is a successful fail-closed
+          // rollback outcome. Keep the original conflict type actionable for
+          // callers (and for flush's terminal conflict handling).
+          if (err instanceof StorageConcurrentWriterError) throw err;
+          throw rollbackErrors[0];
+        }
+        throw new AggregateError([err, ...rollbackErrors], "File-native snapshot batch and its rollback both failed");
+      }
+      throw err;
+    }
   }
 
   private installAutosave() {

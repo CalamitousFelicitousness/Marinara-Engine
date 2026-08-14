@@ -238,6 +238,16 @@ try {
   assert.equal(resolveOfficialAgentBranch("release/v2.4.0"), "staging");
   assert.equal(resolveOfficialAgentBranch("main"), "main");
   assert.equal(
+    resolveOfficialAgentBranch("v2.4.2"),
+    "main",
+    "Tagged container builds must use the released Agent catalog",
+  );
+  assert.equal(
+    resolveOfficialAgentBranch("refs/tags/v2.4.2"),
+    "main",
+    "Full Git tag refs must use the released Agent catalog",
+  );
+  assert.equal(
     resolveOfficialAgentBranch("feature/catalog-ui"),
     "staging",
     "Feature branches must follow the staging Agent catalog so extracted packages can be reviewed before release",

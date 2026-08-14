@@ -33,9 +33,18 @@ const NOODLE_EXTRACTION_MIGRATION = join(ROOT, "noodle-extraction-migration-v1.j
 const HIERARCHICAL_MAPS_SELECTION_CORRECTION = join(ROOT, "hierarchical-maps-selection-correction-v1.json");
 const NON_DOWNLOADABLE_CORE_PACKAGE_IDS = new Set(["about-me-keeper"]);
 const OFFICIAL_AGENT_RAW_ROOT = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents";
+const ENGINE_RELEASE_TAG_REF_PATTERN =
+  /^(?:refs\/tags\/)?v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 type OfficialAgentBranch = "main" | "staging";
 export function resolveOfficialAgentBranch(engineBranch: string | null = getBuildBranch()): OfficialAgentBranch {
-  if (!engineBranch || engineBranch === "main" || engineBranch.startsWith("hotfix/")) return "main";
+  if (
+    !engineBranch ||
+    engineBranch === "main" ||
+    engineBranch.startsWith("hotfix/") ||
+    ENGINE_RELEASE_TAG_REF_PATTERN.test(engineBranch)
+  ) {
+    return "main";
+  }
   return "staging";
 }
 function officialCatalogRoot(branch: OfficialAgentBranch): string {

@@ -24,6 +24,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
 - Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
 - Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
+- Presented iPad sidebars as full-width overlays in landscape as well as portrait by widening the mobile-shell breakpoint to cover newer iPad Pro 13" widths and requiring a touch-only pointer, so sidebars are no longer cramped on landscape iPads while hybrid touch laptops keep their desktop layout (#5034).
 
 ## [2.4.2]
 

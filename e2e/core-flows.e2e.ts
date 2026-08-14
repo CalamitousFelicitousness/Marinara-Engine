@@ -234,105 +234,12 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
   await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
-  await expect(announcement.getByRole("heading", { name: "Hello and welcome to the new version!" })).toBeVisible();
-  await expect(
-    announcement.getByText(
-      "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  const exactReleaseCopy = [
-    "Hello and welcome to the new version!",
-    "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
-    "Your home page is now a fully customizable hub with widgets. You can add, remove, and rearrange them however you want. These include widgets with recent chats, useful help centers, Professor Mari, clock and calendar, and many others. You can also ask Professor Mari to create new, custom ones for you.",
-    "You probably also noticed that there's a small new Professor Mari on the home page. She is your new personal navigator, that will take you to different parts of Marinara Engine, including your lorebooks, chats, characters, and even agents. Hopefully, no more trouble with finding the Chats tab anymore.",
-    "Be gentle when moving her around, though…",
-    "Additionally, Professor Mari (the assistant version) now has Memories that you can access on her tab (right, forgot to mention, she has her tab now accessible from Home; check at the top of the screen). She will remember your instructions and important details between the chats.",
-    "One significant change is that Noodle is now moved to be an Agent (don't worry, it will be there i you already had it installed). You can access it as a separate tab from the Home page menu. This should declutter the main top bar a little, plus allow you to uninstall it if you would rather not use it.",
-    "You may have noticed that the Browser tab was removed: don't worry, the option to download characters was merged into the Characters and Personas tabs.",
-    "These are the most significant changes in this version and we hope you will enjoy them. Read the entire list of changes here:",
-    "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
-    "Thank you for supporting the project. Cheers.",
-  ];
-  await expect.poll(() => announcement.locator("[data-release-copy]").allTextContents()).toEqual(exactReleaseCopy);
-
-  await expect(announcement.locator("[data-release-story='2.4.2']")).toBeAttached();
-  const releaseVideos = announcement.locator('video[data-release-media-kind="video"]');
-  await expect(releaseVideos).toHaveCount(3);
+  await expect(announcement.getByRole("heading", { name: "Wlecome to Marinara Engine's v2.4.3 Beta!" })).toBeVisible();
   await expect
-    .poll(() =>
-      releaseVideos.evaluateAll((videos) =>
-        videos.map((video) => {
-          const media = video as HTMLVideoElement;
-          return {
-            autoplay: media.autoplay,
-            controls: media.controls,
-            loop: media.loop,
-            muted: media.muted,
-            playsInline: media.playsInline,
-            src: new URL(media.currentSrc || media.src).pathname,
-          };
-        }),
-      ),
-    )
-    .toEqual([
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-widgets.mp4",
-      },
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-widgets-custom.mp4",
-      },
-      {
-        autoplay: true,
-        controls: true,
-        loop: true,
-        muted: true,
-        playsInline: true,
-        src: "/releases/2.4.2/home-navigator.mp4",
-      },
-    ]);
-
-  const releaseImages = announcement.locator('img[data-release-media-kind="image"]');
-  await expect(releaseImages).toHaveCount(3);
-  await expect
-    .poll(() =>
-      releaseImages.evaluateAll((images) =>
-        images.map(
-          (image) => new URL((image as HTMLImageElement).currentSrc || (image as HTMLImageElement).src).pathname,
-        ),
-      ),
-    )
-    .toEqual([
-      "/releases/2.4.2/professor-mari-memories.png",
-      "/releases/2.4.2/noodle-agent.png",
-      "/releases/2.4.2/character-downloads.png",
-    ]);
-  for (const asset of [
-    "/releases/2.4.2/home-widgets.mp4",
-    "/releases/2.4.2/home-widgets-custom.mp4",
-    "/releases/2.4.2/home-navigator.mp4",
-    "/releases/2.4.2/professor-mari-memories.png",
-    "/releases/2.4.2/noodle-agent.png",
-    "/releases/2.4.2/character-downloads.png",
-  ]) {
-    expect((await page.request.get(asset)).ok(), `${asset} should be bundled and served`).toBe(true);
-  }
-
-  await expect(
-    announcement.getByRole("link", {
-      name: "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
-    }),
-  ).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2");
+    .poll(() => announcement.locator("[data-release-copy]").allTextContents())
+    .toEqual(["Wlecome to Marinara Engine's v2.4.3 Beta!"]);
+  await expect(announcement.locator("[data-release-story]")).toHaveCount(0);
+  await expect(announcement.locator("[data-release-media-kind]")).toHaveCount(0);
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))
@@ -14349,7 +14256,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(content).toHaveCSS("overflow-y", "auto");
   expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
   await expect(page.getByRole("heading", { name: "Recent chats" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What's new in v2.4.2" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `What's new in v${APP_VERSION}` })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Something new for your engine" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Character of the Day" })).toBeVisible();
   await expect(

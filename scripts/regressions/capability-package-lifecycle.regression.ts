@@ -247,6 +247,14 @@ try {
     "main",
     "Full Git tag refs must use the released Agent catalog",
   );
+  assert.equal(resolveOfficialAgentBranch("v2.4.2-rc.1+build.01"), "main");
+  for (const invalidReleaseRef of ["v02.004.000", "v2.4.2-01", "v2.4.2-alpha.01"]) {
+    assert.equal(
+      resolveOfficialAgentBranch(invalidReleaseRef),
+      "staging",
+      `${invalidReleaseRef} must not be treated as a canonical release tag`,
+    );
+  }
   assert.equal(
     resolveOfficialAgentBranch("feature/catalog-ui"),
     "staging",

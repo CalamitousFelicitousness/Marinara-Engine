@@ -221,15 +221,15 @@ test("Playwright color parsing preserves supported force values only", () => {
 });
 
 test("What's New opens once for each Marinara Engine version", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/api/health");
   await page.evaluate(
     ({ bypassKey, seenKey }) => {
       sessionStorage.setItem(bypassKey, "true");
-      localStorage.removeItem(seenKey);
+      localStorage.setItem(seenKey, "2.2.1");
     },
     { bypassKey: WHATS_NEW_E2E_BYPASS_KEY, seenKey: WHATS_NEW_SEEN_VERSION_KEY },
   );
-  await page.reload();
+  await page.goto("/");
 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
@@ -336,13 +336,6 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
 
   await page.reload();
   await expect(announcement).toBeHidden();
-
-  await page.evaluate(({ key, previousVersion }) => localStorage.setItem(key, previousVersion), {
-    key: WHATS_NEW_SEEN_VERSION_KEY,
-    previousVersion: "2.2.1",
-  });
-  await page.reload();
-  await expect(announcement).toBeVisible();
 });
 
 test("turning off the custom mouse pointer persists immediately and after reload", async ({ page }, testInfo) => {

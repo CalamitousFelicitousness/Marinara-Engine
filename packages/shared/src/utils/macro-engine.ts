@@ -453,6 +453,7 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   { category: "Variables", syntax: "{{getvar::name}}", description: "Read a dynamic variable" },
   { category: "Variables", syntax: "{{setvar::name::value}}", description: "Set a dynamic variable" },
   { category: "Variables", syntax: "{{addvar::name::value}}", description: "Append to a dynamic variable" },
+  { category: "Variables", syntax: "{{addnumvar::name::value}}", description: "Add to a numeric variable" },
   {
     category: "Variables",
     syntax: "{{incvar::name}} / {{decvar::name}}",
@@ -974,7 +975,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
       //     plain word or number still compares as itself — unchanged behavior;
       //   • force concrete resolution (deferCharacterMacros off) so a group chat
       //     compares the real value, not a deferred per-character placeholder.
-      if (!/^(setvar|addvar|incvar|decvar)\b/i.test(token)) {
+      if (!/^(setvar|addvar|addnumvar|incvar|decvar)\b/i.test(token)) {
         const braced = `{{${token}}}`;
         const resolved = resolveMacros(braced, ctx, {
           ...nestedMacroOptions(options),
@@ -1655,7 +1656,7 @@ export function selectConditionalPayloadBranch(
 function resolveVariableOperationMacros(input: string, ctx: MacroContext, options: ResolveMacroOptions): string {
   return replaceBalancedMacros(input, (body, original) => {
     const readMatch = body.match(/^(getvar|incvar|decvar)::([\w.-]+)$/i);
-    const writeMatch = body.match(/^(setvar|addvar)::([\w.-]+)::([\s\S]*)$/i);
+    const writeMatch = body.match(/^(setvar|addvar|addnumvar)::([\w.-]+)::([\s\S]*)$/i);
     const op = String(readMatch?.[1] ?? writeMatch?.[1] ?? "").toLowerCase();
     const name = readMatch?.[2] ?? writeMatch?.[2];
     if (!op || !name) return undefined;
@@ -1675,6 +1676,16 @@ function resolveVariableOperationMacros(input: string, ctx: MacroContext, option
           (ctx.variables[name] ?? "") +
           resolveMacros(writeMatch?.[3] ?? "", ctx, { ...nestedMacroOptions(options), trimResult: false });
         return "";
+      case "addnumvar": {
+        const currentValue = Number(ctx.variables[name] ?? "0");
+        const addedValue = Number(
+          resolveMacros(writeMatch?.[3] ?? "", ctx, { ...nestedMacroOptions(options), trimResult: false }),
+        );
+        ctx.variables[name] = String(
+          (Number.isFinite(currentValue) ? currentValue : 0) + (Number.isFinite(addedValue) ? addedValue : 0),
+        );
+        return "";
+      }
       case "incvar":
         ctx.variables[name] = String((parseInt(ctx.variables[name] ?? "0", 10) || 0) + 1);
         return "";
@@ -1954,6 +1965,7 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
  *  - {{getvar::name}} — read a dynamic variable
  *  - {{setvar::name::value}} — set a variable
  *  - {{addvar::name::value}} — append to a variable
+ *  - {{addnumvar::name::value}} — add to a numeric variable
  *  - {{incvar::name}} — increment numeric variable by 1
  *  - {{decvar::name}} — decrement numeric variable by 1
  *  - {{input}} — last user message

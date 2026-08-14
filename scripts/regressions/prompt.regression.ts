@@ -284,6 +284,7 @@ import {
 } from "../../packages/server/src/services/video/video-generation.js";
 import { loadGameStoryboardImagePrompt } from "../../packages/server/src/services/image/game-storyboard-image-prompt.js";
 import { formatAgentFailuresToast, toAgentFailure } from "../../packages/client/src/lib/agent-failures.js";
+import { createMessageMacroResolver } from "../../packages/client/src/lib/chat-macros.js";
 import { formatGenerationParameterError } from "../../packages/client/src/lib/generation-parameter-errors.js";
 import { normalizeCustomMusicSource } from "../../packages/client/src/components/chat/AgentAddSetupFields.js";
 import {
@@ -2688,6 +2689,35 @@ const cases: RegressionCase[] = [
         "untouched",
       );
       assert.equal(context.variables.personaTouched, undefined);
+    },
+  },
+  {
+    name: "addnumvar adds numbers without changing addvar concatenation",
+    run() {
+      const resolve = (template: string) =>
+        resolveMacros(template, {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+        });
+
+      assert.equal(
+        resolve("{{setvar::modifier::2}}{{setvar::score::20}}{{addnumvar::score::{{modifier}}}}{{getvar::score}}"),
+        "22",
+      );
+      assert.equal(resolve("{{setvar::score::20}}{{addnumvar::score::-2}}{{getvar::score}}"), "18");
+      assert.equal(resolve("{{setvar::score::1.5}}{{addnumvar::score::2.25}}{{getvar::score}}"), "3.75");
+      assert.equal(resolve("{{addnumvar::score::4}}{{getvar::score}}"), "4");
+      assert.equal(resolve("{{setvar::score::invalid}}{{addnumvar::score::5}}{{getvar::score}}"), "5");
+      assert.equal(resolve("{{setvar::score::7}}{{addnumvar::score::invalid}}{{getvar::score}}"), "7");
+      assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "20-2");
+
+      const variables = { score: "0" };
+      const resolveMessage = createMessageMacroResolver({ variables });
+      resolveMessage("{{addnumvar::score::1}}");
+      resolveMessage("{{addnumvar::score::1}}");
+      assert.equal(variables.score, "2", "repeated numeric writes must not be served from the display macro cache");
     },
   },
   {

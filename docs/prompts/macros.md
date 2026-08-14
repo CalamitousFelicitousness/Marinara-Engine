@@ -188,6 +188,7 @@ Variables let one part of your prompt store a value and let a later part read it
 | `{{setvar::name::value}}` | Stores a value and leaves nothing in the text. |
 | `{{getvar::name}}` | Reads a stored value (nothing if it was never set). |
 | `{{addvar::name::value}}` | Adds text to the end of a stored value. |
+| `{{addnumvar::name::value}}` | Adds a number to a stored numeric value. Missing or invalid numbers count as 0. |
 | `{{incvar::name}}` | Adds 1 to a numeric variable. |
 | `{{decvar::name}}` | Takes 1 away from a numeric variable. |
 

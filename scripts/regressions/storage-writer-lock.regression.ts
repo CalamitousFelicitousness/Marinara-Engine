@@ -132,6 +132,42 @@ try {
     }
   }
 
+  // Closing rejects new writes, waits for a transaction that already started,
+  // and lets that transaction finish while the lease is still held.
+  {
+    useTempStorage("writer-close-transaction");
+    const db = await createFileNativeDB();
+    let finishTransaction!: () => void;
+    let transactionStarted!: () => void;
+    const finishGate = new Promise<void>((resolve) => {
+      finishTransaction = resolve;
+    });
+    const startedGate = new Promise<void>((resolve) => {
+      transactionStarted = resolve;
+    });
+    const transaction = db.transaction(async (tx) => {
+      await tx.insert(appSettings).values({ key: "tx-before-close", value: "one", updatedAt: "2026-08-14" });
+      transactionStarted();
+      await finishGate;
+      await tx.insert(appSettings).values({ key: "tx-after-close", value: "two", updatedAt: "2026-08-14" });
+    });
+    await startedGate;
+    const closing = db._fileStore.close();
+    await assert.rejects(
+      db.insert(appSettings).values({ key: "new-after-close", value: "blocked", updatedAt: "2026-08-14" }),
+      /closing or closed/,
+    );
+    finishTransaction();
+    await transaction;
+    await closing;
+    const reopened = await createFileNativeDB();
+    assert.deepEqual((await reopened.select().from(appSettings)).map((row) => row.key).sort(), [
+      "tx-after-close",
+      "tx-before-close",
+    ]);
+    await reopened._fileStore.close();
+  }
+
   // A shutdown write failure still removes the process-owned lease so the
   // next clean start is not blocked by a store that has already detached.
   {
@@ -146,6 +182,13 @@ try {
     failWrites = true;
     await assert.rejects(db._fileStore.close(), /forced shutdown write failure/);
     assert.equal(existsSync(leasePath(dir)), false, "a failed close still releases its writer lease");
+    await assert.rejects(
+      db.insert(appSettings).values({ key: "after-close", value: "blocked", updatedAt: "2026-08-14" }),
+      /closing or closed/,
+    );
+    await assert.rejects(db._fileStore.flush(), /closing or closed/);
+    const reopened = await createFileNativeDB();
+    await reopened._fileStore.close();
   }
 
   // The Professor Mari service follows the current DB identity after a clean

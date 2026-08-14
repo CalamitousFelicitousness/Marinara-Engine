@@ -1328,6 +1328,8 @@ class FileTableStore {
   private pendingTransactionFlush = false;
   private quarantinedTables: QuarantinedStorageTable[] = [];
   private writerLease: ActiveStorageWriterLease | null = null;
+  private writesClosed = false;
+  private closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly rootDir: string,
@@ -1788,6 +1790,7 @@ class FileTableStore {
       // nest rolls back together; the outermost owns snapshot/restore.
       return await fn(tx);
     }
+    this.assertWritable();
 
     let releaseTransaction!: () => void;
     const previousTransaction = this.transactionQueue;
@@ -1870,7 +1873,7 @@ class FileTableStore {
       releaseTransaction();
       if (this.pendingTransactionFlush) {
         this.pendingTransactionFlush = false;
-        void this.flush();
+        if (!this.writesClosed) void this.flush();
       }
     }
   }
@@ -1881,8 +1884,15 @@ class FileTableStore {
   }
 
   private async waitForWritableTurn(): Promise<void> {
+    this.assertWritable();
     if (this.activeTransactionCount > 0 && !this.txContext.getStore()) {
       await this.waitForTransactions();
+    }
+  }
+
+  private assertWritable() {
+    if (this.writesClosed && !this.txContext.getStore()) {
+      throw new StorageWriterLeaseError("File-native storage is closing or closed and cannot accept writes.");
     }
   }
 
@@ -1926,6 +1936,7 @@ class FileTableStore {
         const runInsert = (onConflict?: { target: unknown; set: Row }) =>
           executable(async () => {
             await this.waitForWritableTurn();
+            this.assertWritable();
             const conflictColumns = normalizeConflictTargets(onConflict?.target);
             const inputRows = Array.isArray(rows) ? rows : [rows];
             const target = this.rows(meta.name);
@@ -1982,6 +1993,7 @@ class FileTableStore {
         const runUpdate = (condition?: Condition) =>
           executable(async () => {
             await this.waitForWritableTurn();
+            this.assertWritable();
             const target = this.rows(meta.name);
             const changedIndexes: number[] = [];
             const nextRows = target.map((row, index) => {
@@ -2028,6 +2040,7 @@ class FileTableStore {
     const runDelete = (condition?: Condition) =>
       executable(async () => {
         await this.waitForWritableTurn();
+        this.assertWritable();
         this.deleteWhere(meta, condition);
       });
     const builder = runDelete() as DeleteBuilder;
@@ -2035,8 +2048,9 @@ class FileTableStore {
     return builder;
   }
 
-  async flush(force = false, throwOnError = false) {
+  async flush(force = false, throwOnError = false, allowClosed = false) {
     const transactionContext = this.txContext.getStore();
+    if (this.writesClosed && !transactionContext && !allowClosed) this.assertWritable();
     if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
       if (transactionContext) return;
@@ -2045,7 +2059,7 @@ class FileTableStore {
     if (transactionContext && force) transactionContext.flushed = true;
     if (this.activeFlush) {
       await this.activeFlush;
-      if (this.dirty || this.dirtyTables.size > 0) await this.flush(force, throwOnError);
+      if (this.dirty || this.dirtyTables.size > 0) await this.flush(force, throwOnError, allowClosed);
       else if (throwOnError && this.lastFlushError) throw this.lastFlushError;
       return;
     }
@@ -2086,7 +2100,14 @@ class FileTableStore {
     if (throwOnError && this.lastFlushError) throw this.lastFlushError;
   }
 
-  async close() {
+  close() {
+    if (this.closePromise) return this.closePromise;
+    this.writesClosed = true;
+    this.closePromise = this.finishClose();
+    return this.closePromise;
+  }
+
+  private async finishClose() {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -2100,9 +2121,10 @@ class FileTableStore {
       this.beforeExitHandler = null;
     }
     try {
+      await this.transactionQueue;
       if (this.activeFlush) await this.activeFlush;
       while (this.dirty || this.dirtyTables.size > 0) {
-        await this.flush(true);
+        await this.flush(true, false, true);
         if (this.lastFlushError) throw this.lastFlushError;
       }
     } catch (err) {

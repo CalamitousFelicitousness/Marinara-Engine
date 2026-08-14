@@ -7,6 +7,7 @@
     "description": "A minimal sandboxed Browser Extension.",
     "runtime": "client",
     "capabilities": [],
-    "jsPath": "extension.js"
+    "jsPath": "extension.js",
+    "cssPath": "extension.css"
   }
 }

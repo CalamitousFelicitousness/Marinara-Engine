@@ -18,6 +18,7 @@ const panel = marinara.ui.registerContribution({
     count += 1;
     await marinara.storage.patch({ count });
     panel.update({ elements: elements() });
+    marinara.ui.showWindow({ title: "Hello Panel", elements: elements() });
   },
 });
 

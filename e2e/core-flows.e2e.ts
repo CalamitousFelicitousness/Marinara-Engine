@@ -3567,7 +3567,7 @@ test("Matched full-body sprites approve a neutral anchor before using portrait r
   }
 });
 
-test("Convo About Me keeps manual editing and native expanded-editor keyboard behavior", async ({ page }, testInfo) => {
+test("expanded character editors keep native keyboard and quote caret behavior", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "The shared Convo profile fields are covered on desktop.");
 
   const characterName = "About Me Controls Smoke";
@@ -3575,6 +3575,7 @@ test("Convo About Me keeps manual editing and native expanded-editor keyboard be
     data: {
       data: {
         name: characterName,
+        description: "alpha beta",
         personality: "Dryly funny and observant.",
         extensions: { aboutMe: "alpha\nbeta" },
       },
@@ -3584,6 +3585,15 @@ test("Convo About Me keeps manual editing and native expanded-editor keyboard be
   const character = (await createResponse.json()) as { id: string };
 
   try {
+    await page.addInitScript(() => {
+      const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{},"version":87}') as {
+        state: Record<string, unknown>;
+        version: number;
+      };
+      persisted.state.hasCompletedOnboarding = true;
+      persisted.state.quoteFormat = "typographic";
+      localStorage.setItem("marinara-engine-ui", JSON.stringify(persisted));
+    });
     await page.goto("/");
     await page.locator('[data-tour="panel-characters"]').click();
     await page.getByText(characterName, { exact: true }).first().click();
@@ -3641,6 +3651,44 @@ test("Convo About Me keeps manual editing and native expanded-editor keyboard be
     await page.keyboard.press("Tab");
     await page.keyboard.press("Shift+Tab");
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
+
+    await page.getByRole("button", { name: "Close expanded editor", exact: true }).click();
+    await editorSections.getByRole("button", { name: "Card", exact: true }).click();
+    const descriptionField = page.locator("#character-card-description");
+    await descriptionField.getByRole("button", { name: "Expand editor", exact: true }).click();
+
+    const quoteEditor = page.locator('[data-component="ExpandedMacroEditor"] textarea');
+    const waitForDelayedSelectionRestores = () =>
+      quoteEditor.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          }),
+      );
+
+    for (const [quote, expected] of [
+      ['"', "alpha “beta"],
+      ["'", "alpha ‘beta"],
+    ] as const) {
+      await quoteEditor.fill("alpha beta");
+      await waitForDelayedSelectionRestores();
+      await quoteEditor.evaluate((textarea) => {
+        textarea.focus();
+        textarea.setSelectionRange(6, 6);
+      });
+      await page.keyboard.type(quote);
+      await waitForDelayedSelectionRestores();
+
+      await expect(quoteEditor).toHaveValue(expected);
+      await expect
+        .poll(() =>
+          quoteEditor.evaluate((textarea) => ({
+            start: textarea.selectionStart,
+            end: textarea.selectionEnd,
+          })),
+        )
+        .toEqual({ start: 7, end: 7 });
+    }
   } finally {
     await page.request.delete(`/api/characters/${character.id}`);
   }

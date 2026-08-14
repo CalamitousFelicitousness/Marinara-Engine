@@ -284,6 +284,7 @@ import {
 } from "../../packages/server/src/services/video/video-generation.js";
 import { loadGameStoryboardImagePrompt } from "../../packages/server/src/services/image/game-storyboard-image-prompt.js";
 import { formatAgentFailuresToast, toAgentFailure } from "../../packages/client/src/lib/agent-failures.js";
+import { createMessageMacroResolver } from "../../packages/client/src/lib/chat-macros.js";
 import { formatGenerationParameterError } from "../../packages/client/src/lib/generation-parameter-errors.js";
 import { normalizeCustomMusicSource } from "../../packages/client/src/components/chat/AgentAddSetupFields.js";
 import {
@@ -2688,6 +2689,49 @@ const cases: RegressionCase[] = [
         "untouched",
       );
       assert.equal(context.variables.personaTouched, undefined);
+    },
+  },
+  {
+    name: "addnumvar adds numbers without changing addvar concatenation",
+    run() {
+      const resolve = (template: string) =>
+        resolveMacros(template, {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+        });
+
+      assert.equal(
+        resolve("{{setvar::modifier::2}}{{setvar::score::20}}{{addnumvar::score::{{modifier}}}}{{getvar::score}}"),
+        "22",
+      );
+      assert.equal(resolve("{{setvar::score::20}}{{addnumvar::score::-2}}{{getvar::score}}"), "18");
+      assert.equal(resolve("{{setvar::score::1.5}}{{addnumvar::score::2.25}}{{getvar::score}}"), "3.75");
+      assert.equal(resolve("{{addnumvar::score::4}}{{getvar::score}}"), "4");
+      assert.equal(resolve("{{setvar::score::invalid}}{{addnumvar::score::5}}{{getvar::score}}"), "5");
+      assert.equal(resolve("{{setvar::score::7}}{{addnumvar::score::invalid}}{{getvar::score}}"), "7");
+      assert.equal(resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{getvar::score}}"), "1e+308");
+      assert.equal(
+        resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{addnumvar::score::-1e308}}{{getvar::score}}"),
+        "0",
+      );
+      assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "20-2");
+
+      const conditionalVariables = { score: "10" };
+      resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: conditionalVariables,
+      });
+      assert.equal(conditionalVariables.score, "10", "conditional operands must not execute numeric writes");
+
+      const variables = { score: "0" };
+      const resolveMessage = createMessageMacroResolver({ variables });
+      resolveMessage("{{addnumvar::score::1}}");
+      resolveMessage("{{addnumvar::score::1}}");
+      assert.equal(variables.score, "2", "repeated numeric writes must not be served from the display macro cache");
     },
   },
   {
@@ -8472,7 +8516,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "unused runtime agent sections preserve surrounding prompt text",
+    name: "unused runtime agent sections omit surrounding prompt text",
     run() {
       const tokens = makeRuntimeAgentSectionTokens("knowledge-router", "regression");
       const messages = [
@@ -8483,11 +8527,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       clearUnusedRuntimeAgentSectionsForTest(messages, [["knowledge-router", tokens]]);
 
-      assert.equal(messages.length, 1);
-      assert.match(messages[0]?.content ?? "", /This is where additional lore will be:/);
-      assert.equal(messages[0]?.content.includes(tokens.placeholder), false);
-      assert.equal(messages[0]?.content.includes(tokens.start), false);
-      assert.equal(messages[0]?.content.includes(tokens.end), false);
+      assert.equal(messages.length, 0);
     },
   },
   {

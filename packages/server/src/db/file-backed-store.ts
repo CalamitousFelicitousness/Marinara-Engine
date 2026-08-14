@@ -12,6 +12,7 @@ import {
   closeSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   readSync,
   renameSync,
   rmSync,
@@ -20,7 +21,7 @@ import {
 } from "node:fs";
 import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { hostname, networkInterfaces } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
@@ -1045,6 +1046,17 @@ function pidDefinitelyExited(pid: number) {
   }
 }
 
+function isTermuxPrivateHomeStorage(rootDir: string) {
+  if (process.platform !== "android" || !process.env.HOME) return false;
+  try {
+    const home = realpathSync(resolve(process.env.HOME));
+    const storage = realpathSync(resolve(rootDir));
+    return storage === home || storage.startsWith(`${home}${sep}`);
+  } catch {
+    return false;
+  }
+}
+
 function fileStoreManifestExists(rootDir: string) {
   return existsSync(manifestPath(rootDir));
 }
@@ -1385,7 +1397,9 @@ class FileTableStore {
         }
         throw err;
       }
-      const sameHost = Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID);
+      const sameHost =
+        Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID) ||
+        isTermuxPrivateHomeStorage(this.rootDir);
       if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
         throw new StorageWriterLeaseError(
           `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +

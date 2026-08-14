@@ -9,16 +9,21 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Added the one-time v2.4.3 beta What's New message to the Home experience.
+- Added `{{addnumvar::name::value}}` for numeric variable addition without changing `{{addvar}}` string concatenation (#5024).
+- Added a Personal Extension authoring guide with importable Browser and Server examples, package/API references, lifecycle guidance, and troubleshooting (#5026).
 
 ### Changed
 
 - Advanced the staging version identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, and release references. Android now uses `versionName` `2.4.3` with `versionCode` `44`.
 - Kept README's stable-release pointer tied to the latest published tag instead of rewriting it during staging version preparation.
+- Removed the shared 1 MiB JavaScript field limit from Browser and Server Personal Extensions while preserving their separate archive, CSS, storage, request, and sandbox boundaries (#5025).
 
 ### Fixed
 
 - Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
 - Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
+- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
+- Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
 
 ## [2.4.2]
 

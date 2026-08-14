@@ -378,6 +378,44 @@ assert.match(
   "unsupported placement warnings must use the localized message",
 );
 
+const characterRegexSectionSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/characters/CharacterRegexSection.tsx"),
+  "utf8",
+);
+const scopedUnsupportedRegexPlacementGate =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?const normalized =/u.exec(
+    characterRegexSectionSource,
+  )?.[0];
+assert.ok(scopedUnsupportedRegexPlacementGate, "the character-scoped regex placement branch remains discoverable");
+assert.doesNotMatch(
+  scopedUnsupportedRegexPlacementGate,
+  /continue;/u,
+  "unsupported SillyTavern placements must not discard an entire character-scoped regex entry",
+);
+const scopedRegexBeforeSuccessfulImport =
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await createRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);/u.exec(
+    characterRegexSectionSource,
+  )?.[0];
+assert.ok(scopedRegexBeforeSuccessfulImport, "the character-scoped regex pre-import path remains discoverable");
+assert.doesNotMatch(
+  scopedRegexBeforeSuccessfulImport,
+  /warnings\.push/u,
+  "character-scoped placement warnings must not be emitted before the regex imports successfully",
+);
+const successfulScopedRegexImportWarning =
+  /await createRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
+    characterRegexSectionSource,
+  )?.[0];
+assert.ok(
+  successfulScopedRegexImportWarning,
+  "the successful character-scoped regex import warning remains discoverable",
+);
+assert.match(
+  successfulScopedRegexImportWarning,
+  /localizeUi\("ui\.panels\.presetspanel\.ignoredUnsupportedRegexPlacements"/u,
+  "character-scoped imports use the localized unsupported-placement warning",
+);
+
 const gameSetupWizardSource = readFileSync(
   join(repositoryRoot, "packages/client/src/components/game/GameSetupWizard.tsx"),
   "utf8",

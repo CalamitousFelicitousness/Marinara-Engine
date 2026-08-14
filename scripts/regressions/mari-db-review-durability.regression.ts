@@ -30,6 +30,35 @@ const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 const sidecarPath = (dir: string, id: string) => join(dir, "journal", "pending", `${id}.json`);
 
 try {
+  // ── Professor Mari can create a persona with every required storage default ──
+  {
+    const dir = tempStorageDir();
+    const db = await createFileNativeDB();
+    try {
+      const mari = new MariDbService(db);
+      const created = await mari.executeAction({
+        action: "persona.create",
+        personaId: "created-persona",
+        data: { name: "Created Persona", description: "A durable identity." },
+        apply: true,
+      });
+      assert.equal(created.ok, true, "Professor Mari's persona.create action passes storage validation");
+      assert.equal(created.mode, "apply");
+      assert.equal(created.approval?.status, "pending", "the applied persona still receives a review card");
+
+      const fetched = await mari.executeAction({ action: "persona.get", personaId: "created-persona" });
+      assert.equal(fetched.ok, true, "the created persona is persisted");
+      assert.equal(
+        (fetched.output as Record<string, unknown>).useCharacterSheetAsReference,
+        "false",
+        "the persona stores the required character-sheet reference default",
+      );
+    } finally {
+      await db._fileStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   // ── A pending review persists to a sidecar, rehydrates after a restart, and Restore works ──
   {
     const dir = tempStorageDir();

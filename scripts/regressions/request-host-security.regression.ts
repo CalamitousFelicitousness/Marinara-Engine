@@ -13,10 +13,21 @@ delete process.env.CORS_ORIGINS;
 delete process.env.MARINARA_E2E_DISABLE_RATE_LIMIT;
 
 const { corsDelegate } = await import("../../packages/server/src/config/cors-config.js");
+const { getCsrfTrustedOrigins } = await import("../../packages/server/src/config/runtime-config.js");
 const { hostValidationHook, parseRequestHostname } =
   await import("../../packages/server/src/middleware/host-validation.js");
 const { rateLimitHook, resetRateLimitBucketsForTests } =
   await import("../../packages/server/src/middleware/rate-limit.js");
+
+process.env.CSRF_TRUSTED_ORIGINS = "null";
+assert.deepEqual(getCsrfTrustedOrigins(), [], "a literal null CSRF origin is treated as unset");
+process.env.CSRF_TRUSTED_ORIGINS = "NULL, https://proxy.example.com";
+assert.deepEqual(
+  getCsrfTrustedOrigins(),
+  ["https://proxy.example.com"],
+  "a null sentinel does not discard configured trusted origins",
+);
+delete process.env.CSRF_TRUSTED_ORIGINS;
 
 assert.equal(parseRequestHostname("192.168.1.50:7860"), "192.168.1.50");
 assert.equal(parseRequestHostname("[fd7a:115c:a1e0::1]:7860"), "fd7a:115c:a1e0::1");

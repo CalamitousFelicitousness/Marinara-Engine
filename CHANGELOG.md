@@ -4,6 +4,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Fixed
+
+- Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
+- Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
+- Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).
+- Kept supported placement settings when importing character-scoped SillyTavern regexes that also contain unsupported placements, with a warning for the ignored values (#5036).
+
 ## [2.4.3]
 
 ### Added

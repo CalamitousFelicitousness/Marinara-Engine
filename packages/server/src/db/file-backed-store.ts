@@ -13,12 +13,15 @@ import {
   readdirSync,
   readFileSync,
   readSync,
+  renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
+import { hostname, networkInterfaces } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
@@ -86,6 +89,17 @@ type TableSnapshotManifest = {
   /** Shard-file count per sharded table — human diagnostics only, never read back. */
   shards?: Record<string, number>;
 };
+
+type StorageWriterLeaseRecord = {
+  version: 1;
+  pid: number;
+  hostId: string | null;
+  hostname: string;
+  token: string;
+  acquiredAt: string;
+};
+
+type ActiveStorageWriterLease = { path: string; token: string };
 
 type FileTransactionContext = {
   snapshots: Map<string, Row[]>;
@@ -221,6 +235,8 @@ type InsertValuesBuilder = Executable<void> & {
 // without chasing literals on every bump. Must equal root storage-format.json
 // (the launcher-format-guard regression pins the pairing).
 export const STORAGE_VERSION = 4;
+export const STORAGE_WRITER_LEASE_FILENAME = ".writer-lease";
+export const STORAGE_WRITER_OWNER_FILENAME = "owner.json";
 const SAVE_DEBOUNCE_MS = 750;
 const SAFETY_SAVE_MS = 10_000;
 
@@ -912,6 +928,13 @@ export class StorageFormatTooNewError extends Error {
   }
 }
 
+export class StorageWriterLeaseError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "StorageWriterLeaseError";
+  }
+}
+
 function shardDirPath(rootDir: string, table: string) {
   return join(rootDir, "tables", table);
 }
@@ -943,6 +966,83 @@ function discoverShardPrimaries(entries: string[]): string[] {
 
 function manifestPath(rootDir: string) {
   return join(rootDir, "manifest.json");
+}
+
+function writerLeasePath(rootDir: string) {
+  return join(rootDir, STORAGE_WRITER_LEASE_FILENAME);
+}
+
+function writerLeaseOwnerPath(path: string) {
+  return join(path, STORAGE_WRITER_OWNER_FILENAME);
+}
+
+const CURRENT_HOSTNAME = hostname();
+const CURRENT_HOST_ID = (() => {
+  const machineId = ["/etc/machine-id", "/var/lib/dbus/machine-id"].flatMap((path) => {
+    try {
+      return [readFileSync(path, "utf8").trim()];
+    } catch {
+      return [];
+    }
+  })[0];
+  const macs = Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .map((entry) => entry.mac.toLowerCase())
+    .filter((mac) => mac !== "00:00:00:00:00:00")
+    .sort();
+  if (!machineId && macs.length === 0) return null;
+  return createHash("sha256")
+    .update([CURRENT_HOSTNAME, machineId ?? "", ...macs].join("\n"))
+    .digest("hex");
+})();
+
+class WriterLeasePendingError extends Error {}
+
+const WRITER_LEASE_RETRY_DELAY_MS = 10;
+
+function invalidWriterLeaseError(path: string, cause: unknown) {
+  return new StorageWriterLeaseError(
+    `The storage writer lease at ${path} is incomplete or invalid. Stop every Marinara Engine process using this data directory, remove only that lease directory, then retry.`,
+    { cause },
+  );
+}
+
+function parseWriterLease(path: string): { raw: string; record: StorageWriterLeaseRecord } {
+  let raw: string;
+  try {
+    raw = readFileSync(writerLeaseOwnerPath(path), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new WriterLeasePendingError(`The storage writer lease at ${path} has no owner record yet.`);
+    }
+    throw new StorageWriterLeaseError(`Could not read the storage writer lease at ${path}.`, { cause: err });
+  }
+  try {
+    const record = JSON.parse(raw) as StorageWriterLeaseRecord;
+    if (
+      record.version !== 1 ||
+      !Number.isSafeInteger(record.pid) ||
+      record.pid <= 0 ||
+      (record.hostId !== null && typeof record.hostId !== "string") ||
+      typeof record.hostname !== "string" ||
+      typeof record.token !== "string" ||
+      typeof record.acquiredAt !== "string"
+    ) {
+      throw new Error("invalid lease fields");
+    }
+    return { raw, record };
+  } catch (err) {
+    throw invalidWriterLeaseError(path, err);
+  }
+}
+
+function pidDefinitelyExited(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ESRCH";
+  }
 }
 
 function fileStoreManifestExists(rootDir: string) {
@@ -1227,6 +1327,9 @@ class FileTableStore {
   private transactionIdleWaiters = new Set<() => void>();
   private pendingTransactionFlush = false;
   private quarantinedTables: QuarantinedStorageTable[] = [];
+  private writerLease: ActiveStorageWriterLease | null = null;
+  private writesClosed = false;
+  private closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly rootDir: string,
@@ -1237,31 +1340,166 @@ class FileTableStore {
     }
   }
 
+  private async acquireWriterLease() {
+    const path = writerLeasePath(this.rootDir);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const token = randomUUID();
+      let created = false;
+      try {
+        mkdirSync(path, { mode: PRIVATE_DIRECTORY_MODE });
+        created = true;
+        const record: StorageWriterLeaseRecord = {
+          version: 1,
+          pid: process.pid,
+          hostId: CURRENT_HOST_ID,
+          hostname: CURRENT_HOSTNAME,
+          token,
+          acquiredAt: new Date().toISOString(),
+        };
+        writeFileSync(writerLeaseOwnerPath(path), JSON.stringify(record, null, 2), {
+          encoding: "utf8",
+          flag: "wx",
+          mode: PRIVATE_FILE_MODE,
+        });
+        this.writerLease = { path, token };
+        return;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+          if (created) rmSync(path, { recursive: true, force: true });
+          throw new StorageWriterLeaseError(`Could not acquire the storage writer lease at ${path}.`, {
+            cause: err,
+          });
+        }
+      }
+
+      let existing: ReturnType<typeof parseWriterLease>;
+      try {
+        existing = parseWriterLease(path);
+      } catch (err) {
+        if (err instanceof WriterLeasePendingError) {
+          if (attempt < 9) {
+            await new Promise((resolve) => setTimeout(resolve, WRITER_LEASE_RETRY_DELAY_MS));
+            continue;
+          }
+          throw invalidWriterLeaseError(path, err);
+        }
+        throw err;
+      }
+      const sameHost = Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID);
+      if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
+        throw new StorageWriterLeaseError(
+          `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +
+            `Close it before retrying. If it no longer exists, verify every process is stopped and remove only ${path}.`,
+        );
+      }
+
+      const stalePath = `${path}.stale-${token}`;
+      try {
+        renameSync(path, stalePath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw new StorageWriterLeaseError(`Could not safely reclaim the exited writer's lease at ${path}.`, {
+          cause: err,
+        });
+      }
+      let moved: ReturnType<typeof parseWriterLease>;
+      try {
+        moved = parseWriterLease(stalePath);
+      } catch (err) {
+        if (!existsSync(path)) renameSync(stalePath, path);
+        throw err;
+      }
+      if (moved.raw !== existing.raw || moved.record.token !== existing.record.token) {
+        if (!existsSync(path)) renameSync(stalePath, path);
+        throw new StorageWriterLeaseError(`The storage writer lease at ${path} changed during stale recovery.`);
+      }
+      rmSync(stalePath, { recursive: true });
+      logger.warn(
+        { previousPid: existing.record.pid, path },
+        "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
+      );
+    }
+    throw new StorageWriterLeaseError(`The storage writer lease at ${path} changed repeatedly; retry startup.`);
+  }
+
+  private releaseWriterLease() {
+    const active = this.writerLease;
+    if (!active) return;
+    if (!existsSync(active.path)) {
+      logger.warn({ path: active.path }, "[file-storage] The writer lease was already removed.");
+      this.writerLease = null;
+      return;
+    }
+    let current: ReturnType<typeof parseWriterLease>;
+    try {
+      current = parseWriterLease(active.path);
+    } catch (err) {
+      if (err instanceof WriterLeasePendingError) throw invalidWriterLeaseError(active.path, err);
+      throw err;
+    }
+    if (current.record.token !== active.token) {
+      throw new StorageWriterLeaseError(`The storage writer lease at ${active.path} belongs to another process.`);
+    }
+    const releasedPath = `${active.path}.released-${active.token}`;
+    try {
+      renameSync(active.path, releasedPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.writerLease = null;
+        return;
+      }
+      throw err;
+    }
+    let moved: ReturnType<typeof parseWriterLease>;
+    try {
+      moved = parseWriterLease(releasedPath);
+    } catch (err) {
+      if (!existsSync(active.path)) renameSync(releasedPath, active.path);
+      throw err;
+    }
+    if (moved.record.token !== active.token) {
+      if (!existsSync(active.path)) renameSync(releasedPath, active.path);
+      throw new StorageWriterLeaseError(`The storage writer lease at ${active.path} changed during release.`);
+    }
+    rmSync(releasedPath, { recursive: true });
+    this.writerLease = null;
+  }
+
   async initialize() {
     mkdirSync(this.rootDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-    hardenPrivateStorageTree(this.rootDir);
+    await this.acquireWriterLease();
+    try {
+      hardenPrivateStorageTree(this.rootDir);
 
-    // Refuse newer-format data BEFORE any migration side effect: the
-    // migration renames monoliths and writes shard files, which must never
-    // happen in a directory this build cannot read (#4708).
-    this.assertStorageFormatSupported();
+      // Refuse newer-format data BEFORE any migration side effect: the
+      // migration renames monoliths and writes shard files, which must never
+      // happen in a directory this build cannot read (#4708).
+      this.assertStorageFormatSupported();
 
-    await this.migrateShardedTables();
+      await this.migrateShardedTables();
 
-    if (fileStoreManifestExists(this.rootDir) || tableSnapshotsExist(this.rootDir)) {
-      await this.loadFileSnapshots();
+      if (fileStoreManifestExists(this.rootDir) || tableSnapshotsExist(this.rootDir)) {
+        await this.loadFileSnapshots();
+      }
+
+      // AFTER the load (the row must land in the loaded table) and BEFORE the
+      // startup flush persists it alongside the migrated shards.
+      this.recordMigrationNotice();
+
+      if (this.dirty || this.dirtyTables.size > 0) {
+        await this.flush(true);
+      }
+
+      this.installAutosave();
+      logger.info(`[file-storage] Using file-native storage at ${this.rootDir}`);
+    } catch (err) {
+      try {
+        this.releaseWriterLease();
+      } catch (releaseError) {
+        throw new AggregateError([err, releaseError], "Storage initialization and writer-lease cleanup failed");
+      }
+      throw err;
     }
-
-    // AFTER the load (the row must land in the loaded table) and BEFORE the
-    // startup flush persists it alongside the migrated shards.
-    this.recordMigrationNotice();
-
-    if (this.dirty || this.dirtyTables.size > 0) {
-      await this.flush(true);
-    }
-
-    this.installAutosave();
-    logger.info(`[file-storage] Using file-native storage at ${this.rootDir}`);
   }
 
   rows(table: Table | string) {
@@ -1552,6 +1790,7 @@ class FileTableStore {
       // nest rolls back together; the outermost owns snapshot/restore.
       return await fn(tx);
     }
+    this.assertWritable();
 
     let releaseTransaction!: () => void;
     const previousTransaction = this.transactionQueue;
@@ -1634,7 +1873,7 @@ class FileTableStore {
       releaseTransaction();
       if (this.pendingTransactionFlush) {
         this.pendingTransactionFlush = false;
-        void this.flush();
+        if (!this.writesClosed) void this.flush();
       }
     }
   }
@@ -1645,8 +1884,15 @@ class FileTableStore {
   }
 
   private async waitForWritableTurn(): Promise<void> {
+    this.assertWritable();
     if (this.activeTransactionCount > 0 && !this.txContext.getStore()) {
       await this.waitForTransactions();
+    }
+  }
+
+  private assertWritable() {
+    if (this.writesClosed && !this.txContext.getStore()) {
+      throw new StorageWriterLeaseError("File-native storage is closing or closed and cannot accept writes.");
     }
   }
 
@@ -1690,6 +1936,7 @@ class FileTableStore {
         const runInsert = (onConflict?: { target: unknown; set: Row }) =>
           executable(async () => {
             await this.waitForWritableTurn();
+            this.assertWritable();
             const conflictColumns = normalizeConflictTargets(onConflict?.target);
             const inputRows = Array.isArray(rows) ? rows : [rows];
             const target = this.rows(meta.name);
@@ -1746,6 +1993,7 @@ class FileTableStore {
         const runUpdate = (condition?: Condition) =>
           executable(async () => {
             await this.waitForWritableTurn();
+            this.assertWritable();
             const target = this.rows(meta.name);
             const changedIndexes: number[] = [];
             const nextRows = target.map((row, index) => {
@@ -1792,6 +2040,7 @@ class FileTableStore {
     const runDelete = (condition?: Condition) =>
       executable(async () => {
         await this.waitForWritableTurn();
+        this.assertWritable();
         this.deleteWhere(meta, condition);
       });
     const builder = runDelete() as DeleteBuilder;
@@ -1799,8 +2048,9 @@ class FileTableStore {
     return builder;
   }
 
-  async flush(force = false, throwOnError = false) {
+  async flush(force = false, throwOnError = false, allowClosed = false) {
     const transactionContext = this.txContext.getStore();
+    if (this.writesClosed && !transactionContext && !allowClosed) this.assertWritable();
     if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
       if (transactionContext) return;
@@ -1809,7 +2059,7 @@ class FileTableStore {
     if (transactionContext && force) transactionContext.flushed = true;
     if (this.activeFlush) {
       await this.activeFlush;
-      if (this.dirty || this.dirtyTables.size > 0) await this.flush(force, throwOnError);
+      if (this.dirty || this.dirtyTables.size > 0) await this.flush(force, throwOnError, allowClosed);
       else if (throwOnError && this.lastFlushError) throw this.lastFlushError;
       return;
     }
@@ -1850,7 +2100,14 @@ class FileTableStore {
     if (throwOnError && this.lastFlushError) throw this.lastFlushError;
   }
 
-  async close() {
+  close() {
+    if (this.closePromise) return this.closePromise;
+    this.writesClosed = true;
+    this.closePromise = this.finishClose();
+    return this.closePromise;
+  }
+
+  private async finishClose() {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -1863,11 +2120,22 @@ class FileTableStore {
       process.off("beforeExit", this.beforeExitHandler);
       this.beforeExitHandler = null;
     }
-    if (this.activeFlush) await this.activeFlush;
-    while (this.dirty || this.dirtyTables.size > 0) {
-      await this.flush(true);
-      if (this.lastFlushError) throw this.lastFlushError;
+    try {
+      await this.transactionQueue;
+      if (this.activeFlush) await this.activeFlush;
+      while (this.dirty || this.dirtyTables.size > 0) {
+        await this.flush(true, false, true);
+        if (this.lastFlushError) throw this.lastFlushError;
+      }
+    } catch (err) {
+      try {
+        this.releaseWriterLease();
+      } catch (releaseError) {
+        throw new AggregateError([err, releaseError], "Storage shutdown and writer-lease release both failed");
+      }
+      throw err;
     }
+    this.releaseWriterLease();
   }
 
   getQuarantinedTables() {
@@ -2160,6 +2428,7 @@ class FileTableStore {
     // .bak when possible, then fall back to [] only when both files are
     // unreadable so startup can still reach the UI.
     let needsManifestRewrite = false;
+    let declaredTableCounts: Record<string, number> | undefined;
     try {
       const path = manifestPath(this.rootDir);
       const result = parseJsonFile<TableSnapshotManifest | null>(path, null);
@@ -2169,6 +2438,7 @@ class FileTableStore {
       // never read the version at all, which is why the primary downgrade
       // guard lives in the launcher/updater.
       const manifestVersion = result.value?.version;
+      declaredTableCounts = result.value?.tables;
       if (typeof manifestVersion === "number" && manifestVersion > STORAGE_VERSION) {
         throw new StorageFormatTooNewError(manifestVersion, STORAGE_VERSION);
       }
@@ -2460,6 +2730,21 @@ class FileTableStore {
       if (entries.length > 0) this.shardDirsCreated.add(table);
       if (table === "messages") this.rebuildMessageShardIndex();
     }
+    if (declaredTableCounts) {
+      const mismatches = FILE_BACKED_TABLES.flatMap((table) => {
+        const declared = declaredTableCounts?.[table];
+        const actual = counts[table] ?? 0;
+        if (declared === undefined && actual === 0) return [];
+        return typeof declared === "number" && declared === actual ? [] : [{ table, declared, actual }];
+      });
+      if (mismatches.length > 0) {
+        logger.warn(
+          { mismatches: mismatches.slice(0, 25), mismatchCount: mismatches.length },
+          "[file-storage] Manifest table counts differ from loaded rows; preserving all rows and repairing diagnostics.",
+        );
+        this.dirty = true;
+      }
+    }
     logger.info({ tables: counts }, `[file-storage] Loaded file-native data from ${this.rootDir}`);
   }
 
@@ -2576,7 +2861,8 @@ class FileTableStore {
       shards,
     };
     const path = manifestPath(this.rootDir);
-    await atomicWriteFile(path, JSON.stringify(manifest, null, 2), {
+    const serializedManifest = JSON.stringify(manifest, null, 2);
+    await atomicWriteFile(path, serializedManifest, {
       refreshBackup: !this.backupRecoveredPaths.has(path),
     });
     this.backupRecoveredPaths.clear();

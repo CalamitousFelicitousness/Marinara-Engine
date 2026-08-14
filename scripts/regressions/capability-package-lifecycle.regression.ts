@@ -238,6 +238,28 @@ try {
   assert.equal(resolveOfficialAgentBranch("release/v2.4.0"), "staging");
   assert.equal(resolveOfficialAgentBranch("main"), "main");
   assert.equal(
+    resolveOfficialAgentBranch("v2.4.2"),
+    "main",
+    "Tagged container builds must use the released Agent catalog",
+  );
+  assert.equal(
+    resolveOfficialAgentBranch("refs/tags/v2.4.2"),
+    "main",
+    "Full Git tag refs must use the released Agent catalog",
+  );
+  assert.equal(resolveOfficialAgentBranch("v2.4.2-rc.1+build.01"), "main");
+  for (const invalidReleaseRef of ["v02.004.000", "v2.4.2-01", "v2.4.2-alpha.01"]) {
+    assert.equal(
+      resolveOfficialAgentBranch(invalidReleaseRef),
+      "staging",
+      `${invalidReleaseRef} must not be treated as a canonical release tag`,
+    );
+  }
+  const adversarialReleaseRef = `v0.0.0-0.${"--.".repeat(100_000)}!`;
+  const releaseRefStartedAt = performance.now();
+  assert.equal(resolveOfficialAgentBranch(adversarialReleaseRef), "staging");
+  assert.ok(performance.now() - releaseRefStartedAt < 1_000, "Malformed release-tag classification must stay linear");
+  assert.equal(
     resolveOfficialAgentBranch("feature/catalog-ui"),
     "staging",
     "Feature branches must follow the staging Agent catalog so extracted packages can be reviewed before release",

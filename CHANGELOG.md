@@ -4,8 +4,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+## [2.4.2]
+
 ### Added
 
+- Added the v2.4.2 in-app What's New message with bundled images and looping videos so its update overview remains available without external media requests.
 - Let Game setup enable Illustrator's Dynamic LLM Prompt Generation before the first image request (#4964).
 - Added always-visible activation and vectorization status to lorebook entries in Professor Mari's Easy Viewer review cards: each entry now shows whether it is Constant, Selective, or Normal (using the lorebook editor's dot colors) and whether it is Vectorized, Not vectorized, or Vector excluded, with the before and after shown when Mari's edit changes them, so an entry's kind is clear at a glance instead of only when a setting happens to change (#4931).
 - Added a per-entry Reject control to Professor Mari's Easy Viewer: revert a single lorebook entry of a multi-entry change while keeping the rest applied, instead of only being able to Restore the whole change. Rejecting is refused for anything that could leave a dangling reference (an entry removed as part of deleting its lorebook, or a non-entry row), and the review card shrinks to the entries that remain (#4931).
@@ -53,6 +56,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Added mari CLI flags for lorebook entry secondary keys, selective matching, selective logic, whole-word matching, case sensitivity, and regex on `add-entry` and `update-entry`, matching the app-data entry editor (#4811).
 - Added lorebook-authoring strategy guidance, a worked multi-control example, and macro/recursion documentation to the lorebook entries guide (#4814).
 - Made Professor Mari's Keep/Restore undo durable across restarts, persisting pending reviews to disk with a 14-day retention window and a 50-item cap (#4828).
+- Added optional, quota-limited synthetic audience activity for public NoodleR posts, with separate likes, replies, reposts, and a manual refresh action.
+- Added a persisted local-day NoodleR fan activity plan with four deterministic platform runs and resumable activity application state.
+- Preserved creator-level fan audience inheritance when editing individual archetype weights, and surfaced source-action failures in NoodleR profile controls.
+- Added a configurable automatic audience-run count, kept manual audience runs available outside that daily budget, and prevented malformed generated activities from failing an entire run.
+- Exposed **Max Parallel Agent Jobs** in local-model runtime settings and used it for agent scheduling and llama-server parallel slots while retaining the configured context budget per request (#4609).
 
 ### Changed
 
@@ -67,9 +75,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Sharded fourteen more chat-keyed tables (memory, agent runs, game state, calls, gallery, influences, and notes) into per-chat files, cutting write amplification on every turn (#4754).
 - Moved Home Professor Mari's available-name lists out of the system prompt into a per-turn message, stabilizing prompt caching and capping each category at 100 entries (#4771).
 - Ranked Home Professor Mari's available-names list by relevance to the current conversation instead of an alphabetical slice, falling back to alphabetical when relevance data isn't available (#4779).
+- Advanced the stable release identity to v2.4.2 across the Engine, PWA manifest, Windows installer, Android bootstrap APK, update checks, Home page, and release references. Android uses `versionName` `2.4.2` with `versionCode` `43` so it updates over every previously published APK (#4610).
+- Required AI-agent contributions to update the Unreleased changelog for every bug fix, behavior change, and new feature, keeping release notes aligned with the implementation that introduced each change (#4613).
 
 ### Fixed
 
+- Kept version-tagged Docker release images on the stable Marinara Agents catalog instead of following staging after publication.
 - Kept dependency security updates pinned to patched resolutions and made the existing pnpm launcher handoff checks a required pull-request gate, protecting upgrades without forcing users onto a new package-manager major version (#4988).
 - Kept inline Game dialogue and group character macros responsive on malformed or very large generated text without limiting valid authored content (#4984).
 - Removed the 2 GiB application ceiling from automatic and downloadable full backups, using streamed ZIP64 archives so larger local libraries remain restorable without weakening safety limits for ordinary profile imports (#4982).
@@ -246,27 +257,6 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Moved full Docker images to Debian Trixie so ARM64 sidecars can load the required glibc and libstdc++ symbols (#4638).
 - Matched the **Add character to active chat** button to the neighboring Character row actions in folders and standalone rows on desktop and mobile.
 - Stopped the NoodleR reserve poll from scanning the prepared-post and Noodle post tables every minute when automatic posting is off and no reserve posts exist, and backed the automatic timeline-refresh poll off to 15 minutes while refreshes are disabled, cutting idle CPU wake-ups on phone and Termux installs (#4630).
-
-### Added
-
-- Added optional, quota-limited synthetic audience activity for public NoodleR posts, with separate likes, replies, reposts, and a manual refresh action.
-- Added a persisted local-day NoodleR fan activity plan with four deterministic platform runs and resumable activity application state.
-- Preserved creator-level fan audience inheritance when editing individual archetype weights, and surfaced source-action failures in NoodleR profile controls.
-- Added a configurable automatic audience-run count, kept manual audience runs available outside that daily budget, and prevented malformed generated activities from failing an entire run.
-
-## [2.4.2]
-
-### Added
-
-- Exposed **Max Parallel Agent Jobs** in local-model runtime settings and used it for agent scheduling and llama-server parallel slots while retaining the configured context budget per request (#4609).
-
-### Changed
-
-- Advanced the stable release identity to v2.4.2 across the Engine, PWA manifest, Windows installer, Android bootstrap APK, update checks, Home page, and release references. Android uses `versionName` `2.4.2` with `versionCode` `43` so it updates over every previously published APK (#4610).
-- Required AI-agent contributions to update the Unreleased changelog for every bug fix, behavior change, and new feature, keeping release notes aligned with the implementation that introduced each change (#4613).
-
-### Fixed
-
 - Removed duplicate safe-area padding from Noodle's mobile setup footer so the shared shell remains the single owner of spacing above Android navigation controls (#4586).
 - Kept the first edit to a sent user message after canceling generation instead of discarding it when transient swipe cleanup changes the active index (#4608).
 - Matched the **Add character to active chat** action to neighboring controls in folders and standalone Character rows, including a visible consistently sized icon on desktop and mobile (#4611).

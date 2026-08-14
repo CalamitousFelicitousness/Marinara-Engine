@@ -221,32 +221,122 @@ test("Playwright color parsing preserves supported force values only", () => {
 });
 
 test("What's New opens once for each Marinara Engine version", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/api/health");
   await page.evaluate(
     ({ bypassKey, seenKey }) => {
       sessionStorage.setItem(bypassKey, "true");
-      localStorage.removeItem(seenKey);
+      localStorage.setItem(seenKey, "2.2.1");
     },
     { bypassKey: WHATS_NEW_E2E_BYPASS_KEY, seenKey: WHATS_NEW_SEEN_VERSION_KEY },
   );
-  await page.reload();
+  await page.goto("/");
 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
   await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
-  await expect(announcement.getByRole("heading", { name: "Marinara Engine has been updated." })).toBeVisible();
+  await expect(announcement.getByRole("heading", { name: "Hello and welcome to the new version!" })).toBeVisible();
   await expect(
     announcement.getByText(
-      "Marinara Engine has been updated! Read the release notes for everything included in this version.",
+      "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
+      { exact: true },
     ),
   ).toBeVisible();
-  await expect(announcement.locator("[data-release-story]")).toHaveCount(0);
+  const exactReleaseCopy = [
+    "Hello and welcome to the new version!",
+    "Aside from the usual portion of bug fixes and minor QoL improvements, we also tightened the security again, improved Professor Mari's capabilities, updated our agents, and worked on the newly enhanced home page!",
+    "Your home page is now a fully customizable hub with widgets. You can add, remove, and rearrange them however you want. These include widgets with recent chats, useful help centers, Professor Mari, clock and calendar, and many others. You can also ask Professor Mari to create new, custom ones for you.",
+    "You probably also noticed that there's a small new Professor Mari on the home page. She is your new personal navigator, that will take you to different parts of Marinara Engine, including your lorebooks, chats, characters, and even agents. Hopefully, no more trouble with finding the Chats tab anymore.",
+    "Be gentle when moving her around, though…",
+    "Additionally, Professor Mari (the assistant version) now has Memories that you can access on her tab (right, forgot to mention, she has her tab now accessible from Home; check at the top of the screen). She will remember your instructions and important details between the chats.",
+    "One significant change is that Noodle is now moved to be an Agent (don't worry, it will be there i you already had it installed). You can access it as a separate tab from the Home page menu. This should declutter the main top bar a little, plus allow you to uninstall it if you would rather not use it.",
+    "You may have noticed that the Browser tab was removed: don't worry, the option to download characters was merged into the Characters and Personas tabs.",
+    "These are the most significant changes in this version and we hope you will enjoy them. Read the entire list of changes here:",
+    "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
+    "Thank you for supporting the project. Cheers.",
+  ];
+  await expect.poll(() => announcement.locator("[data-release-copy]").allTextContents()).toEqual(exactReleaseCopy);
+
+  await expect(announcement.locator("[data-release-story='2.4.2']")).toBeAttached();
+  const releaseVideos = announcement.locator('video[data-release-media-kind="video"]');
+  await expect(releaseVideos).toHaveCount(3);
+  await expect
+    .poll(() =>
+      releaseVideos.evaluateAll((videos) =>
+        videos.map((video) => {
+          const media = video as HTMLVideoElement;
+          return {
+            autoplay: media.autoplay,
+            controls: media.controls,
+            loop: media.loop,
+            muted: media.muted,
+            playsInline: media.playsInline,
+            src: new URL(media.currentSrc || media.src).pathname,
+          };
+        }),
+      ),
+    )
+    .toEqual([
+      {
+        autoplay: true,
+        controls: true,
+        loop: true,
+        muted: true,
+        playsInline: true,
+        src: "/releases/2.4.2/home-widgets.mp4",
+      },
+      {
+        autoplay: true,
+        controls: true,
+        loop: true,
+        muted: true,
+        playsInline: true,
+        src: "/releases/2.4.2/home-widgets-custom.mp4",
+      },
+      {
+        autoplay: true,
+        controls: true,
+        loop: true,
+        muted: true,
+        playsInline: true,
+        src: "/releases/2.4.2/home-navigator.mp4",
+      },
+    ]);
+
+  const releaseImages = announcement.locator('img[data-release-media-kind="image"]');
+  await expect(releaseImages).toHaveCount(3);
+  await expect
+    .poll(() =>
+      releaseImages.evaluateAll((images) =>
+        images.map(
+          (image) => new URL((image as HTMLImageElement).currentSrc || (image as HTMLImageElement).src).pathname,
+        ),
+      ),
+    )
+    .toEqual([
+      "/releases/2.4.2/professor-mari-memories.png",
+      "/releases/2.4.2/noodle-agent.png",
+      "/releases/2.4.2/character-downloads.png",
+    ]);
+  for (const asset of [
+    "/releases/2.4.2/home-widgets.mp4",
+    "/releases/2.4.2/home-widgets-custom.mp4",
+    "/releases/2.4.2/home-navigator.mp4",
+    "/releases/2.4.2/professor-mari-memories.png",
+    "/releases/2.4.2/noodle-agent.png",
+    "/releases/2.4.2/character-downloads.png",
+  ]) {
+    expect((await page.request.get(asset)).ok(), `${asset} should be bundled and served`).toBe(true);
+  }
+
+  await expect(
+    announcement.getByRole("link", {
+      name: "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2",
+    }),
+  ).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.2");
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))
     .toBe("auto");
-  await expect(announcement.getByRole("heading", { name: "The extensions are back!" })).toHaveCount(0);
-  await expect(announcement.getByText("Tactical Combat Mode in Games")).toHaveCount(0);
   await expect(announcement.getByRole("link", { name: "View release" })).toHaveAttribute(
     "href",
     `https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v${APP_VERSION}`,
@@ -260,13 +350,6 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
 
   await page.reload();
   await expect(announcement).toBeHidden();
-
-  await page.evaluate(({ key, previousVersion }) => localStorage.setItem(key, previousVersion), {
-    key: WHATS_NEW_SEEN_VERSION_KEY,
-    previousVersion: "2.2.1",
-  });
-  await page.reload();
-  await expect(announcement).toBeVisible();
 });
 
 test("turning off the custom mouse pointer persists immediately and after reload", async ({ page }, testInfo) => {

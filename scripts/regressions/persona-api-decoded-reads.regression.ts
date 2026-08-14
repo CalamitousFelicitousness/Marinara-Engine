@@ -46,17 +46,23 @@ assert.equal(
   false,
   "PersonaEditor must hydrate from decoded Persona values instead of JSON.parse on raw row fields",
 );
-assert.match(personaEditorSource, /personaStats:\s*rawPersona\.personaStats\s*\?\?\s*null/);
-assert.match(personaEditorSource, /tags:\s*rawPersona\.tags\s*\?\?\s*\[\]/);
-assert.match(personaEditorSource, /savedStatusOptions:\s*rawPersona\.savedStatusOptions\s*\?\?\s*\[\]/);
-assert.match(personaEditorSource, /convoBehavior:\s*rawPersona\.convoBehavior\s*\?\?\s*null/);
-assert.match(personaEditorSource, /tags:\s*JSON\.stringify\(tags\)/);
-assert.match(personaEditorSource, /personaStats:\s*personaStats\s*\?\s*JSON\.stringify\(personaStats\)\s*:\s*""/);
-assert.match(personaEditorSource, /savedStatusOptions:\s*JSON\.stringify\(savedStatusOptions\)/);
-assert.match(personaEditorSource, /avatarCrop:\s*avatarCrop\s*\?\s*JSON\.stringify\(avatarCrop\)\s*:\s*""/);
+assert.match(personaEditorSource, /personaStats:\s*persona\.personaStats\s*\?\?\s*null/);
+assert.match(personaEditorSource, /tags:\s*persona\.tags\s*\?\?\s*\[\]/);
+assert.match(personaEditorSource, /savedStatusOptions:\s*persona\.savedStatusOptions\s*\?\?\s*\[\]/);
+assert.match(personaEditorSource, /convoBehavior:\s*persona\.convoBehavior\s*\?\?\s*null/);
+assert.match(personaEditorSource, /tags:\s*JSON\.stringify\(formData\.tags\)/);
 assert.match(
   personaEditorSource,
-  /convoBehavior:\s*convoBehavior\s*&&\s*convoBehavior\.instruction\?\.trim\(\)\s*\?\s*JSON\.stringify\(convoBehavior\)\s*:\s*""/,
+  /personaStats:\s*formData\.personaStats\s*\?\s*JSON\.stringify\(formData\.personaStats\)\s*:\s*""/,
+);
+assert.match(personaEditorSource, /savedStatusOptions:\s*JSON\.stringify\(formData\.savedStatusOptions\)/);
+assert.match(
+  personaEditorSource,
+  /avatarCrop:\s*formData\.avatarCrop\s*\?\s*JSON\.stringify\(formData\.avatarCrop\)\s*:\s*""/,
+);
+assert.match(
+  personaEditorSource,
+  /convoBehavior:\s*formData\.convoBehavior\s*&&\s*formData\.convoBehavior\.instruction\?\.trim\(\)\s*\?\s*JSON\.stringify\(formData\.convoBehavior\)\s*:\s*""/,
 );
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-persona-decoded-reads-"));

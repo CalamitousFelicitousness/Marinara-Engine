@@ -34,8 +34,64 @@ const HIERARCHICAL_MAPS_SELECTION_CORRECTION = join(ROOT, "hierarchical-maps-sel
 const NON_DOWNLOADABLE_CORE_PACKAGE_IDS = new Set(["about-me-keeper"]);
 const OFFICIAL_AGENT_RAW_ROOT = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Agents";
 type OfficialAgentBranch = "main" | "staging";
+
+function isCanonicalSemverIdentifier(value: string, numericLeadingZeroAllowed: boolean): boolean {
+  if (!value) return false;
+  let numeric = true;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    const digit = code >= 48 && code <= 57;
+    const letter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (!digit && !letter && code !== 45) return false;
+    if (!digit) numeric = false;
+  }
+  return numericLeadingZeroAllowed || !numeric || value === "0" || value.charCodeAt(0) !== 48;
+}
+
+function isCanonicalSemver(value: string): boolean {
+  const buildSeparator = value.indexOf("+");
+  if (buildSeparator !== -1 && value.indexOf("+", buildSeparator + 1) !== -1) return false;
+  const withoutBuild = buildSeparator === -1 ? value : value.slice(0, buildSeparator);
+  const build = buildSeparator === -1 ? "" : value.slice(buildSeparator + 1);
+  if (buildSeparator !== -1 && !build.split(".").every((part) => isCanonicalSemverIdentifier(part, true))) {
+    return false;
+  }
+
+  const prereleaseSeparator = withoutBuild.indexOf("-");
+  const core = prereleaseSeparator === -1 ? withoutBuild : withoutBuild.slice(0, prereleaseSeparator);
+  const prerelease = prereleaseSeparator === -1 ? "" : withoutBuild.slice(prereleaseSeparator + 1);
+  if (prereleaseSeparator !== -1 && !prerelease.split(".").every((part) => isCanonicalSemverIdentifier(part, false))) {
+    return false;
+  }
+
+  const coreParts = core.split(".");
+  return (
+    coreParts.length === 3 &&
+    coreParts.every((part) => {
+      if (!part || (part.length > 1 && part.charCodeAt(0) === 48)) return false;
+      for (let index = 0; index < part.length; index += 1) {
+        const code = part.charCodeAt(index);
+        if (code < 48 || code > 57) return false;
+      }
+      return true;
+    })
+  );
+}
+
+function isEngineReleaseTagRef(value: string): boolean {
+  const tag = value.startsWith("refs/tags/") ? value.slice("refs/tags/".length) : value;
+  return tag.startsWith("v") && isCanonicalSemver(tag.slice(1));
+}
+
 export function resolveOfficialAgentBranch(engineBranch: string | null = getBuildBranch()): OfficialAgentBranch {
-  if (!engineBranch || engineBranch === "main" || engineBranch.startsWith("hotfix/")) return "main";
+  if (
+    !engineBranch ||
+    engineBranch === "main" ||
+    engineBranch.startsWith("hotfix/") ||
+    isEngineReleaseTagRef(engineBranch)
+  ) {
+    return "main";
+  }
   return "staging";
 }
 function officialCatalogRoot(branch: OfficialAgentBranch): string {

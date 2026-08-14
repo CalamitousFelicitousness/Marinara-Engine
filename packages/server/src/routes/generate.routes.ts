@@ -3078,10 +3078,6 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         let canonicalGamePartyNames: string[] = [];
-        let capabilityPromptContext: Awaited<ReturnType<typeof collectCapabilityPromptContext>> = {
-          blocks: [],
-          provides: {},
-        };
         const injectCapabilityContexts = async ({
           messages,
           chatMetadata,
@@ -3211,7 +3207,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
           // A package holding `prompt-context` appends its live state to the system message, the same way
           // the lorebook block above does. Nothing registered (the normal case) ⇒ no effect on the prompt.
-          capabilityPromptContext = await injectCapabilityContexts({
+          const capabilityPromptContext = await injectCapabilityContexts({
             messages: finalMessages,
             chatMetadata: chatMeta,
             mode: "game",
@@ -3301,7 +3297,7 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         if (chatMode !== "game") {
-          capabilityPromptContext = await injectCapabilityContexts({
+          await injectCapabilityContexts({
             messages: finalMessages,
             chatMetadata: chatMeta,
             mode: chatMode,

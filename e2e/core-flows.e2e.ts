@@ -13295,6 +13295,52 @@ test("Lorebook Save keeps Overview stable while the updated detail cache settles
   }
 });
 
+test("Lorebook and entry IDs are visible and copyable", async ({ page }) => {
+  const name = `Lorebook IDs ${Date.now()}`;
+  const createResponse = await page.request.post("/api/lorebooks", {
+    data: { name, description: "Temporary ID control regression lorebook.", category: "world", enabled: true },
+  });
+  expect(createResponse.ok()).toBeTruthy();
+  const lorebook = (await createResponse.json()) as { id: string };
+  const entryResponse = await page.request.post(`/api/lorebooks/${lorebook.id}/entries`, {
+    data: { name: "ID control entry", content: "Regression content", keys: ["regression"] },
+  });
+  expect(entryResponse.ok()).toBeTruthy();
+  const entry = (await entryResponse.json()) as { id: string };
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          window.sessionStorage.setItem("copied-lorebook-id", value);
+        },
+      },
+    });
+  });
+
+  try {
+    await page.goto("/");
+    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await page.getByText(name, { exact: true }).click();
+
+    await expect(page.getByText(lorebook.id, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Copy lorebook ID" }).click();
+    await expect(page.getByText("Lorebook ID copied", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("copied-lorebook-id"))).toBe(lorebook.id);
+
+    await page.getByRole("button", { name: /^Entries/ }).click();
+    const row = page.locator(`[data-lorebook-entry-row-id="${entry.id}"]`);
+    await row.getByRole("button", { name: "Expand entry" }).click();
+    await expect(row.getByText(entry.id, { exact: true })).toBeVisible();
+    await row.getByRole("button", { name: "Copy entry ID" }).click();
+    await expect(page.getByText("Entry ID copied", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("copied-lorebook-id"))).toBe(entry.id);
+  } finally {
+    await page.request.delete(`/api/lorebooks/${lorebook.id}`).catch(() => undefined);
+  }
+});
+
 test("Lorebook entry type descriptions inherit editor chrome text", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop entry-type popover regression.");
 

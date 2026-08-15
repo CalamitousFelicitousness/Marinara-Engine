@@ -818,8 +818,15 @@ export const capabilityPackageManager = {
     if (!installed || !isInstalledCapabilityReady(installed)) return null;
     const entrypoint = installed.manifest.entrypoints.client;
     if (!entrypoint) return null;
+    // The manifest-recorded hash doubles as a strong HTTP validator (ETag): it
+    // is the same value the read below re-verifies the bytes against.
+    const declaration = installed.manifest.files.find(
+      (item) => normalizeArchivePath(item.path) === normalizeArchivePath(entrypoint),
+    );
+    if (!declaration) return null;
     return {
       installed,
+      sha256: declaration.sha256,
       file: await verifyInstalledPackageFile(installed, entrypoint),
     };
   },
@@ -835,12 +842,14 @@ export const capabilityPackageManager = {
     }
     const iconPaths = installed.manifest.contributions?.homeBrowserTab?.iconPaths ?? [];
     if (!iconPaths.some((path) => normalizeArchivePath(path) === normalizedPath)) return null;
-    if (!installed.manifest.files.some((item) => normalizeArchivePath(item.path) === normalizedPath)) return null;
+    const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalizedPath);
+    if (!declaration) return null;
     const contentType = BROWSER_TAB_ASSET_CONTENT_TYPES.get(extname(normalizedPath).toLowerCase());
     if (!contentType) return null;
     return {
       installed,
       contentType,
+      sha256: declaration.sha256,
       file: await verifyBrowserTabAsset(installed, normalizedPath),
     };
   },

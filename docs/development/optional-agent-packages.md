@@ -24,6 +24,16 @@ Client capability elements receive the Engine's selected UI locale through their
 English; the Engine does not translate package prompts or package-authored machine values. Locale changes reuse the
 existing `marinara-capability-props` event so an installed interface can rerender without an Engine restart.
 
+### Delivery and caching
+
+Installed package files are served with strong validators derived from the manifest's per-file
+SHA-256 hashes — the same values the Engine re-verifies the bytes against on every read. The
+client bundle (`/api/capability-packages/<id>/client`) always revalidates (`no-cache` plus an
+`ETag`), so an unchanged bundle answers `304 Not Modified` instead of re-downloading, while a
+republished bundle is picked up immediately. Package asset requests that pin the installed
+version with `?v=<version>` are content-addressed and may be cached indefinitely
+(`immutable`); requests without the pin keep always-revalidate semantics.
+
 Capability API 1.1 adds a generic runtime facade to the server activation context.
 Packages can read the effective agent-debug state and write through the Engine's
 Pino logger, including explicit debug-mode overrides, without importing the

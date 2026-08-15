@@ -20,6 +20,7 @@ import {
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const db = await getDB();
 const chats = createChatsStorage(db);
+const createdChatIds: string[] = [];
 
 const app = Fastify();
 app.decorate("db", db);
@@ -35,6 +36,7 @@ const readMeta = async (chatId: string): Promise<Record<string, unknown>> => {
 async function seedGameChat(): Promise<string> {
   const chat = await chats.create({ name: "Metadata race regression", mode: "game", characterIds: [] });
   assert.ok(chat, "game chat created");
+  createdChatIds.push(chat.id);
   // Seed a probe key standing in for an unrelated concurrent metadata owner (e.g. a World Maps
   // definition). Written through the queue like any real writer.
   await chats.patchMetadata(chat.id, { worldMapProbe: "v0" });
@@ -105,6 +107,8 @@ try {
 
   console.log("Game metadata race regression checks passed.");
 } finally {
+  // Don't leave seeded chats behind across repeated runs.
+  for (const id of createdChatIds) await chats.remove(id).catch(() => {});
   await app.close();
   await closeDB();
 }

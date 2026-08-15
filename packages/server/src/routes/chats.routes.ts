@@ -3985,8 +3985,13 @@ export async function chatsRoutes(app: FastifyInstance) {
             await copySnapshot(snapshot, branchedMsgId, swipeIndex);
           }
           if (gameEngineStore) {
-            const engineSnapshot = await gameEngineStore.getByChatAndMessage(req.params.id, srcMsg.id, swipeIndex);
-            if (engineSnapshot) {
+            // One anchor can hold a row per gameType writer (a turn-game AND an
+            // Experience, #5102) — branching must copy every one, not limit(1).
+            for (const engineSnapshot of await gameEngineStore.listByChatAndMessage(
+              req.params.id,
+              srcMsg.id,
+              swipeIndex,
+            )) {
               await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);
             }
           }
@@ -4001,8 +4006,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         await copySnapshot(bootstrap, "", 0);
       }
       if (gameEngineStore) {
-        const engineBootstrap = await gameEngineStore.getByChatAndMessage(req.params.id, "", 0);
-        if (engineBootstrap) {
+        for (const engineBootstrap of await gameEngineStore.listByChatAndMessage(req.params.id, "", 0)) {
           await copyEngineSnapshot(engineBootstrap, "", 0);
         }
       }

@@ -4,13 +4,22 @@
 // Game-agnostic persistence for the turn-game framework (UNO and beyond).
 // Mirrors game-state.storage.ts (per-message snapshots + committed flag +
 // regen-exclusion) but stores an opaque engine JSON blob instead of RPG fields.
-import { and, desc, eq, gt, lte, ne, type FileCondition } from "../../db/file-query.js";
+import { and, desc, eq, gt, inArray, lte, ne, notLike, type FileCondition } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameEngineState } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 
 export type GameEngineStateRow = typeof gameEngineState.$inferSelect;
 export type GameEngineVisibleAnchor = { messageId: string; swipeIndex: number };
+
+/** Host-owned namespace prefix for game-surface Experience rows (#5102). Turn-game engine
+ *  types are bare identifiers ("uno", "chess"); Experience rows are "experience:<packageId>". */
+export const EXPERIENCE_GAME_TYPE_PREFIX = "experience:";
+
+/** Row-type scope for reads and destructive seams: a literal gameType selects exactly that
+ *  namespace; `{ excludePrefix }` selects everything OUTSIDE a namespace (what the turn-game
+ *  runner uses so Experience rows can never masquerade as — or be destroyed as — turn-games). */
+export type GameEngineStateScope = string | { readonly excludePrefix: string };
 
 export interface CreateGameEngineStateInput {
   chatId: string;
@@ -24,15 +33,20 @@ export interface CreateGameEngineStateInput {
 }
 
 export function createGameEngineStateStorage(db: DB) {
-  // Optional row-type scoping (#5102): turn-game callers pass no gameType and see every
-  // row exactly as before; the experience-state routes scope every read to their own
-  // "experience:<id>" namespace so a package can never observe turn-game rows (or another
-  // experience's rows) even if both ever share a chat.
-  const scoped = (predicate: FileCondition, gameType?: string) =>
-    gameType === undefined ? predicate : and(predicate, eq(gameEngineState.gameType, gameType));
+  // Optional row-type scoping (#5102): callers that pass no scope see every row exactly as
+  // before. The experience-state routes scope every read to their own "experience:<id>"
+  // namespace so a package can never observe turn-game rows (or another experience's rows),
+  // and the turn-game runner excludes the experience namespace so a newer experience save
+  // can never shadow an active turn-game or be wiped by turn-game start/resign.
+  const scoped = (predicate: FileCondition, scope?: GameEngineStateScope) =>
+    scope === undefined
+      ? predicate
+      : typeof scope === "string"
+        ? and(predicate, eq(gameEngineState.gameType, scope))
+        : and(predicate, notLike(gameEngineState.gameType, `${scope.excludePrefix}%`));
 
   return {
-    async getLatest(chatId: string, gameType?: string) {
+    async getLatest(chatId: string, gameType?: GameEngineStateScope) {
       const rows = await db
         .select()
         .from(gameEngineState)
@@ -49,13 +63,13 @@ export function createGameEngineStateStorage(db: DB) {
      * leave it), so it is a stable checkpoint-time key even though the engine state's own message
      * anchor is independent of the game/spatial snapshot anchors the checkpoint captures.
      *
-     * Caveat for future per-message game state: a row whose STATE is later overwritten in place
-     * (updateStateById/commit — the live `messageId === ""` row, and silent games like tic-tac-toe /
-     * rock-paper-scissors that never spawn a per-move message row) keeps its original `createdAt`, so
-     * a restore against a checkpoint taken at that row recovers the row's CURRENT state, not its
-     * checkpoint-time state. Games that create a fresh per-message row every move (UNO, poker, chess,
-     * eight-ball) are unaffected. Fully closing this would require capturing the state blob at
-     * checkpoint time (a new column, hence a storage-format bump).
+     * Caveat: a row whose state is later overwritten in place (updateStateById/commit) keeps its
+     * original `createdAt` and recovers its CURRENT state, and a row that is delete-recreated at
+     * the same anchor (create()'s dedupe — every experience-state save inside one narration turn)
+     * moves PAST the reference timestamp entirely, so this heuristic can no-op or step back a
+     * whole anchor. Checkpoints therefore capture the engine-state blobs at CREATE time
+     * (engineStateData, #5102) and restore from that; this method remains only as the restore
+     * fallback for checkpoints created before that field existed.
      */
     async getLatestAtOrBefore(chatId: string, createdAtInclusive: string) {
       const rows = await db
@@ -67,7 +81,7 @@ export function createGameEngineStateStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async getLatestCommitted(chatId: string, gameType?: string) {
+    async getLatestCommitted(chatId: string, gameType?: GameEngineStateScope) {
       const rows = await db
         .select()
         .from(gameEngineState)
@@ -77,7 +91,7 @@ export function createGameEngineStateStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async getByChatAndMessage(chatId: string, messageId: string, swipeIndex = 0, gameType?: string) {
+    async getByChatAndMessage(chatId: string, messageId: string, swipeIndex = 0, gameType?: GameEngineStateScope) {
       const rows = await db
         .select()
         .from(gameEngineState)
@@ -96,7 +110,23 @@ export function createGameEngineStateStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async getLatestExcludingMessage(chatId: string, excludeMessageId: string, gameType?: string) {
+    /** Every row at one (message, swipe) anchor — up to one per gameType writer (#5102).
+     *  Seams that clone an anchor (chat branching) must copy them all, not limit(1). */
+    async listByChatAndMessage(chatId: string, messageId: string, swipeIndex = 0) {
+      return db
+        .select()
+        .from(gameEngineState)
+        .where(
+          and(
+            eq(gameEngineState.chatId, chatId),
+            eq(gameEngineState.messageId, messageId),
+            eq(gameEngineState.swipeIndex, swipeIndex),
+          ),
+        )
+        .orderBy(desc(gameEngineState.createdAt));
+    },
+
+    async getLatestExcludingMessage(chatId: string, excludeMessageId: string, gameType?: GameEngineStateScope) {
       const rows = await db
         .select()
         .from(gameEngineState)
@@ -118,7 +148,7 @@ export function createGameEngineStateStorage(db: DB) {
       options?: {
         visibleAnchor?: GameEngineVisibleAnchor | null;
         excludeMessageId?: string | null;
-        gameType?: string;
+        gameType?: GameEngineStateScope;
       },
     ) {
       const gameType = options?.gameType;
@@ -216,8 +246,45 @@ export function createGameEngineStateStorage(db: DB) {
         .where(and(eq(gameEngineState.chatId, chatId), gt(gameEngineState.createdAt, createdAtExclusive)));
     },
 
-    async deleteForChat(chatId: string) {
-      await db.delete(gameEngineState).where(eq(gameEngineState.chatId, chatId));
+    async deleteForChat(chatId: string, scope?: GameEngineStateScope) {
+      await db.delete(gameEngineState).where(scoped(eq(gameEngineState.chatId, chatId), scope));
+    },
+
+    /** The newest row of each gameType present in a chat — what a checkpoint captures (#5102). */
+    async latestPerGameType(chatId: string) {
+      const rows = await db.select().from(gameEngineState).where(eq(gameEngineState.chatId, chatId));
+      const latest = new Map<string, GameEngineStateRow>();
+      for (const row of rows) {
+        const current = latest.get(row.gameType);
+        // Strictly-greater keeps the FIRST-inserted row on a createdAt tie — the same row
+        // a desc(createdAt) read returns, because the store's sort is stable over
+        // insertion order. The captured blob must be the one the running game shows.
+        if (!current || row.createdAt > current.createdAt) latest.set(row.gameType, row);
+      }
+      return [...latest.values()];
+    },
+
+    /**
+     * Keep only the newest `keep` rows of one gameType in a chat (#5102). Bounds the per-chat
+     * shard against an Experience that saves on every narration turn forever: swipe/branch
+     * rewind only ever targets recent anchors, and checkpoint restore reads the state captured
+     * in the checkpoint row itself, so rows beyond the newest `keep` anchors are unreachable.
+     */
+    async pruneToNewestAnchors(chatId: string, gameType: string, keep: number) {
+      const rows = await db
+        .select()
+        .from(gameEngineState)
+        .where(and(eq(gameEngineState.chatId, chatId), eq(gameEngineState.gameType, gameType)))
+        .orderBy(desc(gameEngineState.createdAt));
+      const doomed = rows.slice(Math.max(0, keep));
+      if (doomed.length === 0) return;
+      // One statement, one shard rewrite — not one per pruned row.
+      await db.delete(gameEngineState).where(
+        inArray(
+          gameEngineState.id,
+          doomed.map((row) => row.id),
+        ),
+      );
     },
   };
 }

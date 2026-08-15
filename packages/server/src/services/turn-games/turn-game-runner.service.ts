@@ -12,10 +12,17 @@ import { logger } from "../../lib/logger.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import {
+  EXPERIENCE_GAME_TYPE_PREFIX,
   createGameEngineStateStorage,
   type GameEngineStateRow,
   type GameEngineVisibleAnchor,
 } from "../storage/game-engine-state.storage.js";
+
+// Every turn-game read and wipe excludes the host-owned experience-state namespace (#5102):
+// without this, a newer "experience:<id>" row shadows an active turn-game (unknown gameType →
+// loadGame null → views/bot loop/commands all see "no game"), and start/resign would silently
+// destroy an Experience's entire save history.
+const TURN_GAME_SCOPE = { excludePrefix: EXPERIENCE_GAME_TYPE_PREFIX } as const;
 
 export interface TurnGameStartOptions {
   gameType: string;
@@ -208,10 +215,12 @@ async function loadGame(
 ): Promise<LoadedGame | null> {
   const storage = createGameEngineStateStorage(db);
   // Fast path: a chat with no game pays nothing extra (no message scan).
-  const latest = await storage.getLatest(chatId);
+  const latest = await storage.getLatest(chatId, TURN_GAME_SCOPE);
   if (!latest) return null;
   const resolved = anchor === undefined ? await resolveTurnGameAnchor(db, chatId) : anchor;
-  const row = resolved ? (await storage.getForGeneration(chatId, { visibleAnchor: resolved })) ?? latest : latest;
+  const row = resolved
+    ? (await storage.getForGeneration(chatId, { visibleAnchor: resolved, gameType: TURN_GAME_SCOPE })) ?? latest
+    : latest;
   const engine = getTurnGameEngine(row.gameType);
   if (!engine) {
     logger.warn("Active game in chat %s has unknown gameType %s", chatId, row.gameType);
@@ -267,7 +276,7 @@ export async function startTurnGame(db: DB, chatId: string, opts: TurnGameStartO
   }
 
   const storage = createGameEngineStateStorage(db);
-  await storage.deleteForChat(chatId);
+  await storage.deleteForChat(chatId, TURN_GAME_SCOPE);
   await storage.create({
     chatId,
     messageId: "",
@@ -466,7 +475,7 @@ export async function getTurnGameContextText(db: DB, chatId: string, seatId?: st
   return build ? build(seatId) : null;
 }
 
-/** End and remove the game for a chat. */
+/** End and remove the game for a chat. Experience-state rows are not the runner's to destroy. */
 export async function resignTurnGame(db: DB, chatId: string): Promise<void> {
-  await createGameEngineStateStorage(db).deleteForChat(chatId);
+  await createGameEngineStateStorage(db).deleteForChat(chatId, TURN_GAME_SCOPE);
 }

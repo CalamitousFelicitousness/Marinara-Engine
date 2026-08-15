@@ -303,6 +303,9 @@ for (const launcherName of ["start.sh", "start-termux.sh"]) {
 const devSource = readFileSync(join(repositoryRoot, "scripts/dev.mjs"), "utf8");
 assert.match(devSource, /check-workspace-install\.mjs/u);
 assert.match(devSource, /\["install", "--frozen-lockfile"\]/u);
+assert.match(devSource, /detached: process\.platform !== "win32"/u);
+assert.match(devSource, /process\.kill\(-child\.pid, signal\)/u);
+assert.match(devSource, /Reusing it and starting the client\./u);
 
 const fixtureRoot = mkdtempSync(join(tmpdir(), "marinara-launcher-data-"));
 const fixtureBackupRoot = resolve(fixtureRoot, "..", `${basename(fixtureRoot)}-backups`);

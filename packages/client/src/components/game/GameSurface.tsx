@@ -219,14 +219,14 @@ import {
   type ChatToolbarFloatingPanelAnchor,
 } from "../chat/ChatToolbarControls";
 import {
-  ROLEPLAY_POPOVER_CLOSE_BUTTON,
-  ROLEPLAY_POPOVER_CLOSE_ICON_SIZE,
-  ROLEPLAY_POPOVER_HEADER,
-  ROLEPLAY_POPOVER_SCROLL_AREA,
-  ROLEPLAY_POPOVER_SHELL,
-  ROLEPLAY_POPOVER_SUBTITLE,
-  ROLEPLAY_POPOVER_TITLE,
-} from "../chat/roleplay-popover-styles";
+  NEUTRAL_PANEL_CLOSE_BUTTON,
+  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
+  NEUTRAL_PANEL_HEADER,
+  NEUTRAL_PANEL_SCROLL_AREA,
+  NEUTRAL_PANEL_SHELL,
+  NEUTRAL_PANEL_SUBTITLE,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import type { ReadableTag } from "../../lib/game-tag-parser";
 import type { DirectionCommand, GameNpc, GameStoryboardViewerDisplayMode } from "@marinara-engine/shared";
 
@@ -310,10 +310,10 @@ const GAME_MOBILE_ROOT_BUTTON = getChatToolbarButtonClass({
   sizeClassName: CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
 });
 const GAME_MOBILE_ICON_BUTTON = getChatToolbarButtonClass({ compact: true });
-const GAME_ACTION_MENU = cn(ROLEPLAY_POPOVER_SHELL, "flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-1 p-1.5");
+const GAME_ACTION_MENU = cn(NEUTRAL_PANEL_SHELL, "flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-1 p-1.5");
 const GAME_MOBILE_ACTIONS_MENU = cn(CHAT_TOOLBAR_OVERFLOW_MENU_CLASS, "absolute right-0 top-9");
 const GAME_MOBILE_CHOICE_STAGE_HEIGHT = "max-h-[clamp(8rem,30svh,14rem)] sm:max-h-[clamp(9rem,36svh,20rem)]";
-const GAME_MOBILE_ACTION_MENU = cn(ROLEPLAY_POPOVER_SHELL, "flex w-72 max-w-[calc(100vw-4rem)] flex-col gap-1 p-1.5");
+const GAME_MOBILE_ACTION_MENU = cn(NEUTRAL_PANEL_SHELL, "flex w-72 max-w-[calc(100vw-4rem)] flex-col gap-1 p-1.5");
 const GAME_MOBILE_FLOATING_PANEL =
   "fixed z-[9999] h-[min(42rem,calc(100dvh-4.75rem))] w-[min(42rem,calc(100vw-4.75rem))]";
 const GAME_MOBILE_FLOATING_MENU = "fixed z-[9999] max-h-[min(32rem,calc(100dvh-4.75rem))] overflow-y-auto";
@@ -10664,7 +10664,7 @@ function GameSurfaceComponent({
       <div
         data-chat-floating-panel
         className={cn(
-          ROLEPLAY_POPOVER_SHELL,
+          NEUTRAL_PANEL_SHELL,
           "flex min-h-0 flex-col overflow-hidden",
           mobile
             ? GAME_MOBILE_FLOATING_PANEL
@@ -10672,13 +10672,13 @@ function GameSurfaceComponent({
         )}
         style={mobile ? getGameMobileFloatingPanelStyle(mobileSessionPanelAnchor) : undefined}
       >
-        <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-start gap-3")}>
+        <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-start gap-3")}>
           <div className="min-w-0 flex-1">
-            <div className={ROLEPLAY_POPOVER_TITLE}>
+            <div className={NEUTRAL_PANEL_TITLE}>
               <Feather size="0.8rem" className="shrink-0 text-[var(--muted-foreground)]" />
               {localizeUi("game.toolbar.session")}
             </div>
-            <div className={ROLEPLAY_POPOVER_SUBTITLE}>
+            <div className={NEUTRAL_PANEL_SUBTITLE}>
               {localizeUi("game.toolbar.session")} {displaySessionNumber} · {sessionStatus}
             </div>
           </div>
@@ -10698,10 +10698,10 @@ function GameSurfaceComponent({
             <button
               type="button"
               onClick={() => setSessionPanelOpen(false)}
-              className={ROLEPLAY_POPOVER_CLOSE_BUTTON}
+              className={NEUTRAL_PANEL_CLOSE_BUTTON}
               aria-label={localizeUi("ui.game.gamesurfacecomponent.closeSession")}
             >
-              <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+              <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
             </button>
           </div>
         </div>
@@ -10730,7 +10730,7 @@ function GameSurfaceComponent({
         {sessionPanelTab === "history" ? (
           <div
             className={cn(
-              ROLEPLAY_POPOVER_SCROLL_AREA,
+              NEUTRAL_PANEL_SCROLL_AREA,
               "min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2 [-webkit-overflow-scrolling:touch]",
             )}
           >
@@ -10907,7 +10907,7 @@ function GameSurfaceComponent({
       <div
         data-chat-floating-panel
         className={cn(
-          ROLEPLAY_POPOVER_SHELL,
+          NEUTRAL_PANEL_SHELL,
           "flex min-h-0 flex-col overflow-hidden",
           mobile
             ? GAME_MOBILE_FLOATING_PANEL
@@ -11149,17 +11149,17 @@ function GameSurfaceComponent({
                     {retryMenuOpen && (
                       <div className={cn(GAME_ACTION_MENU, "absolute right-0 top-9 z-50")}>
                         <div className="mb-1 flex items-center justify-between gap-2 border-b border-[var(--marinara-chat-chrome-panel-divider)] px-2 pb-1.5 pt-0.5">
-                          <div className={ROLEPLAY_POPOVER_TITLE}>
+                          <div className={NEUTRAL_PANEL_TITLE}>
                             <RotateCcw size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
                             <span>{t("game.toolbar.retry")}</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => setRetryMenuOpen(false)}
-                            className={ROLEPLAY_POPOVER_CLOSE_BUTTON}
+                            className={NEUTRAL_PANEL_CLOSE_BUTTON}
                             aria-label={t("game.toolbar.closeRetry")}
                           >
-                            <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+                            <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
                           </button>
                         </div>
                         <button
@@ -11401,17 +11401,17 @@ function GameSurfaceComponent({
                                 style={getGameMobileFloatingPanelStyle(mobileRetryMenuAnchor)}
                               >
                                 <div className="mb-1 flex items-center justify-between gap-2 border-b border-[var(--marinara-chat-chrome-panel-divider)] px-2 pb-1.5 pt-0.5">
-                                  <div className={ROLEPLAY_POPOVER_TITLE}>
+                                  <div className={NEUTRAL_PANEL_TITLE}>
                                     <RotateCcw size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
                                     <span>{t("game.toolbar.retry")}</span>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() => setMobileRetryMenuOpen(false)}
-                                    className={ROLEPLAY_POPOVER_CLOSE_BUTTON}
+                                    className={NEUTRAL_PANEL_CLOSE_BUTTON}
                                     aria-label={t("game.toolbar.closeRetry")}
                                   >
-                                    <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+                                    <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
                                   </button>
                                 </div>
                                 <button

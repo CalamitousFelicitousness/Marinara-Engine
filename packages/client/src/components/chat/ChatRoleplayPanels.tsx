@@ -16,11 +16,11 @@ import { type BudgetSkippedLorebookEntry, useActiveLorebookEntries } from "../..
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import {
-  ROLEPLAY_POPOVER_CLOSE_BUTTON,
-  ROLEPLAY_POPOVER_CLOSE_ICON_SIZE,
-  ROLEPLAY_POPOVER_SUBTITLE,
-  ROLEPLAY_POPOVER_TITLE,
-} from "./roleplay-popover-styles";
+  NEUTRAL_PANEL_CLOSE_BUTTON,
+  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
+  NEUTRAL_PANEL_SUBTITLE,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { MacroTextarea } from "../ui/MacroTextarea";
 
@@ -349,14 +349,14 @@ export function ActiveLorebookEntriesPanel({
   const { t: localizeUi } = useUiTranslation();
   return (
     <>
-      <h3 className={cn(ROLEPLAY_POPOVER_TITLE, "mb-2")}>
+      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
         <BookOpen size="0.75rem" />{localizeUi("ui.chat.activelorebookentriespanel.activeContext")}<button
           type="button"
           onClick={onClose}
           aria-label={localizeUi("ui.chat.activelorebookentriespanel.closeActiveContext")}
-          className={cn(ROLEPLAY_POPOVER_CLOSE_BUTTON, "ml-auto -my-1")}
+          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
         >
-          <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
         </button>
       </h3>
       <ActiveLorebookEntriesContent chatId={chatId} />
@@ -427,18 +427,18 @@ export function AuthorNotesPanel({
 
   return (
     <>
-      <h3 className={cn(ROLEPLAY_POPOVER_TITLE, "mb-2")}>
+      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
         <PenLine size="0.75rem" />{localizeUi("ui.chat.authornotespanel.authorSNotes")}
         <button
           type="button"
           onClick={onClose}
           aria-label={localizeUi("ui.chat.authornotespanel.closeAuthorSNotes")}
-          className={cn(ROLEPLAY_POPOVER_CLOSE_BUTTON, "ml-auto -my-1")}
+          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
         >
-          <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
         </button>
       </h3>
-      <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-2")}>{localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}</p>
+      <p className={cn(NEUTRAL_PANEL_SUBTITLE, "mb-2")}>{localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}</p>
       <MacroTextarea
         value={notes}
         onChange={setNotes}

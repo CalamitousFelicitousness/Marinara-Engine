@@ -553,12 +553,12 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                   aria-label={
                     current.enabled
                       ? localizeUi("ui.panels.extensionsettings.disable")
-                      : localizeUi("ui.panels.extensionsettings.reviewAndRun")
+                      : localizeUi("ui.panels.extensionsettings.enableAction")
                   }
                   title={
                     current.enabled
                       ? localizeUi("ui.panels.extensionsettings.disable")
-                      : localizeUi("ui.panels.extensionsettings.reviewAndRun")
+                      : localizeUi("ui.panels.extensionsettings.enableAction")
                   }
                   className={cn(
                     "flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",

@@ -2678,7 +2678,9 @@ function GameSurfaceComponent({
   const [queuedEncounter, setQueuedEncounter] = useState<{ encounter: CombatEncounterTag; messageId: string } | null>(
     null,
   );
-  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{ messageId: string } | null>(null);
+  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{ messageId: string; notify: boolean } | null>(
+    null,
+  );
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
@@ -4272,7 +4274,7 @@ function GameSurfaceComponent({
         if (tags.combatEncounter && !hasCombatResultAfterMessage(latestAssistantMsg.id)) {
           setQueuedEncounter({ encounter: tags.combatEncounter, messageId: latestAssistantMsg.id });
         } else if (tags.stateChange === "combat" && !hasCombatResultAfterMessage(latestAssistantMsg.id)) {
-          setQueuedCombatGeneration({ messageId: latestAssistantMsg.id });
+          setQueuedCombatGeneration({ messageId: latestAssistantMsg.id, notify: true });
         }
       }
       lastProcessedMsgRef.current = latestAssistantMsg.id;
@@ -4733,7 +4735,7 @@ function GameSurfaceComponent({
       if (tags.combatEncounter) {
         setQueuedEncounter({ encounter: tags.combatEncounter, messageId: msg.id });
       } else if (tags.stateChange === "combat") {
-        setQueuedCombatGeneration({ messageId: msg.id });
+        setQueuedCombatGeneration({ messageId: msg.id, notify: true });
       }
     }
 
@@ -8017,12 +8019,14 @@ function GameSurfaceComponent({
   /** Synchronous in-flight flag beside the async combatGenerationPending state:
    *  same-frame double requests all read the stale state, the ref does not. */
   const combatGenerationInFlightRef = useRef(false);
-  // #5094: on chat switch, clear the in-flight lock (the [activeChatId] reset above only clears the
-  // pending STATE). Otherwise a combat generation left in flight by the previous chat keeps this ref
-  // true, and the new chat's generateCombatStateForMessage guard bails, leaving it stuck as "pending".
-  // The request itself is chat-scoped via requestChatId, so a stale completion never clears the lock.
+  // #5094: on chat switch, clear the in-flight lock AND the error (the [activeChatId] reset above only
+  // clears the pending state). Otherwise a combat generation left in flight by the previous chat keeps
+  // this ref true — so the new chat's generateCombatStateForMessage guard bails, leaving it stuck as
+  // "pending" — and the previous chat's error stays visible. The request itself is chat-scoped via
+  // requestChatId, so a stale completion never clears the lock or writes the new chat's error.
   useEffect(() => {
     combatGenerationInFlightRef.current = false;
+    setCombatGenerationError(null);
   }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
   const topOverlayOffsetClass = "top-3";
@@ -8137,7 +8141,7 @@ function GameSurfaceComponent({
   ]);
 
   const generateCombatStateForMessage = useCallback(
-    (messageId: string) => {
+    (messageId: string, notify: boolean) => {
       // Both guards: the state flag drives rendering, but it is stale within a
       // frame — same-frame double calls (a package spamming requestCombat, #5094)
       // all read false. The ref flips synchronously and clears with the request.
@@ -8222,6 +8226,7 @@ function GameSurfaceComponent({
             };
             void requestAssetGeneration(assetPayload, { allowPromptReview: false })
               .then((assetResult) => {
+                if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't update it
                 if (!assetResult?.generatedNpcAvatars?.length) return;
                 const avatarByName = new Map(
                   assetResult.generatedNpcAvatars.map(
@@ -8276,7 +8281,12 @@ function GameSurfaceComponent({
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
           setCombatGenerationError(message);
-          toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
+          // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
+          // request passes notify=false and renders its own feedback from combatError, so a failed
+          // package request must not surface an Engine toast over the package's UI. #5094.
+          if (notify) {
+            toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
+          }
         })
         .finally(() => {
           if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't clear the new chat's lock
@@ -8312,7 +8322,7 @@ function GameSurfaceComponent({
     if (preparedCombatState?.messageId === queuedCombatGeneration.messageId) return;
     if (isStreaming || scenePreparing || assetGenerationBlocksScene) return;
 
-    generateCombatStateForMessage(queuedCombatGeneration.messageId);
+    generateCombatStateForMessage(queuedCombatGeneration.messageId, queuedCombatGeneration.notify);
   }, [
     activeChatId,
     combatGenerationPending,
@@ -8463,10 +8473,10 @@ function GameSurfaceComponent({
       toast.error(localizeUi("ui.game.gamesurfacecomponent.noCurrentTurnIsAvailableForCombatGeneration"));
       return;
     }
-    setQueuedCombatGeneration({ messageId });
+    setQueuedCombatGeneration({ messageId, notify: true });
     setPreparedCombatState(null);
     setCombatGenerationError(null);
-    generateCombatStateForMessage(messageId);
+    generateCombatStateForMessage(messageId, true);
   }, [generateCombatStateForMessage, latestAssistantMsg?.id, queuedCombatGeneration?.messageId, localizeUi]);
 
   /** Keeps the identity-stable combat seam pointing at the CURRENT generator
@@ -8500,10 +8510,10 @@ function GameSurfaceComponent({
         if (notify) toast.error(localizeUi("ui.game.gamesurfacecomponent.theGmNeedsToWriteAtLeastOneTurn"));
         return "no-turn";
       }
-      setQueuedCombatGeneration({ messageId });
+      setQueuedCombatGeneration({ messageId, notify });
       setPreparedCombatState(null);
       setCombatGenerationError(null);
-      generateCombatRef.current(messageId);
+      generateCombatRef.current(messageId, notify);
       return "started";
     },
     [localizeUi],

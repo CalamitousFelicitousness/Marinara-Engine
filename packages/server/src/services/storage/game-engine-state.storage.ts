@@ -4,7 +4,7 @@
 // Game-agnostic persistence for the turn-game framework (UNO and beyond).
 // Mirrors game-state.storage.ts (per-message snapshots + committed flag +
 // regen-exclusion) but stores an opaque engine JSON blob instead of RPG fields.
-import { and, desc, eq, gt, lte, ne } from "../../db/file-query.js";
+import { and, desc, eq, gt, lte, ne, type FileCondition } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameEngineState } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -24,12 +24,19 @@ export interface CreateGameEngineStateInput {
 }
 
 export function createGameEngineStateStorage(db: DB) {
+  // Optional row-type scoping (#5102): turn-game callers pass no gameType and see every
+  // row exactly as before; the experience-state routes scope every read to their own
+  // "experience:<id>" namespace so a package can never observe turn-game rows (or another
+  // experience's rows) even if both ever share a chat.
+  const scoped = (predicate: FileCondition, gameType?: string) =>
+    gameType === undefined ? predicate : and(predicate, eq(gameEngineState.gameType, gameType));
+
   return {
-    async getLatest(chatId: string) {
+    async getLatest(chatId: string, gameType?: string) {
       const rows = await db
         .select()
         .from(gameEngineState)
-        .where(eq(gameEngineState.chatId, chatId))
+        .where(scoped(eq(gameEngineState.chatId, chatId), gameType))
         .orderBy(desc(gameEngineState.createdAt))
         .limit(1);
       return rows[0] ?? null;
@@ -60,25 +67,28 @@ export function createGameEngineStateStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async getLatestCommitted(chatId: string) {
+    async getLatestCommitted(chatId: string, gameType?: string) {
       const rows = await db
         .select()
         .from(gameEngineState)
-        .where(and(eq(gameEngineState.chatId, chatId), eq(gameEngineState.committed, 1)))
+        .where(scoped(and(eq(gameEngineState.chatId, chatId), eq(gameEngineState.committed, 1)), gameType))
         .orderBy(desc(gameEngineState.createdAt))
         .limit(1);
       return rows[0] ?? null;
     },
 
-    async getByChatAndMessage(chatId: string, messageId: string, swipeIndex = 0) {
+    async getByChatAndMessage(chatId: string, messageId: string, swipeIndex = 0, gameType?: string) {
       const rows = await db
         .select()
         .from(gameEngineState)
         .where(
-          and(
-            eq(gameEngineState.chatId, chatId),
-            eq(gameEngineState.messageId, messageId),
-            eq(gameEngineState.swipeIndex, swipeIndex),
+          scoped(
+            and(
+              eq(gameEngineState.chatId, chatId),
+              eq(gameEngineState.messageId, messageId),
+              eq(gameEngineState.swipeIndex, swipeIndex),
+            ),
+            gameType,
           ),
         )
         .orderBy(desc(gameEngineState.createdAt))
@@ -86,11 +96,13 @@ export function createGameEngineStateStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async getLatestExcludingMessage(chatId: string, excludeMessageId: string) {
+    async getLatestExcludingMessage(chatId: string, excludeMessageId: string, gameType?: string) {
       const rows = await db
         .select()
         .from(gameEngineState)
-        .where(and(eq(gameEngineState.chatId, chatId), ne(gameEngineState.messageId, excludeMessageId)))
+        .where(
+          scoped(and(eq(gameEngineState.chatId, chatId), ne(gameEngineState.messageId, excludeMessageId)), gameType),
+        )
         .orderBy(desc(gameEngineState.createdAt))
         .limit(1);
       return rows[0] ?? null;
@@ -106,13 +118,16 @@ export function createGameEngineStateStorage(db: DB) {
       options?: {
         visibleAnchor?: GameEngineVisibleAnchor | null;
         excludeMessageId?: string | null;
+        gameType?: string;
       },
     ) {
+      const gameType = options?.gameType;
       if (options?.visibleAnchor?.messageId) {
         const visible = await this.getByChatAndMessage(
           chatId,
           options.visibleAnchor.messageId,
           options.visibleAnchor.swipeIndex,
+          gameType,
         );
         if (visible) return visible;
       }
@@ -121,26 +136,33 @@ export function createGameEngineStateStorage(db: DB) {
           .select()
           .from(gameEngineState)
           .where(
-            and(
-              eq(gameEngineState.chatId, chatId),
-              eq(gameEngineState.committed, 1),
-              ne(gameEngineState.messageId, options.excludeMessageId),
+            scoped(
+              and(
+                eq(gameEngineState.chatId, chatId),
+                eq(gameEngineState.committed, 1),
+                ne(gameEngineState.messageId, options.excludeMessageId),
+              ),
+              gameType,
             ),
           )
           .orderBy(desc(gameEngineState.createdAt))
           .limit(1);
         if (committed[0]) return committed[0];
-        return this.getLatestExcludingMessage(chatId, options.excludeMessageId);
+        return this.getLatestExcludingMessage(chatId, options.excludeMessageId, gameType);
       }
-      return (await this.getLatestCommitted(chatId)) ?? (await this.getLatest(chatId));
+      return (await this.getLatestCommitted(chatId, gameType)) ?? (await this.getLatest(chatId, gameType));
     },
 
-    /** Create a snapshot, replacing any prior one for the same (message, swipe). */
+    /** Create a snapshot, replacing any prior one of the same gameType for the same (message, swipe). */
     async create(input: CreateGameEngineStateInput) {
       // Dedupe unconditionally — including the empty-message live anchor
       // (messageId === ""). Otherwise repeated live-row writes (e.g. the
       // bot-turn persistence-failure fallback, which re-creates with
       // messageId "") accumulate rows for (chatId, "", swipeIndex) unbounded.
+      // Scoped to the writer's own gameType (#5102): an experience-state save
+      // sharing an anchor with a turn-game row must replace only its own row,
+      // never another writer's. For chats with a single state writer (every
+      // chat today outside the regression suite) this is the old behavior.
       await db
         .delete(gameEngineState)
         .where(
@@ -148,6 +170,7 @@ export function createGameEngineStateStorage(db: DB) {
             eq(gameEngineState.messageId, input.messageId),
             eq(gameEngineState.swipeIndex, input.swipeIndex),
             eq(gameEngineState.chatId, input.chatId),
+            eq(gameEngineState.gameType, input.gameType),
           ),
         );
       const id = newId();

@@ -171,7 +171,12 @@ import {
   extractLeadingThinkingBlocks,
   type RPGStatsConfig,
 } from "@marinara-engine/shared";
-import { mergeCustomParameters, parseGameStateRow, resolveBaseUrl } from "./generate/generate-route-utils.js";
+import {
+  mergeCustomParameters,
+  parseGameStateRow,
+  resolveBaseUrl,
+  resolveVisibleGameStateAnchor,
+} from "./generate/generate-route-utils.js";
 import {
   fitMessagesToModelAccessContext,
   mergeModelContextLimit,
@@ -1693,6 +1698,10 @@ const MAX_GAME_HUD_WIDGETS = 4;
 /** Cap for the opaque `experienceConfig`, so it can't grow into a payload every later write of the
  *  setup config has to carry. Generous next to what a setup wizard actually collects. */
 const MAX_EXPERIENCE_CONFIG_CHARS = 32_000;
+/** Ceiling for a game-surface Experience's per-anchor world-state blob (#5102). Generous for a
+ *  serialized tile-world save, small enough that a runaway writer cannot balloon the per-chat
+ *  game_engine_state shard. */
+const MAX_EXPERIENCE_STATE_CHARS = 262_144;
 const GAME_REPUTATION_ACTION_MAX_LENGTH = 500;
 const trimmedWidgetString = (max: number) => z.string().trim().min(1).max(max);
 
@@ -9966,6 +9975,116 @@ export async function gameRoutes(app: FastifyInstance) {
     await chats.patchMetadata(req.params.chatId, () => ({ gamePlayerNotes: notes }));
 
     return { ok: true };
+  });
+
+  // ── Experience state (#5102) ──
+  // Host-owned access to game_engine_state for the chat's stamped game-surface
+  // Experience. Packages cannot reach this table any other way (their sanctioned
+  // route registrar is privileged-only, unusable off loopback), so their world
+  // state used to live in chat metadata — a whole-blob store no engine seam
+  // rewinds. Rows here ride every lifecycle seam for free: swipe delete and
+  // re-index, message/chat prunes, branch re-anchoring, and checkpoint restore
+  // (the #5077 clone copies gameType verbatim, and resolveVisibleGameStateAnchor
+  // honors the checkpoint_restore anchor, so a restored Experience world becomes
+  // visible exactly like a restored turn-game).
+  //
+  // Scoping: rows use gameType "experience:<gameExperienceId>" and every read is
+  // filtered to that namespace, so an Experience can only ever observe its own
+  // chat's experience rows — never turn-game rows, never another Experience's.
+  const experienceStateGameType = (meta: Record<string, unknown>): string | null => {
+    const id = meta.gameExperienceId;
+    return typeof id === "string" && id.length > 0 ? `experience:${id}` : null;
+  };
+
+  // ── GET /game/:chatId/experience-state ──
+  app.get<{ Params: { chatId: string } }>("/:chatId/experience-state", async (req, reply) => {
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) throw new Error("Chat not found");
+    const gameType = experienceStateGameType(parseMeta(chat.metadata));
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it has no experience state",
+      });
+    }
+
+    const storage = createGameEngineStateStorage(app.db);
+    const messages = await chats.listMessages(req.params.chatId);
+    const anchor = resolveVisibleGameStateAnchor(messages);
+    // Anchor-first so editing, swiping, branching, or a checkpoint restore
+    // rewinds the world the reader sees, mirroring turn-game resolution.
+    const row = await storage.getForGeneration(req.params.chatId, { visibleAnchor: anchor, gameType });
+    if (!row) return { state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
+
+    let state: unknown = null;
+    try {
+      state = JSON.parse(row.state);
+    } catch {
+      // The PUT below always stores JSON.stringify output, so this indicates
+      // on-disk corruption; surface an empty save rather than a 500.
+      logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+    }
+    return {
+      state,
+      schemaVersion: row.schemaVersion,
+      anchor: { messageId: row.messageId, swipeIndex: row.swipeIndex },
+      committed: row.committed === 1,
+      createdAt: row.createdAt,
+    };
+  });
+
+  // ── PUT /game/:chatId/experience-state ──
+  app.put<{ Params: { chatId: string } }>("/:chatId/experience-state", async (req, reply) => {
+    const body = z
+      .object({
+        state: z.unknown(),
+        schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
+        // Experience saves are player-confirmed world state, not mid-turn
+        // provisional snapshots, so they default to committed (regen fallback
+        // eligible) unlike turn-game rows.
+        committed: z.boolean().default(true),
+      })
+      .parse(req.body ?? {});
+    const serialized = JSON.stringify(body.state);
+    if (serialized === undefined) {
+      return reply.code(422).send({ error: "state must be a JSON-serializable value" });
+    }
+    if (serialized.length > MAX_EXPERIENCE_STATE_CHARS) {
+      return reply.code(422).send({
+        error: `state must serialize to at most ${MAX_EXPERIENCE_STATE_CHARS} characters`,
+      });
+    }
+
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) throw new Error("Chat not found");
+    const gameType = experienceStateGameType(parseMeta(chat.metadata));
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it cannot store experience state",
+      });
+    }
+
+    // Anchor to the currently-visible message ("" live anchor before the first
+    // one exists, like a turn-game's opening deal). storage.create replaces any
+    // prior row for the SAME anchor and inserts a fresh row otherwise, so each
+    // narration turn keeps its own snapshot — that per-anchor history is what
+    // swipe rewind and checkpoint-time re-lookup recover. Same caveat as
+    // turn-games that rewrite one anchor in place: repeated saves within a
+    // single anchor keep only the newest state for that anchor.
+    const messages = await chats.listMessages(req.params.chatId);
+    const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
+    const storage = createGameEngineStateStorage(app.db);
+    const id = await storage.create({
+      chatId: req.params.chatId,
+      messageId: anchor.messageId,
+      swipeIndex: anchor.swipeIndex,
+      gameType,
+      schemaVersion: body.schemaVersion,
+      state: serialized,
+      committed: body.committed,
+    });
+    return { ok: true, id, anchor };
   });
 
   // ── PUT /game/:chatId/widgets ──

@@ -32,7 +32,6 @@ import {
   MessageCircle,
   PackagePlus,
   Palette,
-  Paperclip,
   Pencil,
   Plus,
   RefreshCw,
@@ -74,6 +73,10 @@ import {
 import { useConnections } from "../../hooks/use-connections";
 import { useTrackAchievement } from "../../hooks/use-achievements";
 import { chatKeys } from "../../hooks/use-chats";
+import { useMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
+import { MariAttachButton } from "./MariAttachButton";
+import { MariChatHistoryPicker } from "./MariChatHistoryPicker";
+import { MariContextViewer } from "./MariContextViewer";
 import { homeFeedKeys } from "../../hooks/use-home-feed";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { api, getPrivilegedActionErrorMessage, StreamResumeDisconnectError } from "../../lib/api-client";
@@ -3082,6 +3085,7 @@ export function HomeProfessorMariChat({
   const fetchSidecarStatus = useSidecarStore((state) => state.fetchStatus);
   const trackAchievement = useTrackAchievement();
   const [chatId, setChatId] = useState<string | null>(null);
+  const { data: attachedContext } = useMariWorkspaceContext(chatId);
   const [messages, setMessages] = useState<Message[]>([]);
   const draft = useChatStore((state) => state.inputDrafts.get(PROFESSOR_MARI_DRAFT_KEY) ?? "");
   const setInputDraft = useChatStore((state) => state.setInputDraft);
@@ -3125,6 +3129,8 @@ export function HomeProfessorMariChat({
   const [loadedMessagesChatId, setLoadedMessagesChatId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
+  const [contextViewerOpen, setContextViewerOpen] = useState(false);
   const [internalChatWindowOpen, setInternalChatWindowOpen] = useState(
     () => floatingMode && isProfessorMariDesktopViewport(),
   );
@@ -3448,6 +3454,38 @@ export function HomeProfessorMariChat({
     },
     [qc, setActiveChatId],
   );
+
+  // #5073: attaching chat history needs a Mari workspace chat to attach TO; create one if the user
+  // hasn't sent a message yet, then open the picker (the picker itself is gated on a live chatId).
+  const handleOpenHistoryPicker = useCallback(async () => {
+    let id = activeChatIdRef.current;
+    if (!id) {
+      try {
+        const chat = await ensureProfessorMariChat(effectiveConnectionId);
+        id = chat.id;
+      } catch {
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryNeedsChat"));
+        return;
+      }
+    }
+    setHistoryPickerOpen(true);
+  }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
+
+  // The Context Viewer is gated on a live chatId too (attachModals), so ensure one before opening —
+  // otherwise the menu item would be a silent no-op when the user hasn't sent a message yet.
+  const handleOpenContextViewer = useCallback(async () => {
+    let id = activeChatIdRef.current;
+    if (!id) {
+      try {
+        const chat = await ensureProfessorMariChat(effectiveConnectionId);
+        id = chat.id;
+      } catch {
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryNeedsChat"));
+        return;
+      }
+    }
+    setContextViewerOpen(true);
+  }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
 
   const refreshWorkspaceStatus = useCallback(
     async (shouldApply?: () => boolean) => {
@@ -4997,8 +5035,18 @@ export function HomeProfessorMariChat({
     );
   };
 
+  // #5073: the chat-history picker + Context Viewer. createPortal to document.body, so they render
+  // correctly from whichever composer (floating or docked) is active. Gated on a live chatId.
+  const attachModals = chatId ? (
+    <>
+      <MariChatHistoryPicker open={historyPickerOpen} workspaceChatId={chatId} onClose={() => setHistoryPickerOpen(false)} />
+      <MariContextViewer open={contextViewerOpen} workspaceChatId={chatId} onClose={() => setContextViewerOpen(false)} />
+    </>
+  ) : null;
+
   const renderFloatingChatBody = () => (
     <>
+      {attachModals}
       <div
         ref={setTranscriptScrollNode}
         onScroll={handleTranscriptScroll}
@@ -5075,22 +5123,15 @@ export function HomeProfessorMariChat({
         )}
         <MariSuggestionChips chips={chipRowChips} onSelect={handleSuggestionSelect} disabled={isBusy} />
         <div className="relative flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 shadow-inner shadow-black/10 focus-within:border-[var(--primary)]/50">
-          <button
-            type="button"
-            onClick={() => attachmentInputRef.current?.click()}
+          <MariAttachButton
+            onAttachFiles={() => attachmentInputRef.current?.click()}
+            onAddChatHistory={() => void handleOpenHistoryPicker()}
+            onViewContext={() => void handleOpenContextViewer()}
+            attachedFileCount={attachments.length}
+            attachedContextCount={attachedContext?.length ?? 0}
             disabled={isBusy || isReadingAttachments}
-            className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all",
-              attachments.length > 0
-                ? "bg-foreground/10 text-foreground/75"
-                : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
-              (isBusy || isReadingAttachments) && "cursor-not-allowed opacity-40",
-            )}
-            title={localizeUi("chat.input.attachFiles")}
-            aria-label={localizeUi("chat.input.attachFiles")}
-          >
-            {isReadingAttachments ? <Loader2 size="1rem" className="animate-spin" /> : <Paperclip size="1rem" />}
-          </button>
+            isReading={isReadingAttachments}
+          />
 
           <button
             ref={connectionButtonRef}
@@ -5307,6 +5348,7 @@ export function HomeProfessorMariChat({
 
   return (
     <>
+      {attachModals}
       {!launchHidden && (
         <div
           className={cn(
@@ -5845,26 +5887,15 @@ export function HomeProfessorMariChat({
                             compact
                           />
                           <div className="relative flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 shadow-inner shadow-black/10 focus-within:border-[var(--primary)]/50">
-                            <button
-                              type="button"
-                              onClick={() => attachmentInputRef.current?.click()}
+                            <MariAttachButton
+                              onAttachFiles={() => attachmentInputRef.current?.click()}
+                              onAddChatHistory={() => void handleOpenHistoryPicker()}
+                              onViewContext={() => void handleOpenContextViewer()}
+                              attachedFileCount={attachments.length}
+                              attachedContextCount={attachedContext?.length ?? 0}
                               disabled={isBusy || isReadingAttachments}
-                              className={cn(
-                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all",
-                                attachments.length > 0
-                                  ? "bg-foreground/10 text-foreground/75"
-                                  : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
-                                (isBusy || isReadingAttachments) && "cursor-not-allowed opacity-40",
-                              )}
-                              title={localizeUi("chat.input.attachFiles")}
-                              aria-label={localizeUi("chat.input.attachFiles")}
-                            >
-                              {isReadingAttachments ? (
-                                <Loader2 size="1rem" className="animate-spin" />
-                              ) : (
-                                <Paperclip size="1rem" />
-                              )}
-                            </button>
+                              isReading={isReadingAttachments}
+                            />
 
                             <button
                               ref={connectionButtonRef}

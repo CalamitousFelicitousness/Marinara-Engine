@@ -11,7 +11,6 @@ import {
   FolderOpen,
   History,
   Loader2,
-  Pencil,
   Power,
   PowerOff,
   RotateCcw,
@@ -898,7 +897,7 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
               aria-label={localizeUi("ui.panels.extensionsettings.loadingPersonalExtensions")}
             >
               {[0, 1].map((index) => (
-                <div key={index} className="h-16 animate-pulse rounded-lg bg-[var(--secondary)]/60" />
+                <div key={index} className="h-24 animate-pulse rounded-lg bg-[var(--secondary)]/60" />
               ))}
             </div>
           ) : extensions.length === 0 ? (
@@ -934,105 +933,31 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                   <div
                     key={extension.id}
                     className={cn(
-                      "group relative rounded-lg border px-3 py-2.5 pr-32 transition-colors max-md:pr-28",
+                      "flex items-stretch gap-2 rounded-lg border px-2 py-2 transition-colors",
                       extension.enabled
                         ? "border-[var(--primary)]/30 bg-[var(--primary)]/[0.07]"
                         : "border-[var(--border)] bg-[var(--secondary)]/45 hover:bg-[var(--secondary)]/70",
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => openExisting(extension)}
-                      className="flex w-full min-w-0 items-start gap-2 text-left"
-                    >
-                      <span
-                        className={cn(
-                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border",
-                          extension.enabled
-                            ? "border-[var(--primary)]/30 bg-[var(--primary)]/10 text-[var(--primary)]"
-                            : "border-[var(--border)] bg-[var(--background)]/60 text-[var(--muted-foreground)]",
-                        )}
-                      >
-                        {extension.enabled ? <Power size="0.75rem" /> : <Code2 size="0.75rem" />}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-                          <span className="truncate text-xs font-semibold text-[var(--foreground)]">
-                            {extension.name}
-                          </span>
-                          {extension.version && (
-                            <span className="text-[0.5625rem] text-[var(--muted-foreground)]">
-                              {localizeUi("ui.panels.extensionsettings.v")}
-                              {extension.version}
-                            </span>
-                          )}
-                          <span className="rounded px-1.5 py-0.5 text-[0.5625rem] font-semibold ring-1 ring-[var(--border)]">
-                            {extension.runtime === "server"
-                              ? localizeUi("ui.panels.extensionsettings.server")
-                              : localizeUi("settings.notifications.browser")}
-                          </span>
-                          {hasFullPageAccess && (
-                            <span className="rounded bg-[var(--destructive)]/10 px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--destructive)] ring-1 ring-[var(--destructive)]/30">
-                              {t("settings.personalExtensions.capabilities.full_page_access.label")}
-                            </span>
-                          )}
-                          <span
-                            className={cn(
-                              "rounded px-1.5 py-0.5 text-[0.5625rem] font-semibold ring-1",
-                              extension.enabled
-                                ? "bg-[var(--primary)]/10 text-[var(--primary)] ring-[var(--primary)]/25"
-                                : approved
-                                  ? "bg-[var(--background)]/60 text-[var(--muted-foreground)] ring-[var(--border)]"
-                                  : "bg-[var(--primary)]/[0.06] text-[var(--foreground)] ring-[var(--primary)]/20",
-                            )}
-                          >
-                            {status}
-                          </span>
-                        </span>
-                        <span className="mt-1 block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                          {extension.description || `${sourceLabel(extension.source, t)} draft`}
-                        </span>
-                        <span className="mt-0.5 block font-mono text-[0.5625rem] text-[var(--muted-foreground)]">
-                          {shortHash(extension.contentHash)}
-                        </span>
-                        {hasFullPageAccess && traffic.requests > 0 && (
-                          <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
-                            <Activity size="0.625rem" aria-hidden="true" />
-                            {t("settings.personalExtensions.traffic.summary", {
-                              requests: traffic.requests,
-                              bytes: formatBytes(traffic.bytes),
-                              rate: traffic.requestsLastMinute,
-                            })}
-                            {traffic.sustainedHighRate && (
-                              <span className="rounded bg-[var(--destructive)]/10 px-1 py-0.5 font-semibold text-[var(--destructive)] ring-1 ring-[var(--destructive)]/25">
-                                {t("settings.personalExtensions.traffic.highRate")}
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                    <div className="absolute right-2 top-1/2 flex -translate-y-1/2 shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 max-md:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => openExisting(extension)}
-                        className="rounded-md p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-90"
-                        title={localizeUi("ui.panels.extensionsettings.reviewAndEdit")}
-                      >
-                        <Pencil size="0.75rem" />
-                      </button>
+                    <div className="flex w-8 shrink-0 flex-col gap-0.5" aria-label={extension.name}>
                       <button
                         type="button"
                         onClick={() => void (extension.enabled ? disableExtension(extension) : runExtension(extension))}
                         disabled={busy}
-                        className="rounded-md p-2 text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/10 active:scale-90 disabled:opacity-50"
+                        aria-pressed={extension.enabled}
+                        aria-label={
+                          extension.enabled
+                            ? localizeUi("ui.panels.extensionsettings.disable")
+                            : localizeUi("ui.panels.extensionsettings.reviewAndRun_c0b4a0e")
+                        }
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
                         title={
                           extension.enabled
                             ? localizeUi("ui.panels.extensionsettings.disable")
                             : localizeUi("ui.panels.extensionsettings.reviewAndRun_c0b4a0e")
                         }
                       >
-                        {extension.enabled ? <PowerOff size="0.75rem" /> : <Power size="0.75rem" />}
+                        {extension.enabled ? <PowerOff size="0.6875rem" /> : <Power size="0.6875rem" />}
                       </button>
                       <button
                         type="button"
@@ -1042,21 +967,82 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                             createPersonalExtensionPackageFilename(extension.name),
                           )
                         }
-                        className="rounded-md p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] active:scale-90"
+                        aria-label={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-90"
                         title={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
                       >
-                        <Upload size="0.75rem" />
+                        <Upload size="0.6875rem" />
                       </button>
                       <button
                         type="button"
                         onClick={() => void removeExtension(extension)}
                         disabled={busy}
-                        className="rounded-md p-2 text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 active:scale-90 disabled:opacity-50"
+                        aria-label={localizeUi("lorebook.editor.batch.delete")}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
                         title={localizeUi("lorebook.editor.batch.delete")}
                       >
-                        <Trash2 size="0.75rem" />
+                        <Trash2 size="0.6875rem" />
                       </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => openExisting(extension)}
+                      className="flex min-w-0 flex-1 flex-col pt-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    >
+                      <span className="flex w-full min-w-0 items-baseline gap-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--foreground)]">
+                          {extension.name}
+                        </span>
+                        {extension.version && (
+                          <span className="shrink-0 text-[0.5625rem] text-[var(--muted-foreground)]">
+                            {localizeUi("ui.panels.extensionsettings.v")}
+                            {extension.version}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-1 line-clamp-2 w-full text-[0.625rem] leading-4 text-[var(--muted-foreground)]">
+                        {extension.description || `${sourceLabel(extension.source, t)} draft`}
+                      </span>
+                      <span className="mt-auto flex w-full flex-wrap items-center gap-x-1 gap-y-0.5 pt-1.5">
+                        <span className="rounded bg-[var(--background)]/55 px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--muted-foreground)]">
+                          {extension.runtime === "server"
+                            ? localizeUi("ui.panels.extensionsettings.server")
+                            : localizeUi("settings.notifications.browser")}
+                        </span>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[0.5625rem] font-semibold",
+                            extension.enabled
+                              ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                              : approved
+                                ? "bg-[var(--background)]/55 text-[var(--muted-foreground)]"
+                                : "bg-[var(--primary)]/[0.06] text-[var(--foreground)]",
+                          )}
+                        >
+                          {status}
+                        </span>
+                        {hasFullPageAccess && (
+                          <span className="rounded bg-[var(--destructive)]/10 px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--destructive)]">
+                            {t("settings.personalExtensions.capabilities.full_page_access.label")}
+                          </span>
+                        )}
+                      </span>
+                      {hasFullPageAccess && traffic.requests > 0 && (
+                        <span className="mt-1 flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
+                          <Activity size="0.625rem" aria-hidden="true" />
+                          {t("settings.personalExtensions.traffic.summary", {
+                            requests: traffic.requests,
+                            bytes: formatBytes(traffic.bytes),
+                            rate: traffic.requestsLastMinute,
+                          })}
+                          {traffic.sustainedHighRate && (
+                            <span className="rounded bg-[var(--destructive)]/10 px-1 py-0.5 font-semibold text-[var(--destructive)]">
+                              {t("settings.personalExtensions.traffic.highRate")}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 );
               })}

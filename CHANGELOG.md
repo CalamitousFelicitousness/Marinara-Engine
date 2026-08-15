@@ -64,6 +64,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Made Personal and External Extension cards more compact, with always-visible left-side actions, clearer name, description, and status regions, and no duplicate edit or power controls.
 - Expanded profile-import previews and quarantine to cover executable tools, personal extensions, persistent Professor Mari memories, and active themes, preserving their contents for deliberate review and re-enabling.
 - Bound downloaded Agent installs and updates to the version and checksum the user reviewed, quarantined imported executable tools until review, and moved custom scripts plus Professor Mari transforms into terminable or OS-sandboxed workers while retaining an explicit reviewed-script fallback on unsupported systems.
 - Repeated local checks now reuse native TypeScript and ESLint caches for unchanged client files (#4938).

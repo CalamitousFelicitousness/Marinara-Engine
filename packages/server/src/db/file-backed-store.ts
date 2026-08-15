@@ -426,6 +426,7 @@ export const FILE_BACKED_TABLES = [
   "installed_extensions",
   "library_folders",
   "mari_instructions",
+  "mari_workspace_context",
 ] as const;
 
 type FileBackedTable = (typeof FILE_BACKED_TABLES)[number];
@@ -532,6 +533,9 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "chats", child: "agent_memory", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "chat_images", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "memory_chunks", parentKey: "id", childKey: "chatId" },
+    // #5073: a Mari workspace chat's attached context is scoped to it and must
+    // not outlive it (a leaked shard + stale injection into a reused chat id).
+    { parent: "chats", child: "mari_workspace_context", parentKey: "id", childKey: "chatId" },
     // The influences/notes schemas declare onDelete: cascade on BOTH chat
     // FKs, but the graph never carried them — the rows outlived their chats
     // (invisible inside the old monolith; a permanent leaked shard file once

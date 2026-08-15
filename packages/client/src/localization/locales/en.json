@@ -7528,6 +7528,7 @@
   "ui.panels.presetspanel.failedToExportPresets": "Failed to export presets",
   "ui.panels.presetspanel.failedToUploadPresetPicture": "Failed to upload preset picture",
   "ui.panels.presetspanel.ignoredUnsupportedRegexPlacements": "Entry {{value1}}: ignored unsupported SillyTavern placement(s) {{value2}} and imported the regex with its supported placement settings.",
+  "ui.regex.importUnsafePatternWarning": "Entry {{value1}} ({{value2}}) was imported, but its pattern triggered the safety warning and will not run until the pattern is made safe.",
   "ui.panels.presetspanel.importPreset": "Import preset",
   "ui.panels.presetspanel.noFunctionsToExport": "No functions to export",
   "ui.panels.presetspanel.noMatchingPresets": "No matching presets",

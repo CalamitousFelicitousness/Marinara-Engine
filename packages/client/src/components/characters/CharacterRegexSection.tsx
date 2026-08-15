@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Download, Pencil, Plus, Regex, Trash2, Upload } from "lucide-react";
 import {
   useRegexScripts,
-  useCreateRegexScript,
+  useImportRegexScript,
   useDeleteRegexScript,
   useUpdateRegexScript,
   type RegexScriptRow,
@@ -18,7 +18,7 @@ import {
 import { useUIStore } from "../../stores/ui.store";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile } from "../../lib/download-json";
-import { getFolderImportEntries } from "@marinara-engine/shared";
+import { getFolderImportEntries, isPatternSafe } from "@marinara-engine/shared";
 import { ApiError } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
@@ -186,7 +186,7 @@ export function CharacterRegexSection({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { data: regexScripts } = useRegexScripts();
-  const createRegex = useCreateRegexScript();
+  const importRegex = useImportRegexScript();
   const updateRegex = useUpdateRegexScript();
   const deleteRegex = useDeleteRegexScript();
   const openRegexDetail = useUIStore((s) => s.openRegexDetail);
@@ -277,8 +277,16 @@ export function CharacterRegexSection({
           }
           try {
             // Force-scope every imported script to this character.
-            await createRegex.mutateAsync({ ...normalized, targetCharacterIds: [characterId] });
+            await importRegex.mutateAsync({ ...normalized, targetCharacterIds: [characterId] });
             imported++;
+            if (!isPatternSafe(normalized.findRegex.replace(/\{\{[^}]*\}\}/g, "x"))) {
+              warnings.push(
+                localizeUi("ui.regex.importUnsafePatternWarning", {
+                  value1: index + 1,
+                  value2: normalized.name,
+                }),
+              );
+            }
             if (unsupportedPlacements.length > 0) {
               warnings.push(
                 localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
@@ -310,7 +318,7 @@ export function CharacterRegexSection({
 
       event.target.value = "";
     },
-    [characterId, createRegex, regexScripts, localizeUi],
+    [characterId, importRegex, regexScripts, localizeUi],
   );
 
   const handleDelete = useCallback(

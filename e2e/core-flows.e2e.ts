@@ -5433,8 +5433,8 @@ test("new Roleplay chats seed character Tracker custom-field defaults without re
   }
 });
 
-test("desktop Tracker preserves its controls without shifting the chat column", async ({ page }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("desktop"), "Desktop Tracker overlap behavior is covered on desktop.");
+test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Desktop Tracker docking is covered on desktop.");
 
   // Keep this device-local layout test isolated from the shared settings
   // record used by the parallel browser project.
@@ -5499,14 +5499,13 @@ test("desktop Tracker preserves its controls without shifting the chat column", 
     expect(mainBox).not.toBeNull();
     expect(chatColumnAfter).not.toBeNull();
     expect(trackerBox).not.toBeNull();
-    expect(Math.abs(chatColumnAfter!.x - chatColumnBefore!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(chatColumnAfter!.width - chatColumnBefore!.width)).toBeLessThanOrEqual(1);
-
     const expectedWidth = Math.min(420, Math.floor(mainBox!.width - 8));
     expect(Math.abs(trackerBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
     expect(trackerBox!.x).toBeGreaterThanOrEqual(mainBox!.x - 1);
     expect(trackerBox!.x).toBeLessThanOrEqual(mainBox!.x + 1);
-    expect(trackerBox!.x + trackerBox!.width).toBeGreaterThan(chatColumnAfter!.x);
+    expect(chatColumnAfter!.x).toBeGreaterThan(chatColumnBefore!.x);
+    expect(chatColumnAfter!.width).toBeLessThan(chatColumnBefore!.width);
+    expect(trackerBox!.x + trackerBox!.width).toBeLessThanOrEqual(chatColumnAfter!.x - 7);
 
     const trackerContent = tracker.locator(".mari-tracker-panel-scroll");
     const expectedScale = Math.max(0.65, expectedWidth / 420);
@@ -5563,13 +5562,32 @@ test("desktop Tracker preserves its controls without shifting the chat column", 
     });
     expect(horizontalOverflow).toBeNull();
 
-    await page.reload();
-    await expect(tracker).toBeVisible();
+    await tracker.getByRole("button", { name: /Tracker panel anchored left\. Click to anchor right\./ }).click();
+    const rightTracker = page.locator('[data-component="TrackerDataSidebarDesktop.right"]');
+    await expect(rightTracker).toBeVisible();
+    await rightTracker.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)),
+      );
+    });
+    const [rightChatColumn, rightTrackerBox] = await Promise.all([
+      chatColumn.boundingBox(),
+      rightTracker.boundingBox(),
+    ]);
+    expect(rightChatColumn).not.toBeNull();
+    expect(rightTrackerBox).not.toBeNull();
+    expect(rightChatColumn!.x).toBeLessThan(chatColumnBefore!.x);
+    expect(Math.abs(rightChatColumn!.width - chatColumnAfter!.width)).toBeLessThanOrEqual(1);
+    expect(rightChatColumn!.x + rightChatColumn!.width).toBeLessThanOrEqual(rightTrackerBox!.x - 7);
+    expect(rightTrackerBox!.x + rightTrackerBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
 
-    await tracker.getByRole("button", { name: "Close tracker panel" }).click();
-    await expect(tracker).toBeHidden();
     await page.reload();
-    await expect(tracker).toBeHidden();
+    await expect(rightTracker).toBeVisible();
+
+    await rightTracker.getByRole("button", { name: "Close tracker panel" }).click();
+    await expect(rightTracker).toBeHidden();
+    await page.reload();
+    await expect(rightTracker).toBeHidden();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }

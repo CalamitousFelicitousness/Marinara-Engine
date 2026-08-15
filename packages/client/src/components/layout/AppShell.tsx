@@ -1340,6 +1340,8 @@ export function AppShell() {
               {
                 "--tracker-panel-hud-clear-left": `${trackerPanelSide === "left" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
+                "--tracker-panel-chat-clear-left": `${trackerPanelSide === "left" ? trackerPanelOverlayClearance : 0}px`,
+                "--tracker-panel-chat-clear-right": `${trackerPanelSide === "right" ? trackerPanelOverlayClearance : 0}px`,
                 "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
               } as CSSProperties
             }

@@ -107,6 +107,7 @@ async function main() {
     assert.equal(revalidated.statusCode, 304, `304 expected for If-None-Match: ${candidate}`);
     assert.equal(revalidated.body, "");
     assert.equal(revalidated.headers.etag, clientEtag);
+    assert.equal(revalidated.headers["x-content-type-options"], "nosniff", "nosniff must survive the 304 early return");
   }
 
   // ── /client: a non-matching validator still gets the full body ──
@@ -147,6 +148,11 @@ async function main() {
     headers: { "if-none-match": iconEtag },
   });
   assert.equal(assetRevalidated.statusCode, 304);
+  assert.equal(
+    assetRevalidated.headers["x-content-type-options"],
+    "nosniff",
+    "nosniff must survive the 304 early return",
+  );
 
   // ── update: new bytes under a new version yield a NEW validator, and the
   //    old validator no longer short-circuits to 304 ──

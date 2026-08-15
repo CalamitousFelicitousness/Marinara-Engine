@@ -12,6 +12,7 @@ import {
   closeSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   readSync,
   renameSync,
   rmSync,
@@ -20,7 +21,7 @@ import {
 } from "node:fs";
 import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { hostname, networkInterfaces } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
@@ -369,6 +370,18 @@ export const FILE_BACKED_TABLES = [
   "noodler_fan_activity_state",
   "noodle_activity_digests",
   "noodle_refresh_runs",
+  "slurp_accounts",
+  "slurp_posts",
+  "slurp_account_subscriptions",
+  "slurp_post_unlocks",
+  "slurp_interactions",
+  "slurp_creator_reply_claims",
+  "slurp_prepared_posts",
+  "slurp_automatic_attempts",
+  "slurp_reserve_state",
+  "slurp_fan_activity_state",
+  "slurp_activity_digests",
+  "slurp_refresh_runs",
   "lorebooks",
   "lorebook_character_links",
   "lorebook_persona_links",
@@ -435,6 +448,11 @@ const DURABLE_ON_COMMIT_TABLES = new Set<string>([
   "noodler_reserve_state",
   "noodler_prepared_posts",
   "noodler_fan_activity_state",
+  "slurp_automatic_attempts",
+  "slurp_creator_reply_claims",
+  "slurp_reserve_state",
+  "slurp_prepared_posts",
+  "slurp_fan_activity_state",
 ]);
 
 export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; parentKey: string; childKey: string }> =
@@ -464,6 +482,49 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
       childKey: "creatorAccountId",
     },
     { parent: "noodle_accounts", child: "noodler_prepared_posts", parentKey: "id", childKey: "creatorAccountId" },
+    {
+      parent: "slurp_accounts",
+      child: "slurp_account_subscriptions",
+      parentKey: "id",
+      childKey: "viewerAccountId",
+    },
+    {
+      parent: "slurp_accounts",
+      child: "slurp_account_subscriptions",
+      parentKey: "id",
+      childKey: "creatorAccountId",
+    },
+    { parent: "slurp_accounts", child: "slurp_post_unlocks", parentKey: "id", childKey: "viewerAccountId" },
+    { parent: "slurp_accounts", child: "slurp_accounts", parentKey: "id", childKey: "slurpSourceAccountId" },
+    { parent: "slurp_accounts", child: "slurp_posts", parentKey: "id", childKey: "authorAccountId" },
+    { parent: "slurp_posts", child: "slurp_post_unlocks", parentKey: "id", childKey: "postId" },
+    { parent: "slurp_posts", child: "slurp_interactions", parentKey: "id", childKey: "postId" },
+    { parent: "slurp_posts", child: "slurp_creator_reply_claims", parentKey: "id", childKey: "postId" },
+    {
+      parent: "slurp_interactions",
+      child: "slurp_interactions",
+      parentKey: "id",
+      childKey: "parentInteractionId",
+    },
+    {
+      parent: "slurp_interactions",
+      child: "slurp_creator_reply_claims",
+      parentKey: "id",
+      childKey: "parentInteractionId",
+    },
+    {
+      parent: "slurp_interactions",
+      child: "slurp_creator_reply_claims",
+      parentKey: "id",
+      childKey: "replyInteractionId",
+    },
+    {
+      parent: "slurp_accounts",
+      child: "slurp_creator_reply_claims",
+      parentKey: "id",
+      childKey: "creatorAccountId",
+    },
+    { parent: "slurp_accounts", child: "slurp_prepared_posts", parentKey: "id", childKey: "creatorAccountId" },
     { parent: "chats", child: "messages", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "conversation_call_sessions", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "conversation_call_messages", parentKey: "id", childKey: "chatId" },
@@ -1045,6 +1106,17 @@ function pidDefinitelyExited(pid: number) {
   }
 }
 
+function isTermuxPrivateHomeStorage(rootDir: string) {
+  if (process.platform !== "android" || !process.env.HOME) return false;
+  try {
+    const home = realpathSync(resolve(process.env.HOME));
+    const storage = realpathSync(resolve(rootDir));
+    return storage === home || storage.startsWith(`${home}${sep}`);
+  } catch {
+    return false;
+  }
+}
+
 function fileStoreManifestExists(rootDir: string) {
   return existsSync(manifestPath(rootDir));
 }
@@ -1385,7 +1457,9 @@ class FileTableStore {
         }
         throw err;
       }
-      const sameHost = Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID);
+      const sameHost =
+        Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID) ||
+        isTermuxPrivateHomeStorage(this.rootDir);
       if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
         throw new StorageWriterLeaseError(
           `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +

@@ -216,8 +216,8 @@ Reads the mood of the scene and plays matching music. It can use Spotify, YouTub
 Reads the narrative and controls connected intimate toys in real time through Intiface Central. Intiface Central must already be running with a toy connected before you enable this agent.
 
 - **Phase**: Post-Processing.
-- **Where it works**: Roleplay.
-- **Key settings**: a **Touch Sensitivity** choice (**Subtle**, **Standard**, or **Intense**) and an **Intiface URL** field. For the full setup, see [Haptic Feedback setup](../integrations/haptic-feedback.md).
+- **Where it works**: Conversation, Roleplay, and Game.
+- **Key settings**: a **Touch Sensitivity** choice (**Subtle**, **Standard**, or **Intense**) and an **Intiface URL** field. Sensitivity guides the Agent's choices without capping the available `0.0-1.0` intensity range. For the full setup, see [Haptic Feedback setup](../integrations/haptic-feedback.md).
 
 ### CYOA Choices
 

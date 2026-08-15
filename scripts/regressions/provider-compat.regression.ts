@@ -1183,6 +1183,76 @@ assert.equal(
 // An image fallback is the same logical attempt on another endpoint, so a successful fallback
 // must be recorded completed rather than leaving the primary's failure as the attempt's result.
 const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const nanoGPTRequests: Array<Record<string, unknown>> = [];
+const nanoGPTImageServer = createServer(async (request, response) => {
+  if (request.url === "/result.png") {
+    response.writeHead(200, { "content-type": "image/png" });
+    response.end(Buffer.from(onePixelPng, "base64"));
+    return;
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  nanoGPTRequests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
+  const address = nanoGPTImageServer.address();
+  assert.ok(address && typeof address === "object");
+  response.writeHead(200, { "content-type": "application/json" });
+  if (nanoGPTRequests.length === 1) {
+    response.end(JSON.stringify({ data: [{ url: `http://127.0.0.1:${address.port}/result.png` }] }));
+  } else if (nanoGPTRequests.length === 2) {
+    response.end(JSON.stringify({ data: [{ b64_json: `data:image/png;base64,${onePixelPng}` }] }));
+  } else {
+    response.end(JSON.stringify({ data: [{ revised_prompt: "missing output" }] }));
+  }
+});
+await new Promise<void>((resolve) => nanoGPTImageServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = nanoGPTImageServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const oversizedReferences = [
+    Buffer.alloc(1_700_000, 1).toString("base64"),
+    Buffer.alloc(1_700_000, 2).toString("base64"),
+    Buffer.alloc(1_700_000, 3).toString("base64"),
+  ];
+
+  const urlResult = await generateImage("nanogpt", baseUrl, "nanogpt-secret", "nanogpt", {
+    prompt: "a moonlit laboratory",
+    model: "qwen-image",
+    referenceImages: oversizedReferences,
+    allowLocalUrls: true,
+  });
+  assert.equal(urlResult.base64, onePixelPng);
+  assert.equal(nanoGPTRequests[0]?.response_format, "url");
+  assert.equal(typeof nanoGPTRequests[0]?.imageDataUrl, "string");
+  assert.equal(nanoGPTRequests[0]?.imageDataUrls, undefined);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(nanoGPTRequests[0]), "utf8") <= 4 * 1024 * 1024,
+    "NanoGPT reference requests must stay within the documented 4 MB upload limit",
+  );
+
+  const fallbackResult = await generateImage("nanogpt", baseUrl, "nanogpt-secret", "nanogpt", {
+    prompt: "a base64 fallback",
+    model: "qwen-image",
+    allowLocalUrls: true,
+  });
+  assert.equal(fallbackResult.base64, onePixelPng);
+  assert.equal(fallbackResult.mimeType, "image/png");
+
+  await assert.rejects(
+    generateImage("nanogpt", baseUrl, "nanogpt-secret", "nanogpt", {
+      prompt: "an invalid response",
+      model: "qwen-image",
+      allowLocalUrls: true,
+    }),
+    /No image data in NanoGPT response \(fields: revised_prompt\)/u,
+  );
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    nanoGPTImageServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
 let arliRequest:
   | { url: string; authorization: string | undefined; contentType: string | undefined; body: Record<string, unknown> }
   | undefined;
@@ -1221,10 +1291,10 @@ try {
   assert.equal(arliRequest?.body.height, 512);
 
   const imageEditResult = await generateImage("arli", `http://127.0.0.1:${address.port}/v1`, "arli-secret", "arli", {
-      prompt: "add blue light",
-      model: "Arli/FluxModel",
-      referenceImage: `data:image/png;base64,${onePixelPng}`,
-      allowLocalUrls: true,
+    prompt: "add blue light",
+    model: "Arli/FluxModel",
+    referenceImage: `data:image/png;base64,${onePixelPng}`,
+    allowLocalUrls: true,
   });
   assert.equal(imageEditResult.base64, onePixelPng);
   assert.equal(arliRequest?.url, "/v1/img2img");
@@ -1581,10 +1651,10 @@ const callbackFallback = new RegressionProvider(["must not replace visible callb
 let callbackOutput = "";
 await assert.rejects(
   collectProviderOutput(new ConnectionFallbackProvider(callbackPrimary, callbackFallback, fallbackConnection, "main"), {
-      model: "primary-model",
-      onToken: (chunk) => {
-        callbackOutput += chunk;
-      },
+    model: "primary-model",
+    onToken: (chunk) => {
+      callbackOutput += chunk;
+    },
   }),
   /stream interrupted after callback output/,
 );

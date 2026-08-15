@@ -197,7 +197,7 @@ export function clearUnusedRuntimeAgentSections(
       const message = messages[i]!;
       if (!message.content.includes(tokens.start) && !message.content.includes(tokens.placeholder)) continue;
       const content = message.content
-        .replace(sectionPattern, (_match, sectionContent: string) => sectionContent.split(tokens.placeholder).join(""))
+        .replace(sectionPattern, "")
         .split(tokens.start)
         .join("")
         .split(tokens.end)

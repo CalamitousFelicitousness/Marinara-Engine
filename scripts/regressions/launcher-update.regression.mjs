@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -303,6 +303,9 @@ for (const launcherName of ["start.sh", "start-termux.sh"]) {
 const devSource = readFileSync(join(repositoryRoot, "scripts/dev.mjs"), "utf8");
 assert.match(devSource, /check-workspace-install\.mjs/u);
 assert.match(devSource, /\["install", "--frozen-lockfile"\]/u);
+assert.match(devSource, /detached: process\.platform !== "win32"/u);
+assert.match(devSource, /process\.kill\(-child\.pid, signal\)/u);
+assert.match(devSource, /Reusing it and starting the client\./u);
 
 const fixtureRoot = mkdtempSync(join(tmpdir(), "marinara-launcher-data-"));
 const fixtureBackupRoot = resolve(fixtureRoot, "..", `${basename(fixtureRoot)}-backups`);
@@ -328,6 +331,17 @@ try {
   const defaultDataDir = await resolveLauncherDataDir({ root: fixtureRoot, env: {} });
   mkdirSync(defaultDataDir, { recursive: true });
   writeFileSync(join(defaultDataDir, "characters.json"), '{"name":"Preserved"}\n');
+  const capabilityPackagesDir = join(defaultDataDir, "capability-packages");
+  const capabilityRuntimeDependencies = join(fixtureRoot, "runtime-node-modules");
+  mkdirSync(capabilityPackagesDir, { recursive: true });
+  mkdirSync(capabilityRuntimeDependencies, { recursive: true });
+  writeFileSync(join(capabilityPackagesDir, "installed.json"), '{"preserved":true}\n');
+  writeFileSync(join(capabilityRuntimeDependencies, "runtime.js"), "export {};\n");
+  symlinkSync(
+    capabilityRuntimeDependencies,
+    join(capabilityPackagesDir, "node_modules"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
 
   const snapshot = await snapshotLauncherData({
     root: fixtureRoot,
@@ -336,11 +350,27 @@ try {
     now: new Date("2026-07-23T12:00:00.000Z"),
   });
   assert.equal(snapshot.created, true);
+  const snapshotCapabilityPackages = join(snapshot.backupDir, "data", "capability-packages");
+  assert.equal(
+    readFileSync(join(snapshotCapabilityPackages, "installed.json"), "utf8"),
+    '{"preserved":true}\n',
+    "Launcher snapshots must preserve installed capability-package metadata",
+  );
+  assert.equal(
+    existsSync(join(snapshotCapabilityPackages, "node_modules")),
+    false,
+    "Launcher snapshots must omit the generated capability runtime junction",
+  );
 
   rmSync(defaultDataDir, { recursive: true, force: true });
   const restore = await restoreLauncherDataIfMissing({ root: fixtureRoot, backupRoot: fixtureBackupRoot, env: {} });
   assert.equal(restore.restored, true);
   assert.equal(readFileSync(join(defaultDataDir, "characters.json"), "utf8"), '{"name":"Preserved"}\n');
+  assert.equal(
+    readFileSync(join(defaultDataDir, "capability-packages", "installed.json"), "utf8"),
+    '{"preserved":true}\n',
+  );
+  assert.equal(existsSync(join(defaultDataDir, "capability-packages", "node_modules")), false);
 
   writeFileSync(join(fixtureRoot, ".env"), "DATA_DIR=../custom-data\n");
   assert.equal(

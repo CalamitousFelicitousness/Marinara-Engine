@@ -233,7 +233,7 @@ export function TrackerSidebarHeader({
                   : localizeUi("ui.trackerPanel.trackersidebarheader.left"),
             },
           )}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-[var(--foreground)]/12 text-[var(--foreground)] ring-1 ring-[var(--foreground)]/20 transition-all hover:bg-[var(--accent)] hover:ring-[var(--border)] focus-visible:outline-none focus-visible:ring-[var(--primary)] active:scale-90"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-[var(--muted-foreground)]/62 ring-1 ring-transparent transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] hover:ring-[var(--border)] focus-visible:outline-none focus-visible:ring-[var(--primary)] active:scale-90"
         >
           {trackerPanelSide === "left" ? <PanelLeft size="0.8rem" /> : <PanelRight size="0.8rem" />}
         </button>

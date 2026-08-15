@@ -11,18 +11,25 @@ import {
   ttsSourceProfileFromConfig,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
+  ttsRoleplaySpeakerExtractorResponseSchema,
   type TTSSource,
   type TTSConfig,
+  type TTSRoleplaySpeakerExtractorResponse,
   type TTSSourceProfiles,
   type TTSModelsResponse,
   type TTSVoicesResponse,
 } from "@marinara-engine/shared";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { encryptApiKey, decryptApiKey } from "../utils/crypto.js";
-import { isTtsLocalUrlsEnabled } from "../config/runtime-config.js";
+import { getChatGenerationTimeoutMs, isTtsLocalUrlsEnabled } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
-import { logger } from "../lib/logger.js";
+import { logger, logDebugOverride } from "../lib/logger.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
+import { createLLMProvider } from "../services/llm/provider-registry.js";
+import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
+import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
+import { clampGenerationMaxOutputTokens } from "../services/generation/output-token-limits.js";
 
 // OpenAI built-in voices used as fallback when the provider has no /audio/voices endpoint
 const OPENAI_FALLBACK_VOICES = ["alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"];
@@ -140,6 +147,26 @@ const speakSchema = z.object({
   voice: z.string().max(200).optional(),
 });
 
+const roleplaySpeakerExtractorSchema = z.object({
+  message: z.string().trim().min(1).max(100_000),
+  group: z.string().trim().max(500).default(""),
+  user: z.string().trim().max(120).default("User"),
+  characters: z.array(z.string().trim().min(1).max(120)).max(100).default([]),
+  debugMode: z.boolean().default(false),
+});
+
+const extractedDialogueSchema = z.object({
+  dialogue: z
+    .array(
+      z.object({
+        speaker: z.string().trim().min(1).max(120),
+        text: z.string().trim().min(1).max(100_000),
+        tone: z.string().trim().min(1).max(80).optional(),
+      }),
+    )
+    .max(500),
+});
+
 const gameAudioSchema = z.object({
   kind: z.enum(["sfx", "music"]),
   prompt: z.string().trim().min(1).max(4_100),
@@ -226,6 +253,88 @@ async function generateElevenLabsGameAudio(
 }
 
 // ── Helpers ─────────────────────────────────────
+
+export function buildRoleplaySpeakerExtractorPrompt(input: {
+  group: string;
+  user: string;
+  characters: string[];
+  includeEmotions: boolean;
+}): string {
+  const participants = input.characters.length > 0 ? input.characters.join(", ") : "the roleplay characters";
+  const roleplayName = input.group || participants;
+  const emotionInstruction = input.includeEmotions
+    ? 'Add a short emotional indicator or expression in the optional "tone" field for each line, such as "irritated" or "chuckle".'
+    : 'Do not add emotional indicators. Omit the "tone" field.';
+
+  return `You are preparing a message for text-to-speech reading from a roleplay chat between ${roleplayName} and ${input.user}, but it is possible there are other characters involved and mentioned in the message itself.
+
+Known chat characters: ${participants}
+
+Extract all dialogue lines. Copy every dialogue line exactly without changing any part of it, skip all narration beats, and assign who says it. ${emotionInstruction}
+
+Return JSON only in this exact shape:
+{"dialogue":[{"speaker":"Name","text":"Exact dialogue line"${input.includeEmotions ? ',"tone":"emotion"' : ""}}]}
+
+Example input:
+Dottore sighs and stands up. "I've had enough of your shenanigans," he drawls. "You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen."
+A pregnant pause settles in the room.
+"Skill issue," Mari chuckles, crossing her arms.
+
+Example output:
+{"dialogue":[{"speaker":"Dottore","text":"\\\"I've had enough of your shenanigans,\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Dottore","text":"\\\"You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen.\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Mari","text":"\\\"Skill issue,\\\""${input.includeEmotions ? ',"tone":"chuckle"' : ""}}]}`;
+}
+
+export function buildRoleplaySpeakerExtractorUserPrompt(message: string): string {
+  // Some Responses-compatible providers validate only input messages, not
+  // system instructions, before allowing json_object response formatting.
+  return `Return the extracted dialogue as a json object matching the requested schema.\n\nMessage to prepare:\n${message}`;
+}
+
+function extractJsonObject(value: string): string {
+  const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (fenced) return fenced;
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("Speaker extractor returned no JSON object");
+  return value.slice(start, end + 1);
+}
+
+/** Build an exact, ordered queue by locating extracted dialogue inside the original message. */
+export function parseRoleplaySpeakerExtractorOutput(
+  raw: string,
+  message: string,
+  includeEmotions: boolean,
+): TTSRoleplaySpeakerExtractorResponse {
+  const extracted = extractedDialogueSchema.parse(JSON.parse(extractJsonObject(raw)));
+  const segments: TTSRoleplaySpeakerExtractorResponse["segments"] = [];
+  let cursor = 0;
+
+  for (const line of extracted.dialogue) {
+    const dialogueIndex = message.indexOf(line.text, cursor);
+    if (dialogueIndex < 0) {
+      throw new Error(`Speaker extractor changed or could not locate a dialogue line from ${line.speaker}`);
+    }
+
+    const narration = message.slice(cursor, dialogueIndex);
+    if (narration.trim()) segments.push({ kind: "narration", text: narration });
+    segments.push({
+      kind: "dialogue",
+      speaker: line.speaker,
+      text: message.slice(dialogueIndex, dialogueIndex + line.text.length),
+      ...(includeEmotions && line.tone ? { tone: line.tone.replace(/^\[|\]$/g, "").trim() } : {}),
+    });
+    cursor = dialogueIndex + line.text.length;
+  }
+
+  const trailingNarration = message.slice(cursor);
+  if (trailingNarration.trim()) segments.push({ kind: "narration", text: trailingNarration });
+  return ttsRoleplaySpeakerExtractorResponseSchema.parse({ segments });
+}
+
+function withoutTemperatureCustomParameter(value: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!value) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key.toLowerCase() !== "temperature"));
+}
 
 function parseStoredConfig(raw: string | null) {
   if (!raw) return ttsConfigSchema.parse({});
@@ -706,8 +815,10 @@ function buildSpeechInstructions(input: { speaker?: string; tone?: string; inclu
   return parts.join(" ");
 }
 
-export function buildElevenLabsTextInput(text: string, _tone?: string): string {
-  return text;
+export function buildElevenLabsTextInput(text: string, tone?: string): string {
+  const normalizedTone = tone?.replace(/[\[\]\r\n]/g, "").trim();
+  if (!normalizedTone || text.trimStart().startsWith(`[${normalizedTone}]`)) return text;
+  return `[${normalizedTone}] ${text}`;
 }
 
 export function resolveTTSRequestVoice(configuredVoice: string, requestedVoice?: string | null): string {
@@ -749,9 +860,7 @@ export async function fetchElevenLabsVoiceOptions(
 
     if (!res.ok) {
       const detail = readProviderErrorDetail(await res.text().catch(() => ""));
-      throw new Error(
-        `ElevenLabs voices request failed (${res.status})${detail ? `: ${detail}` : ""}`,
-      );
+      throw new Error(`ElevenLabs voices request failed (${res.status})${detail ? `: ${detail}` : ""}`);
     }
 
     const data = await res.json();
@@ -911,6 +1020,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
 
 export async function ttsRoutes(app: FastifyInstance) {
   const storage = createAppSettingsStorage(app.db);
+  const connections = createConnectionsStorage(app.db);
 
   /**
    * GET /api/tts/config
@@ -971,6 +1081,111 @@ export async function ttsRoutes(app: FastifyInstance) {
       logger.warn(error, "TTS model discovery failed for source %s", cfg.source);
       return reply.status(502).send({
         error: "Could not load ElevenLabs models. Check the connection and try again.",
+        detail: error instanceof Error ? error.message : "Unknown provider error",
+      });
+    }
+  });
+
+  /**
+   * POST /api/tts/roleplay-speaker-extractor
+   * Uses one isolated LLM call to classify the newest Roleplay message for ordered TTS playback.
+   */
+  app.post("/roleplay-speaker-extractor", async (req, reply) => {
+    const input = roleplaySpeakerExtractorSchema.parse(req.body);
+    const cfg = await loadConfig(storage);
+    if (!cfg.roleplaySpeakerExtractorEnabled) {
+      return reply.status(400).send({ error: "Roleplay speaker extractor is not enabled" });
+    }
+
+    const configuredConnectionId = cfg.roleplaySpeakerExtractorConnectionId.trim();
+    const connection = configuredConnectionId
+      ? await connections.getWithKey(configuredConnectionId)
+      : await connections.getDefaultForAgents();
+    if (!connection) {
+      return reply.status(400).send({
+        error: configuredConnectionId
+          ? "The selected Roleplay speaker extractor connection is unavailable"
+          : "No default agent connection is configured for Roleplay speaker extractor",
+      });
+    }
+    if (connection.provider === "image_generation" || connection.provider === "video_generation") {
+      return reply.status(400).send({ error: "Roleplay speaker extractor requires a language-model connection" });
+    }
+
+    const baseUrl = resolveBaseUrl(connection);
+    if (!baseUrl || !connection.model.trim()) {
+      return reply.status(400).send({ error: "Roleplay speaker extractor connection has no usable model or Base URL" });
+    }
+
+    const includeEmotions = cfg.roleplaySpeakerExtractorEmotionsEnabled;
+    const systemPrompt = buildRoleplaySpeakerExtractorPrompt({
+      group: input.group,
+      user: input.user || "User",
+      characters: input.characters,
+      includeEmotions,
+    });
+    const userPrompt = buildRoleplaySpeakerExtractorUserPrompt(input.message);
+    logDebugOverride(input.debugMode, "[debug/tts/speaker-extractor] system prompt:\n%s", systemPrompt);
+    logDebugOverride(input.debugMode, "[debug/tts/speaker-extractor] user prompt:\n%s", userPrompt);
+
+    const storedOptions = resolveStoredChatOptions(connection.defaultParameters, connection.provider, connection.model);
+    const maxTokens = clampGenerationMaxOutputTokens({
+      provider: connection.provider,
+      model: connection.model,
+      maxTokens: resolveStoredMaxTokens(connection.defaultParameters, 8192),
+      maxTokensOverride: connection.maxTokensOverride,
+    });
+    const provider = createLLMProvider(
+      connection.provider,
+      baseUrl,
+      connection.apiKey,
+      connection.maxContext,
+      connection.openrouterProvider,
+      connection.maxTokensOverride,
+      connection.claudeFastMode === "true",
+      connection.treatAsLocalEndpoint === "true",
+      undefined,
+      connection.id,
+    );
+
+    try {
+      const {
+        temperature: _storedTemperature,
+        customParameters,
+        enabledParameters,
+        ...connectionOptions
+      } = storedOptions;
+      const result = await provider.chatComplete(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        {
+          ...connectionOptions,
+          model: connection.model,
+          maxTokens,
+          maxContext: connection.maxContext,
+          customParameters: withoutTemperatureCustomParameter(customParameters),
+          enabledParameters: {
+            ...enabledParameters,
+            temperature: false,
+            maxTokens: true,
+          },
+          enableCaching: connection.enableCaching === "true",
+          anthropicExtendedCacheTtl: connection.anthropicExtendedCacheTtl === "true",
+          cachingAtDepth: Number(connection.cachingAtDepth) || 5,
+          responseFormat: { type: "json_object" },
+          debugMode: input.debugMode,
+          signal: AbortSignal.timeout(getChatGenerationTimeoutMs()),
+        },
+      );
+      const raw = result.content?.trim();
+      if (!raw) throw new Error("Speaker extractor returned an empty response");
+      return parseRoleplaySpeakerExtractorOutput(raw, input.message, includeEmotions);
+    } catch (error) {
+      logger.warn(error, "Roleplay speaker extractor failed with connection %s", connection.id);
+      return reply.status(502).send({
+        error: "Roleplay speaker extractor failed",
         detail: error instanceof Error ? error.message : "Unknown provider error",
       });
     }
@@ -1051,6 +1266,7 @@ export async function ttsRoutes(app: FastifyInstance) {
         ? normalizeElevenLabsTtsModelId(configuredModel)
         : configuredModel;
     const normalizedModel = model.toLowerCase();
+    const nanoGptElevenLabsModel = useNanoGptSpeech && isNanoGptElevenLabsModel(model);
     if (cfg.source === "elevenlabs" && ELEVENLABS_NON_TTS_MODELS.has(normalizedModel)) {
       return reply.status(400).send({
         error: `ElevenLabs model "${model}" cannot generate text-to-speech`,
@@ -1059,7 +1275,6 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
 
     const audioFormat = cfg.source === "elevenlabs" || useXaiSpeech ? "mp3" : (cfg.audioFormat ?? "mp3");
-    const nanoGptElevenLabsModel = useNanoGptSpeech && isNanoGptElevenLabsModel(model);
     const includeSpeed = useXaiSpeech
       ? true
       : useNanoGptSpeech
@@ -1080,7 +1295,8 @@ export async function ttsRoutes(app: FastifyInstance) {
           : cfg.source === "elevenlabs"
             ? `${elevenLabsApiRoot(base)}/v1/text-to-speech/${encodeURIComponent(requestVoice)}?output_format=mp3_44100_128`
             : `${base}/audio/speech`;
-    const providerText = cfg.source === "elevenlabs" ? buildElevenLabsTextInput(text, tone) : text;
+    const providerText =
+      cfg.source === "elevenlabs" || nanoGptElevenLabsModel ? buildElevenLabsTextInput(text, tone) : text;
     const elevenLabsLanguageCode = cfg.elevenLabsLanguageCode?.trim();
     const includeSpeakerInstructions = cfg.source !== "elevenlabs";
     const speechInstructions = useNanoGptSpeech
@@ -1090,9 +1306,7 @@ export async function ttsRoutes(app: FastifyInstance) {
       : cfg.source === "openai" && openAiModelSupportsSpeechInstructions(model)
         ? buildSpeechInstructions({ speaker, tone })
         : undefined;
-    const pocketTtsForm = useOfficialPocketTtsSpeech
-      ? buildOfficialPocketTtsForm(providerText, requestVoice)
-      : null;
+    const pocketTtsForm = useOfficialPocketTtsSpeech ? buildOfficialPocketTtsForm(providerText, requestVoice) : null;
 
     let providerRes: Response;
     try {

@@ -4,10 +4,53 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Added
+
+- Expanded Haptic Feedback to Conversation, Roleplay, and Game with capability-aware device descriptions, the full `0.0-1.0` intensity range, every Intiface output type, and named patterns for scalar and positional pumping actions.
+- Added an optional Roleplay speaker extractor for TTS autoplay that uses a dedicated connection to queue narration and exact dialogue with assigned character voices, stable Random NPC Voices fallbacks, and optional emotion cues.
+- Added an on-demand Advanced Settings storage optimizer that scans for old, unreferenced avatar images and deletes them only after an explicit confirmation (#5039).
+
+### Fixed
+
+- Regex bundle imports now retain scripts flagged by the pattern-safety heuristic and show a warning instead of reporting those entries as skipped.
+- Kept NanoGPT Illustrator generation within its 4 MB reference-upload limit, preferred immediate hosted-result downloads, and hardened base64 fallback parsing so successful images are stored instead of rendering as broken output (#5058).
+- Kept Windows launcher updates from failing while protecting data by excluding the generated capability-package `node_modules` junction from update snapshots (#5052).
+- Prevented stopped dev sessions from leaving nested server and client processes behind, and reused an already healthy local server on repeat launches instead of failing on its storage writer lease (#5062).
+- Started TTS autoplay as soon as assistant text is finalized instead of waiting for Illustrator, trackers, summaries, or other non-rewriting agents; active message-rewrite agents such as Prose Guardian and Continuity Checker still finish first (#5059).
+- Made the Roleplay speaker extractor's structured-output request compatible with Responses API providers that require the input message itself to mention `json` (#5059).
+- Kept long Roleplay speaker-extractor readings complete by packing narration into normal-sized requests, generating queued clips serially, and stopping visibly on a failed clip instead of silently skipping parts of the message (#5059).
+- Gave each character voice assignment its own roomy stacked controls, removed hollow trailing dropdown controls, and kept empty character guidance on semantic theme colors.
+- Improved Tracker Panel readability by giving long custom values more room to wrap and making the side control read as a neutral action instead of a selected mode (#3470).
+- Preserved complete Storyboard animation prompts through planning, image-aware refinement, and final video prompt persistence instead of silently clipping them at generic 1,200- and 650-character summary limits (#5041).
+- Let combat buff skills target allies and debuff skills target enemies, with accurate type labels and descriptions in both combat layouts (#5040).
+- Registered Slurp's package-owned storage tables so its standalone Creator feed can persist without touching legacy NoodleR data (#5049, Pasta-Devs/Marinara-Agents#348).
+- Left-aligned generated Conversation selfies with their message text on desktop instead of centering them in the message body (#5042).
+- Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
+- Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
+- Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).
+- Kept supported placement settings when importing character-scoped SillyTavern regexes that also contain unsupported placements, with a warning for the ignored values (#5036).
+
+## [2.4.3]
+
+### Added
+
+- Added the one-time v2.4.3 beta What's New message to the Home experience.
+- Added `{{addnumvar::name::value}}` for numeric variable addition without changing `{{addvar}}` string concatenation (#5024).
+- Added a Personal Extension authoring guide with importable Browser and Server examples, package/API references, lifecycle guidance, and troubleshooting (#5026).
+
+### Changed
+
+- Advanced the staging version identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, and release references. Android now uses `versionName` `2.4.3` with `versionCode` `44`.
+- Kept README's stable-release pointer tied to the latest published tag instead of rewriting it during staging version preparation.
+- Removed the shared 1 MiB JavaScript field limit from Browser and Server Personal Extensions while preserving their separate archive, CSS, storage, request, and sandbox boundaries (#5025).
+
 ### Fixed
 
 - Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
 - Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
+- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
+- Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
+- Presented iPad sidebars as full-width overlays in landscape as well as portrait by widening the mobile-shell breakpoint to cover newer iPad Pro 13" widths and requiring a touch-only pointer, so sidebars are no longer cramped on landscape iPads while hybrid touch laptops keep their desktop layout (#5034).
 
 ## [2.4.2]
 
@@ -69,6 +112,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Made Personal and External Extension cards more compact, with only power and delete actions on the card, a single-line status summary, clearer name and description regions, and package export moved into the extension editor.
 - Expanded profile-import previews and quarantine to cover executable tools, personal extensions, persistent Professor Mari memories, and active themes, preserving their contents for deliberate review and re-enabling.
 - Bound downloaded Agent installs and updates to the version and checksum the user reviewed, quarantined imported executable tools until review, and moved custom scripts plus Professor Mari transforms into terminable or OS-sandboxed workers while retaining an explicit reviewed-script fallback on unsupported systems.
 - Repeated local checks now reuse native TypeScript and ESLint caches for unchanged client files (#4938).

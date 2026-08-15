@@ -56,13 +56,13 @@ import {
   VenetianMask,
 } from "lucide-react";
 import {
-  ROLEPLAY_POPOVER_CLOSE_BUTTON,
-  ROLEPLAY_POPOVER_CLOSE_ICON_SIZE,
-  ROLEPLAY_POPOVER_HEADER,
-  ROLEPLAY_POPOVER_SCROLL_AREA,
-  ROLEPLAY_POPOVER_SHELL,
-  ROLEPLAY_POPOVER_TITLE,
-} from "./roleplay-popover-styles";
+  NEUTRAL_PANEL_CLOSE_BUTTON,
+  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
+  NEUTRAL_PANEL_HEADER,
+  NEUTRAL_PANEL_SCROLL_AREA,
+  NEUTRAL_PANEL_SHELL,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import {
   getChatFloatingPanelDesktopRight,
   isChatToolbarPanelTrigger,
@@ -105,6 +105,7 @@ import {
 import { ExpressionSpriteSettings } from "./ExpressionSpriteSettings";
 import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
+import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
@@ -448,16 +449,6 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
       return <Puzzle size={size} className={className} />;
   }
 }
-
-const HAPTIC_SENSITIVITY_OPTIONS: Array<{
-  id: HapticFeedbackSensitivity;
-  label: string;
-  description: string;
-}> = [
-  { id: "subtle", label: "Subtle", description: "Lower intensity and shorter feedback." },
-  { id: "standard", label: "Standard", description: "Balanced feedback for most scenes." },
-  { id: "intense", label: "Intense", description: "Stronger feedback with a higher cap." },
-];
 
 const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
   id: ConversationCommandKey;
@@ -884,9 +875,7 @@ export function ChatSettingsDrawer({
       await abortGenerationForChat(chat.id, controller);
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : localizeUi("ui.chat.chatsettingsdrawer.couldNotStopGeneration"),
+        error instanceof Error ? error.message : localizeUi("ui.chat.chatsettingsdrawer.couldNotStopGeneration"),
       );
     } finally {
       await refetchGenerationStatus();
@@ -4255,6 +4244,100 @@ export function ChatSettingsDrawer({
     );
   };
 
+  const renderHapticSettingsCard = () => {
+    if (!metadata.enableAgents || !hapticActive) return null;
+
+    return (
+      <AgentSettingsCard
+        id={getAgentSettingsMenuId(chat.id, "haptic")}
+        icon={renderRoleplayAgentMenuIcon("haptic")}
+        title={hapticAgentMeta.name}
+        description={hapticAgentMeta.description}
+        order={getRoleplayAgentSettingsOrder("haptic")}
+        onRemove={getRoleplayAgentMenuRemoveHandler("haptic", hapticAgentMeta.name)}
+      >
+        <AgentSettingsToggle
+          label={localizeUi("ui.chat.hapticsetupfields.hapticFeedback")}
+          description={
+            metadata.enableHapticFeedback
+              ? localizeUi("ui.chat.hapticsetupfields.touchCuesAreEnabledForThisChat")
+              : localizeUi("ui.chat.hapticsetupfields.allowThisAgentToSendTouchCuesDuringThe")
+          }
+          enabled={metadata.enableHapticFeedback}
+          onToggle={() => updateMeta.mutate({ id: chat.id, enableHapticFeedback: !metadata.enableHapticFeedback })}
+        />
+        {metadata.enableHapticFeedback && (
+          <>
+            <div className="space-y-2 rounded-lg bg-[var(--background)]/75 p-2.5 ring-1 ring-[var(--border)]">
+              <div className="space-y-1">
+                <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                  {localizeUi("ui.chat.chatsettingsdrawer.touchSensitivity")}
+                </span>
+                <div className="grid grid-cols-3 gap-1 rounded-lg bg-[var(--background)]/35 p-1">
+                  {HAPTIC_SENSITIVITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => updateMeta.mutate({ id: chat.id, hapticSensitivity: option.id })}
+                      className={cn(
+                        "rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
+                        hapticSensitivity === option.id
+                          ? "bg-[var(--accent)] text-[var(--foreground)] ring-1 ring-[var(--border)]"
+                          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                      )}
+                      title={localizeUi(option.descriptionKey)}
+                    >
+                      {localizeUi(option.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  updateMeta.mutate({
+                    id: chat.id,
+                    hapticIncidentalContact: metadata.hapticIncidentalContact !== true,
+                  })
+                }
+                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                aria-pressed={metadata.hapticIncidentalContact === true}
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium text-[var(--foreground)]">
+                    {localizeUi("ui.chat.chatsettingsdrawer.incidentalContact")}
+                  </span>
+                  <span className="block text-[0.5625rem] leading-snug text-[var(--muted-foreground)]">
+                    {localizeUi("ui.chat.hapticsetupfields.tinyTapsForAccidentalBrushesAndBumps")}
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                    metadata.hapticIncidentalContact === true
+                      ? "bg-[var(--primary)]"
+                      : "bg-[var(--muted-foreground)]/50",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                      metadata.hapticIncidentalContact === true && "translate-x-3.5",
+                    )}
+                  />
+                </span>
+              </button>
+            </div>
+            <HapticConnectionPanel
+              intifaceUrl={typeof metadata.hapticIntifaceUrl === "string" ? metadata.hapticIntifaceUrl : undefined}
+              onIntifaceUrlChange={(hapticIntifaceUrl) => updateMeta.mutate({ id: chat.id, hapticIntifaceUrl })}
+            />
+          </>
+        )}
+      </AgentSettingsCard>
+    );
+  };
+
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
 
@@ -4301,7 +4384,7 @@ export function ChatSettingsDrawer({
         ref={panelRef}
         data-chat-floating-panel
         className={cn(
-          ROLEPLAY_POPOVER_SHELL,
+          NEUTRAL_PANEL_SHELL,
           "mari-chat-settings-popover",
           "mari-chat-settings-drawer",
           "fixed bottom-3 z-[70] flex min-h-0 w-[min(34rem,calc(100vw-var(--mari-chat-ui-inset-left,0px)-var(--mari-chat-ui-inset-right,0px)-1.5rem))] flex-col overflow-hidden max-md:inset-x-2 max-md:bottom-[calc(0.75rem+env(safe-area-inset-bottom))] max-md:top-[calc(3.5rem+env(safe-area-inset-top))] max-md:w-auto",
@@ -4310,8 +4393,8 @@ export function ChatSettingsDrawer({
         style={panelStyle}
       >
         {/* Header */}
-        <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex shrink-0 items-center justify-between")}>
-          <h3 className={ROLEPLAY_POPOVER_TITLE}>
+        <div className={cn(NEUTRAL_PANEL_HEADER, "flex shrink-0 items-center justify-between")}>
+          <h3 className={NEUTRAL_PANEL_TITLE}>
             <Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
             {localizeUi("chat.toolbar.settings")}
           </h3>
@@ -4319,9 +4402,9 @@ export function ChatSettingsDrawer({
             type="button"
             onClick={requestClose}
             aria-label={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
-            className={ROLEPLAY_POPOVER_CLOSE_BUTTON}
+            className={NEUTRAL_PANEL_CLOSE_BUTTON}
           >
-            <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+            <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
           </button>
         </div>
 
@@ -4333,7 +4416,7 @@ export function ChatSettingsDrawer({
 
         <div
           className={cn(
-            ROLEPLAY_POPOVER_SCROLL_AREA,
+            NEUTRAL_PANEL_SCROLL_AREA,
             "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(1rem+env(safe-area-inset-bottom))]",
           )}
         >
@@ -6376,6 +6459,7 @@ export function ChatSettingsDrawer({
                 )}
                 {renderCustomAgentPicker()}
                 {renderActiveCustomAgentSettingsCard()}
+                {renderHapticSettingsCard()}
               </div>
             </Section>
           )}
@@ -7992,116 +8076,11 @@ export function ChatSettingsDrawer({
                       )}
 
                       {renderActiveCustomAgentSettingsCard()}
-
-                      {/* Haptic Feedback — not for game mode */}
-                      {metadata.enableAgents && !isGame && hapticActive && (
-                        <AgentSettingsCard
-                          id={getAgentSettingsMenuId(chat.id, "haptic")}
-                          icon={renderRoleplayAgentMenuIcon("haptic")}
-                          title={hapticAgentMeta.name}
-                          description={hapticAgentMeta.description}
-                          order={getRoleplayAgentSettingsOrder("haptic")}
-                          onRemove={getRoleplayAgentMenuRemoveHandler("haptic", hapticAgentMeta.name)}
-                        >
-                          <AgentSettingsToggle
-                            label={localizeUi("ui.chat.hapticsetupfields.hapticFeedback")}
-                            description={
-                              metadata.enableHapticFeedback
-                                ? localizeUi("ui.chat.hapticsetupfields.touchCuesAreEnabledForThisChat")
-                                : localizeUi("ui.chat.hapticsetupfields.allowThisAgentToSendTouchCuesDuringThe")
-                            }
-                            enabled={metadata.enableHapticFeedback}
-                            onToggle={() =>
-                              updateMeta.mutate({ id: chat.id, enableHapticFeedback: !metadata.enableHapticFeedback })
-                            }
-                          />
-                          {metadata.enableHapticFeedback && (
-                            <>
-                              {chatMode === "roleplay" && (
-                                <div className="space-y-2 rounded-lg bg-[var(--background)]/75 p-2.5 ring-1 ring-[var(--border)]">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
-                                        {localizeUi("ui.chat.chatsettingsdrawer.touchSensitivity")}
-                                      </span>
-                                      <span className="text-[0.5625rem] text-[var(--muted-foreground)]">
-                                        {localizeUi("ui.chat.hapticsetupfields.roleplayOnly")}
-                                      </span>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-1 rounded-lg bg-[var(--background)]/35 p-1">
-                                      {HAPTIC_SENSITIVITY_OPTIONS.map((option) => (
-                                        <button
-                                          key={option.id}
-                                          type="button"
-                                          onClick={() =>
-                                            updateMeta.mutate({ id: chat.id, hapticSensitivity: option.id })
-                                          }
-                                          className={cn(
-                                            "rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
-                                            hapticSensitivity === option.id
-                                              ? "bg-[var(--accent)] text-[var(--foreground)] ring-1 ring-[var(--border)]"
-                                              : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                                          )}
-                                          title={option.description}
-                                        >
-                                          {option.label}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateMeta.mutate({
-                                        id: chat.id,
-                                        hapticIncidentalContact: metadata.hapticIncidentalContact !== true,
-                                      })
-                                    }
-                                    className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-                                    aria-pressed={metadata.hapticIncidentalContact === true}
-                                  >
-                                    <span className="min-w-0">
-                                      <span className="block font-medium text-[var(--foreground)]">
-                                        {localizeUi("ui.chat.chatsettingsdrawer.incidentalContact")}
-                                      </span>
-                                      <span className="block text-[0.5625rem] leading-snug text-[var(--muted-foreground)]">
-                                        {localizeUi("ui.chat.hapticsetupfields.tinyTapsForAccidentalBrushesAndBumps")}
-                                      </span>
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                                        metadata.hapticIncidentalContact === true
-                                          ? "bg-[var(--primary)]"
-                                          : "bg-[var(--muted-foreground)]/50",
-                                      )}
-                                    >
-                                      <span
-                                        className={cn(
-                                          "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                                          metadata.hapticIncidentalContact === true && "translate-x-3.5",
-                                        )}
-                                      />
-                                    </span>
-                                  </button>
-                                </div>
-                              )}
-                              <HapticConnectionPanel
-                                intifaceUrl={
-                                  typeof metadata.hapticIntifaceUrl === "string"
-                                    ? metadata.hapticIntifaceUrl
-                                    : undefined
-                                }
-                                onIntifaceUrlChange={(hapticIntifaceUrl) =>
-                                  updateMeta.mutate({ id: chat.id, hapticIntifaceUrl })
-                                }
-                              />
-                            </>
-                          )}
-                        </AgentSettingsCard>
-                      )}
                     </div>
                   )}
+
+                  {/* Haptic Feedback */}
+                  {renderHapticSettingsCard()}
 
                   {/* Illustrator — game mode only */}
                   {isGame && (

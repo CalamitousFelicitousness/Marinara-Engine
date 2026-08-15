@@ -1,5 +1,16 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 
+export type MarinaraRouteRateLimit = {
+  readonly max: number;
+  readonly timeWindow: number;
+};
+
+declare module "fastify" {
+  interface FastifyContextConfig {
+    rateLimit?: MarinaraRouteRateLimit;
+  }
+}
+
 type Bucket = {
   count: number;
   resetAt: number;
@@ -13,6 +24,11 @@ type RateLimitRule = {
 
 const DEFAULT_RULE: RateLimitRule = { key: "default", limit: 600, windowMs: 60_000 };
 
+export const AVATAR_STORAGE_RATE_LIMIT = {
+  max: 20,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   { pattern: /^\/api\/generate(?:\/|$)/, rule: { key: "generate", limit: 60, windowMs: 60_000 } },
   { pattern: /^\/api\/tts(?:\/|$)/, rule: { key: "tts", limit: 90, windowMs: 60_000 } },
@@ -22,6 +38,14 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   },
   { pattern: /^\/api\/import\/st-bulk(?:\/|$)/, rule: { key: "bulk-import", limit: 20, windowMs: 60_000 } },
   { pattern: /^\/api\/backup(?:\/|$)/, rule: { key: "backup", limit: 30, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/admin\/avatar-storage(?:\/|$)/,
+    rule: {
+      key: "avatar-storage",
+      limit: AVATAR_STORAGE_RATE_LIMIT.max,
+      windowMs: AVATAR_STORAGE_RATE_LIMIT.timeWindow,
+    },
+  },
   { pattern: /^\/api\/updates\/apply(?:\?|$)/, rule: { key: "updates-apply", limit: 5, windowMs: 60_000 } },
   {
     pattern: /^\/api\/sidecar\/(?:runtime\/install|reinstall|download|model|speech\/download|speech\/model)(?:\/|\?|$)/,
@@ -30,7 +54,10 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   { pattern: /^\/api\/haptic\/command(?:\?|$)/, rule: { key: "haptic-command", limit: 30, windowMs: 60_000 } },
   // One-shot LLM call per user click; keep it out of the 600/min default
   // class so a runaway loop can't burn API credits.
-  { pattern: /^\/api\/agents\/suite\/rewrite(?:\?|$)/, rule: { key: "agent-suite-rewrite", limit: 20, windowMs: 60_000 } },
+  {
+    pattern: /^\/api\/agents\/suite\/rewrite(?:\?|$)/,
+    rule: { key: "agent-suite-rewrite", limit: 20, windowMs: 60_000 },
+  },
   // Cap on extension routes so an XSS-driven mass install / spam can't
   // exploit the persistent storage path. 60/min covers React Query
   // refetches + legacy migrations of small extension lists comfortably.

@@ -5476,6 +5476,7 @@ test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ pa
 
     const main = page.locator('[data-component="CenterContent"]');
     const chatColumn = page.locator('[data-roleplay-chat-column="true"]');
+    const chatScroll = page.locator("[data-chat-scroll]");
     const trackerToggle = page.locator('[data-tracker-panel-toggle="roleplay-hud"]:visible').first();
     await expect(chatColumn).toBeVisible();
     await expect(trackerToggle).toBeVisible();
@@ -5491,13 +5492,15 @@ test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ pa
       );
     });
 
-    const [mainBox, chatColumnAfter, trackerBox] = await Promise.all([
+    const [mainBox, chatColumnAfter, chatScrollAfter, trackerBox] = await Promise.all([
       main.boundingBox(),
       chatColumn.boundingBox(),
+      chatScroll.boundingBox(),
       tracker.boundingBox(),
     ]);
     expect(mainBox).not.toBeNull();
     expect(chatColumnAfter).not.toBeNull();
+    expect(chatScrollAfter).not.toBeNull();
     expect(trackerBox).not.toBeNull();
     const expectedWidth = Math.min(420, Math.floor(mainBox!.width - 8));
     expect(Math.abs(trackerBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
@@ -5506,6 +5509,7 @@ test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ pa
     expect(chatColumnAfter!.x).toBeGreaterThan(chatColumnBefore!.x);
     expect(chatColumnAfter!.width).toBeLessThan(chatColumnBefore!.width);
     expect(trackerBox!.x + trackerBox!.width).toBeLessThanOrEqual(chatColumnAfter!.x - 7);
+    expect(trackerBox!.x + trackerBox!.width).toBeLessThanOrEqual(chatScrollAfter!.x - 7);
 
     const trackerContent = tracker.locator(".mari-tracker-panel-scroll");
     const expectedScale = Math.max(0.65, expectedWidth / 420);
@@ -5570,15 +5574,18 @@ test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ pa
         element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)),
       );
     });
-    const [rightChatColumn, rightTrackerBox] = await Promise.all([
+    const [rightChatColumn, rightChatScroll, rightTrackerBox] = await Promise.all([
       chatColumn.boundingBox(),
+      chatScroll.boundingBox(),
       rightTracker.boundingBox(),
     ]);
     expect(rightChatColumn).not.toBeNull();
+    expect(rightChatScroll).not.toBeNull();
     expect(rightTrackerBox).not.toBeNull();
     expect(rightChatColumn!.x).toBeLessThan(chatColumnBefore!.x);
     expect(Math.abs(rightChatColumn!.width - chatColumnAfter!.width)).toBeLessThanOrEqual(1);
     expect(rightChatColumn!.x + rightChatColumn!.width).toBeLessThanOrEqual(rightTrackerBox!.x - 7);
+    expect(rightChatScroll!.x + rightChatScroll!.width).toBeLessThanOrEqual(rightTrackerBox!.x - 7);
     expect(rightTrackerBox!.x + rightTrackerBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
 
     await page.reload();

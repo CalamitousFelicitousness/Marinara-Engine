@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added visible, one-click copy controls for lorebook and lorebook-entry IDs in their editors (#5085).
 - Expanded Haptic Feedback to Conversation, Roleplay, and Game with capability-aware device descriptions, the full `0.0-1.0` intensity range, every Intiface output type, and named patterns for scalar and positional pumping actions.
 - Added an optional Roleplay speaker extractor for TTS autoplay that uses a dedicated connection to queue narration and exact dialogue with assigned character voices, stable Random NPC Voices fallbacks, and optional emotion cues.
 - Added an on-demand Advanced Settings storage optimizer that scans for old, unreferenced avatar images and deletes them only after an explicit confirmation (#5039).

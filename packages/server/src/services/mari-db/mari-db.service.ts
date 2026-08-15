@@ -1194,6 +1194,7 @@ export function buildPersonaCreateRow(data: Row, id: string, timestamp: string):
     scenario: firstString(data, ["scenario"]) ?? "",
     backstory: firstString(data, ["backstory"]) ?? "",
     appearance: firstString(data, ["appearance"]) ?? "",
+    useCharacterSheetAsReference: "false",
     isActive: "false",
     nameColor: "",
     dialogueColor: "",
@@ -8445,7 +8446,11 @@ export class MariDbService {
 }
 
 let singleton: MariDbService | null = null;
+let singletonDb: DB | null = null;
 export function getMariDbService(db: DB) {
-  if (!singleton) singleton = new MariDbService(db);
+  if (!singleton || singletonDb !== db) {
+    singleton = new MariDbService(db);
+    singletonDb = db;
+  }
   return singleton;
 }

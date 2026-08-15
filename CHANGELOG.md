@@ -4,6 +4,36 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Fixed
+
+- Left-aligned generated Conversation selfies with their message text on desktop instead of centering them in the message body (#5042).
+- Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
+- Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
+- Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).
+- Kept supported placement settings when importing character-scoped SillyTavern regexes that also contain unsupported placements, with a warning for the ignored values (#5036).
+
+## [2.4.3]
+
+### Added
+
+- Added the one-time v2.4.3 beta What's New message to the Home experience.
+- Added `{{addnumvar::name::value}}` for numeric variable addition without changing `{{addvar}}` string concatenation (#5024).
+- Added a Personal Extension authoring guide with importable Browser and Server examples, package/API references, lifecycle guidance, and troubleshooting (#5026).
+
+### Changed
+
+- Advanced the staging version identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, and release references. Android now uses `versionName` `2.4.3` with `versionCode` `44`.
+- Kept README's stable-release pointer tied to the latest published tag instead of rewriting it during staging version preparation.
+- Removed the shared 1 MiB JavaScript field limit from Browser and Server Personal Extensions while preserving their separate archive, CSS, storage, request, and sandbox boundaries (#5025).
+
+### Fixed
+
+- Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
+- Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
+- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
+- Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
+- Presented iPad sidebars as full-width overlays in landscape as well as portrait by widening the mobile-shell breakpoint to cover newer iPad Pro 13" widths and requiring a touch-only pointer, so sidebars are no longer cramped on landscape iPads while hybrid touch laptops keep their desktop layout (#5034).
+
 ## [2.4.2]
 
 ### Added

@@ -192,6 +192,7 @@ export function CharacterRegexSection({
   const openRegexDetail = useUIStore((s) => s.openRegexDetail);
   const editorDirty = useUIStore((s) => s.editorDirty);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importWarning, setImportWarning] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const scopedScripts = useMemo(() => {
@@ -252,6 +253,7 @@ export function CharacterRegexSection({
   const handleImport = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       setImportError(null);
+      setImportWarning(null);
       setImportSuccess(null);
       const file = event.target.files?.[0];
       if (!file || !characterId) return;
@@ -264,15 +266,10 @@ export function CharacterRegexSection({
 
         let imported = 0;
         const failed: string[] = [];
+        const warnings: string[] = [];
         const orderBase = getNextRegexOrderBase((regexScripts ?? []) as RegexScriptRow[]);
         for (const [index, entry] of entries.entries()) {
           const unsupportedPlacements = getUnsupportedStRegexPlacements(entry);
-          if (unsupportedPlacements.length > 0) {
-            failed.push(
-              `Entry ${index + 1}: unsupported SillyTavern placement ${unsupportedPlacements.join(", ")} was skipped.`,
-            );
-            continue;
-          }
           const normalized = normalizeRegexImportEntry(entry, orderBase + index);
           if (!normalized) {
             failed.push(`Entry ${index + 1}: missing name or find pattern.`);
@@ -282,6 +279,14 @@ export function CharacterRegexSection({
             // Force-scope every imported script to this character.
             await createRegex.mutateAsync({ ...normalized, targetCharacterIds: [characterId] });
             imported++;
+            if (unsupportedPlacements.length > 0) {
+              warnings.push(
+                localizeUi("ui.panels.presetspanel.ignoredUnsupportedRegexPlacements", {
+                  value1: index + 1,
+                  value2: unsupportedPlacements.join(", "),
+                }),
+              );
+            }
           } catch (error) {
             failed.push(`Entry ${index + 1} (${normalized.name}): ${describeImportError(error)}`);
           }
@@ -293,6 +298,9 @@ export function CharacterRegexSection({
         if (failed.length > 0) {
           setImportError(`Skipped ${failed.length} regex script${failed.length === 1 ? "" : "s"}. ${failed[0]}`);
         }
+        if (warnings.length > 0) {
+          setImportWarning(warnings[0]!);
+        }
         if (imported === 0 && failed.length === 0) {
           setImportError("No valid regex scripts found in file.");
         }
@@ -302,7 +310,7 @@ export function CharacterRegexSection({
 
       event.target.value = "";
     },
-    [characterId, createRegex, regexScripts],
+    [characterId, createRegex, regexScripts, localizeUi],
   );
 
   const handleDelete = useCallback(
@@ -363,6 +371,7 @@ export function CharacterRegexSection({
       ) : (
         <>
           {importError && <div className="text-xs text-red-500">{importError}</div>}
+          {importWarning && <div className="text-xs text-amber-500">{importWarning}</div>}
           {importSuccess && <div className="text-xs text-green-500">{importSuccess}</div>}
           {scopedScripts.length === 0 ? (
             <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">{localizeUi("ui.characters.characterregexsection.noRegexScriptsForThisCharacterYet")}</p>

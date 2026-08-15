@@ -284,6 +284,7 @@ import {
 } from "../../packages/server/src/services/video/video-generation.js";
 import { loadGameStoryboardImagePrompt } from "../../packages/server/src/services/image/game-storyboard-image-prompt.js";
 import { formatAgentFailuresToast, toAgentFailure } from "../../packages/client/src/lib/agent-failures.js";
+import { createMessageMacroResolver } from "../../packages/client/src/lib/chat-macros.js";
 import { formatGenerationParameterError } from "../../packages/client/src/lib/generation-parameter-errors.js";
 import { normalizeCustomMusicSource } from "../../packages/client/src/components/chat/AgentAddSetupFields.js";
 import {
@@ -2688,6 +2689,49 @@ const cases: RegressionCase[] = [
         "untouched",
       );
       assert.equal(context.variables.personaTouched, undefined);
+    },
+  },
+  {
+    name: "addnumvar adds numbers without changing addvar concatenation",
+    run() {
+      const resolve = (template: string) =>
+        resolveMacros(template, {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+        });
+
+      assert.equal(
+        resolve("{{setvar::modifier::2}}{{setvar::score::20}}{{addnumvar::score::{{modifier}}}}{{getvar::score}}"),
+        "22",
+      );
+      assert.equal(resolve("{{setvar::score::20}}{{addnumvar::score::-2}}{{getvar::score}}"), "18");
+      assert.equal(resolve("{{setvar::score::1.5}}{{addnumvar::score::2.25}}{{getvar::score}}"), "3.75");
+      assert.equal(resolve("{{addnumvar::score::4}}{{getvar::score}}"), "4");
+      assert.equal(resolve("{{setvar::score::invalid}}{{addnumvar::score::5}}{{getvar::score}}"), "5");
+      assert.equal(resolve("{{setvar::score::7}}{{addnumvar::score::invalid}}{{getvar::score}}"), "7");
+      assert.equal(resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{getvar::score}}"), "1e+308");
+      assert.equal(
+        resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{addnumvar::score::-1e308}}{{getvar::score}}"),
+        "0",
+      );
+      assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "20-2");
+
+      const conditionalVariables = { score: "10" };
+      resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: conditionalVariables,
+      });
+      assert.equal(conditionalVariables.score, "10", "conditional operands must not execute numeric writes");
+
+      const variables = { score: "0" };
+      const resolveMessage = createMessageMacroResolver({ variables });
+      resolveMessage("{{addnumvar::score::1}}");
+      resolveMessage("{{addnumvar::score::1}}");
+      assert.equal(variables.score, "2", "repeated numeric writes must not be served from the display macro cache");
     },
   },
   {
@@ -7809,27 +7853,23 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         ]),
         ["description", "personality", "backstory", "appearance", "scenario", "mes_example", "system_prompt", "stats"],
       );
-      assert.deepEqual(resolveCharacterMarkerFields(undefined, false), [
+      assert.deepEqual(resolveCharacterMarkerFields(undefined), [
         "description",
         "personality",
         "backstory",
         "appearance",
         "scenario",
-        "mes_example",
         "system_prompt",
       ]);
-      assert.deepEqual(resolveCharacterMarkerFields(undefined, true), [
+      assert.deepEqual(resolveCharacterMarkerFields(["scenario", "mes_example", "description"]), [
         "description",
-        "personality",
-        "backstory",
-        "appearance",
         "scenario",
-        "system_prompt",
+        "mes_example",
       ]);
     },
   },
   {
-    name: "character markers append Example Dialogue only when no enabled dialogue marker owns it",
+    name: "character markers omit removed or disabled Example Dialogue sections",
     async run() {
       const characterRow = {
         id: "char-example-fallback",
@@ -7864,13 +7904,17 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
       } as unknown as DB;
 
-      const assemble = (wrapFormat: "xml" | "markdown" | "none", withDialogueMarker: boolean) =>
+      const assemble = (
+        wrapFormat: "xml" | "markdown" | "none",
+        dialogueMarker: "absent" | "enabled" | "disabled",
+        characterFields?: string[],
+      ) =>
         assemblePrompt({
           db,
           preset: {
             id: `preset-example-fallback-${wrapFormat}`,
             name: "Example Dialogue Fallback Fixture",
-            sectionOrder: JSON.stringify(withDialogueMarker ? ["character", "examples"] : ["character"]),
+            sectionOrder: JSON.stringify(dialogueMarker === "absent" ? ["character"] : ["character", "examples"]),
             groupOrder: JSON.stringify([]),
             wrapFormat,
             parameters: JSON.stringify({}),
@@ -7883,9 +7927,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
               identifier: "characterInfo",
               name: "Character Info",
               isMarker: "true",
-              markerConfig: JSON.stringify({ type: "character" }),
+              markerConfig: JSON.stringify({ type: "character", ...(characterFields ? { characterFields } : {}) }),
             }),
-            ...(withDialogueMarker
+            ...(dialogueMarker !== "absent"
               ? [
                   promptSection({
                     id: "examples",
@@ -7894,6 +7938,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
                     isMarker: "true",
                     markerConfig: JSON.stringify({ type: "dialogue_examples" }),
                     injectionOrder: 1,
+                    enabled: dialogueMarker === "disabled" ? "false" : "true",
                   }),
                 ]
               : []),
@@ -7909,17 +7954,21 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         });
 
       for (const wrapFormat of ["xml", "markdown", "none"] as const) {
-        const result = await assemble(wrapFormat, false);
-        const promptText = result.messages.map((message) => message.content).join("\n");
-        assert.equal(promptText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
-        assert.ok(promptText.indexOf("CHARACTER_SCENARIO") < promptText.indexOf("CHARACTER_EXAMPLE_DIALOGUE"));
-        assert.ok(promptText.indexOf("CHARACTER_EXAMPLE_DIALOGUE") < promptText.indexOf("CHARACTER_SYSTEM_PROMPT"));
-        if (wrapFormat === "xml") assert.match(promptText, /<mes_example>/);
-        if (wrapFormat === "markdown") assert.match(promptText, /#### mes_example/);
-        if (wrapFormat === "none") assert.equal(promptText.includes("mes_example"), false);
+        for (const dialogueMarker of ["absent", "disabled"] as const) {
+          const result = await assemble(wrapFormat, dialogueMarker);
+          const promptText = result.messages.map((message) => message.content).join("\n");
+          assert.equal(promptText.includes("CHARACTER_EXAMPLE_DIALOGUE"), false);
+          assert.equal(promptText.includes("mes_example"), false);
+          assert.equal(promptText.includes("dialogue_examples"), false);
+        }
       }
 
-      const explicitMarker = await assemble("xml", true);
+      const explicitCharacterField = await assemble("xml", "absent", ["mes_example"]);
+      const explicitCharacterFieldText = explicitCharacterField.messages.map((message) => message.content).join("\n");
+      assert.equal(explicitCharacterFieldText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
+      assert.match(explicitCharacterFieldText, /<mes_example>/);
+
+      const explicitMarker = await assemble("xml", "enabled");
       const explicitPromptText = explicitMarker.messages.map((message) => message.content).join("\n");
       assert.equal(explicitPromptText.match(/CHARACTER_EXAMPLE_DIALOGUE/g)?.length, 1);
       assert.match(explicitPromptText, /<dialogue_examples>/);
@@ -8472,7 +8521,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "unused runtime agent sections preserve surrounding prompt text",
+    name: "unused runtime agent sections omit surrounding prompt text",
     run() {
       const tokens = makeRuntimeAgentSectionTokens("knowledge-router", "regression");
       const messages = [
@@ -8483,11 +8532,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       clearUnusedRuntimeAgentSectionsForTest(messages, [["knowledge-router", tokens]]);
 
-      assert.equal(messages.length, 1);
-      assert.match(messages[0]?.content ?? "", /This is where additional lore will be:/);
-      assert.equal(messages[0]?.content.includes(tokens.placeholder), false);
-      assert.equal(messages[0]?.content.includes(tokens.start), false);
-      assert.equal(messages[0]?.content.includes(tokens.end), false);
+      assert.equal(messages.length, 0);
     },
   },
   {

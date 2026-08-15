@@ -238,6 +238,12 @@ The cleanest long-term fix is to put the server behind HTTPS. Last checked again
 
 ## Storage and data
 
+### Startup says another process may be using the data directory
+
+Marinara allows only one running server to write to a local data directory. If startup reports **Another Marinara Engine process ... may be using** the directory, close the other Marinara process and start again.
+
+After a crash or a moved Docker data volume, startup can instead report **The storage writer lease ... is incomplete or invalid** or identify a process that no longer exists on this host. First verify that every Marinara process and container using that data directory is stopped. Then remove only the `.writer-lease` directory named in the error and restart Marinara. Do not remove the surrounding `storage` directory or any table files.
+
 ### Data seems missing after an update
 
 If your chats or presets look missing after an update, do not delete any data folders yet. Marinara keeps your live data in a `storage` folder inside its data directory.

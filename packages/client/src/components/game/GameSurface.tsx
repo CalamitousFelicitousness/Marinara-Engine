@@ -369,6 +369,11 @@ type GameAssetGenerationOptions = {
   /** Keep narration / queued interactions waiting for this asset job. */
   blocksScene?: boolean;
   showSuccessToast?: boolean;
+  /** #5094: called after generation resolves; if it returns false the caller's request was superseded
+   *  (chat switch, turn retry, or a newer combat request), so the result is discarded instead of being
+   *  applied. Keeps a stale combat visual job from overwriting the current chat's background/avatars or
+   *  clobbering the current asset-generation state. */
+  isCurrent?: () => boolean;
 };
 
 type ApplyGeneratedAssetsOptions = {
@@ -5602,6 +5607,13 @@ function GameSurfaceComponent({
       try {
         const res = await runGameAssetGeneration(assetPayload, { allowPromptReview: options?.allowPromptReview });
 
+        // #5094: the caller's request may have been superseded (chat switch, turn retry, or a newer combat
+        // request) while generation was in flight. Bail before touching asset state or applying assets so a
+        // stale job can't overwrite the current chat's background/avatars or clear the live request's state.
+        if (options?.isCurrent && !options.isCurrent()) {
+          return null;
+        }
+
         setPendingAssetGeneration(null);
         setAssetGenerationBlocksScene(false);
         if (!res) return null;
@@ -5615,6 +5627,10 @@ function GameSurfaceComponent({
 
         return res;
       } catch {
+        // #5094: don't surface a superseded request's failure on the current chat's asset state.
+        if (options?.isCurrent && !options.isCurrent()) {
+          return null;
+        }
         setAssetGenerationFailed(true);
         setAssetGenerationBlocksScene(false);
         return null;
@@ -8243,7 +8259,13 @@ function GameSurfaceComponent({
               npcsNeedingAvatars: shouldGenerateEnemyAvatars ? enemyAvatarRequests : undefined,
               debugMode: useUIStore.getState().debugMode,
             };
-            void requestAssetGeneration(assetPayload, { allowPromptReview: false })
+            void requestAssetGeneration(assetPayload, {
+              allowPromptReview: false,
+              // #5094: gate the internal asset apply (background + avatars + asset state) on this combat
+              // request still being current, since requestAssetGeneration applies before the .then below runs.
+              isCurrent: () =>
+                combatGenerationRequestIdRef.current === requestId && activeChatIdRef.current === requestChatId,
+            })
               .then((assetResult) => {
                 if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId)
                   return; // superseded; don't apply avatars to a different request/turn/chat

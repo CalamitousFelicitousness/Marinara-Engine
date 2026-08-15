@@ -91,6 +91,9 @@ import {
   findLatestTTSAutoplayMessage,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
+  TTS_AUTOPLAY_MESSAGE_READY_EVENT,
+  type TTSAutoplayMessage,
+  type TTSAutoplayMessageReadyDetail,
 } from "../../lib/tts-autoplay";
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, type ChatScrollToBottomDetail } from "../../lib/chat-scroll-events";
 import { CHAT_RESOURCE_AGENT_SETUP_EVENT } from "../../lib/chat-resource-drag";
@@ -444,6 +447,11 @@ const CharacterScheduleEditorModal = lazy(preloadCharacterScheduleEditorModal);
 
 type FloatingPanelAnchor = ReturnType<typeof readChatToolbarFloatingPanelAnchor>;
 type OpenSettingsOptions = { initialSection?: ChatSettingsInitialSection };
+type TTSGenerationSnapshot = {
+  chatId: string;
+  beforeRevision: string | null;
+  failed: boolean;
+};
 
 export const ChatArea = memo(function ChatArea() {
   const { t: localizeUi } = useUiTranslation();
@@ -2471,7 +2479,7 @@ export const ChatArea = memo(function ChatArea() {
     if (!isStreaming) userScrolledAwayRef.current = false;
   }, [isStreaming]);
 
-  // TTS autoplay — speak the last assistant message when streaming ends
+  // TTS autoplay — start on finalized assistant text, with stream-end recovery for older/missed events.
   const { data: ttsConfig } = useTTSConfig();
   const ttsConfigRef = useRef(ttsConfig);
   ttsConfigRef.current = ttsConfig;
@@ -2480,11 +2488,8 @@ export const ChatArea = memo(function ChatArea() {
   const chatModeRef = useRef(chatMode);
   chatModeRef.current = chatMode;
   const prevIsStreamingRef = useRef(false);
-  const ttsGenerationRef = useRef<{
-    chatId: string;
-    beforeRevision: string | null;
-    failed: boolean;
-  } | null>(null);
+  const ttsGenerationRef = useRef<TTSGenerationSnapshot | null>(null);
+  const startedTTSAutoplayRevisionsRef = useRef(new Set<string>());
   useEffect(() => {
     const handleGenerationError = (event: Event) => {
       const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
@@ -2505,53 +2510,38 @@ export const ChatArea = memo(function ChatArea() {
     },
     [characterMap],
   );
-  useEffect(() => {
-    const wasStreaming = prevIsStreamingRef.current;
-    prevIsStreamingRef.current = isStreaming;
-    if (!wasStreaming && isStreaming) {
-      const msgs = messagesRef.current ?? [];
-      ttsGenerationRef.current = activeChatId
-        ? {
-            chatId: activeChatId,
-            beforeRevision: getTTSAutoplayRevision(findLatestTTSAutoplayMessage(msgs)),
-            failed: false,
-          }
-        : null;
-      return;
-    }
-    if (!wasStreaming || isStreaming) return; // only fire on true → false transition
+  const speakTTSAutoplayMessage = useCallback(
+    async (
+      lastMsg: TTSAutoplayMessage,
+      targetChatId: string,
+      generationAtStart: TTSGenerationSnapshot | null,
+    ) => {
+      if (useChatStore.getState().activeChatId !== targetChatId) return;
 
-    const generation = ttsGenerationRef.current;
-    ttsGenerationRef.current = null;
-    if (!activeChatId || generation?.chatId !== activeChatId) return;
+      const cfg = ttsConfigRef.current;
+      if (!cfg?.enabled) return;
 
-    const cfg = ttsConfigRef.current;
-    if (!cfg?.enabled) return;
+      const mode = chatModeRef.current;
+      const shouldAutoplay = mode === "roleplay" ? cfg.autoplayRP : mode === "game" ? false : cfg.autoplayConvo;
+      if (!shouldAutoplay) return;
 
-    const mode = chatModeRef.current;
-    const shouldAutoplay = mode === "roleplay" ? cfg.autoplayRP : mode === "game" ? false : cfg.autoplayConvo;
-    if (!shouldAutoplay) return;
+      const targetRevision = getTTSAutoplayRevision(lastMsg);
+      if (!targetRevision) return;
+      const revisionKey = `${targetChatId}\n${targetRevision}`;
+      if (startedTTSAutoplayRevisionsRef.current.has(revisionKey)) return;
+      startedTTSAutoplayRevisionsRef.current.add(revisionKey);
+      while (startedTTSAutoplayRevisionsRef.current.size > 50) {
+        const oldest = startedTTSAutoplayRevisionsRef.current.values().next().value;
+        if (typeof oldest !== "string") break;
+        startedTTSAutoplayRevisionsRef.current.delete(oldest);
+      }
 
-    const msgs = messagesRef.current ?? [];
-    const lastMsg = findLatestTTSAutoplayMessage(msgs);
-    if (
-      !lastMsg ||
-      !shouldAutoplayGeneratedTTS({
-        beforeRevision: generation.beforeRevision,
-        message: lastMsg,
-        generationFailed: generation.failed,
-      })
-    )
-      return;
-
-    const fallbackSpeaker =
-      lastMsg.role === "narrator"
-        ? "Narrator"
-        : lastMsg.characterId
-          ? characterMap.get(lastMsg.characterId)?.name
-          : undefined;
-    const targetRevision = getTTSAutoplayRevision(lastMsg);
-    void (async () => {
+      const fallbackSpeaker =
+        lastMsg.role === "narrator"
+          ? "Narrator"
+          : lastMsg.characterId
+            ? characterMap.get(lastMsg.characterId)?.name
+            : undefined;
       let ttsRequests;
       if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
         try {
@@ -2588,11 +2578,13 @@ export const ChatArea = memo(function ChatArea() {
           resolveTTSCharacterId,
         );
       }
+
+      const currentGeneration = ttsGenerationRef.current;
       const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
       if (
-        useChatStore.getState().activeChatId !== activeChatId ||
-        ttsGenerationRef.current !== null ||
-        getTTSAutoplayRevision(currentMessage) !== targetRevision
+        useChatStore.getState().activeChatId !== targetChatId ||
+        (currentGeneration !== null && currentGeneration !== generationAtStart) ||
+        (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
       )
         return;
       if (ttsRequests.length === 0) return;
@@ -2601,17 +2593,51 @@ export const ChatArea = memo(function ChatArea() {
         progressive: cfg.progressivePlayback,
         volume: ttsLineVolume / 100,
       });
-    })();
-  }, [
-    activeChatId,
-    characterMap,
-    characterNames,
-    chat,
-    isStreaming,
-    personaInfo?.name,
-    resolveTTSCharacterId,
-    ttsLineVolume,
-  ]);
+    },
+    [characterMap, characterNames, chat, personaInfo?.name, resolveTTSCharacterId, ttsLineVolume],
+  );
+  useEffect(() => {
+    const handleMessageReady = (event: Event) => {
+      const detail = (event as CustomEvent<TTSAutoplayMessageReadyDetail>).detail;
+      if (!detail || detail.chatId !== activeChatId) return;
+      void speakTTSAutoplayMessage(detail.message, detail.chatId, ttsGenerationRef.current);
+    };
+    window.addEventListener(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady);
+    return () => window.removeEventListener(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady);
+  }, [activeChatId, speakTTSAutoplayMessage]);
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+    if (!wasStreaming && isStreaming) {
+      const msgs = messagesRef.current ?? [];
+      ttsGenerationRef.current = activeChatId
+        ? {
+            chatId: activeChatId,
+            beforeRevision: getTTSAutoplayRevision(findLatestTTSAutoplayMessage(msgs)),
+            failed: false,
+          }
+        : null;
+      return;
+    }
+    if (!wasStreaming || isStreaming) return; // only fire on true → false transition
+
+    const generation = ttsGenerationRef.current;
+    ttsGenerationRef.current = null;
+    if (!activeChatId || generation?.chatId !== activeChatId) return;
+
+    const msgs = messagesRef.current ?? [];
+    const lastMsg = findLatestTTSAutoplayMessage(msgs);
+    if (
+      !lastMsg ||
+      !shouldAutoplayGeneratedTTS({
+        beforeRevision: generation.beforeRevision,
+        message: lastMsg,
+        generationFailed: generation.failed,
+      })
+    )
+      return;
+    void speakTTSAutoplayMessage(lastMsg, activeChatId, generation);
+  }, [activeChatId, isStreaming, speakTTSAutoplayMessage]);
 
   const newestMsgId = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.id;
   const newestMsgSwipeIndex = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.activeSwipeIndex;

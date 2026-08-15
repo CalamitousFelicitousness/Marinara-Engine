@@ -623,6 +623,48 @@ assert.match(
   /isStreaming=\{isTextStreaming\}[\s\S]{0,120}generationVisualsPaused=\{isStreaming \|\| agentProcessing\}/u,
   "Roleplay messages should remain editable while ambient rendering stays suspended for background work",
 );
+const earlyTTSReadyIndex = generateRouteSource.indexOf("if (activatedTextRewriteRunAgents.length === 0)");
+const parallelAgentWaitIndex = generateRouteSource.indexOf("const completedParallelResults = await parallelPromise");
+const textRewritePhaseIndex = generateRouteSource.indexOf("// ── Text rewrite/editing agents:");
+const rewrittenTTSReadyIndex = generateRouteSource.indexOf("if (activatedTextRewriteRunAgents.length > 0)");
+assert.ok(
+  earlyTTSReadyIndex > 0 && earlyTTSReadyIndex < parallelAgentWaitIndex,
+  "TTS-ready text without a rewrite agent must be released before parallel and post-generation agents finish",
+);
+assert.ok(
+  rewrittenTTSReadyIndex > textRewritePhaseIndex,
+  "TTS-ready text must wait for active message-rewriting agents to persist their final edit",
+);
+assert.match(
+  generateRouteSource,
+  /activatedTextRewriteRunAgents\.length === 0\) \{\s*await sendAssistantMessageReady\(currentIterationSavedMsg\)/u,
+  "TTS-ready text without a rewrite agent should use the saved row without another storage lookup",
+);
+assert.match(
+  generateRouteSource,
+  /activatedTextRewriteRunAgents\.length > 0\) \{\s*await sendAssistantMessageReady\(\)/u,
+  "TTS-ready text after rewrite agents must reload the persisted edited row",
+);
+assert.match(
+  generateRouteSource,
+  /while \(true\) \{[\s\S]{0,700}let currentIterationSavedMsg: typeof lastSavedMsg = null/u,
+  "Each Mari follow-up iteration must reset the assistant message eligible for TTS",
+);
+assert.match(
+  generateRouteSource,
+  /const messageId = \(currentIterationSavedMsg as \{ id\?: unknown \} \| null\)\?\.id/u,
+  "TTS readiness must use only the assistant message saved in the current follow-up iteration",
+);
+assert.match(
+  generateHookSource,
+  /case "assistant_message_ready": \{[\s\S]{0,500}TTS_AUTOPLAY_MESSAGE_READY_EVENT/u,
+  "the generation stream must forward finalized assistant text to TTS autoplay immediately",
+);
+assert.match(
+  chatAreaSource,
+  /addEventListener\(TTS_AUTOPLAY_MESSAGE_READY_EVENT, handleMessageReady\)/u,
+  "TTS autoplay must listen for finalized text without waiting for the full agent stream to close",
+);
 const galleryCreateIndex = generateRouteSource.indexOf("const galleryEntry = await galleryStore.create");
 const illustrationMessageLookupIndex = generateRouteSource.indexOf(
   "const msgRow = await chats.getMessage(messageId)",

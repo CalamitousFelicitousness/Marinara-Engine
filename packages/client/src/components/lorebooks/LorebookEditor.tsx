@@ -78,7 +78,7 @@ import {
   RefreshCw,
   Info,
 } from "lucide-react";
-import { cn } from "../../lib/utils";
+import { cn, copyToClipboard } from "../../lib/utils";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { api } from "../../lib/api-client";
@@ -1957,6 +1957,30 @@ export function LorebookEditor() {
                     rows={3}
                     title={localizeUi("ui.lorebooks.lorebookeditor.editLorebookDescription")}
                   />
+                </div>
+
+                {/* Lorebook ID */}
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70 px-3 py-2">
+                  <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                    {localizeUi("ui.lorebooks.lorebookeditor.lorebookId")}
+                  </span>
+                  <code className="min-w-0 flex-1 break-all rounded-lg bg-[var(--background)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)]">
+                    {lorebook.id}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const copied = await copyToClipboard(lorebook.id);
+                      if (copied) toast.success(localizeUi("ui.lorebooks.lorebookeditor.lorebookIdCopied"));
+                      else toast.error(localizeUi("ui.lorebooks.lorebookeditor.couldNotCopyLorebookId"));
+                    }}
+                    className="mari-editor-action inline-flex h-8 px-2 text-[0.6875rem]"
+                    aria-label={localizeUi("ui.lorebooks.lorebookeditor.copyLorebookId")}
+                    title={localizeUi("ui.lorebooks.lorebookeditor.copyLorebookId")}
+                  >
+                    <Copy size="0.75rem" />
+                    {localizeUi("lorebook.editor.batch.copy")}
+                  </button>
                 </div>
 
                 {/* Tags */}

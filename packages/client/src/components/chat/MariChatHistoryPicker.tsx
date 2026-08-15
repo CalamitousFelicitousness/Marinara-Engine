@@ -13,6 +13,7 @@ import { cn } from "../../lib/utils";
 import { useChats } from "../../hooks/use-chats";
 import { useCharacters } from "../../hooks/use-characters";
 import { useAddMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
+import { useModalFocusTrap } from "../../hooks/use-modal-focus-trap";
 
 // Server cap (MAX_CONTEXT_ITEM_CONTENT_LENGTH). Warn + block before the request when a selection
 // exceeds it, instead of surfacing a 400.
@@ -76,11 +77,12 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
   const [rangeTo, setRangeTo] = useState(20);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
   // The chat whose messages we currently want; a slower earlier fetch that resolves late is ignored.
   const activeSelectionRef = useRef<string | null>(null);
+  const dialogRef = useModalFocusTrap<HTMLDivElement>(open, onClose);
 
-  // Reset transient state whenever the modal is (re)opened.
+  // Reset transient state whenever the modal is (re)opened, and discard any in-flight /messages fetch
+  // when it closes so a late response can't touch hidden state and flash a stale selection on reopen.
   useEffect(() => {
     if (!open) return;
     setSearch("");
@@ -91,18 +93,10 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     setRangeTo(20);
     setMessages(null);
     activeSelectionRef.current = null;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    return () => previouslyFocused.current?.focus?.();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    return () => {
+      activeSelectionRef.current = null;
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   const characterNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -138,7 +132,7 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     try {
       const rows = await api.get<Message[]>(`/chats/${chat.id}/messages`);
       if (activeSelectionRef.current !== chat.id) return; // superseded by a newer selection or Back
-      setMessages(Array.isArray(rows) ? rows : []);
+      setMessages(rows);
     } catch {
       if (activeSelectionRef.current !== chat.id) return;
       toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLoadFailed"));
@@ -223,7 +217,11 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl outline-none"
+      >
         <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
           {selected && (
             <button

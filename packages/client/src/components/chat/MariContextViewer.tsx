@@ -1,12 +1,13 @@
 // #5073: Context Viewer for Professor Mari. Shows everything attached to the current Mari workspace
 // chat (chat-history slices) with a per-item and total token estimate, and lets the user remove items
 // to free up context. Self-contained modal (createPortal).
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { FileText, Loader2, Trash2, X } from "lucide-react";
 import { useMariWorkspaceContext, useRemoveMariWorkspaceContext } from "../../hooks/use-mari-workspace-context";
+import { useModalFocusTrap } from "../../hooks/use-modal-focus-trap";
 
 interface Props {
   open: boolean;
@@ -18,25 +19,7 @@ export function MariContextViewer({ open, onClose, workspaceChatId }: Props) {
   const { t: localizeUi } = useTranslation();
   const { data: items, isLoading } = useMariWorkspaceContext(open ? workspaceChatId : null);
   const removeContext = useRemoveMariWorkspaceContext(workspaceChatId);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
-
-  // Keep focus-restore keyed on `open` only. `onClose` is a fresh inline function each parent render,
-  // so folding it into this effect would re-run the cleanup (yanking focus out of the dialog) on every
-  // parent re-render — e.g. after a Remove refetch. The Escape listener lives in its own effect.
-  useEffect(() => {
-    if (!open) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    return () => previouslyFocused.current?.focus?.();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const dialogRef = useModalFocusTrap<HTMLDivElement>(open, onClose);
 
   const totalTokens = useMemo(() => (items ?? []).reduce((sum, item) => sum + (item.tokenEstimate || 0), 0), [items]);
 
@@ -52,7 +35,11 @@ export function MariContextViewer({ open, onClose, workspaceChatId }: Props) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl outline-none"
+      >
         <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--foreground)]">
             {localizeUi("ui.chat.homeprofessormarichat.contextViewerTitle")}

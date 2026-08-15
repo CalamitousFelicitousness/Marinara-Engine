@@ -23,6 +23,7 @@ import {
   spriteBackgroundContract,
   type SpriteChromaMatte,
 } from "../services/image/sprite-background.service.js";
+import { pixelizeImage, PixelizeInputError } from "../services/image/pixelize.service.js";
 import { clampByte, clampUnit, getSharp, type RgbColor } from "../services/image/sharp-runtime.js";
 import { logger } from "../lib/logger.js";
 
@@ -1428,6 +1429,59 @@ export async function spritesRoutes(app: FastifyInstance) {
       filename,
       url: `/api/sprites/${characterId}/file/${encodeURIComponent(filename)}?v=${Math.floor(mtime)}`,
     };
+  });
+
+  /**
+   * POST /api/sprites/pixelize
+   * Deterministic pixel-art post-processing (#5096): nearest-kernel downscale to
+   * a target cell size, palette quantization against a caller-supplied ramp,
+   * binary alpha, and a wrap-around seam score for tileability. Standalone like
+   * the cleanup routes, so client-only capability packages can call it over REST.
+   * Body: { imageBase64, targetWidth, targetHeight?, palette?, alphaThreshold? }
+   * Returns: { imageBase64, report: { width, height, paletteSize, seamScoreX, seamScoreY, tileable } }
+   */
+  app.post("/pixelize", async (req, reply) => {
+    const body = req.body as {
+      imageBase64?: string;
+      targetWidth?: number;
+      targetHeight?: number;
+      palette?: string[];
+      alphaThreshold?: number;
+    };
+    const resolved = resolveReferenceImageBase64(body.imageBase64);
+    if (!resolved) {
+      return reply.status(400).send({ error: "imageBase64 is required (data URL or raw base64)" });
+    }
+    // ~24MB decoded cap before Buffer.from allocates; the service enforces the
+    // stricter pixel-dimension bounds from the image header.
+    if (resolved.length > 32 * 1024 * 1024) {
+      return reply.status(400).send({ error: "Image is too large to pixelize" });
+    }
+    if (!Number.isInteger(body.targetWidth)) {
+      return reply.status(400).send({ error: "targetWidth is required" });
+    }
+    if (body.palette !== undefined && !Array.isArray(body.palette)) {
+      return reply.status(400).send({ error: "palette must be an array of #rrggbb colors" });
+    }
+    try {
+      const result = await pixelizeImage(Buffer.from(resolved, "base64"), {
+        targetWidth: body.targetWidth as number,
+        targetHeight: body.targetHeight,
+        palette: body.palette?.map((entry) => String(entry)),
+        alphaThreshold: body.alphaThreshold,
+      });
+      return { imageBase64: result.png.toString("base64"), report: result.report };
+    } catch (error) {
+      if (error instanceof PixelizeInputError) {
+        return reply.status(400).send({ error: error.message });
+      }
+      if (error instanceof Error && error.message.includes("Image processing is unavailable")) {
+        // The documented sharp-unavailable answer (Android/Termux without a
+        // native prebuild) — an actionable 503, never a bare 500.
+        return reply.status(503).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   /**

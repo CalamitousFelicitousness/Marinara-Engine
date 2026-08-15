@@ -7,6 +7,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Preserved complete Storyboard animation prompts through planning, image-aware refinement, and final video prompt persistence instead of silently clipping them at generic 1,200- and 650-character summary limits (#5041).
+- Let combat buff skills target allies and debuff skills target enemies, with accurate type labels and descriptions in both combat layouts (#5040).
+- Registered Slurp's package-owned storage tables so its standalone Creator feed can persist without touching legacy NoodleR data (#5049, Pasta-Devs/Marinara-Agents#348).
 - Left-aligned generated Conversation selfies with their message text on desktop instead of centering them in the message body (#5042).
 - Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
 - Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).

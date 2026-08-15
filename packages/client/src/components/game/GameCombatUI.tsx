@@ -123,6 +123,28 @@ function normalizeCombatSkillType(value: unknown): CombatSkillType {
   return value === "heal" || value === "buff" || value === "debuff" ? value : "attack";
 }
 
+function combatSkillTargetsAllies(type: CombatSkillType | undefined): boolean {
+  return type === "heal" || type === "buff";
+}
+
+function combatSkillTargetsEnemies(type: CombatSkillType | undefined): boolean {
+  return type === "attack" || type === "debuff";
+}
+
+function combatSkillTypeLabelKey(type: CombatSkillType): string {
+  if (type === "heal") return "ui.game.gamecombatui.heal";
+  if (type === "buff") return "ui.game.gamecombatui.buff";
+  if (type === "debuff") return "ui.game.gamecombatui.debuff";
+  return "ui.game.gamecombatui.atk";
+}
+
+function combatSkillDescriptionKey(type: CombatSkillType): string {
+  if (type === "heal") return "ui.game.gamecombatui.restoresHp";
+  if (type === "buff") return "ui.game.gamecombatui.strengthensAnAlly";
+  if (type === "debuff") return "ui.game.gamecombatui.weakensAnEnemy";
+  return "ui.game.gamecombatui.specialAttack";
+}
+
 function normalizeCombatStatusStat(value: unknown): CombatStatusStat {
   return value === "attack" || value === "defense" || value === "speed" || value === "hp" ? value : "hp";
 }
@@ -1207,13 +1229,13 @@ export function GameCombatUI({
   const selectedSkill = activePlayer?.skills?.find((skill) => skill.id === selectedSkillId) ?? null;
   const selectedItemEffect = selectedItemName ? getCombatItemEffect(selectedItemName, combatItemEffects) : undefined;
   const selectingAllyTarget =
-    (selectedAction === "skill" && selectedSkill?.type === "heal") ||
+    (selectedAction === "skill" && combatSkillTargetsAllies(selectedSkill?.type)) ||
     (selectedAction === "item" &&
       combatItemTargetsAllies(selectedItemEffect) &&
       !combatItemTargetsEnemies(selectedItemEffect));
   const selectingEnemyTarget =
     selectedAction === "attack" ||
-    (selectedAction === "skill" && selectedSkill?.type !== "heal") ||
+    (selectedAction === "skill" && combatSkillTargetsEnemies(selectedSkill?.type)) ||
     (selectedAction === "item" && combatItemTargetsEnemies(selectedItemEffect));
   const activeCombatAction =
     phase === "animating" && roundResult && animatingActionIndex >= 0
@@ -1934,7 +1956,7 @@ export function GameCombatUI({
                         >
                           <span className="min-w-0 truncate font-semibold text-white/90">{skill.name}</span>
                           <span className="shrink-0 text-[0.6rem] tabular-nums text-white/45">
-                            {skill.type === "heal" ?localizeUi("ui.game.gamecombatui.heal") :localizeUi("ui.game.gamecombatui.atk")} · {skill.mpCost} {localizeUi("ui.game.gamecombatui.mp")}</span>
+                            {localizeUi(combatSkillTypeLabelKey(skill.type))} · {skill.mpCost} {localizeUi("ui.game.gamecombatui.mp")}</span>
                         </button>
                       );
                     })}
@@ -2464,7 +2486,7 @@ export function GameCombatUI({
                     >
                       <div className="font-semibold text-white/90">{skill.name}</div>
                       <div className="mt-0.5 text-[0.65rem] text-white/45">
-                        {skill.type === "heal" ?localizeUi("ui.game.gamecombatui.restoresHp") :localizeUi("ui.game.gamecombatui.specialAttack")} • {skill.mpCost} {localizeUi("ui.game.gamecombatui.mp")}</div>
+                        {localizeUi(combatSkillTypeLabelKey(skill.type))} · {skill.description || localizeUi(combatSkillDescriptionKey(skill.type))} • {skill.mpCost} {localizeUi("ui.game.gamecombatui.mp")}</div>
                     </button>
                   );
                 })}

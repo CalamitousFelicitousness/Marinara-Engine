@@ -55,13 +55,13 @@ import { cn, generateClientId } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { useConnections } from "../../hooks/use-connections";
 import {
-  ROLEPLAY_POPOVER_CLOSE_BUTTON,
-  ROLEPLAY_POPOVER_CLOSE_ICON_SIZE,
-  ROLEPLAY_POPOVER_SCROLL_AREA,
-  ROLEPLAY_POPOVER_SHELL,
-  ROLEPLAY_POPOVER_SUBTITLE,
-  ROLEPLAY_POPOVER_TITLE,
-} from "./roleplay-popover-styles";
+  NEUTRAL_PANEL_CLOSE_BUTTON,
+  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
+  NEUTRAL_PANEL_SCROLL_AREA,
+  NEUTRAL_PANEL_SHELL,
+  NEUTRAL_PANEL_SUBTITLE,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import {
   type APIConnection,
   CHAT_SUMMARY_PROMPT_MAX_LENGTH,
@@ -1324,8 +1324,8 @@ export function SummaryPopover({
     >
       <div
         className={cn(
-          ROLEPLAY_POPOVER_SHELL,
-          ROLEPLAY_POPOVER_SCROLL_AREA,
+          NEUTRAL_PANEL_SHELL,
+          NEUTRAL_PANEL_SCROLL_AREA,
           "relative flex w-full flex-col overflow-hidden p-3",
         )}
         style={panelFrame ? { maxHeight: panelFrame.maxHeight } : undefined}
@@ -1333,11 +1333,11 @@ export function SummaryPopover({
         {/* Header */}
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className={ROLEPLAY_POPOVER_TITLE}>
+            <div className={NEUTRAL_PANEL_TITLE}>
               <ScrollText size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />
               <span className="truncate">{localizeUi("chat.summary.toolbarLabel")}</span>
             </div>
-            <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "truncate")}>
+            <p className={cn(NEUTRAL_PANEL_SUBTITLE, "truncate")}>
               {hasEntries
                 ? localizeUi("chat.summary.headerActive", {
                     count: enabledEntryCount,
@@ -1350,15 +1350,15 @@ export function SummaryPopover({
             <button
               type="button"
               onClick={() => void handleClose()}
-              className={ROLEPLAY_POPOVER_CLOSE_BUTTON}
+              className={NEUTRAL_PANEL_CLOSE_BUTTON}
               aria-label={localizeUi("ui.chat.summarypopover.closeSummary")}
             >
-              <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+              <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
             </button>
           </div>
         </div>
 
-        <div className={cn(ROLEPLAY_POPOVER_SCROLL_AREA, "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "min-h-0 flex-1 overflow-y-auto pr-1")}>
           <div className="mb-3 space-y-2">
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="space-y-1.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/40 p-2">

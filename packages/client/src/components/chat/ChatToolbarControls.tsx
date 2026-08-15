@@ -11,7 +11,7 @@ import { MoreHorizontal } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { CHAT_SUMMARY_OPEN_REQUEST_EVENT, requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
-import { ROLEPLAY_POPOVER_SHELL } from "./roleplay-popover-styles";
+import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 type ChatToolbarButtonClassInput = {
@@ -30,7 +30,7 @@ export const CHAT_TOOLBAR_IDENTITY_PILL_SIZE_CLASS = "h-8 w-auto max-md:h-9";
 export const CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS = "max-md:h-9";
 export const CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS = "h-8 w-8 max-md:h-9 max-md:w-9";
 export const CHAT_TOOLBAR_OVERFLOW_MENU_CLASS = cn(
-  ROLEPLAY_POPOVER_SHELL,
+  NEUTRAL_PANEL_SHELL,
   "marinara-chat-toolbar-overflow-menu flex w-9 flex-col items-center p-1",
   CHAT_TOOLBAR_ICON_GAP_CLASS,
 );

@@ -524,53 +524,88 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
       : null;
     const approvalChanged = Boolean(current && current.approvedHash !== current.contentHash);
     const fullPageAccess = draft.capabilities.includes(PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY);
+    const currentTraffic = current ? getPersonalExtensionTraffic(current.id) : null;
     return (
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={closeEditor}
-            className="flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
+            className="flex min-h-9 self-start items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
           >
             <ChevronLeft size="0.875rem" />
             {isExternal
               ? t("settings.externalExtensions.title")
               : localizeUi("settings.sections.personalExtensions.title")}
           </button>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div
+            className={cn(
+              "grid w-full items-center gap-1.5",
+              current && isExternal ? "grid-cols-3" : current ? "grid-cols-2" : "grid-cols-1",
+            )}
+          >
             {current && (
-              <button
-                type="button"
-                onClick={() => void (current.enabled ? disableExtension(current) : runExtension(current))}
-                disabled={busy}
-                className={cn(
-                  "flex min-h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                  current.enabled
-                    ? "bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--accent)]"
-                    : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90",
-                )}
-              >
-                {current.enabled ? (
-                  <PowerOff size="0.75rem" className="shrink-0" />
-                ) : (
-                  <Power size="0.75rem" className="shrink-0" />
-                )}
-                <span>
-                  {current.enabled
-                    ? localizeUi("ui.panels.extensionsettings.disable")
-                    : localizeUi("ui.panels.extensionsettings.reviewAndRun")}
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void (current.enabled ? disableExtension(current) : runExtension(current))}
+                  disabled={busy}
+                  aria-label={
+                    current.enabled
+                      ? localizeUi("ui.panels.extensionsettings.disable")
+                      : localizeUi("ui.panels.extensionsettings.reviewAndRun")
+                  }
+                  title={
+                    current.enabled
+                      ? localizeUi("ui.panels.extensionsettings.disable")
+                      : localizeUi("ui.panels.extensionsettings.reviewAndRun")
+                  }
+                  className={cn(
+                    "flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    current.enabled
+                      ? "bg-[var(--secondary)] text-[var(--foreground)] hover:bg-[var(--accent)]"
+                      : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90",
+                  )}
+                >
+                  {current.enabled ? (
+                    <PowerOff size="0.75rem" className="shrink-0" />
+                  ) : (
+                    <Power size="0.75rem" className="shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {current.enabled
+                      ? localizeUi("ui.panels.extensionsettings.disable")
+                      : localizeUi("ui.panels.extensionsettings.enableAction")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadZipFile(
+                      createPersonalExtensionPackageFiles(current),
+                      createPersonalExtensionPackageFilename(current.name),
+                    )
+                  }
+                  aria-label={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
+                  title={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
+                  className="flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md bg-[var(--secondary)] px-2 text-xs font-semibold leading-none text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
+                >
+                  <Upload size="0.75rem" className="shrink-0" />
+                  <span className="truncate">{localizeUi("ui.panels.extensionsettings.exportAction")}</span>
+                </button>
+              </>
             )}
             {isExternal && (
               <button
                 type="button"
                 onClick={() => void saveDraft()}
                 disabled={busy}
-                className="flex min-h-9 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={localizeUi("ui.panels.extensionsettings.saveDraft")}
+                title={localizeUi("ui.panels.extensionsettings.saveDraft")}
+                className="flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-md bg-[var(--primary)] px-2 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? <Loader2 size="0.75rem" className="animate-spin" /> : <Save size="0.75rem" />}
-                {localizeUi("ui.panels.extensionsettings.saveDraft")}
+                <span className="truncate">{localizeUi("ui.panels.extensionsettings.saveAction")}</span>
               </button>
             )}
           </div>
@@ -607,6 +642,21 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                 {localizeUi("ui.panels.extensionsettings.source")} {sourceLabel(current.source, t)}
               </div>
               {current.serverError && <div className="mt-1 text-[var(--destructive)]">{current.serverError}</div>}
+              {currentTraffic && currentTraffic.requests > 0 && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.625rem]">
+                  <Activity size="0.6875rem" aria-hidden="true" />
+                  {t("settings.personalExtensions.traffic.summary", {
+                    requests: currentTraffic.requests,
+                    bytes: formatBytes(currentTraffic.bytes),
+                    rate: currentTraffic.requestsLastMinute,
+                  })}
+                  {currentTraffic.sustainedHighRate && (
+                    <span className="font-semibold text-[var(--destructive)]">
+                      {t("settings.personalExtensions.traffic.highRate")}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -919,7 +969,6 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
               {extensions.map((extension) => {
                 const approved = extension.approvedHash === extension.contentHash;
                 const hasFullPageAccess = extension.capabilities.includes(PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY);
-                const traffic = getPersonalExtensionTraffic(extension.id);
                 const status = extension.enabled
                   ? extension.runtime === "server"
                     ? extension.serverStatus === "error"
@@ -929,17 +978,29 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                   : approved
                     ? "Disabled"
                     : "Needs approval";
+                const runtimeLabel =
+                  extension.runtime === "server"
+                    ? localizeUi("ui.panels.extensionsettings.server")
+                    : localizeUi("settings.notifications.browser");
+                const fullAccessLabel = hasFullPageAccess
+                  ? t("settings.personalExtensions.capabilities.full_page_access.label")
+                  : null;
+                const statusSummary = [status, fullAccessLabel, runtimeLabel].filter(Boolean).join(" · ");
                 return (
                   <div
                     key={extension.id}
                     className={cn(
-                      "flex items-stretch gap-2 rounded-lg border px-2 py-2 transition-colors",
+                      "flex items-stretch gap-2 rounded-lg border px-1.5 py-1.5 transition-colors",
                       extension.enabled
                         ? "border-[var(--primary)]/30 bg-[var(--primary)]/[0.07]"
                         : "border-[var(--border)] bg-[var(--secondary)]/45 hover:bg-[var(--secondary)]/70",
                     )}
                   >
-                    <div className="flex w-8 shrink-0 flex-col gap-0.5" aria-label={extension.name}>
+                    <div
+                      className="flex w-8 shrink-0 flex-col justify-between"
+                      role="group"
+                      aria-label={extension.name}
+                    >
                       <button
                         type="button"
                         onClick={() => void (extension.enabled ? disableExtension(extension) : runExtension(extension))}
@@ -958,20 +1019,6 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                         }
                       >
                         {extension.enabled ? <PowerOff size="0.6875rem" /> : <Power size="0.6875rem" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          downloadZipFile(
-                            createPersonalExtensionPackageFiles(extension),
-                            createPersonalExtensionPackageFilename(extension.name),
-                          )
-                        }
-                        aria-label={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] active:scale-90"
-                        title={localizeUi("ui.panels.extensionsettings.exportLocalPackage")}
-                      >
-                        <Upload size="0.6875rem" />
                       </button>
                       <button
                         type="button"
@@ -1000,48 +1047,39 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                           </span>
                         )}
                       </span>
-                      <span className="mt-1 line-clamp-2 w-full text-[0.625rem] leading-4 text-[var(--muted-foreground)]">
+                      <span className="mt-0.5 line-clamp-2 w-full text-[0.625rem] leading-[0.875rem] text-[var(--muted-foreground)]">
                         {extension.description || `${sourceLabel(extension.source, t)} draft`}
                       </span>
-                      <span className="mt-auto flex w-full flex-wrap items-center gap-x-1 gap-y-0.5 pt-1.5">
-                        <span className="rounded bg-[var(--background)]/55 px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--muted-foreground)]">
-                          {extension.runtime === "server"
-                            ? localizeUi("ui.panels.extensionsettings.server")
-                            : localizeUi("settings.notifications.browser")}
-                        </span>
+                      <span
+                        className="mt-auto flex w-full min-w-0 items-center whitespace-nowrap pt-0.5 text-[0.5625rem] font-medium leading-3 text-[var(--muted-foreground)]"
+                        aria-label={statusSummary}
+                        title={statusSummary}
+                      >
                         <span
                           className={cn(
-                            "rounded px-1.5 py-0.5 text-[0.5625rem] font-semibold",
+                            "shrink-0",
                             extension.enabled
-                              ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                              ? "text-[var(--primary)]"
                               : approved
-                                ? "bg-[var(--background)]/55 text-[var(--muted-foreground)]"
-                                : "bg-[var(--primary)]/[0.06] text-[var(--foreground)]",
+                                ? "text-[var(--muted-foreground)]"
+                                : "text-[var(--foreground)]",
                           )}
                         >
                           {status}
                         </span>
                         {hasFullPageAccess && (
-                          <span className="rounded bg-[var(--destructive)]/10 px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--destructive)]">
-                            {t("settings.personalExtensions.capabilities.full_page_access.label")}
-                          </span>
-                        )}
-                      </span>
-                      {hasFullPageAccess && traffic.requests > 0 && (
-                        <span className="mt-1 flex w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.5625rem] text-[var(--muted-foreground)]">
-                          <Activity size="0.625rem" aria-hidden="true" />
-                          {t("settings.personalExtensions.traffic.summary", {
-                            requests: traffic.requests,
-                            bytes: formatBytes(traffic.bytes),
-                            rate: traffic.requestsLastMinute,
-                          })}
-                          {traffic.sustainedHighRate && (
-                            <span className="rounded bg-[var(--destructive)]/10 px-1 py-0.5 font-semibold text-[var(--destructive)]">
-                              {t("settings.personalExtensions.traffic.highRate")}
+                          <>
+                            <span className="mx-1 shrink-0 opacity-50" aria-hidden="true">
+                              ·
                             </span>
-                          )}
+                            <span className="shrink-0 text-[var(--destructive)]">{fullAccessLabel}</span>
+                          </>
+                        )}
+                        <span className="mx-1 shrink-0 opacity-50" aria-hidden="true">
+                          ·
                         </span>
-                      )}
+                        <span className="truncate">{runtimeLabel}</span>
+                      </span>
                     </button>
                   </div>
                 );

@@ -60,6 +60,28 @@ function validatePatternSafety(data: { findRegex?: string }, ctx: z.RefinementCt
   }
 }
 
+function validatePatternSyntax(data: { findRegex?: string; flags?: string }, ctx: z.RefinementCtx): void {
+  if (data.findRegex === undefined) return;
+
+  try {
+    new RegExp(data.findRegex.replace(/\{\{[^}]*\}\}/g, "x"), data.flags ?? "gi");
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["findRegex"],
+      message: "Invalid regex pattern.",
+    });
+  }
+}
+
+function validateImportedRegexScript(
+  data: { findRegex?: string; flags?: string; minDepth?: number | null; maxDepth?: number | null },
+  ctx: z.RefinementCtx,
+): void {
+  validateDepthRange(data, ctx);
+  validatePatternSyntax(data, ctx);
+}
+
 function validateEditableRegexScript(
   data: { findRegex?: string; minDepth?: number | null; maxDepth?: number | null },
   ctx: z.RefinementCtx,
@@ -69,7 +91,7 @@ function validateEditableRegexScript(
 }
 
 export const createRegexScriptSchema = regexScriptShape.superRefine(validateEditableRegexScript);
-export const importRegexScriptSchema = regexScriptShape.superRefine(validateDepthRange);
+export const importRegexScriptSchema = regexScriptShape.superRefine(validateImportedRegexScript);
 export const updateRegexScriptSchema = regexScriptShape.partial().superRefine(validateEditableRegexScript);
 export const reorderRegexScriptsSchema = z.object({
   scriptIds: z.array(z.string().min(1)),

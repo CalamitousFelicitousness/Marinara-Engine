@@ -610,7 +610,7 @@ export function PresetsPanel() {
           setRegexImportError(`Skipped ${failed.length} regex script${failed.length === 1 ? "" : "s"}. ${failed[0]}`);
         }
         if (warnings.length > 0) {
-          setRegexImportWarning(warnings[0]!);
+          setRegexImportWarning(warnings.join(" "));
         }
         if (imported === 0 && failed.length === 0) {
           setRegexImportError("No valid regex scripts found in file.");

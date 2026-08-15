@@ -104,10 +104,7 @@ function formatCharacterLine(character: any): string | null {
   if (character.thoughts) details.push(`thoughts: ${character.thoughts}`);
   if (character.customFields && typeof character.customFields === "object" && !Array.isArray(character.customFields)) {
     for (const [fieldName, fieldValue] of Object.entries(character.customFields)) {
-      const line = formatNamedValueLine(
-        { name: fieldName, value: fieldValue },
-        CHARACTER_RESERVED_CUSTOM_FIELD_NAMES,
-      );
+      const line = formatNamedValueLine({ name: fieldName, value: fieldValue }, CHARACTER_RESERVED_CUSTOM_FIELD_NAMES);
       if (line) details.push(line);
     }
   }
@@ -144,6 +141,13 @@ function formatInventoryLine(item: any): string | null {
   return `- ${name}${quantity && Number(quantity) > 1 ? ` x${quantity}` : ""}${description ? ` — ${description}` : ""}`;
 }
 
+function formatInventoryTrackerLine(item: any): string | null {
+  const name = asText(item?.name);
+  if (!name) return null;
+  const quantity = finiteNumberText(item?.qty);
+  return `- ${name}${quantity && Number(quantity) > 1 ? ` x${quantity}` : ""}`;
+}
+
 export function buildCommittedTrackerContextBlock(args: {
   chatEnableAgents: boolean;
   activeAgentIds: string[];
@@ -159,7 +163,9 @@ export function buildCommittedTrackerContextBlock(args: {
   const hasPersonaStats = active.has("persona-stats");
   const hasQuest = active.has("quest");
   const hasCustomTracker = active.has("custom-tracker");
-  if (!hasWorldState && !hasCharTracker && !hasPersonaStats && !hasQuest && !hasCustomTracker) return null;
+  const hasInventoryTracker = active.has("inventory-tracker");
+  if (!hasWorldState && !hasCharTracker && !hasPersonaStats && !hasQuest && !hasCustomTracker && !hasInventoryTracker)
+    return null;
 
   const snap = args.latestGameState ?? undefined;
   if (!snap) return null;
@@ -232,6 +238,22 @@ export function buildCommittedTrackerContextBlock(args: {
       if (hasCustomTracker && Array.isArray(stats.customTrackerFields) && stats.customTrackerFields.length > 0) {
         const customLines = stats.customTrackerFields.map(formatCustomTrackerFieldForPrompt);
         trackerParts.push(wrapContent(customLines.join("\n"), "Custom Tracker", args.wrapFormat));
+      }
+
+      if (hasInventoryTracker) {
+        const inventoryGroups = [
+          ["Currencies", stats.inventoryTrackerCurrencies],
+          ["Equipped", stats.inventoryTrackerEquipped],
+          ["Inventory", stats.inventoryTrackerInventory],
+        ] as const;
+        const groupBlocks = inventoryGroups.flatMap(([label, rows]) => {
+          if (!Array.isArray(rows) || rows.length === 0) return [];
+          const lines = rows.map(formatInventoryTrackerLine).filter(isNonEmptyLine);
+          return lines.length > 0 ? [`${label}:\n${lines.join("\n")}`] : [];
+        });
+        if (groupBlocks.length > 0) {
+          trackerParts.push(wrapContent(groupBlocks.join("\n"), "Inventory Tracker", args.wrapFormat));
+        }
       }
     }
   }

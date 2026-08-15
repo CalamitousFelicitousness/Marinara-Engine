@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added a dedicated Roleplay Inventory Tracker integration with separate currency, equipped, and carried-item lists; compact quantities; editable HUD and Tracker Panel grids; per-cell locks; retry support; and committed prompt context (#5105, Pasta-Devs/Marinara-Agents#361).
 - Added `POST /api/sprites/pixelize`: deterministic pixel-art post-processing for AI-generated images — nearest-kernel downscale to a target cell size, palette quantization against a supplied ramp, binary alpha, and a wrap-around seam score reporting tileability — so probabilistic model output can sit beside authored pixel art; identical input always produces identical bytes (#5096).
 - Character sprite-sheet generation accepts an optional `styleProfileId` so a bake can target a specific image style profile instead of always compiling against the user's active one; an absent field keeps today's resolution exactly, and unknown ids degrade the same way the gallery path degrades (#5095).
 - Added capability API 1.11 Experience combat seam: `game-surface` packages receive `combatActive` (true the instant the built-in combat UI mounts, unlike the lagging narrative scene state), the effective `combatStyle`, and `requestCombat()` — which routes into the same encounter-generation pass as the manual Start Combat button, minus the confirm dialog; packages still cannot supply combatants or combat state (#5094).

@@ -3,6 +3,7 @@ import type {
   CustomTrackerField,
   GameState,
   InventoryItem,
+  InventoryTrackerRow,
   PlayerStats,
   PresentCharacter,
   QuestProgress,
@@ -19,6 +20,8 @@ type WorldTrackerField = "date" | "time" | "location" | "weather" | "temperature
 type TextCharacterField = "emoji" | "name" | "mood" | "appearance" | "outfit" | "thoughts";
 type StatField = "name" | "value" | "max";
 type InventoryField = "name" | "quantity" | "description" | "location";
+type InventoryTrackerField = "name" | "qty";
+export type InventoryTrackerGroup = "currencies" | "equipped" | "inventory";
 type QuestField = "name" | "completed" | "currentStage";
 type QuestObjectiveField = "text" | "completed";
 type CustomTrackerFieldKey = "name" | "value";
@@ -325,6 +328,27 @@ export function inventoryItemTrackerLockPrefix(
 
 export function inventoryTrackerLockPrefix() {
   return "player.inventory";
+}
+
+export function roleplayInventoryTrackerLockKey(
+  group: InventoryTrackerGroup,
+  rowOrIndex: Pick<InventoryTrackerRow, "name"> | number | null | undefined,
+  field: InventoryTrackerField,
+  index?: number,
+) {
+  return `${roleplayInventoryTrackerRowLockPrefix(group, rowOrIndex, index)}.${field}`;
+}
+
+export function roleplayInventoryTrackerRowLockPrefix(
+  group: InventoryTrackerGroup,
+  rowOrIndex: Pick<InventoryTrackerRow, "name"> | number | null | undefined,
+  index?: number,
+) {
+  return `player.inventoryTracker.${group}.${namedRowLockRef(rowOrIndex, index)}`;
+}
+
+export function roleplayInventoryTrackerGroupLockPrefix(group: InventoryTrackerGroup) {
+  return `player.inventoryTracker.${group}`;
 }
 
 function characterLockRef(character: Pick<PresentCharacter, "characterId" | "name"> | null | undefined, index: number) {
@@ -731,6 +755,27 @@ function mergeInventoryWithLocks(
   });
 }
 
+function mergeRoleplayInventoryTrackerRowsWithLocks(
+  group: InventoryTrackerGroup,
+  nextRows: InventoryTrackerRow[],
+  currentRows: InventoryTrackerRow[] | null | undefined,
+  locks: TrackerFieldLocks,
+) {
+  return mergeNamedRowsWithLocks(nextRows, currentRows, locks, {
+    mergeRow: (row, currentRow, currentIndex) => {
+      const next = { ...row };
+      for (const field of ["name", "qty"] as const) {
+        if (isTrackerFieldLocked(locks, roleplayInventoryTrackerLockKey(group, currentRow, field, currentIndex))) {
+          if (field === "qty" && currentRow.qty === undefined) delete next.qty;
+          else next[field] = currentRow[field] as never;
+        }
+      }
+      return next;
+    },
+    prefixFor: (row, index) => `${roleplayInventoryTrackerRowLockPrefix(group, row, index)}.`,
+  });
+}
+
 function mergeCustomTrackerFieldsWithGenericLocks(
   nextFields: CustomTrackerField[],
   currentFields: CustomTrackerField[] | null | undefined,
@@ -1026,6 +1071,30 @@ export function applyTrackerFieldLocksToGameStatePatch<T extends Record<string, 
       playerStatsPatch.customTrackerFields = mergeCustomTrackerFieldsWithGenericLocks(
         playerStatsPatch.customTrackerFields,
         currentPlayerStats.customTrackerFields,
+        locks,
+      );
+    }
+    if (Array.isArray(playerStatsPatch.inventoryTrackerCurrencies)) {
+      playerStatsPatch.inventoryTrackerCurrencies = mergeRoleplayInventoryTrackerRowsWithLocks(
+        "currencies",
+        playerStatsPatch.inventoryTrackerCurrencies,
+        currentPlayerStats.inventoryTrackerCurrencies,
+        locks,
+      );
+    }
+    if (Array.isArray(playerStatsPatch.inventoryTrackerEquipped)) {
+      playerStatsPatch.inventoryTrackerEquipped = mergeRoleplayInventoryTrackerRowsWithLocks(
+        "equipped",
+        playerStatsPatch.inventoryTrackerEquipped,
+        currentPlayerStats.inventoryTrackerEquipped,
+        locks,
+      );
+    }
+    if (Array.isArray(playerStatsPatch.inventoryTrackerInventory)) {
+      playerStatsPatch.inventoryTrackerInventory = mergeRoleplayInventoryTrackerRowsWithLocks(
+        "inventory",
+        playerStatsPatch.inventoryTrackerInventory,
+        currentPlayerStats.inventoryTrackerInventory,
         locks,
       );
     }

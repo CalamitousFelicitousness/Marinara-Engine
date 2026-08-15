@@ -1,6 +1,6 @@
 # Downloadable Agents Reference
 
-This guide lists all 32 official first-party packages available through **Agents → Download Agents**, grouped by category. Agents do not ship inside a fresh Marinara Engine installation. Their package sources, manifests, artifacts, and machine-readable catalog are published in [Pasta-Devs/Marinara-Agents](https://github.com/Pasta-Devs/Marinara-Agents). For each one, this guide explains what the agent does, when it runs or integrates, which chat modes allow it, and the main settings. For installation and activation, read the [Agents overview](agents-overview.md) first.
+This guide lists all 33 official first-party packages available through **Agents → Download Agents**, grouped by category. Agents do not ship inside a fresh Marinara Engine installation. Their package sources, manifests, artifacts, and machine-readable catalog are published in [Pasta-Devs/Marinara-Agents](https://github.com/Pasta-Devs/Marinara-Agents). For each one, this guide explains what the agent does, when it runs or integrates, which chat modes allow it, and the main settings. For installation and activation, read the [Agents overview](agents-overview.md) first.
 
 ## How to read this reference
 
@@ -129,6 +129,14 @@ Tracks fields you define yourself, such as currencies, counters, or flags. Use i
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
 - **Key settings**: **Add as Prompt Section** (on by default).
+
+### Inventory Tracker
+
+Tracks money, equipped gear, and carried items as three structured lists without reusing Persona Stats inventory or compressing the data into Custom Tracker strings. Duplicate names are merged, quantities of one stay visually compact, and locked rows survive later tracker runs unchanged.
+
+- **Phase**: Post-Processing.
+- **Where it works**: Roleplay.
+- **Key settings**: **Add as Prompt Section** (on by default). The HUD and Tracker Panel let you edit and lock every name and quantity.
 
 ### World Maps
 

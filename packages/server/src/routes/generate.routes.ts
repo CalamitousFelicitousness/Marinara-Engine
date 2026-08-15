@@ -238,6 +238,7 @@ import {
   buildGenerationGuideInstruction,
   buildUserMessageRegenerationPromptFromSource,
   buildLockedPlayerStatsArrayPatch,
+  buildLockedInventoryTrackerPatch,
   buildLockedPersonaTrackerPatch,
   applyTrackerCharacterCardIdentity,
   canonicalizeGamePartySpeakerLabels,
@@ -8561,6 +8562,48 @@ export async function generateRoutes(app: FastifyInstance) {
                 }
               } catch (err) {
                 logger.error(err, "[generate] Failed to apply persona-stats tracker update");
+              }
+            }
+
+            // Inventory Tracker agent → replace its three dedicated playerStats lists
+            if (
+              result.success &&
+              result.type === "inventory_tracker_update" &&
+              result.data &&
+              typeof result.data === "object" &&
+              customAgentCanApplyResult(result, resolvedAgents, builtInAgentTypes, "edit_trackers")
+            ) {
+              try {
+                let snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                if (!snap) {
+                  await gameStateStore.updateByMessage(messageId, targetSwipeIndex, input.chatId, {}, undefined, {
+                    baseSnapshot: trackerBaseGameStateSnapshot,
+                  });
+                  snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                }
+                const lockState = snap ? parseGameStateRow(snap as Record<string, unknown>) : null;
+                const inventoryTrackerPatch = buildLockedInventoryTrackerPatch({
+                  data: result.data as Record<string, unknown>,
+                  snapshot: snap,
+                  lockState,
+                });
+                if (snap && inventoryTrackerPatch.changed) {
+                  await app.db
+                    .update(gameStateSnapshotsTable)
+                    .set({
+                      playerStats: JSON.stringify(inventoryTrackerPatch.playerStats),
+                      fieldLocks: serializeMigratedTrackerLocks(lockState),
+                    })
+                    .where(eq(gameStateSnapshotsTable.id, snap.id));
+                }
+                if (inventoryTrackerPatch.changed) {
+                  logger.debug("[game_state_patch] inventory-tracker: %j", inventoryTrackerPatch.values);
+                  reply.raw.write(
+                    `data: ${JSON.stringify({ type: "game_state_patch", data: inventoryTrackerPatch.patch })}\n\n`,
+                  );
+                }
+              } catch (err) {
+                logger.error(err, "[generate] Failed to apply inventory tracker update");
               }
             }
 

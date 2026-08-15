@@ -526,6 +526,7 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
 const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
+const NANOGPT_MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 
 class ImageGenerationDeadlineError extends Error {
   constructor(timeoutMs: number) {
@@ -1168,6 +1169,43 @@ function nanoGPTReferenceImages(request: ImageGenRequest): string[] {
   return openAIReferenceImages(request).slice(0, NANOGPT_REFERENCE_IMAGE_LIMIT);
 }
 
+function serializeNanoGPTImageRequest(body: Record<string, unknown>, references: string[]): string {
+  const dataUrls = references.map(imageDataUrlFromReference);
+  const selected: string[] = [];
+  let serialized = JSON.stringify(body);
+
+  for (const dataUrl of dataUrls) {
+    const candidateReferences = [...selected, dataUrl];
+    const candidate = {
+      ...body,
+      ...(candidateReferences.length === 1
+        ? { imageDataUrl: candidateReferences[0] }
+        : { imageDataUrls: candidateReferences }),
+    };
+    const candidateSerialized = JSON.stringify(candidate);
+    if (Buffer.byteLength(candidateSerialized, "utf8") > NANOGPT_MAX_REQUEST_BYTES) continue;
+    selected.push(dataUrl);
+    serialized = candidateSerialized;
+  }
+
+  if (dataUrls.length > 0 && selected.length === 0) {
+    throw new Error(
+      "NanoGPT reference image is too large for its 4 MB request limit. Compress or resize the reference and retry.",
+    );
+  }
+  if (selected.length < dataUrls.length) {
+    logger.warn(
+      "[image-gen/nanogpt] Reduced reference images from %d to %d to stay within the 4 MB request limit",
+      dataUrls.length,
+      selected.length,
+    );
+  }
+  if (Buffer.byteLength(serialized, "utf8") > NANOGPT_MAX_REQUEST_BYTES) {
+    throw new Error("NanoGPT image request exceeds its 4 MB limit. Shorten the prompt or reduce image inputs.");
+  }
+  return serialized;
+}
+
 function xAIImageInput(reference: string): { type: "image_url"; url: string } {
   const decoded = decodeReferenceImage(reference);
   return {
@@ -1328,7 +1366,7 @@ async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGe
     prompt: request.prompt,
     n: 1,
     size,
-    response_format: "b64_json",
+    response_format: "url",
   };
   if (request.model) body.model = request.model;
   if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
@@ -1337,11 +1375,7 @@ async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGe
   if (request.model?.toLowerCase().includes("flux-kontext")) {
     body.kontext_max_mode = true;
   }
-  if (references.length === 1) {
-    body.imageDataUrl = imageDataUrlFromReference(references[0]!);
-  } else if (references.length > 1) {
-    body.imageDataUrls = references.map(imageDataUrlFromReference);
-  }
+  const requestBody = serializeNanoGPTImageRequest(body, references);
 
   const resp = await imageFetch(
     url,
@@ -1351,7 +1385,7 @@ async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGe
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(body),
+      body: requestBody,
       signal: imageRequestSignal(request),
     },
     { allowLocal: request.allowLocalUrls },
@@ -1362,12 +1396,34 @@ async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGe
     throw new Error(`NanoGPT image generation failed (${resp.status}): ${sanitizeErrorText(errText)}`);
   }
 
-  const data = (await resp.json()) as { data?: Array<{ b64_json?: string; url?: string }> };
+  const responseText = await resp.text();
+  let data: {
+    data?: Array<{ b64_json?: string; image_base64?: string; url?: string; image_url?: string }>;
+  };
+  try {
+    data = JSON.parse(responseText) as typeof data;
+  } catch {
+    throw new Error(`NanoGPT image generation returned invalid JSON (${sanitizeErrorText(responseText)})`);
+  }
   const result = data.data?.[0];
-  if (result?.b64_json) return { base64: result.b64_json, mimeType: "image/png", ext: "png" };
-  if (result?.url) return downloadImageUrl(result.url, request.privateImageResultOrigin, request.signal);
+  const base64Result = result?.b64_json ?? result?.image_base64;
+  if (base64Result) {
+    if (base64Result.trim().startsWith("data:")) return decodeImageDataUrl(base64Result);
+    const base64 = normalizeBase64ImagePayload(base64Result, "NanoGPT image response");
+    const mimeType = detectImageMimeType(base64);
+    if (!mimeType) throw new Error("NanoGPT image response did not contain recognized image bytes");
+    return { base64, mimeType, ext: imageExtensionFromMimeType(mimeType) };
+  }
+  const resultUrl = result?.url ?? result?.image_url;
+  if (resultUrl) return downloadImageUrl(resultUrl, request.privateImageResultOrigin, request.signal);
 
-  throw new Error("No image data in NanoGPT response");
+  const fields = result
+    ? Object.keys(result).join(", ")
+    : data && typeof data === "object"
+      ? Object.keys(data).join(", ")
+      : "none";
+  logDebugOverride(request.debugMode === true, "[debug/image/nanogpt] response fields: %s", fields || "none");
+  throw new Error(`No image data in NanoGPT response (fields: ${fields || "none"})`);
 }
 
 async function generatePollinations(request: ImageGenRequest): Promise<ImageGenResult> {

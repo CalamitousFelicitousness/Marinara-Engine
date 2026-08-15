@@ -388,6 +388,7 @@ export function AppShell() {
   const liveRightPanelWidth = rightPanelDragWidth ?? sidebarDragWidth ?? sharedSidebarWidth;
   const trackerPanelWidth = getTrackerPanelWidthForProfile(trackerPanelSizeProfile);
   const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
+  const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);
   const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
   const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
@@ -1053,9 +1054,11 @@ export function AppShell() {
   useLayoutEffect(() => {
     if (shellOverlayMode || !trackerPanelSurfaceAvailable || !trackerPanelAnchoredForMotion) {
       setTrackerPanelResolvedWidth(trackerPanelWidth);
+      setTrackerPanelWidthMeasured(false);
       return;
     }
 
+    setTrackerPanelWidthMeasured(false);
     let frame = 0;
     let discoveryObserver: MutationObserver | null = null;
     let observedChatColumn: HTMLElement | null = null;
@@ -1067,7 +1070,7 @@ export function AppShell() {
       const chatColumnRect = chatColumn ? readVisibleElementRect(chatColumn) : null;
 
       if (!mainRect || !chatColumn || !chatColumnRect) {
-        setTrackerPanelResolvedWidth(trackerPanelWidth);
+        setTrackerPanelWidthMeasured(false);
         return false;
       }
 
@@ -1081,6 +1084,7 @@ export function AppShell() {
         gap: TRACKER_PANEL_CHAT_GAP,
       });
       setTrackerPanelResolvedWidth((current) => (current === nextWidth ? current : nextWidth));
+      setTrackerPanelWidthMeasured(true);
 
       if (observedChatColumn !== chatColumn) {
         if (observedChatColumn) observer.unobserve(observedChatColumn);
@@ -1126,10 +1130,6 @@ export function AppShell() {
     !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
       ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
       : 0;
-  const trackerPanelChatClearance =
-    !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
-      ? trackerPanelResolvedWidth + TRACKER_PANEL_CHAT_GAP
-      : 0;
   const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
   const trackerPanelContentScale = resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth);
   const trackerPanelPortal =
@@ -1163,7 +1163,7 @@ export function AppShell() {
     );
 
   const trackerPanelDesktop = (side: "left" | "right") =>
-    trackerPanelVisible && trackerPanelSide === side ? (
+    trackerPanelVisible && trackerPanelWidthMeasured && trackerPanelSide === side ? (
       <motion.aside
         key={`tracker-${side}`}
         initial={{
@@ -1344,8 +1344,6 @@ export function AppShell() {
               {
                 "--tracker-panel-hud-clear-left": `${trackerPanelSide === "left" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
-                "--tracker-panel-chat-clear-left": `${trackerPanelSide === "left" ? trackerPanelChatClearance : 0}px`,
-                "--tracker-panel-chat-clear-right": `${trackerPanelSide === "right" ? trackerPanelChatClearance : 0}px`,
                 "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
               } as CSSProperties
             }

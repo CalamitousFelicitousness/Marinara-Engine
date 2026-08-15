@@ -12,7 +12,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
-- Restored docked Tracker layout so the Roleplay transcript and composer resize beside the panel on either desktop edge instead of being covered by it (#5071).
+- Restored docked Tracker gutter scaling so the panel and all of its contents fit beside the centered Roleplay chat on either desktop edge without moving the transcript, composer, or scrollbar (#5071).
 - Expanded SwarmUI and ComfyUI LoRA strength controls from `-2..2` to `-100..100` so slider LoRAs can use their required weights (#5072).
 - Regex bundle imports now retain scripts flagged by the pattern-safety heuristic and show a warning instead of reporting those entries as skipped.
 - Kept NanoGPT Illustrator generation within its 4 MB reference-upload limit, preferred immediate hosted-result downloads, and hardened base64 fallback parsing so successful images are stored instead of rendering as broken output (#5058).

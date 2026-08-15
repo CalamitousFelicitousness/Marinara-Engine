@@ -83,7 +83,12 @@ async function main() {
   const { capabilityPackagesRoutes } = await import(
     "../../packages/server/src/routes/capability-packages.routes.js"
   );
+  const { rateLimitHook, resetRateLimitBucketsForTests } = await import(
+    "../../packages/server/src/middleware/rate-limit.js"
+  );
+  resetRateLimitBucketsForTests();
   const app = fastify({ logger: false });
+  app.addHook("onRequest", rateLimitHook);
   await app.register(capabilityPackagesRoutes, { prefix: "/api/capability-packages" });
 
   const clientEtag = `"${manifestV1.files[0]!.sha256}"`;
@@ -96,6 +101,13 @@ async function main() {
   assert.equal(first.headers["cache-control"], "no-cache, must-revalidate", "client bundle must never be immutable");
   assert.equal(first.headers["x-content-type-options"], "nosniff");
   assert.equal(first.body, CLIENT_V1);
+  // Package file serving sits in its own rate-limit bucket, not the generous
+  // default one (CodeQL: file-system access without route-scoped limiting).
+  assert.equal(
+    first.headers["ratelimit-limit"],
+    "240",
+    "package file routes must match the capability-package-files rate-limit rule",
+  );
 
   // ── /client: matching If-None-Match answers 304 with no body ──
   for (const candidate of [clientEtag, `W/${clientEtag}`, `"other", ${clientEtag}`]) {
@@ -124,6 +136,7 @@ async function main() {
   assert.equal(assetPlain.statusCode, 200);
   assert.equal(assetPlain.headers["cache-control"], "private, no-cache, must-revalidate");
   assert.equal(assetPlain.headers.etag, iconEtag);
+  assert.equal(assetPlain.headers["ratelimit-limit"], "240", "asset serving shares the package-files rate bucket");
 
   const assetPinned = await app.inject({
     method: "GET",

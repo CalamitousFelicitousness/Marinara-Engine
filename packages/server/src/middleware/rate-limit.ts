@@ -62,6 +62,15 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   // exploit the persistent storage path. 60/min covers React Query
   // refetches + legacy migrations of small extension lists comfortably.
   { pattern: /^\/api\/extensions(?:\/|\?|$)/, rule: { key: "extensions", limit: 60, windowMs: 60_000 } },
+  // Package file serving (client bundles + declared assets) reads and
+  // hash-verifies from disk on every request; keep it out of the generous
+  // default bucket so a scripted loop can't turn that into cheap IO
+  // amplification. Normal loads fetch one bundle per installed package and
+  // revalidate with 304s afterwards, so 240/min leaves ample headroom.
+  {
+    pattern: /^\/api\/capability-packages\/[^/]+\/(?:client|assets)(?:\/|\?|$)/,
+    rule: { key: "capability-package-files", limit: 240, windowMs: 60_000 },
+  },
 ];
 
 const buckets = new Map<string, Bucket>();

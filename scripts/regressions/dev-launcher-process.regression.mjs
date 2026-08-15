@@ -90,6 +90,17 @@ async function reservePort() {
   return port;
 }
 
+function fetchHealth(port, timeoutMs = 500) {
+  return fetch(`http://127.0.0.1:${port}/api/health`, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+async function assertHealthEndpointUnavailable(port) {
+  const signal = AbortSignal.timeout(1_000);
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/api/health`, { signal }), () => !signal.aborted);
+}
+
 function readLines(path) {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8").split(/\r?\n/u).filter(Boolean);
@@ -190,7 +201,7 @@ try {
   runs.push(ownedRun);
   await waitUntil(async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:${ownedPort}/api/health`);
+      const response = await fetchHealth(ownedPort);
       return (
         response.ok && (await response.json()).build === "fixture-build" && readLines(ownedRun.pidPath).length >= 4
       );
@@ -204,7 +215,7 @@ try {
     () => ownedPids.every((pid) => !isProcessAlive(pid)),
     `Launcher shutdown left descendants alive: ${ownedPids.filter(isProcessAlive).join(", ")}`,
   );
-  await assert.rejects(fetch(`http://127.0.0.1:${ownedPort}/api/health`));
+  await assertHealthEndpointUnavailable(ownedPort);
 
   if (process.platform !== "win32") {
     const hangupPort = await reservePort();
@@ -212,7 +223,7 @@ try {
     runs.push(hangupRun);
     await waitUntil(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:${hangupPort}/api/health`);
+        const response = await fetchHealth(hangupPort);
         return response.ok && readLines(hangupRun.pidPath).length >= 4;
       } catch {
         return false;
@@ -224,7 +235,7 @@ try {
       () => hangupPids.every((pid) => !isProcessAlive(pid)),
       `Terminal hangup left descendants alive: ${hangupPids.filter(isProcessAlive).join(", ")}`,
     );
-    await assert.rejects(fetch(`http://127.0.0.1:${hangupPort}/api/health`));
+    await assertHealthEndpointUnavailable(hangupPort);
   }
 
   const reusableServer = createServer((_request, response) => {

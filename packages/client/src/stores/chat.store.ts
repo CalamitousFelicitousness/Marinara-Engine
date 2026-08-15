@@ -507,10 +507,16 @@ export const useChatStore = create<ChatState>()(
       }),
     setAbortController: (chatId, controller) =>
       set((state) => {
-        const m = new Map(state.abortControllers);
-        if (controller) m.set(chatId, controller);
-        else m.delete(chatId);
-        return { abortControllers: m };
+        const abortControllers = new Map(state.abortControllers);
+        if (!controller) {
+          abortControllers.delete(chatId);
+          return { abortControllers };
+        }
+
+        abortControllers.set(chatId, controller);
+        const backgroundIllustrationChatIds = new Set(state.backgroundIllustrationChatIds);
+        backgroundIllustrationChatIds.delete(chatId);
+        return { abortControllers, backgroundIllustrationChatIds };
       }),
     setBackgroundIllustration: (chatId, pending) =>
       set((state) => {

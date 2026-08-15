@@ -1020,7 +1020,6 @@ function shouldRefreshGameStateAfterGeneration(qc: QueryClient, chatId: string) 
 }
 
 const pendingVisibleGameStateRefreshes = new Map<string, Promise<void>>();
-const activeGenerateLocks = new Set<string>();
 const PASSIVE_STREAM_SETTLE_POLL_MS = 1_500;
 const PASSIVE_STREAM_SETTLE_MAX_WAIT_MS = 30 * 60_000;
 const STREAM_TYPEWRITER_PREBUFFER_MS = 320;
@@ -1256,7 +1255,6 @@ export function useGenerate() {
       const existingGenerationIsIllustrationOnly = generationState.backgroundIllustrationChatIds.has(params.chatId);
       if (
         isGenerationStartBlocked({
-          setupLocked: activeGenerateLocks.has(params.chatId),
           activeController: generationState.abortControllers.has(params.chatId),
           backgroundIllustration: existingGenerationIsIllustrationOnly,
         })
@@ -1264,7 +1262,6 @@ export function useGenerate() {
         console.warn("[Generate] Skipped — generation already in progress for this chat");
         return false;
       }
-      activeGenerateLocks.add(params.chatId);
 
       // Create an AbortController so the stop button can cancel this generation.
       const abortController = new AbortController();
@@ -1283,12 +1280,7 @@ export function useGenerate() {
           return false;
         }
       };
-      try {
-        useChatStore.getState().setAbortController(params.chatId, abortController);
-        useChatStore.getState().setBackgroundIllustration(params.chatId, false);
-      } finally {
-        activeGenerateLocks.delete(params.chatId);
-      }
+      useChatStore.getState().setAbortController(params.chatId, abortController);
       useChatStore.getState().clearThinkingBuffer(params.chatId);
 
       // Helper: returns true when this generation's chat is the one the user is viewing.
@@ -3323,7 +3315,6 @@ export function useGenerate() {
         return false;
       }
       useChatStore.getState().setAbortController(chatId, abortController);
-      useChatStore.getState().setBackgroundIllustration(chatId, false);
       const isIllustratorOnlyRetry =
         agentTypes.length > 0 && agentTypes.every((agentType) => agentType === "illustrator");
       const isTrackerRetry = agentTypes.some(

@@ -916,12 +916,12 @@ assert.match(
   "additional messages sent during a Conversation presence delay should persist without starting another generator",
 );
 assert.equal(
-  isGenerationStartBlocked({ setupLocked: false, activeController: true, backgroundIllustration: false }),
+  isGenerationStartBlocked({ activeController: true, backgroundIllustration: false }),
   true,
   "ordinary same-chat generations must remain exclusive",
 );
 assert.equal(
-  isGenerationStartBlocked({ setupLocked: false, activeController: true, backgroundIllustration: true }),
+  isGenerationStartBlocked({ activeController: true, backgroundIllustration: true }),
   false,
   "the next same-chat generation should be allowed while Illustrator finishes",
 );

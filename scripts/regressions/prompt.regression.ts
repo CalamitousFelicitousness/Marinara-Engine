@@ -4146,6 +4146,44 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "avatar portrait and sprite prompts honor a profile's natural-language grammar",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const animeProfile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(animeProfile);
+      const naturalAnimeProfile = {
+        ...animeProfile,
+        id: "natural-anime",
+        name: "Natural anime",
+        promptMode: "natural" as const,
+        positiveTags: "",
+        negativeTags: "",
+        styleText: "",
+        subjectTags: {},
+      };
+      const naturalStyleProfiles = {
+        ...styleProfiles,
+        defaultProfileId: naturalAnimeProfile.id,
+        profiles: [...styleProfiles.profiles, naturalAnimeProfile],
+      };
+      const prompt =
+        "Create a portrait of Mira. She has long brown hair and amber eyes. She wears a dark travel coat beneath cold moonlight.";
+
+      for (const kind of ["avatar", "portrait", "sprite"] as const) {
+        const compiled = compileImagePrompt({
+          kind,
+          prompt,
+          styleProfiles: naturalStyleProfiles,
+          styleProfileId: naturalAnimeProfile.id,
+        });
+
+        assert.match(compiled.prompt, /She has long brown hair and amber eyes/u);
+        assert.match(compiled.prompt, /She wears a dark travel coat beneath cold moonlight/u);
+        assert.doesNotMatch(compiled.prompt, /long brown hair, amber eyes, dark travel coat/u);
+      }
+    },
+  },
+  {
     name: "Character and persona sheets explicitly opt in and preserve avatar then sprite fallback order",
     async run() {
       let sheetLoads = 0;

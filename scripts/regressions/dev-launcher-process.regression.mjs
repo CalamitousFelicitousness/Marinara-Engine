@@ -90,6 +90,17 @@ async function reservePort() {
   return port;
 }
 
+function fetchHealth(port, timeoutMs = 500) {
+  return fetch(`http://127.0.0.1:${port}/api/health`, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+async function assertHealthEndpointUnavailable(port) {
+  const signal = AbortSignal.timeout(1_000);
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/api/health`, { signal }), () => !signal.aborted);
+}
+
 function readLines(path) {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8").split(/\r?\n/u).filter(Boolean);
@@ -148,18 +159,18 @@ function waitForExit(child, timeoutMs = 8_000) {
   ]);
 }
 
-async function stopLauncher(run) {
+async function stopLauncher(run, signal = "SIGTERM") {
   if (process.platform === "win32") {
     spawnSync("taskkill.exe", ["/pid", String(run.child.pid), "/T", "/F"], { stdio: "ignore" });
   } else {
-    run.child.kill("SIGTERM");
+    run.child.kill(signal);
   }
   const exit = await waitForExit(run.child);
   if (process.platform !== "win32") {
     assert.deepEqual(
       exit,
-      { code: 143, signal: null },
-      "SIGTERM should preserve the launcher's conventional exit code",
+      { code: signal === "SIGHUP" ? 129 : 143, signal: null },
+      `${signal} should preserve the launcher's conventional exit code`,
     );
   }
   return exit;
@@ -190,7 +201,7 @@ try {
   runs.push(ownedRun);
   await waitUntil(async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:${ownedPort}/api/health`);
+      const response = await fetchHealth(ownedPort);
       return (
         response.ok && (await response.json()).build === "fixture-build" && readLines(ownedRun.pidPath).length >= 4
       );
@@ -204,7 +215,28 @@ try {
     () => ownedPids.every((pid) => !isProcessAlive(pid)),
     `Launcher shutdown left descendants alive: ${ownedPids.filter(isProcessAlive).join(", ")}`,
   );
-  await assert.rejects(fetch(`http://127.0.0.1:${ownedPort}/api/health`));
+  await assertHealthEndpointUnavailable(ownedPort);
+
+  if (process.platform !== "win32") {
+    const hangupPort = await reservePort();
+    const hangupRun = launchFixture(hangupPort, "hangup");
+    runs.push(hangupRun);
+    await waitUntil(async () => {
+      try {
+        const response = await fetchHealth(hangupPort);
+        return response.ok && readLines(hangupRun.pidPath).length >= 4;
+      } catch {
+        return false;
+      }
+    }, "Fixture launcher did not start both process trees before terminal hangup");
+    const hangupPids = readLines(hangupRun.pidPath).map(Number);
+    await stopLauncher(hangupRun, "SIGHUP");
+    await waitUntil(
+      () => hangupPids.every((pid) => !isProcessAlive(pid)),
+      `Terminal hangup left descendants alive: ${hangupPids.filter(isProcessAlive).join(", ")}`,
+    );
+    await assertHealthEndpointUnavailable(hangupPort);
+  }
 
   const reusableServer = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "application/json" });

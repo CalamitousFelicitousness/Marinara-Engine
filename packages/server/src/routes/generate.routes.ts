@@ -7269,11 +7269,11 @@ export async function generateRoutes(app: FastifyInstance) {
           (agent) => !inactivePostProcessingAgentIds.has(agent.id),
         );
         let assistantMessageReadySent = false;
-        const sendAssistantMessageReady = async () => {
+        const sendAssistantMessageReady = async (savedMessage?: typeof lastSavedMsg) => {
           if (assistantMessageReadySent || abortController.signal.aborted || input.impersonate) return;
           const messageId = (lastSavedMsg as { id?: unknown } | null)?.id;
           if (typeof messageId !== "string" || !messageId) return;
-          const readyMessage = await chats.getMessage(messageId);
+          const readyMessage = savedMessage ?? (await chats.getMessage(messageId));
           if (!readyMessage || readyMessage.role !== "assistant") return;
           assistantMessageReadySent = trySendSseEvent(reply, {
             type: "assistant_message_ready",
@@ -7284,7 +7284,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // Speech uses only the assistant message. Do not hold it behind
         // Illustrator, trackers, summaries, or other non-rewriting agents.
         if (activatedTextRewriteRunAgents.length === 0) {
-          await sendAssistantMessageReady();
+          await sendAssistantMessageReady(lastSavedMsg);
         }
 
         // ────────────────────────────────────────

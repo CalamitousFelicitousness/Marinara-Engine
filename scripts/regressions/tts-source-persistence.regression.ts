@@ -270,6 +270,45 @@ try {
   );
   assert.equal(peakActiveTTSRequests, 1, "Non-progressive TTS pre-generation must respect serial providers");
   assert.deepEqual(startedTTSChunks, [0, 1, 2], "A provider limit must not silently remove narration chunks");
+
+  const callerAbortController = new AbortController();
+  const callerSignal = callerAbortController.signal;
+  const callerAddEventListener = callerSignal.addEventListener.bind(callerSignal);
+  const callerRemoveEventListener = callerSignal.removeEventListener.bind(callerSignal);
+  let callerAbortListenersAdded = 0;
+  let callerAbortListenersRemoved = 0;
+  Object.defineProperty(callerSignal, "addEventListener", {
+    configurable: true,
+    value: (...args: Parameters<AbortSignal["addEventListener"]>) => {
+      if (args[0] === "abort") callerAbortListenersAdded += 1;
+      return callerAddEventListener(...args);
+    },
+  });
+  Object.defineProperty(callerSignal, "removeEventListener", {
+    configurable: true,
+    value: (...args: Parameters<AbortSignal["removeEventListener"]>) => {
+      if (args[0] === "abort") callerAbortListenersRemoved += 1;
+      return callerRemoveEventListener(...args);
+    },
+  });
+  let staleFetchStarted!: () => void;
+  const staleFetchReady = new Promise<void>((resolve) => {
+    staleFetchStarted = resolve;
+  });
+  globalThis.fetch = async (_input, init) => {
+    staleFetchStarted();
+    return await new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    });
+  };
+  const staleSequence = ttsService.speakSequence([{ text: "Cancelled narration." }], "tts-abort-cleanup", {
+    signal: callerSignal,
+  });
+  await staleFetchReady;
+  ttsService.stop();
+  await staleSequence;
+  assert.equal(callerAbortListenersAdded, 1, "TTS should attach one caller abort listener per sequence");
+  assert.equal(callerAbortListenersRemoved, 1, "A superseded TTS sequence must detach its caller abort listener");
 } finally {
   ttsService.stop();
   globalThis.fetch = originalFetch;

@@ -481,38 +481,86 @@ class TTSService {
       this.setState("error");
     };
 
-    if (options.progressive) {
-      let nextFetch: Promise<ChunkResult> | null = fetchChunk(playableRequests[0]!, 0);
+    try {
+      if (options.progressive) {
+        let nextFetch: Promise<ChunkResult> | null = fetchChunk(playableRequests[0]!, 0);
 
-      for (let index = 0; index < playableRequests.length; index += 1) {
-        const result = await nextFetch!;
-        nextFetch = index + 1 < playableRequests.length ? fetchChunk(playableRequests[index + 1]!, index + 1) : null;
-        if (!this.isCurrentSequence(sequence)) return;
+        for (let index = 0; index < playableRequests.length; index += 1) {
+          const result = await nextFetch!;
+          nextFetch = index + 1 < playableRequests.length ? fetchChunk(playableRequests[index + 1]!, index + 1) : null;
+          if (!this.isCurrentSequence(sequence)) return;
 
-        if (!result.ok) {
-          if (isAbortError(result.error)) {
+          if (!result.ok) {
+            if (isAbortError(result.error)) {
+              detachAbortSignal();
+              if (this.abortController === abortController) {
+                this.abortController = null;
+              }
+              this.setState("idle");
+              return;
+            }
             detachAbortSignal();
             if (this.abortController === abortController) {
               this.abortController = null;
             }
-            this.setState("idle");
+            handleFetchFailure(result.error);
+            if (options.throwOnError) throw result.error;
             return;
           }
+
+          try {
+            await playBlob(result.blob, result.request, result.index);
+            await waitForPlaybackDelay(result.request.pauseAfterMs, abortController.signal);
+            if (nextFetch && this.isCurrentSequence(sequence)) {
+              this.setState("loading", id ?? null);
+            }
+          } catch (err) {
+            detachAbortSignal();
+            if (this.abortController === abortController) {
+              this.abortController = null;
+            }
+            if (err instanceof Error && err.name === "AbortError") {
+              this.setState("idle");
+              return;
+            }
+            if (options.throwOnError) throw err;
+            return;
+          }
+        }
+
+        detachAbortSignal();
+        if (!this.isCurrentSequence(sequence)) return;
+        if (this.abortController === abortController) {
+          this.abortController = null;
+        }
+        this.setState("idle");
+        return;
+      }
+
+      const playableChunks: Array<Extract<ChunkResult, { ok: true }>> = [];
+      for (let index = 0; index < playableRequests.length; index += 1) {
+        const result = await fetchChunk(playableRequests[index]!, index);
+        if (!this.isCurrentSequence(sequence)) return;
+        if (!result.ok) {
           detachAbortSignal();
           if (this.abortController === abortController) {
             this.abortController = null;
+          }
+          if (isAbortError(result.error)) {
+            this.setState("idle");
+            return;
           }
           handleFetchFailure(result.error);
           if (options.throwOnError) throw result.error;
           return;
         }
+        playableChunks.push(result);
+      }
 
+      for (const chunk of playableChunks) {
         try {
-          await playBlob(result.blob, result.request, result.index);
-          await waitForPlaybackDelay(result.request.pauseAfterMs, abortController.signal);
-          if (nextFetch && this.isCurrentSequence(sequence)) {
-            this.setState("loading", id ?? null);
-          }
+          await playBlob(chunk.blob, chunk.request, chunk.index);
+          await waitForPlaybackDelay(chunk.request.pauseAfterMs, abortController.signal);
         } catch (err) {
           detachAbortSignal();
           if (this.abortController === abortController) {
@@ -525,60 +573,16 @@ class TTSService {
           if (options.throwOnError) throw err;
           return;
         }
+        if (!this.isCurrentSequence(sequence)) return;
       }
-
       detachAbortSignal();
-      if (!this.isCurrentSequence(sequence)) return;
       if (this.abortController === abortController) {
         this.abortController = null;
       }
       this.setState("idle");
-      return;
+    } finally {
+      detachAbortSignal();
     }
-
-    const playableChunks: Array<Extract<ChunkResult, { ok: true }>> = [];
-    for (let index = 0; index < playableRequests.length; index += 1) {
-      const result = await fetchChunk(playableRequests[index]!, index);
-      if (!this.isCurrentSequence(sequence)) return;
-      if (!result.ok) {
-        detachAbortSignal();
-        if (this.abortController === abortController) {
-          this.abortController = null;
-        }
-        if (isAbortError(result.error)) {
-          this.setState("idle");
-          return;
-        }
-        handleFetchFailure(result.error);
-        if (options.throwOnError) throw result.error;
-        return;
-      }
-      playableChunks.push(result);
-    }
-
-    for (const chunk of playableChunks) {
-      try {
-        await playBlob(chunk.blob, chunk.request, chunk.index);
-        await waitForPlaybackDelay(chunk.request.pauseAfterMs, abortController.signal);
-      } catch (err) {
-        detachAbortSignal();
-        if (this.abortController === abortController) {
-          this.abortController = null;
-        }
-        if (err instanceof Error && err.name === "AbortError") {
-          this.setState("idle");
-          return;
-        }
-        if (options.throwOnError) throw err;
-        return;
-      }
-      if (!this.isCurrentSequence(sequence)) return;
-    }
-    detachAbortSignal();
-    if (this.abortController === abortController) {
-      this.abortController = null;
-    }
-    this.setState("idle");
   }
 
   /** Stop any in-progress fetch or playback. */

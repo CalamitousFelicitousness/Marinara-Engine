@@ -636,6 +636,16 @@ assert.ok(
   "TTS-ready text must wait for active message-rewriting agents to persist their final edit",
 );
 assert.match(
+  generateRouteSource,
+  /activatedTextRewriteRunAgents\.length === 0\) \{\s*await sendAssistantMessageReady\(lastSavedMsg\)/u,
+  "TTS-ready text without a rewrite agent should use the saved row without another storage lookup",
+);
+assert.match(
+  generateRouteSource,
+  /activatedTextRewriteRunAgents\.length > 0\) \{\s*await sendAssistantMessageReady\(\)/u,
+  "TTS-ready text after rewrite agents must reload the persisted edited row",
+);
+assert.match(
   generateHookSource,
   /case "assistant_message_ready": \{[\s\S]{0,500}TTS_AUTOPLAY_MESSAGE_READY_EVENT/u,
   "the generation stream must forward finalized assistant text to TTS autoplay immediately",

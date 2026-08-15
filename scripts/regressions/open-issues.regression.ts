@@ -7514,8 +7514,8 @@ assert.equal(
     side: "left",
     gap: 8,
   }),
-  420,
-  "The Tracker may overlap the chat instead of crushing its controls into a narrow gutter",
+  128,
+  "The Tracker should shrink to the narrower left chat gutter",
 );
 assert.equal(
   resolveTrackerPanelDesktopWidth({
@@ -7527,8 +7527,8 @@ assert.equal(
     side: "right",
     gap: 8,
   }),
-  340,
-  "The right-side Tracker should preserve its selected width when the main viewport can hold it",
+  128,
+  "The Tracker should use the matching right chat gutter",
 );
 assert.equal(resolveTrackerPanelContentScale(340, 340), 1);
 assert.equal(resolveTrackerPanelContentScale(340, 255), 0.75);

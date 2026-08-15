@@ -28,11 +28,11 @@ existing `marinara-capability-props` event so an installed interface can rerende
 
 Installed package files are served with strong validators derived from the manifest's per-file
 SHA-256 hashes — the same values the Engine re-verifies the bytes against on every read. The
-client bundle (`/api/capability-packages/<id>/client`) always revalidates (`no-cache` plus an
-`ETag`), so an unchanged bundle answers `304 Not Modified` instead of re-downloading, while a
-republished bundle is picked up immediately. Package asset requests that pin the installed
-version with `?v=<version>` are content-addressed and may be cached indefinitely
-(`immutable`); requests without the pin keep always-revalidate semantics.
+client bundle (`/api/capability-packages/<id>/client`) and every package asset always revalidate
+(`no-cache` plus an `ETag`), so an unchanged file answers `304 Not Modified` instead of
+re-downloading, while a republished file is picked up immediately. Nothing is served `immutable`:
+install policy permits republishing the same version with different bytes, so no package URL is
+content-addressed.
 
 Capability API 1.1 adds a generic runtime facade to the server activation context.
 Packages can read the effective agent-debug state and write through the Engine's
@@ -93,10 +93,12 @@ and integrity re-verification on every read. Active document types (SVG, HTML, s
 rejected by the schema; every declared path must be hash-pinned in `files[]`; and the in-package
 `manifest.json` is never servable, even if declared. Declaring `contributions.assets` requires a
 `schemaVersion` 2 manifest with `capabilityApi` 1.10 or newer — a v1 manifest cannot declare it
-at all. Combined with the delivery caching above, an asset requested with
-`?v=<installed version>` is content-addressed and cached immutably, so a package shipping a
-tileset or sprite atlas costs one download per version. This is what lets a `game-surface`
-Experience ship real art instead of inlining it into its client bundle.
+at all. Assets always revalidate — like the client bundle they carry a strong manifest-hash
+`ETag` and answer an unchanged revalidation with `304 Not Modified` and no body, so a shipped
+tileset re-downloads only when its bytes actually change. (Responses are deliberately never
+`immutable`: install policy permits republishing the same version with different bytes, so a
+version-tagged URL is not content-addressed.) This is what lets a `game-surface` Experience ship
+real art instead of inlining it into its client bundle.
 
 A manifest that violates these rules is rejected at install with one of: "A declared package
 asset must be listed in the package file manifest", "contributions.assets requires schemaVersion
@@ -106,9 +108,10 @@ collapse onto one file — "Package contains duplicate file" / "Package manifest
 that collide on case-insensitive filesystems".
 
 Every capability element receives its own identity for this purpose: `capabilityProps.packageId`
-and `capabilityProps.packageVersion` arrive alongside `localization`, so a bundle builds the
-pinned URL as `/api/capability-packages/<packageId>/assets/<path>?v=<packageVersion>` without
-re-fetching the installed list or scraping its own import URL.
+and `capabilityProps.packageVersion` arrive alongside `localization`, so a bundle builds its
+asset URLs as `/api/capability-packages/<packageId>/assets/<path>` (optionally keyed with
+`?v=<packageVersion>` so a version bump busts any intermediary cache) without re-fetching the
+installed list or scraping its own import URL.
 
 ## Initial packages
 

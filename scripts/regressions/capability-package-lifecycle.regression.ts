@@ -1056,12 +1056,15 @@ try {
     assert.equal(
       browserTabAsset?.data?.toString("utf8"),
       "x",
-      "A cold verification must hand back the exact bytes it hashed",
+      "Every serve must hand back the exact bytes it hashed",
     );
-    const warmAsset = await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png");
-    assert.equal(warmAsset?.data, null, "A warm stat-validated hit must not re-read the file");
-    assert.deepEqual({ ...warmAsset, data: null }, { ...browserTabAsset, data: null });
-    assert.equal(assetHashCount, 1, "An unchanged browser-tab asset must reuse its successful verification");
+    const repeatAsset = await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png");
+    assert.deepEqual(repeatAsset, browserTabAsset, "Repeated resolution must be deterministic");
+    assert.equal(
+      assetHashCount,
+      2,
+      "EVERY served body is hash-verified — a stat-only fast path could send bytes written after verification",
+    );
 
     const changedRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as {
       packages: Array<ReturnType<typeof installedPackage>>;
@@ -1078,7 +1081,7 @@ try {
       /integrity verification/u,
       "Changed manifest integrity metadata must not reuse an older successful verification",
     );
-    assert.equal(assetHashCount, 2, "Changed manifest integrity metadata must force a fresh integrity check");
+    assert.equal(assetHashCount, 3, "Changed manifest integrity metadata must force a fresh integrity check");
 
     changedAssetDeclaration.sha256 = originalAssetSha256;
     writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
@@ -1089,7 +1092,7 @@ try {
       /integrity verification/u,
       "Capability assets changed outside the reviewed package must not be served",
     );
-    assert.equal(assetHashCount, 4, "Changed asset metadata must force a fresh integrity check");
+    assert.equal(assetHashCount, 5, "Changed asset metadata must force a fresh integrity check");
   } finally {
     Object.defineProperty(crypto, "createHash", { configurable: true, value: originalCreateHash });
     syncBuiltinESMExports();

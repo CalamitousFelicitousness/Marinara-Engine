@@ -163,22 +163,21 @@ async function main() {
   assert.equal(assetPlain.headers.etag, iconEtag);
   assert.equal(assetPlain.headers["ratelimit-limit"], "240", "asset serving shares the package-files rate bucket");
 
-  const assetPinned = await app.inject({
-    method: "GET",
-    url: "/api/capability-packages/cache-probe/assets/icon.png?v=1.0.0",
-  });
-  assert.equal(assetPinned.statusCode, 200);
-  assert.equal(
-    assetPinned.headers["cache-control"],
-    "public, max-age=31536000, immutable",
-    "a version-pinned asset request is content-addressed and may cache forever",
-  );
-
-  const assetWrongPin = await app.inject({
-    method: "GET",
-    url: "/api/capability-packages/cache-probe/assets/icon.png?v=9.9.9",
-  });
-  assert.equal(assetWrongPin.headers["cache-control"], "private, no-cache, must-revalidate");
+  // ?v= is a cache-key convenience only — it must NEVER upgrade the policy to
+  // immutable: install policy permits same-version republishing with different
+  // bytes, so a version-tagged URL is not content-addressed (review finding).
+  for (const query of ["?v=1.0.0", "?v=9.9.9", ""]) {
+    const assetAnyQuery = await app.inject({
+      method: "GET",
+      url: `/api/capability-packages/cache-probe/assets/icon.png${query}`,
+    });
+    assert.equal(assetAnyQuery.statusCode, 200);
+    assert.equal(
+      assetAnyQuery.headers["cache-control"],
+      "private, no-cache, must-revalidate",
+      `asset responses always revalidate (query: "${query}")`,
+    );
+  }
 
   const assetRevalidated = await app.inject({
     method: "GET",
@@ -200,8 +199,9 @@ async function main() {
   });
   assert.equal(tilesRes.statusCode, 200, "a declared contributions.assets image must serve");
   assert.equal(tilesRes.headers["content-type"], "image/png");
-  assert.equal(tilesRes.headers["cache-control"], "public, max-age=31536000, immutable");
+  assert.equal(tilesRes.headers["cache-control"], "private, no-cache, must-revalidate");
   assert.equal(tilesRes.headers.etag, `"${sha256(TILES)}"`);
+  assert.ok(TILES.equals(tilesRes.rawPayload), "the served body must be the hash-verified declared bytes");
 
   const tilemapRes = await app.inject({
     method: "GET",

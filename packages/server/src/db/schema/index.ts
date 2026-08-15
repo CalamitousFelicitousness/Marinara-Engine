@@ -30,4 +30,5 @@ export * from "./prompt-overrides.js";
 export * from "./mari-instructions.js";
 export * from "./achievements.js";
 export * from "./noodle.js";
+export * from "./slurp.js";
 export * from "./library-folders.js";

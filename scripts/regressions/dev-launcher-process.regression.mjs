@@ -149,7 +149,11 @@ function waitForExit(child, timeoutMs = 8_000) {
 }
 
 async function stopLauncher(run) {
-  run.child.kill("SIGTERM");
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/pid", String(run.child.pid), "/T", "/F"], { stdio: "ignore" });
+  } else {
+    run.child.kill("SIGTERM");
+  }
   const exit = await waitForExit(run.child);
   if (process.platform !== "win32") {
     assert.deepEqual(

@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added capability API 1.10 package assets: an Agent package manifest may declare `contributions.assets.paths`, and the Engine serves those image and JSON files over `/api/capability-packages/<id>/assets/<path>` with hash verification, a passive content-type allowlist, and version-pinned immutable caching — so a package (for example a Game experience) can ship tilesets and sprite atlases instead of inlining art into its client bundle (#5091).
+- Agent package client bundles and assets now carry strong ETags derived from their manifest hashes and answer revalidations with `304 Not Modified`, so an unchanged package no longer re-downloads in full on every app load (#5082).
 - Expanded Haptic Feedback to Conversation, Roleplay, and Game with capability-aware device descriptions, the full `0.0-1.0` intensity range, every Intiface output type, and named patterns for scalar and positional pumping actions.
 - Added an optional Roleplay speaker extractor for TTS autoplay that uses a dedicated connection to queue narration and exact dialogue with assigned character voices, stable Random NPC Voices fallbacks, and optional emotion cues.
 - Added an on-demand Advanced Settings storage optimizer that scans for old, unreferenced avatar images and deletes them only after an explicit confirmation (#5039).

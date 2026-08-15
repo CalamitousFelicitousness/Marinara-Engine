@@ -88,6 +88,7 @@ function seedWhisperModels() {
 try {
   const {
     capabilityCatalogSchema,
+    parseCapabilityCatalogWithCompat,
     capabilityPackageManifestSchema,
     compareCapabilityPackageVersions,
     getCapabilityApiCompatibilityIssue,
@@ -103,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 9 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 10 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -139,20 +140,20 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.9/,
+    /requires capability API 2\.0; this Engine supports 1\.10/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 9 },
+    capabilityApi: { major: 1, minor: 10 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 10 },
+    capabilityApi: { major: 1, minor: 11 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.10; this Engine supports 1\.9/,
+    /requires capability API 1\.11; this Engine supports 1\.10/,
   );
 
   const forwardCompatibleCatalog = capabilityCatalogSchema.parse({
@@ -191,6 +192,30 @@ try {
     null,
     "Capability API 1.3 agent-detail metadata must remain compatible with the 1.3 host",
   );
+
+  // A catalog entry built for a NEWER Engine (unknown manifest key under this
+  // Engine's strict schemas) must be dropped per-entry, never fail the whole
+  // document — all-or-nothing parsing bricked browsing/install/updates for
+  // every package at once (#5091 review finding).
+  const mixedGenerationCatalog = parseCapabilityCatalogWithCompat({
+    schemaVersion: 1,
+    generatedAt: "2026-08-15T00:00:00.000Z",
+    packages: [
+      forwardCompatibleCatalog.packages[0],
+      {
+        manifest: {
+          ...manifestV2,
+          id: "from-the-future",
+          contributions: { slots: ["chat-settings"], holograms: { enabled: true } },
+        },
+        category: "misc",
+        artifact: { url: "https://example.com/from-the-future.zip", sha256: "2".repeat(64), bytes: 1 },
+      },
+    ],
+  });
+  assert.equal(mixedGenerationCatalog.droppedEntries, 1, "the unparseable entry must be dropped, not fatal");
+  assert.equal(mixedGenerationCatalog.catalog.packages.length, 1);
+  assert.equal(mixedGenerationCatalog.catalog.packages[0]?.manifest.id, "hierarchical-maps");
 
   writeRegistry([installedPackage("conversation-calls", ["agent", "conversation-calls"])]);
   seedWhisperModels();
@@ -999,13 +1024,13 @@ try {
   });
   syncBuiltinESMExports();
   try {
-    const browserTabAsset = await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png");
+    const browserTabAsset = await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png");
     assert.equal(browserTabAsset?.contentType, "image/png");
     assert.equal(
       browserTabAsset?.file,
       join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
     );
-    assert.deepEqual(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"), browserTabAsset);
+    assert.deepEqual(await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png"), browserTabAsset);
     assert.equal(assetHashCount, 1, "An unchanged browser-tab asset must reuse its successful verification");
 
     const changedRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as {
@@ -1019,7 +1044,7 @@ try {
     changedAssetDeclaration.sha256 = "0".repeat(64);
     writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
     await assert.rejects(
-      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png"),
       /integrity verification/u,
       "Changed manifest integrity metadata must not reuse an older successful verification",
     );
@@ -1027,10 +1052,10 @@ try {
 
     changedAssetDeclaration.sha256 = originalAssetSha256;
     writeFileSync(registryPath, JSON.stringify(changedRegistry, null, 2));
-    assert.ok(await capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"));
+    assert.ok(await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png"));
     writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "y");
     await assert.rejects(
-      capabilityPackageManager.browserTabAsset(agentSuite.id, "suite-tab.png"),
+      capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png"),
       /integrity verification/u,
       "Capability assets changed outside the reviewed package must not be served",
     );
@@ -1042,12 +1067,12 @@ try {
   writeFileSync(join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"), "x");
   refreshRegistryFileIntegrity();
   assert.equal(
-    await capabilityPackageManager.browserTabAsset(agentSuite.id, "server.mjs"),
+    await capabilityPackageManager.packageAsset(agentSuite.id, "server.mjs"),
     null,
     "Package payloads not declared as tab artwork must not be exposed as public assets",
   );
   assert.equal(
-    await capabilityPackageManager.browserTabAsset(agentSuite.id, "../installed.json"),
+    await capabilityPackageManager.packageAsset(agentSuite.id, "../installed.json"),
     null,
     "Home tab asset requests must retain package traversal protection",
   );

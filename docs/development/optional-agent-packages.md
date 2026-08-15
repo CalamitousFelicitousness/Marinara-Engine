@@ -82,6 +82,25 @@ Packages holding the `prompt-context` permission contribute text to the system p
 
 The resource facade exposes writes beside its reads, so a package's setup flow can find-or-create the player persona and its lorebook. Engine retains storage, validation, and identity; packages retain domain content.
 
+### Capability API 1.10 package assets
+
+Capability API 1.10 adds general package-owned static asset delivery. A manifest may declare
+`contributions.assets.paths` — a bounded allowlist of image (`png`/`webp`/`gif`/`jpeg`) and JSON
+files shipped inside the package — and the Engine serves them over
+`/api/capability-packages/<id>/assets/<path>` through the exact verification chain browser-tab
+icons already use: path containment, `files[]` hash membership, a passive content-type allowlist,
+and integrity re-verification on every read. Active document types (SVG, HTML, scripts) are
+rejected at the schema, and every declared path must be hash-pinned in `files[]` or the manifest
+fails at install. Combined with the delivery caching above, an asset requested with
+`?v=<installed version>` is content-addressed and cached immutably, so a package shipping a
+tileset or sprite atlas costs one download per version. This is what lets a `game-surface`
+Experience ship real art instead of inlining it into its client bundle.
+
+Every capability element receives its own identity for this purpose: `capabilityProps.packageId`
+and `capabilityProps.packageVersion` arrive alongside `localization`, so a bundle builds the
+pinned URL as `/api/capability-packages/<packageId>/assets/<path>?v=<packageVersion>` without
+re-fetching the installed list or scraping its own import URL.
+
 ## Initial packages
 
 - all currently built-in agents;

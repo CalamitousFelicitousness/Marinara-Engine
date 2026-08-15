@@ -5,7 +5,7 @@ import { dirname, extname, join, resolve, sep } from "node:path";
 import AdmZip from "adm-zip";
 import {
   APP_VERSION,
-  capabilityCatalogSchema,
+  parseCapabilityCatalogWithCompat,
   capabilityPackageManifestSchema,
   compareCapabilityPackageVersions,
   getCapabilityApiCompatibilityIssue,
@@ -132,12 +132,15 @@ const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 250 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 8_192;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
-const BROWSER_TAB_ASSET_CONTENT_TYPES = new Map([
+const PACKAGE_ASSET_CONTENT_TYPES = new Map([
   [".gif", "image/gif"],
   [".jpeg", "image/jpeg"],
   [".jpg", "image/jpeg"],
   [".png", "image/png"],
   [".webp", "image/webp"],
+  // Tilemap/atlas metadata for contributions.assets. Passive data only — anything
+  // active (svg, html, js) stays out of this map: it would execute same-origin.
+  [".json", "application/json; charset=utf-8"],
 ]);
 interface VerifiedBrowserTabAsset {
   packageId: string;
@@ -185,9 +188,13 @@ export function validatePackageArchiveEntries(zip: AdmZip, maximumExpandedBytes 
   let expandedBytes = 0;
   for (const item of entries) {
     const name = normalizeArchivePath(item.entryName);
-    if (names.has(name)) throw new Error(`Package contains duplicate file ${name}`);
+    // Case-insensitive: NTFS/APFS collapse case, so `Tiles.PNG` and `tiles.png`
+    // would extract onto one on-disk file and one of the two declared hashes
+    // could never verify again.
+    const nameKey = name.toLowerCase();
+    if (names.has(nameKey)) throw new Error(`Package contains duplicate file ${name}`);
     if (isSymlink(item)) throw new Error("Package links are not allowed");
-    names.add(name);
+    names.add(nameKey);
     expandedBytes += item.header.size;
     if (expandedBytes > maximumExpandedBytes) throw new Error("Expanded package is too large");
   }
@@ -618,6 +625,12 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
   const declaredFiles = new Map(installedManifest.files.map((file) => [normalizeArchivePath(file.path), file]));
   if (declaredFiles.size !== installedManifest.files.length)
     throw new Error("Package manifest declares duplicate files");
+  // Case-folded too: on the case-insensitive filesystems this app ships to,
+  // case-only "distinct" declarations extract onto a single file and the
+  // losing declaration's hash can never verify (review finding on #5091).
+  const caseFoldedPaths = new Set(installedManifest.files.map((file) => normalizeArchivePath(file.path).toLowerCase()));
+  if (caseFoldedPaths.size !== installedManifest.files.length)
+    throw new Error("Package manifest declares files that collide on case-insensitive filesystems");
   const payloadEntries = entries.filter((item) => item.entryName !== "manifest.json");
   if (payloadEntries.length !== declaredFiles.size) throw new Error("Package contains undeclared or missing files");
   const verifiedFiles = new Map<string, Buffer>();
@@ -715,7 +728,18 @@ export const capabilityPackageManager = {
       agentOptions: { bodyTimeout: 15_000, headersTimeout: 15_000 },
     });
     if (!response.ok) throw new Error(`Catalog request failed with HTTP ${response.status}`);
-    const catalog = capabilityCatalogSchema.parse(await response.json());
+    // Per-entry tolerant: a catalog entry built for a NEWER Engine (unknown
+    // manifest keys under this Engine's strict schemas) is dropped with a log
+    // instead of failing the whole document — all-or-nothing parsing would
+    // brick browsing, install, and updates for every package at once.
+    const { catalog, droppedEntries } = parseCapabilityCatalogWithCompat(await response.json());
+    if (droppedEntries > 0) {
+      logger.warn(
+        "Skipped %d Agent catalog entr%s this Engine version cannot parse (likely built for a newer Engine)",
+        droppedEntries,
+        droppedEntries === 1 ? "y" : "ies",
+      );
+    }
     for (const entry of catalog.packages) {
       const sourceIssue = getCapabilityPackageArtifactSourceIssue(entry, CATALOG_URL);
       if (sourceIssue) throw new Error(sourceIssue);
@@ -831,21 +855,40 @@ export const capabilityPackageManager = {
     };
   },
 
-  async browserTabAsset(packageId: string, assetPath: string) {
+  /** Resolve a servable package asset: a path declared either as a Home
+   *  browser-tab icon or in the general `contributions.assets.paths` allowlist.
+   *  The union is the ONLY thing this generalization changes — containment,
+   *  files[] membership, the passive content-type allowlist, and the hash +
+   *  TOCTOU re-verification below it are identical for both sources. */
+  async packageAsset(packageId: string, assetPath: string) {
     const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
     if (!installed || !isInstalledCapabilityReady(installed)) return null;
-    let normalizedPath: string;
-    try {
-      normalizedPath = normalizeArchivePath(assetPath);
-    } catch {
-      return null;
-    }
+    // Every normalization below treats an unsafe path — requested OR declared —
+    // as simply "not servable" (404). Declared paths are manifest-controlled,
+    // and a single throwing declaration must not 500 the whole asset surface.
+    const tryNormalize = (path: string): string | null => {
+      try {
+        return normalizeArchivePath(path);
+      } catch {
+        return null;
+      }
+    };
+    const normalizedPath = tryNormalize(assetPath);
+    if (!normalizedPath) return null;
+    // The in-package manifest is metadata about the artifact, never an asset —
+    // it cannot be hash-pinned by itself, so refuse it outright.
+    if (normalizedPath === "manifest.json") return null;
     const iconPaths = installed.manifest.contributions?.homeBrowserTab?.iconPaths ?? [];
-    if (!iconPaths.some((path) => normalizeArchivePath(path) === normalizedPath)) return null;
-    const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalizedPath);
+    const declaredAssetPaths = installed.manifest.contributions?.assets?.paths ?? [];
+    const allowed = [...iconPaths, ...declaredAssetPaths].some((path) => tryNormalize(path) === normalizedPath);
+    if (!allowed) return null;
+    const declaration = installed.manifest.files.find((item) => tryNormalize(item.path) === normalizedPath);
     if (!declaration) return null;
-    const contentType = BROWSER_TAB_ASSET_CONTENT_TYPES.get(extname(normalizedPath).toLowerCase());
+    const contentType = PACKAGE_ASSET_CONTENT_TYPES.get(extname(normalizedPath).toLowerCase());
     if (!contentType) return null;
+    // NOTE: an on-disk integrity failure below still THROWS (lifecycle
+    // regression pins it) — tampering must be loud, not a quiet 404. Only
+    // manifest-shape problems above degrade to "not servable".
     return {
       installed,
       contentType,

@@ -109,7 +109,7 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
     "/:id/assets/*",
     async (request, reply) => {
       const { id, "*": assetPath } = packageAssetParams.parse(request.params);
-      const asset = await capabilityPackageManager.browserTabAsset(id, assetPath);
+      const asset = await capabilityPackageManager.packageAsset(id, assetPath);
       if (!asset) return reply.status(404).send({ error: "Active package asset not found" });
       const etag = packageFileEtag(asset.sha256);
       // A request that pins the installed version may cache the bytes forever:

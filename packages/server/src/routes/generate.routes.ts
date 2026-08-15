@@ -4003,6 +4003,7 @@ export async function generateRoutes(app: FastifyInstance) {
             if (hapticService.connected && hapticService.devices.length > 0) {
               agentContext.memory._connectedDevices = hapticService.devices.map((d) => ({
                 name: d.name,
+                type: d.type,
                 index: d.index,
                 capabilities: d.capabilities,
               }));
@@ -9730,21 +9731,27 @@ export async function generateRoutes(app: FastifyInstance) {
                 });
 
                 if (command.type === "capability") {
-                  await dispatchCapabilityConversationAction({
-                    type: "capability",
-                    commandType: command.commandType,
-                    payload: command.payload,
-                    chatId: input.chatId,
-                    sourceMessageId: messageId,
-                    swipeIndex,
-                    branchChatId: input.chatId,
-                    characterId,
-                  },
-                  () =>
-                    chats.claimMessageExtraForSwipe(messageId, swipeIndex, `capabilityAction:${command.commandType}`, {
-                      actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
-                      status: "claimed",
-                    }),
+                  await dispatchCapabilityConversationAction(
+                    {
+                      type: "capability",
+                      commandType: command.commandType,
+                      payload: command.payload,
+                      chatId: input.chatId,
+                      sourceMessageId: messageId,
+                      swipeIndex,
+                      branchChatId: input.chatId,
+                      characterId,
+                    },
+                    () =>
+                      chats.claimMessageExtraForSwipe(
+                        messageId,
+                        swipeIndex,
+                        `capabilityAction:${command.commandType}`,
+                        {
+                          actionId: `${input.chatId}:${messageId}:${swipeIndex}:${command.commandType}`,
+                          status: "claimed",
+                        },
+                      ),
                   );
                 }
 

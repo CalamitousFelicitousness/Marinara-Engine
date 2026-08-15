@@ -84,6 +84,10 @@ import { ttsService } from "../../lib/tts-service";
 import { useTTSConfig } from "../../hooks/use-tts";
 import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCacheKeys } from "../../lib/tts-dialogue";
 import {
+  buildExtractedRoleplayTTSVoiceRequests,
+  extractRoleplayTTSSpeakers,
+} from "../../lib/tts-roleplay-speaker-extractor";
+import {
   findLatestTTSAutoplayMessage,
   getTTSAutoplayRevision,
   shouldAutoplayGeneratedTTS,
@@ -2546,20 +2550,68 @@ export const ChatArea = memo(function ChatArea() {
         : lastMsg.characterId
           ? characterMap.get(lastMsg.characterId)?.name
           : undefined;
-    const ttsRequests = buildTTSVoiceRequests(
-      lastMsg.content,
-      cfg,
-      fallbackSpeaker,
-      lastMsg.characterId,
-      resolveTTSCharacterId,
-    );
-    if (ttsRequests.length === 0) return;
+    const targetRevision = getTTSAutoplayRevision(lastMsg);
+    void (async () => {
+      let ttsRequests;
+      if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
+        try {
+          const extracted = await extractRoleplayTTSSpeakers({
+            message: lastMsg.content,
+            group: getChatDisplayName(chat) || characterNames.join(", "),
+            user: personaInfo?.name || "User",
+            characters: characterNames,
+            debugMode: useUIStore.getState().debugMode,
+          });
+          ttsRequests = buildExtractedRoleplayTTSVoiceRequests(
+            extracted.segments,
+            cfg,
+            fallbackSpeaker,
+            lastMsg.characterId,
+            resolveTTSCharacterId,
+          );
+        } catch (error) {
+          console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+          ttsRequests = buildTTSVoiceRequests(
+            lastMsg.content,
+            cfg,
+            fallbackSpeaker,
+            lastMsg.characterId,
+            resolveTTSCharacterId,
+          );
+        }
+      } else {
+        ttsRequests = buildTTSVoiceRequests(
+          lastMsg.content,
+          cfg,
+          fallbackSpeaker,
+          lastMsg.characterId,
+          resolveTTSCharacterId,
+        );
+      }
+      const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
+      if (
+        useChatStore.getState().activeChatId !== activeChatId ||
+        ttsGenerationRef.current !== null ||
+        getTTSAutoplayRevision(currentMessage) !== targetRevision
+      )
+        return;
+      if (ttsRequests.length === 0) return;
 
-    void ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
-      progressive: cfg.progressivePlayback,
-      volume: ttsLineVolume / 100,
-    });
-  }, [activeChatId, characterMap, isStreaming, resolveTTSCharacterId, ttsLineVolume]);
+      await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
+        progressive: cfg.progressivePlayback,
+        volume: ttsLineVolume / 100,
+      });
+    })();
+  }, [
+    activeChatId,
+    characterMap,
+    characterNames,
+    chat,
+    isStreaming,
+    personaInfo?.name,
+    resolveTTSCharacterId,
+    ttsLineVolume,
+  ]);
 
   const newestMsgId = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.id;
   const newestMsgSwipeIndex = msgData?.pages[0]?.[msgData.pages[0].length - 1]?.activeSwipeIndex;

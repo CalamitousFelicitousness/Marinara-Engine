@@ -2919,7 +2919,6 @@
   "ui.chat.hapticsetupfields.allowThisAgentToSendTouchCuesDuringThe": "이 에이전트가 채팅 중 촉각 신호를 보내도록 허용합니다.",
   "ui.chat.hapticsetupfields.hapticFeedback": "햅틱 피드백",
   "ui.chat.hapticsetupfields.incidentalContact": "우발적 접촉",
-  "ui.chat.hapticsetupfields.roleplayOnly": "롤플레이만",
   "ui.chat.hapticsetupfields.tinyTapsForAccidentalBrushesAndBumps": "실수로 스치거나 부딪힐 때의 아주 작은 진동.",
   "ui.chat.hapticsetupfields.touchCuesAreEnabledForThisChat": "이 채팅에서 촉각 신호가 활성화되어 있습니다.",
   "ui.chat.hapticsetupfields.touchSensitivity": "터치 감도",

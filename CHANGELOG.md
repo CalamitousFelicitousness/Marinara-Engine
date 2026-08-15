@@ -12,6 +12,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Game checkpoints now capture and restore the turn-game engine state, so loading a checkpoint rewinds an active turn-game (UNO, Chess, Poker, Eight Ball) along with the story and map instead of leaving it on its post-checkpoint state (#5077).
 - Routed Game Mode time-advance and weather-update through the queued per-chat metadata patch path so they no longer silently revert a concurrent metadata write, which could permanently lock World Map movement as a stale definition (#5076).
 - Restored docked Tracker layout so the Roleplay transcript and composer resize beside the panel on either desktop edge instead of being covered by it (#5071).
 - Restored docked Tracker gutter scaling so the panel and all of its contents fit beside the centered Roleplay chat on either desktop edge without moving the transcript, composer, or scrollbar (#5071).

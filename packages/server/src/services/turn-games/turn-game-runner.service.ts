@@ -147,21 +147,43 @@ async function resolveSeats(
   return seats;
 }
 
+// Local, dependency-free copy of the message `extra` parser (kept local for the same reason as
+// resolveTurnGameAnchor: avoid a service -> route-utils dependency). `extra` may be a JSON string or
+// an already-parsed object depending on the storage read path.
+function parseMessageExtra(extra: unknown): Record<string, unknown> {
+  if (!extra) return {};
+  try {
+    const parsed: unknown = typeof extra === "string" ? JSON.parse(extra) : extra;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * The (messageId, swipeIndex) of the latest visible assistant message, so editing,
  * branching, or regenerating a message rewinds the game to that point. Mirrors
  * resolveVisibleGameStateAnchor used by game mode (kept local to avoid a
- * service -> route-utils dependency).
+ * service -> route-utils dependency), including its checkpoint-restore rule: a
+ * checkpoint load inserts a `system` message marked `gameStateAnchor: "checkpoint_restore"`
+ * onto which restore clones the checkpoint-time engine snapshot, so that message must be
+ * an eligible anchor too or the restored game would stay invisible behind the last
+ * real assistant message (#5077).
  */
 async function resolveTurnGameAnchor(db: DB, chatId: string): Promise<GameEngineVisibleAnchor | null> {
   const messages = (await createChatsStorage(db).listMessages(chatId)) as Array<{
     role?: unknown;
     id?: unknown;
     activeSwipeIndex?: unknown;
+    extra?: unknown;
   }>;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
-    if (m.role !== "assistant" || typeof m.id !== "string" || !m.id) continue;
+    const markedRestoreAnchor =
+      m.role === "system" && parseMessageExtra(m.extra).gameStateAnchor === "checkpoint_restore";
+    if ((m.role !== "assistant" && !markedRestoreAnchor) || typeof m.id !== "string" || !m.id) continue;
     const swipeIndex =
       typeof m.activeSwipeIndex === "number" && Number.isInteger(m.activeSwipeIndex) && m.activeSwipeIndex >= 0
         ? m.activeSwipeIndex

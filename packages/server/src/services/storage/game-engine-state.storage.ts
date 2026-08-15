@@ -4,7 +4,7 @@
 // Game-agnostic persistence for the turn-game framework (UNO and beyond).
 // Mirrors game-state.storage.ts (per-message snapshots + committed flag +
 // regen-exclusion) but stores an opaque engine JSON blob instead of RPG fields.
-import { and, desc, eq, gt, ne } from "../../db/file-query.js";
+import { and, desc, eq, gt, lte, ne } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameEngineState } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -30,6 +30,31 @@ export function createGameEngineStateStorage(db: DB) {
         .select()
         .from(gameEngineState)
         .where(eq(gameEngineState.chatId, chatId))
+        .orderBy(desc(gameEngineState.createdAt))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    /**
+     * The latest snapshot for a chat created at or before a reference timestamp. Used by checkpoint
+     * restore (#5077) to recover the engine state that was current when the checkpoint was taken:
+     * `createdAt` is set once at `create` and never mutated afterward (updateStateById/commit/reanchor
+     * leave it), so it is a stable checkpoint-time key even though the engine state's own message
+     * anchor is independent of the game/spatial snapshot anchors the checkpoint captures.
+     *
+     * Caveat for future per-message game state: a row whose STATE is later overwritten in place
+     * (updateStateById/commit — the live `messageId === ""` row, and silent games like tic-tac-toe /
+     * rock-paper-scissors that never spawn a per-move message row) keeps its original `createdAt`, so
+     * a restore against a checkpoint taken at that row recovers the row's CURRENT state, not its
+     * checkpoint-time state. Games that create a fresh per-message row every move (UNO, poker, chess,
+     * eight-ball) are unaffected. Fully closing this would require capturing the state blob at
+     * checkpoint time (a new column, hence a storage-format bump).
+     */
+    async getLatestAtOrBefore(chatId: string, createdAtInclusive: string) {
+      const rows = await db
+        .select()
+        .from(gameEngineState)
+        .where(and(eq(gameEngineState.chatId, chatId), lte(gameEngineState.createdAt, createdAtInclusive)))
         .orderBy(desc(gameEngineState.createdAt))
         .limit(1);
       return rows[0] ?? null;

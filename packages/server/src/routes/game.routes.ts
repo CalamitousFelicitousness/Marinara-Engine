@@ -9755,16 +9755,18 @@ export async function gameRoutes(app: FastifyInstance) {
     const chat = await chats.getById(chatId);
     if (!chat) throw new Error("Chat not found");
 
-    const meta = parseMeta(chat.metadata);
-    const currentTime = (meta.gameTime as GameTime) ?? createInitialTime();
-    let newTime: GameTime;
-    if (isTimeOfDayLabel(action)) {
-      newTime = setTimeOfDay(currentTime, action);
-    } else {
-      newTime = advanceTime(currentTime, action);
-    }
-
-    await chats.updateMetadata(chatId, { ...meta, gameTime: newTime });
+    // #5076: recompute the new time against the queue-fresh metadata and write ONLY the gameTime key
+    // through the queued patch path. The old whole-blob updateMetadata (spreading a request-time
+    // `meta`) silently reverted any concurrent metadata write that landed in between — most damagingly
+    // a World Maps definition revision bump, which then permanently fails movement validation as
+    // spatial_transition_stale_definition. patchMetadata re-reads and merges under the per-chat queue.
+    let newTime: GameTime | undefined;
+    const updated = await chats.patchMetadata(chatId, (freshMeta) => {
+      const currentTime = (freshMeta.gameTime as GameTime) ?? createInitialTime();
+      newTime = isTimeOfDayLabel(action) ? setTimeOfDay(currentTime, action) : advanceTime(currentTime, action);
+      return { gameTime: newTime };
+    });
+    if (!updated || !newTime) throw new Error("Chat not found");
 
     // Also update the game state snapshot so WeatherEffects picks it up
     const gameStateStore = createGameStateStorage(app.db);
@@ -9799,7 +9801,8 @@ export async function gameRoutes(app: FastifyInstance) {
       weather.type = type as any;
       weather.description = `The weather is ${type}.`;
 
-      await chats.updateMetadata(chatId, { ...meta, gameWeather: weather });
+      // #5076: narrow queued patch so a concurrent metadata write is merged, not clobbered.
+      await chats.patchMetadata(chatId, { gameWeather: weather });
       const gameStateStore = createGameStateStorage(app.db);
       await updateLatestGameStateWithTrackerLocks(gameStateStore, chatId, {
         weather: weather.type,
@@ -9815,7 +9818,8 @@ export async function gameRoutes(app: FastifyInstance) {
     const biome = inferBiome(location);
     const weather = generateWeather(biome, season);
 
-    await chats.updateMetadata(chatId, { ...meta, gameWeather: weather });
+    // #5076: narrow queued patch so a concurrent metadata write is merged, not clobbered.
+    await chats.patchMetadata(chatId, { gameWeather: weather });
 
     // Also update the game state snapshot so WeatherEffects picks it up
     const gameStateStore = createGameStateStorage(app.db);

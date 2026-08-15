@@ -12,6 +12,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Routed Game Mode time-advance and weather-update through the queued per-chat metadata patch path so they no longer silently revert a concurrent metadata write, which could permanently lock World Map movement as a stale definition (#5076).
 - Expanded SwarmUI and ComfyUI LoRA strength controls from `-2..2` to `-100..100` so slider LoRAs can use their required weights (#5072).
 - Regex bundle imports now retain scripts flagged by the pattern-safety heuristic and show a warning instead of reporting those entries as skipped.
 - Kept NanoGPT Illustrator generation within its 4 MB reference-upload limit, preferred immediate hosted-result downloads, and hardened base64 fallback parsing so successful images are stored instead of rendering as broken output (#5058).

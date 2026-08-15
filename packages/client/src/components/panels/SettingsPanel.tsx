@@ -122,6 +122,7 @@ import {
   BookOpen,
   BarChart3,
   Gauge,
+  HardDrive,
   LifeBuoy,
   SlidersHorizontal,
 } from "lucide-react";
@@ -261,6 +262,7 @@ type SettingsSectionId =
   | "parameters"
   | "message-tools"
   | "backup-export"
+  | "storage-optimization"
   | "danger-zone";
 
 type SettingsSectionMeta = {
@@ -519,6 +521,13 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "Backup & Export",
     description: "Backups and manual export tools.",
     aliases: ["backup", "export", "download", "archive", "automatic", "scheduled"],
+  },
+  {
+    id: "storage-optimization",
+    tab: "advanced",
+    label: "Storage Optimization",
+    description: "Find and remove abandoned avatar files.",
+    aliases: ["storage", "avatar", "cleanup", "optimize", "orphan", "abandoned"],
   },
   {
     id: "danger-zone",
@@ -1308,6 +1317,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     aliases: ["backup", "retention", "history", "rotate", "automatic"],
     kind: "Input",
   },
+  {
+    id: "avatar-storage-optimization",
+    sectionId: "storage-optimization",
+    label: "Optimize avatar storage",
+    description: "Find old avatar image files that are no longer referenced by Marinara data.",
+    aliases: ["storage", "avatar", "cleanup", "orphan", "abandoned", "disk space"],
+    kind: "Button group",
+  },
 ] as const;
 
 const SETTINGS_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--small text-[0.6875rem]";
@@ -1591,6 +1608,20 @@ async function readSettingsResponseError(res: Response, fallback: string) {
   } catch {
     return fallback;
   }
+}
+
+function formatStorageBytes(bytes: number): string {
+  const safeBytes = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
+  if (safeBytes < 1_000) {
+    return new Intl.NumberFormat(undefined, { style: "unit", unit: "byte", unitDisplay: "short" }).format(safeBytes);
+  }
+  if (safeBytes < 1_000_000) {
+    return new Intl.NumberFormat(undefined, { style: "unit", unit: "kilobyte", unitDisplay: "short", maximumFractionDigits: 1 }).format(safeBytes / 1_000);
+  }
+  if (safeBytes < 1_000_000_000) {
+    return new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", unitDisplay: "short", maximumFractionDigits: 1 }).format(safeBytes / 1_000_000);
+  }
+  return new Intl.NumberFormat(undefined, { style: "unit", unit: "gigabyte", unitDisplay: "short", maximumFractionDigits: 1 }).format(safeBytes / 1_000_000_000);
 }
 
 const ROLEPLAY_AVATAR_STYLE_OPTIONS: Array<{ id: RoleplayAvatarStyle; label: string; desc: string }> = [
@@ -7250,6 +7281,31 @@ function AdvancedSettings() {
   const setExternalExtensionsEnabled = useSetExternalExtensionsEnabled();
   const { data: agentImportPolicy, isLoading: agentImportPolicyLoading } = useAgentImportPolicy();
   const setAgentImportsEnabled = useSetAgentImportsEnabled();
+  type AvatarStorageSummary = { files: number; bytes: number; minimumAgeMinutes: number };
+  const [avatarStorageSummary, setAvatarStorageSummary] = useState<AvatarStorageSummary | null>(null);
+  const scanAvatarStorage = useMutation({
+    mutationFn: () => api.get<AvatarStorageSummary>("/admin/avatar-storage/abandoned"),
+    onSuccess: setAvatarStorageSummary,
+    onError: (error) => {
+      toast.error(getPrivilegedActionErrorMessage(error, localizeUi("settings.storageOptimization.error")));
+    },
+  });
+  const cleanAvatarStorage = useMutation({
+    mutationFn: () =>
+      api.post<AvatarStorageSummary>("/admin/avatar-storage/cleanup", { confirm: true }),
+    onSuccess: (result) => {
+      setAvatarStorageSummary({ ...result, files: 0, bytes: 0 });
+      toast.success(
+        localizeUi("settings.storageOptimization.deleted", {
+          count: result.files,
+          size: formatStorageBytes(result.bytes),
+        }),
+      );
+    },
+    onError: (error) => {
+      toast.error(getPrivilegedActionErrorMessage(error, localizeUi("settings.storageOptimization.error")));
+    },
+  });
   const nativeConsoleBridge = getMarinaraAndroidBridge();
   const canOpenNativeConsole = typeof nativeConsoleBridge?.openConsole === "function";
   const nativeConsoleHelp = getNativeConsoleShortcutHelp();
@@ -7310,6 +7366,24 @@ function AdvancedSettings() {
     },
     [setAgentImportsEnabled, t],
   );
+
+  const handleDeleteAbandonedAvatars = useCallback(async () => {
+    if (!avatarStorageSummary || avatarStorageSummary.files < 1) return;
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("settings.storageOptimization.confirm.title", {
+        count: avatarStorageSummary.files,
+      }),
+      message: localizeUi("settings.storageOptimization.confirm.message", {
+        count: avatarStorageSummary.files,
+        minutes: avatarStorageSummary.minimumAgeMinutes,
+        size: formatStorageBytes(avatarStorageSummary.bytes),
+      }),
+      confirmLabel: localizeUi("settings.storageOptimization.action.delete"),
+      cancelLabel: localizeUi("chat.delete.dialog.cancel"),
+      tone: "destructive",
+    });
+    if (confirmed) cleanAvatarStorage.mutate();
+  }, [avatarStorageSummary, cleanAvatarStorage, localizeUi]);
 
   type ProfileExportFormat = "native" | "compatible" | "zip";
   const profileExportFallbackNames: Record<ProfileExportFormat, string> = {
@@ -8209,6 +8283,62 @@ function AdvancedSettings() {
             </div>
           )}
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title={localizeUi("settings.sections.storageOptimization.title")}
+        description={localizeUi("settings.sections.storageOptimization.componentDescription")}
+        icon={<HardDrive size="0.875rem" />}
+        {...getSettingsSectionAnchorProps("storage-optimization")}
+      >
+        <SearchableSettingTarget controlId="avatar-storage-optimization" className="flex flex-col gap-2">
+          <p className="text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]">
+            {localizeUi("settings.storageOptimization.description")}
+          </p>
+          <button
+            type="button"
+            onClick={() => scanAvatarStorage.mutate()}
+            disabled={scanAvatarStorage.isPending || cleanAvatarStorage.isPending}
+            className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center gap-1.5 px-3 py-2 text-xs")}
+          >
+            {scanAvatarStorage.isPending ? (
+              <Loader2 size="0.8125rem" className="animate-spin" />
+            ) : (
+              <Search size="0.8125rem" />
+            )}
+            {scanAvatarStorage.isPending
+              ? localizeUi("settings.storageOptimization.scanning")
+              : localizeUi("settings.storageOptimization.action.check")}
+          </button>
+          {avatarStorageSummary && (
+            <div className="rounded-lg bg-[var(--background)]/55 p-2.5 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+              {avatarStorageSummary.files > 0
+                ? localizeUi("settings.storageOptimization.found", {
+                    count: avatarStorageSummary.files,
+                    minutes: avatarStorageSummary.minimumAgeMinutes,
+                    size: formatStorageBytes(avatarStorageSummary.bytes),
+                  })
+                : localizeUi("settings.storageOptimization.clean")}
+            </div>
+          )}
+          {avatarStorageSummary && avatarStorageSummary.files > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleDeleteAbandonedAvatars()}
+              disabled={cleanAvatarStorage.isPending || scanAvatarStorage.isPending}
+              className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full justify-center gap-1.5")}
+            >
+              {cleanAvatarStorage.isPending ? (
+                <Loader2 size="0.8125rem" className="animate-spin" />
+              ) : (
+                <Trash2 size="0.8125rem" />
+              )}
+              {cleanAvatarStorage.isPending
+                ? localizeUi("settings.storageOptimization.deleting")
+                : localizeUi("settings.storageOptimization.action.delete")}
+            </button>
+          )}
+        </SearchableSettingTarget>
       </SettingsSection>
 
       <SettingsSection

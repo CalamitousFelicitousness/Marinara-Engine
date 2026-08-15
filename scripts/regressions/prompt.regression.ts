@@ -610,6 +610,7 @@ import {
 } from "../../packages/server/src/services/video/roleplay-video-direction.js";
 import {
   buildStoryboardAnimationRefinementMessages,
+  compactStoryboardAnimationPrompt,
   executeStoryboardImageAwareAnimation,
   redactStoryboardAnimationRefinementMessages,
   resolveStoryboardAnimationRefinement,
@@ -4745,7 +4746,6 @@ const cases: RegressionCase[] = [
         resolveStoryboardAnimationRefinement(
           '```json\n{"classification":"simplify","narrationBeat":"Starting from the lowered sword, Mira raises it slightly | She holds as the camera eases closer"}\n```',
           motionIntent,
-          650,
         ),
         {
           classification: "simplify",
@@ -4757,7 +4757,6 @@ const cases: RegressionCase[] = [
         resolveStoryboardAnimationRefinement(
           '{"classification":"subtle","narrationBeat":"Mira only turns her head."}',
           motionIntent,
-          650,
         ),
         null,
       );
@@ -4765,14 +4764,46 @@ const cases: RegressionCase[] = [
         resolveStoryboardAnimationRefinement(
           '{"classification":"unknown","narrationBeat":"One | Two"}',
           motionIntent,
-          650,
         ),
         null,
       );
       assert.equal(
-        resolveStoryboardAnimationRefinement('{"classification":"subtle","narrationBeat":"One |"}', "Original |", 650),
+        resolveStoryboardAnimationRefinement('{"classification":"subtle","narrationBeat":"One |"}', "Original |"),
         null,
       );
+
+      const completeStructuredPrompt = [
+        `Visual motion: ${"falling petals drift around Mira as her coat settles ".repeat(18)}`,
+        `Camera and audio: ${"the camera eases closer while cloth rustles and distant bells ring ".repeat(16)}AUDIO_END`,
+      ].join(" | ");
+      const normalizedCompleteStructuredPrompt = completeStructuredPrompt.replace(/\s+/gu, " ").trim();
+      assert.ok(completeStructuredPrompt.length > 1_200);
+      assert.equal(compactStoryboardAnimationPrompt(completeStructuredPrompt), normalizedCompleteStructuredPrompt);
+      const completeRefinement = resolveStoryboardAnimationRefinement(
+        JSON.stringify({ classification: "suitable", narrationBeat: completeStructuredPrompt }),
+        "visual intent | audio intent",
+      );
+      assert.equal(completeRefinement?.narrationBeat, normalizedCompleteStructuredPrompt);
+      assert.match(completeRefinement?.narrationBeat ?? "", /AUDIO_END$/u);
+      assert.doesNotMatch(completeRefinement?.narrationBeat ?? "", /\.\.\.$/u);
+
+      let completePersistedPrompt = "";
+      const completeExecution = await executeStoryboardImageAwareAnimation({
+        referenceImage,
+        motionIntent: "visual intent | audio intent",
+        refine: async () => completeRefinement!,
+        formatPrompt: async (narrationBeat) => narrationBeat,
+        persistPrompt: async ({ prompt }) => {
+          completePersistedPrompt = prompt;
+        },
+        generateVideo: async ({ prompt }) => {
+          assert.equal(prompt, normalizedCompleteStructuredPrompt);
+          return { id: "complete-structured-video" };
+        },
+      });
+      assert.equal(completePersistedPrompt, normalizedCompleteStructuredPrompt);
+      assert.equal(completeExecution.prompt, completePersistedPrompt);
+      assert.match(completePersistedPrompt, /AUDIO_END$/u);
 
       const persisted: Array<{ prompt: string; classification: string }> = [];
       const videoCalls: Array<{ prompt: string; referenceImage: typeof referenceImage }> = [];
@@ -4783,7 +4814,7 @@ const cases: RegressionCase[] = [
           assert.strictEqual(actualImage, referenceImage);
           const response =
             '{"classification":"simplify","narrationBeat":"Mira raises the lowered sword carefully | She holds while the camera eases closer"}';
-          const refinement = resolveStoryboardAnimationRefinement(response, motionIntent, 650);
+          const refinement = resolveStoryboardAnimationRefinement(response, motionIntent);
           assert.ok(refinement);
           return refinement;
         },

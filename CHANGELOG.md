@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added capability API 1.11 Experience combat seam: `game-surface` packages receive `combatActive` (true the instant the built-in combat UI mounts, unlike the lagging narrative scene state), the effective `combatStyle`, and `requestCombat()` — which routes into the same encounter-generation pass as the manual Start Combat button, minus the confirm dialog; packages still cannot supply combatants or combat state (#5094).
 - Added capability API 1.10 package assets: an Agent package manifest may declare `contributions.assets.paths`, and the Engine serves those image and JSON files over `/api/capability-packages/<id>/assets/<path>` with per-request hash verification, a passive content-type allowlist, and cheap `ETag`/`304` revalidation — so a package (for example a Game experience) can ship tilesets and sprite atlases instead of inlining art into its client bundle (#5091).
 - Agent package client bundles and assets now carry strong ETags derived from their manifest hashes and answer revalidations with `304 Not Modified`, so an unchanged package no longer re-downloads in full on every app load (#5082).
 - Let Professor Mari read your chat history: attach a chat from the composer's attach menu — sharing all, a range, or the last N messages — so Mari can see your roleplay and give grounded feedback, with a Context Viewer to review and remove what's attached to free up tokens (#5073).

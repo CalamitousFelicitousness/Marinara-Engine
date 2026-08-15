@@ -307,31 +307,35 @@ export const capabilityCatalogSchema = z
   })
   .strict();
 
-/** Envelope-only catalog shape: entries stay unparsed so one package from a
- *  NEWER Engine (declaring a manifest key this Engine's strict schemas do not
- *  know yet) cannot fail the whole document. */
-const capabilityCatalogEnvelopeSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    generatedAt: z.string().datetime(),
-    packages: z.array(z.unknown()),
-    provenance: z
-      .object({
-        kind: z.enum(["official", "custom"]),
-        url: z.string().url(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict();
+/** Envelope-only catalog shape, derived from the real schema so the two cannot
+ *  drift: entries stay unparsed so one package from a NEWER Engine (declaring a
+ *  manifest key this Engine's strict schemas do not know yet) cannot fail the
+ *  whole document, and `.strip()` (not strict, not passthrough) so newer
+ *  TOP-LEVEL fields neither reject the envelope nor leak into the result. */
+const capabilityCatalogEnvelopeSchema = capabilityCatalogSchema
+  .extend({ packages: z.array(z.unknown()) })
+  .strip();
 
 export type CapabilityCatalogParseResult = {
   catalog: z.infer<typeof capabilityCatalogSchema>;
   /** Entries this Engine could not understand (newer manifest features). They
    *  are dropped from the catalog rather than failing it — the polite
-   *  "requires capability API x.y" path only exists for entries that parse. */
+   *  "requires capability API x.y" path only exists for entries that parse.
+   *  Identified best-effort by manifest id so operators can name what vanished. */
   droppedEntries: number;
+  droppedIds: string[];
 };
+
+function bestEffortCatalogEntryId(entry: unknown): string {
+  if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+    const manifest = (entry as Record<string, unknown>).manifest;
+    if (manifest && typeof manifest === "object" && !Array.isArray(manifest)) {
+      const id = (manifest as Record<string, unknown>).id;
+      if (typeof id === "string" && id) return id;
+    }
+  }
+  return "(unidentifiable entry)";
+}
 
 /** Parse a downloaded catalog, tolerating individual entries this Engine is too
  *  old to understand. All-or-nothing parsing would brick the ENTIRE Agents
@@ -340,13 +344,13 @@ export type CapabilityCatalogParseResult = {
 export function parseCapabilityCatalogWithCompat(input: unknown): CapabilityCatalogParseResult {
   const envelope = capabilityCatalogEnvelopeSchema.parse(input);
   const packages: z.infer<typeof capabilityCatalogPackageSchema>[] = [];
-  let droppedEntries = 0;
+  const droppedIds: string[] = [];
   for (const entry of envelope.packages) {
     const parsed = capabilityCatalogPackageSchema.safeParse(entry);
     if (parsed.success) packages.push(parsed.data);
-    else droppedEntries += 1;
+    else droppedIds.push(bestEffortCatalogEntryId(entry));
   }
-  return { catalog: { ...envelope, packages }, droppedEntries };
+  return { catalog: { ...envelope, packages }, droppedEntries: droppedIds.length, droppedIds };
 }
 
 export const capabilityPackageReadinessSchema = z.enum(["pending", "registered", "ready", "error"]);

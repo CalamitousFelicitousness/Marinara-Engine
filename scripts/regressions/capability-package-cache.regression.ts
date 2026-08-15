@@ -28,7 +28,12 @@ const ICON = Buffer.from(
 // contributions.assets fixtures (general asset delivery, #5091): a nested
 // tileset image and a tilemap JSON, plus a file that is deliberately NOT
 // declared in contributions.assets to prove the allowlist still gates.
-const TILES = ICON;
+// TILES must be DISTINCT bytes from ICON or the ETag assertions cannot tell
+// which file the route actually served (review finding). 1×1 grayscale PNG.
+const TILES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
 const TILEMAP = JSON.stringify({ zone: "cache-probe", w: 2, h: 2, tiles: [0, 1, 1, 0] });
 const SECRET = "not servable\n";
 

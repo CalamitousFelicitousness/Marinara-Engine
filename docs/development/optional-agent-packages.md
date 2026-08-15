@@ -85,16 +85,25 @@ The resource facade exposes writes beside its reads, so a package's setup flow c
 ### Capability API 1.10 package assets
 
 Capability API 1.10 adds general package-owned static asset delivery. A manifest may declare
-`contributions.assets.paths` — a bounded allowlist of image (`png`/`webp`/`gif`/`jpeg`) and JSON
-files shipped inside the package — and the Engine serves them over
+`contributions.assets.paths` — an allowlist of up to 256 image (`png`/`webp`/`gif`/`jpg`/`jpeg`)
+and JSON files shipped inside the package — and the Engine serves them over
 `/api/capability-packages/<id>/assets/<path>` through the exact verification chain browser-tab
 icons already use: path containment, `files[]` hash membership, a passive content-type allowlist,
 and integrity re-verification on every read. Active document types (SVG, HTML, scripts) are
-rejected at the schema, and every declared path must be hash-pinned in `files[]` or the manifest
-fails at install. Combined with the delivery caching above, an asset requested with
+rejected by the schema; every declared path must be hash-pinned in `files[]`; and the in-package
+`manifest.json` is never servable, even if declared. Declaring `contributions.assets` requires a
+`schemaVersion` 2 manifest with `capabilityApi` 1.10 or newer — a v1 manifest cannot declare it
+at all. Combined with the delivery caching above, an asset requested with
 `?v=<installed version>` is content-addressed and cached immutably, so a package shipping a
 tileset or sprite atlas costs one download per version. This is what lets a `game-surface`
 Experience ship real art instead of inlining it into its client bundle.
+
+A manifest that violates these rules is rejected at install with one of: "A declared package
+asset must be listed in the package file manifest", "contributions.assets requires schemaVersion
+2 and capabilityApi 1.10 or newer", the schema's extension error for a non-image/JSON path, or —
+for archives whose filenames differ only by case, which case-insensitive filesystems would
+collapse onto one file — "Package contains duplicate file" / "Package manifest declares files
+that collide on case-insensitive filesystems".
 
 Every capability element receives its own identity for this purpose: `capabilityProps.packageId`
 and `capabilityProps.packageVersion` arrive alongside `localization`, so a bundle builds the

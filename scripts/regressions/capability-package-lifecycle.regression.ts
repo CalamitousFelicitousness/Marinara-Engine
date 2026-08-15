@@ -214,6 +214,11 @@ try {
     ],
   });
   assert.equal(mixedGenerationCatalog.droppedEntries, 1, "the unparseable entry must be dropped, not fatal");
+  assert.deepEqual(
+    mixedGenerationCatalog.droppedIds,
+    ["from-the-future"],
+    "dropped entries must be identified by manifest id so operators can name what vanished",
+  );
   assert.equal(mixedGenerationCatalog.catalog.packages.length, 1);
   assert.equal(mixedGenerationCatalog.catalog.packages[0]?.manifest.id, "hierarchical-maps");
 
@@ -240,6 +245,24 @@ try {
     () => validatePackageArchiveEntries(directoryFloodArchive),
     /Package contains too many files/u,
     "directory-only ZIP entries count toward the archive entry limit",
+  );
+  // Case-insensitive duplicate guard (#5091): NTFS/APFS extract `Tiles.PNG`
+  // onto `tiles.png`, leaving one on-disk file behind two declared hashes, so
+  // an artifact carrying both casings is rejected before extraction. (The
+  // manifest-level case-folded guard sits BEHIND this one in the live install
+  // flow — a zip cannot reach it with a case collision the entry guard missed.)
+  const { createRequire } = await import("node:module");
+  const serverRequire = createRequire(new URL("../../packages/server/src/app.ts", import.meta.url));
+  const AdmZipCtor = serverRequire("adm-zip") as new () => {
+    addFile: (name: string, data: Buffer) => void;
+  };
+  const collisionZip = new AdmZipCtor();
+  collisionZip.addFile("art/tiles.png", Buffer.from("first casing"));
+  collisionZip.addFile("art/Tiles.PNG", Buffer.from("second casing"));
+  assert.throws(
+    () => validatePackageArchiveEntries(collisionZip as never),
+    /duplicate file/u,
+    "case-only filename collisions must be rejected at archive validation",
   );
   assert.equal(
     resolveCapabilityCatalogUrl("2.3.1", "", "main"),
@@ -1030,7 +1053,14 @@ try {
       browserTabAsset?.file,
       join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
     );
-    assert.deepEqual(await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png"), browserTabAsset);
+    assert.equal(
+      browserTabAsset?.data?.toString("utf8"),
+      "x",
+      "A cold verification must hand back the exact bytes it hashed",
+    );
+    const warmAsset = await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png");
+    assert.equal(warmAsset?.data, null, "A warm stat-validated hit must not re-read the file");
+    assert.deepEqual({ ...warmAsset, data: null }, { ...browserTabAsset, data: null });
     assert.equal(assetHashCount, 1, "An unchanged browser-tab asset must reuse its successful verification");
 
     const changedRegistry = JSON.parse(readFileSync(registryPath, "utf8")) as {

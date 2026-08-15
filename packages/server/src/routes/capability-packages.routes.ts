@@ -103,7 +103,8 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
       return reply.status(304).send();
     }
     reply.header("Content-Type", "text/javascript; charset=utf-8");
-    return reply.send(await readFile(entrypoint.file));
+    // The verification step already read and hashed these exact bytes.
+    return reply.send(entrypoint.data);
   });
   app.get<{ Params: { id: string; "*": string }; Querystring: { v?: string } }>(
     "/:id/assets/*",
@@ -128,7 +129,9 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
         return reply.status(304).send();
       }
       reply.header("Content-Type", asset.contentType);
-      return reply.send(await readFile(asset.file));
+      // Cold verification returns the exact hashed bytes; a warm stat-validated
+      // hit reads the (unchanged-since-verification) file once.
+      return reply.send(asset.data ?? (await readFile(asset.file)));
     },
   );
   app.post<{ Params: { id: string }; Body: { expectedVersion: string; expectedArtifactSha256: string } }>(

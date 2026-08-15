@@ -142,7 +142,7 @@ const PACKAGE_ASSET_CONTENT_TYPES = new Map([
   // active (svg, html, js) stays out of this map: it would execute same-origin.
   [".json", "application/json; charset=utf-8"],
 ]);
-interface VerifiedBrowserTabAsset {
+interface VerifiedPackageAsset {
   packageId: string;
   expectedBytes: number;
   expectedSha256: string;
@@ -152,7 +152,7 @@ interface VerifiedBrowserTabAsset {
   mtimeNs: bigint;
   ctimeNs: bigint;
 }
-const verifiedBrowserTabAssets = new Map<string, VerifiedBrowserTabAsset>();
+const verifiedPackageAssets = new Map<string, VerifiedPackageAsset>();
 const KNOWN_INCOMPATIBLE_RUNTIMES = new Map<string, string>([
   ...["1.0.0", "1.0.3", "1.0.6"].map(
     (version) =>
@@ -486,20 +486,27 @@ async function verifyInstalledPackageFile(
   return (await readVerifiedInstalledPackageFile(installed, relativePath)).file;
 }
 
-function invalidateBrowserTabAssetVerifications(packageId: string) {
-  for (const [key, cached] of verifiedBrowserTabAssets) {
-    if (cached.packageId === packageId) verifiedBrowserTabAssets.delete(key);
+function invalidatePackageAssetVerifications(packageId: string) {
+  for (const [key, cached] of verifiedPackageAssets) {
+    if (cached.packageId === packageId) verifiedPackageAssets.delete(key);
   }
 }
 
-async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, relativePath: string): Promise<string> {
+/** Returns the on-disk path plus, on a cold verification, the exact verified
+ *  bytes — the caller sends those instead of re-reading, which both halves the
+ *  IO for large assets and removes the verify→send tamper window. A warm
+ *  (stat-validated) hit returns `data: null`; the caller may read the path. */
+async function verifyPackageAsset(
+  installed: InstalledCapabilityPackage,
+  relativePath: string,
+): Promise<{ file: string; data: Buffer | null }> {
   const normalized = normalizeArchivePath(relativePath);
   const declaration = installed.manifest.files.find((item) => normalizeArchivePath(item.path) === normalized);
   if (!declaration) throw new Error(`Package ${installed.id} requested undeclared file ${normalized}`);
   const file = inside(VERSIONS, join(VERSIONS, installed.id, installed.version, normalized));
   const key = `${installed.id}\0${installed.version}\0${normalized}`;
   const before = await stat(file, { bigint: true });
-  const cached = verifiedBrowserTabAssets.get(key);
+  const cached = verifiedPackageAssets.get(key);
   if (
     cached &&
     cached.expectedBytes === declaration.bytes &&
@@ -510,7 +517,7 @@ async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, rela
     cached.mtimeNs === before.mtimeNs &&
     cached.ctimeNs === before.ctimeNs
   ) {
-    return file;
+    return { file, data: null };
   }
   const data = await readFile(file);
   const after = await stat(file, { bigint: true });
@@ -523,10 +530,10 @@ async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, rela
     data.byteLength !== declaration.bytes ||
     createHash("sha256").update(data).digest("hex") !== declaration.sha256
   ) {
-    verifiedBrowserTabAssets.delete(key);
+    verifiedPackageAssets.delete(key);
     throw new Error(`Installed package ${installed.id} failed integrity verification for ${normalized}`);
   }
-  verifiedBrowserTabAssets.set(key, {
+  verifiedPackageAssets.set(key, {
     packageId: installed.id,
     expectedBytes: declaration.bytes,
     expectedSha256: declaration.sha256,
@@ -536,7 +543,7 @@ async function verifyBrowserTabAsset(installed: InstalledCapabilityPackage, rela
     mtimeNs: after.mtimeNs,
     ctimeNs: after.ctimeNs,
   });
-  return file;
+  return { file, data };
 }
 
 async function verifyInstalledPackageFiles(
@@ -682,7 +689,7 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
     await mkdir(dirname(destination), { recursive: true });
     await rm(destination, { recursive: true, force: true });
     await rename(temporary, destination);
-    invalidateBrowserTabAssetVerifications(manifest.id);
+    invalidatePackageAssetVerifications(manifest.id);
     const registry = await readRegistry();
     const previous = registry.packages.find((item) => item.id === manifest.id);
     assertNotDowngrade(previous, manifest.version);
@@ -732,12 +739,13 @@ export const capabilityPackageManager = {
     // manifest keys under this Engine's strict schemas) is dropped with a log
     // instead of failing the whole document — all-or-nothing parsing would
     // brick browsing, install, and updates for every package at once.
-    const { catalog, droppedEntries } = parseCapabilityCatalogWithCompat(await response.json());
+    const { catalog, droppedEntries, droppedIds } = parseCapabilityCatalogWithCompat(await response.json());
     if (droppedEntries > 0) {
       logger.warn(
-        "Skipped %d Agent catalog entr%s this Engine version cannot parse (likely built for a newer Engine)",
+        "Skipped %d Agent catalog entr%s this Engine version cannot parse (likely built for a newer Engine): %s",
         droppedEntries,
         droppedEntries === 1 ? "y" : "ies",
+        droppedIds.join(", "),
       );
     }
     for (const entry of catalog.packages) {
@@ -766,7 +774,7 @@ export const capabilityPackageManager = {
     if (removed.length === 0) return [];
     await writeRegistry(registry.packages.filter((item) => !NON_DOWNLOADABLE_CORE_PACKAGE_IDS.has(item.id)));
     await Promise.all(removed.map((item) => rm(join(VERSIONS, item.id), { recursive: true, force: true })));
-    for (const item of removed) invalidateBrowserTabAssetVerifications(item.id);
+    for (const item of removed) invalidatePackageAssetVerifications(item.id);
     return removed.map((item) => item.id);
   },
 
@@ -848,10 +856,15 @@ export const capabilityPackageManager = {
       (item) => normalizeArchivePath(item.path) === normalizeArchivePath(entrypoint),
     );
     if (!declaration) return null;
+    // The client path verifies by reading on EVERY request — return the
+    // verified bytes so the route serves exactly what was hashed instead of
+    // re-reading the file a second time.
+    const verified = await readVerifiedInstalledPackageFile(installed, entrypoint);
     return {
       installed,
       sha256: declaration.sha256,
-      file: await verifyInstalledPackageFile(installed, entrypoint),
+      file: verified.file,
+      data: verified.data,
     };
   },
 
@@ -889,11 +902,14 @@ export const capabilityPackageManager = {
     // NOTE: an on-disk integrity failure below still THROWS (lifecycle
     // regression pins it) — tampering must be loud, not a quiet 404. Only
     // manifest-shape problems above degrade to "not servable".
+    const verified = await verifyPackageAsset(installed, normalizedPath);
     return {
       installed,
       contentType,
       sha256: declaration.sha256,
-      file: await verifyBrowserTabAsset(installed, normalizedPath),
+      file: verified.file,
+      /** Cold-verified bytes; null on a warm stat-validated hit. */
+      data: verified.data,
     };
   },
 
@@ -942,7 +958,7 @@ export const capabilityPackageManager = {
     if (runtimeBlockReason(restored)) return null;
     registry.packages[index] = restored;
     await writeRegistry(registry.packages);
-    invalidateBrowserTabAssetVerifications(packageId);
+    invalidatePackageAssetVerifications(packageId);
     const server = manifest.entrypoints.server;
     return server
       ? {
@@ -1065,7 +1081,7 @@ export const capabilityPackageManager = {
     }
     await writeRegistry(registry.packages.filter((item) => item.id !== packageId));
     await rm(join(VERSIONS, packageId), { recursive: true, force: true });
-    invalidateBrowserTabAssetVerifications(packageId);
+    invalidatePackageAssetVerifications(packageId);
     try {
       await clearDeclinedUpdate(packageId);
     } catch (error) {

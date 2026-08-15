@@ -7827,8 +7827,9 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.equal(explicitlyRequestsTextRewrite(undefined), false);
 }
 
-// Issue #4118 — ComfyUI exposes up to five LoRAs consistently to image and
-// video API-format workflows.
+// Issues #4118 and #5072 — ComfyUI exposes up to five LoRAs consistently to
+// image and video API-format workflows without clipping slider LoRA strengths
+// to the legacy -2..2 range.
 {
   const normalized = normalizeComfyUiLoraSettings([
     { model: "style-a.safetensors", strength: 1.25 },
@@ -7840,15 +7841,15 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   ]);
   assert.equal(normalized.length, 5);
   assert.equal(normalized[0]?.strength, 1.25);
-  assert.equal(normalized[1]?.strength, 2);
-  assert.equal(normalized[2]?.strength, -2);
+  assert.equal(normalized[1]?.strength, 99);
+  assert.equal(normalized[2]?.strength, -99);
   assert.deepEqual(buildComfyUiLoraWorkflowReplacements(normalized), {
     "%LORA_1%": "style-a.safetensors",
     "%LORA_1_strength%": 1.25,
     "%LORA_2%": "style-b.safetensors",
-    "%LORA_2_strength%": 2,
+    "%LORA_2_strength%": 99,
     "%LORA_3%": "style-c.safetensors",
-    "%LORA_3_strength%": -2,
+    "%LORA_3_strength%": -99,
     "%LORA_4%": "style-d.safetensors",
     "%LORA_4_strength%": 0.5,
     "%LORA_5%": "style-e.safetensors",

@@ -85,13 +85,17 @@ export interface MemoryRecallEmbeddingSource {
   /** Stable identity for the provider/model vector space, when known. */
   spaceId?: string;
   label: string;
-  embed(texts: string[], signal?: AbortSignal): Promise<number[][] | null>;
+  embed(texts: string[], signal?: AbortSignal, inputType?: MemoryRecallEmbeddingInputType): Promise<number[][] | null>;
 }
+
+export type MemoryRecallEmbeddingInputType = "document" | "query";
 
 export interface MemoryRecallEmbeddingOptions {
   embeddingSource?: MemoryRecallEmbeddingSource | null;
   localEmbedder?: (texts: string[], signal?: AbortSignal) => Promise<number[][] | null>;
   signal?: AbortSignal;
+  /** Whether the text is being indexed or used to search an existing index. */
+  inputType?: MemoryRecallEmbeddingInputType;
 }
 
 export interface RecallMemoriesOptions extends MemoryRecallEmbeddingOptions {
@@ -114,7 +118,11 @@ export async function embedMemoryRecallTexts(
   options: MemoryRecallEmbeddingOptions = {},
 ): Promise<number[][]> {
   if (options.embeddingSource) {
-    const configuredEmbeddings = await options.embeddingSource.embed(texts, options.signal);
+    const configuredEmbeddings = await options.embeddingSource.embed(
+      texts,
+      options.signal,
+      options.inputType ?? "document",
+    );
     if (configuredEmbeddings) {
       logger.debug("[memory-recall] Used configured embedding source %s", options.embeddingSource.label);
       return configuredEmbeddings;
@@ -128,7 +136,9 @@ export async function embedMemoryRecallTexts(
 
   if (!warnedUnavailableEmbeddingSource) {
     warnedUnavailableEmbeddingSource = true;
-    logger.warn("[memory-recall] No embedder configured; memory recall is disabled until an embedding source is available");
+    logger.warn(
+      "[memory-recall] No embedder configured; memory recall is disabled until an embedding source is available",
+    );
   }
   return [];
 }
@@ -352,7 +362,7 @@ async function chunkAndEmbedMessagesUnlocked(
 
   // Embed all chunks using local model
   const texts = embeddableChunks.map((c) => c.content);
-  const embeddings = await embedMemoryRecallTexts(texts, options);
+  const embeddings = await embedMemoryRecallTexts(texts, { ...options, inputType: "document" });
   if (
     embeddings.length !== embeddableChunks.length ||
     embeddings.some((embedding) => !Array.isArray(embedding) || embedding.length === 0)
@@ -374,7 +384,11 @@ async function chunkAndEmbedMessagesUnlocked(
     .where(and(eq(memoryChunks.chatId, chatId), isNull(memoryChunks.sourceChatId), isNotNull(memoryChunks.embedding)))
     .limit(1);
   const existingEmbedding = parseStoredEmbedding(existingEmbeddedChunk[0]?.embedding ?? null);
-  if (Array.isArray(existingEmbedding) && existingEmbedding.length > 0 && existingEmbedding.length !== embeddingDimension) {
+  if (
+    Array.isArray(existingEmbedding) &&
+    existingEmbedding.length > 0 &&
+    existingEmbedding.length !== embeddingDimension
+  ) {
     logger.warn(
       "[memory-recall] Skipping memory chunk insert for chat %s because embedding dimension changed from %d to %d. Rebuild memories before mixing embedding models.",
       chatId,
@@ -449,7 +463,7 @@ export async function recallMemories(
   if (chatIds.length === 0) return [];
 
   // Embed the query using local model
-  const queryEmbeddings = await embedMemoryRecallTexts([query], options);
+  const queryEmbeddings = await embedMemoryRecallTexts([query], { ...options, inputType: "query" });
   if (!queryEmbeddings || queryEmbeddings.length === 0) return [];
   const queryEmbedding = queryEmbeddings[0]!;
   if (queryEmbedding.length === 0) return [];

@@ -213,6 +213,8 @@ export interface AssemblerInput {
   chatEmbedding?: number[] | null;
   /** Per-lorebook pre-computed embeddings for semantic lorebook matching. */
   semanticEmbeddingsByLorebookId?: ReadonlyMap<string, number[] | null>;
+  /** Provider/model/profile identity used to create semantic query vectors. */
+  semanticEmbeddingSpaceId?: string | null;
   /** Unrelated-text cosine floor used to calibrate clustered embedding models. */
   semanticSimilarityBaseline?: number;
   /** Per-chat ephemeral state overrides for lorebook entries (from chat metadata). */
@@ -461,6 +463,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     disableLorebooks: input.disableLorebooks === true,
     chatEmbedding: input.chatEmbedding ?? null,
     semanticEmbeddingsByLorebookId: input.semanticEmbeddingsByLorebookId,
+    semanticEmbeddingSpaceId: input.semanticEmbeddingSpaceId,
     semanticSimilarityBaseline: input.semanticSimilarityBaseline,
     entryStateOverrides: input.entryStateOverrides,
     entryTimingStates: input.entryTimingStates,

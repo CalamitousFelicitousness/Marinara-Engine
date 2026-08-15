@@ -83,6 +83,8 @@ import {
   VIDEO_DEFAULTS_STORAGE_KEY,
   COMFYUI_SAMPLER_OPTIONS,
   COMFYUI_SCHEDULER_OPTIONS,
+  COMFYUI_LORA_STRENGTH_MIN,
+  COMFYUI_LORA_STRENGTH_MAX,
   NOVELAI_NOISE_SCHEDULE_OPTIONS,
   NOVELAI_SAMPLER_OPTIONS,
   SD_WEBUI_SAMPLER_OPTIONS,
@@ -3780,8 +3782,8 @@ function ComfyUiLoraSettings({
           <NumberSetting
             label={localizeUi("ui.connections.comfyuilorasettings.strength")}
             value={slot.strength}
-            min={-2}
-            max={2}
+            min={COMFYUI_LORA_STRENGTH_MIN}
+            max={COMFYUI_LORA_STRENGTH_MAX}
             integer={false}
             onCommit={(strength) => updateSlot(index, { strength })}
           />

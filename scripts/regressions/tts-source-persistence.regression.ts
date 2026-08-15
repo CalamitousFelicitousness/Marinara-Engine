@@ -271,6 +271,21 @@ try {
   assert.equal(peakActiveTTSRequests, 1, "Non-progressive TTS pre-generation must respect serial providers");
   assert.deepEqual(startedTTSChunks, [0, 1, 2], "A provider limit must not silently remove narration chunks");
 
+  let failedProgressiveFetches = 0;
+  globalThis.fetch = async () => {
+    failedProgressiveFetches += 1;
+    return new Response(JSON.stringify({ error: "First chunk failed" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  await ttsService.speakSequence(
+    [{ text: "Failed first chunk." }, { text: "Must not start." }, { text: "Also must not start." }],
+    "tts-progressive-failure",
+    { progressive: true },
+  );
+  assert.equal(failedProgressiveFetches, 1, "Progressive TTS must not start a later request after a chunk fails");
+
   const callerAbortController = new AbortController();
   const callerSignal = callerAbortController.signal;
   const callerAddEventListener = callerSignal.addEventListener.bind(callerSignal);
@@ -301,9 +316,11 @@ try {
       init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     });
   };
-  const staleSequence = ttsService.speakSequence([{ text: "Cancelled narration." }], "tts-abort-cleanup", {
-    signal: callerSignal,
-  });
+  const staleSequence = ttsService.speakSequence(
+    [{ text: "Cancelled narration.", cacheKey: "tts-abort-cleanup-regression" }],
+    "tts-abort-cleanup",
+    { signal: callerSignal },
+  );
   await staleFetchReady;
   ttsService.stop();
   await staleSequence;

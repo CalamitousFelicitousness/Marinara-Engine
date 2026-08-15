@@ -1632,6 +1632,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // the loop body gates on this so a fetch that found nothing or threw
         // doesn't burn an extra generation pass with no new context to read.
         let mariFetchSucceededThisIteration = false;
+        let currentIterationSavedMsg: typeof lastSavedMsg = null;
         let recoveredAlreadyAppliedOwnerTurn = false;
         let finalMessages: GenerationPromptMessage[] = [...runningMessagesForFollowUp];
         let longTermMemoryRecallReceipt: LongTermMemoryRecallReceipt | undefined;
@@ -7121,6 +7122,7 @@ export async function generateRoutes(app: FastifyInstance) {
             }
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
+            currentIterationSavedMsg = genResult.savedMsg;
             recordExpressionTarget(genResult.savedMsg, charId);
             allResponses.push(genResult.response);
             allResponseSegments.push({ characterId: charId, characterName: charName, content: genResult.response });
@@ -7210,6 +7212,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (genResult) {
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
+            currentIterationSavedMsg = genResult.savedMsg;
             recordExpressionTarget(genResult.savedMsg, genResult.characterId);
             for (let cmdIndex = 0; cmdIndex < genResult.commands.length; cmdIndex++) {
               collectedCommands.push({
@@ -7269,9 +7272,9 @@ export async function generateRoutes(app: FastifyInstance) {
           (agent) => !inactivePostProcessingAgentIds.has(agent.id),
         );
         let assistantMessageReadySent = false;
-        const sendAssistantMessageReady = async (savedMessage?: typeof lastSavedMsg) => {
+        const sendAssistantMessageReady = async (savedMessage?: typeof currentIterationSavedMsg) => {
           if (assistantMessageReadySent || abortController.signal.aborted || input.impersonate) return;
-          const messageId = (lastSavedMsg as { id?: unknown } | null)?.id;
+          const messageId = (currentIterationSavedMsg as { id?: unknown } | null)?.id;
           if (typeof messageId !== "string" || !messageId) return;
           const readyMessage = savedMessage ?? (await chats.getMessage(messageId));
           if (!readyMessage || readyMessage.role !== "assistant") return;
@@ -7284,7 +7287,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // Speech uses only the assistant message. Do not hold it behind
         // Illustrator, trackers, summaries, or other non-rewriting agents.
         if (activatedTextRewriteRunAgents.length === 0) {
-          await sendAssistantMessageReady(lastSavedMsg);
+          await sendAssistantMessageReady(currentIterationSavedMsg);
         }
 
         // ────────────────────────────────────────

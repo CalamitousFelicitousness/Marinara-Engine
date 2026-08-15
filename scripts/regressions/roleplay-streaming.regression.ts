@@ -637,13 +637,23 @@ assert.ok(
 );
 assert.match(
   generateRouteSource,
-  /activatedTextRewriteRunAgents\.length === 0\) \{\s*await sendAssistantMessageReady\(lastSavedMsg\)/u,
+  /activatedTextRewriteRunAgents\.length === 0\) \{\s*await sendAssistantMessageReady\(currentIterationSavedMsg\)/u,
   "TTS-ready text without a rewrite agent should use the saved row without another storage lookup",
 );
 assert.match(
   generateRouteSource,
   /activatedTextRewriteRunAgents\.length > 0\) \{\s*await sendAssistantMessageReady\(\)/u,
   "TTS-ready text after rewrite agents must reload the persisted edited row",
+);
+assert.match(
+  generateRouteSource,
+  /while \(true\) \{[\s\S]{0,700}let currentIterationSavedMsg: typeof lastSavedMsg = null/u,
+  "Each Mari follow-up iteration must reset the assistant message eligible for TTS",
+);
+assert.match(
+  generateRouteSource,
+  /const messageId = \(currentIterationSavedMsg as \{ id\?: unknown \} \| null\)\?\.id/u,
+  "TTS readiness must use only the assistant message saved in the current follow-up iteration",
 );
 assert.match(
   generateHookSource,

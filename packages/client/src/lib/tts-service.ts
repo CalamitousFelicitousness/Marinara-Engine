@@ -16,6 +16,7 @@ export interface TTSSpeakOptions {
   throwOnError?: boolean;
   cacheKey?: string;
   cacheAliases?: string[];
+  abortCacheGenerationOnAbort?: boolean;
   volume?: number;
   muted?: boolean;
 }
@@ -71,9 +72,7 @@ function playbackAbortError(): DOMException {
 
 export function normalizeTTSPlaybackDelayMs(delayMs: number | undefined): number {
   const maximumDelayMs = TTS_DIALOGUE_PAUSE_MAX_SECONDS * 1000;
-  return typeof delayMs === "number" && Number.isFinite(delayMs)
-    ? Math.max(0, Math.min(maximumDelayMs, delayMs))
-    : 0;
+  return typeof delayMs === "number" && Number.isFinite(delayMs) ? Math.max(0, Math.min(maximumDelayMs, delayMs)) : 0;
 }
 
 function waitForPlaybackDelay(delayMs: number | undefined, signal: AbortSignal): Promise<void> {
@@ -264,7 +263,11 @@ class TTSService {
     if (!options.cacheKey) return this.generateAudio(text, options);
     const sharedPromise = getOrCreateCachedTTSAudioBlob(
       options.cacheKey,
-      () => this.generateAudio(text, { ...options, signal: undefined }),
+      () =>
+        this.generateAudio(text, {
+          ...options,
+          signal: options.abortCacheGenerationOnAbort ? options.signal : undefined,
+        }),
       options.cacheAliases,
     );
     return waitForBlobWithAbort(sharedPromise, options.signal);
@@ -383,6 +386,7 @@ class TTSService {
           signal: abortController.signal,
           cacheKey: request.cacheKey,
           cacheAliases: request.cacheAliases,
+          abortCacheGenerationOnAbort: true,
         });
         return { ok: true, blob, request, index };
       } catch (err) {
@@ -487,7 +491,6 @@ class TTSService {
 
         for (let index = 0; index < playableRequests.length; index += 1) {
           const result = await nextFetch!;
-          nextFetch = index + 1 < playableRequests.length ? fetchChunk(playableRequests[index + 1]!, index + 1) : null;
           if (!this.isCurrentSequence(sequence)) return;
 
           if (!result.ok) {
@@ -507,6 +510,8 @@ class TTSService {
             if (options.throwOnError) throw result.error;
             return;
           }
+
+          nextFetch = index + 1 < playableRequests.length ? fetchChunk(playableRequests[index + 1]!, index + 1) : null;
 
           try {
             await playBlob(result.blob, result.request, result.index);

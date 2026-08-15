@@ -174,8 +174,8 @@ export const OFFICIAL_AGENT_KNOWLEDGE_ENTRIES: readonly OfficialAgentKnowledgeEn
     id: "haptic",
     name: "Haptic Feedback",
     category: "misc",
-    modes: "Conversation and Roleplay",
-    summary: "converts direct narrative contact into safe Intiface Central device commands",
+    modes: "Conversation, Roleplay, and Game",
+    summary: "matches direct narrative contact to each Intiface device's supported actions and patterns",
   },
   {
     id: "cyoa",

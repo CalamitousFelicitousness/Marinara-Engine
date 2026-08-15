@@ -6,13 +6,17 @@ import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { TTS_API_KEY_MASK, ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
 import { buildTTSVoiceRequests } from "../../packages/client/src/lib/tts-dialogue.ts";
+import { buildExtractedRoleplayTTSVoiceRequests } from "../../packages/client/src/lib/tts-roleplay-speaker-extractor.ts";
 import { normalizeTTSPlaybackDelayMs } from "../../packages/client/src/lib/tts-service.ts";
 import {
   buildOfficialPocketTtsForm,
+  buildElevenLabsTextInput,
+  buildRoleplaySpeakerExtractorPrompt,
   maskTTSConfigForResponse,
   fetchAllElevenLabsVoiceOptions,
   fetchElevenLabsVoiceOptions,
   parseElevenLabsModelOptions,
+  parseRoleplaySpeakerExtractorOutput,
   prepareTTSConfigForStorage,
   resolvePocketTtsApiMode,
 } from "../../packages/server/src/routes/tts.routes.ts";
@@ -22,10 +26,10 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 
 assert.equal(resolvePocketTtsApiMode({ paths: { "/tts": {}, "/health": {} } }), "official");
 assert.equal(resolvePocketTtsApiMode({ paths: { "/v1/audio/speech": {}, "/v1/voices": {} } }), "openai");
-assert.deepEqual(
-  Object.fromEntries(buildOfficialPocketTtsForm("Hello from Marinara.", "alba").entries()),
-  { text: "Hello from Marinara.", voice_url: "alba" },
-);
+assert.deepEqual(Object.fromEntries(buildOfficialPocketTtsForm("Hello from Marinara.", "alba").entries()), {
+  text: "Hello from Marinara.",
+  voice_url: "alba",
+});
 const ttsRouteSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/tts.routes.ts"), "utf8");
 assert.match(
   ttsRouteSource,
@@ -215,6 +219,122 @@ assert.equal(normalizeTTSPlaybackDelayMs(60_001), 60_000);
 assert.equal(normalizeTTSPlaybackDelayMs(-1), 0);
 assert.equal(normalizeTTSPlaybackDelayMs(Number.NaN), 0);
 assert.throws(() => ttsConfigSchema.parse({ dialoguePauseMs: 60_001 }));
+
+assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorEnabled, false);
+assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorConnectionId, "");
+assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorEmotionsEnabled, false);
+
+const extractorMessage = 'Dottore sighs. "Enough of this," he says. A pause follows. "Skill issue," Mari chuckles.';
+const extractedSegments = parseRoleplaySpeakerExtractorOutput(
+  JSON.stringify({
+    dialogue: [
+      { speaker: "Dottore", text: '"Enough of this,"', tone: "[irritated]" },
+      { speaker: "Mari", text: '"Skill issue,"', tone: "chuckle" },
+    ],
+  }),
+  extractorMessage,
+  true,
+).segments;
+assert.deepEqual(extractedSegments, [
+  { kind: "narration", text: "Dottore sighs." },
+  { kind: "dialogue", speaker: "Dottore", text: '"Enough of this,"', tone: "irritated" },
+  { kind: "narration", text: "he says. A pause follows." },
+  { kind: "dialogue", speaker: "Mari", text: '"Skill issue,"', tone: "chuckle" },
+  { kind: "narration", text: "Mari chuckles." },
+]);
+assert.throws(
+  () =>
+    parseRoleplaySpeakerExtractorOutput(
+      JSON.stringify({ dialogue: [{ speaker: "Dottore", text: '"Changed dialogue"' }] }),
+      extractorMessage,
+      false,
+    ),
+  /changed or could not locate/,
+);
+assert.match(
+  buildRoleplaySpeakerExtractorPrompt({
+    group: "Lab group",
+    user: "Mari",
+    characters: ["Dottore", "Mari"],
+    includeEmotions: true,
+  }),
+  /"tone":"emotion"/,
+);
+
+const extractedVoiceConfig = ttsConfigSchema.parse({
+  source: "openai",
+  voice: "global",
+  voiceMode: "per-character",
+  voiceAssignments: [
+    { characterId: "dottore-id", characterName: "Dottore", voice: "dottore-voice" },
+    { characterId: "mari-id", characterName: "Mari", voice: "mari-voice" },
+  ],
+  narratorVoiceEnabled: true,
+  narratorVoice: "narrator-voice",
+});
+const extractedCharacterIds: Record<string, string> = { Dottore: "dottore-id", Mari: "mari-id" };
+const extractedVoiceRequests = buildExtractedRoleplayTTSVoiceRequests(
+  extractedSegments,
+  extractedVoiceConfig,
+  "Dottore",
+  "dottore-id",
+  (speaker) => extractedCharacterIds[speaker ?? ""],
+);
+assert.deepEqual(
+  extractedVoiceRequests.map(({ speaker, voice, tone }) => ({ speaker, voice, tone })),
+  [
+    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
+    { speaker: "Dottore", voice: "dottore-voice", tone: "irritated" },
+    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
+    { speaker: "Mari", voice: "mari-voice", tone: "chuckle" },
+    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
+  ],
+);
+const extractedDialogueOnlyRequests = buildExtractedRoleplayTTSVoiceRequests(
+  extractedSegments,
+  { ...extractedVoiceConfig, dialogueOnly: true, dialoguePauseMs: 2000 },
+  "Dottore",
+  "dottore-id",
+);
+assert.deepEqual(
+  extractedDialogueOnlyRequests.map(({ speaker, pauseAfterMs }) => ({ speaker, pauseAfterMs })),
+  [
+    { speaker: "Dottore", pauseAfterMs: 2000 },
+    { speaker: "Mari", pauseAfterMs: undefined },
+  ],
+);
+
+const extractedVoiceFallbackConfig = ttsConfigSchema.parse({
+  source: "openai",
+  voice: "global-voice",
+  voiceMode: "per-character",
+  voiceAssignments: [{ characterId: "columbina-id", characterName: "Columbina", voice: "columbina-voice" }],
+  npcDefaultVoicesEnabled: true,
+  npcDefaultMaleVoices: ["random-npc-voice"],
+  npcDefaultFemaleVoices: ["random-npc-voice"],
+});
+const extractedVoiceFallbackRequests = buildExtractedRoleplayTTSVoiceRequests(
+  [
+    { kind: "dialogue", speaker: "Columbina", text: '"Come closer."' },
+    { kind: "dialogue", speaker: "Dottore", text: '"How unfortunate."' },
+    { kind: "dialogue", speaker: "Fatui Guard", text: '"At once."' },
+  ],
+  extractedVoiceFallbackConfig,
+  null,
+  null,
+  (speaker) =>
+    speaker === "Columbina" ? "columbina-id" : speaker === "Dottore" ? "dottore-without-assignment-id" : null,
+);
+assert.deepEqual(
+  extractedVoiceFallbackRequests.map(({ speaker, voice }) => ({ speaker, voice })),
+  [
+    { speaker: "Columbina", voice: "columbina-voice" },
+    { speaker: "Dottore", voice: "random-npc-voice" },
+    { speaker: "Fatui Guard", voice: "random-npc-voice" },
+  ],
+);
+assert.equal(buildElevenLabsTextInput('"Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
+assert.equal(buildElevenLabsTextInput('[chuckle] "Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 
 const legacyOpenAiConfig = ttsConfigSchema.parse({
   enabled: true,

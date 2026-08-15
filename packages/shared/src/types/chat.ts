@@ -454,7 +454,7 @@ export interface ChatMetadata {
   roleplayDmCommandsEnabled?: boolean;
   /** Chat-scoped Intiface Central WebSocket URL for haptic manual and auto-connect. */
   hapticIntifaceUrl?: string | null;
-  /** Roleplay haptic intensity scaling. Missing = standard. */
+  /** Haptic response style for any chat mode. Missing = standard. */
   hapticSensitivity?: HapticFeedbackSensitivity;
   /** When true, very brief accidental brushes may trigger small haptic feedback. Missing/false = only deliberate contact. */
   hapticIncidentalContact?: boolean;

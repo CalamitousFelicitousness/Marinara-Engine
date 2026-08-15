@@ -526,7 +526,7 @@ export function ConversationMessageAttachments({
   const { t: localizeUi } = useUiTranslation();
   if (!attachments.length || IMAGE_URL_RE.test(renderedContent.trim())) return null;
   return (
-    <div className="mt-1.5 flex flex-col items-center gap-2">
+    <div className="mt-1.5 flex flex-col items-start gap-2">
       {attachments.map((att, i) =>
         att.type === "image" || att.type?.startsWith("image/") ? (
           <div key={i} className="group/att relative inline-block">

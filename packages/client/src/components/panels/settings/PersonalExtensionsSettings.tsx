@@ -568,9 +568,9 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                   )}
                 >
                   {current.enabled ? (
-                    <PowerOff size="0.75rem" className="shrink-0" />
-                  ) : (
                     <Power size="0.75rem" className="shrink-0" />
+                  ) : (
+                    <PowerOff size="0.75rem" className="shrink-0" />
                   )}
                   <span className="truncate">
                     {current.enabled
@@ -1018,7 +1018,7 @@ function ExtensionSettings({ showIntro, mode }: { showIntro: boolean; mode: Exte
                             : localizeUi("ui.panels.extensionsettings.reviewAndRun_c0b4a0e")
                         }
                       >
-                        {extension.enabled ? <PowerOff size="0.6875rem" /> : <Power size="0.6875rem" />}
+                        {extension.enabled ? <Power size="0.6875rem" /> : <PowerOff size="0.6875rem" />}
                       </button>
                       <button
                         type="button"

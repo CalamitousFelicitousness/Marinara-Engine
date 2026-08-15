@@ -8017,6 +8017,13 @@ function GameSurfaceComponent({
   /** Synchronous in-flight flag beside the async combatGenerationPending state:
    *  same-frame double requests all read the stale state, the ref does not. */
   const combatGenerationInFlightRef = useRef(false);
+  // #5094: on chat switch, clear the in-flight lock (the [activeChatId] reset above only clears the
+  // pending STATE). Otherwise a combat generation left in flight by the previous chat keeps this ref
+  // true, and the new chat's generateCombatStateForMessage guard bails, leaving it stuck as "pending".
+  // The request itself is chat-scoped via requestChatId, so a stale completion never clears the lock.
+  useEffect(() => {
+    combatGenerationInFlightRef.current = false;
+  }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
   const topOverlayOffsetClass = "top-3";
   const queuedCombatMatchesLatest =
@@ -8142,6 +8149,11 @@ function GameSurfaceComponent({
       combatGenerationInFlightRef.current = true;
       setCombatGenerationError(null);
       setCombatGenerationPending(true);
+      // #5094: scope the async completion to the chat that started it. If the user switches chats while
+      // this is in flight, activeChatIdRef diverges from requestChatId and every handler bails, so a
+      // stale Chat A response can't apply combat state to Chat B, set B's error, or clear B's lock. The
+      // chat-switch cleanup (the [activeChatId] effect) clears the in-flight ref so the new chat can start.
+      const requestChatId = activeChatId;
       api
         .post<EncounterInitResponse>("/encounter/init", {
           chatId: activeChatId,
@@ -8151,6 +8163,7 @@ function GameSurfaceComponent({
           debugMode,
         })
         .then(async (response) => {
+          if (activeChatIdRef.current !== requestChatId) return; // chat switched; ignore stale completion
           const combatants = hydrateGeneratedCombatState(response.combatState);
           if (!combatants) {
             throw new Error("Combat generator returned an empty party or enemy list.");
@@ -8259,12 +8272,14 @@ function GameSurfaceComponent({
           });
         })
         .catch((err) => {
+          if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
           setCombatGenerationError(message);
           toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
         })
         .finally(() => {
+          if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't clear the new chat's lock
           combatGenerationInFlightRef.current = false;
           setCombatGenerationPending(false);
         });

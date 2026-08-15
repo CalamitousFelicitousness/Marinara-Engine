@@ -27,6 +27,7 @@ import {
   type SceneIllustrationCharacterPrompt,
 } from "@marinara-engine/shared";
 import { isImageLocalUrlsEnabled } from "../../config/runtime-config.js";
+import { runMediaGenerationRequest } from "./image-generation-queue.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -259,8 +260,34 @@ export function imageAdmissionKey(
 /**
  * Generate an image using the configured image generation connection.
  * Returns the base64 data and metadata needed to save it.
+ *
+ * Self-wrapped in the global media-generation concurrency ceiling (#5097), the
+ * way generateVideo already is, so EVERY image path is capped at this single
+ * point — game assets, sprites, avatars, storyboards, Mari images — instead of
+ * relying on per-caller wiring. Callers that additionally wrap in
+ * runImageGenerationRequest for the per-connection FIFO are safe: the nested
+ * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard), as
+ * does this function's own fallback-connection recursion. Batch/automatic work
+ * (admissionMode "background") never occupies the last permit ahead of
+ * interactive requests.
  */
 export async function generateImage(
+  source: string,
+  baseUrl: string,
+  apiKey: string,
+  serviceHint: string,
+  request: ImageGenRequest,
+): Promise<ImageGenResult> {
+  return runMediaGenerationRequest({
+    connectionKey: `image:${baseUrl || source}`,
+    queue: false,
+    signal: request.signal,
+    priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+    task: () => generateImageUncapped(source, baseUrl, apiKey, serviceHint, request),
+  });
+}
+
+async function generateImageUncapped(
   source: string,
   baseUrl: string,
   apiKey: string,

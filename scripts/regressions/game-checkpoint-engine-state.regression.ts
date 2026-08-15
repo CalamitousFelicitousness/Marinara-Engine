@@ -33,6 +33,7 @@ import { getTurnGameView } from "../../packages/server/src/services/turn-games/t
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const db = await getDB();
 const chats = createChatsStorage(db);
+const createdChatIds: string[] = [];
 const engineStore = createGameEngineStateStorage(db);
 const stateStore = createGameStateStorage(db);
 const checkpointSvc = createCheckpointService(db);
@@ -72,6 +73,7 @@ try {
   {
     const chat = await chats.create({ name: "engine ts key", mode: "game", characterIds: [] });
     assert.ok(chat);
+    createdChatIds.push(chat.id);
     await mkEngineState(chat.id, "m1", "first");
     await tick(8);
     const midTs = (await engineStore.getLatest(chat.id))!.createdAt;
@@ -93,6 +95,7 @@ try {
   {
     const chat = await chats.create({ name: "checkpoint engine restore", mode: "game", characterIds: [] });
     assert.ok(chat);
+    createdChatIds.push(chat.id);
 
     // M1 assistant message + a game_state_snapshot at M1 (what the checkpoint captures) + the
     // checkpoint-time engine state.
@@ -183,6 +186,8 @@ try {
 
   console.log("Game checkpoint engine-state regression checks passed.");
 } finally {
+  // Don't leave seeded chats behind across repeated runs (cascades to their snapshots + engine state).
+  for (const id of createdChatIds) await chats.remove(id).catch(() => {});
   unregisterEngine();
   await app.close();
   await closeDB();

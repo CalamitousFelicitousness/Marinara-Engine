@@ -28,11 +28,11 @@ existing `marinara-capability-props` event so an installed interface can rerende
 
 Installed package files are served with strong validators derived from the manifest's per-file
 SHA-256 hashes — the same values the Engine re-verifies the bytes against on every read. The
-client bundle (`/api/capability-packages/<id>/client`) always revalidates (`no-cache` plus an
-`ETag`), so an unchanged bundle answers `304 Not Modified` instead of re-downloading, while a
-republished bundle is picked up immediately. Package asset requests that pin the installed
-version with `?v=<version>` are content-addressed and may be cached indefinitely
-(`immutable`); requests without the pin keep always-revalidate semantics.
+client bundle (`/api/capability-packages/<id>/client`) and every package asset always revalidate
+(`no-cache` plus an `ETag`), so an unchanged file answers `304 Not Modified` instead of
+re-downloading, while a republished file is picked up immediately. Nothing is served `immutable`:
+install policy permits republishing the same version with different bytes, so no package URL is
+content-addressed.
 
 Capability API 1.1 adds a generic runtime facade to the server activation context.
 Packages can read the effective agent-debug state and write through the Engine's
@@ -81,6 +81,37 @@ A package may provide an entire Game mode rather than an addition to the built-i
 Packages holding the `prompt-context` permission contribute text to the system prompt of each generated Game turn, so a package that owns live state can keep the model consistent with what the player is looking at. A contribution may also declare which built-in game systems it replaces, and Engine then stops instructing the model to drive them. Contributions are collected per turn and are never required: a contributor that returns nothing is skipped, and one that throws, or that does not settle within its deadline, is logged and skipped without affecting generation.
 
 The resource facade exposes writes beside its reads, so a package's setup flow can find-or-create the player persona and its lorebook. Engine retains storage, validation, and identity; packages retain domain content.
+
+### Capability API 1.10 package assets
+
+Capability API 1.10 adds general package-owned static asset delivery. A manifest may declare
+`contributions.assets.paths` — an allowlist of up to 256 image (`png`/`webp`/`gif`/`jpg`/`jpeg`)
+and JSON files shipped inside the package — and the Engine serves them over
+`/api/capability-packages/<id>/assets/<path>` through the exact verification chain browser-tab
+icons already use: path containment, `files[]` hash membership, a passive content-type allowlist,
+and integrity re-verification on every read. Active document types (SVG, HTML, scripts) are
+rejected by the schema; every declared path must be hash-pinned in `files[]`; and the in-package
+`manifest.json` is never servable, even if declared. Declaring `contributions.assets` requires a
+`schemaVersion` 2 manifest with `capabilityApi` 1.10 or newer — a v1 manifest cannot declare it
+at all. Assets always revalidate — like the client bundle they carry a strong manifest-hash
+`ETag` and answer an unchanged revalidation with `304 Not Modified` and no body, so a shipped
+tileset re-downloads only when its bytes actually change. (Responses are deliberately never
+`immutable`: install policy permits republishing the same version with different bytes, so a
+version-tagged URL is not content-addressed.) This is what lets a `game-surface` Experience ship
+real art instead of inlining it into its client bundle.
+
+A manifest that violates these rules is rejected at install with one of: "A declared package
+asset must be listed in the package file manifest", "contributions.assets requires schemaVersion
+2 and capabilityApi 1.10 or newer", the schema's extension error for a non-image/JSON path, or —
+for archives whose filenames differ only by case, which case-insensitive filesystems would
+collapse onto one file — "Package contains duplicate file" / "Package manifest declares files
+that collide on case-insensitive filesystems".
+
+Every capability element receives its own identity for this purpose: `capabilityProps.packageId`
+and `capabilityProps.packageVersion` arrive alongside `localization`, so a bundle builds its
+asset URLs as `/api/capability-packages/<packageId>/assets/<path>` (optionally keyed with
+`?v=<packageVersion>` so a version bump busts any intermediary cache) without re-fetching the
+installed list or scraping its own import URL.
 
 ## Initial packages
 

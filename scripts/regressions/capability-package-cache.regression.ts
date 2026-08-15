@@ -25,16 +25,34 @@ const ICON = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+// contributions.assets fixtures (general asset delivery, #5091): a nested
+// tileset image and a tilemap JSON, plus a file that is deliberately NOT
+// declared in contributions.assets to prove the allowlist still gates.
+// TILES must be DISTINCT bytes from ICON or the ETag assertions cannot tell
+// which file the route actually served (review finding). 1×1 grayscale PNG.
+const TILES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
+const TILEMAP = JSON.stringify({ zone: "cache-probe", w: 2, h: 2, tiles: [0, 1, 1, 0] });
+const SECRET = "not servable\n";
 
 const sha256 = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
 
 function writeFixture(version: string, clientSource: string) {
   const versionRoot = join(packagesRoot, "versions", "cache-probe", version);
-  mkdirSync(versionRoot, { recursive: true });
+  mkdirSync(join(versionRoot, "art"), { recursive: true });
   writeFileSync(join(versionRoot, "client.js"), clientSource);
   writeFileSync(join(versionRoot, "icon.png"), ICON);
+  writeFileSync(join(versionRoot, "art", "tiles.png"), TILES);
+  writeFileSync(join(versionRoot, "art", "zone.json"), TILEMAP);
+  writeFileSync(join(versionRoot, "art", "secret.png"), SECRET);
   const manifest = {
-    schemaVersion: 1,
+    // schemaVersion 2: contributions.assets is gated on capabilityApi ≥ 1.10,
+    // which only the v2 manifest variant can declare.
+    schemaVersion: 2,
+    capabilityApi: { major: 1, minor: 10 },
+    builtAgainst: { engineVersion: "2.4.3", engineCommit: "a".repeat(40) },
     id: "cache-probe",
     name: "Cache Probe",
     version,
@@ -45,10 +63,17 @@ function writeFixture(version: string, clientSource: string) {
     contributions: {
       slots: ["home-browser-tab"],
       homeBrowserTab: { label: "Cache Probe", iconPaths: ["icon.png"] },
+      // General asset delivery (#5091): nested image + JSON metadata.
+      assets: { paths: ["art/tiles.png", "art/zone.json"] },
     },
     files: [
       { path: "client.js", sha256: sha256(clientSource), bytes: Buffer.byteLength(clientSource) },
       { path: "icon.png", sha256: sha256(ICON), bytes: ICON.byteLength },
+      { path: "art/tiles.png", sha256: sha256(TILES), bytes: TILES.byteLength },
+      { path: "art/zone.json", sha256: sha256(TILEMAP), bytes: Buffer.byteLength(TILEMAP) },
+      // On disk AND hash-pinned, but NOT in contributions.assets/iconPaths —
+      // must stay unservable.
+      { path: "art/secret.png", sha256: sha256(SECRET), bytes: Buffer.byteLength(SECRET) },
     ],
     permissions: [],
     restartRequired: false,
@@ -138,22 +163,21 @@ async function main() {
   assert.equal(assetPlain.headers.etag, iconEtag);
   assert.equal(assetPlain.headers["ratelimit-limit"], "240", "asset serving shares the package-files rate bucket");
 
-  const assetPinned = await app.inject({
-    method: "GET",
-    url: "/api/capability-packages/cache-probe/assets/icon.png?v=1.0.0",
-  });
-  assert.equal(assetPinned.statusCode, 200);
-  assert.equal(
-    assetPinned.headers["cache-control"],
-    "public, max-age=31536000, immutable",
-    "a version-pinned asset request is content-addressed and may cache forever",
-  );
-
-  const assetWrongPin = await app.inject({
-    method: "GET",
-    url: "/api/capability-packages/cache-probe/assets/icon.png?v=9.9.9",
-  });
-  assert.equal(assetWrongPin.headers["cache-control"], "private, no-cache, must-revalidate");
+  // ?v= is a cache-key convenience only — it must NEVER upgrade the policy to
+  // immutable: install policy permits same-version republishing with different
+  // bytes, so a version-tagged URL is not content-addressed (review finding).
+  for (const query of ["?v=1.0.0", "?v=9.9.9", ""]) {
+    const assetAnyQuery = await app.inject({
+      method: "GET",
+      url: `/api/capability-packages/cache-probe/assets/icon.png${query}`,
+    });
+    assert.equal(assetAnyQuery.statusCode, 200);
+    assert.equal(
+      assetAnyQuery.headers["cache-control"],
+      "private, no-cache, must-revalidate",
+      `asset responses always revalidate (query: "${query}")`,
+    );
+  }
 
   const assetRevalidated = await app.inject({
     method: "GET",
@@ -166,6 +190,85 @@ async function main() {
     "nosniff",
     "nosniff must survive the 304 early return",
   );
+
+  // ── contributions.assets (#5091): declared general assets serve with the
+  //    same verification + caching chain as icons ──
+  const tilesRes = await app.inject({
+    method: "GET",
+    url: "/api/capability-packages/cache-probe/assets/art/tiles.png?v=1.0.0",
+  });
+  assert.equal(tilesRes.statusCode, 200, "a declared contributions.assets image must serve");
+  assert.equal(tilesRes.headers["content-type"], "image/png");
+  assert.equal(tilesRes.headers["cache-control"], "private, no-cache, must-revalidate");
+  assert.equal(tilesRes.headers.etag, `"${sha256(TILES)}"`);
+  assert.ok(TILES.equals(tilesRes.rawPayload), "the served body must be the hash-verified declared bytes");
+
+  const tilemapRes = await app.inject({
+    method: "GET",
+    url: "/api/capability-packages/cache-probe/assets/art/zone.json",
+  });
+  assert.equal(tilemapRes.statusCode, 200, "declared JSON metadata must serve");
+  assert.equal(tilemapRes.headers["content-type"], "application/json; charset=utf-8");
+  assert.equal(tilemapRes.headers["x-content-type-options"], "nosniff");
+  assert.equal(tilemapRes.body, TILEMAP);
+
+  const secretRes = await app.inject({
+    method: "GET",
+    url: "/api/capability-packages/cache-probe/assets/art/secret.png",
+  });
+  assert.equal(secretRes.statusCode, 404, "a file on disk and in files[] but NOT declared must stay unservable");
+
+  // Traversal, two layers deep. At the HTTP layer the framework collapses
+  // dot-segments before routing, so a %2e%2e URL can only ever reach the
+  // DECLARED asset — pin that it serves exactly those bytes and nothing else.
+  const collapsedRes = await app.inject({
+    method: "GET",
+    url: "/api/capability-packages/cache-probe/assets/art/%2e%2e/art/tiles.png",
+  });
+  assert.equal(collapsedRes.statusCode, 200, "the framework collapses dot-segments to the declared path");
+  assert.equal(collapsedRes.headers.etag, `"${sha256(TILES)}"`, "a collapsed URL must serve the declared bytes only");
+  // The resolver's own containment (independent of framework normalization):
+  // dot-segment and escape paths must resolve to nothing, never throw.
+  const { capabilityPackageManager } = await import(
+    "../../packages/server/src/services/capability-packages/package-manager.service.js"
+  );
+  assert.equal(await capabilityPackageManager.packageAsset("cache-probe", "art/../art/tiles.png"), null);
+  assert.equal(await capabilityPackageManager.packageAsset("cache-probe", "../installed.json"), null);
+
+  const manifestJsonRes = await app.inject({
+    method: "GET",
+    url: "/api/capability-packages/cache-probe/assets/manifest.json",
+  });
+  assert.equal(manifestJsonRes.statusCode, 404, "the in-package manifest itself must never be servable");
+
+  // Schema gates (install-time): active document extensions are rejected, and a
+  // declared asset missing from files[] fails the manifest, not runtime 404s.
+  const { capabilityPackageManifestSchema } = await import(
+    "../../packages/shared/src/schemas/capability-package.schema.js"
+  );
+  const svgAttempt = capabilityPackageManifestSchema.safeParse({
+    ...manifestV1,
+    contributions: { ...manifestV1.contributions, assets: { paths: ["art/vector.svg"] } },
+  });
+  assert.equal(svgAttempt.success, false, "svg (an active document) must be rejected by the schema");
+  const unpinnedAttempt = capabilityPackageManifestSchema.safeParse({
+    ...manifestV1,
+    contributions: { ...manifestV1.contributions, assets: { paths: ["art/ghost.png"] } },
+  });
+  assert.equal(unpinnedAttempt.success, false, "a declared asset absent from files[] must fail at install");
+  // The 1.10 gate: assets on a v2 manifest declaring an older capabilityApi, or
+  // on a v1 manifest (which cannot declare one at all), must fail with the
+  // versioned message rather than shipping an undeclared 1.10 dependency.
+  const tooOldApiAttempt = capabilityPackageManifestSchema.safeParse({
+    ...manifestV1,
+    capabilityApi: { major: 1, minor: 9 },
+  });
+  assert.equal(tooOldApiAttempt.success, false, "contributions.assets must require capabilityApi ≥ 1.10");
+  const { capabilityApi: _api, builtAgainst: _built, ...v1Fields } = manifestV1;
+  const v1WithAssets = capabilityPackageManifestSchema.safeParse({ ...v1Fields, schemaVersion: 1 });
+  assert.equal(v1WithAssets.success, false, "a schemaVersion 1 manifest cannot declare contributions.assets");
+  const validManifest = capabilityPackageManifestSchema.safeParse(manifestV1);
+  assert.equal(validManifest.success, true, "the fixture manifest itself must parse");
 
   // ── update: new bytes under a new version yield a NEW validator, and the
   //    old validator no longer short-circuits to 304 ──
@@ -186,9 +289,9 @@ async function main() {
   assert.equal(unknown.statusCode, 404);
   const undeclared = await app.inject({
     method: "GET",
-    url: "/api/capability-packages/cache-probe/assets/manifest.json",
+    url: "/api/capability-packages/cache-probe/assets/client.js",
   });
-  assert.equal(undeclared.statusCode, 404, "only declared image assets are servable");
+  assert.equal(undeclared.statusCode, 404, "files outside the asset allowlist (and active types) are not servable");
 
   await app.close();
   console.log("capability-package-cache regression passed");

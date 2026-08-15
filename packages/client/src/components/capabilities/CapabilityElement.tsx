@@ -400,12 +400,17 @@ export function CapabilityElement({
   const localizedCapabilityProps = useMemo(
     () => ({
       ...(capabilityProps ?? {}),
+      // Package identity, so a bundle can build version-pinned asset URLs
+      // (`/api/capability-packages/<id>/assets/<path>?v=<version>` → immutable
+      // caching) without re-fetching /installed or scraping import.meta.url.
+      packageId,
+      packageVersion: clientModule.version ?? null,
       localization: {
         locale,
         direction,
       } satisfies CapabilityLocalizationContext,
     }),
-    [capabilityProps, direction, locale],
+    [capabilityProps, clientModule.version, direction, locale, packageId],
   );
 
   useEffect(() => {

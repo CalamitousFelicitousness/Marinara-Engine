@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { BUILT_IN_AGENT_MANIFESTS } from "@marinara-engine/shared";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
@@ -103,34 +102,29 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
       return reply.status(304).send();
     }
     reply.header("Content-Type", "text/javascript; charset=utf-8");
-    return reply.send(await readFile(entrypoint.file));
+    // The verification step already read and hashed these exact bytes.
+    return reply.send(entrypoint.data);
   });
-  app.get<{ Params: { id: string; "*": string }; Querystring: { v?: string } }>(
-    "/:id/assets/*",
-    async (request, reply) => {
-      const { id, "*": assetPath } = packageAssetParams.parse(request.params);
-      const asset = await capabilityPackageManager.browserTabAsset(id, assetPath);
-      if (!asset) return reply.status(404).send({ error: "Active package asset not found" });
-      const etag = packageFileEtag(asset.sha256);
-      // A request that pins the installed version may cache the bytes forever:
-      // path + version + manifest hash identify them exactly. Any other request
-      // keeps today's always-revalidate behaviour byte-for-byte.
-      const requestedVersion = typeof request.query?.v === "string" ? request.query.v : null;
-      reply.header(
-        "Cache-Control",
-        requestedVersion === asset.installed.version
-          ? "public, max-age=31536000, immutable"
-          : "private, no-cache, must-revalidate",
-      );
-      reply.header("ETag", etag);
-      reply.header("X-Content-Type-Options", "nosniff");
-      if (ifNoneMatchSatisfied(request.headers["if-none-match"], etag)) {
-        return reply.status(304).send();
-      }
-      reply.header("Content-Type", asset.contentType);
-      return reply.send(await readFile(asset.file));
-    },
-  );
+  app.get<{ Params: { id: string; "*": string } }>("/:id/assets/*", async (request, reply) => {
+    const { id, "*": assetPath } = packageAssetParams.parse(request.params);
+    const asset = await capabilityPackageManager.packageAsset(id, assetPath);
+    if (!asset) return reply.status(404).send({ error: "Active package asset not found" });
+    const etag = packageFileEtag(asset.sha256);
+    // Never `immutable`: install policy permits republishing the SAME version
+    // with different bytes (assertNotDowngrade refuses only lower versions),
+    // and the URL carries no content digest — an immutable response could pin
+    // stale art for a year. no-cache + the hash ETag keeps revalidation cheap:
+    // an unchanged asset answers 304 with no body.
+    reply.header("Cache-Control", "private, no-cache, must-revalidate");
+    reply.header("ETag", etag);
+    reply.header("X-Content-Type-Options", "nosniff");
+    if (ifNoneMatchSatisfied(request.headers["if-none-match"], etag)) {
+      return reply.status(304).send();
+    }
+    reply.header("Content-Type", asset.contentType);
+    // The verification step read and hashed these exact bytes.
+    return reply.send(asset.data);
+  });
   app.post<{ Params: { id: string }; Body: { expectedVersion: string; expectedArtifactSha256: string } }>(
     "/:id/install",
     async (request, reply) => {

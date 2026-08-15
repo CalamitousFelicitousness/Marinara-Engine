@@ -501,6 +501,24 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "slurp_posts", child: "slurp_interactions", parentKey: "id", childKey: "postId" },
     { parent: "slurp_posts", child: "slurp_creator_reply_claims", parentKey: "id", childKey: "postId" },
     {
+      parent: "slurp_interactions",
+      child: "slurp_interactions",
+      parentKey: "id",
+      childKey: "parentInteractionId",
+    },
+    {
+      parent: "slurp_interactions",
+      child: "slurp_creator_reply_claims",
+      parentKey: "id",
+      childKey: "parentInteractionId",
+    },
+    {
+      parent: "slurp_interactions",
+      child: "slurp_creator_reply_claims",
+      parentKey: "id",
+      childKey: "replyInteractionId",
+    },
+    {
       parent: "slurp_accounts",
       child: "slurp_creator_reply_claims",
       parentKey: "id",

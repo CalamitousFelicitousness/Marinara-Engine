@@ -91,6 +91,7 @@ function CustomFieldList({
         >
           {fields.map((field, index) => {
             const allowWrap = readableValues && isLongCustomField(field);
+            const valuePreviewLineCount = trackerPanelSizeProfile === "expanded" ? 4 : 3;
             const valueText = visibleText(field.value, "");
             const numericValue = isNumericCustomFieldValue(valueText);
             const valueTypography = numericValue ? "tabular-nums" : undefined;
@@ -107,7 +108,7 @@ function CustomFieldList({
                 className={cn(
                   "group/field relative grid min-h-7 grid-cols-[minmax(5.5rem,0.42fr)_minmax(0,1fr)] items-center gap-2 border-b border-[var(--border)]/28 px-1 py-1 text-[0.6875rem] leading-[0.875rem] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]",
                   trackerPanelSizeProfile !== "compact" &&
-                    "grid-cols-[minmax(7rem,0.45fr)_minmax(0,1fr)]",
+                    "grid-cols-[5.5rem_minmax(0,1fr)]",
                   allowWrap && "leading-[0.95rem]",
                   useFieldColumns &&
                     index % 2 === 0 &&
@@ -154,8 +155,7 @@ function CustomFieldList({
                       valueTypography,
                       allowWrap ? "min-h-5 leading-[1.15]" : undefined,
                     )}
-                    twoLinePreview={allowWrap}
-                    previewLineCount={allowWrap ? 2 : undefined}
+                    previewLineCount={allowWrap ? valuePreviewLineCount : undefined}
                     previewClassName={allowWrap ? "leading-[1.25]" : undefined}
                     scrollOnHover={!allowWrap}
                     showEditHint={false}
@@ -168,7 +168,11 @@ function CustomFieldList({
                     className={cn(
                       "min-w-0 px-0.5 py-0 text-left text-[var(--foreground)]",
                       valueTypography,
-                      allowWrap ? "line-clamp-2 break-words leading-[1.15]" : "truncate",
+                      allowWrap
+                        ? trackerPanelSizeProfile === "expanded"
+                          ? "line-clamp-4 break-words leading-[1.15]"
+                          : "line-clamp-3 break-words leading-[1.15]"
+                        : "truncate",
                     )}
                   >
                     {visibleText(field.value, "Empty")}

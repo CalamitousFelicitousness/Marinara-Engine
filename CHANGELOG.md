@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Improved Tracker Panel readability by giving long custom values more room to wrap and making the side control read as a neutral action instead of a selected mode (#3470).
 - Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
 - Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
 - Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).

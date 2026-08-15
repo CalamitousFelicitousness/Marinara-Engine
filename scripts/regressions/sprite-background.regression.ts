@@ -209,3 +209,37 @@ assert.equal(pixelAt(transparentOutput.data, width, 0, 0).alpha, 0);
 assert.equal(pixelAt(transparentOutput.data, width, 20, 20).blue, 220);
 
 console.info("Sprite background regression passed.");
+
+// ── styleProfileId threading (#5095) ─────────────────────────────────────────
+// The sprite compiler must honor an explicit per-request style profile, keep
+// byte-identical output when the field is absent, and degrade unknown ids the
+// same way the gallery path does (findImageStyleProfile falls back gracefully).
+{
+  const { compileSpritePrompt } = await import("../../packages/server/src/routes/sprites.routes.js");
+  const { normalizeImageStyleProfileSettings, findImageStyleProfile } = await import(
+    "../../packages/shared/src/constants/image-style-profiles.js"
+  );
+  const settings = normalizeImageStyleProfileSettings(null);
+  const nonDefault = settings.profiles.find((profile) => profile.id !== settings.defaultProfileId);
+  assert.ok(nonDefault, "built-in profiles must include a non-default profile for this regression");
+
+  const base = { appearance: "a test subject", styleProfiles: settings };
+  const omitted = compileSpritePrompt("sprite of the subject", base);
+  const explicitDefault = compileSpritePrompt("sprite of the subject", {
+    ...base,
+    styleProfileId: settings.defaultProfileId,
+  });
+  assert.deepEqual(explicitDefault, omitted, "explicitly passing the default profile must equal omitting the field");
+
+  const overridden = compileSpritePrompt("sprite of the subject", { ...base, styleProfileId: nonDefault.id });
+  assert.notDeepEqual(overridden, omitted, "an explicit non-default profile must change the compiled prompt");
+
+  const unknown = compileSpritePrompt("sprite of the subject", { ...base, styleProfileId: "no-such-profile" });
+  const fallbackProfile = findImageStyleProfile(settings, "no-such-profile");
+  const fallbackDirect = compileSpritePrompt("sprite of the subject", { ...base, styleProfileId: fallbackProfile.id });
+  assert.deepEqual(unknown, fallbackDirect, "unknown ids must degrade exactly like findImageStyleProfile");
+
+  const blank = compileSpritePrompt("sprite of the subject", { ...base, styleProfileId: "   " });
+  assert.deepEqual(blank, omitted, "a blank styleProfileId must behave like an omitted one");
+  console.log("sprite styleProfileId threading regression passed");
+}

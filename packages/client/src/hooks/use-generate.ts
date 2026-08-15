@@ -29,6 +29,11 @@ import {
   takeTypewriterCharacters,
 } from "../lib/generation-stream-policy";
 import { requestChatScrollToBottom } from "../lib/chat-scroll-events";
+import {
+  TTS_AUTOPLAY_MESSAGE_READY_EVENT,
+  type TTSAutoplayMessage,
+  type TTSAutoplayMessageReadyDetail,
+} from "../lib/tts-autoplay";
 import { startSceneWithPromptPreferences } from "../lib/scene-generation";
 import { waitForPendingChatMetadataSaves } from "../lib/chat-metadata-save-barrier";
 import { agentKeys } from "./use-agents";
@@ -2431,6 +2436,17 @@ export function useGenerate() {
                 rememberContinuedMessageContent(savedMessage);
               }
               upsertPersistedMessages(qc, params.chatId, [savedMessage]);
+              break;
+            }
+
+            case "assistant_message_ready": {
+              const message = event.data as TTSAutoplayMessage;
+              if (!message?.id || !message.content?.trim()) break;
+              window.dispatchEvent(
+                new CustomEvent<TTSAutoplayMessageReadyDetail>(TTS_AUTOPLAY_MESSAGE_READY_EVENT, {
+                  detail: { chatId: params.chatId, message },
+                }),
+              );
               break;
             }
 

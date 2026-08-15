@@ -12,6 +12,7 @@ import {
   buildOfficialPocketTtsForm,
   buildElevenLabsTextInput,
   buildRoleplaySpeakerExtractorPrompt,
+  buildRoleplaySpeakerExtractorUserPrompt,
   maskTTSConfigForResponse,
   fetchAllElevenLabsVoiceOptions,
   fetchElevenLabsVoiceOptions,
@@ -316,6 +317,9 @@ assert.match(
   }),
   /"tone":"emotion"/,
 );
+const responsesCompatibleExtractorInput = buildRoleplaySpeakerExtractorUserPrompt('Columbina says, "Sing."');
+assert.match(responsesCompatibleExtractorInput, /\bjson\b/u);
+assert.match(responsesCompatibleExtractorInput, /Message to prepare:\nColumbina says, "Sing\."/u);
 
 const reportedLongRoleplayMessage = `Columbina guides the clam’s narrow hinge into the freshly scored bolt.
 

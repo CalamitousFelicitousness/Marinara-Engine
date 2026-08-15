@@ -284,6 +284,12 @@ Example output:
 {"dialogue":[{"speaker":"Dottore","text":"\\\"I've had enough of your shenanigans,\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Dottore","text":"\\\"You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen.\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Mari","text":"\\\"Skill issue,\\\""${input.includeEmotions ? ',"tone":"chuckle"' : ""}}]}`;
 }
 
+export function buildRoleplaySpeakerExtractorUserPrompt(message: string): string {
+  // Some Responses-compatible providers validate only input messages, not
+  // system instructions, before allowing json_object response formatting.
+  return `Return the extracted dialogue as a json object matching the requested schema.\n\nMessage to prepare:\n${message}`;
+}
+
 function extractJsonObject(value: string): string {
   const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
   if (fenced) return fenced;
@@ -1118,7 +1124,7 @@ export async function ttsRoutes(app: FastifyInstance) {
       characters: input.characters,
       includeEmotions,
     });
-    const userPrompt = `Message to prepare:\n${input.message}`;
+    const userPrompt = buildRoleplaySpeakerExtractorUserPrompt(input.message);
     logDebugOverride(input.debugMode, "[debug/tts/speaker-extractor] system prompt:\n%s", systemPrompt);
     logDebugOverride(input.debugMode, "[debug/tts/speaker-extractor] user prompt:\n%s", userPrompt);
 

@@ -12,6 +12,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Started TTS autoplay as soon as assistant text is finalized instead of waiting for Illustrator, trackers, summaries, or other non-rewriting agents; active message-rewrite agents such as Prose Guardian and Continuity Checker still finish first (#5059).
+- Made the Roleplay speaker extractor's structured-output request compatible with Responses API providers that require the input message itself to mention `json` (#5059).
 - Kept long Roleplay speaker-extractor readings complete by packing narration into normal-sized requests, generating queued clips serially, and stopping visibly on a failed clip instead of silently skipping parts of the message (#5059).
 - Gave each character voice assignment its own roomy stacked controls, removed hollow trailing dropdown controls, and kept empty character guidance on semantic theme colors.
 - Improved Tracker Panel readability by giving long custom values more room to wrap and making the side control read as a neutral action instead of a selected mode (#3470).

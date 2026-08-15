@@ -7234,6 +7234,59 @@ export async function generateRoutes(app: FastifyInstance) {
           allResponses.push(fullResponse);
         }
 
+        const combinedResponse = allResponses.join("\n\n");
+        const completedResponse = continuedMessageRewriteSource ?? combinedResponse;
+        const continuedTargetIndex = input.continueMessageId
+          ? chatMessages.findIndex((message) => message.id === input.continueMessageId)
+          : -1;
+        const postActivationMessages =
+          continuedTargetIndex >= 0
+            ? chatMessages.map((message, index) =>
+                index === continuedTargetIndex ? { ...message, content: completedResponse } : message,
+              )
+            : [...chatMessages, { role: "assistant", content: completedResponse }];
+        const inactivePostProcessingAgentIds = new Set<string>();
+        for (const agent of resolvedAgents) {
+          if (agent.phase !== "post_processing" || builtInAgentTypes.has(agent.type)) continue;
+          const activation = matchCustomAgentActivation(agent.settings, postActivationMessages);
+          if (!activation.configured || activation.matched) continue;
+          inactivePostProcessingAgentIds.add(agent.id);
+          logger.debug(
+            "[agents] Skipping custom agent %s because no activation keywords matched in the completed response window of %d messages",
+            agent.type,
+            activation.scanDepth,
+          );
+        }
+        if (inactivePostProcessingAgentIds.size > 0) {
+          for (let index = resolvedAgents.length - 1; index >= 0; index--) {
+            if (inactivePostProcessingAgentIds.has(resolvedAgents[index]!.id)) resolvedAgents.splice(index, 1);
+          }
+          for (let index = pipelineAgents.length - 1; index >= 0; index--) {
+            if (inactivePostProcessingAgentIds.has(pipelineAgents[index]!.id)) pipelineAgents.splice(index, 1);
+          }
+        }
+        const activatedTextRewriteRunAgents = textRewriteRunAgents.filter(
+          (agent) => !inactivePostProcessingAgentIds.has(agent.id),
+        );
+        let assistantMessageReadySent = false;
+        const sendAssistantMessageReady = async () => {
+          if (assistantMessageReadySent || abortController.signal.aborted || input.impersonate) return;
+          const messageId = (lastSavedMsg as { id?: unknown } | null)?.id;
+          if (typeof messageId !== "string" || !messageId) return;
+          const readyMessage = await chats.getMessage(messageId);
+          if (!readyMessage || readyMessage.role !== "assistant") return;
+          assistantMessageReadySent = trySendSseEvent(reply, {
+            type: "assistant_message_ready",
+            data: readyMessage,
+          });
+        };
+
+        // Speech uses only the assistant message. Do not hold it behind
+        // Illustrator, trackers, summaries, or other non-rewriting agents.
+        if (activatedTextRewriteRunAgents.length === 0) {
+          await sendAssistantMessageReady();
+        }
+
         // ────────────────────────────────────────
         // Collect parallel results + Phase 3: Post-processing agents
         // ────────────────────────────────────────
@@ -7300,40 +7353,6 @@ export async function generateRoutes(app: FastifyInstance) {
           }
         }
 
-        const combinedResponse = allResponses.join("\n\n");
-        const completedResponse = continuedMessageRewriteSource ?? combinedResponse;
-        const continuedTargetIndex = input.continueMessageId
-          ? chatMessages.findIndex((message) => message.id === input.continueMessageId)
-          : -1;
-        const postActivationMessages =
-          continuedTargetIndex >= 0
-            ? chatMessages.map((message, index) =>
-                index === continuedTargetIndex ? { ...message, content: completedResponse } : message,
-              )
-            : [...chatMessages, { role: "assistant", content: completedResponse }];
-        const inactivePostProcessingAgentIds = new Set<string>();
-        for (const agent of resolvedAgents) {
-          if (agent.phase !== "post_processing" || builtInAgentTypes.has(agent.type)) continue;
-          const activation = matchCustomAgentActivation(agent.settings, postActivationMessages);
-          if (!activation.configured || activation.matched) continue;
-          inactivePostProcessingAgentIds.add(agent.id);
-          logger.debug(
-            "[agents] Skipping custom agent %s because no activation keywords matched in the completed response window of %d messages",
-            agent.type,
-            activation.scanDepth,
-          );
-        }
-        if (inactivePostProcessingAgentIds.size > 0) {
-          for (let index = resolvedAgents.length - 1; index >= 0; index--) {
-            if (inactivePostProcessingAgentIds.has(resolvedAgents[index]!.id)) resolvedAgents.splice(index, 1);
-          }
-          for (let index = pipelineAgents.length - 1; index >= 0; index--) {
-            if (inactivePostProcessingAgentIds.has(pipelineAgents[index]!.id)) pipelineAgents.splice(index, 1);
-          }
-        }
-        const activatedTextRewriteRunAgents = textRewriteRunAgents.filter(
-          (agent) => !inactivePostProcessingAgentIds.has(agent.id),
-        );
         const hasPostProcessingAgents = resolvedAgents.some((a) => a.phase === "post_processing");
         agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers ? allResponseSegments : undefined;
         let lorebookKeeperProcessedMessageId = "";
@@ -9516,6 +9535,12 @@ export async function generateRoutes(app: FastifyInstance) {
               })}\n\n`,
             );
           }
+        }
+
+        // Rewriting agents own the final spoken text, so wait for their
+        // persisted edit (or no-op result) before releasing TTS.
+        if (activatedTextRewriteRunAgents.length > 0) {
+          await sendAssistantMessageReady();
         }
 
         if (!recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {

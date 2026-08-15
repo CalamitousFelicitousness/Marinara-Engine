@@ -462,6 +462,7 @@ export async function snapshotLauncherData({
   const backupName = `update-${timestamp}-${process.pid}`;
   const incompleteDir = resolve(backupRoot, `.incomplete-${backupName}`);
   const backupDir = resolve(backupRoot, backupName);
+  const capabilityRuntimeLink = resolve(dataDir, "capability-packages", "node_modules");
 
   await rm(incompleteDir, { recursive: true, force: true });
   try {
@@ -470,6 +471,7 @@ export async function snapshotLauncherData({
       recursive: true,
       preserveTimestamps: true,
       errorOnExist: true,
+      filter: (source) => resolve(source) !== capabilityRuntimeLink,
     });
     await writeFile(
       resolve(incompleteDir, "manifest.json"),

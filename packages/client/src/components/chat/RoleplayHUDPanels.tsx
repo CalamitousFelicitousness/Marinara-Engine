@@ -36,7 +36,7 @@ import {
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useAgentConfigs, useUpdateAgent, type AgentConfigRow } from "../../hooks/use-agents";
-import { ROLEPLAY_POPOVER_HEADER, ROLEPLAY_POPOVER_TITLE } from "./roleplay-popover-styles";
+import { NEUTRAL_PANEL_HEADER, NEUTRAL_PANEL_TITLE } from "../ui/neutral-surface-styles";
 import { coerceStatNumber, getStatPercent } from "../../features/tracker-panel/lib/tracker-stat-layout";
 import type {
   CharacterStat,
@@ -382,8 +382,8 @@ export function CombinedPlayerPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <Swords size="0.625rem" className="text-orange-400/80" /> {localizeUi("ui.chat.combinedplayerpanel.trackers")}</span>
         <span className="flex items-center gap-1">
           <HudLockModeToggle />
@@ -802,8 +802,8 @@ export function PersonaStatsPanel({
           onToggleLock={statusLock.onToggle}
         />
       </div>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>{localizeUi("ui.chat.personastatswidget.personaStats")}</span>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>{localizeUi("ui.chat.personastatswidget.personaStats")}</span>
         <span className="flex items-center gap-1">
           <TrackerSectionRefresh
             agentType="persona-stats"
@@ -962,8 +962,8 @@ export function CharactersPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <Users size="0.625rem" className="text-sky-400/80" /> {localizeUi("ui.chat.characterswidget.presentCharacters")}</span>
         <div className="flex items-center gap-2">
           <TrackerSectionRefresh
@@ -1213,8 +1213,8 @@ export function InventoryPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <Package size="0.625rem" className="text-amber-400/80" /> {localizeUi("ui.chat.combinedplayerpanel.inventory")}{items.length})
         </span>
         <span className="flex items-center gap-1">
@@ -1307,8 +1307,8 @@ export function QuestsPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <Scroll size="0.625rem" className="text-emerald-400/80" /> {localizeUi("ui.chat.combinedplayerpanel.quests")}{quests.length})
         </span>
         <span className="flex items-center gap-1">
@@ -1384,8 +1384,8 @@ export function CustomTrackerPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <SlidersHorizontal size="0.625rem" className="text-[var(--muted-foreground)]" />{" "}
           {localizeUi("ui.chat.customtrackerpanel.customTrackerValue1", { value1: fields.length })}
         </span>
@@ -1509,8 +1509,8 @@ export function CombinedWorldPanel({
 
   return (
     <>
-      <div className={cn(ROLEPLAY_POPOVER_HEADER, "flex items-center justify-between")}>
-        <span className={ROLEPLAY_POPOVER_TITLE}>
+      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
+        <span className={NEUTRAL_PANEL_TITLE}>
           <CloudSun size="0.625rem" className="text-sky-400/80" /> {localizeUi("ui.panels.appearancesettings.worldState")}</span>
         <span className="flex items-center gap-1">
           <TrackerSectionRefresh

@@ -98,7 +98,7 @@ assert.match(
   "The durable user row must retain its client submission ID even when generation fails",
 );
 const upsertPersistedMessagesSource =
-  /export function upsertPersistedMessages\([\s\S]*?\n\}\n\nfunction appendMissingPersistedMessages/u.exec(
+  /export function upsertPersistedMessages\([\s\S]*?\n\}\s*function appendMissingPersistedMessages/u.exec(
     useGenerateSource,
   )?.[0];
 assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement helper must remain available");

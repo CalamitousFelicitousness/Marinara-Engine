@@ -7831,6 +7831,17 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
 // image and video API-format workflows without clipping slider LoRA strengths
 // to the legacy -2..2 range.
 {
+  const normalizedBounds = normalizeComfyUiLoraSettings([
+    { model: "upper-endpoint.safetensors", strength: 100 },
+    { model: "lower-endpoint.safetensors", strength: -100 },
+    { model: "above-range.safetensors", strength: 101 },
+    { model: "below-range.safetensors", strength: -101 },
+  ]);
+  assert.deepEqual(
+    normalizedBounds.map(({ strength }) => strength),
+    [100, -100, 100, -100],
+  );
+
   const normalized = normalizeComfyUiLoraSettings([
     { model: "style-a.safetensors", strength: 1.25 },
     { model: "style-b.safetensors", strength: 99 },

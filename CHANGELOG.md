@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Let Professor Mari read your chat history: attach a chat from the composer's attach menu — sharing all, a range, or the last N messages — so Mari can see your roleplay and give grounded feedback, with a Context Viewer to review and remove what's attached to free up tokens (#5073).
 - Expanded Haptic Feedback to Conversation, Roleplay, and Game with capability-aware device descriptions, the full `0.0-1.0` intensity range, every Intiface output type, and named patterns for scalar and positional pumping actions.
 - Added an optional Roleplay speaker extractor for TTS autoplay that uses a dedicated connection to queue narration and exact dialogue with assigned character voices, stable Random NPC Voices fallbacks, and optional emotion cues.
 - Added an on-demand Advanced Settings storage optimizer that scans for old, unreferenced avatar images and deletes them only after an explicit confirmation (#5039).

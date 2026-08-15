@@ -20,6 +20,8 @@ import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../llm/local-sidec
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createMariInstructionsStorage } from "../storage/mari-instructions.storage.js";
 import { renderMariMemoryPrompt } from "./mari-instructions-prompt.js";
+import { createMariWorkspaceContextStorage } from "../storage/mari-workspace-context.storage.js";
+import { renderMariWorkspaceContextPrompt } from "./mari-workspace-context-prompt.js";
 import { isMemoryRecallVectorizerAvailable } from "../memory-recall-embedding.js";
 import { mergeCustomParameters, normalizeServiceTier } from "../../routes/generate/generate-route-utils.js";
 import {
@@ -2249,6 +2251,7 @@ export class ProfessorMariWorkspaceService {
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
     const skillsPrompt = await this.buildSkillsPrompt();
     const instructionsPrompt = await this.buildInstructionsPrompt();
+    const attachedContextPrompt = await this.buildAttachedContextPrompt(chatId);
     let embeddingModelConfigured = false;
     try {
       embeddingModelConfigured = await isMemoryRecallVectorizerAvailable(this.app.db, { connectionId: connection.id });
@@ -2294,6 +2297,12 @@ export class ProfessorMariWorkspaceService {
         ...(role === "user" && files.length > 0 ? { files } : {}),
       });
     }
+    // #5073: user-attached reference context (chat-history slices). contextKind:'injection' so the
+    // trimmer preserves it (unlike 'history'), keeping it readable regardless of message age; the
+    // renderer self-bounds its total size. Placed before continuity so the latest turn stays closest.
+    if (attachedContextPrompt) {
+      messages.push({ role: "system", content: attachedContextPrompt, contextKind: "injection" });
+    }
     if (continuityPrompt) messages.push({ role: "system", content: continuityPrompt, contextKind: "injection" });
     return messages;
   }
@@ -2332,6 +2341,16 @@ ${sections.join("\n\n")}
       return renderMariMemoryPrompt(rows);
     } catch (err) {
       logger.warn(err, "Professor Mari: failed to read saved memories");
+      return null;
+    }
+  }
+
+  private async buildAttachedContextPrompt(chatId: string): Promise<string | null> {
+    try {
+      const rows = await createMariWorkspaceContextStorage(this.app.db).listForChat(chatId);
+      return renderMariWorkspaceContextPrompt(rows);
+    } catch (err) {
+      logger.warn(err, "Professor Mari: failed to read attached workspace context");
       return null;
     }
   }

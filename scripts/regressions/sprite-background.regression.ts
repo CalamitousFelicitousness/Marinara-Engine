@@ -10,6 +10,7 @@ import {
   resolveSpriteNativeTransparency,
   resolveSpriteSheetCanvas,
 } from "../../packages/server/src/routes/sprites.routes.js";
+import type { ImageGenerationDefaultsProfile } from "../../packages/shared/src/types/image-generation-defaults.js";
 
 // Resolve the optional native dependency from the server package where it is
 // declared instead of from this root-level regression script.
@@ -241,5 +242,40 @@ console.info("Sprite background regression passed.");
 
   const blank = compileSpritePrompt("sprite of the subject", { ...base, styleProfileId: "   " });
   assert.deepEqual(blank, omitted, "a blank styleProfileId must behave like an omitted one");
+
+  // Connection-scoped default: imageDefaults.styleProfileId is the middle link of
+  // the compiler's `explicit ?? connection default ?? user default` chain, which the
+  // `base` object (no imageDefaults) never exercises. A styleProfileId-only defaults
+  // object is prompt/negative-prefix-neutral (the prefixes come from the per-service
+  // sub-objects, left unset here), so its only effect on the compiled prompt is which
+  // profile the chain resolves to.
+  const connectionDefault: ImageGenerationDefaultsProfile = {
+    version: 1,
+    service: "automatic1111",
+    seed: 0,
+    styleProfileId: nonDefault.id,
+  };
+  const viaConnectionDefault = compileSpritePrompt("sprite of the subject", { ...base, imageDefaults: connectionDefault });
+  assert.deepEqual(
+    viaConnectionDefault,
+    overridden,
+    "omitting styleProfileId must fall back to the connection's imageDefaults.styleProfileId",
+  );
+  assert.notDeepEqual(
+    viaConnectionDefault,
+    omitted,
+    "the connection default must move the compiled prompt off the user's default profile",
+  );
+
+  const explicitOverridesConnectionDefault = compileSpritePrompt("sprite of the subject", {
+    ...base,
+    imageDefaults: connectionDefault,
+    styleProfileId: settings.defaultProfileId,
+  });
+  assert.deepEqual(
+    explicitOverridesConnectionDefault,
+    omitted,
+    "an explicit styleProfileId must override the connection's imageDefaults.styleProfileId",
+  );
   console.log("sprite styleProfileId threading regression passed");
 }

@@ -5511,14 +5511,14 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     expect(Math.abs(chatScrollAfter!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(chatScrollAfter!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
 
-    const expectedWidth = Math.min(420, Math.floor(chatColumnAfter!.x - mainBox!.x - 8));
+    const expectedWidth = Math.max(0, Math.min(420, Math.floor(chatColumnAfter!.x - mainBox!.x - 8)));
     expect(Math.abs(trackerBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
     expect(trackerBox!.x).toBeGreaterThanOrEqual(mainBox!.x - 1);
     expect(trackerBox!.x).toBeLessThanOrEqual(mainBox!.x + 1);
     expect(trackerBox!.x + trackerBox!.width).toBeLessThanOrEqual(chatColumnAfter!.x - 7);
 
     const trackerContent = tracker.locator(".mari-tracker-panel-scroll");
-    const expectedScale = Math.max(0.65, expectedWidth / 420);
+    const expectedScale = expectedWidth === 0 ? 1 : Math.max(0.65, expectedWidth / 420);
     const appliedScale = Number(await trackerContent.getAttribute("data-tracker-content-scale"));
     expect(Math.abs(appliedScale - expectedScale)).toBeLessThanOrEqual(0.001);
     const emptyTrackerText = tracker.getByText("No enabled tracker panels.", { exact: true });
@@ -5593,16 +5593,16 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     expect(Math.abs(rightChatScroll!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(rightChatScroll!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
 
-    const expectedRightWidth = Math.min(
-      420,
-      Math.floor(mainBox!.x + mainBox!.width - (rightChatColumn!.x + rightChatColumn!.width) - 8),
+    const expectedRightWidth = Math.max(
+      0,
+      Math.min(420, Math.floor(mainBox!.x + mainBox!.width - (rightChatColumn!.x + rightChatColumn!.width) - 8)),
     );
     expect(Math.abs(rightTrackerBox!.width - expectedRightWidth)).toBeLessThanOrEqual(1);
     expect(rightTrackerBox!.x).toBeGreaterThanOrEqual(rightChatColumn!.x + rightChatColumn!.width + 7);
     expect(rightTrackerBox!.x + rightTrackerBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
 
     const rightTrackerContent = rightTracker.locator(".mari-tracker-panel-scroll");
-    const expectedRightScale = Math.max(0.65, expectedRightWidth / 420);
+    const expectedRightScale = expectedRightWidth === 0 ? 1 : Math.max(0.65, expectedRightWidth / 420);
     const appliedRightScale = Number(await rightTrackerContent.getAttribute("data-tracker-content-scale"));
     expect(Math.abs(appliedRightScale - expectedRightScale)).toBeLessThanOrEqual(0.001);
     const rightTrackerContentBox = await rightTrackerContent.boundingBox();

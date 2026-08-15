@@ -148,8 +148,6 @@ const ActiveLorebookEntriesContent = lazy(async () => {
   return { default: module.ActiveLorebookEntriesContent };
 });
 
-const TRACKER_FOREGROUND_AVOIDANCE_CLASS =
-  "md:pl-[var(--tracker-panel-chat-clear-left)] md:pr-[var(--tracker-panel-chat-clear-right)] md:transition-[padding] md:duration-200 md:ease-[cubic-bezier(0.16,1,0.3,1)]";
 const roleplayNotificationSeenKeys = new Set<string>();
 const MOBILE_FLOATING_PANEL_PADDING = 8;
 
@@ -2147,10 +2145,7 @@ export function ChatRoleplaySurface({
               </Suspense>
             )}
 
-            <div
-              data-chat-resource-drop-surface
-              className={cn("absolute inset-0 z-10 overflow-hidden", TRACKER_FOREGROUND_AVOIDANCE_CLASS)}
-            >
+            <div data-chat-resource-drop-surface className="absolute inset-0 z-10 overflow-hidden">
               <div
                 ref={scrollRef}
                 data-chat-scroll
@@ -2325,13 +2320,7 @@ export function ChatRoleplaySurface({
             </div>
             <PinnedImageOverlay activeChatId={activeChatId} includeSceneVideos />
 
-            <div
-              ref={inputChromeRef}
-              className={cn(
-                "pointer-events-none absolute inset-x-0 bottom-0 z-30",
-                TRACKER_FOREGROUND_AVOIDANCE_CLASS,
-              )}
-            >
+            <div ref={inputChromeRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
               <div
                 data-roleplay-chat-column="true"
                 className="mari-roleplay-input-column pointer-events-auto relative mx-auto px-3 md:px-0"

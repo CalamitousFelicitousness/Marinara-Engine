@@ -113,6 +113,28 @@ asset URLs as `/api/capability-packages/<packageId>/assets/<path>` (optionally k
 `?v=<packageVersion>` so a version bump busts any intermediary cache) without re-fetching the
 installed list or scraping its own import URL.
 
+### Capability API 1.11 Experience combat seam
+
+Capability API 1.11 adds a combat seam to the `game-surface` capability props. `combatActive`
+reports the instant the built-in combat UI actually mounts — unlike `chatMeta.gameActiveState`,
+the GM's narrative scene state, which lags the flip and can say "combat" without any encounter
+existing — and `combatStyle` carries the effective style (`classic` or `tactical`).
+`requestCombat()` asks the Engine to generate an encounter through the exact pass the manual
+Start Combat button uses, minus the confirm dialog, since the Experience's own interface already
+expressed the intent; the Engine's generation pass still decides what the encounter is.
+Deliberately absent: any way for a package to supply combatants or combat state directly —
+combat stays Engine-owned.
+
+`requestCombat()` is identity-stable, silent on the package path, and returns a code the
+Experience renders its own feedback from: `"started"`, or a refusal — `"combat-active"`,
+`"pending"` (a generation is already in flight), `"no-turn"` (the GM has not written a turn
+yet), or `"unavailable"` (concluded session or replay). `combatPending` and `combatError`
+mirror the generation's progress and failure so a package is never left waiting on
+`combatActive` after a failed generation. Like the 1.7/1.8 seams (and unlike the hard-gated
+1.10 `contributions.assets`), these props are delivered to every `game-surface` package
+regardless of the `capabilityApi` it declares — the 1.11 label marks when they appeared, so a
+package that *requires* them declares 1.11 and older Engines refuse it cleanly.
+
 ## Initial packages
 
 - all currently built-in agents;

@@ -172,7 +172,9 @@ const capabilityPackageManifestBaseSchema = z
   .strict();
 
 // 1.10: contributions.assets — general package-owned static asset delivery.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 10 } as const);
+// 1.11: Experience combat seam — combatActive/combatStyle/requestCombat on the
+//        game-surface capabilityProps.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 11 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

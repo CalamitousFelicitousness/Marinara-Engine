@@ -20,7 +20,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Regex bundle imports now retain scripts flagged by the pattern-safety heuristic and show a warning instead of reporting those entries as skipped.
 - Kept NanoGPT Illustrator generation within its 4 MB reference-upload limit, preferred immediate hosted-result downloads, and hardened base64 fallback parsing so successful images are stored instead of rendering as broken output (#5058).
 - Kept Windows launcher updates from failing while protecting data by excluding the generated capability-package `node_modules` junction from update snapshots (#5052).
-- Prevented stopped dev sessions from leaving nested server and client processes behind, and reused an already healthy local server on repeat launches instead of failing on its storage writer lease (#5062).
+- Prevented stopped or terminal-disconnected dev sessions from leaving nested server and client processes behind, and reused an already healthy local server on repeat launches instead of failing on its storage writer lease (#5062).
 - Started TTS autoplay as soon as assistant text is finalized instead of waiting for Illustrator, trackers, summaries, or other non-rewriting agents; active message-rewrite agents such as Prose Guardian and Continuity Checker still finish first (#5059).
 - Made the Roleplay speaker extractor's structured-output request compatible with Responses API providers that require the input message itself to mention `json` (#5059).
 - Kept long Roleplay speaker-extractor readings complete by packing narration into normal-sized requests, generating queued clips serially, and stopping visibly on a failed clip instead of silently skipping parts of the message (#5059).

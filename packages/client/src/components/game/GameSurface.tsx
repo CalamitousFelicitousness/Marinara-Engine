@@ -369,6 +369,11 @@ type GameAssetGenerationOptions = {
   /** Keep narration / queued interactions waiting for this asset job. */
   blocksScene?: boolean;
   showSuccessToast?: boolean;
+  /** #5094: called after generation resolves; if it returns false the caller's request was superseded
+   *  (chat switch, turn retry, or a newer combat request), so the result is discarded instead of being
+   *  applied. Keeps a stale combat visual job from overwriting the current chat's background/avatars or
+   *  clobbering the current asset-generation state. */
+  isCurrent?: () => boolean;
 };
 
 type ApplyGeneratedAssetsOptions = {
@@ -2678,10 +2683,19 @@ function GameSurfaceComponent({
   const [queuedEncounter, setQueuedEncounter] = useState<{ encounter: CombatEncounterTag; messageId: string } | null>(
     null,
   );
-  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{ messageId: string } | null>(null);
+  const [queuedCombatGeneration, setQueuedCombatGeneration] = useState<{ messageId: string; notify: boolean } | null>(
+    null,
+  );
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
+  /** Synchronous in-flight flag beside the async combatGenerationPending state: same-frame double
+   *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
+   *  which must abandon an in-flight generation, can reach it. #5094. */
+  const combatGenerationInFlightRef = useRef(false);
+  /** Monotonic id for the CURRENT combat request; a stale completion whose id no longer matches bails.
+   *  Bumped on every new request, on chat switch, and when a turn retry abandons a generation. #5094. */
+  const combatGenerationRequestIdRef = useRef(0);
   const [combatItemEffects, setCombatItemEffects] = useState<CombatItemEffect[]>([]);
   const [combatMechanics, setCombatMechanics] = useState<CombatMechanic[]>([]);
   const [combatDialogueCues, setCombatDialogueCues] = useState<CombatDialogueCue[]>([]);
@@ -3065,6 +3079,11 @@ function GameSurfaceComponent({
     setQueuedQte(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -4272,7 +4291,7 @@ function GameSurfaceComponent({
         if (tags.combatEncounter && !hasCombatResultAfterMessage(latestAssistantMsg.id)) {
           setQueuedEncounter({ encounter: tags.combatEncounter, messageId: latestAssistantMsg.id });
         } else if (tags.stateChange === "combat" && !hasCombatResultAfterMessage(latestAssistantMsg.id)) {
-          setQueuedCombatGeneration({ messageId: latestAssistantMsg.id });
+          setQueuedCombatGeneration({ messageId: latestAssistantMsg.id, notify: true });
         }
       }
       lastProcessedMsgRef.current = latestAssistantMsg.id;
@@ -4733,7 +4752,7 @@ function GameSurfaceComponent({
       if (tags.combatEncounter) {
         setQueuedEncounter({ encounter: tags.combatEncounter, messageId: msg.id });
       } else if (tags.stateChange === "combat") {
-        setQueuedCombatGeneration({ messageId: msg.id });
+        setQueuedCombatGeneration({ messageId: msg.id, notify: true });
       }
     }
 
@@ -5588,6 +5607,13 @@ function GameSurfaceComponent({
       try {
         const res = await runGameAssetGeneration(assetPayload, { allowPromptReview: options?.allowPromptReview });
 
+        // #5094: the caller's request may have been superseded (chat switch, turn retry, or a newer combat
+        // request) while generation was in flight. Bail before touching asset state or applying assets so a
+        // stale job can't overwrite the current chat's background/avatars or clear the live request's state.
+        if (options?.isCurrent && !options.isCurrent()) {
+          return null;
+        }
+
         setPendingAssetGeneration(null);
         setAssetGenerationBlocksScene(false);
         if (!res) return null;
@@ -5601,6 +5627,10 @@ function GameSurfaceComponent({
 
         return res;
       } catch {
+        // #5094: don't surface a superseded request's failure on the current chat's asset state.
+        if (options?.isCurrent && !options.isCurrent()) {
+          return null;
+        }
         setAssetGenerationFailed(true);
         setAssetGenerationBlocksScene(false);
         return null;
@@ -6341,6 +6371,11 @@ function GameSurfaceComponent({
     setPendingEncounter(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -6582,63 +6617,8 @@ function GameSurfaceComponent({
     [clearPendingInteractiveCommands, sendMessage],
   );
 
-  // Engine state handed to the slot, recomputed per turn so the surface tracks streaming and new
-  // messages. Builds nothing unless the surface is mounted, so a Classic game never pays for it.
-  const experienceSurfaceProps = useMemo(
-    () =>
-      !experienceSurfaceActive
-        ? undefined
-        : {
-            chatId: activeChatId,
-            chatMeta,
-            messages,
-            latestAssistant: latestAssistantMsg,
-            isStreaming,
-            scopedAssetMap,
-            sendMessage: sendExperienceMessage,
-            setExperienceBackgroundTag: pushExperienceBackground,
-            setExperienceSpeakerAvatars,
-            setExperienceChrome,
-            // Who is speaking RIGHT NOW, as the narration plays. Deriving it from the turn text instead yields
-            // only the LAST speaker of the turn, which leaves a VN sprite stuck on whoever spoke last.
-            activeSpeaker: activeSpeaker
-              ? { name: activeSpeaker.name, expression: activeSpeaker.expression ?? null }
-              : null,
-            experienceChoiceSlotEl,
-            // Per-turn state, so the surface can hold its menu until the narration finishes.
-            narrationDone,
-            latestNarrationText,
-            scenePreparing,
-            directionsPlaying,
-            assetGenerationBlocksScene,
-            replayActive,
-            sessionInteractive: (chatMeta.gameSessionStatus as string) !== "concluded",
-            // The host's sprite-size setting, so the player's slider keeps working in this mode.
-            spriteScale: gameFullBodySpriteScale,
-          },
-    [
-      experienceSurfaceActive,
-      activeChatId,
-      chatMeta,
-      messages,
-      latestAssistantMsg,
-      isStreaming,
-      scopedAssetMap,
-      sendExperienceMessage,
-      pushExperienceBackground,
-      setExperienceSpeakerAvatars,
-      setExperienceChrome,
-      activeSpeaker,
-      experienceChoiceSlotEl,
-      narrationDone,
-      latestNarrationText,
-      scenePreparing,
-      directionsPlaying,
-      assetGenerationBlocksScene,
-      replayActive,
-      gameFullBodySpriteScale,
-    ],
-  );
+  // experienceSurfaceProps (the engine state handed to the surface slot) is declared further down,
+  // after the combat seam it now carries — see the memo next to classicCombatStarter.
 
   // Game mutations
   const createGame = useCreateGame();
@@ -8060,6 +8040,27 @@ function GameSurfaceComponent({
     (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
     (combatSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
     "classic";
+  // Live snapshot for the identity-stable combat seam (#5094): a package may
+  // cache requestCombat at mount, so the callback must read CURRENT values, not
+  // its creation render's closure. messageId rides latestAssistantMsgRef.
+  const combatSeamRef = useRef({ combatUiActive: false, concluded: false, replayActive: false });
+  useEffect(() => {
+    combatSeamRef.current.combatUiActive = combatUiActive;
+    combatSeamRef.current.concluded = (chatMeta.gameSessionStatus as string) === "concluded";
+    combatSeamRef.current.replayActive = replayActive;
+  });
+  // #5094: on chat switch, clear the in-flight lock AND the error (the [activeChatId] reset above only
+  // clears the pending state) and invalidate any in-flight request (bump the request id), so a
+  // generation left in flight by the previous chat can't keep the new chat stuck as "pending", leak its
+  // error, or have a stale completion touch the new chat. (Both refs are declared with the combat state
+  // above so the turn-retry handler can reach them too.) The requestId check is why a same-chat retry
+  // is also covered; the requestChatId check is a synchronous belt (activeChatIdRef updates during
+  // render, ahead of this effect's bump), so a chat switch is caught even before the bump lands.
+  useEffect(() => {
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
+    setCombatGenerationError(null);
+  }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
   const topOverlayOffsetClass = "top-3";
   const queuedCombatMatchesLatest =
@@ -8173,14 +8174,25 @@ function GameSurfaceComponent({
   ]);
 
   const generateCombatStateForMessage = useCallback(
-    (messageId: string) => {
-      if (combatGenerationPending) return;
+    (messageId: string, notify: boolean) => {
+      // Both guards: the state flag drives rendering, but it is stale within a
+      // frame — same-frame double calls (a package spamming requestCombat, #5094)
+      // all read false. The ref flips synchronously and clears with the request.
+      if (combatGenerationPending || combatGenerationInFlightRef.current) return;
       const debugMode = useUIStore.getState().debugMode;
       if (debugMode) {
         console.warn("[game-combat] Starting combat state generation", { chatId: activeChatId, messageId });
       }
+      combatGenerationInFlightRef.current = true;
       setCombatGenerationError(null);
       setCombatGenerationPending(true);
+      // #5094: scope the async completion to THIS request. requestId is bumped by any newer request, a
+      // chat switch, or a turn retry that abandons this one; requestChatId is the synchronous belt for a
+      // chat switch (activeChatIdRef updates during render, ahead of the effect that bumps requestId).
+      // Every handler below bails unless BOTH still match, so a stale completion can't apply combat
+      // state, set an error, or clear the lock for a different request, turn, or chat.
+      const requestChatId = activeChatId;
+      const requestId = ++combatGenerationRequestIdRef.current;
       api
         .post<EncounterInitResponse>("/encounter/init", {
           chatId: activeChatId,
@@ -8190,6 +8202,7 @@ function GameSurfaceComponent({
           debugMode,
         })
         .then(async (response) => {
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded
           const combatants = hydrateGeneratedCombatState(response.combatState);
           if (!combatants) {
             throw new Error("Combat generator returned an empty party or enemy list.");
@@ -8246,8 +8259,16 @@ function GameSurfaceComponent({
               npcsNeedingAvatars: shouldGenerateEnemyAvatars ? enemyAvatarRequests : undefined,
               debugMode: useUIStore.getState().debugMode,
             };
-            void requestAssetGeneration(assetPayload, { allowPromptReview: false })
+            void requestAssetGeneration(assetPayload, {
+              allowPromptReview: false,
+              // #5094: gate the internal asset apply (background + avatars + asset state) on this combat
+              // request still being current, since requestAssetGeneration applies before the .then below runs.
+              isCurrent: () =>
+                combatGenerationRequestIdRef.current === requestId && activeChatIdRef.current === requestChatId,
+            })
               .then((assetResult) => {
+                if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId)
+                  return; // superseded; don't apply avatars to a different request/turn/chat
                 if (!assetResult?.generatedNpcAvatars?.length) return;
                 const avatarByName = new Map(
                   assetResult.generatedNpcAvatars.map(
@@ -8298,12 +8319,22 @@ function GameSurfaceComponent({
           });
         })
         .catch((err) => {
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
           setCombatGenerationError(message);
-          toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
+          // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
+          // request passes notify=false and renders its own feedback from combatError, so a failed
+          // package request must not surface an Engine toast over the package's UI. #5094.
+          if (notify) {
+            toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
+          }
         })
-        .finally(() => setCombatGenerationPending(false));
+        .finally(() => {
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't clear another request's lock
+          combatGenerationInFlightRef.current = false;
+          setCombatGenerationPending(false);
+        });
     },
     [
       activeChatId,
@@ -8333,7 +8364,7 @@ function GameSurfaceComponent({
     if (preparedCombatState?.messageId === queuedCombatGeneration.messageId) return;
     if (isStreaming || scenePreparing || assetGenerationBlocksScene) return;
 
-    generateCombatStateForMessage(queuedCombatGeneration.messageId);
+    generateCombatStateForMessage(queuedCombatGeneration.messageId, queuedCombatGeneration.notify);
   }, [
     activeChatId,
     combatGenerationPending,
@@ -8484,13 +8515,55 @@ function GameSurfaceComponent({
       toast.error(localizeUi("ui.game.gamesurfacecomponent.noCurrentTurnIsAvailableForCombatGeneration"));
       return;
     }
-    setQueuedCombatGeneration({ messageId });
+    setQueuedCombatGeneration({ messageId, notify: true });
     setPreparedCombatState(null);
     setCombatGenerationError(null);
-    generateCombatStateForMessage(messageId);
+    generateCombatStateForMessage(messageId, true);
   }, [generateCombatStateForMessage, latestAssistantMsg?.id, queuedCombatGeneration?.messageId, localizeUi]);
 
+  /** Keeps the identity-stable combat seam pointing at the CURRENT generator
+   *  (whose own identity tracks its render-state deps). */
+  const generateCombatRef = useRef(generateCombatStateForMessage);
+  useEffect(() => {
+    generateCombatRef.current = generateCombatStateForMessage;
+  });
+
+  /** Shared combat-start core (#5094): the manual button (after its confirm dialog) and an
+   *  Experience's requestCombat both funnel through here — ONE path into the vanilla
+   *  generation pass, so a package can never trigger side effects the button would not.
+   *  The vanilla LLM pass still decides what the encounter is. Reads everything through
+   *  refs so the identity-stable package callback can never act on a stale closure;
+   *  `notify` keeps Engine toasts off the package path (the Experience renders its own
+   *  feedback from the returned refusal code). */
+  const startCombatGeneration = useCallback(
+    (notify: boolean): "started" | "combat-active" | "pending" | "no-turn" | "unavailable" => {
+      const seam = combatSeamRef.current;
+      if (seam.concluded || seam.replayActive) return "unavailable";
+      if (seam.combatUiActive) {
+        if (notify) toast("Combat is already active.");
+        return "combat-active";
+      }
+      if (combatGenerationInFlightRef.current) {
+        if (notify) toast("Combat is already being prepared.");
+        return "pending";
+      }
+      const messageId = latestAssistantMsgRef.current?.id;
+      if (!messageId) {
+        if (notify) toast.error(localizeUi("ui.game.gamesurfacecomponent.theGmNeedsToWriteAtLeastOneTurn"));
+        return "no-turn";
+      }
+      setQueuedCombatGeneration({ messageId, notify });
+      setPreparedCombatState(null);
+      setCombatGenerationError(null);
+      generateCombatRef.current(messageId, notify);
+      return "started";
+    },
+    [localizeUi],
+  );
+
   const handleRequestManualCombatStart = useCallback(async () => {
+    // Pre-dialog guards so the player is never asked to confirm a request that
+    // must fail — the core re-checks all of them (fresh, via refs) afterwards.
     if (combatUiActive) {
       toast("Combat is already active.");
       return;
@@ -8499,8 +8572,7 @@ function GameSurfaceComponent({
       toast("Combat is already being prepared.");
       return;
     }
-    const messageId = latestAssistantMsg?.id;
-    if (!messageId) {
+    if (!latestAssistantMsg?.id) {
       toast.error(localizeUi("ui.game.gamesurfacecomponent.theGmNeedsToWriteAtLeastOneTurn"));
       return;
     }
@@ -8511,16 +8583,95 @@ function GameSurfaceComponent({
       cancelLabel: "No",
     });
     if (!confirmed) return;
-    setQueuedCombatGeneration({ messageId });
-    setPreparedCombatState(null);
-    setCombatGenerationError(null);
-    generateCombatStateForMessage(messageId);
-  }, [combatGenerationPending, combatUiActive, generateCombatStateForMessage, latestAssistantMsg?.id, localizeUi]);
+    startCombatGeneration(true);
+  }, [combatGenerationPending, combatUiActive, latestAssistantMsg?.id, startCombatGeneration, localizeUi]);
+
+  /** Handed to Experience surfaces as requestCombat (#5094). Identity-stable (matching
+   *  every other function in the surface props), silent (returns the refusal code
+   *  instead of Engine toasts over the package's UI), and confirm-free — the
+   *  Experience's own interface already expressed the intent. Deliberately takes no
+   *  combatant data: startCombat(party, enemies) would let a package construct combat
+   *  outside the vanilla generation path, and combat stays vanilla. */
+  const requestExperienceCombat = useCallback(() => startCombatGeneration(false), [startCombatGeneration]);
 
   // The narration renders these buttons only when the props are supplied, so withholding them beats
   // hiding: no dead button, and no way to reach the Classic flow underneath the surface.
   const classicInventoryOpener = activeExperienceChrome?.providesInventory ? undefined : () => setInventoryOpen(true);
   const classicCombatStarter = activeExperienceChrome?.providesCombat ? undefined : handleRequestManualCombatStart;
+
+  // Engine state handed to the surface slot, recomputed per turn so the surface tracks streaming and
+  // new messages. Builds nothing unless the surface is mounted, so a Classic game never pays for it.
+  // Declared here (not with the other seams) because it carries the combat seam computed above.
+  const experienceSurfaceProps = useMemo(
+    () =>
+      !experienceSurfaceActive
+        ? undefined
+        : {
+            chatId: activeChatId,
+            chatMeta,
+            messages,
+            latestAssistant: latestAssistantMsg,
+            isStreaming,
+            scopedAssetMap,
+            sendMessage: sendExperienceMessage,
+            setExperienceBackgroundTag: pushExperienceBackground,
+            setExperienceSpeakerAvatars,
+            setExperienceChrome,
+            // Who is speaking RIGHT NOW, as the narration plays. Deriving it from the turn text instead yields
+            // only the LAST speaker of the turn, which leaves a VN sprite stuck on whoever spoke last.
+            activeSpeaker: activeSpeaker
+              ? { name: activeSpeaker.name, expression: activeSpeaker.expression ?? null }
+              : null,
+            experienceChoiceSlotEl,
+            // Per-turn state, so the surface can hold its menu until the narration finishes.
+            narrationDone,
+            latestNarrationText,
+            scenePreparing,
+            directionsPlaying,
+            assetGenerationBlocksScene,
+            replayActive,
+            sessionInteractive: (chatMeta.gameSessionStatus as string) !== "concluded",
+            // The host's sprite-size setting, so the player's slider keeps working in this mode.
+            spriteScale: gameFullBodySpriteScale,
+            // Combat seam (#5094): the instant the combat UI actually mounts — unlike
+            // chatMeta.gameActiveState, the GM's narrative scene state, which lags the
+            // flip and can say "combat" without any combat UI existing.
+            combatActive: combatUiActive,
+            combatStyle: effectiveCombatStyle,
+            requestCombat: requestExperienceCombat,
+            // Generation progress/outcome mirrors, so a package that requested combat can
+            // show its own feedback instead of waiting on combatActive forever.
+            combatPending: combatGenerationPending,
+            combatError: combatGenerationError,
+          },
+    [
+      experienceSurfaceActive,
+      activeChatId,
+      chatMeta,
+      messages,
+      latestAssistantMsg,
+      isStreaming,
+      scopedAssetMap,
+      sendExperienceMessage,
+      pushExperienceBackground,
+      setExperienceSpeakerAvatars,
+      setExperienceChrome,
+      activeSpeaker,
+      experienceChoiceSlotEl,
+      narrationDone,
+      latestNarrationText,
+      scenePreparing,
+      directionsPlaying,
+      assetGenerationBlocksScene,
+      replayActive,
+      gameFullBodySpriteScale,
+      combatUiActive,
+      effectiveCombatStyle,
+      requestExperienceCombat,
+      combatGenerationPending,
+      combatGenerationError,
+    ],
+  );
 
   useEffect(() => {
     if (!queuedQte || !latestAssistantMsg?.id) return;
@@ -9490,6 +9641,11 @@ function GameSurfaceComponent({
     setViewedMapId(null);
     setCombatStartMessageId(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -9618,6 +9774,11 @@ function GameSurfaceComponent({
     setPendingEncounter(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);

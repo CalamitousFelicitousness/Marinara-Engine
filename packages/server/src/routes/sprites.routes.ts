@@ -156,6 +156,9 @@ type SpriteGenerateSheetBody = {
   neutralFullBodyReference?: string;
   expressionReferences?: SpriteExpressionReference[];
   promptOverrides?: SpritePromptOverride[];
+  /** Optional style-profile override for the bake (#5095); absent keeps the
+   *  active-profile resolution unchanged. */
+  styleProfileId?: string | null;
 };
 
 type SpriteGenerateAnimatedBody = Omit<
@@ -304,15 +307,24 @@ export function resolveSpriteSheetCanvas({
   };
 }
 
-function compileSpritePrompt(
+export function compileSpritePrompt(
   prompt: string,
   options: {
     negativePrompt?: string;
     appearance?: string;
     styleProfiles: ImageStyleProfileSettings;
     imageDefaults?: ImageGenerationDefaultsProfile | null;
+    /** Per-request style override (#5095). Absent → the compiler's existing
+     *  chain (connection image defaults ?? the user's default profile), i.e.
+     *  exactly today's behavior. Unknown ids degrade the same way the gallery
+     *  path degrades — findImageStyleProfile simply finds nothing. */
+    styleProfileId?: string | null;
   },
 ): SpriteCompiledPrompt {
+  const requestedStyleProfileId =
+    typeof options.styleProfileId === "string" && options.styleProfileId.trim()
+      ? options.styleProfileId.trim().slice(0, 120)
+      : undefined;
   const compiled = compileImagePrompt({
     kind: "sprite",
     prompt,
@@ -320,6 +332,7 @@ function compileSpritePrompt(
     userPositive: options.appearance,
     styleProfiles: options.styleProfiles,
     imageDefaults: options.imageDefaults,
+    styleProfileId: requestedStyleProfileId,
   });
   return {
     prompt: compiled.prompt,
@@ -1279,6 +1292,7 @@ async function buildIndividualFullBodyExpressionRequest({
     appearance: plan.appearance,
     styleProfiles,
     imageDefaults,
+    styleProfileId: body.styleProfileId,
   });
   const reviewedPrompt = resolveSpritePromptOverride(
     plan.promptOverrides.get(spritePromptReviewId("expression", plan.spriteType, expression)),
@@ -1769,6 +1783,7 @@ export async function spritesRoutes(app: FastifyInstance) {
             appearance: plan.appearance,
             styleProfiles: imageSettings.styleProfiles,
             imageDefaults,
+            styleProfileId: body.styleProfileId,
           });
           const reviewedPrompt = resolveSpritePromptOverride(
             plan.promptOverrides.get(spritePromptReviewId("expression", plan.spriteType, expression)),
@@ -1800,6 +1815,7 @@ export async function spritesRoutes(app: FastifyInstance) {
       appearance: plan.appearance,
       styleProfiles: imageSettings.styleProfiles,
       imageDefaults,
+      styleProfileId: body.styleProfileId,
     });
     const sheetPromptId = spritePromptReviewId(
       "sheet",
@@ -2090,6 +2106,7 @@ export async function spritesRoutes(app: FastifyInstance) {
       appearance: plan.appearance,
       styleProfiles: imageSettings.styleProfiles,
       imageDefaults,
+      styleProfileId: body.styleProfileId,
     });
     const reviewedSheetPrompt = resolveSpritePromptOverride(
       plan.promptOverrides.get(sheetPromptId),
@@ -2224,6 +2241,7 @@ export async function spritesRoutes(app: FastifyInstance) {
                   appearance: plan.appearance,
                   styleProfiles: imageSettings.styleProfiles,
                   imageDefaults,
+                  styleProfileId: body.styleProfileId,
                 });
                 const reviewedExpressionPrompt = resolveSpritePromptOverride(
                   plan.promptOverrides.get(spritePromptReviewId("expression", plan.spriteType, expression)),

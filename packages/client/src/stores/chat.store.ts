@@ -9,7 +9,6 @@ import type {
   ChatMode,
   ConversationCallSession,
   ConversationPresenceStatus,
-  Message,
   PendingSpatialTransition,
   SpatialDestinationRelation,
 } from "@marinara-engine/shared";
@@ -193,7 +192,6 @@ function scheduleNotificationAutoDismiss(chatId: string, getState: () => ChatSta
 interface ChatState {
   activeChatId: string | null;
   activeChat: Chat | null;
-  messages: Message[];
   isStreaming: boolean;
   /** The chatId that the current streaming generation belongs to. */
   streamingChatId: string | null;
@@ -237,7 +235,6 @@ interface ChatState {
   perChatTyping: Map<string, string>;
   /** Per-chat delayed state so switching chats restores the correct indicator. */
   perChatDelayed: Map<string, DelayedCharacterInfo>;
-  swipeIndex: Map<string, number>; // messageId → active swipe index
   /** When true, ChatArea should open the settings drawer on next render. */
   shouldOpenSettings: boolean;
   /** When true, ChatArea should show the setup wizard for the newly created chat. */
@@ -270,9 +267,6 @@ interface ChatState {
   // Actions
   setActiveChat: (chat: Chat | null) => void;
   setActiveChatId: (id: string | null) => void;
-  setMessages: (messages: Message[]) => void;
-  addMessage: (message: Message) => void;
-  updateLastMessage: (content: string) => void;
   setStreaming: (streaming: boolean, chatId?: string) => void;
   setStreamedMessageId: (chatId: string, messageId: string | null) => void;
   setMariPhase: (chatId: string, phase: "thinking" | "updating" | "idle") => void;
@@ -297,7 +291,6 @@ interface ChatState {
   setPerChatTyping: (chatId: string, name: string | null) => void;
   setPerChatDelayed: (chatId: string, info: DelayedCharacterInfo | null) => void;
   clearPerChatState: (chatId: string) => void;
-  setSwipeIndex: (messageId: string, index: number) => void;
   setShouldOpenSettings: (v: boolean) => void;
   setShouldOpenWizard: (v: boolean) => void;
   setShouldOpenWizardInShortcutMode: (v: boolean) => void;
@@ -360,7 +353,6 @@ export const useChatStore = create<ChatState>()(
       }
     })(),
     activeChat: null,
-    messages: [],
     isStreaming: false,
     streamingChatId: null,
     mariPhaseByChatId: new Map(),
@@ -379,7 +371,6 @@ export const useChatStore = create<ChatState>()(
     delayedCharacterInfo: null,
     perChatTyping: new Map(),
     perChatDelayed: new Map(),
-    swipeIndex: new Map(),
     shouldOpenSettings: false,
     shouldOpenWizard: false,
     shouldOpenWizardInShortcutMode: false,
@@ -428,7 +419,6 @@ export const useChatStore = create<ChatState>()(
       const activeCall = get().activeConversationCall;
       set({
         activeChatId: id,
-        swipeIndex: new Map(),
         ...(id !== prev && { generationPhase: null, hasCurrentInput: false }),
         ...(!id && { activeChat: null }),
         ...(activeCall ? { conversationCallExpanded: id === activeCall.session.chatId } : {}),
@@ -482,20 +472,6 @@ export const useChatStore = create<ChatState>()(
         /* ignore */
       }
     },
-    setMessages: (messages) => set({ messages }),
-
-    addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
-
-    updateLastMessage: (content) =>
-      set((state) => {
-        const messages = [...state.messages];
-        const last = messages[messages.length - 1];
-        if (last) {
-          messages[messages.length - 1] = { ...last, content };
-        }
-        return { messages };
-      }),
-
     setStreaming: (streaming, chatId) =>
       set((state) => {
         const streamedMessageIds = new Map(state.streamedMessageIds);
@@ -1006,13 +982,6 @@ export const useChatStore = create<ChatState>()(
 
     setConversationCallExpanded: (expanded) => set({ conversationCallExpanded: expanded }),
 
-    setSwipeIndex: (messageId: string, index: number) =>
-      set((state) => {
-        const m = new Map(state.swipeIndex);
-        m.set(messageId, index);
-        return { swipeIndex: m };
-      }),
-
     reset: () => {
       unreadCountSources.clear();
       chatNotificationSources.clear();
@@ -1026,7 +995,6 @@ export const useChatStore = create<ChatState>()(
       set({
         activeChatId: null,
         activeChat: null,
-        messages: [],
         isStreaming: false,
         streamingChatId: null,
         mariPhaseByChatId: new Map(),
@@ -1045,7 +1013,6 @@ export const useChatStore = create<ChatState>()(
         delayedCharacterInfo: null,
         perChatTyping: new Map(),
         perChatDelayed: new Map(),
-        swipeIndex: new Map(),
         pendingNewChatMode: null,
         pendingNewChatOrigin: null,
         inputDrafts: new Map(),

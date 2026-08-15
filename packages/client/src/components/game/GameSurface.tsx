@@ -2684,6 +2684,13 @@ function GameSurfaceComponent({
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
+  /** Synchronous in-flight flag beside the async combatGenerationPending state: same-frame double
+   *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
+   *  which must abandon an in-flight generation, can reach it. #5094. */
+  const combatGenerationInFlightRef = useRef(false);
+  /** Monotonic id for the CURRENT combat request; a stale completion whose id no longer matches bails.
+   *  Bumped on every new request, on chat switch, and when a turn retry abandons a generation. #5094. */
+  const combatGenerationRequestIdRef = useRef(0);
   const [combatItemEffects, setCombatItemEffects] = useState<CombatItemEffect[]>([]);
   const [combatMechanics, setCombatMechanics] = useState<CombatMechanic[]>([]);
   const [combatDialogueCues, setCombatDialogueCues] = useState<CombatDialogueCue[]>([]);
@@ -3067,6 +3074,11 @@ function GameSurfaceComponent({
     setQueuedQte(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -6343,6 +6355,11 @@ function GameSurfaceComponent({
     setPendingEncounter(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -8016,16 +8033,16 @@ function GameSurfaceComponent({
     combatSeamRef.current.concluded = (chatMeta.gameSessionStatus as string) === "concluded";
     combatSeamRef.current.replayActive = replayActive;
   });
-  /** Synchronous in-flight flag beside the async combatGenerationPending state:
-   *  same-frame double requests all read the stale state, the ref does not. */
-  const combatGenerationInFlightRef = useRef(false);
   // #5094: on chat switch, clear the in-flight lock AND the error (the [activeChatId] reset above only
-  // clears the pending state). Otherwise a combat generation left in flight by the previous chat keeps
-  // this ref true — so the new chat's generateCombatStateForMessage guard bails, leaving it stuck as
-  // "pending" — and the previous chat's error stays visible. The request itself is chat-scoped via
-  // requestChatId, so a stale completion never clears the lock or writes the new chat's error.
+  // clears the pending state) and invalidate any in-flight request (bump the request id), so a
+  // generation left in flight by the previous chat can't keep the new chat stuck as "pending", leak its
+  // error, or have a stale completion touch the new chat. (Both refs are declared with the combat state
+  // above so the turn-retry handler can reach them too.) The requestId check is why a same-chat retry
+  // is also covered; the requestChatId check is a synchronous belt (activeChatIdRef updates during
+  // render, ahead of this effect's bump), so a chat switch is caught even before the bump lands.
   useEffect(() => {
     combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationError(null);
   }, [activeChatId]);
   const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
@@ -8153,11 +8170,13 @@ function GameSurfaceComponent({
       combatGenerationInFlightRef.current = true;
       setCombatGenerationError(null);
       setCombatGenerationPending(true);
-      // #5094: scope the async completion to the chat that started it. If the user switches chats while
-      // this is in flight, activeChatIdRef diverges from requestChatId and every handler bails, so a
-      // stale Chat A response can't apply combat state to Chat B, set B's error, or clear B's lock. The
-      // chat-switch cleanup (the [activeChatId] effect) clears the in-flight ref so the new chat can start.
+      // #5094: scope the async completion to THIS request. requestId is bumped by any newer request, a
+      // chat switch, or a turn retry that abandons this one; requestChatId is the synchronous belt for a
+      // chat switch (activeChatIdRef updates during render, ahead of the effect that bumps requestId).
+      // Every handler below bails unless BOTH still match, so a stale completion can't apply combat
+      // state, set an error, or clear the lock for a different request, turn, or chat.
       const requestChatId = activeChatId;
+      const requestId = ++combatGenerationRequestIdRef.current;
       api
         .post<EncounterInitResponse>("/encounter/init", {
           chatId: activeChatId,
@@ -8167,7 +8186,7 @@ function GameSurfaceComponent({
           debugMode,
         })
         .then(async (response) => {
-          if (activeChatIdRef.current !== requestChatId) return; // chat switched; ignore stale completion
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded
           const combatants = hydrateGeneratedCombatState(response.combatState);
           if (!combatants) {
             throw new Error("Combat generator returned an empty party or enemy list.");
@@ -8226,7 +8245,8 @@ function GameSurfaceComponent({
             };
             void requestAssetGeneration(assetPayload, { allowPromptReview: false })
               .then((assetResult) => {
-                if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't update it
+                if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId)
+                  return; // superseded; don't apply avatars to a different request/turn/chat
                 if (!assetResult?.generatedNpcAvatars?.length) return;
                 const avatarByName = new Map(
                   assetResult.generatedNpcAvatars.map(
@@ -8277,7 +8297,7 @@ function GameSurfaceComponent({
           });
         })
         .catch((err) => {
-          if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't set stale error
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
           setCombatGenerationError(message);
@@ -8289,7 +8309,7 @@ function GameSurfaceComponent({
           }
         })
         .finally(() => {
-          if (activeChatIdRef.current !== requestChatId) return; // chat switched; don't clear the new chat's lock
+          if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't clear another request's lock
           combatGenerationInFlightRef.current = false;
           setCombatGenerationPending(false);
         });
@@ -9599,6 +9619,11 @@ function GameSurfaceComponent({
     setViewedMapId(null);
     setCombatStartMessageId(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -9727,6 +9752,11 @@ function GameSurfaceComponent({
     setPendingEncounter(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
+    // #5094: abandon any in-flight combat generation here — clear the lock so a fresh request isn't
+    // blocked by it, and bump the request id so the old generation's stale completion can't re-queue
+    // combat, apply state, or set an error against the reset combat state.
+    combatGenerationInFlightRef.current = false;
+    combatGenerationRequestIdRef.current += 1;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);

@@ -165,10 +165,6 @@ async function releaseSseReader(reader: ReadableStreamDefaultReader<Uint8Array>,
   }
 }
 
-function getSseErrorMessage(parsed: Record<string, unknown>): string {
-  return typeof parsed.data === "string" ? parsed.data : "Generation error";
-}
-
 export function getJsonRepairRequest(error: unknown): JsonRepairRequest | null {
   if (!(error instanceof ApiError) || !isRecord(error.payload)) return null;
   const repair = error.payload.jsonRepair;
@@ -369,77 +365,7 @@ export const api = {
   },
 
   /**
-   * Stream an SSE endpoint. Returns an async iterable of parsed events.
-   */
-  stream: async function* (path: string, body?: unknown, signal?: AbortSignal): AsyncGenerator<string> {
-    const res = await apiFetch(path, {
-      method: "POST",
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
-    });
-    showGenerationFallbackHeader(res);
-
-    if (!res.ok || !res.body) {
-      let detail = `HTTP ${res.status}`;
-      let payload: unknown;
-      try {
-        const text = await res.text();
-        const json = JSON.parse(text) as unknown;
-        payload = json;
-        if (isRecord(json)) detail = findNestedApiErrorMessage(json.error ?? json.message) || text.slice(0, 200);
-        else detail = text.slice(0, 200);
-      } catch {
-        /* couldn't parse body */
-      }
-      throw new ApiError(res.status, detail, payload);
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let completed = false;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          completed = true;
-          buffer += decoder.decode();
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const parsedBuffer = readSseDataPayloads(buffer);
-        buffer = parsedBuffer.rest;
-
-        for (const data of parsedBuffer.payloads) {
-          if (data === "[DONE]") return;
-          const parsed = parseSseJsonPayload(data);
-          if (!parsed) continue;
-          if (parsed.type === "fallback_used") showGenerationFallbackToast(parsed.data);
-          else if (parsed.type === "token" && typeof parsed.data === "string") yield parsed.data;
-          else if (parsed.type === "error") throw new ApiError(500, getSseErrorMessage(parsed), parsed);
-          else if (parsed.type === "done") return;
-        }
-      }
-
-      for (const data of readSseDataPayloads(buffer, true).payloads) {
-        if (data === "[DONE]") return;
-        const parsed = parseSseJsonPayload(data);
-        if (!parsed) continue;
-        if (parsed.type === "fallback_used") showGenerationFallbackToast(parsed.data);
-        else if (parsed.type === "token" && typeof parsed.data === "string") yield parsed.data;
-        else if (parsed.type === "error") throw new ApiError(500, getSseErrorMessage(parsed), parsed);
-        else if (parsed.type === "done") return;
-      }
-    } finally {
-      await releaseSseReader(reader, completed);
-    }
-  },
-
-  /**
    * Stream an SSE endpoint. Returns an async iterable of all typed events.
-   * Unlike `stream()`, this does NOT filter to only token events.
    */
   streamEvents: async function* (
     path: string,

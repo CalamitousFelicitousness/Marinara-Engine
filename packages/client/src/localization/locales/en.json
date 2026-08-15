@@ -8226,6 +8226,7 @@
   "ui.presets.variablecard.variableName": "Variable Name",
   "ui.presets.variablenameinput.variableName": "VARIABLE_NAME",
   "ui.presets.variablequestioninput.whatShouldTheUserChoose": "What should the user choose?",
+  "ui.regex.importUnsafePatternWarning": "Entry {{value1}} ({{value2}}) was imported, but its pattern triggered the safety warning and will not run until the pattern is made safe.",
   "ui.spotify.spotifyminiplayer.closePlayer": "Close player",
   "ui.spotify.spotifyminiplayer.dismissDjMariPlaylistToast": "Dismiss DJ Mari playlist toast",
   "ui.spotify.spotifyminiplayer.dj": "DJ",

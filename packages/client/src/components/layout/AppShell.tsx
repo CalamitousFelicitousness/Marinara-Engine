@@ -1126,6 +1126,10 @@ export function AppShell() {
     !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
       ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
       : 0;
+  const trackerPanelChatClearance =
+    !shellOverlayMode && trackerPanelAnchoredForMotion && trackerPanelSurfaceAvailable
+      ? trackerPanelResolvedWidth + TRACKER_PANEL_CHAT_GAP
+      : 0;
   const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
   const trackerPanelContentScale = resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth);
   const trackerPanelPortal =
@@ -1340,8 +1344,8 @@ export function AppShell() {
               {
                 "--tracker-panel-hud-clear-left": `${trackerPanelSide === "left" ? trackerPanelHudClearance : 0}px`,
                 "--tracker-panel-hud-clear-right": `${trackerPanelSide === "right" ? trackerPanelHudClearance : 0}px`,
-                "--tracker-panel-chat-clear-left": `${trackerPanelSide === "left" ? trackerPanelOverlayClearance : 0}px`,
-                "--tracker-panel-chat-clear-right": `${trackerPanelSide === "right" ? trackerPanelOverlayClearance : 0}px`,
+                "--tracker-panel-chat-clear-left": `${trackerPanelSide === "left" ? trackerPanelChatClearance : 0}px`,
+                "--tracker-panel-chat-clear-right": `${trackerPanelSide === "right" ? trackerPanelChatClearance : 0}px`,
                 "--tracker-panel-overlay-clearance": `${trackerPanelOverlayClearance}px`,
               } as CSSProperties
             }

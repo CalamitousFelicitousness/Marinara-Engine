@@ -5582,12 +5582,13 @@ test("desktop Tracker docks beside the Roleplay chat on both sides", async ({ pa
     expect(rightTrackerBox!.x + rightTrackerBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
 
     await page.reload();
-    await expect(rightTracker).toBeVisible();
+    const reloadedTracker = page.locator('[data-component^="TrackerDataSidebarDesktop."]');
+    await expect(reloadedTracker).toBeVisible();
 
-    await rightTracker.getByRole("button", { name: "Close tracker panel" }).click();
-    await expect(rightTracker).toBeHidden();
+    await reloadedTracker.getByRole("button", { name: "Close tracker panel" }).click();
+    await expect(reloadedTracker).toBeHidden();
     await page.reload();
-    await expect(rightTracker).toBeHidden();
+    await expect(reloadedTracker).toBeHidden();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }

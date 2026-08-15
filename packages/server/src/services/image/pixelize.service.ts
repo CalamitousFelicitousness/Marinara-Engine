@@ -49,6 +49,22 @@ const TILEABLE_SEAM_THRESHOLD = 0.9;
 
 export class PixelizeInputError extends Error {}
 
+/** Run a sharp decode/allocation step, converting any failure into a typed client
+ *  error. A base64 string can pass route validation yet still hold invalid or
+ *  truncated image data; sharp then throws from metadata()/toBuffer(), which would
+ *  otherwise surface as a bare HTTP 500 instead of the route's 400. Our own
+ *  PixelizeInputError (bounds, palette, dimensions) is preserved as-is. */
+async function decodeWithSharp<T>(step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    if (error instanceof PixelizeInputError) throw error;
+    throw new PixelizeInputError(
+      `Input is not a decodable image: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 function parsePaletteEntry(entry: string, index: number): [number, number, number] {
   const match = /^#([0-9a-f]{6})$/iu.exec(entry.trim());
   if (!match) throw new PixelizeInputError(`Palette entry ${index} must be a #rrggbb color`);
@@ -113,7 +129,7 @@ export async function pixelizeImage(input: Buffer, options: PixelizeOptions): Pr
 
   const sharp = await getSharp();
   // Header-only read to enforce input bounds BEFORE any pixel allocation.
-  const metadata = await sharp(input).metadata();
+  const metadata = await decodeWithSharp<{ width?: number; height?: number }>(() => sharp(input).metadata());
   const inputWidth = metadata.width ?? 0;
   const inputHeight = metadata.height ?? 0;
   if (!inputWidth || !inputHeight) throw new PixelizeInputError("Input image has no readable dimensions");
@@ -129,12 +145,23 @@ export async function pixelizeImage(input: Buffer, options: PixelizeOptions): Pr
 
   const targetWidth = options.targetWidth;
   const targetHeight = options.targetHeight ?? Math.max(1, Math.round((inputHeight / inputWidth) * targetWidth));
+  // An explicit targetHeight is bounds-checked above; a height DERIVED from the input
+  // aspect ratio (targetWidth only) can still exceed the output bound for a very tall
+  // input (a valid 129x4096 at targetWidth 512 derives ~16257px), so reject it before
+  // sharp allocates the oversized RGBA buffer below.
+  if (targetHeight > PIXELIZE_MAX_OUTPUT_DIMENSION) {
+    throw new PixelizeInputError(
+      `The output height derived from the input aspect ratio (${targetHeight}px) exceeds the ${PIXELIZE_MAX_OUTPUT_DIMENSION}px pixelize output bound; pass an explicit targetHeight to downscale further`,
+    );
+  }
 
-  const { data, info } = await sharp(input)
-    .resize(targetWidth, targetHeight, { kernel: "nearest", fit: "fill" })
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  const { data, info } = await decodeWithSharp<{ data: Buffer; info: { width: number; height: number } }>(() =>
+    sharp(input)
+      .resize(targetWidth, targetHeight, { kernel: "nearest", fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true }),
+  );
   const pixels = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 
   for (let i = 0; i < pixels.length; i += 4) {

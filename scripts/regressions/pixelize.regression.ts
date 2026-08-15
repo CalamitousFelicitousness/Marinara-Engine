@@ -98,6 +98,32 @@ async function main() {
   await assert.rejects(pixelizeImage(noisy, { targetWidth: 0 }), PixelizeInputError);
   await assert.rejects(pixelizeImage(noisy, { targetWidth: 16, palette: ["not-a-color"] }), PixelizeInputError);
 
+  // 5) Invalid/truncated image bytes decode to a typed error (route HTTP 400),
+  //    not a bare Sharp failure (HTTP 500). Route validation can pass base64 that
+  //    is not a real image; the failure can surface at metadata() (garbage) or at
+  //    the decode toBuffer() (a valid header with a truncated body).
+  await assert.rejects(
+    pixelizeImage(Buffer.from("this is not image data, just bytes"), { targetWidth: 16 }),
+    PixelizeInputError,
+    "undecodable bytes must be a typed input error, not a bare 500",
+  );
+  await assert.rejects(
+    pixelizeImage(noisy.subarray(0, noisy.length - 16), { targetWidth: 16 }),
+    PixelizeInputError,
+    "a truncated image (header reads, decode fails) must be a typed input error, not a bare 500",
+  );
+
+  // 6) A height DERIVED from a tall input's aspect ratio must be bounded like an
+  //    explicit one: reject before allocating the oversized RGBA buffer. Here an
+  //    8x1024 input with targetWidth 512 derives a 65536px height (>> the 512
+  //    output bound), yet the input itself is comfortably within input bounds.
+  const tall = await rawImage(8, 1024, () => [10, 20, 30, 255]);
+  await assert.rejects(
+    pixelizeImage(tall, { targetWidth: 512 }),
+    PixelizeInputError,
+    "a derived output height above the output bound must be rejected before decoding",
+  );
+
   console.log("pixelize regression passed");
 }
 

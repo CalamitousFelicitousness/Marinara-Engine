@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Registered Slurp's package-owned storage tables so its standalone Creator feed can persist without touching legacy NoodleR data (#5049, Pasta-Devs/Marinara-Agents#348).
 - Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
 - Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
 - Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).

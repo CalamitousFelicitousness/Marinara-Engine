@@ -12,6 +12,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept long Roleplay speaker-extractor readings complete by packing narration into normal-sized requests, generating queued clips serially, and stopping visibly on a failed clip instead of silently skipping parts of the message (#5059).
 - Gave each character voice assignment its own roomy stacked controls, removed hollow trailing dropdown controls, and kept empty character guidance on semantic theme colors.
 - Improved Tracker Panel readability by giving long custom values more room to wrap and making the side control read as a neutral action instead of a selected mode (#3470).
 - Preserved complete Storyboard animation prompts through planning, image-aware refinement, and final video prompt persistence instead of silently clipping them at generic 1,200- and 650-character summary limits (#5041).

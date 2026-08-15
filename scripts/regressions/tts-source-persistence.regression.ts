@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { TTS_API_KEY_MASK, ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
 import { buildTTSVoiceRequests } from "../../packages/client/src/lib/tts-dialogue.ts";
 import { buildExtractedRoleplayTTSVoiceRequests } from "../../packages/client/src/lib/tts-roleplay-speaker-extractor.ts";
-import { normalizeTTSPlaybackDelayMs } from "../../packages/client/src/lib/tts-service.ts";
+import { normalizeTTSPlaybackDelayMs, ttsService } from "../../packages/client/src/lib/tts-service.ts";
 import {
   buildOfficialPocketTtsForm,
   buildElevenLabsTextInput,
@@ -220,6 +220,62 @@ assert.equal(normalizeTTSPlaybackDelayMs(-1), 0);
 assert.equal(normalizeTTSPlaybackDelayMs(Number.NaN), 0);
 assert.throws(() => ttsConfigSchema.parse({ dialoguePauseMs: 60_001 }));
 
+const originalFetch = globalThis.fetch;
+const originalAudioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+let activeTTSRequests = 0;
+let peakActiveTTSRequests = 0;
+const startedTTSChunks: number[] = [];
+
+class RegressionAudio {
+  volume = 1;
+  muted = false;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(_url: string) {}
+
+  play(): Promise<void> {
+    setTimeout(() => this.onended?.(), 0);
+    return Promise.resolve();
+  }
+
+  pause(): void {}
+}
+
+try {
+  Object.defineProperty(globalThis, "Audio", { configurable: true, value: RegressionAudio });
+  globalThis.fetch = async () => {
+    activeTTSRequests += 1;
+    peakActiveTTSRequests = Math.max(peakActiveTTSRequests, activeTTSRequests);
+    const exceedsProviderConcurrency = activeTTSRequests > 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    activeTTSRequests -= 1;
+    if (exceedsProviderConcurrency) {
+      return new Response(JSON.stringify({ error: "Provider concurrency limit reached" }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(new Blob(["audio"]), { status: 200, headers: { "Content-Type": "audio/mpeg" } });
+  };
+
+  await ttsService.speakSequence(
+    [{ text: "First narration." }, { text: "Second narration." }, { text: "Third narration." }],
+    "tts-concurrency-regression",
+    {
+      throwOnError: true,
+      onChunkStart: (_request, index) => startedTTSChunks.push(index),
+    },
+  );
+  assert.equal(peakActiveTTSRequests, 1, "Non-progressive TTS pre-generation must respect serial providers");
+  assert.deepEqual(startedTTSChunks, [0, 1, 2], "A provider limit must not silently remove narration chunks");
+} finally {
+  ttsService.stop();
+  globalThis.fetch = originalFetch;
+  if (originalAudioDescriptor) Object.defineProperty(globalThis, "Audio", originalAudioDescriptor);
+  else Reflect.deleteProperty(globalThis, "Audio");
+}
+
 assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorEnabled, false);
 assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorConnectionId, "");
 assert.equal(legacyConfigWithoutDialoguePause.roleplaySpeakerExtractorEmotionsEnabled, false);
@@ -259,6 +315,60 @@ assert.match(
     includeEmotions: true,
   }),
   /"tone":"emotion"/,
+);
+
+const reportedLongRoleplayMessage = `Columbina guides the clam’s narrow hinge into the freshly scored bolt.
+
+“One verse. When it ends, the sea remembers its weight.”
+
+Her first note vibrates through Mari’s teeth. Moonlight spreads in pale rings, and the surrounding ocean leans away from Belleau. Mari’s new Hydro sense reels beneath the scale of it: tons of water peel from the maintenance throat and gather in a revolving halo behind Columbina.
+
+Warm air hisses through the rosette.
+
+The scratched bolt turns by a quarter. Hidden cams retract all five corroded fasteners at once. The shell fractures between Mari’s fingers; the brass cover springs outward and lands neatly in Columbina’s waiting palm.
+
+A shoulder-wide passage climbs into Belleau. Fresh scrapes mark its lower wall. Eleven meters in, an open isolation wheel gleams beneath a blue lamp.
+
+Red light floods the shaft.
+
+An alarm shudders through the station—the same one now screaming around Maukie’s tea table. Fagio’s cable lashes upward. Columbina catches its hook between two fingers, and the line draws taut enough to sing.
+
+A warning races across Fagio’s distant slate:
+
+> **INNER ISOLATION: OPEN**
+> **FLOOD DEFENSE CYCLE: 00:43**
+> **CLOSE VALVE OR RESTORE COVER**
+
+Columbina continues her verse. Each note keeps the ocean curved around the opening.
+
+The first red digit falls.
+
+**00:42.**`;
+const reportedLongRoleplaySegments = parseRoleplaySpeakerExtractorOutput(
+  JSON.stringify({
+    dialogue: [
+      {
+        speaker: "Columbina",
+        text: "“One verse. When it ends, the sea remembers its weight.”",
+      },
+    ],
+  }),
+  reportedLongRoleplayMessage,
+  false,
+).segments;
+const reportedLongRoleplayRequests = buildExtractedRoleplayTTSVoiceRequests(
+  reportedLongRoleplaySegments,
+  ttsConfigSchema.parse({ source: "openai", voice: "alloy", narratorVoiceEnabled: true, narratorVoice: "sage" }),
+  "Columbina",
+);
+const reportedLongRoleplaySpeech = reportedLongRoleplayRequests.map(({ text }) => text).join(" ");
+assert.match(reportedLongRoleplaySpeech, /Her first note vibrates through Mari’s teeth\./);
+assert.match(reportedLongRoleplaySpeech, /Red light floods the shaft\./);
+assert.match(reportedLongRoleplaySpeech, /INNER ISOLATION: OPEN/);
+assert.match(reportedLongRoleplaySpeech, /The first red digit falls\. 00:42\./);
+assert.ok(
+  reportedLongRoleplayRequests.length <= 4,
+  "Adjacent narration paragraphs should be packed instead of creating a provider request burst",
 );
 
 const extractedVoiceConfig = ttsConfigSchema.parse({

@@ -6,6 +6,7 @@ import {
 } from "@marinara-engine/shared";
 import { api } from "./api-client";
 import {
+  cleanTTSInputText,
   normalizeTTSCharacterName,
   resolveTTSNarratorVoice,
   resolveTTSVoiceForSpeaker,
@@ -42,7 +43,7 @@ export function buildExtractedRoleplayTTSVoiceRequests(
     if (segment.kind === "narration") {
       const voice = resolveTTSNarratorVoice(config);
       if (config.source === "elevenlabs" && !voice) return [];
-      return splitTTSChunks(segment.text).map((text) => ({
+      return splitTTSChunks(cleanTTSInputText(segment.text)).map((text) => ({
         text,
         speaker: "Narrator",
         voice,

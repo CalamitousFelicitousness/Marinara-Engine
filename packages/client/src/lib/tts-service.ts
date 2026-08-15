@@ -475,18 +475,14 @@ class TTSService {
       });
     };
 
-    const handleFetchFailures = (errors: Error[]) => {
-      if (errors.length === 0) return;
-      const first = errors[0]!;
-      this.lastError =
-        errors.length === 1 ? first.message : `${errors.length} TTS chunks failed; first error: ${first.message}`;
-      console.warn("[TTS] Skipped failed audio chunks:", errors);
+    const handleFetchFailure = (error: Error) => {
+      this.lastError = error.message;
+      console.warn("[TTS] Audio chunk generation failed; stopping the sequence:", error);
+      this.setState("error");
     };
 
     if (options.progressive) {
       let nextFetch: Promise<ChunkResult> | null = fetchChunk(playableRequests[0]!, 0);
-      let played = 0;
-      const fetchErrors: Error[] = [];
 
       for (let index = 0; index < playableRequests.length; index += 1) {
         const result = await nextFetch!;
@@ -502,14 +498,18 @@ class TTSService {
             this.setState("idle");
             return;
           }
-          fetchErrors.push(result.error);
-          continue;
+          detachAbortSignal();
+          if (this.abortController === abortController) {
+            this.abortController = null;
+          }
+          handleFetchFailure(result.error);
+          if (options.throwOnError) throw result.error;
+          return;
         }
 
         try {
           await playBlob(result.blob, result.request, result.index);
           await waitForPlaybackDelay(result.request.pauseAfterMs, abortController.signal);
-          played += 1;
           if (nextFetch && this.isCurrentSequence(sequence)) {
             this.setState("loading", id ?? null);
           }
@@ -532,41 +532,28 @@ class TTSService {
       if (this.abortController === abortController) {
         this.abortController = null;
       }
-      handleFetchFailures(fetchErrors);
-      if (played === 0 && fetchErrors.length > 0) {
-        this.setState("error");
-        if (options.throwOnError) throw fetchErrors[0];
+      this.setState("idle");
+      return;
+    }
+
+    const playableChunks: Array<Extract<ChunkResult, { ok: true }>> = [];
+    for (let index = 0; index < playableRequests.length; index += 1) {
+      const result = await fetchChunk(playableRequests[index]!, index);
+      if (!this.isCurrentSequence(sequence)) return;
+      if (!result.ok) {
+        detachAbortSignal();
+        if (this.abortController === abortController) {
+          this.abortController = null;
+        }
+        if (isAbortError(result.error)) {
+          this.setState("idle");
+          return;
+        }
+        handleFetchFailure(result.error);
+        if (options.throwOnError) throw result.error;
         return;
       }
-      this.setState("idle");
-      return;
-    }
-
-    const results = await Promise.all(playableRequests.map((request, index) => fetchChunk(request, index)));
-    if (!this.isCurrentSequence(sequence)) return;
-
-    if (results.some((result) => !result.ok && isAbortError(result.error))) {
-      detachAbortSignal();
-      if (this.abortController === abortController) {
-        this.abortController = null;
-      }
-      this.setState("idle");
-      return;
-    }
-
-    const playableChunks = results.flatMap((result) => (result.ok ? [result] : []));
-    const fetchErrors = results.flatMap((result) => (result.ok ? [] : [result.error]));
-    handleFetchFailures(fetchErrors);
-    if (playableChunks.length === 0) {
-      detachAbortSignal();
-      if (this.abortController === abortController) {
-        this.abortController = null;
-      }
-      const error = fetchErrors[0] ?? new Error("TTS request failed");
-      this.lastError = error.message;
-      this.setState("error");
-      if (options.throwOnError) throw error;
-      return;
+      playableChunks.push(result);
     }
 
     for (const chunk of playableChunks) {

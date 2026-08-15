@@ -77,6 +77,8 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  // The chat whose messages we currently want; a slower earlier fetch that resolves late is ignored.
+  const activeSelectionRef = useRef<string | null>(null);
 
   // Reset transient state whenever the modal is (re)opened.
   useEffect(() => {
@@ -85,7 +87,10 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     setSelected(null);
     setMode("last");
     setLastN(20);
+    setRangeFrom(1);
+    setRangeTo(20);
     setMessages(null);
+    activeSelectionRef.current = null;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     return () => previouslyFocused.current?.focus?.();
   }, [open]);
@@ -129,28 +134,35 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     setSelected(chat);
     setMessages(null);
     setLoadingMessages(true);
+    activeSelectionRef.current = chat.id;
     try {
       const rows = await api.get<Message[]>(`/chats/${chat.id}/messages`);
+      if (activeSelectionRef.current !== chat.id) return; // superseded by a newer selection or Back
       setMessages(Array.isArray(rows) ? rows : []);
     } catch {
+      if (activeSelectionRef.current !== chat.id) return;
       toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLoadFailed"));
       setMessages([]);
     } finally {
-      setLoadingMessages(false);
+      if (activeSelectionRef.current === chat.id) setLoadingMessages(false);
     }
   }, [localizeUi]);
 
   const visible = useMemo(() => (messages ? visibleMessages(messages) : []), [messages]);
   const total = visible.length;
 
+  // The actual 1-based range used, clamped to [1, total]. Shared by the slice AND the persisted label
+  // so the label can't claim more than was attached (e.g. "last 20" on a 5-message chat).
+  const clampedRange = useMemo(() => {
+    const from = Math.max(1, Math.min(rangeFrom, Math.max(1, total)));
+    const to = Math.max(from, Math.min(rangeTo, Math.max(1, total)));
+    return { from, to };
+  }, [rangeFrom, rangeTo, total]);
+
   const selectedRows = useMemo((): TranscriptRow[] => {
     let slice = visible;
     if (mode === "last") slice = visible.slice(-Math.max(1, lastN));
-    else if (mode === "range") {
-      const from = Math.max(1, Math.min(rangeFrom, total));
-      const to = Math.max(from, Math.min(rangeTo, total));
-      slice = visible.slice(from - 1, to);
-    }
+    else if (mode === "range") slice = visible.slice(clampedRange.from - 1, clampedRange.to);
     return slice.map((message) => ({
       role: message.role,
       name:
@@ -162,7 +174,7 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
       content: typeof message.content === "string" ? message.content : String(message.content ?? ""),
       at: message.createdAt,
     }));
-  }, [visible, mode, lastN, rangeFrom, rangeTo, total, characterNameById]);
+  }, [visible, mode, lastN, clampedRange, characterNameById]);
 
   const contentJson = useMemo(() => JSON.stringify(selectedRows), [selectedRows]);
   const tokenEstimate = estimateTokens(contentJson);
@@ -171,17 +183,23 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
   const modeLabel = useMemo(() => {
     if (mode === "all") return localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryAll");
     if (mode === "range")
-      return localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryRangeLabel", { from: rangeFrom, to: rangeTo });
-    return localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLastLabel", { count: lastN });
-  }, [mode, rangeFrom, rangeTo, lastN, localizeUi]);
+      return localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryRangeLabel", {
+        from: clampedRange.from,
+        to: clampedRange.to,
+      });
+    return localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLastLabel", { count: selectedRows.length });
+  }, [mode, clampedRange, selectedRows.length, localizeUi]);
 
   const handleAttach = useCallback(async () => {
     if (!selected || selectedRows.length === 0 || overCap) return;
     try {
+      // Keep the composed label under the server's 200-char cap even for very long chat names, so a
+      // long name doesn't turn into an opaque request rejection.
+      const safeName = selected.name.length > 150 ? `${selected.name.slice(0, 149)}…` : selected.name;
       await addContext.mutateAsync({
         chatId: workspaceChatId,
         kind: "chat_history",
-        label: `${selected.name} — ${modeLabel}`,
+        label: `${safeName} — ${modeLabel}`,
         sourceChatId: selected.id,
         content: contentJson,
         tokenEstimate,
@@ -210,7 +228,10 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
           {selected && (
             <button
               type="button"
-              onClick={() => setSelected(null)}
+              onClick={() => {
+                setSelected(null);
+                activeSelectionRef.current = null;
+              }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label={localizeUi("navigation.common.back")}
             >

@@ -3471,6 +3471,22 @@ export function HomeProfessorMariChat({
     setHistoryPickerOpen(true);
   }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
 
+  // The Context Viewer is gated on a live chatId too (attachModals), so ensure one before opening —
+  // otherwise the menu item would be a silent no-op when the user hasn't sent a message yet.
+  const handleOpenContextViewer = useCallback(async () => {
+    let id = activeChatIdRef.current;
+    if (!id) {
+      try {
+        const chat = await ensureProfessorMariChat(effectiveConnectionId);
+        id = chat.id;
+      } catch {
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryNeedsChat"));
+        return;
+      }
+    }
+    setContextViewerOpen(true);
+  }, [ensureProfessorMariChat, effectiveConnectionId, localizeUi]);
+
   const refreshWorkspaceStatus = useCallback(
     async (shouldApply?: () => boolean) => {
       const params = new URLSearchParams();
@@ -5110,7 +5126,7 @@ export function HomeProfessorMariChat({
           <MariAttachButton
             onAttachFiles={() => attachmentInputRef.current?.click()}
             onAddChatHistory={() => void handleOpenHistoryPicker()}
-            onViewContext={() => setContextViewerOpen(true)}
+            onViewContext={() => void handleOpenContextViewer()}
             attachedFileCount={attachments.length}
             attachedContextCount={attachedContext?.length ?? 0}
             disabled={isBusy || isReadingAttachments}
@@ -5874,7 +5890,7 @@ export function HomeProfessorMariChat({
                             <MariAttachButton
                               onAttachFiles={() => attachmentInputRef.current?.click()}
                               onAddChatHistory={() => void handleOpenHistoryPicker()}
-                              onViewContext={() => setContextViewerOpen(true)}
+                              onViewContext={() => void handleOpenContextViewer()}
                               attachedFileCount={attachments.length}
                               attachedContextCount={attachedContext?.length ?? 0}
                               disabled={isBusy || isReadingAttachments}

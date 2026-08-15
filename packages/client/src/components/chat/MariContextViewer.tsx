@@ -20,17 +20,22 @@ export function MariContextViewer({ open, onClose, workspaceChatId }: Props) {
   const removeContext = useRemoveMariWorkspaceContext(workspaceChatId);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // Keep focus-restore keyed on `open` only. `onClose` is a fresh inline function each parent render,
+  // so folding it into this effect would re-run the cleanup (yanking focus out of the dialog) on every
+  // parent re-render — e.g. after a Remove refetch. The Escape listener lives in its own effect.
   useEffect(() => {
     if (!open) return;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
+    return () => previouslyFocused.current?.focus?.();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previouslyFocused.current?.focus?.();
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
   const totalTokens = useMemo(() => (items ?? []).reduce((sum, item) => sum + (item.tokenEstimate || 0), 0), [items]);

@@ -20,12 +20,12 @@ import {
   getChatToolbarButtonClass,
 } from "./ChatToolbarControls";
 import {
-  ROLEPLAY_POPOVER_HEADER,
-  ROLEPLAY_POPOVER_SCROLL_AREA,
-  ROLEPLAY_POPOVER_SHELL,
-  ROLEPLAY_POPOVER_SUBTITLE,
-  ROLEPLAY_POPOVER_TITLE,
-} from "./roleplay-popover-styles";
+  NEUTRAL_PANEL_HEADER,
+  NEUTRAL_PANEL_SCROLL_AREA,
+  NEUTRAL_PANEL_SHELL,
+  NEUTRAL_PANEL_SUBTITLE,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import { ConversationPresenceScheduleSection } from "./ConversationPresenceScheduleSection";
 import { formatRelativeContact } from "../../lib/relative-time";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -586,19 +586,19 @@ export function ConversationPresenceCard({
         createPortal(
           <div
             ref={popoverRef}
-            className={cn(ROLEPLAY_POPOVER_SHELL, "fixed z-[9999] overflow-hidden")}
+            className={cn(NEUTRAL_PANEL_SHELL, "fixed z-[9999] overflow-hidden")}
             style={{
               top: position.top,
               left: `max(calc(var(--mari-chat-ui-inset-left, 0px) + 0.75rem), min(${position.left}px, calc(100vw - var(--mari-chat-ui-inset-right, 0px) - ${position.width}px - 0.75rem)))`,
               width: position.width,
             }}
           >
-            <div className={ROLEPLAY_POPOVER_HEADER}>
+            <div className={NEUTRAL_PANEL_HEADER}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className={ROLEPLAY_POPOVER_TITLE}>
+                  <div className={NEUTRAL_PANEL_TITLE}>
                     <CalendarClock size="0.75rem" className="shrink-0 text-[var(--muted-foreground)]" />{localizeUi("ui.chat.conversationpresencecard.conversationPresence")}</div>
-                  <div className={ROLEPLAY_POPOVER_SUBTITLE}>{localizeUi("ui.chat.conversationpresencecard.seeWhoIsFollowingScheduleAndStepInManually")}</div>
+                  <div className={NEUTRAL_PANEL_SUBTITLE}>{localizeUi("ui.chat.conversationpresencecard.seeWhoIsFollowingScheduleAndStepInManually")}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
@@ -629,7 +629,7 @@ export function ConversationPresenceCard({
 
             <div
               className={cn(
-                ROLEPLAY_POPOVER_SCROLL_AREA,
+                NEUTRAL_PANEL_SCROLL_AREA,
                 "max-h-[min(28rem,calc(100vh-12rem))] space-y-2 overflow-y-auto p-2",
               )}
             >

@@ -23,7 +23,7 @@ import { useChat } from "../../hooks/use-chats";
 import { useGenerate } from "../../hooks/use-generate";
 import { api } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
-import { ROLEPLAY_POPOVER_SHELL } from "./roleplay-popover-styles";
+import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
 import { getEchoChamberMessageInterval, resolveEchoChamberPersistedBaseline } from "../../lib/echo-chamber-queue";
 import { resolveEchoChamberTopLayout } from "../../lib/echo-chamber-layout";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -558,7 +558,7 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
         type="button"
         onClick={toggleEchoChamber}
         className={cn(
-          ROLEPLAY_POPOVER_SHELL,
+          NEUTRAL_PANEL_SHELL,
           "absolute z-[60] pointer-events-auto inline-flex items-center gap-2 px-2.5 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider",
           "text-[var(--marinara-chat-chrome-button-text)] transition-colors hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
         )}
@@ -593,7 +593,7 @@ export function EchoChamberPanel({ hiddenOnMobile = false }: EchoChamberPanelPro
     <div
       ref={panelRef}
       className={cn(
-        ROLEPLAY_POPOVER_SHELL,
+        NEUTRAL_PANEL_SHELL,
         "absolute z-[60] flex min-w-0 flex-col",
         "pointer-events-auto max-md:w-auto md:w-[14.75rem]",
         !panelSize && "max-md:max-h-28 md:max-h-[22rem]",

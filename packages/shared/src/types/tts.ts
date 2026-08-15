@@ -251,7 +251,9 @@ export const ttsRoleplaySpeakerSegmentSchema = z.discriminatedUnion("kind", [
 export type TTSRoleplaySpeakerSegment = z.infer<typeof ttsRoleplaySpeakerSegmentSchema>;
 
 export const ttsRoleplaySpeakerExtractorResponseSchema = z.object({
-  segments: z.array(ttsRoleplaySpeakerSegmentSchema).max(500),
+  // Up to 500 dialogue lines can produce one narration segment before, between,
+  // and after them: 500 dialogue + 501 narration segments.
+  segments: z.array(ttsRoleplaySpeakerSegmentSchema).max(1001),
 });
 export type TTSRoleplaySpeakerExtractorResponse = z.infer<typeof ttsRoleplaySpeakerExtractorResponseSchema>;
 

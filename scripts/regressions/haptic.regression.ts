@@ -65,12 +65,14 @@ assert.equal(
   "multi-function device (vibrating, linear stroker, thruster, or pump, inflatable or air-pump)",
 );
 
-const inlineResult = parseCharacterCommands(
-  '[haptic: action="pump", intensity=1, duration=4, pattern="wave"]',
-);
+const inlineResult = parseCharacterCommands('[haptic: action="pump", intensity=1, duration=4, pattern="wave"]');
 assert.equal(inlineResult.cleanContent, "");
 assert.deepEqual(inlineResult.commands, [
   { type: "haptic", action: "position", intensity: 1, duration: 4, pattern: "wave" },
 ]);
+
+const invalidActionResult = parseCharacterCommands('[haptic: action="teleport", intensity=1, duration=4]');
+assert.equal(invalidActionResult.cleanContent, "");
+assert.deepEqual(invalidActionResult.commands, []);
 
 console.log("Haptic full-range, capability, action, mode, and pattern regressions passed.");

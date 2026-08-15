@@ -22,7 +22,7 @@ import {
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { encryptApiKey, decryptApiKey } from "../utils/crypto.js";
-import { isTtsLocalUrlsEnabled } from "../config/runtime-config.js";
+import { getChatGenerationTimeoutMs, isTtsLocalUrlsEnabled } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
@@ -1170,6 +1170,7 @@ export async function ttsRoutes(app: FastifyInstance) {
           cachingAtDepth: Number(connection.cachingAtDepth) || 5,
           responseFormat: { type: "json_object" },
           debugMode: input.debugMode,
+          signal: AbortSignal.timeout(getChatGenerationTimeoutMs()),
         },
       );
       const raw = result.content?.trim();

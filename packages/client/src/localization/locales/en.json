@@ -3385,7 +3385,6 @@
   "ui.chat.hapticsetupfields.intense": "Intense",
   "ui.chat.hapticsetupfields.intenseDescription": "Favors stronger feedback and can use the full intensity range.",
   "ui.chat.hapticsetupfields.intifaceUrl": "Intiface URL",
-  "ui.chat.hapticsetupfields.roleplayOnly": "Roleplay only",
   "ui.chat.hapticsetupfields.standard": "Standard",
   "ui.chat.hapticsetupfields.standardDescription": "Balances feedback across the full intensity range.",
   "ui.chat.hapticsetupfields.subtle": "Subtle",

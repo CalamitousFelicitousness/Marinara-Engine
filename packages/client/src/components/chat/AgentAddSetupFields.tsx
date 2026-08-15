@@ -31,6 +31,7 @@ import {
   normalizeSpriteDisplayModes,
   type SpriteDisplayMode,
 } from "./sprite-display-modes";
+import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 export type KnowledgeAgentType = "knowledge-retrieval" | "knowledge-router";
@@ -84,28 +85,6 @@ export type AgentAddSpriteSubject = {
 export const DEFAULT_PROSE_GUARDIAN_BANNED_WORDS = "ozone";
 export const DEFAULT_PROSE_GUARDIAN_AVOID =
   "no repetition of any phrases or sentence structure from the last messages, if the last output started with dialogue line, this one needs to start with narration, no purple prose";
-
-const HAPTIC_SENSITIVITY_OPTIONS: Array<{
-  id: HapticFeedbackSensitivity;
-  labelKey: string;
-  descriptionKey: string;
-}> = [
-  {
-    id: "subtle",
-    labelKey: "ui.chat.hapticsetupfields.subtle",
-    descriptionKey: "ui.chat.hapticsetupfields.subtleDescription",
-  },
-  {
-    id: "standard",
-    labelKey: "ui.chat.hapticsetupfields.standard",
-    descriptionKey: "ui.chat.hapticsetupfields.standardDescription",
-  },
-  {
-    id: "intense",
-    labelKey: "ui.chat.hapticsetupfields.intense",
-    descriptionKey: "ui.chat.hapticsetupfields.intenseDescription",
-  },
-];
 
 const SPOTIFY_SOURCE_OPTIONS: Array<{ id: SpotifySourceType; label: string; description: string }> = [
   { id: "liked", label: "Liked Songs", description: "Pick from the user's saved tracks first." },

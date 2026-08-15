@@ -36,9 +36,7 @@ export function buildExtractedRoleplayTTSVoiceRequests(
   resolveCharacterIdForSpeaker?: (speaker?: string | null) => string | null | undefined,
 ): TTSVoiceRequest[] {
   const fallbackSpeakerKey = normalizeTTSCharacterName(fallbackSpeaker);
-  const spokenSegments = segments.filter(
-    (segment) => segment.kind === "dialogue" || (!config.dialogueOnly && config.narratorVoiceEnabled),
-  );
+  const spokenSegments = config.dialogueOnly ? segments.filter((segment) => segment.kind === "dialogue") : segments;
 
   return spokenSegments.flatMap<TTSVoiceRequest>((segment, segmentIndex) => {
     if (segment.kind === "narration") {

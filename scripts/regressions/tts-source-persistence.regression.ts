@@ -290,6 +290,23 @@ assert.deepEqual(
     { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
   ],
 );
+const extractedGlobalNarrationRequests = buildExtractedRoleplayTTSVoiceRequests(
+  extractedSegments,
+  { ...extractedVoiceConfig, narratorVoiceEnabled: false, narratorVoice: "" },
+  "Dottore",
+  "dottore-id",
+  (speaker) => extractedCharacterIds[speaker ?? ""],
+);
+assert.deepEqual(
+  extractedGlobalNarrationRequests
+    .filter(({ speaker }) => speaker === "Narrator")
+    .map(({ speaker, voice }) => ({ speaker, voice })),
+  [
+    { speaker: "Narrator", voice: "global" },
+    { speaker: "Narrator", voice: "global" },
+    { speaker: "Narrator", voice: "global" },
+  ],
+);
 const extractedDialogueOnlyRequests = buildExtractedRoleplayTTSVoiceRequests(
   extractedSegments,
   { ...extractedVoiceConfig, dialogueOnly: true, dialoguePauseMs: 2000 },

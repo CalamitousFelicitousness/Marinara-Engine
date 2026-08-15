@@ -239,6 +239,7 @@ import {
 import { resolveGameVideoRuntime, type GameVideoRuntime } from "../services/video/game-video-runtime.js";
 import {
   buildStoryboardAnimationRefinementMessages,
+  compactStoryboardAnimationPrompt,
   executeStoryboardImageAwareAnimation,
   redactStoryboardAnimationRefinementMessages,
   resolveStoryboardAnimationRefinement,
@@ -1630,7 +1631,7 @@ async function buildStoryboardGalleryAnimatePrompt(args: {
     args.ownerMode === "roleplay"
       ? args.meta.roleplayStoryboardVideoPromptTemplateId
       : args.meta.gameStoryboardVideoPromptTemplateId;
-  const narrationSummary = compactVideoPromptText(args.plannedFrame.narrationBeat, args.promptLimits.narrationSummary);
+  const narrationSummary = compactStoryboardAnimationPrompt(args.plannedFrame.narrationBeat);
   if (!narrationSummary) {
     throw new Error("Storyboard keyframe is missing its planned animation prompt.");
   }
@@ -5481,7 +5482,9 @@ function sanitizeStoryboardPlan(
     .map((rawFrame, index): PlannedStoryboardKeyframe | null => {
       const frame = asStoryboardRecord(rawFrame);
       const fallbackFrame = fallback.keyframes[index] ?? fallback.keyframes[0] ?? null;
-      const narrationBeat = compactStoryboardText(frame.narrationBeat, args.narrationBeatMaxChars ?? 1200);
+      const narrationBeat = args.narrationBeatMaxChars
+        ? compactStoryboardText(frame.narrationBeat, args.narrationBeatMaxChars)
+        : compactStoryboardAnimationPrompt(frame.narrationBeat);
       const mangaPanelPrompt = compactStoryboardText(frame.mangaPanelPrompt, 5000);
       const imagePrompt = compactStoryboardText(frame.imagePrompt, 6500) || mangaPanelPrompt || narrationBeat;
       if (!narrationBeat && !imagePrompt) return null;
@@ -11657,7 +11660,6 @@ export async function gameRoutes(app: FastifyInstance) {
                   const refinement = resolveStoryboardAnimationRefinement(
                     extraction.content,
                     plannedFrame.narrationBeat,
-                    videoRuntime.promptLimits.narrationSummary,
                   );
                   if (!refinement) {
                     throw new Error("Animation Planner returned no usable image-aware motion beat");

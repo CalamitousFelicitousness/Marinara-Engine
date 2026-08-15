@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Preserved complete Storyboard animation prompts through planning, image-aware refinement, and final video prompt persistence instead of silently clipping them at generic 1,200- and 650-character summary limits (#5041).
 - Treated a literal `CSRF_TRUSTED_ORIGINS=null` as an unset value so it no longer prevents Marinara Engine from opening (#5030).
 - Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
 - Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).

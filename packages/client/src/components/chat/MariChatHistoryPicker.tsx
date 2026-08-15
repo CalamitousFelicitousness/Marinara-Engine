@@ -77,8 +77,9 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
   const [rangeTo, setRangeTo] = useState(20);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  // The chat whose messages we currently want; a slower earlier fetch that resolves late is ignored.
-  const activeSelectionRef = useRef<string | null>(null);
+  // Monotonic token bumped on every selection / Back / open / close. A fetch whose token is stale is
+  // ignored — including re-selecting the SAME chat (which a chat-id check alone would not catch).
+  const requestTokenRef = useRef(0);
   const dialogRef = useModalFocusTrap<HTMLDivElement>(open, onClose);
 
   // Reset transient state whenever the modal is (re)opened, and discard any in-flight /messages fetch
@@ -92,9 +93,9 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     setRangeFrom(1);
     setRangeTo(20);
     setMessages(null);
-    activeSelectionRef.current = null;
+    requestTokenRef.current += 1;
     return () => {
-      activeSelectionRef.current = null;
+      requestTokenRef.current += 1;
     };
   }, [open]);
 
@@ -128,17 +129,17 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     setSelected(chat);
     setMessages(null);
     setLoadingMessages(true);
-    activeSelectionRef.current = chat.id;
+    const token = (requestTokenRef.current += 1);
     try {
       const rows = await api.get<Message[]>(`/chats/${chat.id}/messages`);
-      if (activeSelectionRef.current !== chat.id) return; // superseded by a newer selection or Back
+      if (requestTokenRef.current !== token) return; // superseded by a newer selection, Back, or close
       setMessages(rows);
     } catch {
-      if (activeSelectionRef.current !== chat.id) return;
+      if (requestTokenRef.current !== token) return;
       toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLoadFailed"));
       setMessages([]);
     } finally {
-      if (activeSelectionRef.current === chat.id) setLoadingMessages(false);
+      if (requestTokenRef.current === token) setLoadingMessages(false);
     }
   }, [localizeUi]);
 
@@ -228,7 +229,7 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
               type="button"
               onClick={() => {
                 setSelected(null);
-                activeSelectionRef.current = null;
+                requestTokenRef.current += 1;
               }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
               aria-label={localizeUi("navigation.common.back")}
@@ -255,7 +256,6 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
               <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5">
                 <Search size="0.875rem" className="shrink-0 text-[var(--muted-foreground)]" />
                 <input
-                  autoFocus
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder={localizeUi("ui.chat.homeprofessormarichat.attachChatHistorySearch")}

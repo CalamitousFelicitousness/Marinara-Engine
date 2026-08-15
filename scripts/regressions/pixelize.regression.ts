@@ -4,14 +4,19 @@
 // Pins the deterministic contract: byte-stable output for identical input,
 // palette quantization that only emits ramp colors, strictly binary alpha,
 // seam scoring that accepts tileable fixtures and rejects seamed ones, and
-// input bounds that reject before allocation.
+// input bounds that reject before allocation. A final section pins the HTTP
+// contract of POST /api/sprites/pixelize (bad input -> 400, valid -> 200)
+// separately from the service-level PixelizeInputError assertions.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import {
   pixelizeImage,
   PixelizeInputError,
   PIXELIZE_MAX_INPUT_DIMENSION,
+  isResourceSharpFailure,
 } from "../../packages/server/src/services/image/pixelize.service.js";
+import { spritesRoutes } from "../../packages/server/src/routes/sprites.routes.js";
 
 const requireFromServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,6 +118,25 @@ async function main() {
     "a truncated image (header reads, decode fails) must be a typed input error, not a bare 500",
   );
 
+  // The wrapper reclassifies only *invalid input*: a memory/disk resource failure
+  // (the server's fault, e.g. OOM expanding a large but valid input) must be
+  // rethrown so the route keeps its 500/503, never a 400 that blames the image.
+  for (const resourceMessage of [
+    "vips2png: unable to allocate 64000000 bytes",
+    "libvips error: Cannot allocate memory",
+    "Error: ENOMEM",
+    "unix error: No space left on device",
+  ]) {
+    assert.equal(isResourceSharpFailure(resourceMessage), true, `resource failure must pass through: ${resourceMessage}`);
+  }
+  for (const inputMessage of [
+    "Input buffer contains unsupported image format",
+    "vipspng: libpng read error",
+    "Input buffer has corrupt header: pngload_buffer: end of stream",
+  ]) {
+    assert.equal(isResourceSharpFailure(inputMessage), false, `invalid input must be wrapped as 400: ${inputMessage}`);
+  }
+
   // 6) A height DERIVED from a tall input's aspect ratio must be bounded like an
   //    explicit one: reject before allocating the oversized RGBA buffer. Here an
   //    8x1024 input with targetWidth 512 derives a 65536px height (>> the 512
@@ -123,6 +147,40 @@ async function main() {
     PixelizeInputError,
     "a derived output height above the output bound must be rejected before decoding",
   );
+
+  // 7) HTTP contract, verified separately from the service contract above: POST
+  //    /api/sprites/pixelize maps the service's typed input errors to 400 and a
+  //    valid request to 200. This pins the wiring (route validation ->
+  //    pixelizeImage -> error mapping), not just that pixelizeImage throws.
+  const app = Fastify();
+  try {
+    await app.register(spritesRoutes, { prefix: "/api/sprites" });
+    const asDataUrl = (bytes: Buffer) => `data:image/png;base64,${bytes.toString("base64")}`;
+    const post = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/sprites/pixelize",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify(payload),
+      });
+
+    const malformed = await post({
+      imageBase64: asDataUrl(Buffer.from("this is not a real image file, only some plain ascii text bytes")),
+      targetWidth: 16,
+    });
+    assert.equal(malformed.statusCode, 400, "malformed image data must return HTTP 400");
+
+    const truncated = await post({ imageBase64: asDataUrl(noisy.subarray(0, noisy.length - 16)), targetWidth: 16 });
+    assert.equal(truncated.statusCode, 400, "truncated image data must return HTTP 400");
+
+    const oversizedDerived = await post({ imageBase64: asDataUrl(tall), targetWidth: 512 });
+    assert.equal(oversizedDerived.statusCode, 400, "an oversized derived output height must return HTTP 400");
+
+    const valid = await post({ imageBase64: asDataUrl(await rawImage(8, 8, () => [40, 90, 60, 255])), targetWidth: 8 });
+    assert.equal(valid.statusCode, 200, "a valid image and request must return HTTP 200");
+  } finally {
+    await app.close();
+  }
 
   console.log("pixelize regression passed");
 }

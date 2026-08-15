@@ -49,19 +49,29 @@ const TILEABLE_SEAM_THRESHOLD = 0.9;
 
 export class PixelizeInputError extends Error {}
 
-/** Run a sharp decode/allocation step, converting any failure into a typed client
- *  error. A base64 string can pass route validation yet still hold invalid or
- *  truncated image data; sharp then throws from metadata()/toBuffer(), which would
- *  otherwise surface as a bare HTTP 500 instead of the route's 400. Our own
- *  PixelizeInputError (bounds, palette, dimensions) is preserved as-is. */
+/** libvips reports failures as plain Error messages (no codes). A memory/disk
+ *  resource failure while decoding — e.g. running out of memory expanding a large
+ *  but valid input to a raw RGBA buffer, the known phone/Termux pressure class — is
+ *  the SERVER's fault, not a malformed request, so it must keep its 500/503 mapping
+ *  rather than be reported to the caller as an invalid image (400). */
+export function isResourceSharpFailure(message: string): boolean {
+  return /allocat|out of memory|\benomem\b|no space left|unable to write/iu.test(message);
+}
+
+/** Run a sharp decode step, converting an *invalid-input* failure into a typed
+ *  client error. A base64 string can pass route validation yet still hold invalid
+ *  or truncated image data; sharp then throws from metadata()/toBuffer(), which
+ *  would otherwise surface as a bare HTTP 500 instead of the route's 400. Resource
+ *  failures (out of memory, disk full) and our own PixelizeInputError are rethrown
+ *  unchanged so they keep their 500/503 (or 400) mapping. */
 async function decodeWithSharp<T>(step: () => Promise<T>): Promise<T> {
   try {
     return await step();
   } catch (error) {
     if (error instanceof PixelizeInputError) throw error;
-    throw new PixelizeInputError(
-      `Input is not a decodable image: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (isResourceSharpFailure(message)) throw error;
+    throw new PixelizeInputError(`Input is not a decodable image: ${message}`);
   }
 }
 

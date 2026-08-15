@@ -84,6 +84,16 @@ async function fetchMarinaraHealth() {
   return health;
 }
 
+function hasErrorCode(error, expectedCode, seen = new Set()) {
+  if (!error || typeof error !== "object" || seen.has(error)) return false;
+  seen.add(error);
+  if (error.code === expectedCode) return true;
+  if (hasErrorCode(error.cause, expectedCode, seen)) return true;
+  return (
+    Array.isArray(error.errors) && error.errors.some((nestedError) => hasErrorCode(nestedError, expectedCode, seen))
+  );
+}
+
 async function waitForServer() {
   const startedAt = Date.now();
   let lastError = null;
@@ -134,8 +144,15 @@ try {
   let existingServer = null;
   try {
     existingServer = await fetchMarinaraHealth();
-  } catch {
-    // No healthy Marinara server is already listening, so start this session's server below.
+  } catch (err) {
+    if (!hasErrorCode(err, "ECONNREFUSED")) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `[dev] Cannot start the server because ${SERVER_HEALTH_URL} is occupied or unavailable (${detail}).`,
+        { cause: err },
+      );
+    }
+    // Nothing is listening, so start this session's server below.
   }
 
   if (existingServer) {

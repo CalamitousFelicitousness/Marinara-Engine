@@ -123,6 +123,10 @@ process.on("SIGTERM", () => {
   process.exitCode = 143;
   stopChildren("SIGTERM");
 });
+process.on("SIGHUP", () => {
+  process.exitCode = 129;
+  stopChildren("SIGTERM");
+});
 
 try {
   const installProblems = getWorkspaceInstallProblems();

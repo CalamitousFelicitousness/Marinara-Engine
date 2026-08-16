@@ -13,6 +13,7 @@ const fixtureCliPath = join(fixtureRoot, "fake-pnpm.mjs");
 const fixtureWorkerPath = join(fixtureRoot, "worker.mjs");
 
 copyFileSync(join(repositoryRoot, "scripts/dev.mjs"), fixtureDevPath);
+copyFileSync(join(repositoryRoot, "scripts/pnpm-runner.mjs"), join(fixtureRoot, "pnpm-runner.mjs"));
 writeFileSync(
   join(fixtureRoot, "check-workspace-install.mjs"),
   "export function getWorkspaceInstallProblems() { return []; }\n",

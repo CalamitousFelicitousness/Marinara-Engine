@@ -121,7 +121,7 @@ if (!isServer) {
   let receivedMarker = false;
   const respondWhenReady = () => {
     if (!healthResponse || !receivedMarker) return;
-    healthResponse.end("ok");
+    healthResponse.end(JSON.stringify({ status: "ok", version: "test", build: "test" }));
     healthResponse = undefined;
   };
   const server = createServer((request, response) => {

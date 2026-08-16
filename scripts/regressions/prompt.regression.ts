@@ -9,6 +9,7 @@ import {
   LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
   LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
   applyTrackerFieldLocksToGameStatePatch,
+  roleplayInventoryTrackerLockKey,
   characterTrackerLockKey,
   applyRegexReplacement,
   buildNarratorInstructionMessage,
@@ -717,6 +718,7 @@ import {
   applyTrackerCharacterCardIdentity,
   canonicalizeGamePartySpeakerLabels,
   buildGenerationGuideInstruction,
+  buildLockedInventoryTrackerPatch,
   appendSeparateAgentInjectionMessage,
   collectLatestTrackerCharacterHistory,
   computeSummaryHideIds,
@@ -1464,8 +1466,8 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 32);
-      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 32);
+      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 33);
+      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 33);
       assert.deepEqual(
         OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"),
         {
@@ -1486,7 +1488,7 @@ const cases: RegressionCase[] = [
             OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.filter((entry) => entry.category === category).length,
           ]),
         ),
-        { writer: 6, tracker: 8, misc: 18 },
+        { writer: 6, tracker: 9, misc: 18 },
       );
       assert.ok(frontendAgentCatalog, "Frontend architecture is missing the first-party agent catalog");
       assert.deepEqual(
@@ -9359,6 +9361,44 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         { name: "Tension", value: "High", icon: "flame" },
       ]);
 
+      const inventorySnapshot = {
+        playerStats: JSON.stringify({
+          stats: [],
+          attributes: null,
+          skills: {},
+          inventory: [],
+          activeQuests: [],
+          status: "",
+          inventoryTrackerCurrencies: [{ name: "Silver coin", qty: 6 }],
+          inventoryTrackerEquipped: [{ name: "Family heirloom longsword" }],
+          inventoryTrackerInventory: [{ name: "Billhook" }],
+        }),
+      };
+      const inventoryLockState = {
+        ...currentState,
+        playerStats: JSON.parse(inventorySnapshot.playerStats),
+        fieldLocks: {
+          [roleplayInventoryTrackerLockKey("currencies", { name: "Silver coin" }, "qty", 0)]: true,
+        },
+      };
+      const inventoryTrackerPatch = buildLockedInventoryTrackerPatch({
+        data: {
+          currencies: [
+            { name: "Silver coin", qty: 2 },
+            { name: " silver  coin ", qty: 3 },
+          ],
+          equipped: [{ name: "Family heirloom longsword", qty: 1 }],
+          inventory: [{ name: "Family heirloom longsword" }, { name: "Scavenged axe", qty: 2 }],
+        },
+        snapshot: inventorySnapshot,
+        lockState: inventoryLockState,
+      });
+      assert.deepEqual(inventoryTrackerPatch.values, {
+        inventoryTrackerCurrencies: [{ name: "Silver coin", qty: 6 }],
+        inventoryTrackerEquipped: [{ name: "Family heirloom longsword" }],
+        inventoryTrackerInventory: [{ name: "Scavenged axe", qty: 2 }],
+      });
+
       const nextCharacters: Array<Record<string, unknown>> = [
         {
           characterId: "mira",
@@ -9501,6 +9541,17 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.doesNotMatch(promptBlock ?? "", /Duplicate mood/);
       assert.match(promptBlock ?? "", /Field 62: 62/);
       assert.doesNotMatch(promptBlock ?? "", /Field 63: 63/);
+
+      const inventoryPromptBlock = buildCommittedTrackerContextBlock({
+        chatEnableAgents: true,
+        activeAgentIds: ["inventory-tracker"],
+        latestGameState: { playerStats: inventoryTrackerPatch.playerStats },
+        chatMetadata: {},
+        wrapFormat: "markdown",
+      });
+      assert.match(inventoryPromptBlock ?? "", /Currencies:\n- Silver coin x6/);
+      assert.match(inventoryPromptBlock ?? "", /Equipped:\n- Family heirloom longsword/);
+      assert.match(inventoryPromptBlock ?? "", /Inventory:\n- Scavenged axe x2/);
     },
   },
   {

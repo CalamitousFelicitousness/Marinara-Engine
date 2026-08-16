@@ -1728,6 +1728,10 @@ const TRACKER_PANEL_CARD_OPTIONS: Record<TrackerDataPanelSection, { label: strin
     label: "Characters",
     desc: "Present character cards, stats, portraits, and thoughts.",
   },
+  inventory: {
+    label: "ui.panels.trackerOrder.inventoryTracker",
+    desc: "ui.panels.trackerOrder.inventoryTrackerDescription",
+  },
   quests: {
     label: "Quests",
     desc: "Active quest progress and objectives.",
@@ -2260,11 +2264,11 @@ function TrackerPanelCardOrderSetting() {
               <div
                 key={section}
                 className="grid min-h-7 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 rounded-sm bg-[var(--secondary)]/42 px-1.5 py-1 ring-1 ring-[var(--border)]/60"
-                title={option.desc}
+                title={localizeUi(option.desc)}
               >
                 <div className="min-w-0">
                   <div className="truncate text-[0.6875rem] font-medium leading-4 text-[var(--foreground)]">
-                    {option.label}
+                    {localizeUi(option.label)}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -2272,9 +2276,9 @@ function TrackerPanelCardOrderSetting() {
                     type="button"
                     onClick={() => moveCard(section, -1)}
                     disabled={index === 0}
-                    title={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Up", { value1: option.label })}
+                    title={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Up", { value1: localizeUi(option.label) })}
                     aria-label={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Up", {
-                      value1: option.label,
+                      value1: localizeUi(option.label),
                     })}
                     className="flex h-5 w-5 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--background)] hover:text-[var(--primary)] active:scale-95 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
                   >
@@ -2285,10 +2289,10 @@ function TrackerPanelCardOrderSetting() {
                     onClick={() => moveCard(section, 1)}
                     disabled={index === orderedSections.length - 1}
                     title={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Down", {
-                      value1: option.label,
+                      value1: localizeUi(option.label),
                     })}
                     aria-label={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Down", {
-                      value1: option.label,
+                      value1: localizeUi(option.label),
                     })}
                     className="flex h-5 w-5 items-center justify-center rounded-sm text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-all hover:bg-[var(--background)] hover:text-[var(--primary)] active:scale-95 disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
                   >

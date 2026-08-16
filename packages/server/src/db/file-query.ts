@@ -13,7 +13,7 @@ export type FileCondition =
     }
   | { readonly kind: "file-membership"; readonly operator: "in" | "not-in"; value: QueryValue; values: QueryValue[] }
   | { readonly kind: "file-null-check"; readonly operator: "is-null" | "is-not-null"; value: QueryValue }
-  | { readonly kind: "file-pattern"; readonly value: QueryValue; readonly pattern: QueryValue }
+  | { readonly kind: "file-pattern"; readonly value: QueryValue; readonly pattern: QueryValue; readonly negate?: boolean }
   | { readonly kind: "file-string-nonblank"; readonly value: QueryValue }
   | { readonly kind: "file-json-flags-not-true"; readonly value: QueryValue; readonly flags: string[] }
   | { readonly kind: "file-logical"; readonly operator: "and" | "or"; conditions: FileCondition[] };
@@ -57,6 +57,10 @@ export function isNotNull(value: QueryValue): FileCondition {
 
 export function like(value: QueryValue, pattern: QueryValue): FileCondition {
   return { kind: "file-pattern", value, pattern };
+}
+
+export function notLike(value: QueryValue, pattern: QueryValue): FileCondition {
+  return { kind: "file-pattern", value, pattern, negate: true };
 }
 
 export function stringIsNonBlank(value: QueryValue): FileCondition {

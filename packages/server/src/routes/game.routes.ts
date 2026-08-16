@@ -103,7 +103,11 @@ import {
   npcAvatarSlug,
   sanitizeGameNpcAvatarUrls,
 } from "../services/game/npc-avatar-utils.js";
-import { createCheckpointService, type CheckpointTrigger } from "../services/game/checkpoint.service.js";
+import {
+  createCheckpointService,
+  type CapturedEngineState,
+  type CheckpointTrigger,
+} from "../services/game/checkpoint.service.js";
 import {
   resolveSkillCheck,
   attributeModifier,
@@ -171,7 +175,12 @@ import {
   extractLeadingThinkingBlocks,
   type RPGStatsConfig,
 } from "@marinara-engine/shared";
-import { mergeCustomParameters, parseGameStateRow, resolveBaseUrl } from "./generate/generate-route-utils.js";
+import {
+  mergeCustomParameters,
+  parseGameStateRow,
+  resolveBaseUrl,
+  resolveVisibleGameStateAnchor,
+} from "./generate/generate-route-utils.js";
 import {
   fitMessagesToModelAccessContext,
   mergeModelContextLimit,
@@ -1693,7 +1702,19 @@ const MAX_GAME_HUD_WIDGETS = 4;
 /** Cap for the opaque `experienceConfig`, so it can't grow into a payload every later write of the
  *  setup config has to carry. Generous next to what a setup wizard actually collects. */
 const MAX_EXPERIENCE_CONFIG_CHARS = 32_000;
+/** Ceiling for a game-surface Experience's per-anchor world-state blob (#5102), counted in
+ *  UTF-16 code units of the serialized JSON. Generous for a serialized tile-world save. */
+const MAX_EXPERIENCE_STATE_CHARS = 262_144;
+/** Newest per-anchor experience saves kept per chat (#5102): swipe-back rewind only targets
+ *  recent anchors and checkpoint restore reads the blob captured in the checkpoint row, so
+ *  older rows are unreachable — pruning them bounds the chat's game_engine_state shard. */
+const EXPERIENCE_STATE_KEEP_ANCHORS = 100;
 const GAME_REPUTATION_ACTION_MAX_LENGTH = 500;
+/** Shape and length ceiling for a game-surface Experience's package id (#5102). The setup schema
+ *  and the experience-state route's resolver must validate a stamp identically — a looser rule here
+ *  would mint ids the route then rejects with 409, a tighter one would strand already-stored stamps. */
+const GAME_EXPERIENCE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const GAME_EXPERIENCE_ID_MAX_CHARS = 80;
 const trimmedWidgetString = (max: number) => z.string().trim().min(1).max(max);
 
 const hudWidgetSchema = z.object({
@@ -1733,8 +1754,8 @@ const gameSetupConfigSchema = z.object({
    *  since this is matched against one to mount the surface. */
   gameExperienceId: z
     .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .max(80)
+    .regex(GAME_EXPERIENCE_ID_PATTERN)
+    .max(GAME_EXPERIENCE_ID_MAX_CHARS)
     .optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
@@ -9968,6 +9989,164 @@ export async function gameRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // ── Experience state (#5102) ──
+  // Host-owned access to game_engine_state for the chat's stamped game-surface
+  // Experience. Packages cannot reach this table any other way (their sanctioned
+  // route registrar is privileged-only, unusable off loopback), so their world
+  // state used to live in chat metadata — a whole-blob store no engine seam
+  // rewinds. Rows here ride every lifecycle seam for free: swipe delete and
+  // re-index, message/chat prunes, branch re-anchoring, and checkpoint restore
+  // (the #5077 clone copies gameType verbatim, and resolveVisibleGameStateAnchor
+  // honors the checkpoint_restore anchor, so a restored Experience world becomes
+  // visible exactly like a restored turn-game).
+  //
+  // Scoping: rows use gameType "experience:<gameExperienceId>" and every read is
+  // filtered to that namespace, so an Experience can only ever observe its own
+  // chat's experience rows — never turn-game rows, never another Experience's.
+  // (The reverse direction lives in the turn-game runner, whose reads and wipes
+  // exclude the experience namespace.) The stamp is only honored on game-mode
+  // chats: gameExperienceId is set once by game creation, and refusing other
+  // modes keeps a metadata-patched stamp on a Conversation chat from ever
+  // colliding with turn-game flows.
+  // The stamp is re-validated on every read with the same shape rule the game-setup
+  // schema enforces at stamping: the metadata PATCH route merges arbitrary keys, and a
+  // malformed id (e.g. one containing a newline) must never reach the gameType
+  // namespace, where it could slip past the turn-game runner's excludePrefix scope.
+  const resolveExperienceStateGameType = (chat: { mode?: string | null; metadata?: unknown }): string | null => {
+    if (chat.mode !== "game") return null;
+    const id = parseMeta(chat.metadata).gameExperienceId;
+    if (typeof id !== "string" || id.length > GAME_EXPERIENCE_ID_MAX_CHARS || !GAME_EXPERIENCE_ID_PATTERN.test(id)) {
+      return null;
+    }
+    return `experience:${id}`;
+  };
+
+  // Saves within one chat are serialized through a promise tail: create() is a
+  // delete-then-insert across an await, so two overlapping PUTs could otherwise
+  // leave two rows at one anchor (and the store's stable createdAt tiebreak
+  // would let the OLDER one win reads).
+  const experienceStateWriteTails = new Map<string, Promise<unknown>>();
+  const withExperienceStateWriteLock = async <T>(chatId: string, task: () => Promise<T>): Promise<T> => {
+    const previous = experienceStateWriteTails.get(chatId) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    const tail = run.catch(() => undefined);
+    experienceStateWriteTails.set(chatId, tail);
+    void tail.finally(() => {
+      if (experienceStateWriteTails.get(chatId) === tail) experienceStateWriteTails.delete(chatId);
+    });
+    return run;
+  };
+
+  // ── GET /game/:chatId/experience-state ──
+  app.get<{ Params: { chatId: string } }>("/:chatId/experience-state", async (req, reply) => {
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.code(404).send({ error: "Chat not found" });
+    const gameType = resolveExperienceStateGameType(chat);
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it has no experience state",
+      });
+    }
+
+    const storage = createGameEngineStateStorage(app.db);
+    const messages = await chats.listMessages(req.params.chatId);
+    const anchor = resolveVisibleGameStateAnchor(messages);
+    // Anchor-first so swiping BACK to an anchored message (or a checkpoint
+    // restore) rewinds the world the reader sees, mirroring turn-game
+    // resolution. A brand-new swipe/anchor with no row of its own falls back to
+    // the latest committed save — the world continues rather than resetting.
+    const row = await storage.getForGeneration(req.params.chatId, { visibleAnchor: anchor, gameType });
+    if (!row) return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
+
+    let state: unknown = null;
+    try {
+      state = JSON.parse(row.state);
+    } catch {
+      // The PUT below always stores JSON.stringify output, so this indicates
+      // on-disk corruption; surface an empty save rather than a 500.
+      logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+    }
+    return {
+      exists: true,
+      state,
+      schemaVersion: row.schemaVersion,
+      anchor: { messageId: row.messageId, swipeIndex: row.swipeIndex },
+      // False when the returned row is a fallback rather than the visible anchor's own
+      // save (a brand-new swipe, or an anchor whose row was pruned): the world shown is
+      // the latest save, not one written at what the reader is looking at. A package
+      // that would rather refuse than continue a mismatched world can check this.
+      anchorMatched: !!anchor && row.messageId === anchor.messageId && row.swipeIndex === anchor.swipeIndex,
+      committed: row.committed === 1,
+      createdAt: row.createdAt,
+    };
+  });
+
+  // ── PUT /game/:chatId/experience-state ──
+  // Route-level bodyLimit so an oversize save dies at the socket with 413 instead of
+  // being buffered and parsed under the app-wide 256 MiB ceiling: the raw JSON body
+  // can spend up to 6 bytes per stored UTF-16 unit (\uXXXX escapes), plus envelope.
+  app.put<{ Params: { chatId: string } }>(
+    "/:chatId/experience-state",
+    { bodyLimit: MAX_EXPERIENCE_STATE_CHARS * 6 + 16_384 },
+    async (req, reply) => {
+    const body = z
+      .object({
+        state: z.unknown(),
+        schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
+        // Experience saves are player-confirmed world state, not mid-turn
+        // provisional snapshots, so they default to committed (regen fallback
+        // eligible) unlike turn-game rows.
+        committed: z.boolean().default(true),
+      })
+      .parse(req.body ?? {});
+    const serialized = JSON.stringify(body.state);
+    if (serialized === undefined) {
+      return reply.code(422).send({ error: "state must be a JSON-serializable value" });
+    }
+    if (serialized.length > MAX_EXPERIENCE_STATE_CHARS) {
+      return reply.code(422).send({
+        error: `state must serialize to at most ${MAX_EXPERIENCE_STATE_CHARS} characters`,
+      });
+    }
+
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.code(404).send({ error: "Chat not found" });
+    const gameType = resolveExperienceStateGameType(chat);
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it cannot store experience state",
+      });
+    }
+
+    // Anchor to the currently-visible message ("" live anchor before the first
+    // one exists, like a turn-game's opening deal). storage.create replaces any
+    // prior row of this gameType for the SAME anchor and inserts a fresh row
+    // otherwise, so each narration turn keeps its own snapshot — the history
+    // swipe-back rewind recovers. Checkpoint restore does NOT depend on these
+    // rows: checkpoints capture the state blob by value at create time. Older
+    // anchors beyond the newest EXPERIENCE_STATE_KEEP_ANCHORS are pruned so a
+    // long campaign cannot balloon the chat's sharded table (every save
+    // re-serializes the chat's whole game_engine_state shard).
+    return withExperienceStateWriteLock(req.params.chatId, async () => {
+      const messages = await chats.listMessages(req.params.chatId);
+      const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
+      const storage = createGameEngineStateStorage(app.db);
+      const id = await storage.create({
+        chatId: req.params.chatId,
+        messageId: anchor.messageId,
+        swipeIndex: anchor.swipeIndex,
+        gameType,
+        schemaVersion: body.schemaVersion,
+        state: serialized,
+        committed: body.committed,
+      });
+      await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
+      return { ok: true, id, anchor };
+    });
+  });
+
   // ── PUT /game/:chatId/widgets ──
   app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req) => {
     const { widgets: rawWidgets } = z
@@ -13265,26 +13444,60 @@ export async function gameRoutes(app: FastifyInstance) {
       manualOverrides,
     );
 
-    // #5077: a turn-game engine snapshot (UNO/Chess/Poker/8-ball, and any future capability-package
-    // per-message game state) is anchored per (message, swipe) INDEPENDENTLY of the game/spatial
-    // snapshots the checkpoint captures, so checkpoints never carried it and a load left an active
-    // game on its post-checkpoint state. Recover the engine state that was current at checkpoint time
-    // (keyed by createdAt <= the checkpoint's createdAt, since its own anchor is unrelated to the
-    // captured snapshots) and clone it onto the restore anchor, so getTurnGameView — via
-    // resolveTurnGameAnchor's checkpoint_restore rule — rewinds the game too. No-op when the chat has
-    // never had a turn-game (the lookup is chatId-scoped, so ownership needs no extra guard).
+    // #5077/#5102: engine-state snapshots (turn-games and game-surface Experiences) are anchored
+    // per (message, swipe) INDEPENDENTLY of the game/spatial snapshots the checkpoint captures, so
+    // checkpoints never carried them and a load left an active game on its post-checkpoint state.
+    // Restore clones the blobs the checkpoint captured BY VALUE at create time (engineStateData —
+    // one per gameType) onto the restore anchor, so getTurnGameView / the experience-state GET —
+    // via the shared resolver's checkpoint_restore rule — rewind too. The pre-#5102 createdAt
+    // re-lookup remains only for checkpoints created before engineStateData existed; it is invalid
+    // for any writer that delete-recreates one anchor (experience saves, silent turn games),
+    // whose row timestamps move PAST the checkpoint.
     const engineStore = createGameEngineStateStorage(app.db);
-    const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
-    if (cpEngineRow) {
-      await engineStore.create({
-        chatId: input.chatId,
-        messageId: restoreMsg.id,
-        swipeIndex: 0,
-        gameType: cpEngineRow.gameType,
-        schemaVersion: cpEngineRow.schemaVersion,
-        state: cpEngineRow.state,
-        committed: true,
-      });
+    const capturedEngineStates: CapturedEngineState[] = (() => {
+      if (!cp.engineStateData) return [];
+      try {
+        const parsed = JSON.parse(cp.engineStateData);
+        return Array.isArray(parsed)
+          ? parsed.filter(
+              (entry): entry is CapturedEngineState =>
+                !!entry && typeof entry.gameType === "string" && typeof entry.state === "string",
+            )
+          : [];
+      } catch (err) {
+        // Corrupt capture: fall through to the legacy re-lookup below rather than
+        // silently leaving the game on its post-checkpoint state.
+        logger.error(err, "Unparseable checkpoint engineStateData for chat %s; using the legacy restore lookup", input.chatId);
+        return [];
+      }
+    })();
+    if (capturedEngineStates.length > 0) {
+      for (const captured of capturedEngineStates) {
+        await engineStore.create({
+          chatId: input.chatId,
+          messageId: restoreMsg.id,
+          swipeIndex: 0,
+          gameType: captured.gameType,
+          schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
+          state: captured.state,
+          committed: true,
+        });
+      }
+    } else {
+      // No usable capture (pre-#5102 checkpoint, empty chat at capture time, or a
+      // corrupt blob): the createdAt re-lookup is strictly better than nothing.
+      const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
+      if (cpEngineRow) {
+        await engineStore.create({
+          chatId: input.chatId,
+          messageId: restoreMsg.id,
+          swipeIndex: 0,
+          gameType: cpEngineRow.gameType,
+          schemaVersion: cpEngineRow.schemaVersion,
+          state: cpEngineRow.state,
+          committed: true,
+        });
+      }
     }
 
     // Restore chat metadata fields from checkpoint

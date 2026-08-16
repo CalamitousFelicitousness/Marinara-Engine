@@ -8,6 +8,7 @@
 import { and, eq, ne, desc, inArray } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameCheckpoints, gameStateSnapshots, spatialContextSnapshots } from "../../db/schema/index.js";
+import { createGameEngineStateStorage } from "../storage/game-engine-state.storage.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { logger } from "../../lib/logger.js";
 
@@ -53,6 +54,14 @@ export interface CheckpointRow {
 export interface StoredCheckpointRow extends CheckpointRow {
   snapshotData: string | null;
   spatialSnapshotData: string | null;
+  engineStateData: string | null;
+}
+
+/** One captured game_engine_state blob inside a checkpoint's engineStateData array (#5102). */
+export interface CapturedEngineState {
+  gameType: string;
+  schemaVersion: number;
+  state: string;
 }
 
 /** Auto-checkpoints fire at session start/end and on every combat start/end, and only manual
@@ -150,6 +159,15 @@ export function createCheckpointService(db: DB) {
         throw new Error("Checkpoint Spatial Context snapshot belongs to another chat");
       }
 
+      // Engine-state blobs (turn-games AND game-surface Experiences) are captured by VALUE at
+      // create time (#5102): the legacy restore re-lookup keyed on createdAt breaks whenever a
+      // writer delete-recreates one anchor (every experience save within a narration turn, and
+      // silent turn games), because the checkpoint-time row's timestamp moves past the
+      // checkpoint. Newest row per gameType = the world "now", mirroring snapshotData.
+      const capturedEngineStates = (await createGameEngineStateStorage(db).latestPerGameType(input.chatId)).map(
+        (row): CapturedEngineState => ({ gameType: row.gameType, schemaVersion: row.schemaVersion, state: row.state }),
+      );
+
       const id = newId();
       await db.insert(gameCheckpoints).values({
         id,
@@ -158,6 +176,7 @@ export function createCheckpointService(db: DB) {
         spatialSnapshotId: capturedSpatialSnapshot?.id ?? null,
         snapshotData: JSON.stringify(capturedGameSnapshot),
         spatialSnapshotData: capturedSpatialSnapshot ? JSON.stringify(capturedSpatialSnapshot) : null,
+        engineStateData: capturedEngineStates.length > 0 ? JSON.stringify(capturedEngineStates) : null,
         messageId: input.messageId,
         label: input.label,
         triggerType: input.triggerType,
@@ -198,6 +217,8 @@ export function createCheckpointService(db: DB) {
         .from(gameCheckpoints)
         .where(eq(gameCheckpoints.chatId, chatId))
         .orderBy(desc(gameCheckpoints.createdAt));
+      // The projection already omits every blob column (snapshotData, spatialSnapshotData,
+      // engineStateData), so the rows are list-shaped as-is — no post-strip needed.
       return rows as CheckpointRow[];
     },
 

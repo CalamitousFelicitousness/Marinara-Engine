@@ -98,6 +98,7 @@ try {
     assert.ok(aList.length > 0);
     assert.ok(!("snapshotData" in aList[0]!), "listForChat must not expose snapshotData");
     assert.ok(!("spatialSnapshotData" in aList[0]!), "listForChat must not expose spatialSnapshotData");
+    assert.ok(!("engineStateData" in aList[0]!), "listForChat must not expose engineStateData (#5102 column)");
     const listedCreatedAts = aList.map((r) => r.createdAt);
     assert.deepEqual(
       listedCreatedAts,

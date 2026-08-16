@@ -7122,7 +7122,8 @@ export async function generateRoutes(app: FastifyInstance) {
             runningMessages.push({ role: "system", content: generationGuideInstruction });
           }
           const knownConversationMessageIds = new Set(
-            chatMessages
+            scopedMessages
+              .filter((message: any) => !supportsHiddenFromAI || !isMessageHiddenFromAI(message))
               .map((message: any) => message.id)
               .filter((messageId: unknown): messageId is string => typeof messageId === "string"),
           );
@@ -7151,10 +7152,18 @@ export async function generateRoutes(app: FastifyInstance) {
                 );
                 await waitForConversationPresenceDelay(remainingDelayMs, abortController.signal);
                 if (abortController.signal.aborted) break;
+              }
 
+              if (responderDelay) {
                 const refreshedMessages = await chats.listMessages(input.chatId);
                 for (const message of refreshedMessages) {
-                  if (message.role !== "user" || knownConversationMessageIds.has(message.id)) continue;
+                  if (
+                    message.role !== "user" ||
+                    knownConversationMessageIds.has(message.id) ||
+                    (supportsHiddenFromAI && isMessageHiddenFromAI(message))
+                  ) {
+                    continue;
+                  }
                   knownConversationMessageIds.add(message.id);
                   const mapped = await mapChatHistoryMessageForPrompt(message);
                   runningMessages.push(resolveHistoryMessageMacros([mapped])[0] ?? mapped);

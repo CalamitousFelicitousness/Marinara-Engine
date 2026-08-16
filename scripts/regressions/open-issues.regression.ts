@@ -4878,8 +4878,18 @@ assert.match(
 );
 assert.match(
   conversationGenerationSource,
-  /remainingConversationPresenceDelay\([\s\S]{0,1200}type: "delayed"[\s\S]{0,1200}waitForConversationPresenceDelay[\s\S]{0,800}type: "typing"/u,
+  /remainingConversationPresenceDelay\([\s\S]{0,1200}type: "delayed"[\s\S]{0,1200}waitForConversationPresenceDelay[\s\S]{0,1800}type: "typing"/u,
   "individual Conversation generation should wait only when the current responder's delay remains",
+);
+assert.match(
+  conversationGenerationSource,
+  /knownConversationMessageIds = new Set\(\s*scopedMessages\s*\.filter\(\(message: any\) => !supportsHiddenFromAI \|\| !isMessageHiddenFromAI\(message\)\)/u,
+  "Conversation responder refreshes should seed known IDs from the full visible scope, not truncated context",
+);
+assert.match(
+  conversationGenerationSource,
+  /await waitForConversationPresenceDelay\(remainingDelayMs, abortController\.signal\);\s*if \(abortController\.signal\.aborted\) break;\s*\}\s*if \(responderDelay\) \{\s*const refreshedMessages = await chats\.listMessages/u,
+  "delayed Conversation responders should refresh user history even when an earlier reply consumed their wait",
 );
 assert.match(
   conversationGenerationSource,

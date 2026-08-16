@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import { errorHandler } from "../../packages/server/src/middleware/error-handler.js";
+import { rateLimitHook } from "../../packages/server/src/middleware/rate-limit.js";
 import { gameRoutes } from "../../packages/server/src/routes/game.routes.js";
 import { createChatsStorage } from "../../packages/server/src/services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../../packages/server/src/services/storage/connections.storage.js";
@@ -30,7 +31,7 @@ const createdChatIds: string[] = [];
 let createdConnectionId: string | null = null;
 
 // ── Mock OpenAI-compatible provider ──────────────────────────────────────────
-type Scenario = "happy" | "repair" | "truncated" | "garbage";
+type Scenario = "happy" | "repair" | "truncated" | "garbage" | "empty-then-stream" | "slow-happy";
 let scenario: Scenario = "happy";
 let upstreamBodies: Array<Record<string, unknown>> = [];
 
@@ -46,9 +47,27 @@ const mockProvider = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: finishReason }] }));
   };
+  const respondStream = (content: string) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n` +
+        `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  };
   if (scenario === "happy") return respond(VALID_BRIEF);
   if (scenario === "repair") return attempt === 1 ? respond("Sure! Here is your world, in prose.") : respond(VALID_BRIEF);
   if (scenario === "truncated") return respond('{"version":1,"theme":"sci-fi', "length");
+  if (scenario === "empty-then-stream") {
+    // Buffered path: empty content stamped finish_reason "length" — the exact
+    // reasoning-model failure the streamed rescue exists for. The rescue must
+    // not be condemned by this discarded finish reason.
+    if (body.stream === true) return respondStream(VALID_BRIEF);
+    return respond("", "length");
+  }
+  if (scenario === "slow-happy") {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return respond(VALID_BRIEF);
+  }
   return respond("no json here, ever");
 });
 await new Promise<void>((resolve) => mockProvider.listen(0, "127.0.0.1", resolve));
@@ -108,7 +127,7 @@ try {
     assert.equal(upstreamBodies.length, 0, "no gate case reached the provider");
   }
 
-  // ── 2. Happy path with schema passthrough ──
+  // ── 2. Happy path with schema passthrough (exact wire shape, not just type) ──
   {
     scenario = "happy";
     upstreamBodies = [];
@@ -119,10 +138,30 @@ try {
     assert.equal(body.ok, true);
     assert.equal(body.data.theme, "sci-fi-colony", "parsed JSON comes back as data");
     assert.equal(upstreamBodies.length, 1, "one provider call");
-    const responseFormat = upstreamBodies[0]?.response_format as Record<string, unknown> | undefined;
+    // The route emits the FLAT json_schema form; the chat-completions
+    // normalizer re-nests it, so the wire body must carry the package's
+    // ACTUAL schema and name under json_schema, with strict defaulting off.
+    const responseFormat = upstreamBodies[0]?.response_format as
+      | { type?: string; json_schema?: { name?: string; schema?: unknown; strict?: boolean } }
+      | undefined;
     assert.equal(responseFormat?.type, "json_schema", "package schema forwarded as provider structured output");
+    assert.equal(responseFormat?.json_schema?.name, "experience_generation", "schema name survives to the wire");
+    assert.deepEqual(responseFormat?.json_schema?.schema, BASE_BODY.schema, "schema content survives to the wire");
+    assert.notEqual(responseFormat?.json_schema?.strict, true, "strict is opt-in, not forced");
     const maxTokens = upstreamBodies[0]?.max_tokens ?? upstreamBodies[0]?.max_completion_tokens;
     assert.ok(typeof maxTokens === "number" && maxTokens >= 2_048, `max tokens floored (got ${String(maxTokens)})`);
+  }
+
+  // ── 2b. A complete streamed rescue is not condemned by the discarded
+  //        buffered call's finish reason ──
+  {
+    scenario = "empty-then-stream";
+    upstreamBodies = [];
+    const chat = await createExperienceChat("streamed rescue");
+    const res = await post(chat.id, BASE_BODY);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().data.settlementName, "Meridian Base", "complete streamed JSON is accepted");
+    assert.equal(upstreamBodies.length, 2, "buffered call + streamed rescue");
   }
 
   // ── 3. Repair round-trip ──
@@ -169,6 +208,56 @@ try {
     assert.equal(body.truncated, false);
     assert.ok(String(body.raw).includes("no json here"), "raw text returned for package-side degradation");
     assert.equal(upstreamBodies.length, 2, "one repair attempt, then give up");
+  }
+
+  // ── 6. A held per-chat lock fast-fails as chat_busy instead of parking ──
+  {
+    scenario = "slow-happy";
+    upstreamBodies = [];
+    const chat = await createExperienceChat("chat busy");
+    const first = post(chat.id, BASE_BODY);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const second = await post(chat.id, BASE_BODY);
+    assert.equal(second.statusCode, 409, second.body);
+    assert.equal(second.json().code, "chat_busy", "concurrent call fast-fails with a busy code");
+    assert.ok(second.headers["retry-after"], "busy response carries Retry-After");
+    const firstRes = await first;
+    assert.equal(firstRes.statusCode, 200, "the in-flight call still completes");
+  }
+
+  // ── 7. The rate-limit wall holds for percent-encoded paths too ──
+  // The hook runs on a separate instance so its buckets never throttle the
+  // functional cases above. An unstamped chat 409s before the provider, so
+  // burning the budget costs nothing upstream.
+  {
+    const limited = Fastify();
+    limited.decorate("db", db);
+    limited.setErrorHandler(errorHandler);
+    limited.addHook("onRequest", rateLimitHook);
+    await limited.register(gameRoutes, { prefix: "/api/game" });
+    try {
+      const unstamped = await createExperienceChat("rate limited", "game", false);
+      const plain = `/api/game/${unstamped.id}/experience-generation`;
+      const encoded = `/api/game/${unstamped.id}/experience%2Dgeneration`;
+      let firstLimited = -1;
+      for (let i = 1; i <= 21; i++) {
+        const res = await limited.inject({ method: "POST", url: plain, payload: BASE_BODY as object });
+        if (res.statusCode === 429) {
+          firstLimited = i;
+          break;
+        }
+        assert.equal(res.statusCode, 409, `pre-limit request ${i} hits the gate, not the provider`);
+      }
+      assert.equal(firstLimited, 21, "the dedicated 20/min wall engages on the 21st call");
+      const encodedRes = await limited.inject({ method: "POST", url: encoded, payload: BASE_BODY as object });
+      assert.equal(
+        encodedRes.statusCode,
+        429,
+        "a percent-encoded path shares the same rule bucket instead of escaping to the default class",
+      );
+    } finally {
+      await limited.close();
+    }
   }
 
   console.log("experience-generation regression passed");

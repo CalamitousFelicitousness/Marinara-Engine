@@ -10168,13 +10168,27 @@ export async function gameRoutes(app: FastifyInstance) {
     schema: z
       .record(z.string(), z.unknown())
       .optional()
-      .refine((value) => value === undefined || JSON.stringify(value).length <= 8_000, {
-        message: "schema must serialize to at most 8000 characters",
-      }),
+      .refine(
+        (value) => {
+          if (value === undefined) return true;
+          // stringify can throw on pathological nesting depth; that is a
+          // validation failure (→ 400), not a server error.
+          try {
+            return JSON.stringify(value).length <= 8_000;
+          } catch {
+            return false;
+          }
+        },
+        { message: "schema must serialize to at most 8000 characters" },
+      ),
     schemaName: z
       .string()
       .regex(/^[a-zA-Z0-9_-]{1,64}$/)
       .default("experience_generation"),
+    /** OpenAI strict structured outputs reject most hand-written schemas
+     *  (additionalProperties, required-completeness rules), so strict is
+     *  opt-in for packages that author their schema to that dialect. */
+    strictSchema: z.boolean().default(false),
     connectionId: z.string().optional(),
     /** Optional tightening of the stored max-output-token parameter; never a raise. */
     maxTokens: z.number().int().min(256).max(8_192).optional(),
@@ -10214,12 +10228,25 @@ export async function gameRoutes(app: FastifyInstance) {
         },
       ];
 
+      // Fast-fail when the chat's generation lock is held (a storyboard or
+      // asset run can hold it for many minutes): parking here would consume a
+      // five-minute socket per request and then surface as an opaque 500. The
+      // has() check races the acquire by a tick at worst; the park it leaves
+      // behind is then bounded by the other caller's own watchdog.
+      if (gameAssetGenerationLocks.has(req.params.chatId)) {
+        reply.header("Retry-After", "15");
+        return reply.code(409).send({
+          error: "This chat already has a generation in flight. Try again shortly.",
+          code: "chat_busy",
+        });
+      }
       const signal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Experience generation");
       const release = await acquireGameAssetGenerationLock(req.params.chatId, signal);
       try {
-        // A brief-sized structured reply needs headroom even when the stored
-        // parameter is small; 2048 floors it the way GAME_SETUP_MIN_OUTPUT_TOKENS
-        // floors the setup call, and the known-model cap still applies.
+        // 2048 lifts the STORED parameter so a brief-sized reply has headroom
+        // (mirroring GAME_SETUP_MIN_OUTPUT_TOKENS); the known-model cap still
+        // applies, and an explicit package maxTokens may tighten below the
+        // floor — a caller asking for less gets less.
         const maxTokens = clampGameMaxOutputTokens({
           provider: conn.provider,
           model: conn.model ?? "",
@@ -10232,25 +10259,33 @@ export async function gameRoutes(app: FastifyInstance) {
           gameGenerationParameters,
           conn.provider,
         );
-        // Set AFTER gameGenOptions: its suppressModelParameters branch copies a
-        // fixed field list and silently drops responseFormat from overrides.
+        // Set AFTER gameGenOptions (its suppressModelParameters branch drops
+        // unknown overrides). Providers under that policy may STILL drop
+        // response_format at their own layer — for them the prompt + tolerant
+        // parser are the contract, which is also true of Anthropic and the
+        // local sidecar by design. The FLAT json_schema form is the universal
+        // donor shape: the OpenAI chat-completions normalizer re-nests it, the
+        // Responses path consumes it as-is, and Google reads `.schema` first.
         options.responseFormat = input.schema
-          ? { type: "json_schema", json_schema: { name: input.schemaName, schema: input.schema, strict: true } }
+          ? { type: "json_schema", name: input.schemaName, schema: input.schema, strict: input.strictSchema }
           : { type: "json_object" };
 
-        let attemptMessages = baseMessages;
-        let lastRaw = "";
-        let lastFinishReason: string | null = null;
-        for (let attempt = 1; attempt <= 2; attempt++) {
+        // Worst case THREE upstream calls per request: attempt 1 buffered, an
+        // empty-buffered streamed rescue (attempt 1 only), and one repair
+        // round-trip. The rate-limit class is sized with that fan-out in mind.
+        const runAttempt = async (attemptMessages: ChatMessage[], allowStreamedRescue: boolean) => {
           const result = await runGameChatComplete(provider, attemptMessages, options, "Experience generation");
           let extraction = extractLeadingThinkingBlocks(
             result.content || "",
             gameGenerationParameters?.customThinkingTags,
           );
           let raw = extraction.content;
-          // Some provider/model combos return empty content on the buffered
-          // path; retry once via streamed collection (scene-wrap precedent).
-          if (!raw.trim()) {
+          let finishReason: string | null = result.finishReason ?? null;
+          if (!raw.trim() && allowStreamedRescue) {
+            // Some provider/model combos return empty content on the buffered
+            // path (scene-wrap precedent). The streamed collection has no
+            // reliable finish reason — the discarded buffered one must not be
+            // allowed to condemn a complete streamed reply as truncated.
             logger.warn("[game/experience-generation] Empty buffered response, retrying with streamed collection");
             const streamed = await runGameChatStream(
               provider,
@@ -10260,26 +10295,63 @@ export async function gameRoutes(app: FastifyInstance) {
             );
             extraction = extractLeadingThinkingBlocks(streamed, gameGenerationParameters?.customThinkingTags);
             raw = extraction.content;
+            finishReason = null;
+          }
+          return { raw, finishReason };
+        };
+
+        let attemptMessages = baseMessages;
+        let lastRaw = "";
+        let lastFinishReason: string | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let raw: string;
+          let finishReason: string | null;
+          try {
+            ({ raw, finishReason } = await runAttempt(attemptMessages, attempt === 1));
+          } catch (error) {
+            // A provider rejection (strict-schema refusal, 4xx, network) is a
+            // degradation case for the package, not a server fault — but a
+            // client abort/timeout stays a plain error.
+            if (signal.aborted) throw error;
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn("[game/experience-generation] Provider call failed: %s", message);
+            return reply.code(422).send({
+              error: `The model provider rejected the request: ${message}`,
+              code: "provider_error",
+              truncated: false,
+            });
           }
           lastRaw = raw;
-          lastFinishReason = result.finishReason ?? null;
-          // Truncation is checked BEFORE the parse: the tolerant parser happily
-          // repairs a cut-off reply by closing its containers, which would hand
-          // the package a silently amputated document as ok:true. There is no
-          // host-side semantic validator behind this route to catch that.
-          if (isLikelyTruncatedJsonResponse(raw, result.finishReason)) {
+          lastFinishReason = finishReason;
+          // The authoritative cut signal is checked BEFORE the parse: the
+          // tolerant parser happily repairs a cut-off reply by closing its
+          // containers, which would hand the package a silently amputated
+          // document as ok:true — and there is no host-side semantic validator
+          // behind this route to catch that. The heuristic container scan is
+          // only consulted when the parse fails, so its rare false positives
+          // on unusual-but-complete output cannot 422 a parseable reply.
+          if (finishReason === "length") {
             return reply.code(422).send({
               error:
                 "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
               truncated: true,
               raw: raw.slice(0, 20_000),
-              finishReason: lastFinishReason,
+              finishReason,
             });
           }
           try {
             const data = parseJSON(raw);
             return { ok: true, data };
           } catch {
+            if (isLikelyTruncatedJsonResponse(raw, finishReason ?? undefined)) {
+              return reply.code(422).send({
+                error:
+                  "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+                truncated: true,
+                raw: raw.slice(0, 20_000),
+                finishReason,
+              });
+            }
             if (attempt === 1) {
               // Repair round-trip: showing the model its own bad output plus a
               // correction converges far better than a blind re-run.

@@ -22,6 +22,7 @@ import { SectionIconButton } from "./controls/SectionControls";
 import { CharacterTrackerPanel } from "./sections/CharacterTrackerPanel";
 import { CustomTrackerPanel } from "./sections/CustomTrackerPanel";
 import { PersonaInventoryPanel } from "./sections/PersonaInventoryPanel";
+import { InventoryTrackerPanel } from "./sections/InventoryTrackerPanel";
 import { QuestTrackerPanel } from "./sections/quest-tracker/QuestTrackerPanel";
 import { WorldStatePanel } from "./sections/WorldStatePanel";
 
@@ -111,6 +112,15 @@ export function TrackerSectionList({
   const inventory = Array.isArray(playerStats?.inventory) ? playerStats.inventory : [];
   const quests = Array.isArray(playerStats?.activeQuests) ? playerStats.activeQuests : [];
   const customFields = Array.isArray(playerStats?.customTrackerFields) ? playerStats.customTrackerFields : [];
+  const inventoryTrackerCurrencies = Array.isArray(playerStats?.inventoryTrackerCurrencies)
+    ? playerStats.inventoryTrackerCurrencies
+    : [];
+  const inventoryTrackerEquipped = Array.isArray(playerStats?.inventoryTrackerEquipped)
+    ? playerStats.inventoryTrackerEquipped
+    : [];
+  const inventoryTrackerInventory = Array.isArray(playerStats?.inventoryTrackerInventory)
+    ? playerStats.inventoryTrackerInventory
+    : [];
   const {
     addCharacter,
     addInventoryItem,
@@ -277,6 +287,23 @@ export function TrackerSectionList({
             trackerPanelSizeProfile={trackerPanelSizeProfile}
             collapsed={isPanelCollapsed("quests")}
             onToggleCollapsed={() => toggleTrackerPanelSectionCollapsed("quests")}
+          />
+        );
+      case "inventory":
+        return (
+          <InventoryTrackerPanel
+            key="inventory"
+            currencies={inventoryTrackerCurrencies}
+            equipped={inventoryTrackerEquipped}
+            inventory={inventoryTrackerInventory}
+            action={renderRerunAction("inventory")}
+            onUpdateCurrencies={(rows) => patchPlayerStats("inventoryTrackerCurrencies", rows)}
+            onUpdateEquipped={(rows) => patchPlayerStats("inventoryTrackerEquipped", rows)}
+            onUpdateInventory={(rows) => patchPlayerStats("inventoryTrackerInventory", rows)}
+            deleteMode={deleteMode}
+            addMode={addMode}
+            collapsed={isPanelCollapsed("inventory")}
+            onToggleCollapsed={() => toggleTrackerPanelSectionCollapsed("inventory")}
           />
         );
       case "custom":

@@ -26,7 +26,7 @@ import {
 import { bumpCharacterVersion } from "./generation-text-utils.js";
 import { createEntityEmbeddingStore } from "../entity-embedding-store.js";
 import { tieredResolveEntity, type EntityDescriptor, type EntitySearchType } from "../entity-semantic-search.js";
-import type { MemoryRecallEmbeddingSource } from "../memory-recall.js";
+import { DEFAULT_LOCAL_MEMORY_EMBEDDING_SPACE_ID, type MemoryRecallEmbeddingSource } from "../memory-recall.js";
 import {
   MAX_MARI_FETCHED_PRESET_CONTEXT_CHARS,
   normalizeAssistantPresetIdentifier,
@@ -670,7 +670,11 @@ async function resolveFetchedContent(
   args: Parameters<typeof handleProfessorMariCommand>[0],
 ): Promise<FetchResolution> {
   const type = command.fetchType as EntitySearchType;
-  const sourceId = args.embeddingSource?.spaceId ?? args.embeddingSource?.label ?? "local";
+  // Persisted entity envelopes already compare this value exactly. Remote IDs
+  // include the input-profile revision, while the local fallback is explicitly
+  // versioned, so vectors created before asymmetric formatting are re-warmed.
+  const sourceId =
+    args.embeddingSource?.spaceId ?? args.embeddingSource?.label ?? DEFAULT_LOCAL_MEMORY_EMBEDDING_SPACE_ID;
   const store = createEntityEmbeddingStore(args.db, sourceId);
   const descriptor: EntityDescriptor = {
     type,

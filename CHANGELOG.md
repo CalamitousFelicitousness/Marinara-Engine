@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Every image and video generation path now runs under a process-wide concurrency ceiling — default 4, configurable with `MARINARA_MEDIA_GENERATION_CONCURRENCY` (`0` disables it) — enforced inside the generators themselves, so batches can no longer stampede a local ComfyUI/SwarmUI GPU or fan out unbounded requests against a paid provider. Batch/automatic work never occupies the last slot ahead of interactive requests, waits are bounded (`MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS`) so saturation fails loudly instead of hanging, and fallback-connection retries reuse the original request's slot (#5097).
+- Added a dedicated Roleplay Inventory Tracker integration with separate currency, equipped, and carried-item lists; compact quantities; editable HUD and Tracker Panel grids; per-cell locks; retry support; and committed prompt context (#5105, Pasta-Devs/Marinara-Agents#361).
 - Added `POST /api/sprites/pixelize`: deterministic pixel-art post-processing for AI-generated images — nearest-kernel downscale to a target cell size, palette quantization against a supplied ramp, binary alpha, and a wrap-around seam score reporting tileability — so probabilistic model output can sit beside authored pixel art; identical input always produces identical bytes (#5096).
 - Character sprite-sheet generation accepts an optional `styleProfileId` so a bake can target a specific image style profile instead of always compiling against the user's active one; an absent field keeps today's resolution exactly, and unknown ids degrade the same way the gallery path degrades (#5095).
 - Added capability API 1.11 Experience combat seam: `game-surface` packages receive `combatActive` (true the instant the built-in combat UI mounts, unlike the lagging narrative scene state), the effective `combatStyle`, and `requestCombat()` — which routes into the same encounter-generation pass as the manual Start Combat button, minus the confirm dialog; packages still cannot supply combatants or combat state (#5094).
@@ -20,6 +21,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Kept valid Gallery images visible on Windows when canonical paths differ only by drive-letter or directory casing, without weakening traversal and symlink containment checks (#5099).
+- Made vectorized lorebook recall use model-appropriate query/document formatting, prioritize recent user turns, and reject incompatible stored vector spaces with useful debug diagnostics (#5104).
+- Added a server-side pre-execution authorization gate that binds Professor Mari workspace mutations to an explicit excerpt from the active user request, while retaining Keep/Restore as a second line of defense (#5093).
 - Honored each image style profile's selected prompt grammar for character avatars, portraits, and sprites instead of silently forcing compact tags (#5083).
 - Game checkpoints now capture and restore the turn-game engine state, so loading a checkpoint rewinds an active turn-game (UNO, Chess, Poker, Eight Ball) along with the story and map instead of leaving it on its post-checkpoint state (#5077).
 - Routed Game Mode time-advance and weather-update through the queued per-chat metadata patch path so they no longer silently revert a concurrent metadata write, which could permanently lock World Map movement as a stale definition (#5076).

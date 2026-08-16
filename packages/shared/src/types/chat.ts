@@ -613,6 +613,10 @@ export interface ChatMetadata {
   gameStoryboardAnimationPromptTemplateId?: string | null;
   /** Chat-local storyboard prompt templates, merged with built-in storyboard prompt modes. */
   gameStoryboardPromptTemplates?: import("./agent.js").AgentPromptTemplateOption[];
+  /** Chat-level toggle for Stage 3 image-aware storyboard motion refinement. */
+  storyboardAgentImageAwareShotPlanningEnabled?: boolean | null;
+  /** Chat-level Stage 3 image-aware planner selection. Null/omitted uses the Storyboard Agent default. */
+  storyboardAgentAnimationRefinementTemplateId?: string | null;
   /** Use native NovelAI V4/V4.5 per-character captions for multi-character storyboard illustrations. Defaults to true. */
   gameStoryboardUseNovelAiCharacterPrompts?: boolean;
   /** Last generated scene-video record ID for this game. */

@@ -19,6 +19,7 @@ import {
   createDefaultImageStyleProfileSettings,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
+  mergeBuiltInAgentSettings,
   generateChatSummaryEntryTitle,
   isAgentAvailableInChatMode,
   isPatternSafe,
@@ -922,6 +923,76 @@ const keywordOptions = {
 };
 
 const cases: RegressionCase[] = [
+  {
+    name: "Storyboard package updates merge new built-in prompts without replacing saved choices",
+    run() {
+      const collectionKeys = [
+        "illustrationTemplates",
+        "videoTemplates",
+        "animationRefinementTemplates",
+        "roleplayEpisodeTemplates",
+        "roleplayStyleTemplates",
+        "roleplayAnimationTemplates",
+        "roleplayOutputTemplates",
+      ] as const;
+      const storyboardDefinition = {
+        id: "storyboard",
+        name: "Storyboard",
+        description: "Storyboard regression fixture.",
+        phase: "post_processing" as const,
+        enabledByDefault: false,
+        category: "misc" as const,
+        defaultTools: [],
+        defaultPromptTemplate: "Plan a storyboard.",
+        defaultSettings: Object.fromEntries(
+          collectionKeys.map((key) => [
+            key,
+            [
+              { id: `${key.toLowerCase()}-existing`, name: "Existing built-in", promptTemplate: `DEFAULT ${key}` },
+              { id: `${key.toLowerCase()}-new`, name: "New built-in", promptTemplate: `NEW ${key}` },
+            ],
+          ]),
+        ),
+      };
+      replaceBuiltInAgentDefinitions([...regressionAgentDefinitions, storyboardDefinition]);
+
+      try {
+        const savedSettings = Object.fromEntries(
+          collectionKeys.map((key) => [
+            key,
+            [
+              { id: `${key.toLowerCase()}-existing`, name: "Saved override", promptTemplate: `SAVED ${key}` },
+              { id: `${key.toLowerCase()}-custom`, name: "Custom prompt", promptTemplate: `CUSTOM ${key}` },
+            ],
+          ]),
+        );
+        const merged = mergeBuiltInAgentSettings("storyboard", {
+          ...savedSettings,
+          roleplayAnimationTemplateId: "roleplayanimationtemplates-custom",
+        });
+
+        for (const key of collectionKeys) {
+          const templates = merged[key] as Array<{ id: string; promptTemplate: string }>;
+          assert.deepEqual(
+            templates.map((template) => [template.id, template.promptTemplate]),
+            [
+              [`${key.toLowerCase()}-existing`, `SAVED ${key}`],
+              [`${key.toLowerCase()}-new`, `NEW ${key}`],
+              [`${key.toLowerCase()}-custom`, `CUSTOM ${key}`],
+            ],
+            `${key} must add new built-ins while preserving saved overrides and custom prompts`,
+          );
+        }
+        assert.equal(
+          merged.roleplayAnimationTemplateId,
+          "roleplayanimationtemplates-custom",
+          "merging package defaults must preserve the selected prompt id",
+        );
+      } finally {
+        replaceBuiltInAgentDefinitions(regressionAgentDefinitions);
+      }
+    },
+  },
   {
     name: "explicitly selected persona lorebooks remain usable outside their owner persona",
     run() {
@@ -3565,6 +3636,45 @@ const cases: RegressionCase[] = [
       assert.match(storyboardChatSettingsSource, /gameStoryboardAnimationPromptTemplateId/u);
       assert.match(storyboardChatSettingsSource, /gameStoryboardImagePromptTemplateId/u);
       assert.match(storyboardChatSettingsSource, /gameStoryboardVideoPromptTemplateId/u);
+      assert.match(storyboardChatSettingsSource, /storyboardAgentImageAwareShotPlanningEnabled/u);
+      assert.match(storyboardChatSettingsSource, /storyboardAgentAnimationRefinementTemplateId/u);
+      assert.match(storyboardChatSettingsSource, /settings\.animationRefinementTemplates/u);
+      assert.equal(
+        storyboardChatSettingsSource.match(/<StoryboardImageAwarePlannerOverride/gu)?.length,
+        2,
+        "Game and Roleplay chat settings should both expose image-aware Step 3 overrides",
+      );
+      const gameChatSettingsStart = storyboardChatSettingsSource.indexOf("export function StoryboardChatSettingsPanel");
+      const roleplayChatSettingsStart = storyboardChatSettingsSource.indexOf(
+        "function RoleplayStoryboardChatSettingsPanel",
+      );
+      const gameChatSettingsSource = storyboardChatSettingsSource.slice(
+        gameChatSettingsStart,
+        roleplayChatSettingsStart,
+      );
+      const roleplayChatSettingsSource = storyboardChatSettingsSource.slice(roleplayChatSettingsStart);
+      for (const [mode, source] of [
+        ["Game", gameChatSettingsSource],
+        ["Roleplay", roleplayChatSettingsSource],
+      ] as const) {
+        const stage2Index = source.indexOf("number={2}");
+        const stage3Index = source.indexOf("<StoryboardImageAwarePlannerOverride");
+        const stage4Index = source.indexOf("number={4}");
+        assert.ok(
+          stage2Index >= 0 && stage2Index < stage3Index && stage3Index < stage4Index,
+          `${mode} chat settings should show production stages 2, 3, and 4 in runtime order`,
+        );
+      }
+      assert.match(
+        gameChatSettingsSource,
+        /autoAnimationsEnabled \? \([\s\S]*<StoryboardImageAwarePlannerOverride[\s\S]*number=\{4\}/u,
+        "Game chat settings should hide animation-only stages unless animations are enabled",
+      );
+      assert.match(
+        roleplayChatSettingsSource,
+        /autoGenerateMode === "animation" \? \([\s\S]*<StoryboardImageAwarePlannerOverride[\s\S]*number=\{4\}/u,
+        "Roleplay chat settings should hide animation-only stages unless animations are enabled",
+      );
       assert.match(storyboardChatSettingsSource, /automaticStoryboardIllustrations/u);
       assert.match(storyboardChatSettingsSource, /automaticStoryboardAnimations/u);
       assert.match(storyboardChatSettingsSource, /type="number"/u);
@@ -3590,39 +3700,119 @@ const cases: RegressionCase[] = [
         editorSource,
         /\.\.\.\(localMaxTokens !== "" \? \{ maxTokens: clampAgentMaxTokens\(localMaxTokens\) \} : \{\}\)/u,
       );
-      const sharedScopeIndex = storyboardEditorSource.indexOf('id="shared"');
-      const roleplayScopeIndex = storyboardEditorSource.indexOf('id="roleplay"');
-      const gameScopeIndex = storyboardEditorSource.indexOf('id="game"');
-      const roleplayLibraryIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.roleplayPromptLibrary");
-      const sharedProductionIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.sharedProductionPrompts");
-      const defaultImagePromptIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.defaultImagePrompt");
-      assert.ok(defaultImagePromptIndex >= 0, "Storyboard editor should expose a default image prompt selector");
-      assert.ok(roleplayLibraryIndex >= 0, "Storyboard editor should expose a separate Roleplay prompt library");
-      assert.ok(sharedProductionIndex >= 0, "Storyboard editor should identify shared production prompt stages");
-      assert.ok(
-        sharedScopeIndex >= 0 && sharedScopeIndex < roleplayScopeIndex && roleplayScopeIndex < gameScopeIndex,
-        "Storyboard editor should present Shared, Roleplay, and Game Mode scopes in that order",
+      const activeEditorStart = storyboardEditorSource.indexOf("export function StoryboardAgentSettingsPanel");
+      assert.ok(activeEditorStart >= 0, "Storyboard active-flow editor should exist");
+      const setupComponentStart = storyboardEditorSource.indexOf("function StoryboardSetupSection");
+      const setupComponentEnd = storyboardEditorSource.indexOf("function SelectedTemplateControl", setupComponentStart);
+      const setupComponentSource = storyboardEditorSource.slice(setupComponentStart, setupComponentEnd);
+      assert.notEqual(setupComponentStart, -1, "Shared Storyboard setup should exist");
+      assert.notEqual(setupComponentEnd, -1, "Shared Storyboard setup source should be bounded");
+      assert.doesNotMatch(setupComponentSource, /useState|aria-expanded|aria-controls/u);
+      assert.match(setupComponentSource, /\{children\}/u, "Shared Storyboard setup should always render its controls");
+      const activeEditorSource = storyboardEditorSource.slice(activeEditorStart);
+      const stageLibraryStart = storyboardEditorSource.indexOf("function StagePromptLibrary");
+      const stageLibraryEnd = storyboardEditorSource.indexOf("function StoryboardSetupSection", stageLibraryStart);
+      const stageLibrarySource = storyboardEditorSource.slice(stageLibraryStart, stageLibraryEnd);
+      assert.notEqual(stageLibraryStart, -1, "Storyboard stage prompt library disclosure should exist");
+      assert.match(stageLibrarySource, /useState\(false\)/u);
+      assert.match(stageLibrarySource, /aria-expanded=\{expanded\}/u);
+      assert.match(stageLibrarySource, /expanded \? \(/u);
+      assert.match(stageLibrarySource, /data-storyboard-stage-prompt-library=\{stage\}/u);
+      assert.equal(
+        activeEditorSource.match(/<StagePromptLibrary stage=\{/gu)?.length,
+        5,
+        "Roleplay and Game should each have a Stage 1 library, followed by shared Stage 2, 3, and 4 libraries",
       );
-      const sharedScopeSource = storyboardEditorSource.slice(sharedScopeIndex, roleplayScopeIndex);
-      const roleplayScopeSource = storyboardEditorSource.slice(roleplayScopeIndex, gameScopeIndex);
-      const gameScopeSource = storyboardEditorSource.slice(gameScopeIndex);
-      assert.match(sharedScopeSource, /settings\.imageConnectionId/u);
-      assert.match(sharedScopeSource, /settings\.autoGenerateMode/u);
-      assert.match(sharedScopeSource, /settings\.illustrationTemplateId/u);
-      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.sharedProductionPrompts/u);
-      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.defaultImagePrompt/u);
-      assert.match(roleplayScopeSource, /settings\.runInterval/u);
-      assert.match(roleplayScopeSource, /settings\.roleplayEpisodeTemplateId/u);
-      assert.match(gameScopeSource, /settings\.illustrationPlannerTemplateId/u);
-      assert.match(gameScopeSource, /settings\.viewerDisplayMode/u);
-      assert.ok(
-        sharedProductionIndex > sharedScopeIndex &&
-          sharedProductionIndex < roleplayScopeIndex &&
-          defaultImagePromptIndex > sharedScopeIndex &&
-          defaultImagePromptIndex < roleplayScopeIndex &&
-          sharedProductionIndex < roleplayLibraryIndex,
-        "Shared production prompts should stay inside Shared before Roleplay prompts",
+      assert.equal(
+        activeEditorSource.match(/<TemplateCollectionEditor/gu)?.length,
+        8,
+        "All prompt collections should be editable inside their numbered stage libraries",
       );
+      assert.equal(
+        activeEditorSource.match(/<StagePromptLibrary stage=\{1\}/gu)?.length,
+        2,
+        "Roleplay and Game should keep separate Stage 1 prompt libraries",
+      );
+      for (const collection of [
+        "roleplayEpisodeTemplates",
+        "roleplayStyleTemplates",
+        "roleplayAnimationTemplates",
+        "roleplayOutputTemplates",
+        "illustrationTemplates",
+        "animationRefinementTemplates",
+        "videoTemplates",
+      ]) {
+        assert.match(
+          activeEditorSource,
+          new RegExp(`settings\\.${collection}`, "u"),
+          `${collection} should remain editable in its numbered stage library`,
+        );
+      }
+      assert.match(activeEditorSource, /templates=\{plannerTemplates\}/u);
+      assert.match(activeEditorSource, /onPlannerTemplatesChange\(templates\)/u);
+      assert.match(activeEditorSource, /renderTemplateMeta=/u);
+      assert.match(activeEditorSource, /ui\.agents\.agenteditor\.copyDefaultToEdit/u);
+      assert.match(
+        activeEditorSource,
+        /plannerPrompt\.trim\(\) \? \([\s\S]*<MacroTextarea[\s\S]*\) : \(\s*<pre/u,
+        "The built-in fallback planner prompt should stay read-only until explicitly copied",
+      );
+
+      const setupIndex = activeEditorSource.indexOf("<StoryboardSetupSection");
+      const workflowTabsIndex = activeEditorSource.indexOf('role="tablist"');
+      const roleplayWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-roleplay");
+      const gameWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-game");
+      assert.ok(
+        setupIndex >= 0 && setupIndex < workflowTabsIndex,
+        "Compact Storyboard setup should appear before the mode-specific active flow",
+      );
+      assert.ok(
+        workflowTabsIndex < roleplayWorkflowStart && roleplayWorkflowStart < gameWorkflowStart,
+        "Roleplay and Game Mode should be distinct navigable workflows",
+      );
+      assert.match(activeEditorSource, /role="tabpanel"/u);
+      assert.match(activeEditorSource, /aria-controls="storyboard-active-flow"/u);
+      const roleplayWorkflowSource = activeEditorSource.slice(roleplayWorkflowStart, gameWorkflowStart);
+      const gameWorkflowSource = activeEditorSource.slice(gameWorkflowStart);
+      assert.ok(
+        roleplayWorkflowSource.indexOf("number={1}") < roleplayWorkflowSource.indexOf("{sharedWorkflowStages}"),
+        "Roleplay planning must render before the shared production stages",
+      );
+      assert.ok(
+        gameWorkflowSource.indexOf("number={1}") < gameWorkflowSource.indexOf("{sharedWorkflowStages}"),
+        "Game planning must render before the shared production stages",
+      );
+      assert.match(roleplayWorkflowSource, /settings\.roleplayEpisodeTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayStyleTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayAnimationTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayOutputTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.illustrationPlannerTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.animationPlannerTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.viewerDisplayMode/u);
+
+      const sharedStagesStart = activeEditorSource.indexOf("const sharedWorkflowStages");
+      const sharedStagesEnd = activeEditorSource.indexOf("\n\n  return (", sharedStagesStart);
+      const sharedStagesSource = activeEditorSource.slice(sharedStagesStart, sharedStagesEnd);
+      const stage2Index = sharedStagesSource.indexOf("number={2}");
+      const stage3Index = sharedStagesSource.indexOf("number={3}");
+      const stage4Index = sharedStagesSource.indexOf("number={4}");
+      assert.ok(
+        stage2Index >= 0 && stage2Index < stage3Index && stage3Index < stage4Index,
+        "Shared production stages should render in image, image-aware, then video order",
+      );
+      assert.match(activeEditorSource, /const showAnimationStages = settings\.autoGenerateMode !== "illustration"/u);
+      assert.match(sharedStagesSource, /showAnimationStages \? \(/u);
+      assert.match(sharedStagesSource, /data-storyboard-still-flow-note/u);
+      assert.match(sharedStagesSource, /settings\.usePromptTemplate \? \(/u);
+      assert.match(sharedStagesSource, /settings\.imageAwareShotPlanningEnabled \? \(/u);
+      assert.doesNotMatch(editorSource, /StoryboardAdvancedPromptLibrary|storyboardPromptLibraryOpen/u);
+      assert.match(
+        editorSource,
+        /\{!isStoryboardAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
+        "Storyboard should not render a second global prompt library below its numbered stages",
+      );
+      assert.match(editorSource, /onPlannerPromptChange=\{setLocalPrompt\}/u);
+      assert.match(editorSource, /onPlannerTemplatesChange=\{setLocalPromptTemplates\}/u);
       assert.match(editorSource, /includeCharacterAppearance:\s*settings\.includeCharacterAppearance/u);
       assert.match(editorSource, /useAvatarReferences:\s*settings\.useAvatarReferences/u);
       assert.match(serviceSource, /ensureBuiltinConfig\(STORYBOARD_AGENT_ID\)/u);
@@ -3671,7 +3861,22 @@ const cases: RegressionCase[] = [
           animationDurationSeconds: normalizeStoryboardAgentSettings({ animationDurationSeconds: "" })
             .animationDurationSeconds,
         },
-        { keyframeCount: 3, animationDurationSeconds: 6 },
+        { keyframeCount: 3, animationDurationSeconds: 5 },
+      );
+      const relabeledVideoTemplate = normalizeStoryboardAgentSettings({
+        videoTemplates: [
+          {
+            id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
+            name: "LTX Director Video",
+            description: "Legacy built-in label",
+            promptTemplate: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
+          },
+        ],
+      }).videoTemplates[0];
+      assert.deepEqual(
+        { id: relabeledVideoTemplate?.id, name: relabeledVideoTemplate?.name },
+        { id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID, name: "Narration Passthrough" },
+        "Existing Storyboard configs should receive the clearer Stage 4 built-in label without changing its id",
       );
 
       const ctx = {
@@ -3790,7 +3995,7 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(videoPreset?.name, "LTX Director Video");
+      assert.equal(videoPreset?.name, "Narration Passthrough");
       assert.equal(videoPreset?.promptTemplate, LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE);
       assert.equal(LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE, "${narrationSummary}");
       assert.doesNotMatch(gameRouteSource, /buildLtxDirectorStoryboardPrompt|sanitizeLtxDirectorStoryboardSegments/);

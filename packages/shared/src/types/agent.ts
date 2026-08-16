@@ -724,6 +724,18 @@ const OBSOLETE_BUILT_IN_PROMPT_TEMPLATE_IDS: Record<string, ReadonlySet<string>>
   illustrator: new Set(["illustration", "sketch"]),
 };
 
+const ADDITIONAL_BUILT_IN_PROMPT_TEMPLATE_COLLECTION_KEYS: Record<string, readonly string[]> = {
+  storyboard: [
+    "illustrationTemplates",
+    "videoTemplates",
+    "animationRefinementTemplates",
+    "roleplayEpisodeTemplates",
+    "roleplayStyleTemplates",
+    "roleplayAnimationTemplates",
+    "roleplayOutputTemplates",
+  ],
+};
+
 const RETIRED_BUILT_IN_AGENT_TOOLS: Record<string, ReadonlySet<string>> = {
   expression: new Set(["set_expression"]),
 };
@@ -733,6 +745,30 @@ export function normalizeBuiltInAgentEnabledTools(agentType: string, value: unkn
   const enabledTools = value.filter((tool): tool is string => typeof tool === "string");
   const retiredTools = RETIRED_BUILT_IN_AGENT_TOOLS[agentType];
   return retiredTools ? enabledTools.filter((tool) => !retiredTools.has(tool)) : enabledTools;
+}
+
+function mergeBuiltInPromptTemplateCollection(
+  defaultValue: unknown,
+  savedValue: unknown,
+  obsoleteIds: ReadonlySet<string> = new Set(),
+): AgentPromptTemplateOption[] {
+  const defaultOptions = normalizeAgentPromptTemplateOptions(defaultValue);
+  const savedOptions = normalizeAgentPromptTemplateOptions(savedValue);
+  const savedOptionsById = new Map(
+    savedOptions.filter((entry) => !obsoleteIds.has(entry.id)).map((entry) => [entry.id, entry]),
+  );
+  const usedIds = new Set<string>();
+  const mergedDefaultOptions = defaultOptions.map((defaultOption) => {
+    usedIds.add(defaultOption.id);
+    const savedOption = savedOptionsById.get(defaultOption.id);
+    return savedOption ? { ...defaultOption, ...savedOption } : defaultOption;
+  });
+  const customOptions = savedOptions.filter((entry) => {
+    if (obsoleteIds.has(entry.id) || usedIds.has(entry.id)) return false;
+    usedIds.add(entry.id);
+    return true;
+  });
+  return [...mergedDefaultOptions, ...customOptions];
 }
 
 export function mergeBuiltInAgentSettings(agentType: string, settings: unknown): Record<string, unknown> {
@@ -749,29 +785,23 @@ export function mergeBuiltInAgentSettings(agentType: string, settings: unknown):
     ...normalizedSettings,
   };
 
-  const defaultPromptTemplates = normalizeAgentPromptTemplateOptions(defaults.promptTemplates);
-  const savedPromptTemplates = normalizeAgentPromptTemplateOptions(normalizedSettings.promptTemplates);
-  const obsoleteIds = OBSOLETE_BUILT_IN_PROMPT_TEMPLATE_IDS[agentType] ?? new Set<string>();
-  const savedPromptTemplatesById = new Map(
-    savedPromptTemplates.filter((entry) => !obsoleteIds.has(entry.id)).map((entry) => [entry.id, entry]),
-  );
-  const usedIds = new Set<string>();
-  const mergedDefaultPromptTemplates = defaultPromptTemplates.map((defaultOption) => {
-    usedIds.add(defaultOption.id);
-    const savedOption = savedPromptTemplatesById.get(defaultOption.id);
-    return savedOption ? { ...defaultOption, ...savedOption } : defaultOption;
-  });
-  const customPromptTemplates = savedPromptTemplates.filter((entry) => {
-    if (obsoleteIds.has(entry.id) || usedIds.has(entry.id)) return false;
-    usedIds.add(entry.id);
-    return true;
-  });
-  const promptTemplates = [...mergedDefaultPromptTemplates, ...customPromptTemplates];
-
-  if (promptTemplates.length) {
-    merged.promptTemplates = promptTemplates;
-  } else {
-    delete merged.promptTemplates;
+  const promptTemplateCollectionKeys = [
+    "promptTemplates",
+    ...(ADDITIONAL_BUILT_IN_PROMPT_TEMPLATE_COLLECTION_KEYS[agentType] ?? []),
+  ];
+  for (const key of promptTemplateCollectionKeys) {
+    const obsoleteIds =
+      key === "promptTemplates" ? (OBSOLETE_BUILT_IN_PROMPT_TEMPLATE_IDS[agentType] ?? new Set<string>()) : undefined;
+    const promptTemplates = mergeBuiltInPromptTemplateCollection(
+      defaults[key],
+      normalizedSettings[key],
+      obsoleteIds,
+    );
+    if (promptTemplates.length) {
+      merged[key] = promptTemplates;
+    } else {
+      delete merged[key];
+    }
   }
 
   return merged;

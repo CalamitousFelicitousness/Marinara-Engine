@@ -55,6 +55,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Stopped removed or disabled Example Dialogue markers from silently injecting character examples into prompts (#5031).
 - Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).
 - Kept supported placement settings when importing character-scoped SillyTavern regexes that also contain unsupported placements, with a warning for the ignored values (#5036).
+- Capped game auto-checkpoints to the newest five per trigger type (session start/end, combat start/end, and the rest) so a long campaign no longer duplicates every captured tracker, map, and engine-state snapshot into unbounded memory and ever-larger checkpoint shard rewrites; your own manual checkpoints are never pruned (#5110).
 
 ## [2.4.3]
 

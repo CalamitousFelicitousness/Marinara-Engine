@@ -1248,10 +1248,16 @@ function compareValues(left: unknown, right: unknown) {
 }
 
 function matchesLike(value: unknown, pattern: unknown) {
+  // SQL-LIKE semantics: % and _ match across newlines too ([\s\S], not dot) — `.`
+  // without the s flag silently failed on multi-line values, which broke substring
+  // searches over comment fields and, worse, let a crafted multi-line value escape
+  // a notLike() namespace boundary (a non-match inverts to true).
   const escaped = String(pattern ?? "")
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/%/g, ".*")
-    .replace(/_/g, ".");
+    // Escape every regex metacharacter, including * and ? — in SQL LIKE only % and _ are wildcards,
+    // so * and ? are literals; leaving them unescaped made "*" throw and "a*b"/"a?b" match non-literally.
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/%/g, "[\\s\\S]*")
+    .replace(/_/g, "[\\s\\S]");
   return new RegExp(`^${escaped}$`, "i").test(String(value ?? ""));
 }
 
@@ -1285,7 +1291,8 @@ function evaluateCondition(condition: Condition, ctx: RowContext): boolean {
     return condition.operator === "in" ? values.includes(value) : !values.includes(value);
   }
   if (condition.kind === "file-pattern") {
-    return matchesLike(resolveValue(condition.value, ctx), resolveValue(condition.pattern, ctx));
+    const matched = matchesLike(resolveValue(condition.value, ctx), resolveValue(condition.pattern, ctx));
+    return condition.negate ? !matched : matched;
   }
   if (condition.kind === "file-string-nonblank") {
     const value = resolveValue(condition.value, ctx);

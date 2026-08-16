@@ -766,6 +766,7 @@ export async function generateRoutes(app: FastifyInstance) {
    * These are replayed on the next turn so the model can continue its reasoning chain.
    */
   const encryptedReasoningCache = new Map<string, unknown[]>();
+  const activeGenerations = new Map<string, { abortController: AbortController; backendUrl: string | null }>();
 
   /**
    * POST /api/generate
@@ -886,22 +887,16 @@ export async function generateRoutes(app: FastifyInstance) {
       }
     }
 
-    const activeGenerations = (app as any).activeGenerations as Map<
-      string,
-      { abortController: AbortController; backendUrl: string | null }
-    >;
-    if (activeGenerations?.has(input.chatId)) {
+    if (activeGenerations.has(input.chatId)) {
       return reply.status(409).send({ error: "A generation is already in progress for this chat" });
     }
     // Register immediately after the concurrency check. The rest of setup
     // awaits DB/connection work, so delaying this left a small double-submit
     // window where two requests for the same chat could both pass the guard.
     const abortController = new AbortController();
-    if (activeGenerations) {
-      activeGenerations.set(input.chatId, { abortController, backendUrl: null });
-    }
+    activeGenerations.set(input.chatId, { abortController, backendUrl: null });
     const releaseActiveGeneration = () => {
-      if (activeGenerations?.get(input.chatId)?.abortController === abortController) {
+      if (activeGenerations.get(input.chatId)?.abortController === abortController) {
         activeGenerations.delete(input.chatId);
       }
     };
@@ -1170,9 +1165,12 @@ export async function generateRoutes(app: FastifyInstance) {
       }
     }
 
-    if (activeGenerations) {
-      activeGenerations.set(input.chatId, { abortController, backendUrl: baseUrl });
+    const activeGeneration = activeGenerations.get(input.chatId);
+    if (activeGeneration?.abortController !== abortController) {
+      abortController.abort();
+      return reply.status(409).send({ error: "Generation ownership changed during setup" });
     }
+    activeGeneration.backendUrl = baseUrl;
 
     // Set up SSE headers
     startSseReply(reply, { "X-Accel-Buffering": "no" });
@@ -10105,10 +10103,8 @@ export async function generateRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── Active generation tracking for explicit abort ──
-  const activeGenerations = new Map<string, { abortController: AbortController; backendUrl: string | null }>();
-
-  // Expose the map so the route handler can register/unregister generations
+  // Expose the active generation registry for status/abort routes and other
+  // external consumers that read the decorated Fastify property.
   app.decorate("activeGenerations", activeGenerations);
 
   /**

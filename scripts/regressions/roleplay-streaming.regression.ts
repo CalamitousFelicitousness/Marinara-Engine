@@ -98,7 +98,7 @@ assert.match(
   "The durable user row must retain its client submission ID even when generation fails",
 );
 const upsertPersistedMessagesSource =
-  /export function upsertPersistedMessages\([\s\S]*?\n\}\n\nfunction appendMissingPersistedMessages/u.exec(
+  /export function upsertPersistedMessages\([\s\S]*?\n\}\s*function appendMissingPersistedMessages/u.exec(
     useGenerateSource,
   )?.[0];
 assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement helper must remain available");
@@ -916,12 +916,12 @@ assert.match(
   "additional messages sent during a Conversation presence delay should persist without starting another generator",
 );
 assert.equal(
-  isGenerationStartBlocked({ setupLocked: false, activeController: true, backgroundIllustration: false }),
+  isGenerationStartBlocked({ activeController: true, backgroundIllustration: false }),
   true,
   "ordinary same-chat generations must remain exclusive",
 );
 assert.equal(
-  isGenerationStartBlocked({ setupLocked: false, activeController: true, backgroundIllustration: true }),
+  isGenerationStartBlocked({ activeController: true, backgroundIllustration: true }),
   false,
   "the next same-chat generation should be allowed while Illustrator finishes",
 );

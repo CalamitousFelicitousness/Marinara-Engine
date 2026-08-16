@@ -58,6 +58,13 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
     pattern: /^\/api\/agents\/suite\/rewrite(?:\?|$)/,
     rule: { key: "agent-suite-rewrite", limit: 20, windowMs: 60_000 },
   },
+  // Same class: a game-surface Experience's host-run structured generation
+  // (#5135) is one bounded LLM call per package action — a buggy package loop
+  // must hit this wall, not the 600/min default.
+  {
+    pattern: /^\/api\/game\/[^/]+\/experience-generation(?:\?|$)/,
+    rule: { key: "game-experience-generation", limit: 20, windowMs: 60_000 },
+  },
   // Cap on extension routes so an XSS-driven mass install / spam can't
   // exploit the persistent storage path. 60/min covers React Query
   // refetches + legacy migrations of small extension lists comfortably.

@@ -10147,6 +10147,168 @@ export async function gameRoutes(app: FastifyInstance) {
     });
   });
 
+  // ── POST /game/:chatId/experience-generation (#5135) ──
+  // One host-run, bounded, non-streaming structured-output call for the chat's
+  // stamped game-surface Experience — e.g. turning wizard preferences into a
+  // compact world brief its deterministic generator compiles into a tile world.
+  // Packages are client-only, so this is the sanctioned way for one to spend a
+  // single LLM call; the gate is the same stamp the experience-state routes
+  // enforce, the connection is the chat's own GM connection, and both a
+  // dedicated rate-limit class and the per-chat asset-generation lock bound the
+  // spend. Modeled on /game/scene-wrap, with the illustrator's repair
+  // round-trip instead of a blind retry.
+  const experienceGenerationSchema = z.object({
+    /** The package's guidance: what to produce, the schema description, vocabularies. */
+    instructions: z.string().min(1).max(16_000),
+    /** The request payload (e.g. the player's preferences), appended as the user turn. */
+    userContent: z.string().max(8_000).default(""),
+    /** Optional JSON schema forwarded as provider-native structured output where
+     *  supported (OpenAI-compatible, Google). Advisory elsewhere: Anthropic and
+     *  the local sidecar ignore it, so the tolerant parser is the real contract. */
+    schema: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .refine((value) => value === undefined || JSON.stringify(value).length <= 8_000, {
+        message: "schema must serialize to at most 8000 characters",
+      }),
+    schemaName: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]{1,64}$/)
+      .default("experience_generation"),
+    connectionId: z.string().optional(),
+    /** Optional tightening of the stored max-output-token parameter; never a raise. */
+    maxTokens: z.number().int().min(256).max(8_192).optional(),
+  });
+
+  app.post<{ Params: { chatId: string } }>(
+    "/:chatId/experience-generation",
+    { bodyLimit: 64 * 1024 },
+    async (req, reply) => {
+      const input = experienceGenerationSchema.parse(req.body ?? {});
+      const chats = createChatsStorage(app.db);
+      const connections = createConnectionsStorage(app.db);
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.code(404).send({ error: "Chat not found" });
+      const gameType = resolveExperienceStateGameType(chat);
+      if (!gameType) {
+        return reply.code(409).send({
+          error: "This chat has no game-surface Experience, so it cannot run experience generation",
+        });
+      }
+
+      const meta = parseMeta(chat.metadata);
+      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
+        connections,
+        input.connectionId,
+        chat.connectionId,
+      );
+      const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
+      const provider = await createGameMainProvider(connections, conn, baseUrl);
+
+      const baseMessages: ChatMessage[] = [
+        { role: "system", content: input.instructions },
+        {
+          role: "user",
+          content:
+            `${input.userContent}\n\nREMEMBER: Output ONLY the requested JSON object — no prose, no markdown fences.`.trim(),
+        },
+      ];
+
+      const signal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Experience generation");
+      const release = await acquireGameAssetGenerationLock(req.params.chatId, signal);
+      try {
+        // A brief-sized structured reply needs headroom even when the stored
+        // parameter is small; 2048 floors it the way GAME_SETUP_MIN_OUTPUT_TOKENS
+        // floors the setup call, and the known-model cap still applies.
+        const maxTokens = clampGameMaxOutputTokens({
+          provider: conn.provider,
+          model: conn.model ?? "",
+          maxTokens: Math.max(2_048, gameGenerationParameters?.maxTokens ?? 0),
+          maxTokensOverride: input.maxTokens ?? null,
+        });
+        const options = gameGenOptions(
+          conn.model ?? "",
+          { stream: false, maxTokens, signal },
+          gameGenerationParameters,
+          conn.provider,
+        );
+        // Set AFTER gameGenOptions: its suppressModelParameters branch copies a
+        // fixed field list and silently drops responseFormat from overrides.
+        options.responseFormat = input.schema
+          ? { type: "json_schema", json_schema: { name: input.schemaName, schema: input.schema, strict: true } }
+          : { type: "json_object" };
+
+        let attemptMessages = baseMessages;
+        let lastRaw = "";
+        let lastFinishReason: string | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const result = await runGameChatComplete(provider, attemptMessages, options, "Experience generation");
+          let extraction = extractLeadingThinkingBlocks(
+            result.content || "",
+            gameGenerationParameters?.customThinkingTags,
+          );
+          let raw = extraction.content;
+          // Some provider/model combos return empty content on the buffered
+          // path; retry once via streamed collection (scene-wrap precedent).
+          if (!raw.trim()) {
+            logger.warn("[game/experience-generation] Empty buffered response, retrying with streamed collection");
+            const streamed = await runGameChatStream(
+              provider,
+              attemptMessages,
+              options,
+              "Experience generation streamed retry",
+            );
+            extraction = extractLeadingThinkingBlocks(streamed, gameGenerationParameters?.customThinkingTags);
+            raw = extraction.content;
+          }
+          lastRaw = raw;
+          lastFinishReason = result.finishReason ?? null;
+          // Truncation is checked BEFORE the parse: the tolerant parser happily
+          // repairs a cut-off reply by closing its containers, which would hand
+          // the package a silently amputated document as ok:true. There is no
+          // host-side semantic validator behind this route to catch that.
+          if (isLikelyTruncatedJsonResponse(raw, result.finishReason)) {
+            return reply.code(422).send({
+              error:
+                "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+              truncated: true,
+              raw: raw.slice(0, 20_000),
+              finishReason: lastFinishReason,
+            });
+          }
+          try {
+            const data = parseJSON(raw);
+            return { ok: true, data };
+          } catch {
+            if (attempt === 1) {
+              // Repair round-trip: showing the model its own bad output plus a
+              // correction converges far better than a blind re-run.
+              attemptMessages = [
+                ...baseMessages,
+                { role: "assistant", content: raw.slice(0, 4_000) },
+                {
+                  role: "user",
+                  content:
+                    "That response was not the requested JSON. Reply again with ONLY the corrected JSON object — no prose, no fences.",
+                },
+              ];
+            }
+          }
+        }
+        // The package degrades to its own defaults; hand it the raw text so it
+        // can log or salvage, never a hand-repair dialog (this is not a wizard).
+        return reply.code(422).send({
+          error: "The model did not return parseable JSON",
+          truncated: false,
+          raw: lastRaw.slice(0, 20_000),
+          finishReason: lastFinishReason,
+        });
+      } finally {
+        release();
+      }
+    },
+  );
+
   // ── PUT /game/:chatId/widgets ──
   app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req) => {
     const { widgets: rawWidgets } = z

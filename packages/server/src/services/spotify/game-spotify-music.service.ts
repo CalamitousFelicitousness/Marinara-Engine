@@ -391,27 +391,43 @@ async function fetchSpotifyTrackIndex(
   return { ...entry, cacheStatus: "miss" };
 }
 
+/** Spotify capped GET /search at 10 results per request in February 2026
+ *  (previously 50); larger candidate pools must paginate with `offset`.
+ *  Passing the caller's pool size straight through 400'd deterministically
+ *  for the artist and generic-search Music DJ sources, whose default is 50
+ *  (#5163, Game-mode half). */
+const SPOTIFY_SEARCH_PAGE_LIMIT = 10;
+
 async function searchSpotifyTracks(
   credentials: SpotifyCredentialsResult,
   query: string,
   limit: number,
 ): Promise<SceneSpotifyTrackCandidate[]> {
   const q = normalizeSpotifySearchQuery(query) || "soundtrack";
-  const res = await fetchSpotifyApi(
-    credentials,
-    `/search?${new URLSearchParams({ q, type: "track", limit: String(limit) })}`,
-    { signal: AbortSignal.timeout(15_000) },
-  );
-  if (!res.ok) {
-    const body = await res.text();
-    spotifyError(res.status, `Spotify search failed (${res.status}): ${body.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as {
-    tracks?: {
-      items?: Array<{ uri?: string; name?: string; artists?: Array<{ name?: string }>; album?: { name?: string } }>;
+  const items: Array<{ uri?: string; name?: string; artists?: Array<{ name?: string }>; album?: { name?: string } }> =
+    [];
+  for (let offset = 0; items.length < limit; offset += SPOTIFY_SEARCH_PAGE_LIMIT) {
+    const pageLimit = Math.min(SPOTIFY_SEARCH_PAGE_LIMIT, limit - items.length);
+    const res = await fetchSpotifyApi(
+      credentials,
+      `/search?${new URLSearchParams({ q, type: "track", limit: String(pageLimit), offset: String(offset) })}`,
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      spotifyError(res.status, `Spotify search failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as {
+      tracks?: {
+        items?: Array<{ uri?: string; name?: string; artists?: Array<{ name?: string }>; album?: { name?: string } }>;
+      };
     };
-  };
-  return (data.tracks?.items ?? [])
+    const page = data.tracks?.items ?? [];
+    items.push(...page);
+    // A short page means the catalog ran out for this query.
+    if (page.length < pageLimit) break;
+  }
+  return items
     .map((track, index): SceneSpotifyTrackCandidate | null => {
       if (!track.uri?.startsWith("spotify:track:")) return null;
       return {

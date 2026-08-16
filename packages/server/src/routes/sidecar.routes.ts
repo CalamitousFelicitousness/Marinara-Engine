@@ -35,6 +35,7 @@ import {
   sceneAnalysisRequestSchema,
   scoreAmbient,
   scoreMusic,
+  musicAreaSlug,
   type GameActiveState,
   type SidecarDownloadProgress,
   type SidecarQuantization,
@@ -516,13 +517,18 @@ export const sidecarRoutes: FastifyPluginAsync = async (app) => {
 
       if (body.context.useSpotifyMusic) {
         result.music = null;
-      } else if (!body.context.generateMusic) {
+      } else {
+        // Scoring runs even with music generation enabled (#5161): generated
+        // context tracks are ordinary scoreable library entries now, and the
+        // analyzer no longer writes free-text music prompts.
         const scoredMusic = scoreMusic({
           state: (body.context.currentState as GameActiveState) ?? "exploration",
           weather: result.weather ?? body.context.currentWeather ?? null,
           timeOfDay: result.timeOfDay ?? body.context.currentTimeOfDay ?? null,
           musicGenre: result.musicGenre,
           musicIntensity: result.musicIntensity,
+          locationSlug: musicAreaSlug(body.context.currentLocation),
+          enemyTier: body.context.enemyTier,
           currentMusic: body.context.currentMusic ?? null,
           recentMusic: body.context.recentMusic ?? null,
           availableMusic: musicTags,

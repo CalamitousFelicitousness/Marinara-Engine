@@ -100,6 +100,19 @@ export function normalizeMusicEnemyTier(value: string | null | undefined): Music
   return ENEMY_TIER_ALIASES[normalized] ?? null;
 }
 
+/** Canonical area key for context music: the same slugification generated
+ *  backgrounds use, so an area's music and its background share one identity. */
+export function musicAreaSlug(value: string | null | undefined): string | null {
+  const slug = (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return slug || null;
+}
+
 const INTENSITY_RANK: Record<MusicIntensity, number> = {
   calm: 0,
   tense: 1,

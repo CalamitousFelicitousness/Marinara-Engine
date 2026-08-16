@@ -154,6 +154,7 @@ import {
   sceneAnalysisRequestSchema,
   resolveProviderReasoningEffort,
   scoreMusic,
+  musicAreaSlug,
   scoreAmbient,
   serializeResolvedSkillCheckTag,
   applyTrackerFieldLocksToGameStatePatch,
@@ -11006,13 +11007,18 @@ export async function gameRoutes(app: FastifyInstance) {
 
       if (input.context.useSpotifyMusic) {
         parsed.music = null;
-      } else if (!input.context.generateMusic) {
+      } else {
+        // Scoring runs even with music generation enabled (#5161): generated
+        // context tracks are ordinary scoreable library entries now, and the
+        // analyzer no longer writes free-text music prompts.
         const scoredMusic = scoreMusic({
           state: (input.context.currentState as GameActiveState) ?? "exploration",
           weather: parsed.weather ?? input.context.currentWeather,
           timeOfDay: parsed.timeOfDay ?? input.context.currentTimeOfDay,
           musicGenre: parsed.musicGenre,
           musicIntensity: parsed.musicIntensity,
+          locationSlug: musicAreaSlug(input.context.currentLocation),
+          enemyTier: input.context.enemyTier,
           currentMusic: input.context.currentMusic,
           recentMusic: input.context.recentMusic,
           availableMusic: serverMusicTags,

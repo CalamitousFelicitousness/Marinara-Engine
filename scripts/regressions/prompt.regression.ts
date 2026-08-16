@@ -2575,6 +2575,9 @@ const cases: RegressionCase[] = [
       );
       assert.equal(buildElevenLabsTextInput("Your ribs require rest.", "thinking"), "[thinking] Your ribs require rest.");
       assert.equal(buildElevenLabsTextInput("A bold strategy.", "smirk"), "[smirk] A bold strategy.");
+      assert.equal(buildElevenLabsTextInput("Stay close.", "[soft]\n"), "[soft] Stay close.");
+      assert.equal(buildElevenLabsTextInput("No cue needed.", " \n[] "), "No cue needed.");
+      assert.equal(buildElevenLabsTextInput("  [neutral] Already prepared.", "neutral"), "  [neutral] Already prepared.");
     },
   },
   {

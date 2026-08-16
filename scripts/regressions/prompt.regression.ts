@@ -3661,39 +3661,88 @@ const cases: RegressionCase[] = [
         editorSource,
         /\.\.\.\(localMaxTokens !== "" \? \{ maxTokens: clampAgentMaxTokens\(localMaxTokens\) \} : \{\}\)/u,
       );
-      const sharedScopeIndex = storyboardEditorSource.indexOf('id="shared"');
-      const roleplayScopeIndex = storyboardEditorSource.indexOf('id="roleplay"');
-      const gameScopeIndex = storyboardEditorSource.indexOf('id="game"');
-      const roleplayLibraryIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.roleplayPromptLibrary");
-      const sharedProductionIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.sharedProductionPrompts");
-      const defaultImagePromptIndex = storyboardEditorSource.indexOf("ui.agents.storyboard.defaultImagePrompt");
-      assert.ok(defaultImagePromptIndex >= 0, "Storyboard editor should expose a default image prompt selector");
-      assert.ok(roleplayLibraryIndex >= 0, "Storyboard editor should expose a separate Roleplay prompt library");
-      assert.ok(sharedProductionIndex >= 0, "Storyboard editor should identify shared production prompt stages");
-      assert.ok(
-        sharedScopeIndex >= 0 && sharedScopeIndex < roleplayScopeIndex && roleplayScopeIndex < gameScopeIndex,
-        "Storyboard editor should present Shared, Roleplay, and Game Mode scopes in that order",
+      const advancedLibraryStart = storyboardEditorSource.indexOf("export function StoryboardAdvancedPromptLibrary");
+      const activeEditorStart = storyboardEditorSource.indexOf("export function StoryboardAgentSettingsPanel");
+      assert.ok(advancedLibraryStart >= 0, "Storyboard editor should retain an advanced template library");
+      assert.ok(activeEditorStart > advancedLibraryStart, "Advanced templates should be separate from the active flow");
+      assert.match(
+        storyboardEditorSource,
+        /function StoryboardSetupSection[\s\S]*?useState\(false\)/u,
+        "Shared Storyboard setup should be collapsed by default so the active flow stays prominent",
       );
-      const sharedScopeSource = storyboardEditorSource.slice(sharedScopeIndex, roleplayScopeIndex);
-      const roleplayScopeSource = storyboardEditorSource.slice(roleplayScopeIndex, gameScopeIndex);
-      const gameScopeSource = storyboardEditorSource.slice(gameScopeIndex);
-      assert.match(sharedScopeSource, /settings\.imageConnectionId/u);
-      assert.match(sharedScopeSource, /settings\.autoGenerateMode/u);
-      assert.match(sharedScopeSource, /settings\.illustrationTemplateId/u);
-      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.sharedProductionPrompts/u);
-      assert.match(sharedScopeSource, /ui\.agents\.storyboard\.defaultImagePrompt/u);
-      assert.match(roleplayScopeSource, /settings\.runInterval/u);
-      assert.match(roleplayScopeSource, /settings\.roleplayEpisodeTemplateId/u);
-      assert.match(gameScopeSource, /settings\.illustrationPlannerTemplateId/u);
-      assert.match(gameScopeSource, /settings\.viewerDisplayMode/u);
-      assert.ok(
-        sharedProductionIndex > sharedScopeIndex &&
-          sharedProductionIndex < roleplayScopeIndex &&
-          defaultImagePromptIndex > sharedScopeIndex &&
-          defaultImagePromptIndex < roleplayScopeIndex &&
-          sharedProductionIndex < roleplayLibraryIndex,
-        "Shared production prompts should stay inside Shared before Roleplay prompts",
+      const advancedLibrarySource = storyboardEditorSource.slice(advancedLibraryStart, activeEditorStart);
+      const activeEditorSource = storyboardEditorSource.slice(activeEditorStart);
+      assert.doesNotMatch(
+        activeEditorSource,
+        /<TemplateCollectionEditor/u,
+        "The common Storyboard path should not render full template collection editors",
       );
+      for (const collection of [
+        "roleplayEpisodeTemplates",
+        "roleplayStyleTemplates",
+        "roleplayAnimationTemplates",
+        "roleplayOutputTemplates",
+        "illustrationTemplates",
+        "animationRefinementTemplates",
+        "videoTemplates",
+      ]) {
+        assert.match(
+          advancedLibrarySource,
+          new RegExp(`settings\\.${collection}`, "u"),
+          `${collection} should remain editable in the advanced library`,
+        );
+      }
+
+      const setupIndex = activeEditorSource.indexOf("<StoryboardSetupSection");
+      const workflowTabsIndex = activeEditorSource.indexOf('role="tablist"');
+      const roleplayWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-roleplay");
+      const gameWorkflowStart = activeEditorSource.indexOf("data-storyboard-active-game");
+      assert.ok(
+        setupIndex >= 0 && setupIndex < workflowTabsIndex,
+        "Compact Storyboard setup should appear before the mode-specific active flow",
+      );
+      assert.ok(
+        workflowTabsIndex < roleplayWorkflowStart && roleplayWorkflowStart < gameWorkflowStart,
+        "Roleplay and Game Mode should be distinct navigable workflows",
+      );
+      assert.match(activeEditorSource, /role="tabpanel"/u);
+      assert.match(activeEditorSource, /aria-controls="storyboard-active-flow"/u);
+      const roleplayWorkflowSource = activeEditorSource.slice(roleplayWorkflowStart, gameWorkflowStart);
+      const gameWorkflowSource = activeEditorSource.slice(gameWorkflowStart);
+      assert.ok(
+        roleplayWorkflowSource.indexOf("number={1}") < roleplayWorkflowSource.indexOf("{sharedWorkflowStages}"),
+        "Roleplay planning must render before the shared production stages",
+      );
+      assert.ok(
+        gameWorkflowSource.indexOf("number={1}") < gameWorkflowSource.indexOf("{sharedWorkflowStages}"),
+        "Game planning must render before the shared production stages",
+      );
+      assert.match(roleplayWorkflowSource, /settings\.roleplayEpisodeTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayStyleTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayAnimationTemplateId/u);
+      assert.match(roleplayWorkflowSource, /settings\.roleplayOutputTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.illustrationPlannerTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.animationPlannerTemplateId/u);
+      assert.match(gameWorkflowSource, /settings\.viewerDisplayMode/u);
+
+      const sharedStagesStart = activeEditorSource.indexOf("const sharedWorkflowStages");
+      const sharedStagesEnd = activeEditorSource.indexOf("\n\n  return (", sharedStagesStart);
+      const sharedStagesSource = activeEditorSource.slice(sharedStagesStart, sharedStagesEnd);
+      const stage2Index = sharedStagesSource.indexOf("number={2}");
+      const stage3Index = sharedStagesSource.indexOf("number={3}");
+      const stage4Index = sharedStagesSource.indexOf("number={4}");
+      assert.ok(
+        stage2Index >= 0 && stage2Index < stage3Index && stage3Index < stage4Index,
+        "Shared production stages should render in image, image-aware, then video order",
+      );
+      assert.match(activeEditorSource, /const showAnimationStages = settings\.autoGenerateMode !== "illustration"/u);
+      assert.match(sharedStagesSource, /showAnimationStages \? \(/u);
+      assert.match(sharedStagesSource, /data-storyboard-still-flow-note/u);
+      assert.match(sharedStagesSource, /settings\.usePromptTemplate \? \(/u);
+      assert.match(sharedStagesSource, /settings\.imageAwareShotPlanningEnabled \? \(/u);
+      assert.match(editorSource, /ui\.agents\.storyboard\.advancedPromptLibrary/u);
+      assert.match(editorSource, /collapsible=\{isStoryboardAgent\}/u);
+      assert.match(editorSource, /useState\(false\)[\s\S]*storyboardPromptLibraryOpen/u);
       assert.match(editorSource, /includeCharacterAppearance:\s*settings\.includeCharacterAppearance/u);
       assert.match(editorSource, /useAvatarReferences:\s*settings\.useAvatarReferences/u);
       assert.match(serviceSource, /ensureBuiltinConfig\(STORYBOARD_AGENT_ID\)/u);

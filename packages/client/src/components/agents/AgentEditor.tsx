@@ -63,7 +63,7 @@ import {
 } from "../../hooks/use-knowledge-sources";
 import { cn } from "../../lib/utils";
 import { MacroTextarea } from "../ui/MacroTextarea";
-import { StoryboardAgentSettingsPanel } from "./StoryboardAgentSettingsPanel";
+import { StoryboardAdvancedPromptLibrary, StoryboardAgentSettingsPanel } from "./StoryboardAgentSettingsPanel";
 import {
   getAgentRunIntervalMeta,
   getCadenceInputValue,
@@ -709,6 +709,7 @@ export function AgentEditor() {
   const [localIncludeParallelResults, setLocalIncludeParallelResults] = useState(false);
   const [localEnabledTools, setLocalEnabledTools] = useState<string[]>([]);
   const [toolsSectionOpen, setToolsSectionOpen] = useState(false);
+  const [storyboardPromptLibraryOpen, setStoryboardPromptLibraryOpen] = useState(false);
   const [localLorebookWriteEnabled, setLocalLorebookWriteEnabled] = useState(false);
   const [localWritableLorebookId, setLocalWritableLorebookId] = useState("");
   const [localMusicProvider, setLocalMusicProvider] = useState<MusicProvider>("spotify");
@@ -3659,16 +3660,41 @@ export function AgentEditor() {
           <FieldGroup
             label={
               isStoryboardAgent
-                ? localizeUi("ui.agents.storyboard.gamePromptLibrary")
+                ? localizeUi("ui.agents.storyboard.advancedPromptLibrary")
                 : localizeUi("ui.agents.agenteditor.promptTemplate")
             }
             icon={<FileText size="0.875rem" className="text-[var(--primary)]" />}
             help={
               isStoryboardAgent
-                ? localizeUi("ui.agents.storyboard.gamePromptLibraryDescription")
+                ? localizeUi("ui.agents.storyboard.advancedPromptLibraryDescription")
                 : localizeUi("ui.agents.agenteditor.theSystemInstructionsThisAgentReceivesBuiltInAgents")
             }
+            collapsible={isStoryboardAgent}
+            expanded={!isStoryboardAgent || storyboardPromptLibraryOpen}
+            onExpandedChange={setStoryboardPromptLibraryOpen}
+            summary={isStoryboardAgent ? localizeUi("ui.agents.storyboard.advancedPromptLibrarySummary") : undefined}
           >
+            {isStoryboardAgent ? (
+              <StoryboardAdvancedPromptLibrary
+                settings={localStoryboardSettings}
+                defaults={storyboardDefaultSettings}
+                onChange={setLocalStoryboardSettings}
+                onDirty={markDirty}
+              />
+            ) : null}
+            {isStoryboardAgent ? (
+              <div
+                data-storyboard-advanced-library-group="game"
+                className="mt-5 space-y-0.5 border-t border-[var(--border)] pt-5"
+              >
+                <h4 className="text-sm font-semibold text-[var(--foreground)]">
+                  {localizeUi("ui.agents.storyboard.gamePromptLibrary")}
+                </h4>
+                <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                  {localizeUi("ui.agents.storyboard.gamePromptLibraryDescription")}
+                </p>
+              </div>
+            ) : null}
             {/* Toolbar — only show default/override status for built-in agents */}
             {builtIn && (
               <div className="flex items-center gap-2 mb-2">

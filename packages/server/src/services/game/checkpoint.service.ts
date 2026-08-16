@@ -124,6 +124,24 @@ export async function pruneAutoCheckpoints(db: DB, chatId: string, protectId?: s
   }
 }
 
+/** Per-chat promise tail that serializes checkpoint insert+prune. `create` inserts then prunes
+ *  across an await, so two concurrent automatic creates on one chat could otherwise both read the
+ *  same over-cap bucket and build overlapping delete sets — which, under a `createdAt` tie, can
+ *  delete both freshly-inserted rows and leave the bucket below the cap. Module-level so every
+ *  `createCheckpointService(db)` instance shares one tail per chat (mirrors the experience-state
+ *  write lock in game.routes). */
+const checkpointWriteTails = new Map<string, Promise<unknown>>();
+function withCheckpointWriteLock<T>(chatId: string, task: () => Promise<T>): Promise<T> {
+  const previous = checkpointWriteTails.get(chatId) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  const tail = run.catch(() => undefined);
+  checkpointWriteTails.set(chatId, tail);
+  void tail.finally(() => {
+    if (checkpointWriteTails.get(chatId) === tail) checkpointWriteTails.delete(chatId);
+  });
+  return run;
+}
+
 export function createCheckpointService(db: DB) {
   return {
     async create(input: CreateCheckpointInput): Promise<string> {
@@ -169,29 +187,34 @@ export function createCheckpointService(db: DB) {
       );
 
       const id = newId();
-      await db.insert(gameCheckpoints).values({
-        id,
-        chatId: input.chatId,
-        snapshotId: input.snapshotId,
-        spatialSnapshotId: capturedSpatialSnapshot?.id ?? null,
-        snapshotData: JSON.stringify(capturedGameSnapshot),
-        spatialSnapshotData: capturedSpatialSnapshot ? JSON.stringify(capturedSpatialSnapshot) : null,
-        engineStateData: capturedEngineStates.length > 0 ? JSON.stringify(capturedEngineStates) : null,
-        messageId: input.messageId,
-        label: input.label,
-        triggerType: input.triggerType,
-        location: input.location ?? null,
-        gameState: input.gameState ?? null,
-        weather: input.weather ?? null,
-        timeOfDay: input.timeOfDay ?? null,
-        turnNumber: input.turnNumber ?? null,
-        createdAt: now(),
+      // Serialize the insert + prune per chat so concurrent automatic creates cannot race on the
+      // same bucket (see withCheckpointWriteLock). The snapshot reads above touch other tables and
+      // stay outside the lock.
+      await withCheckpointWriteLock(input.chatId, async () => {
+        await db.insert(gameCheckpoints).values({
+          id,
+          chatId: input.chatId,
+          snapshotId: input.snapshotId,
+          spatialSnapshotId: capturedSpatialSnapshot?.id ?? null,
+          snapshotData: JSON.stringify(capturedGameSnapshot),
+          spatialSnapshotData: capturedSpatialSnapshot ? JSON.stringify(capturedSpatialSnapshot) : null,
+          engineStateData: capturedEngineStates.length > 0 ? JSON.stringify(capturedEngineStates) : null,
+          messageId: input.messageId,
+          label: input.label,
+          triggerType: input.triggerType,
+          location: input.location ?? null,
+          gameState: input.gameState ?? null,
+          weather: input.weather ?? null,
+          timeOfDay: input.timeOfDay ?? null,
+          turnNumber: input.turnNumber ?? null,
+          createdAt: now(),
+        });
+        // A manual save never grows an auto bucket, so only an auto checkpoint can push a bucket
+        // over the cap; skip the scan on manual creates.
+        if (input.triggerType !== "manual") {
+          await pruneAutoCheckpoints(db, input.chatId, id);
+        }
       });
-      // A manual save never grows an auto bucket, so only an auto checkpoint can push a bucket
-      // over the cap; skip the scan on manual creates.
-      if (input.triggerType !== "manual") {
-        await pruneAutoCheckpoints(db, input.chatId, id);
-      }
       return id;
     },
 

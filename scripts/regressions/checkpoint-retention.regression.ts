@@ -204,6 +204,66 @@ try {
     );
   }
 
+  // ── Part 4: concurrent automatic creates on one chat still settle at EXACTLY MAX ──
+  // create() serializes its insert+prune per chat. Without that lock, two creates could read the
+  // same over-cap bucket and, on a createdAt tie, delete each other's fresh row — leaving fewer
+  // than MAX (and returning ids that no longer resolve). A concurrent burst must hold the cap at
+  // exactly MAX, never below.
+  {
+    const chat = await chats.create({ name: "retention concurrency", mode: "game", characterIds: [] });
+    assert.ok(chat);
+    createdChatIds.push(chat.id);
+    const m1 = await chats.createMessage({
+      chatId: chat.id,
+      role: "assistant",
+      characterId: null,
+      content: "turn 1",
+    } as Parameters<typeof chats.createMessage>[0]);
+    assert.ok(m1);
+    await stateStore.create({
+      chatId: chat.id,
+      messageId: m1.id,
+      swipeIndex: 0,
+      date: "",
+      time: "",
+      location: "",
+      weather: "",
+      temperature: "",
+      worldCustomFields: [],
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: null,
+      personaStats: null,
+      fieldLocks: {},
+      hiddenTrackerFields: [],
+      committed: true,
+    } as Parameters<typeof stateStore.create>[0]);
+    const snapshot = await stateStore.getLatest(chat.id);
+    assert.ok(snapshot);
+
+    const burst = N + 7;
+    const ids = await Promise.all(
+      Array.from({ length: burst }, () =>
+        checkpointSvc.create({
+          chatId: chat.id,
+          snapshotId: snapshot.id,
+          spatialSnapshotId: null,
+          messageId: snapshot.messageId,
+          label: "combat_start",
+          triggerType: "combat_start",
+          location: null,
+          gameState: null,
+          weather: null,
+          timeOfDay: null,
+          turnNumber: null,
+        }),
+      ),
+    );
+    assert.equal(new Set(ids).size, burst, "each concurrent create returns a distinct id");
+    const kept = (await checkpointSvc.listForChat(chat.id)).filter((r) => r.triggerType === "combat_start");
+    assert.equal(kept.length, N, "concurrent automatic creates settle at exactly MAX, never below the cap");
+  }
+
   console.log("checkpoint retention regression passed");
 } finally {
   for (const id of createdChatIds) await chats.remove(id).catch(() => {});

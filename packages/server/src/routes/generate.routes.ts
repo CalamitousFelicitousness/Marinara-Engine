@@ -302,7 +302,13 @@ import {
   replaceConversationContextBlockForTarget,
 } from "./generate/conversation-context-block.js";
 import { prepareConversationPromptHistory } from "./generate/conversation-history-runtime.js";
-import { resolveConversationPresenceRuntime } from "./generate/conversation-presence-runtime.js";
+import {
+  orderConversationRespondersByDelay,
+  remainingConversationPresenceDelay,
+  resolveConversationPresenceRuntime,
+  type ConversationResponderDelay,
+  waitForConversationPresenceDelay,
+} from "./generate/conversation-presence-runtime.js";
 import { resolveProfessorMariPromptContext } from "./generate/professor-mari-prompt-context.js";
 import { collectCapabilityPromptContext } from "../services/capability-packages/capability-prompt-context.service.js";
 import { collectRoleplayEventContext } from "../services/capability-packages/capability-roleplay-events.service.js";
@@ -1650,6 +1656,8 @@ export async function generateRoutes(app: FastifyInstance) {
           string,
           { displayName: string; status: string; activity: string; talkativeness: number }
         >();
+        let conversationResponderDelays = new Map<string, ConversationResponderDelay>();
+        let conversationPresenceDelayStartedAt = Date.now();
         let conversationImportantMemoryBlock: string | null = null;
         // Relocation-macro content captured for the deferred-{{#if}} decode pass
         // (#3448) — set where each is computed, read after all are known.
@@ -2268,6 +2276,8 @@ export async function generateRoutes(app: FastifyInstance) {
         // ── Conversation mode: inject built-in DM-style system prompt ──
         let convoAwarenessBlock: string | null = null;
         if (chatMode === "conversation") {
+          const deferPresenceDelayToResponders =
+            characterIds.length > 1 && resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode) === "individual";
           const presenceRuntime = await resolveConversationPresenceRuntime({
             db: app.db,
             chatId: input.chatId,
@@ -2283,6 +2293,7 @@ export async function generateRoutes(app: FastifyInstance) {
             regenerateMessageId: input.regenerateMessageId,
             impersonate: input.impersonate,
             skipPresenceDelay: input.skipPresenceDelay,
+            deferPresenceDelayToResponders,
             supportsHiddenFromAI,
             contextMessageLimit,
             chatMessages,
@@ -2306,6 +2317,8 @@ export async function generateRoutes(app: FastifyInstance) {
           conversationIsGroup = isGroup;
           conversationCharacterNames = convoCharNames;
           conversationRespondingCharacterIds = new Set(presenceRuntime.respondingCharacterIds);
+          conversationResponderDelays = new Map(Object.entries(presenceRuntime.responderDelays));
+          conversationPresenceDelayStartedAt = presenceRuntime.presenceDelayStartedAt;
           conversationCharacterPresenceById = new Map(
             convoCharInfo.map((character) => [
               character.charId,
@@ -5367,6 +5380,10 @@ export async function generateRoutes(app: FastifyInstance) {
           }
         }
 
+        if (chatMode === "conversation" && smartResponseQueue?.length) {
+          smartResponseQueue = orderConversationRespondersByDelay(smartResponseQueue, conversationResponderDelays);
+        }
+
         if (smartResponseQueue && smartResponseQueue.length > 0) {
           sendSseEvent(reply, {
             type: "response_queue",
@@ -5402,7 +5419,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
         // Manual mode with forCharacterId: only generate for the specified character.
         // Sequential: all available characters respond. Smart: generate the selected queue in order.
-        const respondingCharIds = useIndividualLoop
+        let respondingCharIds = useIndividualLoop
           ? input.forCharacterId && characterIds.includes(input.forCharacterId)
             ? [input.forCharacterId]
             : explicitlyMentionedConversationCharacterIds.length > 0
@@ -5415,6 +5432,12 @@ export async function generateRoutes(app: FastifyInstance) {
                     ? [...smartResponseQueue]
                     : []
           : [characterIds[0] ?? null];
+        if (chatMode === "conversation" && useIndividualLoop) {
+          respondingCharIds = orderConversationRespondersByDelay(
+            respondingCharIds.filter((characterId): characterId is string => typeof characterId === "string"),
+            conversationResponderDelays,
+          );
+        }
 
         if (deferConversationLorebookScanToResponder && respondingCharIds.length > 0) {
           await scanConversationLorebooks(
@@ -7098,11 +7121,58 @@ export async function generateRoutes(app: FastifyInstance) {
           if (generationGuideInstruction) {
             runningMessages.push({ role: "system", content: generationGuideInstruction });
           }
+          const knownConversationMessageIds = new Set(
+            scopedMessages
+              .filter((message: any) => !supportsHiddenFromAI || !isMessageHiddenFromAI(message))
+              .map((message: any) => message.id)
+              .filter((messageId: unknown): messageId is string => typeof messageId === "string"),
+          );
 
           for (let ci = 0; ci < respondingCharIds.length; ci++) {
             if (abortController.signal.aborted) break;
-            const charId = respondingCharIds[ci]!;
+            const charId = respondingCharIds[ci];
+            if (!charId) continue;
             const charName = charInfo.find((c) => c.id === charId)?.name ?? "Character";
+
+            if (chatMode === "conversation") {
+              const responderDelay = conversationResponderDelays.get(charId);
+              const remainingDelayMs = responderDelay
+                ? remainingConversationPresenceDelay(responderDelay.delayMs, conversationPresenceDelayStartedAt)
+                : 0;
+              if (responderDelay && remainingDelayMs > 0) {
+                reply.raw.write(
+                  `data: ${JSON.stringify({
+                    type: "delayed",
+                    characters: [groupResponderName(charId)],
+                    characterIds: [charId],
+                    characterStatuses: { [charId]: responderDelay.status },
+                    status: responderDelay.status,
+                    delayMs: remainingDelayMs,
+                  })}\n\n`,
+                );
+                await waitForConversationPresenceDelay(remainingDelayMs, abortController.signal);
+                if (abortController.signal.aborted) break;
+              }
+
+              if (responderDelay) {
+                const refreshedMessages = await chats.listMessages(input.chatId);
+                for (const message of refreshedMessages) {
+                  if (
+                    message.role !== "user" ||
+                    knownConversationMessageIds.has(message.id) ||
+                    (supportsHiddenFromAI && isMessageHiddenFromAI(message))
+                  ) {
+                    continue;
+                  }
+                  knownConversationMessageIds.add(message.id);
+                  const mapped = await mapChatHistoryMessageForPrompt(message);
+                  runningMessages.push(resolveHistoryMessageMacros([mapped])[0] ?? mapped);
+                }
+              }
+              reply.raw.write(
+                `data: ${JSON.stringify({ type: "typing", characters: [groupResponderName(charId)] })}\n\n`,
+              );
+            }
 
             // Tell the client which character is responding next
             reply.raw.write(
@@ -7130,6 +7200,9 @@ export async function generateRoutes(app: FastifyInstance) {
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
             currentIterationSavedMsg = genResult.savedMsg;
+            if (typeof genResult.savedMsg?.id === "string") {
+              knownConversationMessageIds.add(genResult.savedMsg.id);
+            }
             recordExpressionTarget(genResult.savedMsg, charId);
             allResponses.push(genResult.response);
             allResponseSegments.push({ characterId: charId, characterName: charName, content: genResult.response });

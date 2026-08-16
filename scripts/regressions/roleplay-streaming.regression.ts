@@ -11,6 +11,7 @@ import {
   shouldKeepStreamLiveThroughPostProcessing,
   takeTypewriterCharacters,
 } from "../../packages/client/src/lib/generation-stream-policy.js";
+import { reconcilePersistedMessages } from "../../packages/client/src/lib/message-cache-reconciliation.js";
 import { resolveMessageRewriteVersions } from "../../packages/client/src/lib/message-rewrite-versions.js";
 import { resolveMessageReasoningDisplay } from "../../packages/client/src/lib/message-reasoning.js";
 import { shouldFormatTextareaQuotes } from "../../packages/client/src/lib/textarea-quotes.js";
@@ -43,6 +44,10 @@ import {
 } from "../../packages/server/src/services/llm/base-provider.js";
 import type { AgentCallDebugEvent, AgentContext } from "../../packages/shared/src/types/agent.js";
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from "../../packages/shared/src/constants/security.js";
+
+function readSourceText(url: URL, encoding: "utf8"): string {
+  return readFileSync(url, encoding).replace(/\r\n?/gu, "\n");
+}
 
 function extractCssBlock(source: string, prelude: string): string {
   const preludeIndex = source.indexOf(prelude);
@@ -80,15 +85,15 @@ assert.deepEqual(resolveMessageReasoningDisplay({ generationInfo: { tokensReason
   hasReasoning: false,
 });
 
-const retryAgentRouteSource = readFileSync(
+const retryAgentRouteSource = readSourceText(
   new URL("../../packages/server/src/routes/generate/retry-agents-route.ts", import.meta.url),
   "utf8",
 );
-const generateRouteSource = readFileSync(
+const generateRouteSource = readSourceText(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
-const useGenerateSource = readFileSync(
+const useGenerateSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
@@ -101,107 +106,173 @@ const upsertPersistedMessagesSource =
   /export function upsertPersistedMessages\([\s\S]*?\n\}\s*function appendMissingPersistedMessages/u.exec(
     useGenerateSource,
   )?.[0];
-assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement helper must remain available");
-assert.match(upsertPersistedMessagesSource, /const persistedUserBySubmissionId = new Map/u);
+assert.ok(upsertPersistedMessagesSource, "The durable-message cache replacement wrapper must remain available");
 assert.match(
   upsertPersistedMessagesSource,
-  /msg\.id\.startsWith\("__optimistic_"\)[\s\S]*persistedUserBySubmissionId\.get\(submissionId\)/u,
-  "Durable-message reconciliation must replace the matching optimistic prompt inside the cache helper",
+  /reconcilePersistedMessages\(old, sortedIncoming\)/u,
+  "The durable-message cache replacement wrapper must delegate to the behaviorally proved reconciler",
 );
+const reconciledMessages = reconcilePersistedMessages(
+  {
+    pageParams: [undefined],
+    pages: [
+      [
+        {
+          id: "persisted-unrelated",
+          chatId: "chat-reconciliation-proof",
+          role: "assistant",
+          characterId: "character-1",
+          content: "Unrelated persisted response",
+          activeSwipeIndex: 0,
+          createdAt: "2026-08-14T12:00:00.000Z",
+          extra: {},
+        },
+        {
+          id: "__optimistic_matching",
+          chatId: "chat-reconciliation-proof",
+          role: "user",
+          characterId: null,
+          content: "Optimistic matching prompt",
+          activeSwipeIndex: 0,
+          createdAt: "2026-08-14T12:01:00.000Z",
+          extra: { submissionId: "submission-matching" },
+        },
+        {
+          id: "__optimistic_unmatched",
+          chatId: "chat-reconciliation-proof",
+          role: "user",
+          characterId: null,
+          content: "Optimistic unmatched prompt",
+          activeSwipeIndex: 0,
+          createdAt: "2026-08-14T12:02:00.000Z",
+          extra: { submissionId: "submission-unmatched" },
+        },
+      ],
+    ],
+  },
+  [
+    {
+      id: "durable-matching",
+      chatId: "chat-reconciliation-proof",
+      role: "user",
+      characterId: null,
+      content: "Literal durable server content",
+      activeSwipeIndex: 0,
+      createdAt: "2026-08-14T12:01:00.000Z",
+      extra: { submissionId: "submission-matching" },
+    },
+  ],
+).pages.flat();
+assert.deepEqual(
+  reconciledMessages.map((message) => message.id),
+  ["persisted-unrelated", "durable-matching", "__optimistic_unmatched"],
+  "The matching durable user row must replace only its optimistic submission in cache order",
+);
+assert.equal(
+  reconciledMessages.filter((message) => message.id === "durable-matching").length,
+  1,
+  "The durable replacement must appear exactly once",
+);
+assert.equal(
+  reconciledMessages.find((message) => message.id === "durable-matching")?.content,
+  "Literal durable server content",
+);
+assert.equal(reconciledMessages.some((message) => message.id === "__optimistic_matching"), false);
+assert.equal(reconciledMessages.some((message) => message.id === "__optimistic_unmatched"), true);
 const confirmDurableSubmittedUserTurnSource =
   /const confirmDurableSubmittedUserTurn = async \(\) => \{[\s\S]*?\n      \};/u.exec(useGenerateSource)?.[0];
 assert.ok(confirmDurableSubmittedUserTurnSource, "The failed-generation recovery helper must remain available");
 assert.match(confirmDurableSubmittedUserTurnSource, /upsertPersistedMessages\(qc, params\.chatId, messages\)/u);
 assert.match(useGenerateSource, /return await confirmDurableSubmittedUserTurn\(\)/u);
-const chatInputSource = readFileSync(
+const chatInputSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
   "utf8",
 );
-const chatMessageSource = readFileSync(
+const chatMessageSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ChatMessage.tsx", import.meta.url),
   "utf8",
 );
-const chatRoleplaySurfaceSource = readFileSync(
+const chatRoleplaySurfaceSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ChatRoleplaySurface.tsx", import.meta.url),
   "utf8",
 );
-const pageActivitySource = readFileSync(
+const pageActivitySource = readSourceText(
   new URL("../../packages/client/src/hooks/use-page-activity.ts", import.meta.url),
   "utf8",
 );
-const appShellSource = readFileSync(
+const appShellSource = readSourceText(
   new URL("../../packages/client/src/components/layout/AppShell.tsx", import.meta.url),
   "utf8",
 );
-const appSource = readFileSync(new URL("../../packages/client/src/App.tsx", import.meta.url), "utf8");
-const peekPromptModalSource = readFileSync(
+const appSource = readSourceText(new URL("../../packages/client/src/App.tsx", import.meta.url), "utf8");
+const peekPromptModalSource = readSourceText(
   new URL("../../packages/client/src/components/chat/PeekPromptModal.tsx", import.meta.url),
   "utf8",
 );
-const chatAreaSource = readFileSync(
+const chatAreaSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ChatArea.tsx", import.meta.url),
   "utf8",
 );
-const generateHookSource = readFileSync(
+const generateHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
-const weatherEffectsSource = readFileSync(
+const weatherEffectsSource = readSourceText(
   new URL("../../packages/client/src/components/chat/WeatherEffects.tsx", import.meta.url),
   "utf8",
 );
-const weatherWorkerSource = readFileSync(
+const weatherWorkerSource = readSourceText(
   new URL("../../packages/client/src/workers/weather-effects.worker.ts", import.meta.url),
   "utf8",
 );
-const gameSurfaceSource = readFileSync(
+const gameSurfaceSource = readSourceText(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
 );
-const echoChamberPanelSource = readFileSync(
+const echoChamberPanelSource = readSourceText(
   new URL("../../packages/client/src/components/chat/EchoChamberPanel.tsx", import.meta.url),
   "utf8",
 );
-const uiStoreSource = readFileSync(new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url), "utf8");
-const globalStylesSource = readFileSync(
+const uiStoreSource = readSourceText(new URL("../../packages/client/src/stores/ui.store.ts", import.meta.url), "utf8");
+const globalStylesSource = readSourceText(
   new URL("../../packages/client/src/styles/globals.css", import.meta.url),
   "utf8",
 );
 const firefoxSupportsSource = extractCssBlock(globalStylesSource, "@supports (-moz-appearance: none)");
-const conversationInputSource = readFileSync(
+const conversationInputSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ConversationInput.tsx", import.meta.url),
   "utf8",
 );
-const presetEditorSource = readFileSync(
+const presetEditorSource = readSourceText(
   new URL("../../packages/client/src/components/presets/PresetEditor.tsx", import.meta.url),
   "utf8",
 );
-const useChatsSource = readFileSync(new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url), "utf8");
-const gameInputSource = readFileSync(
+const useChatsSource = readSourceText(new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url), "utf8");
+const gameInputSource = readSourceText(
   new URL("../../packages/client/src/components/game/GameInput.tsx", import.meta.url),
   "utf8",
 );
-const chatStoreSource = readFileSync(
+const chatStoreSource = readSourceText(
   new URL("../../packages/client/src/stores/chat.store.ts", import.meta.url),
   "utf8",
 );
-const summaryPopoverSource = readFileSync(
+const summaryPopoverSource = readSourceText(
   new URL("../../packages/client/src/components/chat/SummaryPopover.tsx", import.meta.url),
   "utf8",
 );
-const professorMariHomeSource = readFileSync(
+const professorMariHomeSource = readSourceText(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
-const personalExtensionsHookSource = readFileSync(
+const personalExtensionsHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-personal-extensions.ts", import.meta.url),
   "utf8",
 );
-const chatSettingsDrawerSource = readFileSync(
+const chatSettingsDrawerSource = readSourceText(
   new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
   "utf8",
 );
-const reducedAmbientEffectsHookSource = readFileSync(
+const reducedAmbientEffectsHookSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-reduced-ambient-effects.ts", import.meta.url),
   "utf8",
 );

@@ -18,6 +18,7 @@ import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../lib
 import { hasVisibleUserMessagePayload } from "../lib/chat-message-visibility";
 import { formatGenerationParameterError } from "../lib/generation-parameter-errors";
 import { createLeadingTrailingCoalescer } from "../lib/message-page-cache";
+import { reconcilePersistedMessages } from "../lib/message-cache-reconciliation";
 import { sanitizeAppCss } from "../lib/theme-css";
 import {
   getRoleplayTypewriterRevealCharsPerSecond,
@@ -610,27 +611,6 @@ function sortMessagesByCreatedAt(messages: Message[]): Message[] {
   });
 }
 
-function mergeCachedGeneratedMessage(existing: Message, incoming: Message): Message {
-  const merged = { ...existing, ...incoming };
-  const existingSwipeCount = typeof existing.swipeCount === "number" ? existing.swipeCount : 0;
-  const incomingSwipeCount = typeof incoming.swipeCount === "number" ? incoming.swipeCount : 0;
-  const activeSwipeFloor =
-    typeof incoming.activeSwipeIndex === "number" && Number.isInteger(incoming.activeSwipeIndex)
-      ? incoming.activeSwipeIndex + 1
-      : 0;
-  if (existingSwipeCount || incomingSwipeCount || activeSwipeFloor) {
-    merged.swipeCount = Math.max(existingSwipeCount, incomingSwipeCount, activeSwipeFloor);
-  }
-  const existingExtra = parseMessageExtraRecord(existing.extra);
-  const incomingExtra = parseMessageExtraRecord(incoming.extra);
-  // The saved-message SSE snapshot can predate post-processing extras such as
-  // expression avatars or illustration attachments already present in cache.
-  if (Object.keys(existingExtra).length > 0 || Object.keys(incomingExtra).length > 0) {
-    merged.extra = { ...existingExtra, ...incomingExtra } as unknown as Message["extra"];
-  }
-  return merged;
-}
-
 export function upsertPersistedMessages(qc: QueryClient, chatId: string, incoming: Message[]) {
   if (incoming.length === 0) return;
 
@@ -638,56 +618,9 @@ export function upsertPersistedMessages(qc: QueryClient, chatId: string, incomin
     incoming.map((message) => preserveRecentMessageContentEdit(chatId, message)),
   );
 
-  qc.setQueryData<InfiniteData<Message[]>>(chatKeys.messages(chatId), (old) => {
-    if (!old?.pages) {
-      return {
-        pageParams: [undefined],
-        pages: [sortedIncoming],
-      };
-    }
-
-    const persistedById = new Map(sortedIncoming.map((msg) => [msg.id, msg]));
-    // A just-sent user row starts with a temporary ID. Match its submission ID
-    // once the server returns the durable row so edits cannot target the temporary ID.
-    const persistedUserBySubmissionId = new Map(
-      sortedIncoming.flatMap((msg) => {
-        const submissionId = parseMessageExtraRecord(msg.extra).submissionId;
-        return msg.role === "user" &&
-          !msg.id.startsWith("__optimistic_") &&
-          typeof submissionId === "string" &&
-          submissionId
-          ? [[submissionId, msg] as const]
-          : [];
-      }),
-    );
-    const existingIds = new Set<string>();
-
-    const pages = old.pages.map((page) =>
-      page.flatMap((msg) => {
-        const submissionId = parseMessageExtraRecord(msg.extra).submissionId;
-        const persisted =
-          persistedById.get(msg.id) ??
-          (msg.id.startsWith("__optimistic_") && typeof submissionId === "string"
-            ? persistedUserBySubmissionId.get(submissionId)
-            : undefined);
-        const nextMessage = persisted ? mergeCachedGeneratedMessage(msg, persisted) : msg;
-        if (existingIds.has(nextMessage.id)) return [];
-        existingIds.add(nextMessage.id);
-        return [nextMessage];
-      }),
-    );
-
-    const missing = sortedIncoming.filter((msg) => !existingIds.has(msg.id));
-    if (missing.length > 0) {
-      if (pages.length === 0) {
-        pages.push(missing);
-      } else {
-        pages[0] = sortMessagesByCreatedAt([...pages[0], ...missing]);
-      }
-    }
-
-    return { ...old, pages };
-  });
+  qc.setQueryData<InfiniteData<Message[]>>(chatKeys.messages(chatId), (old) =>
+    reconcilePersistedMessages(old, sortedIncoming),
+  );
 }
 
 function appendMissingPersistedMessages(qc: QueryClient, chatId: string, incoming: Message[]) {

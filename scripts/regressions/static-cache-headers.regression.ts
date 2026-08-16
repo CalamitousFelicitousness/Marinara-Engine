@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import fastifyStatic from "@fastify/static";
-import Fastify from "fastify";
-import { createClientStaticOptions } from "../src/config/client-static-config.js";
+import { createClientStaticOptions } from "../../packages/server/src/config/client-static-config.js";
+
+const requireFromServer = createRequire(
+  new URL("../../packages/server/package.json", import.meta.url),
+);
+const fastifyStatic = requireFromServer("@fastify/static");
+const Fastify = requireFromServer("fastify");
 
 const clientDist = mkdtempSync(join(tmpdir(), "marinara-static-cache-"));
 mkdirSync(join(clientDist, "assets"));

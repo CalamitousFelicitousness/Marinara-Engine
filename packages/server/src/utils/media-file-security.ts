@@ -1,5 +1,5 @@
 import { open, realpath, type FileHandle } from "node:fs/promises";
-import { basename, extname, join, resolve, sep } from "node:path";
+import { basename, extname, join, posix, resolve, win32 } from "node:path";
 import type { FastifyReply } from "fastify";
 import { getDataDir, getFileStorageDir } from "../config/runtime-config.js";
 import { assertInsideDir, isAllowedImageBuffer } from "./security.js";
@@ -242,6 +242,21 @@ function hasUnsafeSvgHref(source: string): boolean {
   return false;
 }
 
+/** Compare canonical paths using the host filesystem's case and separator rules. */
+export function isCanonicalMediaPathInsideRoot(
+  canonicalPath: string,
+  canonicalRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const pathApi = platform === "win32" ? win32 : posix;
+  const normalizeCase = (value: string) => (platform === "win32" ? value.toLowerCase() : value);
+  const relativePath = pathApi.relative(normalizeCase(canonicalRoot), normalizeCase(canonicalPath));
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${pathApi.sep}`) && !pathApi.isAbsolute(relativePath))
+  );
+}
+
 /** Resolve symlinks and permit reads only from Marinara's configured media roots. */
 async function resolveAllowedMediaPath(filePath: string, additionalRoot?: string): Promise<string | null> {
   let canonicalPath: string;
@@ -256,8 +271,7 @@ async function resolveAllowedMediaPath(filePath: string, additionalRoot?: string
   )) {
     try {
       const canonicalRoot = await realpath(resolve(configuredRoot));
-      const rootPrefix = canonicalRoot.endsWith(sep) ? canonicalRoot : `${canonicalRoot}${sep}`;
-      if (canonicalPath === canonicalRoot || canonicalPath.startsWith(rootPrefix)) return canonicalPath;
+      if (isCanonicalMediaPathInsideRoot(canonicalPath, canonicalRoot)) return canonicalPath;
     } catch {
       // A configured root may not exist yet; it cannot contain this file.
     }

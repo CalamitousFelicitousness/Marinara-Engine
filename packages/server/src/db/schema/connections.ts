@@ -24,6 +24,7 @@ export const apiConnections = fileTable("api_connections", {
       "custom",
       "image_generation",
       "video_generation",
+      "audio",
     ],
   }).notNull(),
   baseUrl: text("base_url").notNull().default(""),

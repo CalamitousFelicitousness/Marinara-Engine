@@ -22,6 +22,7 @@ import { seedDefaultRegexScripts } from "./db/seed-regex.js";
 import { buildAssetManifest, ensureAssetDirs } from "./services/game/asset-manifest.service.js";
 import { recoverGalleryImages } from "./services/storage/gallery-recovery.js";
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
+import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
 import { APP_VERSION, resetTurnGameRegistry } from "@marinara-engine/shared";
 import { existsSync } from "fs";
@@ -138,6 +139,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await seedDefaultRegexScripts(db);
   await migrateLegacyDefaultAgentPrompts(db);
   await migrateCharacterExtendedDescriptionsToLorebooks(db);
+  await migrateTtsSettingsToAudioConnection(db);
   await seedDefaultBackgrounds();
   await seedDefaultGameAssets();
 

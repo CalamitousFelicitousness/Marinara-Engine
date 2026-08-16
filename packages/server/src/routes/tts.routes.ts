@@ -145,6 +145,8 @@ const speakSchema = z.object({
   speaker: z.string().max(120).optional(),
   tone: z.string().max(80).optional(),
   voice: z.string().max(200).optional(),
+  /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
+  audioConnectionId: z.string().optional(),
 });
 
 const roleplaySpeakerExtractorSchema = z.object({
@@ -170,6 +172,8 @@ const extractedDialogueSchema = z.object({
 const gameAudioSchema = z.object({
   kind: z.enum(["sfx", "music"]),
   prompt: z.string().trim().min(1).max(4_100),
+  /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
+  audioConnectionId: z.string().optional(),
 });
 
 type VoiceOption = NonNullable<TTSVoicesResponse["voiceOptions"]>[number];
@@ -418,6 +422,43 @@ async function loadConfig(storage: ReturnType<typeof createAppSettingsStorage>) 
   const cfg = parseStoredConfig(raw);
   cfg.apiKey = decryptApiKey(cfg.apiKey);
   return cfg;
+}
+
+/**
+ * Resolve the effective audio configuration (#5146): an audio CONNECTION —
+ * the explicitly requested one, else the category default — provides the
+ * identity half (source, key, base URL, voice, and the sound-effect/music
+ * capability flags), overlaid on the legacy TTS settings blob, which remains
+ * the knob store (speed, stability, extractor settings, source profiles).
+ * With no audio connection at all, behavior is exactly the legacy blob —
+ * pre-migration installs keep working untouched.
+ */
+async function resolveAudioConfig(
+  storage: ReturnType<typeof createAppSettingsStorage>,
+  connections: ReturnType<typeof createConnectionsStorage>,
+  requestedConnectionId?: string | null,
+) {
+  const cfg = await loadConfig(storage);
+  let row = null;
+  if (requestedConnectionId) {
+    const candidate = await connections.getWithKey(requestedConnectionId);
+    if (candidate?.provider === "audio") row = candidate;
+    else logger.warn("Requested audio connection %s missing or not audio; using the default", requestedConnectionId);
+  }
+  if (!row) row = await connections.getDefaultForAudio();
+  if (!row) row = await connections.getFallbackForAudio();
+  if (!row) return cfg;
+  return {
+    ...cfg,
+    enabled: true,
+    source: (row.audioSource ?? "elevenlabs") as TTSSource,
+    apiKey: row.apiKey,
+    baseUrl: row.baseUrl || cfg.baseUrl,
+    voice: row.audioVoice || cfg.voice,
+    model: row.model || cfg.model,
+    elevenLabsGameSoundEffects: row.audioSoundEffects === "true",
+    elevenLabsGameMusic: row.audioMusic === "true",
+  };
 }
 
 function responseFromVoiceOptions(
@@ -1051,8 +1092,9 @@ export async function ttsRoutes(app: FastifyInstance) {
    * GET /api/tts/voices
    * Fetches available voices from the configured provider.
    */
-  app.get("/voices", async (_req, reply) => {
-    const cfg = await loadConfig(storage);
+  app.get("/voices", async (req, reply) => {
+    const { connectionId } = (req.query ?? {}) as { connectionId?: string };
+    const cfg = await resolveAudioConfig(storage, connections, connectionId);
 
     try {
       return await fetchProviderVoices(cfg);
@@ -1072,8 +1114,9 @@ export async function ttsRoutes(app: FastifyInstance) {
    * GET /api/tts/models
    * Fetches text-to-speech-capable models from ElevenLabs.
    */
-  app.get("/models", async (_req, reply) => {
-    const cfg = await loadConfig(storage);
+  app.get("/models", async (req, reply) => {
+    const { connectionId } = (req.query ?? {}) as { connectionId?: string };
+    const cfg = await resolveAudioConfig(storage, connections, connectionId);
 
     try {
       return await fetchProviderModels(cfg);
@@ -1196,8 +1239,8 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Generates and caches scene-specific Game Mode music or sound effects.
    */
   app.post("/game-audio", async (req, reply) => {
-    const { kind, prompt } = gameAudioSchema.parse(req.body);
-    const cfg = await loadConfig(storage);
+    const { kind, prompt, audioConnectionId } = gameAudioSchema.parse(req.body);
+    const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
     const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
     if (cfg.source !== "elevenlabs" || !enabled) {
       return reply.status(400).send({ error: `ElevenLabs game ${kind} generation is not enabled` });
@@ -1231,9 +1274,9 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Proxies a TTS request to the configured provider and streams the audio back.
    */
   app.post("/speak", async (req, reply) => {
-    const { text, speaker, tone, voice } = speakSchema.parse(req.body);
+    const { text, speaker, tone, voice, audioConnectionId } = speakSchema.parse(req.body);
 
-    const cfg = await loadConfig(storage);
+    const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
 
     if (!cfg.enabled) {
       return reply.status(400).send({ error: "TTS is not enabled" });

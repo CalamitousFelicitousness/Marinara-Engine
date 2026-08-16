@@ -105,7 +105,7 @@ if defined AUTO_UPDATE_DISABLED (
     goto :skip_update
 )
 if not exist ".git" (
-    echo  [OK] Not a git checkout; automatic updates are unavailable for this install.
+    echo  [OK] Not a Git checkout; automatic updates and commit-based stale-build checks are unavailable. Version checks will still run.
     goto :skip_update
 )
 echo  [..] Checking for updates...

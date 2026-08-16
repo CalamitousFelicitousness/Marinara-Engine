@@ -9632,6 +9632,23 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "a result carrying no inventory groups must not rewrite the snapshot",
       );
 
+      const normalizedEquipMovePatch = buildLockedInventoryTrackerPatch({
+        data: { equipped: [{ name: "Sword" }] },
+        snapshot: {
+          playerStats: JSON.stringify({
+            inventoryTrackerCurrencies: [],
+            inventoryTrackerEquipped: [],
+            inventoryTrackerInventory: [{ name: " Sword " }],
+          }),
+        },
+        lockState: null,
+      });
+      assert.deepEqual(
+        normalizedEquipMovePatch.values.inventoryTrackerInventory,
+        [],
+        "equipping an item must remove a whitespace variant from omitted carried state without lock data",
+      );
+
       // Locks re-append a row the agent dropped, so equipping a locked carried
       // item must not leave a copy behind in the carried list.
       const equipMoveSnapshot = {

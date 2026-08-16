@@ -244,8 +244,8 @@ export function buildLockedInventoryTrackerPatch({
     ? normalizeInventoryTrackerRows(data.inventory)
     : existingRows("inventoryTrackerInventory");
 
-  const excludedNames = new Set([...currencies, ...equipped].map((row) => row.name.toLocaleLowerCase("en-US")));
-  const inventory = carried.filter((row) => !excludedNames.has(row.name.toLocaleLowerCase("en-US")));
+  const excludedNames = new Set([...currencies, ...equipped].map((row) => normalizeTextForMatch(row.name)));
+  const inventory = carried.filter((row) => !excludedNames.has(normalizeTextForMatch(row.name)));
 
   const rawPlayerStatsPatch: Partial<Record<InventoryTrackerPlayerStatsField, InventoryTrackerRow[]>> = {};
   if (emittedCurrencies) rawPlayerStatsPatch.inventoryTrackerCurrencies = currencies;

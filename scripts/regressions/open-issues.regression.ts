@@ -6142,7 +6142,7 @@ assert.deepEqual(
 assert.deepEqual(trackerMigrationProjection(currentTrackerSettings), {
   trackerPanelCollapsedSections: { world: true },
   trackerPanelUseExpressionSprites: false,
-  trackerPanelSectionOrder: ["quests", "world", "persona", "characters", "custom"],
+  trackerPanelSectionOrder: ["quests", "world", "persona", "characters", "inventory", "custom"],
   summaryPopoverSettings: {
     sourceMode: "range",
     contextSize: 12,

@@ -2567,14 +2567,14 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "ElevenLabs TTS input does not prepend sprite tone tags",
+    name: "ElevenLabs TTS input prepends sanitized emotion cues",
     run() {
       assert.equal(
         buildElevenLabsTextInput("Reserved. Tomorrow afternoon.", "neutral"),
-        "Reserved. Tomorrow afternoon.",
+        "[neutral] Reserved. Tomorrow afternoon.",
       );
-      assert.equal(buildElevenLabsTextInput("Your ribs require rest.", "thinking"), "Your ribs require rest.");
-      assert.equal(buildElevenLabsTextInput("A bold strategy.", "smirk"), "A bold strategy.");
+      assert.equal(buildElevenLabsTextInput("Your ribs require rest.", "thinking"), "[thinking] Your ribs require rest.");
+      assert.equal(buildElevenLabsTextInput("A bold strategy.", "smirk"), "[smirk] A bold strategy.");
     },
   },
   {

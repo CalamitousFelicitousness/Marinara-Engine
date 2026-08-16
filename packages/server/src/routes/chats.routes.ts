@@ -3880,24 +3880,24 @@ export async function chatsRoutes(app: FastifyInstance) {
     // them to the new branch's message IDs. Copying all snapshots (not just the latest)
     // ensures that branching a branch at an earlier point finds the correct tracker state
     // for that specific message, not just the latest snapshot in the source chat.
-    const spatialStore = createSpatialContextStorage();
-    const spatialBootstrap = await spatialStore.getBootstrap(req.params.id);
-    if (spatialBootstrap) {
-      await spatialStore.replaceBootstrap({
-        chatId: newChat.id,
-        currentLocationId: spatialBootstrap.currentLocationId,
-        definitionRevision: spatialBootstrap.definitionRevision,
-        source: "branch_copy",
-        transitionCommandId: null,
-        transitionPayloadHash: null,
-      });
-    }
+    try {
+      const spatialStore = createSpatialContextStorage();
+      const spatialBootstrap = await spatialStore.getBootstrap(req.params.id);
+      if (spatialBootstrap) {
+        await spatialStore.replaceBootstrap({
+          chatId: newChat.id,
+          currentLocationId: spatialBootstrap.currentLocationId,
+          definitionRevision: spatialBootstrap.definitionRevision,
+          source: "branch_copy",
+          transitionCommandId: null,
+          transitionPayloadHash: null,
+        });
+      }
 
-    if (sourceToBranchedMessageId.size > 0) {
       const { createGameStateStorage } = await import("../services/storage/game-state.storage.js");
       const gameStateStore = createGameStateStorage(app.db);
       const gameEngineStore =
-        sourceChat.mode === "game"
+        sourceChat.mode === "game" || sourceChat.mode === "conversation"
           ? (await import("../services/storage/game-engine-state.storage.js")).createGameEngineStateStorage(app.db)
           : null;
 
@@ -3944,8 +3944,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             overrides,
           );
         } catch (err) {
-          logger.warn(err, "Failed to copy tracker snapshot while branching chat");
-          // Ignore individual snapshot copy failures; branching should still succeed.
+          logger.error(err, "Failed to copy tracker snapshot while branching chat");
+          throw err;
         }
       };
       const copyEngineSnapshot = async (
@@ -3954,69 +3954,88 @@ export async function chatsRoutes(app: FastifyInstance) {
         targetSwipeIndex: number,
       ) => {
         if (!gameEngineStore) return;
-        try {
-          await gameEngineStore.create({
-            chatId: newChat.id,
-            messageId: targetMessageId,
-            swipeIndex: targetSwipeIndex,
-            gameType: snapshot.gameType,
-            schemaVersion: snapshot.schemaVersion,
-            state: snapshot.state,
-            committed: (snapshot.committed as any) === 1,
-          });
-        } catch (err) {
-          logger.warn(err, "Failed to copy turn-game engine snapshot while branching chat");
-        }
+        await gameEngineStore.create({
+          chatId: newChat.id,
+          messageId: targetMessageId,
+          swipeIndex: targetSwipeIndex,
+          gameType: snapshot.gameType,
+          schemaVersion: snapshot.schemaVersion,
+          state: snapshot.state,
+          committed: (snapshot.committed as any) === 1,
+        });
       };
 
-      for (const srcMsg of copiedSourceMessages) {
-        const branchedMsgId = sourceToBranchedMessageId.get(srcMsg.id);
-        if (!branchedMsgId) continue;
-        const swipeIndexes = sourceToCopiedSwipeIndexes.get(srcMsg.id) ?? [srcMsg.activeSwipeIndex ?? 0];
-        for (const swipeIndex of swipeIndexes) {
-          const spatialSnapshot = await spatialStore.getByAnchor(req.params.id, srcMsg.id, swipeIndex);
-          if (spatialSnapshot) {
-            await spatialStore.create({
-              chatId: newChat.id,
-              messageId: branchedMsgId,
-              swipeIndex,
-              currentLocationId: spatialSnapshot.currentLocationId,
-              definitionRevision: spatialSnapshot.definitionRevision,
-              source: "branch_copy",
-              transitionCommandId: null,
-              transitionPayloadHash: null,
-            });
-          }
-          const snapshot = await gameStateStore.getByMessage(srcMsg.id, swipeIndex);
-          if (snapshot) {
-            await copySnapshot(snapshot, branchedMsgId, swipeIndex);
-          }
-          if (gameEngineStore) {
-            // One anchor can hold a row per gameType writer (a turn-game AND an
-            // Experience, #5102) — branching must copy every one, not limit(1).
-            for (const engineSnapshot of await gameEngineStore.listByChatAndMessage(
-              req.params.id,
-              srcMsg.id,
-              swipeIndex,
-            )) {
-              await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);
+      if (sourceToBranchedMessageId.size > 0) {
+        for (const srcMsg of copiedSourceMessages) {
+          const branchedMsgId = sourceToBranchedMessageId.get(srcMsg.id);
+          if (!branchedMsgId) continue;
+          const swipeIndexes = sourceToCopiedSwipeIndexes.get(srcMsg.id) ?? [srcMsg.activeSwipeIndex ?? 0];
+          for (const swipeIndex of swipeIndexes) {
+            const spatialSnapshot = await spatialStore.getByAnchor(req.params.id, srcMsg.id, swipeIndex);
+            if (spatialSnapshot) {
+              await spatialStore.create({
+                chatId: newChat.id,
+                messageId: branchedMsgId,
+                swipeIndex,
+                currentLocationId: spatialSnapshot.currentLocationId,
+                definitionRevision: spatialSnapshot.definitionRevision,
+                source: "branch_copy",
+                transitionCommandId: null,
+                transitionPayloadHash: null,
+              });
+            }
+            const snapshot = await gameStateStore.getByMessage(srcMsg.id, swipeIndex);
+            if (snapshot) {
+              await copySnapshot(snapshot, branchedMsgId, swipeIndex);
+            }
+            if (gameEngineStore) {
+              // One anchor can hold a row per gameType writer (a turn-game AND an
+              // Experience, #5102) — branching must copy every one, not limit(1).
+              const engineSnapshots = await gameEngineStore.listByChatAndMessage(
+                req.params.id,
+                srcMsg.id,
+                swipeIndex,
+              );
+              // Reads are newest-first; replay oldest-first so the source-effective row wins dedupe.
+              for (const engineSnapshot of engineSnapshots.reverse()) {
+                await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);
+              }
             }
           }
         }
       }
 
       // Also copy the bootstrap snapshot (messageId: "") if one exists.
-      // This is created when tracker state is set manually before any generation,
-      // and is not tied to any specific message.
+      // This is created when state is set manually before any generation and
+      // must be handled even when the source chat contains no messages.
       const bootstrap = await gameStateStore.getByChatAndMessage(req.params.id, "", 0);
       if (bootstrap) {
         await copySnapshot(bootstrap, "", 0);
       }
       if (gameEngineStore) {
-        for (const engineBootstrap of await gameEngineStore.listByChatAndMessage(req.params.id, "", 0)) {
+        const engineBootstraps = await gameEngineStore.listByChatAndMessage(req.params.id, "", 0);
+        // Preserve the same effective row when a legacy anchor contains history.
+        for (const engineBootstrap of engineBootstraps.reverse()) {
           await copyEngineSnapshot(engineBootstrap, "", 0);
         }
       }
+    } catch (err) {
+      try {
+        await storage.remove(newChat.id);
+      } catch (cleanupErr) {
+        logger.error(cleanupErr, "Failed to remove incomplete chat branch after state copy failed");
+      }
+      if (!sourceChat.groupId) {
+        try {
+          const remainingGroupChats = await storage.listByGroup(groupId);
+          if (remainingGroupChats.every((chat) => chat.id === sourceChat.id)) {
+            await storage.update(sourceChat.id, { groupId: null });
+          }
+        } catch (restoreErr) {
+          logger.error(restoreErr, "Failed to restore source chat grouping after branch copy failed");
+        }
+      }
+      throw err;
     }
 
     // Return the fully-updated chat (including copied metadata)

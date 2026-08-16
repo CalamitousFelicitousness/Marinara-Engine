@@ -20,16 +20,13 @@ interface ConnectionOption {
 interface StoryboardAgentSettingsPanelProps {
   settings: StoryboardAgentSettings;
   defaults: StoryboardAgentSettings;
+  plannerPrompt: string;
+  defaultPlannerPrompt: string;
   plannerTemplates: AgentPromptTemplateOption[];
   connections: ConnectionOption[];
   onChange: (settings: StoryboardAgentSettings) => void;
-  onDirty: () => void;
-}
-
-interface StoryboardAdvancedPromptLibraryProps {
-  settings: StoryboardAgentSettings;
-  defaults: StoryboardAgentSettings;
-  onChange: (settings: StoryboardAgentSettings) => void;
+  onPlannerPromptChange: (prompt: string) => void;
+  onPlannerTemplatesChange: (templates: AgentPromptTemplateOption[]) => void;
   onDirty: () => void;
 }
 
@@ -58,6 +55,7 @@ function TemplateCollectionEditor({
   defaults,
   prefix,
   required = false,
+  renderTemplateMeta,
   onChange,
 }: {
   title: string;
@@ -66,6 +64,7 @@ function TemplateCollectionEditor({
   defaults: AgentPromptTemplateOption[];
   prefix: string;
   required?: boolean;
+  renderTemplateMeta?: (template: AgentPromptTemplateOption) => ReactNode;
   onChange: (templates: AgentPromptTemplateOption[]) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -150,6 +149,7 @@ function TemplateCollectionEditor({
                 <Trash2 size="0.75rem" />
               </button>
             </div>
+            {renderTemplateMeta?.(template)}
             <input
               value={template.description ?? ""}
               onChange={(event) => update(template.id, { description: event.target.value })}
@@ -250,30 +250,32 @@ function PromptStage({
   );
 }
 
-function StoryboardSetupSection({
-  title,
+function StagePromptLibrary({
+  stage,
   description,
   children,
 }: {
-  title: string;
+  stage: 1 | 2 | 3 | 4;
   description: string;
   children: ReactNode;
 }) {
+  const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
   return (
-    <section
-      data-storyboard-settings-scope="setup"
-      className="min-w-0 max-w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/45"
+    <div
+      data-storyboard-stage-prompt-library={stage}
+      className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]/55"
     >
       <button
         type="button"
         aria-expanded={expanded}
-        aria-controls="storyboard-setup-settings"
         onClick={() => setExpanded((current) => !current)}
-        className="flex min-h-11 w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
       >
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-[var(--foreground)]">{title}</span>
+        <span className="min-w-0">
+          <span className="block text-xs font-semibold text-[var(--foreground)]">
+            {localizeUi("ui.agents.storyboard.stagePromptLibrary")}
+          </span>
           <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
             {description}
           </span>
@@ -285,13 +287,35 @@ function StoryboardSetupSection({
         />
       </button>
       {expanded ? (
-        <div
-          id="storyboard-setup-settings"
-          className="min-w-0 max-w-full space-y-4 border-t border-[var(--border)] p-3"
-        >
-          {children}
-        </div>
+        <div className="min-w-0 max-w-full space-y-3 border-t border-[var(--border)] p-3">{children}</div>
       ) : null}
+    </div>
+  );
+}
+
+function StoryboardSetupSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      data-storyboard-settings-scope="setup"
+      className="min-w-0 max-w-full rounded-xl border border-[var(--border)] bg-[var(--card)]/45"
+    >
+      <div className="min-w-0 px-3 py-2.5">
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[var(--foreground)]">{title}</span>
+          <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+            {description}
+          </span>
+        </span>
+      </div>
+      <div className="min-w-0 max-w-full space-y-4 border-t border-[var(--border)] p-3">{children}</div>
     </section>
   );
 }
@@ -333,139 +357,16 @@ function SelectedTemplateControl({
   );
 }
 
-export function StoryboardAdvancedPromptLibrary({
-  settings,
-  defaults,
-  onChange,
-  onDirty,
-}: StoryboardAdvancedPromptLibraryProps) {
-  const { t: localizeUi } = useUiTranslation();
-  const update = (patch: Partial<StoryboardAgentSettings>) => {
-    onChange({ ...settings, ...patch });
-    onDirty();
-  };
-
-  return (
-    <div data-storyboard-advanced-prompt-library className="space-y-5">
-      <section data-storyboard-advanced-library-group="roleplay" className="space-y-3">
-        <div className="space-y-0.5">
-          <h4 className="text-sm font-semibold text-[var(--foreground)]">
-            {localizeUi("ui.agents.storyboard.roleplayPlanningLayers")}
-          </h4>
-          <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-            {localizeUi("ui.agents.storyboard.roleplayPromptLibraryDescription")}
-          </p>
-        </div>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.roleplayEpisodePrompts")}
-            description={localizeUi("ui.agents.storyboard.roleplayEpisodePromptsDescription")}
-            templates={settings.roleplayEpisodeTemplates}
-            defaults={defaults.roleplayEpisodeTemplates}
-            prefix="storyboard-roleplay-episode"
-            required
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.roleplayEpisodeTemplateId);
-              update({ roleplayEpisodeTemplates: templates, roleplayEpisodeTemplateId: selected });
-            }}
-          />
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.roleplayStylePrompts")}
-            description={localizeUi("ui.agents.storyboard.roleplayStylePromptsDescription")}
-            templates={settings.roleplayStyleTemplates}
-            defaults={defaults.roleplayStyleTemplates}
-            prefix="storyboard-roleplay-style"
-            required
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.roleplayStyleTemplateId);
-              update({ roleplayStyleTemplates: templates, roleplayStyleTemplateId: selected });
-            }}
-          />
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.roleplayAnimationPrompts")}
-            description={localizeUi("ui.agents.storyboard.roleplayAnimationPromptsDescription")}
-            templates={settings.roleplayAnimationTemplates}
-            defaults={defaults.roleplayAnimationTemplates}
-            prefix="storyboard-roleplay-animation"
-            required
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.roleplayAnimationTemplateId);
-              update({ roleplayAnimationTemplates: templates, roleplayAnimationTemplateId: selected });
-            }}
-          />
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.roleplayOutputPrompts")}
-            description={localizeUi("ui.agents.storyboard.roleplayOutputPromptsDescription")}
-            templates={settings.roleplayOutputTemplates}
-            defaults={defaults.roleplayOutputTemplates}
-            prefix="storyboard-roleplay-output"
-            required
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.roleplayOutputTemplateId);
-              update({ roleplayOutputTemplates: templates, roleplayOutputTemplateId: selected });
-            }}
-          />
-        </div>
-      </section>
-
-      <section
-        data-storyboard-advanced-library-group="shared"
-        className="space-y-3 border-t border-[var(--border)] pt-5"
-      >
-        <div className="space-y-0.5">
-          <h4 className="text-sm font-semibold text-[var(--foreground)]">
-            {localizeUi("ui.agents.storyboard.sharedProviderFormatters")}
-          </h4>
-          <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-            {localizeUi("ui.agents.storyboard.sharedProviderFormattersDescription")}
-          </p>
-        </div>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.imagePrompts")}
-            description={localizeUi("ui.agents.storyboard.imagePromptsDescription")}
-            templates={settings.illustrationTemplates}
-            defaults={defaults.illustrationTemplates}
-            prefix="storyboard-image"
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.illustrationTemplateId);
-              update({ illustrationTemplates: templates, illustrationTemplateId: selected });
-            }}
-          />
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.shotPlannerPrompts")}
-            description={localizeUi("ui.agents.storyboard.shotPlannerPromptsDescription")}
-            templates={settings.animationRefinementTemplates}
-            defaults={defaults.animationRefinementTemplates}
-            prefix="storyboard-shot-planner"
-            required
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.animationRefinementTemplateId);
-              update({ animationRefinementTemplates: templates, animationRefinementTemplateId: selected });
-            }}
-          />
-          <TemplateCollectionEditor
-            title={localizeUi("ui.agents.storyboard.videoPrompts")}
-            description={localizeUi("ui.agents.storyboard.videoPromptsDescription")}
-            templates={settings.videoTemplates}
-            defaults={defaults.videoTemplates}
-            prefix="storyboard-video"
-            onChange={(templates) => {
-              const selected = preserveTemplateSelection(templates, settings.videoTemplateId);
-              update({ videoTemplates: templates, videoTemplateId: selected });
-            }}
-          />
-        </div>
-      </section>
-    </div>
-  );
-}
-
 export function StoryboardAgentSettingsPanel({
   settings,
+  defaults,
+  plannerPrompt,
+  defaultPlannerPrompt,
   plannerTemplates,
   connections,
   onChange,
+  onPlannerPromptChange,
+  onPlannerTemplatesChange,
   onDirty,
 }: StoryboardAgentSettingsPanelProps) {
   const { t: localizeUi } = useUiTranslation();
@@ -483,6 +384,181 @@ export function StoryboardAgentSettingsPanel({
     onChange({ ...settings, ...patch });
     onDirty();
   };
+  const updatePlannerTemplates = (templates: AgentPromptTemplateOption[]) => {
+    const nextTemplateIds = new Set(templates.map((template) => template.id));
+    const previousTemplateIds = new Set(plannerTemplates.map((template) => template.id));
+    const addedTemplateIds = templates
+      .filter((template) => !previousTemplateIds.has(template.id))
+      .map((template) => template.id);
+    const illustrationPlannerTemplateIds = Array.from(
+      new Set([
+        ...settings.illustrationPlannerTemplateIds.filter((id) => nextTemplateIds.has(id)),
+        ...addedTemplateIds,
+      ]),
+    );
+    const animationPlannerTemplateIds = settings.animationPlannerTemplateIds.filter((id) => nextTemplateIds.has(id));
+    const illustrationTemplates = templates.filter((template) => illustrationPlannerTemplateIds.includes(template.id));
+    const animationTemplates = templates.filter((template) => animationPlannerTemplateIds.includes(template.id));
+    onPlannerTemplatesChange(templates);
+    onChange({
+      ...settings,
+      illustrationPlannerTemplateIds,
+      animationPlannerTemplateIds,
+      illustrationPlannerTemplateId: preserveTemplateSelection(
+        illustrationTemplates,
+        settings.illustrationPlannerTemplateId,
+      ),
+      animationPlannerTemplateId: preserveTemplateSelection(animationTemplates, settings.animationPlannerTemplateId),
+    });
+    onDirty();
+  };
+  const setPlannerType = (id: string, type: "illustration" | "animation") => {
+    const illustrationPlannerTemplateIds =
+      type === "animation"
+        ? settings.illustrationPlannerTemplateIds.filter((entry) => entry !== id)
+        : Array.from(new Set([...settings.illustrationPlannerTemplateIds, id]));
+    const animationPlannerTemplateIds =
+      type === "animation"
+        ? Array.from(new Set([...settings.animationPlannerTemplateIds, id]))
+        : settings.animationPlannerTemplateIds.filter((entry) => entry !== id);
+    update({
+      illustrationPlannerTemplateIds,
+      animationPlannerTemplateIds,
+      illustrationPlannerTemplateId: preserveTemplateSelection(
+        plannerTemplates.filter((template) => illustrationPlannerTemplateIds.includes(template.id)),
+        settings.illustrationPlannerTemplateId,
+      ),
+      animationPlannerTemplateId: preserveTemplateSelection(
+        plannerTemplates.filter((template) => animationPlannerTemplateIds.includes(template.id)),
+        settings.animationPlannerTemplateId,
+      ),
+    });
+  };
+  const roleplayPlannerLibrary = (
+    <StagePromptLibrary stage={1} description={localizeUi("ui.agents.storyboard.roleplayStageLibraryDescription")}>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <TemplateCollectionEditor
+          title={localizeUi("ui.agents.storyboard.roleplayEpisodePrompts")}
+          description={localizeUi("ui.agents.storyboard.roleplayEpisodePromptsDescription")}
+          templates={settings.roleplayEpisodeTemplates}
+          defaults={defaults.roleplayEpisodeTemplates}
+          prefix="storyboard-roleplay-episode"
+          required
+          onChange={(templates) =>
+            update({
+              roleplayEpisodeTemplates: templates,
+              roleplayEpisodeTemplateId: preserveTemplateSelection(templates, settings.roleplayEpisodeTemplateId),
+            })
+          }
+        />
+        <TemplateCollectionEditor
+          title={localizeUi("ui.agents.storyboard.roleplayStylePrompts")}
+          description={localizeUi("ui.agents.storyboard.roleplayStylePromptsDescription")}
+          templates={settings.roleplayStyleTemplates}
+          defaults={defaults.roleplayStyleTemplates}
+          prefix="storyboard-roleplay-style"
+          required
+          onChange={(templates) =>
+            update({
+              roleplayStyleTemplates: templates,
+              roleplayStyleTemplateId: preserveTemplateSelection(templates, settings.roleplayStyleTemplateId),
+            })
+          }
+        />
+        <TemplateCollectionEditor
+          title={localizeUi("ui.agents.storyboard.roleplayAnimationPrompts")}
+          description={localizeUi("ui.agents.storyboard.roleplayAnimationPromptsDescription")}
+          templates={settings.roleplayAnimationTemplates}
+          defaults={defaults.roleplayAnimationTemplates}
+          prefix="storyboard-roleplay-animation"
+          required
+          onChange={(templates) =>
+            update({
+              roleplayAnimationTemplates: templates,
+              roleplayAnimationTemplateId: preserveTemplateSelection(templates, settings.roleplayAnimationTemplateId),
+            })
+          }
+        />
+        <TemplateCollectionEditor
+          title={localizeUi("ui.agents.storyboard.roleplayOutputPrompts")}
+          description={localizeUi("ui.agents.storyboard.roleplayOutputPromptsDescription")}
+          templates={settings.roleplayOutputTemplates}
+          defaults={defaults.roleplayOutputTemplates}
+          prefix="storyboard-roleplay-output"
+          required
+          onChange={(templates) =>
+            update({
+              roleplayOutputTemplates: templates,
+              roleplayOutputTemplateId: preserveTemplateSelection(templates, settings.roleplayOutputTemplateId),
+            })
+          }
+        />
+      </div>
+    </StagePromptLibrary>
+  );
+  const gamePlannerLibrary = (
+    <StagePromptLibrary stage={1} description={localizeUi("ui.agents.storyboard.gameStageLibraryDescription")}>
+      <div className="min-w-0 max-w-full space-y-3 rounded-xl bg-[var(--secondary)]/55 p-3 ring-1 ring-[var(--border)]">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold text-[var(--foreground)]">
+              {localizeUi("ui.agents.storyboard.fallbackPlannerPrompt")}
+            </p>
+            <p className="mt-0.5 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+              {localizeUi("ui.agents.storyboard.fallbackPlannerPromptDescription")}
+            </p>
+          </div>
+          {plannerPrompt.trim() ? (
+            <button
+              type="button"
+              onClick={() => {
+                onPlannerPromptChange("");
+                onDirty();
+              }}
+              className="flex min-h-11 items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-2 text-[0.6875rem] font-medium ring-1 ring-[var(--border)] hover:bg-[var(--accent)]"
+            >
+              <RotateCcw size="0.6875rem" /> {localizeUi("ui.agents.agenteditor.resetToDefault")}
+            </button>
+          ) : null}
+        </div>
+        <MacroTextarea
+          value={plannerPrompt.trim() ? plannerPrompt : defaultPlannerPrompt}
+          onChange={(prompt) => {
+            onPlannerPromptChange(prompt);
+            onDirty();
+          }}
+          rows={10}
+          title={localizeUi("ui.agents.storyboard.fallbackPlannerPrompt")}
+          className="min-w-0 max-w-full w-full resize-y rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+          wrapperClassName="min-w-0 max-w-full"
+          placeholder={localizeUi("ui.agents.agenteditor.writeTheSystemPromptForThisAgent")}
+        />
+      </div>
+      <TemplateCollectionEditor
+        title={localizeUi("ui.agents.storyboard.gamePromptLibrary")}
+        description={localizeUi("ui.agents.storyboard.gamePromptLibraryDescription")}
+        templates={plannerTemplates}
+        defaults={defaults.plannerTemplates}
+        prefix="storyboard-game-planner"
+        renderTemplateMeta={(template) => (
+          <label className="flex items-center gap-2 text-[0.6875rem] text-[var(--muted-foreground)]">
+            <span>{localizeUi("ui.agents.storyboard.plannerType")}</span>
+            <select
+              value={settings.animationPlannerTemplateIds.includes(template.id) ? "animation" : "illustration"}
+              onChange={(event) =>
+                setPlannerType(template.id, event.target.value === "animation" ? "animation" : "illustration")
+              }
+              className="rounded-lg bg-[var(--background)] px-2 py-1 text-xs text-[var(--foreground)] ring-1 ring-[var(--border)]"
+            >
+              <option value="illustration">{localizeUi("ui.agents.storyboard.stillImages")}</option>
+              <option value="animation">{localizeUi("ui.agents.storyboard.animations")}</option>
+            </select>
+          </label>
+        )}
+        onChange={updatePlannerTemplates}
+      />
+    </StagePromptLibrary>
+  );
   const sharedWorkflowStages = (
     <>
       <PromptStage
@@ -503,6 +579,21 @@ export function StoryboardAgentSettingsPanel({
             {localizeUi("ui.agents.storyboard.imageFormatterBypassed")}
           </p>
         )}
+        <StagePromptLibrary stage={2} description={localizeUi("ui.agents.storyboard.stage2LibraryDescription")}>
+          <TemplateCollectionEditor
+            title={localizeUi("ui.agents.storyboard.imagePrompts")}
+            description={localizeUi("ui.agents.storyboard.imagePromptsDescription")}
+            templates={settings.illustrationTemplates}
+            defaults={defaults.illustrationTemplates}
+            prefix="storyboard-image"
+            onChange={(templates) =>
+              update({
+                illustrationTemplates: templates,
+                illustrationTemplateId: preserveTemplateSelection(templates, settings.illustrationTemplateId),
+              })
+            }
+          />
+        </StagePromptLibrary>
       </PromptStage>
 
       {showAnimationStages ? (
@@ -531,6 +622,25 @@ export function StoryboardAgentSettingsPanel({
                 {localizeUi("ui.agents.storyboard.imageAwarePlannerDisabled")}
               </p>
             )}
+            <StagePromptLibrary stage={3} description={localizeUi("ui.agents.storyboard.stage3LibraryDescription")}>
+              <TemplateCollectionEditor
+                title={localizeUi("ui.agents.storyboard.shotPlannerPrompts")}
+                description={localizeUi("ui.agents.storyboard.shotPlannerPromptsDescription")}
+                templates={settings.animationRefinementTemplates}
+                defaults={defaults.animationRefinementTemplates}
+                prefix="storyboard-shot-planner"
+                required
+                onChange={(templates) =>
+                  update({
+                    animationRefinementTemplates: templates,
+                    animationRefinementTemplateId: preserveTemplateSelection(
+                      templates,
+                      settings.animationRefinementTemplateId,
+                    ),
+                  })
+                }
+              />
+            </StagePromptLibrary>
           </PromptStage>
           <PromptStage
             number={4}
@@ -544,6 +654,21 @@ export function StoryboardAgentSettingsPanel({
               templates={settings.videoTemplates}
               onChange={(videoTemplateId) => update({ videoTemplateId })}
             />
+            <StagePromptLibrary stage={4} description={localizeUi("ui.agents.storyboard.stage4LibraryDescription")}>
+              <TemplateCollectionEditor
+                title={localizeUi("ui.agents.storyboard.videoPrompts")}
+                description={localizeUi("ui.agents.storyboard.videoPromptsDescription")}
+                templates={settings.videoTemplates}
+                defaults={defaults.videoTemplates}
+                prefix="storyboard-video"
+                onChange={(templates) =>
+                  update({
+                    videoTemplates: templates,
+                    videoTemplateId: preserveTemplateSelection(templates, settings.videoTemplateId),
+                  })
+                }
+              />
+            </StagePromptLibrary>
           </PromptStage>
         </>
       ) : (
@@ -810,6 +935,7 @@ export function StoryboardAgentSettingsPanel({
                     onChange={(roleplayOutputTemplateId) => update({ roleplayOutputTemplateId })}
                   />
                 </div>
+                {roleplayPlannerLibrary}
               </PromptStage>
               {sharedWorkflowStages}
             </div>
@@ -839,6 +965,7 @@ export function StoryboardAgentSettingsPanel({
                     />
                   ) : null}
                 </div>
+                {gamePlannerLibrary}
               </PromptStage>
               {sharedWorkflowStages}
 

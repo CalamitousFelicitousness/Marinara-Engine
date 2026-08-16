@@ -3636,6 +3636,35 @@ const cases: RegressionCase[] = [
       assert.match(storyboardChatSettingsSource, /gameStoryboardAnimationPromptTemplateId/u);
       assert.match(storyboardChatSettingsSource, /gameStoryboardImagePromptTemplateId/u);
       assert.match(storyboardChatSettingsSource, /gameStoryboardVideoPromptTemplateId/u);
+      assert.match(storyboardChatSettingsSource, /storyboardAgentImageAwareShotPlanningEnabled/u);
+      assert.match(storyboardChatSettingsSource, /storyboardAgentAnimationRefinementTemplateId/u);
+      assert.match(storyboardChatSettingsSource, /settings\.animationRefinementTemplates/u);
+      assert.equal(
+        storyboardChatSettingsSource.match(/<StoryboardImageAwarePlannerOverride/gu)?.length,
+        2,
+        "Game and Roleplay chat settings should both expose image-aware Step 3 overrides",
+      );
+      const gameChatSettingsStart = storyboardChatSettingsSource.indexOf("export function StoryboardChatSettingsPanel");
+      const roleplayChatSettingsStart = storyboardChatSettingsSource.indexOf(
+        "function RoleplayStoryboardChatSettingsPanel",
+      );
+      const gameChatSettingsSource = storyboardChatSettingsSource.slice(
+        gameChatSettingsStart,
+        roleplayChatSettingsStart,
+      );
+      const roleplayChatSettingsSource = storyboardChatSettingsSource.slice(roleplayChatSettingsStart);
+      for (const [mode, source] of [
+        ["Game", gameChatSettingsSource],
+        ["Roleplay", roleplayChatSettingsSource],
+      ] as const) {
+        const stage2Index = source.indexOf("number={2}");
+        const stage3Index = source.indexOf("<StoryboardImageAwarePlannerOverride");
+        const stage4Index = source.indexOf("number={4}");
+        assert.ok(
+          stage2Index >= 0 && stage2Index < stage3Index && stage3Index < stage4Index,
+          `${mode} chat settings should show production stages 2, 3, and 4 in runtime order`,
+        );
+      }
       assert.match(storyboardChatSettingsSource, /automaticStoryboardIllustrations/u);
       assert.match(storyboardChatSettingsSource, /automaticStoryboardAnimations/u);
       assert.match(storyboardChatSettingsSource, /type="number"/u);
@@ -3661,21 +3690,38 @@ const cases: RegressionCase[] = [
         editorSource,
         /\.\.\.\(localMaxTokens !== "" \? \{ maxTokens: clampAgentMaxTokens\(localMaxTokens\) \} : \{\}\)/u,
       );
-      const advancedLibraryStart = storyboardEditorSource.indexOf("export function StoryboardAdvancedPromptLibrary");
       const activeEditorStart = storyboardEditorSource.indexOf("export function StoryboardAgentSettingsPanel");
-      assert.ok(advancedLibraryStart >= 0, "Storyboard editor should retain an advanced template library");
-      assert.ok(activeEditorStart > advancedLibraryStart, "Advanced templates should be separate from the active flow");
-      assert.match(
-        storyboardEditorSource,
-        /function StoryboardSetupSection[\s\S]*?useState\(false\)/u,
-        "Shared Storyboard setup should be collapsed by default so the active flow stays prominent",
-      );
-      const advancedLibrarySource = storyboardEditorSource.slice(advancedLibraryStart, activeEditorStart);
+      assert.ok(activeEditorStart >= 0, "Storyboard active-flow editor should exist");
+      const setupComponentStart = storyboardEditorSource.indexOf("function StoryboardSetupSection");
+      const setupComponentEnd = storyboardEditorSource.indexOf("function SelectedTemplateControl", setupComponentStart);
+      const setupComponentSource = storyboardEditorSource.slice(setupComponentStart, setupComponentEnd);
+      assert.notEqual(setupComponentStart, -1, "Shared Storyboard setup should exist");
+      assert.notEqual(setupComponentEnd, -1, "Shared Storyboard setup source should be bounded");
+      assert.doesNotMatch(setupComponentSource, /useState|aria-expanded|aria-controls/u);
+      assert.match(setupComponentSource, /\{children\}/u, "Shared Storyboard setup should always render its controls");
       const activeEditorSource = storyboardEditorSource.slice(activeEditorStart);
-      assert.doesNotMatch(
-        activeEditorSource,
-        /<TemplateCollectionEditor/u,
-        "The common Storyboard path should not render full template collection editors",
+      const stageLibraryStart = storyboardEditorSource.indexOf("function StagePromptLibrary");
+      const stageLibraryEnd = storyboardEditorSource.indexOf("function StoryboardSetupSection", stageLibraryStart);
+      const stageLibrarySource = storyboardEditorSource.slice(stageLibraryStart, stageLibraryEnd);
+      assert.notEqual(stageLibraryStart, -1, "Storyboard stage prompt library disclosure should exist");
+      assert.match(stageLibrarySource, /useState\(false\)/u);
+      assert.match(stageLibrarySource, /aria-expanded=\{expanded\}/u);
+      assert.match(stageLibrarySource, /expanded \? \(/u);
+      assert.match(stageLibrarySource, /data-storyboard-stage-prompt-library=\{stage\}/u);
+      assert.equal(
+        activeEditorSource.match(/<StagePromptLibrary stage=\{/gu)?.length,
+        5,
+        "Roleplay and Game should each have a Stage 1 library, followed by shared Stage 2, 3, and 4 libraries",
+      );
+      assert.equal(
+        activeEditorSource.match(/<TemplateCollectionEditor/gu)?.length,
+        8,
+        "All prompt collections should be editable inside their numbered stage libraries",
+      );
+      assert.equal(
+        activeEditorSource.match(/<StagePromptLibrary stage=\{1\}/gu)?.length,
+        2,
+        "Roleplay and Game should keep separate Stage 1 prompt libraries",
       );
       for (const collection of [
         "roleplayEpisodeTemplates",
@@ -3687,11 +3733,14 @@ const cases: RegressionCase[] = [
         "videoTemplates",
       ]) {
         assert.match(
-          advancedLibrarySource,
+          activeEditorSource,
           new RegExp(`settings\\.${collection}`, "u"),
-          `${collection} should remain editable in the advanced library`,
+          `${collection} should remain editable in its numbered stage library`,
         );
       }
+      assert.match(activeEditorSource, /templates=\{plannerTemplates\}/u);
+      assert.match(activeEditorSource, /onPlannerTemplatesChange\(templates\)/u);
+      assert.match(activeEditorSource, /renderTemplateMeta=/u);
 
       const setupIndex = activeEditorSource.indexOf("<StoryboardSetupSection");
       const workflowTabsIndex = activeEditorSource.indexOf('role="tablist"');
@@ -3740,9 +3789,14 @@ const cases: RegressionCase[] = [
       assert.match(sharedStagesSource, /data-storyboard-still-flow-note/u);
       assert.match(sharedStagesSource, /settings\.usePromptTemplate \? \(/u);
       assert.match(sharedStagesSource, /settings\.imageAwareShotPlanningEnabled \? \(/u);
-      assert.match(editorSource, /ui\.agents\.storyboard\.advancedPromptLibrary/u);
-      assert.match(editorSource, /collapsible=\{isStoryboardAgent\}/u);
-      assert.match(editorSource, /useState\(false\)[\s\S]*storyboardPromptLibraryOpen/u);
+      assert.doesNotMatch(editorSource, /StoryboardAdvancedPromptLibrary|storyboardPromptLibraryOpen/u);
+      assert.match(
+        editorSource,
+        /\{!isStoryboardAgent \? \(\s*<FieldGroup\s*label=\{localizeUi\("ui\.agents\.agenteditor\.promptTemplate"\)\}/u,
+        "Storyboard should not render a second global prompt library below its numbered stages",
+      );
+      assert.match(editorSource, /onPlannerPromptChange=\{setLocalPrompt\}/u);
+      assert.match(editorSource, /onPlannerTemplatesChange=\{setLocalPromptTemplates\}/u);
       assert.match(editorSource, /includeCharacterAppearance:\s*settings\.includeCharacterAppearance/u);
       assert.match(editorSource, /useAvatarReferences:\s*settings\.useAvatarReferences/u);
       assert.match(serviceSource, /ensureBuiltinConfig\(STORYBOARD_AGENT_ID\)/u);
@@ -3791,7 +3845,21 @@ const cases: RegressionCase[] = [
           animationDurationSeconds: normalizeStoryboardAgentSettings({ animationDurationSeconds: "" })
             .animationDurationSeconds,
         },
-        { keyframeCount: 3, animationDurationSeconds: 6 },
+        { keyframeCount: 3, animationDurationSeconds: 5 },
+      );
+      assert.equal(
+        normalizeStoryboardAgentSettings({
+          videoTemplates: [
+            {
+              id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
+              name: "LTX Director Video",
+              description: "Legacy built-in label",
+              promptTemplate: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
+            },
+          ],
+        }).videoTemplates[0]?.name,
+        "Narration Passthrough",
+        "Existing Storyboard configs should receive the clearer Stage 4 built-in label without changing its id",
       );
 
       const ctx = {
@@ -3910,7 +3978,7 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(videoPreset?.name, "LTX Director Video");
+      assert.equal(videoPreset?.name, "Narration Passthrough");
       assert.equal(videoPreset?.promptTemplate, LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE);
       assert.equal(LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE, "${narrationSummary}");
       assert.doesNotMatch(gameRouteSource, /buildLtxDirectorStoryboardPrompt|sanitizeLtxDirectorStoryboardSegments/);

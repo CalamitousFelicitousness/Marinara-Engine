@@ -7907,12 +7907,13 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   });
 }
 
-// Issue #4120 — generated ElevenLabs game audio is opt-in, requested as free
-// text by scene analysis, and retained by post-processing for caching.
+// Issue #4120 — generated ElevenLabs game audio is opt-in; sound effects are
+// requested as free text by scene analysis (music moved to context tracks,
+// #5161) and every generation call is timeout-bounded.
 {
   assert.match(
     gameSurfaceSource,
-    /withTimeout\(\s*\(signal\) => api\.post<\{ tag: string; path: string \}>\("\/tts\/game-audio"[\s\S]{0,150}GAME_AUDIO_GENERATION_TIMEOUT_MS/u,
+    /withTimeout\(\s*\(signal\) =>\s*api\.post<\{ tag: string; path: string \}>\(\s*"\/tts\/game-audio"[\s\S]{0,400}GAME_AUDIO_GENERATION_TIMEOUT_MS/u,
     "Generated game audio must not leave scene preparation waiting indefinitely",
   );
 
@@ -7944,7 +7945,10 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   };
   const prompt = buildSceneAnalyzerUserPrompt("Boots cross the wet stones.", undefined, generatedAudioContext);
   assert.match(prompt, /short sound description/u);
-  assert.match(prompt, /concise instrumental scene music prompt/u);
+  // #5161: music free-text prompts are retired — even with generateMusic on,
+  // the analyzer is asked for genre/intensity hints, never a music prompt.
+  assert.doesNotMatch(prompt, /concise instrumental scene music prompt/u);
+  assert.match(prompt, /musicGenre/u);
 
   const processed = postProcessSceneResult(
     {
@@ -7965,9 +7969,11 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
       characterNames: [],
     },
   );
-  assert.equal(processed.music, "tense strings then a hopeful transition");
+  // #5161: free-text music never survives postprocess — scoring fills music
+  // downstream from the library (context tracks included). SFX unchanged.
+  assert.equal(processed.music, null);
   assert.deepEqual(processed.segmentEffects?.[0]?.sfx, ["quiet footsteps on wet stone"]);
-  assert.equal(processed.segmentEffects?.[0]?.music, "low suspense pulse");
+  assert.equal(processed.segmentEffects?.[0]?.music, undefined);
 
   const spotifyProcessed = postProcessSceneResult(
     {

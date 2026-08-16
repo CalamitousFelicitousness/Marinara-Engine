@@ -21,6 +21,7 @@ import {
   type GenerationParameterSendMap,
   type GenerationParameters,
   type InventoryItem,
+  type InventoryTrackerRow,
   type MacroContext,
   type PlayerStats,
   type WrapFormat,
@@ -165,6 +166,77 @@ export function buildLockedPlayerStatsArrayPatch<T>({
     playerStats: { [field]: lockedValues },
   } as { playerStats: Partial<Record<PlayerStatsArrayField, T[]>> };
   return { changed, patch, playerStats, values: lockedValues };
+}
+
+function normalizeInventoryTrackerRows(value: unknown): InventoryTrackerRow[] {
+  if (!Array.isArray(value)) return [];
+
+  const rows: InventoryTrackerRow[] = [];
+  const indexByName = new Map<string, number>();
+  for (const candidate of value) {
+    if (!isPlainRecord(candidate) || typeof candidate.name !== "string") continue;
+    const name = candidate.name.normalize("NFKC").trim().replace(/\s+/gu, " ").slice(0, 160);
+    if (!name) continue;
+    const key = name.toLocaleLowerCase("en-US");
+    const numericQty = Number(candidate.qty);
+    const qty = Number.isFinite(numericQty) ? Math.max(1, Math.floor(numericQty)) : 1;
+    const existingIndex = indexByName.get(key);
+    if (existingIndex !== undefined) {
+      const existing = rows[existingIndex]!;
+      const combinedQty = (existing.qty ?? 1) + qty;
+      rows[existingIndex] = combinedQty > 1 ? { ...existing, qty: combinedQty } : existing;
+      continue;
+    }
+    indexByName.set(key, rows.length);
+    rows.push(qty > 1 ? { name, qty } : { name });
+  }
+  return rows.slice(0, 250);
+}
+
+export function buildLockedInventoryTrackerPatch({
+  data,
+  snapshot,
+  lockState,
+}: {
+  data: Record<string, unknown>;
+  snapshot: { playerStats?: unknown } | null | undefined;
+  lockState: GameState | null | undefined;
+}) {
+  const currencies = normalizeInventoryTrackerRows(data.currencies);
+  const equipped = normalizeInventoryTrackerRows(data.equipped);
+  const excludedNames = new Set([...currencies, ...equipped].map((row) => row.name.toLocaleLowerCase("en-US")));
+  const inventory = normalizeInventoryTrackerRows(data.inventory).filter(
+    (row) => !excludedNames.has(row.name.toLocaleLowerCase("en-US")),
+  );
+  const rawPlayerStatsPatch = {
+    inventoryTrackerCurrencies: currencies,
+    inventoryTrackerEquipped: equipped,
+    inventoryTrackerInventory: inventory,
+  };
+  const lockedPatch = applyTrackerFieldLocksToGameStatePatch({ playerStats: rawPlayerStatsPatch }, lockState);
+  const lockedPlayerStatsPatch = extractPlayerStatsPatch(lockedPatch);
+  const values = {
+    inventoryTrackerCurrencies: Array.isArray(lockedPlayerStatsPatch.inventoryTrackerCurrencies)
+      ? (lockedPlayerStatsPatch.inventoryTrackerCurrencies as InventoryTrackerRow[])
+      : currencies,
+    inventoryTrackerEquipped: Array.isArray(lockedPlayerStatsPatch.inventoryTrackerEquipped)
+      ? (lockedPlayerStatsPatch.inventoryTrackerEquipped as InventoryTrackerRow[])
+      : equipped,
+    inventoryTrackerInventory: Array.isArray(lockedPlayerStatsPatch.inventoryTrackerInventory)
+      ? (lockedPlayerStatsPatch.inventoryTrackerInventory as InventoryTrackerRow[])
+      : inventory,
+  };
+  const existingPlayerStats = parseSnapshotPlayerStats(snapshot);
+  const changed = Object.entries(values).some(([field, rows]) => {
+    const existing = existingPlayerStats[field as keyof PlayerStats];
+    return !isDeepStrictEqual(rows, Array.isArray(existing) ? existing : []);
+  });
+  return {
+    changed,
+    patch: { playerStats: values },
+    playerStats: { ...existingPlayerStats, ...values },
+    values,
+  };
 }
 
 function parseSnapshotPersonaStats(snapshot: { personaStats?: unknown } | null | undefined): CharacterStat[] {

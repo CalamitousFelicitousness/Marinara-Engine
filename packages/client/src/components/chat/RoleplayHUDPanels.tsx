@@ -42,6 +42,7 @@ import type {
   CharacterStat,
   CustomTrackerField,
   InventoryItem,
+  InventoryTrackerRow,
   PresentCharacter,
   QuestProgress,
   WorldCustomField,
@@ -74,6 +75,52 @@ import { useTrackerLockContext } from "../../features/tracker-panel/components/T
 import { WorldCustomFieldIcon } from "../../features/tracker-panel/lib/world-custom-field-icons";
 import { trackerEditableText } from "../../features/tracker-panel/lib/tracker-display";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { InventoryTrackerPanel as InventoryTrackerGridPanel } from "../../features/tracker-panel/components/sections/InventoryTrackerPanel";
+
+export function RoleplayInventoryTrackerPanel({
+  currencies,
+  equipped,
+  inventory,
+  onUpdateCurrencies,
+  onUpdateEquipped,
+  onUpdateInventory,
+  onRerunSingleTracker,
+  isTrackerRetryBusy,
+}: {
+  currencies: InventoryTrackerRow[];
+  equipped: InventoryTrackerRow[];
+  inventory: InventoryTrackerRow[];
+  onUpdateCurrencies: (rows: InventoryTrackerRow[]) => void;
+  onUpdateEquipped: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventory: (rows: InventoryTrackerRow[]) => void;
+  onRerunSingleTracker?: (agentType: string) => void;
+  isTrackerRetryBusy?: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <InventoryTrackerGridPanel
+      currencies={currencies}
+      equipped={equipped}
+      inventory={inventory}
+      onUpdateCurrencies={onUpdateCurrencies}
+      onUpdateEquipped={onUpdateEquipped}
+      onUpdateInventory={onUpdateInventory}
+      deleteMode
+      addMode
+      action={
+        <span className="flex items-center gap-0.5">
+          <TrackerSectionRefresh
+            agentType="inventory-tracker"
+            onRerunSingleTracker={onRerunSingleTracker}
+            busy={isTrackerRetryBusy}
+            title={localizeUi("ui.chat.inventoryTracker.reRun")}
+          />
+          <HudLockModeToggle />
+        </span>
+      }
+    />
+  );
+}
 
 interface CombinedPlayerPanelProps {
   showPersona: boolean;

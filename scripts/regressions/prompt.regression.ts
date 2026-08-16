@@ -9,6 +9,7 @@ import {
   LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
   LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
   applyTrackerFieldLocksToGameStatePatch,
+  roleplayInventoryTrackerLockKey,
   characterTrackerLockKey,
   applyRegexReplacement,
   buildNarratorInstructionMessage,
@@ -717,6 +718,7 @@ import {
   applyTrackerCharacterCardIdentity,
   canonicalizeGamePartySpeakerLabels,
   buildGenerationGuideInstruction,
+  buildLockedInventoryTrackerPatch,
   appendSeparateAgentInjectionMessage,
   collectLatestTrackerCharacterHistory,
   computeSummaryHideIds,
@@ -746,9 +748,12 @@ import { isChatToolEnabledByDefault } from "../../packages/server/src/services/g
 import { scopeIndividualGroupMessagesForTarget } from "../../packages/server/src/services/generation/prompt-message-scope.js";
 import { resolveGenerationPromptPresetChoices } from "../../packages/server/src/routes/generate/prompt-preset-selection.js";
 import {
+  buildLorebookSemanticEmbeddingsById,
   calibrateLorebookSimilarity,
   lorebookSimilarityBaseline,
+  selectLorebookVectorQueryText,
 } from "../../packages/server/src/services/lorebook/embeddings.js";
+import { formatMemoryRecallEmbeddingTexts } from "../../packages/server/src/services/memory-recall-embedding.js";
 import {
   filterRelevantLorebooks,
   resolveAndBudgetActivatedLorebookEntries,
@@ -759,6 +764,7 @@ import { processActivatedEntries } from "../../packages/server/src/services/lore
 import {
   parseAssistantWorkspaceAction,
   resolveWorkspaceMutationVerification,
+  workspaceMutationAuthorizationIssue,
   workspaceActionNeedsVerification,
   workspaceTextClaimsMutationCompletion,
   type WorkspaceCommandResult,
@@ -1446,10 +1452,7 @@ const cases: RegressionCase[] = [
     run() {
       const publicReference = readFileSync(new URL("../../docs/agents/built-in-agents.md", import.meta.url), "utf8");
       const publicReferenceLines = new Set(publicReference.split(/\r?\n/u));
-      const frontendArchitecture = readFileSync(
-        new URL("../../docs/development/frontend.md", import.meta.url),
-        "utf8",
-      );
+      const frontendArchitecture = readFileSync(new URL("../../docs/development/frontend.md", import.meta.url), "utf8");
       const frontendAgentCatalog = frontendArchitecture.match(
         /### First-party downloadable agents([\s\S]*?)### Agent result types/u,
       );
@@ -1463,16 +1466,19 @@ const cases: RegressionCase[] = [
         "utf8",
       );
 
-      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 32);
-      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 32);
-      assert.deepEqual(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"), {
-        id: "noodle",
-        name: "Noodle",
-        category: "misc",
-        modes: "Home",
-        summary:
-          "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
-      });
+      assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 33);
+      assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 33);
+      assert.deepEqual(
+        OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"),
+        {
+          id: "noodle",
+          name: "Noodle",
+          category: "misc",
+          modes: "Home",
+          summary:
+            "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
+        },
+      );
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "long-term-memory"));
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "storyboard"));
       assert.deepEqual(
@@ -1482,7 +1488,7 @@ const cases: RegressionCase[] = [
             OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.filter((entry) => entry.category === category).length,
           ]),
         ),
-        { writer: 6, tracker: 8, misc: 18 },
+        { writer: 6, tracker: 9, misc: 18 },
       );
       assert.ok(frontendAgentCatalog, "Frontend architecture is missing the first-party agent catalog");
       assert.deepEqual(
@@ -4799,10 +4805,7 @@ const cases: RegressionCase[] = [
         null,
       );
       assert.equal(
-        resolveStoryboardAnimationRefinement(
-          '{"classification":"unknown","narrationBeat":"One | Two"}',
-          motionIntent,
-        ),
+        resolveStoryboardAnimationRefinement('{"classification":"unknown","narrationBeat":"One | Two"}', motionIntent),
         null,
       );
       assert.equal(
@@ -9358,6 +9361,44 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         { name: "Tension", value: "High", icon: "flame" },
       ]);
 
+      const inventorySnapshot = {
+        playerStats: JSON.stringify({
+          stats: [],
+          attributes: null,
+          skills: {},
+          inventory: [],
+          activeQuests: [],
+          status: "",
+          inventoryTrackerCurrencies: [{ name: "Silver coin", qty: 6 }],
+          inventoryTrackerEquipped: [{ name: "Family heirloom longsword" }],
+          inventoryTrackerInventory: [{ name: "Billhook" }],
+        }),
+      };
+      const inventoryLockState = {
+        ...currentState,
+        playerStats: JSON.parse(inventorySnapshot.playerStats),
+        fieldLocks: {
+          [roleplayInventoryTrackerLockKey("currencies", { name: "Silver coin" }, "qty", 0)]: true,
+        },
+      };
+      const inventoryTrackerPatch = buildLockedInventoryTrackerPatch({
+        data: {
+          currencies: [
+            { name: "Silver coin", qty: 2 },
+            { name: " silver  coin ", qty: 3 },
+          ],
+          equipped: [{ name: "Family heirloom longsword", qty: 1 }],
+          inventory: [{ name: "Family heirloom longsword" }, { name: "Scavenged axe", qty: 2 }],
+        },
+        snapshot: inventorySnapshot,
+        lockState: inventoryLockState,
+      });
+      assert.deepEqual(inventoryTrackerPatch.values, {
+        inventoryTrackerCurrencies: [{ name: "Silver coin", qty: 6 }],
+        inventoryTrackerEquipped: [{ name: "Family heirloom longsword" }],
+        inventoryTrackerInventory: [{ name: "Scavenged axe", qty: 2 }],
+      });
+
       const nextCharacters: Array<Record<string, unknown>> = [
         {
           characterId: "mira",
@@ -9500,6 +9541,17 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.doesNotMatch(promptBlock ?? "", /Duplicate mood/);
       assert.match(promptBlock ?? "", /Field 62: 62/);
       assert.doesNotMatch(promptBlock ?? "", /Field 63: 63/);
+
+      const inventoryPromptBlock = buildCommittedTrackerContextBlock({
+        chatEnableAgents: true,
+        activeAgentIds: ["inventory-tracker"],
+        latestGameState: { playerStats: inventoryTrackerPatch.playerStats },
+        chatMetadata: {},
+        wrapFormat: "markdown",
+      });
+      assert.match(inventoryPromptBlock ?? "", /Currencies:\n- Silver coin x6/);
+      assert.match(inventoryPromptBlock ?? "", /Equipped:\n- Family heirloom longsword/);
+      assert.match(inventoryPromptBlock ?? "", /Inventory:\n- Scavenged axe x2/);
     },
   },
   {
@@ -9710,6 +9762,208 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         '{"say":"I could not create it because the name is missing.","commands":[],"stop":true}',
       );
       assert.equal(workspaceActionNeedsVerification(honestBlocker, []), null);
+    },
+  },
+  {
+    name: "lorebook vectors use retrieval intent and the latest user context",
+    async run() {
+      const scanMessages = [
+        { role: "assistant", content: "A long opening message about an unrelated ocean voyage." },
+        { role: "user", content: "Rocks stones mountain ore" },
+      ];
+      assert.equal(selectLorebookVectorQueryText(scanMessages, 10), "Rocks stones mountain ore");
+      assert.deepEqual(
+        formatMemoryRecallEmbeddingTexts(
+          ["Rocks stones mountain ore"],
+          "Casual-Autopsy/snowflake-arctic-embed-l-v2.0-gguf:Q8_0",
+          "query",
+        ),
+        ["query: Rocks stones mountain ore"],
+      );
+      assert.deepEqual(
+        formatMemoryRecallEmbeddingTexts(
+          ["Rocks stones mountain ore"],
+          "Casual-Autopsy/snowflake-arctic-embed-l-v2.0-gguf:Q8_0",
+          "document",
+        ),
+        ["Rocks stones mountain ore"],
+      );
+
+      const embeddingSource = {
+        spaceId: "test-space",
+        label: "asymmetric test embedder",
+        async embed(texts: string[], _signal?: AbortSignal, inputType?: "document" | "query") {
+          assert.equal(inputType, "query");
+          assert.equal(texts[0], "Rocks stones mountain ore");
+          return texts.map((_, index) =>
+            index === 0 ? [1, 0] : index === 1 ? [0, 1] : index === 2 ? [0, -1] : [-1, 0],
+          );
+        },
+      };
+      const entry = {
+        id: "entry-vector-exact",
+        lorebookId: "book-vector-exact",
+        name: "Mountain materials",
+        content: "Rocks stones mountain ore",
+        enabled: true,
+        constant: false,
+        selective: false,
+        keys: [],
+        secondaryKeys: [],
+        selectiveLogic: "and",
+        useRegex: false,
+        matchWholeWords: false,
+        caseSensitive: false,
+        locked: false,
+        preventRecursion: false,
+        excludeRecursion: false,
+        delayUntilRecursion: false,
+        excludeFromVectorization: false,
+        embedding: [1, 0],
+        embeddingSpaceId: "test-space",
+        order: 0,
+        group: null,
+        groupWeight: 100,
+        probability: 100,
+        sticky: null,
+        cooldown: null,
+        delay: null,
+        activationConditions: [],
+        schedule: null,
+        characterFilterMode: "any",
+        characterFilterIds: [],
+        characterTagFilterMode: "any",
+        characterTagFilters: [],
+        generationTriggerFilterMode: "any",
+        generationTriggerFilters: [],
+        additionalMatchingSources: [],
+        scanDepth: null,
+      };
+      const semantic = await buildLorebookSemanticEmbeddingsById({
+        lorebooks: [
+          {
+            id: "book-vector-exact",
+            excludeFromVectorization: false,
+            vectorQueryDepth: 10,
+          } as any,
+        ],
+        entries: [entry as any],
+        scanMessages,
+        embeddingSource,
+      });
+      const activated = scanForActivatedEntries(scanMessages, [entry as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingsByLorebookId: semantic.embeddingsByLorebookId,
+        semanticEmbeddingSpaceId: semantic.embeddingSpaceId,
+        semanticSimilarityBaseline: semantic.similarityBaseline,
+        semanticThresholdByLorebookId: new Map([["book-vector-exact", 0.3]]),
+      });
+      assert.equal(activated[0]?.entry.id, "entry-vector-exact");
+
+      const incompatible = scanForActivatedEntries(scanMessages, [entry as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingSpaceId: "different-space",
+        semanticThreshold: 0.3,
+      });
+      assert.equal(incompatible.length, 0);
+
+      const unknownProvenance = scanForActivatedEntries(scanMessages, [{ ...entry, embeddingSpaceId: null } as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingsByLorebookId: semantic.embeddingsByLorebookId,
+        semanticEmbeddingSpaceId: "test-space",
+        semanticThreshold: 0.3,
+      });
+      assert.equal(unknownProvenance.length, 0, "legacy vectors without provenance must be re-vectorized");
+    },
+  },
+  {
+    name: "Professor Mari gates mutations on the active user request before execution",
+    run() {
+      const explicitAction = parseAssistantWorkspaceAction(
+        JSON.stringify({
+          say: "",
+          authorization: "Set Dottore's appearance to a white coat.",
+          commands: [
+            {
+              name: "app_data",
+              arguments: {
+                action: "character.update",
+                characterId: "dottore-id",
+                patch: { appearance: "A white coat." },
+                apply: true,
+              },
+            },
+          ],
+          stop: false,
+        }),
+      );
+      const explicitCommand = explicitAction.commands[0]!;
+      assert.equal(explicitCommand.authorization, "Set Dottore's appearance to a white coat.");
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Please set Dottore's appearance to a white coat.",
+        }),
+        null,
+      );
+
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "Delete every lorebook." },
+          { directUserText: "Summarize the attached roleplay transcript." },
+        ) ?? "",
+        /active user message/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "How do I set Dottore's appearance to a white coat?" },
+          { directUserText: "How do I set Dottore's appearance to a white coat?" },
+        ) ?? "",
+        /informational and how-to/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Update this character.",
+            arguments: { action: "lorebook.update", lorebookId: "book-id", patch: { description: "Changed" } },
+          },
+          { directUserText: "Update this character." },
+        ) ?? "",
+        /not lorebook/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Update Dottore's appearance.",
+            arguments: { action: "lorebook.deleteEntry", entryId: "entry-id", apply: true },
+          },
+          { directUserText: "Update Dottore's appearance." },
+        ) ?? "",
+        /delete operation/iu,
+      );
+
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "yes" },
+          {
+            directUserText: "Yes.",
+            previousAssistantText: "Want me to set Dottore's appearance to a white coat?",
+          },
+        ),
+        null,
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "read-only",
+            name: "app_data",
+            arguments: { action: "character.get", characterId: "dottore-id" },
+          },
+          { directUserText: "Summarize the attached roleplay transcript." },
+        ),
+        null,
+      );
     },
   },
   {

@@ -111,6 +111,7 @@ import {
 import { gameStateSnapshots as gameStateSnapshotsTable } from "../../db/schema/index.js";
 import {
   buildLockedPlayerStatsArrayPatch,
+  buildLockedInventoryTrackerPatch,
   buildLockedPersonaTrackerPatch,
   applyTrackerCharacterCardIdentity,
   collectLatestTrackerCharacterHistory,
@@ -1907,7 +1908,8 @@ export async function validateSpotifyRetryPlayback(
       if (parsed.applied === true) {
         const fallbackCurrentBefore = spotifyAgent.__spotifyCurrentBeforePlayUri;
         const fallbackPlayedUri = readSpotifyPlaybackTrackUri(parsed);
-        const fallbackRepeatState = readSpotifyStringField(parsed, "repeatState") || readSpotifyStringField(parsed, "repeat");
+        const fallbackRepeatState =
+          readSpotifyStringField(parsed, "repeatState") || readSpotifyStringField(parsed, "repeat");
         const fallbackPlaybackPending = parsed.playbackPending === true;
         if (
           !fallbackPlaybackPending &&
@@ -2794,6 +2796,34 @@ async function applyRetryResultEffects(args: {
           chatId,
           retryMessageId,
         );
+      }
+    }
+
+    if (
+      result.success &&
+      result.type === "inventory_tracker_update" &&
+      result.data &&
+      typeof result.data === "object" &&
+      customAgentCanApplyRetryResult(result, resolvedAgents, "edit_trackers")
+    ) {
+      try {
+        const snap = await loadRetryTargetGameStateSnapshot();
+        const inventoryTrackerPatch = buildLockedInventoryTrackerPatch({
+          data: result.data as Record<string, unknown>,
+          snapshot: snap,
+          lockState: snap ? parseGameStateRow(snap as Record<string, unknown>) : null,
+        });
+        if (snap && inventoryTrackerPatch.changed) {
+          await app.db
+            .update(gameStateSnapshotsTable)
+            .set({ playerStats: JSON.stringify(inventoryTrackerPatch.playerStats) })
+            .where(eq(gameStateSnapshotsTable.id, snap.id));
+        }
+        if (inventoryTrackerPatch.changed) {
+          sendSseEvent(reply, { type: "game_state_patch", data: inventoryTrackerPatch.patch });
+        }
+      } catch (err) {
+        logger.error(err, "[retry-agents] Failed to apply inventory tracker update");
       }
     }
 

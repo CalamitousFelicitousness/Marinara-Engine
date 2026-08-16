@@ -270,6 +270,10 @@ function normalizeMemoryRecallImportChunk(value: unknown, importedAt: string): C
   return {
     content: value.content,
     embedding: normalizeMemoryEmbedding(value.embedding),
+    embeddingSpaceId:
+      typeof value.embeddingSpaceId === "string" && value.embeddingSpaceId.trim()
+        ? value.embeddingSpaceId.trim()
+        : null,
     messageCount,
     firstMessageAt,
     lastMessageAt,
@@ -1783,6 +1787,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       .select({
         content: memoryChunks.content,
         embedding: memoryChunks.embedding,
+        embeddingSpaceId: memoryChunks.embeddingSpaceId,
         messageCount: memoryChunks.messageCount,
         firstMessageAt: memoryChunks.firstMessageAt,
         lastMessageAt: memoryChunks.lastMessageAt,
@@ -1802,6 +1807,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       chunks: chunks.map((chunk) => ({
         content: chunk.content,
         embedding: parseMemoryEmbedding(chunk.embedding),
+        embeddingSpaceId: chunk.embeddingSpaceId,
         messageCount: chunk.messageCount,
         firstMessageAt: chunk.firstMessageAt,
         lastMessageAt: chunk.lastMessageAt,
@@ -1877,6 +1883,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           chatId: req.params.id,
           content: chunk.content,
           embedding: chunk.embedding ? JSON.stringify(chunk.embedding) : null,
+          embeddingSpaceId: chunk.embedding ? (chunk.embeddingSpaceId ?? null) : null,
           messageCount: chunk.messageCount,
           sourceChatId: importedSourceChatId,
           firstMessageAt: chunk.firstMessageAt,

@@ -10189,6 +10189,7 @@ export async function gameRoutes(app: FastifyInstance) {
      *  (additionalProperties, required-completeness rules), so strict is
      *  opt-in for packages that author their schema to that dialect. */
     strictSchema: z.boolean().default(false),
+    debugMode: z.boolean().default(false),
     connectionId: z.string().optional(),
     /** Optional tightening of the stored max-output-token parameter; never a raise. */
     maxTokens: z.number().int().min(256).max(8_192).optional(),
@@ -10247,11 +10248,17 @@ export async function gameRoutes(app: FastifyInstance) {
         // (mirroring GAME_SETUP_MIN_OUTPUT_TOKENS); the known-model cap still
         // applies, and an explicit package maxTokens may tighten below the
         // floor — a caller asking for less gets less.
+        // The override slot is a ceiling; both the connection's own configured
+        // cap and the package's requested tightening must survive, so pass the
+        // tighter of the two.
         const maxTokens = clampGameMaxOutputTokens({
           provider: conn.provider,
           model: conn.model ?? "",
           maxTokens: Math.max(2_048, gameGenerationParameters?.maxTokens ?? 0),
-          maxTokensOverride: input.maxTokens ?? null,
+          maxTokensOverride:
+            input.maxTokens != null && conn.maxTokensOverride != null
+              ? Math.min(input.maxTokens, conn.maxTokensOverride)
+              : (input.maxTokens ?? conn.maxTokensOverride ?? null),
         });
         const options = gameGenOptions(
           conn.model ?? "",
@@ -10270,10 +10277,31 @@ export async function gameRoutes(app: FastifyInstance) {
           ? { type: "json_schema", name: input.schemaName, schema: input.schema, strict: input.strictSchema }
           : { type: "json_object" };
 
+        const debugLogsEnabled = input.debugMode || isDebugAgentsEnabled() || logger.isLevelEnabled("debug");
+        const debugLog = (message: string, ...args: unknown[]) => {
+          logDebugOverride(input.debugMode || isDebugAgentsEnabled(), message, ...args);
+        };
+        if (debugLogsEnabled) {
+          debugLog(
+            "[debug/game/experience-generation] chatId=%s model=%s gameType=%s maxTokens=%d strict=%s responseFormat=%s",
+            req.params.chatId,
+            conn.model ?? "",
+            gameType,
+            maxTokens,
+            input.strictSchema,
+            JSON.stringify(options.responseFormat),
+          );
+        }
+
         // Worst case THREE upstream calls per request: attempt 1 buffered, an
         // empty-buffered streamed rescue (attempt 1 only), and one repair
         // round-trip. The rate-limit class is sized with that fan-out in mind.
         const runAttempt = async (attemptMessages: ChatMessage[], allowStreamedRescue: boolean) => {
+          if (debugLogsEnabled) {
+            for (const message of attemptMessages) {
+              debugLog("[debug/game/experience-generation] %s message:\n%s", message.role, message.content);
+            }
+          }
           const result = await runGameChatComplete(provider, attemptMessages, options, "Experience generation");
           let extraction = extractLeadingThinkingBlocks(
             result.content || "",
@@ -10297,6 +10325,14 @@ export async function gameRoutes(app: FastifyInstance) {
             raw = extraction.content;
             finishReason = null;
           }
+          if (debugLogsEnabled) {
+            debugLog(
+              "[debug/game/experience-generation] raw response (%d chars, finishReason=%s):\n%s",
+              raw.length,
+              finishReason ?? "null",
+              raw,
+            );
+          }
           return { raw, finishReason };
         };
 
@@ -10314,7 +10350,7 @@ export async function gameRoutes(app: FastifyInstance) {
             // client abort/timeout stays a plain error.
             if (signal.aborted) throw error;
             const message = error instanceof Error ? error.message : String(error);
-            logger.warn("[game/experience-generation] Provider call failed: %s", message);
+            logger.warn(error, "[game/experience-generation] Provider call failed: %s", message);
             return reply.code(422).send({
               error: `The model provider rejected the request: ${message}`,
               code: "provider_error",

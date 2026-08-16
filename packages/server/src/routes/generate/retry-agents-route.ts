@@ -144,7 +144,7 @@ import {
   resolveLorebookScopeExclusions,
 } from "../../services/lorebook/game-lorebook-scope.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
-import { sendSseEvent, startSseKeepalive, startSseReply } from "./sse.js";
+import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./sse.js";
 import { buildGenerationPromptPresetCandidates } from "./prompt-preset-selection.js";
 import {
   buildAgentConnectionUnavailableWarning,
@@ -3601,17 +3601,6 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
     // retry tab does not leak upstream provider requests to completion.
     const abortController = new AbortController();
     let clientDisconnected = false;
-    const originalSseWrite = reply.raw.write.bind(reply.raw);
-    const canWriteSse = () =>
-      !clientDisconnected && !reply.raw.destroyed && !reply.raw.writableEnded && !reply.raw.writableFinished;
-    reply.raw.write = ((chunk: any, encodingOrCallback?: any, callback?: any) => {
-      if (!canWriteSse()) return false;
-      try {
-        return originalSseWrite(chunk, encodingOrCallback, callback);
-      } catch {
-        return false;
-      }
-    }) as typeof reply.raw.write;
     const stopSseKeepalive = startSseKeepalive(reply);
     const onClientClose = () => {
       clientDisconnected = true;
@@ -4163,7 +4152,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
     } finally {
       stopSseKeepalive();
       reply.raw.off("close", onClientClose);
-      if (canWriteSse()) {
+      if (!clientDisconnected && isSseReplyWritable(reply)) {
         reply.raw.end();
       }
     }

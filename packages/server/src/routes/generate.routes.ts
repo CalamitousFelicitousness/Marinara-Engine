@@ -350,7 +350,7 @@ import { registerDryRunRoute } from "./generate/dry-run-route.js";
 import { registerRawRoute } from "./generate/raw-route.js";
 import { registerRetryAgentsRoute } from "./generate/retry-agents-route.js";
 import { fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
-import { sendSseEvent, startSseKeepalive, startSseReply, trySendSseEvent } from "./generate/sse.js";
+import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
 import {
   resolveAlreadyAppliedSpatialTurn,
   resolveSpatialGenerationOrigin,
@@ -1188,17 +1188,6 @@ export async function generateRoutes(app: FastifyInstance) {
 
     let generationComplete = false;
     let clientDisconnected = false;
-    const originalSseWrite = reply.raw.write.bind(reply.raw);
-    const canWriteSse = () =>
-      !clientDisconnected && !reply.raw.destroyed && !reply.raw.writableEnded && !reply.raw.writableFinished;
-    reply.raw.write = ((chunk: any, encodingOrCallback?: any, callback?: any) => {
-      if (!canWriteSse()) return false;
-      try {
-        return originalSseWrite(chunk, encodingOrCallback, callback);
-      } catch {
-        return false;
-      }
-    }) as typeof reply.raw.write;
     const stopSseKeepalive = startSseKeepalive(reply);
 
     const onClose = () => {
@@ -1250,7 +1239,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
     // ── SSE progress helper: tells the client what phase we're in ──
     const sendProgress = (phase: string) => {
-      trySendSseEvent(reply, { type: "progress", data: { phase } });
+      sendSseEvent(reply, { type: "progress", data: { phase } });
     };
 
     try {
@@ -2298,7 +2287,7 @@ export async function generateRoutes(app: FastifyInstance) {
             finalMessages,
             abortSignal: abortController.signal,
             writeSse: (payload) => {
-              reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+              sendSseEvent(reply, payload as Parameters<typeof sendSseEvent>[1]);
             },
             endSse: () => {
               reply.raw.end();
@@ -3705,7 +3694,7 @@ export async function generateRoutes(app: FastifyInstance) {
           ...(requestDebug
             ? {
                 agentDebug: (event: AgentCallDebugEvent) => {
-                  trySendSseEvent(reply, { type: "agent_debug", data: event });
+                  sendSseEvent(reply, { type: "agent_debug", data: event });
                 },
               }
             : {}),
@@ -4312,7 +4301,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const { sendAgentEvent: sendRawAgentEvent, sendAgentResultEvent: sendRawAgentResultEvent } =
           createAgentEventDispatcher({
             resolvedAgents: agentEventResolvedAgents,
-            sendEvent: (payload) => trySendSseEvent(reply, payload),
+            sendEvent: (payload) => sendSseEvent(reply, payload),
           });
         const sendAgentEvent = (result: AgentResult, options?: { finalized?: boolean }) => {
           const nextResult = markLorebookResultForApproval(result);
@@ -4336,7 +4325,7 @@ export async function generateRoutes(app: FastifyInstance) {
         };
         const flushDeferredParallelAgentEvents = () => {
           if (parallelAgentStartPending) {
-            trySendSseEvent(reply, { type: "agent_start", data: { phase: "parallel" } });
+            sendSseEvent(reply, { type: "agent_start", data: { phase: "parallel" } });
             parallelAgentStartPending = false;
           }
           if (deferredParallelAgentEvents.length === 0) return;
@@ -4347,7 +4336,7 @@ export async function generateRoutes(app: FastifyInstance) {
         };
 
         for (const warning of agentConnectionWarnings) {
-          trySendSseEvent(reply, { type: "agent_warning", data: warning });
+          sendSseEvent(reply, { type: "agent_warning", data: warning });
         }
 
         // Create the pipeline (exclude text rewrite agents — they run last,
@@ -4410,7 +4399,7 @@ export async function generateRoutes(app: FastifyInstance) {
           gameState,
           gameSpotifyMusicEnabled,
           agentContext,
-          emitMetadataPatch: (patch) => trySendSseEvent(reply, { type: "metadata_patch", data: patch }),
+          emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
         });
         if (enableChatTools && toolDefs && toolDefs.length > 0 && conn.treatAsLocalEndpoint === "true") {
           const toolLines = toolDefs.map(
@@ -4501,9 +4490,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const shouldRunPreGen = (hasPreGenAgents || reviewedAgentInjections.length > 0) && !input.regenerateMessageId;
         const runDirectorSecretPlotMaintenance = async (): Promise<AgentResult[]> => {
           if (!directorSecretPlotAgent) return [];
-          reply.raw.write(
-            `data: ${JSON.stringify({ type: "agent_start", data: { phase: "pre_generation", agentType: "director" } })}\n\n`,
-          );
+          sendSseEvent(reply, { type: "agent_start", data: { phase: "pre_generation", agentType: "director" } });
           const secretAgent = buildDirectorSecretPlotAgent(directorSecretPlotAgent);
           const runOnce = async (state: Record<string, unknown>): Promise<AgentResult> => {
             const secretContext: AgentContext = {
@@ -4579,9 +4566,7 @@ export async function generateRoutes(app: FastifyInstance) {
           // Build the pre-gen promise
           const preGenPromise = hasPreGenAgents
             ? (async () => {
-                reply.raw.write(
-                  `data: ${JSON.stringify({ type: "agent_start", data: { phase: "pre_generation" } })}\n\n`,
-                );
+                sendSseEvent(reply, { type: "agent_start", data: { phase: "pre_generation" } });
                 if (isDebug) {
                   const preGenAgents = pipelineAgents.filter(
                     (a) => a.phase === "pre_generation" && !EXCLUDED_FROM_PIPELINE.has(a.type),
@@ -4609,9 +4594,10 @@ export async function generateRoutes(app: FastifyInstance) {
             ? (async () => {
                 const _tKR = Date.now();
                 try {
-                  reply.raw.write(
-                    `data: ${JSON.stringify({ type: "agent_start", data: { phase: "pre_generation", agentType: "knowledge-retrieval" } })}\n\n`,
-                  );
+                  sendSseEvent(reply, {
+                    type: "agent_start",
+                    data: { phase: "pre_generation", agentType: "knowledge-retrieval" },
+                  });
                   const krConfig = {
                     id: knowledgeRetrievalAgent!.id,
                     type: knowledgeRetrievalAgent!.type,
@@ -4637,10 +4623,10 @@ export async function generateRoutes(app: FastifyInstance) {
                   // Emit agent_error so the client closes the pending state opened by
                   // agent_start above — without this the UI shows the agent as forever-
                   // running. (Mirrors the Illustrator agent's failure protocol.)
-                  // Use trySendSseEvent rather than reply.raw.write so a disconnected
+                  // Use sendSseEvent rather than reply.raw.write so a disconnected
                   // client doesn't turn this caught failure back into a rejected promise.
                   logger.warn(err, "[knowledge-retrieval] failed — continuing generation without retrieved context");
-                  trySendSseEvent(reply, {
+                  sendSseEvent(reply, {
                     type: "agent_error",
                     data: {
                       agentType: "knowledge-retrieval",
@@ -4661,9 +4647,10 @@ export async function generateRoutes(app: FastifyInstance) {
             ? (async () => {
                 const _tRouter = Date.now();
                 try {
-                  reply.raw.write(
-                    `data: ${JSON.stringify({ type: "agent_start", data: { phase: "pre_generation", agentType: "knowledge-router" } })}\n\n`,
-                  );
+                  sendSseEvent(reply, {
+                    type: "agent_start",
+                    data: { phase: "pre_generation", agentType: "knowledge-router" },
+                  });
                   const routerConfig = {
                     id: knowledgeRouterAgent!.id,
                     type: knowledgeRouterAgent!.type,
@@ -4704,10 +4691,10 @@ export async function generateRoutes(app: FastifyInstance) {
                   // Emit agent_error so the client closes the pending state opened by
                   // agent_start above — without this the UI shows the agent as forever-
                   // running. (Mirrors the Illustrator agent's failure protocol.)
-                  // Use trySendSseEvent rather than reply.raw.write so a disconnected
+                  // Use sendSseEvent rather than reply.raw.write so a disconnected
                   // client doesn't turn this caught failure back into a rejected promise.
                   logger.warn(err, "[knowledge-router] failed — continuing generation without routed context");
-                  trySendSseEvent(reply, {
+                  sendSseEvent(reply, {
                     type: "agent_error",
                     data: {
                       agentType: "knowledge-router",
@@ -4774,7 +4761,7 @@ export async function generateRoutes(app: FastifyInstance) {
             const applied = applyPromptPatchOperations(finalMessages, result.data);
             if (applied > 0) {
               logger.info("[custom-agent] Applied %d prompt patch operation(s) from %s", applied, result.agentType);
-              trySendSseEvent(reply, {
+              sendSseEvent(reply, {
                 type: "prompt_patch",
                 data: { agentType: result.agentType, applied },
               });
@@ -4873,9 +4860,7 @@ export async function generateRoutes(app: FastifyInstance) {
               (a) => a.phase === "pre_generation" && !EXCLUDED_FROM_PIPELINE.has(a.type),
             );
             if (hasContextInjectionAgents) {
-              reply.raw.write(
-                `data: ${JSON.stringify({ type: "agent_start", data: { phase: "pre_generation" } })}\n\n`,
-              );
+              sendSseEvent(reply, { type: "agent_start", data: { phase: "pre_generation" } });
               // On regens, exclude legacy Secret Plot Driver cache entries.
               contextInjections = (
                 await pipeline.preGenerate(
@@ -4947,22 +4932,20 @@ export async function generateRoutes(app: FastifyInstance) {
             appendSeparateAgentInjection(inj.agentType, inj.text);
           }
           for (const inj of contextInjections) {
-            reply.raw.write(
-              `data: ${JSON.stringify({
-                type: "agent_result",
-                data: {
-                  agentType: inj.agentType,
-                  agentName: agentNameByType.get(inj.agentType) ?? inj.agentName ?? inj.agentType,
-                  resultType: "context_injection",
-                  data: { text: inj.text },
-                  tokensUsed: 0,
-                  success: true,
-                  error: null,
-                  durationMs: 0,
-                  cached: true,
-                },
-              })}\n\n`,
-            );
+            sendSseEvent(reply, {
+              type: "agent_result",
+              data: {
+                agentType: inj.agentType,
+                agentName: agentNameByType.get(inj.agentType) ?? inj.agentName ?? inj.agentType,
+                resultType: "context_injection",
+                data: { text: inj.text },
+                tokensUsed: 0,
+                success: true,
+                error: null,
+                durationMs: 0,
+                cached: true,
+              },
+            });
           }
           clearUnusedRuntimeSectionsBeforeLtm();
         } else {
@@ -5065,7 +5048,7 @@ export async function generateRoutes(app: FastifyInstance) {
           providerThinking += chunk;
           if (showThoughts) {
             fullThinking += chunk;
-            trySendSseEvent(reply, { type: "thinking", data: chunk });
+            sendSseEvent(reply, { type: "thinking", data: chunk });
           }
         };
         const captureReasoning = chatMode === "roleplay" && showThoughts;
@@ -5084,7 +5067,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const emitTokenTextChunked = async (text: string) => {
           for (let i = 0; i < text.length; i += TOKEN_CHUNK_SIZE) {
             const chunk = text.slice(i, i + TOKEN_CHUNK_SIZE);
-            trySendSseEvent(reply, { type: "token", data: chunk });
+            sendSseEvent(reply, { type: "token", data: chunk });
             tokenChunksSinceYield += 1;
             if (tokenChunksSinceYield % TOKEN_CHUNK_YIELD_EVERY === 0) {
               await yieldToEventLoop();
@@ -6021,12 +6004,10 @@ export async function generateRoutes(app: FastifyInstance) {
                 .filter((toolResult): toolResult is NonNullable<typeof toolResult> => toolResult != null);
 
               for (const tr of toolResults) {
-                reply.raw.write(
-                  `data: ${JSON.stringify({
-                    type: "tool_result",
-                    data: { name: tr.name, result: tr.result, success: tr.success },
-                  })}\n\n`,
-                );
+                sendSseEvent(reply, {
+                  type: "tool_result",
+                  data: { name: tr.name, result: tr.result, success: tr.success },
+                });
 
                 // Persist update_game_state tool calls to the game state DB
                 if (tr.name === "update_game_state" && tr.success) {
@@ -6054,7 +6035,7 @@ export async function generateRoutes(app: FastifyInstance) {
                           updates = lockedUpdates;
                           // Send game_state_patch so HUD updates live
                           logger.debug("[game_state_patch] tool update_game_state: %j", updates);
-                          reply.raw.write(`data: ${JSON.stringify({ type: "game_state_patch", data: updates })}\n\n`);
+                          sendSseEvent(reply, { type: "game_state_patch", data: updates });
                         }
                       }
                     }
@@ -6656,7 +6637,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
           if (contentReplaced) {
             if (!holdForTextRewrite) {
-              reply.raw.write(`data: ${JSON.stringify({ type: "content_replace", data: fullResponse })}\n\n`);
+              sendSseEvent(reply, { type: "content_replace", data: fullResponse });
             }
           }
 
@@ -6755,9 +6736,10 @@ export async function generateRoutes(app: FastifyInstance) {
               };
             }
             logger.warn(`[generate] Empty response from model for chat ${input.chatId} (char: ${targetCharId})`);
-            reply.raw.write(
-              `data: ${JSON.stringify({ type: "error", data: "The AI returned an empty response. Try sending your message again." })}\n\n`,
-            );
+            sendSseEvent(reply, {
+              type: "error",
+              data: "The AI returned an empty response. Try sending your message again.",
+            });
             return null;
           }
 
@@ -7138,16 +7120,14 @@ export async function generateRoutes(app: FastifyInstance) {
                 ? remainingConversationPresenceDelay(responderDelay.delayMs, conversationPresenceDelayStartedAt)
                 : 0;
               if (responderDelay && remainingDelayMs > 0) {
-                reply.raw.write(
-                  `data: ${JSON.stringify({
-                    type: "delayed",
-                    characters: [groupResponderName(charId)],
-                    characterIds: [charId],
-                    characterStatuses: { [charId]: responderDelay.status },
-                    status: responderDelay.status,
-                    delayMs: remainingDelayMs,
-                  })}\n\n`,
-                );
+                sendSseEvent(reply, {
+                  type: "delayed",
+                  characters: [groupResponderName(charId)],
+                  characterIds: [charId],
+                  characterStatuses: { [charId]: responderDelay.status },
+                  status: responderDelay.status,
+                  delayMs: remainingDelayMs,
+                });
                 await waitForConversationPresenceDelay(remainingDelayMs, abortController.signal);
                 if (abortController.signal.aborted) break;
               }
@@ -7167,15 +7147,14 @@ export async function generateRoutes(app: FastifyInstance) {
                   runningMessages.push(resolveHistoryMessageMacros([mapped])[0] ?? mapped);
                 }
               }
-              reply.raw.write(
-                `data: ${JSON.stringify({ type: "typing", characters: [groupResponderName(charId)] })}\n\n`,
-              );
+              sendSseEvent(reply, { type: "typing", characters: [groupResponderName(charId)] });
             }
 
             // Tell the client which character is responding next
-            reply.raw.write(
-              `data: ${JSON.stringify({ type: "group_turn", data: { characterId: charId, characterName: charName, index: ci } })}\n\n`,
-            );
+            sendSseEvent(reply, {
+              type: "group_turn",
+              data: { characterId: charId, characterName: charName, index: ci },
+            });
 
             // Conversation puts its short turn instruction in Output Format.
             // Keep the established Roleplay instruction placement unchanged.
@@ -7356,7 +7335,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (typeof messageId !== "string" || !messageId) return;
           const readyMessage = savedMessage ?? (await chats.getMessage(messageId));
           if (!readyMessage || readyMessage.role !== "assistant") return;
-          assistantMessageReadySent = trySendSseEvent(reply, {
+          assistantMessageReadySent = sendSseEvent(reply, {
             type: "assistant_message_ready",
             data: readyMessage,
           });
@@ -7607,7 +7586,7 @@ export async function generateRoutes(app: FastifyInstance) {
           }
           if (newText) {
             if (shouldReviewSummary) {
-              trySendSseEvent(reply, {
+              sendSseEvent(reply, {
                 type: "agent_write_proposal",
                 data: buildSummaryWriteApprovalProposal({
                   chatId: input.chatId,
@@ -7642,12 +7621,10 @@ export async function generateRoutes(app: FastifyInstance) {
                   logger.error(err, "[chat-summary] Failed to auto-hide summarized roleplay messages");
                 }
               }
-              reply.raw.write(
-                `data: ${JSON.stringify({
-                  type: "chat_summary",
-                  data: { summary: combined, entry: createdEntry, entries: summaryEntries, hiddenMessageIds },
-                })}\n\n`,
-              );
+              sendSseEvent(reply, {
+                type: "chat_summary",
+                data: { summary: combined, entry: createdEntry, entries: summaryEntries, hiddenMessageIds },
+              });
             }
           }
         };
@@ -7673,7 +7650,7 @@ export async function generateRoutes(app: FastifyInstance) {
             agentContext.memory._expressionTargetIds = [...generatedExpressionTargetIds];
           }
           if (hasPostProcessingAgents) {
-            reply.raw.write(`data: ${JSON.stringify({ type: "agent_start", data: { phase: "post_generation" } })}\n\n`);
+            sendSseEvent(reply, { type: "agent_start", data: { phase: "post_generation" } });
           }
 
           // LOG_LEVEL=debug: log post-processing agents
@@ -7859,16 +7836,14 @@ export async function generateRoutes(app: FastifyInstance) {
             // Use postResults (not retryResults) so agents skipped during retry (e.g. agentCfg not found) are included
             const stillFailed = postResults.filter((r) => !r.success);
             if (stillFailed.length > 0) {
-              reply.raw.write(
-                `data: ${JSON.stringify({
-                  type: "agents_retry_failed",
-                  data: stillFailed.map((r) => ({
-                    agentType: r.agentType,
-                    agentName: resolvedAgents.find((agent) => agent.type === r.agentType)?.name ?? r.agentType,
-                    error: r.error,
-                  })),
-                })}\n\n`,
-              );
+              sendSseEvent(reply, {
+                type: "agents_retry_failed",
+                data: stillFailed.map((r) => ({
+                  agentType: r.agentType,
+                  agentName: resolvedAgents.find((agent) => agent.type === r.agentType)?.name ?? r.agentType,
+                  error: r.error,
+                })),
+              });
             }
           }
 
@@ -8236,7 +8211,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   ...(gs.worldCustomFields !== undefined ? { worldCustomFields: newWorldCustomFields } : {}),
                 };
                 logger.debug("[game_state_patch] world-state: %j", worldStatePatch);
-                reply.raw.write(`data: ${JSON.stringify({ type: "game_state_patch", data: worldStatePatch })}\n\n`);
+                sendSseEvent(reply, { type: "game_state_patch", data: worldStatePatch });
 
                 const existingGameMap = (chatMeta.gameMap as GameMap | null) ?? null;
                 const syncedMeta =
@@ -8490,17 +8465,11 @@ export async function generateRoutes(app: FastifyInstance) {
                           undefined,
                           { baseSnapshot: trackerBaseGameStateSnapshot },
                         );
-                        try {
-                          logger.debug(
-                            "[game_state_patch] character-tracker (avatar update): %d chars",
-                            presentCharacters.length,
-                          );
-                          reply.raw.write(
-                            `data: ${JSON.stringify({ type: "game_state_patch", data: { presentCharacters } })}\n\n`,
-                          );
-                        } catch {
-                          /* stream closed */
-                        }
+                        logger.debug(
+                          "[game_state_patch] character-tracker (avatar update): %d chars",
+                          presentCharacters.length,
+                        );
+                        sendSseEvent(reply, { type: "game_state_patch", data: { presentCharacters } });
                       } catch (err) {
                         logger.warn(err, "[character-tracker] Avatar generation error");
                       }
@@ -8522,17 +8491,11 @@ export async function generateRoutes(app: FastifyInstance) {
                   `[generate] character-tracker: updateByMessage returned ${updated ? "ok" : "null (no snapshot)"}`,
                 );
                 // Merge into the game_state SSE event for the HUD
-                try {
-                  logger.debug(
-                    "[game_state_patch] character-tracker: %s",
-                    chars.map((c: any) => c.name ?? c).join(", "),
-                  );
-                  reply.raw.write(
-                    `data: ${JSON.stringify({ type: "game_state_patch", data: { presentCharacters: chars } })}\n\n`,
-                  );
-                } catch {
-                  /* stream closed */
-                }
+                logger.debug(
+                  "[game_state_patch] character-tracker: %s",
+                  chars.map((c: any) => c.name ?? c).join(", "),
+                );
+                sendSseEvent(reply, { type: "game_state_patch", data: { presentCharacters: chars } });
 
                 // Auto-populate journal: NPC encounters
                 try {
@@ -8610,9 +8573,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 }
                 if (personaPatch.changed) {
                   logger.debug("[game_state_patch] persona-stats: %j", personaPatch.patch);
-                  reply.raw.write(
-                    `data: ${JSON.stringify({ type: "game_state_patch", data: personaPatch.patch })}\n\n`,
-                  );
+                  sendSseEvent(reply, { type: "game_state_patch", data: personaPatch.patch });
                 }
 
                 // Auto-populate journal: inventory changes
@@ -8669,9 +8630,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 }
                 if (inventoryTrackerPatch.changed) {
                   logger.debug("[game_state_patch] inventory-tracker: %j", inventoryTrackerPatch.values);
-                  reply.raw.write(
-                    `data: ${JSON.stringify({ type: "game_state_patch", data: inventoryTrackerPatch.patch })}\n\n`,
-                  );
+                  sendSseEvent(reply, { type: "game_state_patch", data: inventoryTrackerPatch.patch });
                 }
               } catch (err) {
                 logger.error(err, "[generate] Failed to apply inventory tracker update");
@@ -8717,9 +8676,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   }
                   if (customTrackerPatch.changed) {
                     logger.debug("[game_state_patch] custom-tracker: %j", customTrackerPatch.values);
-                    reply.raw.write(
-                      `data: ${JSON.stringify({ type: "game_state_patch", data: customTrackerPatch.patch })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "game_state_patch", data: customTrackerPatch.patch });
                   }
                 }
               } catch (err) {
@@ -8778,9 +8735,7 @@ export async function generateRoutes(app: FastifyInstance) {
                         .where(eq(gameStateSnapshotsTable.id, snap.id));
                     }
                     logger.debug("[game_state_patch] quests: %j", questTrackerPatch.values);
-                    reply.raw.write(
-                      `data: ${JSON.stringify({ type: "game_state_patch", data: questTrackerPatch.patch })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "game_state_patch", data: questTrackerPatch.patch });
 
                     // Auto-populate journal: quest updates
                     for (const u of questMerge.updates) {
@@ -8957,9 +8912,10 @@ export async function generateRoutes(app: FastifyInstance) {
                         }
                       }
                       if (executedCommands.length > 0) {
-                        reply.raw.write(
-                          `data: ${JSON.stringify({ type: "haptic_command", data: { commands: executedCommands, reasoning: hData.reasoning } })}\n\n`,
-                        );
+                        sendSseEvent(reply, {
+                          type: "haptic_command",
+                          data: { commands: executedCommands, reasoning: hData.reasoning },
+                        });
                         logger.info(
                           "[haptic] Agent executed %d command(s): %s",
                           executedCommands.length,
@@ -9099,7 +9055,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     }
 
                     await chats.patchMetadata(input.chatId, { background: generated.filename });
-                    trySendSseEvent(reply, {
+                    sendSseEvent(reply, {
                       type: "agent_result",
                       data: {
                         agentType: "illustrator",
@@ -9123,7 +9079,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     );
                   } catch (backgroundError) {
                     logger.error(backgroundError, "[illustrator-background] Automatic scene background failed");
-                    trySendSseEvent(reply, {
+                    sendSseEvent(reply, {
                       type: "agent_error",
                       data: {
                         agentType: "illustrator",
@@ -9171,7 +9127,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 imgConnFull ??= await connections.getDefaultForImageGeneration();
                 if (imgConnFull) {
                   const resolvedImageConnection = imgConnFull;
-                  trySendSseEvent(reply, {
+                  sendSseEvent(reply, {
                     type: "illustration_queued",
                     data: { messageId },
                   });
@@ -9443,18 +9399,16 @@ export async function generateRoutes(app: FastifyInstance) {
                         }
 
                         // Notify client
-                        reply.raw.write(
-                          `data: ${JSON.stringify({
-                            type: "illustration",
-                            data: {
-                              messageId,
-                              imageUrl,
-                              prompt: renderedPrompt,
-                              reason: illData.reason,
-                              galleryId: (galleryEntry as any)?.id,
-                            },
-                          })}\n\n`,
-                        );
+                        sendSseEvent(reply, {
+                          type: "illustration",
+                          data: {
+                            messageId,
+                            imageUrl,
+                            prompt: renderedPrompt,
+                            reason: illData.reason,
+                            galleryId: (galleryEntry as any)?.id,
+                          },
+                        });
                       }
                       logger.info(
                         "[illustrator] Generated %d illustration(s): %s...",
@@ -9463,35 +9417,31 @@ export async function generateRoutes(app: FastifyInstance) {
                       );
                     } catch (illErr) {
                       logger.error(illErr, "[illustrator] Image generation failed");
-                      reply.raw.write(
-                        `data: ${JSON.stringify({
-                          type: "agent_error",
-                          data: {
-                            agentType: result.agentType,
-                            agentName: imagePromptAgent?.name ?? "Illustrator",
-                            retryTarget: "illustration",
-                            error: `Image generation failed: ${illErr instanceof Error ? illErr.message : String(illErr)}`,
-                          },
-                        })}\n\n`,
-                      );
+                      sendSseEvent(reply, {
+                        type: "agent_error",
+                        data: {
+                          agentType: result.agentType,
+                          agentName: imagePromptAgent?.name ?? "Illustrator",
+                          retryTarget: "illustration",
+                          error: `Image generation failed: ${illErr instanceof Error ? illErr.message : String(illErr)}`,
+                        },
+                      });
                     }
                   })();
                 } else {
                   logger.warn("[illustrator] Agent wants to generate but no image generation connection configured");
-                  reply.raw.write(
-                    `data: ${JSON.stringify({
-                      type: "agent_error",
-                      data: {
-                        agentType: result.agentType,
-                        agentName: imagePromptAgent?.name ?? "Illustrator",
-                        retryTarget: "illustration",
-                        error: `No image generation connection is set on ${
-                          imagePromptAgent?.name?.trim() ||
-                          (result.agentType === "illustrator" ? "the Illustrator agent" : "this image agent")
-                        } or under Settings → Connections → Defaults → Images. Choose one there, or assign one directly in Settings → Agents.`,
-                      },
-                    })}\n\n`,
-                  );
+                  sendSseEvent(reply, {
+                    type: "agent_error",
+                    data: {
+                      agentType: result.agentType,
+                      agentName: imagePromptAgent?.name ?? "Illustrator",
+                      retryTarget: "illustration",
+                      error: `No image generation connection is set on ${
+                        imagePromptAgent?.name?.trim() ||
+                        (result.agentType === "illustrator" ? "the Illustrator agent" : "this image agent")
+                      } or under Settings → Connections → Defaults → Images. Choose one there, or assign one directly in Settings → Agents.`,
+                    },
+                  });
                 }
               }
             }
@@ -9627,17 +9577,15 @@ export async function generateRoutes(app: FastifyInstance) {
                       });
                     }
                     textRewriteApplied = true;
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "text_rewrite",
-                        data: {
-                          editedText: sanitizedEditedText,
-                          changes,
-                          rewriteApplied: true,
-                          ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
-                        },
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, {
+                      type: "text_rewrite",
+                      data: {
+                        editedText: sanitizedEditedText,
+                        changes,
+                        rewriteApplied: true,
+                        ...(originalText ? { originalText, agentType: editorResult.agentType } : {}),
+                      },
+                    });
                   }
                 }
               } catch {
@@ -9647,16 +9595,14 @@ export async function generateRoutes(app: FastifyInstance) {
           }
 
           if (holdForTextRewrite && !textRewriteApplied && !abortController.signal.aborted) {
-            reply.raw.write(
-              `data: ${JSON.stringify({
-                type: "text_rewrite",
-                data: {
-                  editedText: originalResponseBeforeRewrite,
-                  changes: [],
-                  rewriteApplied: false,
-                },
-              })}\n\n`,
-            );
+            sendSseEvent(reply, {
+              type: "text_rewrite",
+              data: {
+                editedText: originalResponseBeforeRewrite,
+                changes: [],
+                rewriteApplied: false,
+              },
+            });
           }
         }
 
@@ -9679,7 +9625,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // ────────────────────────────────────────
         if (collectedCommands.length > 0 && !abortController.signal.aborted) {
           const professorMariCommandCount = countProfessorMariCommands(collectedCommands);
-          trySendSseEvent(reply, {
+          sendSseEvent(reply, {
             type: "assistant_commands_start",
             data: { count: collectedCommands.length, professorMariCommandCount },
           });
@@ -9714,12 +9660,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   chatId: input.chatId,
                   chats,
                   sendUpdated: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "schedule_updated",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "schedule_updated", data });
                   },
                 });
 
@@ -9731,12 +9672,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   fullResponse,
                   chats,
                   sendCrossPost: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "cross_post",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "cross_post", data });
                   },
                 });
 
@@ -9766,7 +9702,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   chats,
                   connections,
                   sendEvent: (payload) => {
-                    reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+                    sendSseEvent(reply, payload);
                   },
                 });
 
@@ -9779,7 +9715,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   db: app.db,
                   chats,
                   sendRingingEvent: (data) => {
-                    trySendSseEvent(reply, {
+                    sendSseEvent(reply, {
                       type: "conversation_call_ringing",
                       data,
                     });
@@ -9801,7 +9737,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   chatMode,
                   agentsStore,
                   sendEvent: (event) => {
-                    trySendSseEvent(reply, event);
+                    sendSseEvent(reply, event);
                   },
                 });
 
@@ -9828,24 +9764,14 @@ export async function generateRoutes(app: FastifyInstance) {
                   allChatMessages,
                   chats,
                   sendAssistantAction: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "assistant_action",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "assistant_action", data });
                   },
                 });
 
                 await handleHapticCommand({
                   command,
                   sendEvent: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "haptic_command",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "haptic_command", data });
                   },
                 });
 
@@ -9855,12 +9781,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   chatId: input.chatId,
                   chars,
                   sendSceneRequested: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "scene_requested",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "scene_requested", data });
                   },
                 });
 
@@ -9914,12 +9835,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   embeddingSource: memoryRecallEmbeddingSource,
                   vectorizerAvailable: memoryRecallVectorizerAvailable,
                   sendAssistantAction: (data) => {
-                    reply.raw.write(
-                      `data: ${JSON.stringify({
-                        type: "assistant_action",
-                        data,
-                      })}\n\n`,
-                    );
+                    sendSseEvent(reply, { type: "assistant_action", data });
                   },
                 });
                 if (professorMariResult.fetchSucceeded) {
@@ -9930,7 +9846,7 @@ export async function generateRoutes(app: FastifyInstance) {
               }
             }
           } finally {
-            trySendSseEvent(reply, {
+            sendSseEvent(reply, {
               type: "assistant_commands_end",
               data: {},
             });
@@ -10032,7 +9948,7 @@ export async function generateRoutes(app: FastifyInstance) {
           logger.info(
             `[generate] Posted ${collectedOocMessages.length} OOC message(s) to conversation ${chat.connectedChatId}`,
           );
-          trySendSseEvent(reply, {
+          sendSseEvent(reply, {
             type: "ooc_posted",
             data: { chatId: chat.connectedChatId, count: collectedOocMessages.length },
           });
@@ -10097,7 +10013,7 @@ export async function generateRoutes(app: FastifyInstance) {
       stopSseKeepalive();
       reply.raw.off("close", onClose);
       releaseActiveGeneration();
-      if (canWriteSse()) {
+      if (!clientDisconnected && isSseReplyWritable(reply)) {
         reply.raw.end();
       }
     }

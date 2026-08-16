@@ -20,7 +20,7 @@ import { logDebugOverride, logger } from "../../lib/logger.js";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import type { BaseLLMProvider, ChatMessage, LLMToolDefinition } from "../llm/base-provider.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
-import { trySendSseEvent } from "../../routes/generate/sse.js";
+import { sendSseEvent } from "../../routes/generate/sse.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createGameEngineStateStorage } from "../storage/game-engine-state.storage.js";
@@ -193,7 +193,7 @@ async function drainAndVoiceAnnouncements(args: {
 
     // Whose-turn marker before the voiced dealer line, matching the loop's
     // existing group_turn marker for bot moves.
-    trySendSseEvent(reply, {
+    sendSseEvent(reply, {
       type: "group_turn",
       data: { characterId: dealerCharId, characterName: fallbackName, index: turnIndex },
     });
@@ -215,7 +215,7 @@ async function drainAndVoiceAnnouncements(args: {
         state: JSON.stringify(nextState),
         committed: true,
       });
-      trySendSseEvent(reply, { type: "message_saved", data: saved });
+      sendSseEvent(reply, { type: "message_saved", data: saved });
     } else {
       // Persistence of the dealer message failed — still advance engine state so
       // the queue doesn't grow unbounded and the game keeps moving.
@@ -245,7 +245,7 @@ async function drainAndVoiceAnnouncements(args: {
 
   // Push the redacted human-perspective board so the client clears
   // hasPendingAnnouncements and sees the drained state live.
-  trySendSseEvent(reply, { type: "turn_game_state_patch", data: engine.publicView(nextState, humanSeatId) });
+  sendSseEvent(reply, { type: "turn_game_state_patch", data: engine.publicView(nextState, humanSeatId) });
   return { state: nextState };
 }
 
@@ -335,9 +335,9 @@ export async function runTurnGameBotTurns(args: RunBotTurnsArgs): Promise<void> 
     const seatName = state.seatNames?.[seatId] ?? seatId;
 
     // Announce whose turn it is (reuses the established multi-actor marker).
-    // Non-critical marker — use the swallowing variant so a client disconnect
-    // can't throw and abort the bot-turn loop (matches the other emits below).
-    trySendSseEvent(reply, { type: "group_turn", data: { characterId: seatId, characterName: seatName, index: turn } });
+    // Non-critical marker — the canonical guarded emitter keeps a disconnect
+    // from throwing and aborting the bot-turn loop (matches the other emits below).
+    sendSseEvent(reply, { type: "group_turn", data: { characterId: seatId, characterName: seatName, index: turn } });
 
     // ── Ask the bot for a move ──
     const view = engine.describeForModel(state, seatId);
@@ -442,7 +442,7 @@ export async function runTurnGameBotTurns(args: RunBotTurnsArgs): Promise<void> 
           state: JSON.stringify(nextState),
           committed: true,
         });
-        trySendSseEvent(reply, { type: "message_saved", data: saved });
+        sendSseEvent(reply, { type: "message_saved", data: saved });
       } else {
         // Persistence of the message failed — still advance engine state so the game continues.
         await engineStorage.create({
@@ -458,7 +458,7 @@ export async function runTurnGameBotTurns(args: RunBotTurnsArgs): Promise<void> 
     }
 
     // Push the redacted human-perspective board so the client updates live.
-    trySendSseEvent(reply, { type: "turn_game_state_patch", data: engine.publicView(nextState, humanSeatId) });
+    sendSseEvent(reply, { type: "turn_game_state_patch", data: engine.publicView(nextState, humanSeatId) });
   }
 
   // Final drain: a showdown/game_over (or any other) announcement queued by the

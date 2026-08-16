@@ -3665,6 +3665,16 @@ const cases: RegressionCase[] = [
           `${mode} chat settings should show production stages 2, 3, and 4 in runtime order`,
         );
       }
+      assert.match(
+        gameChatSettingsSource,
+        /autoAnimationsEnabled \? \([\s\S]*<StoryboardImageAwarePlannerOverride[\s\S]*number=\{4\}/u,
+        "Game chat settings should hide animation-only stages unless animations are enabled",
+      );
+      assert.match(
+        roleplayChatSettingsSource,
+        /autoGenerateMode === "animation" \? \([\s\S]*<StoryboardImageAwarePlannerOverride[\s\S]*number=\{4\}/u,
+        "Roleplay chat settings should hide animation-only stages unless animations are enabled",
+      );
       assert.match(storyboardChatSettingsSource, /automaticStoryboardIllustrations/u);
       assert.match(storyboardChatSettingsSource, /automaticStoryboardAnimations/u);
       assert.match(storyboardChatSettingsSource, /type="number"/u);
@@ -3741,6 +3751,12 @@ const cases: RegressionCase[] = [
       assert.match(activeEditorSource, /templates=\{plannerTemplates\}/u);
       assert.match(activeEditorSource, /onPlannerTemplatesChange\(templates\)/u);
       assert.match(activeEditorSource, /renderTemplateMeta=/u);
+      assert.match(activeEditorSource, /ui\.agents\.agenteditor\.copyDefaultToEdit/u);
+      assert.match(
+        activeEditorSource,
+        /plannerPrompt\.trim\(\) \? \([\s\S]*<MacroTextarea[\s\S]*\) : \(\s*<pre/u,
+        "The built-in fallback planner prompt should stay read-only until explicitly copied",
+      );
 
       const setupIndex = activeEditorSource.indexOf("<StoryboardSetupSection");
       const workflowTabsIndex = activeEditorSource.indexOf('role="tablist"');
@@ -3847,18 +3863,19 @@ const cases: RegressionCase[] = [
         },
         { keyframeCount: 3, animationDurationSeconds: 5 },
       );
-      assert.equal(
-        normalizeStoryboardAgentSettings({
-          videoTemplates: [
-            {
-              id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
-              name: "LTX Director Video",
-              description: "Legacy built-in label",
-              promptTemplate: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
-            },
-          ],
-        }).videoTemplates[0]?.name,
-        "Narration Passthrough",
+      const relabeledVideoTemplate = normalizeStoryboardAgentSettings({
+        videoTemplates: [
+          {
+            id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID,
+            name: "LTX Director Video",
+            description: "Legacy built-in label",
+            promptTemplate: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE,
+          },
+        ],
+      }).videoTemplates[0];
+      assert.deepEqual(
+        { id: relabeledVideoTemplate?.id, name: relabeledVideoTemplate?.name },
+        { id: LTX_DIRECTOR_GAME_VIDEO_PROMPT_TEMPLATE_ID, name: "Narration Passthrough" },
         "Existing Storyboard configs should receive the clearer Stage 4 built-in label without changing its id",
       );
 

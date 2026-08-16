@@ -519,20 +519,37 @@ export function StoryboardAgentSettingsPanel({
             >
               <RotateCcw size="0.6875rem" /> {localizeUi("ui.agents.agenteditor.resetToDefault")}
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                onPlannerPromptChange(defaultPlannerPrompt);
+                onDirty();
+              }}
+              className="flex min-h-11 items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-2 text-[0.6875rem] font-medium ring-1 ring-[var(--border)] hover:bg-[var(--accent)]"
+            >
+              {localizeUi("ui.agents.agenteditor.copyDefaultToEdit")}
+            </button>
+          )}
         </div>
-        <MacroTextarea
-          value={plannerPrompt.trim() ? plannerPrompt : defaultPlannerPrompt}
-          onChange={(prompt) => {
-            onPlannerPromptChange(prompt);
-            onDirty();
-          }}
-          rows={10}
-          title={localizeUi("ui.agents.storyboard.fallbackPlannerPrompt")}
-          className="min-w-0 max-w-full w-full resize-y rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-          wrapperClassName="min-w-0 max-w-full"
-          placeholder={localizeUi("ui.agents.agenteditor.writeTheSystemPromptForThisAgent")}
-        />
+        {plannerPrompt.trim() ? (
+          <MacroTextarea
+            value={plannerPrompt}
+            onChange={(prompt) => {
+              onPlannerPromptChange(prompt);
+              onDirty();
+            }}
+            rows={10}
+            title={localizeUi("ui.agents.storyboard.fallbackPlannerPrompt")}
+            className="min-w-0 max-w-full w-full resize-y rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+            wrapperClassName="min-w-0 max-w-full"
+            placeholder={localizeUi("ui.agents.agenteditor.writeTheSystemPromptForThisAgent")}
+          />
+        ) : (
+          <pre className="min-w-0 max-w-full w-full max-h-[24rem] overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-xs leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+            {defaultPlannerPrompt}
+          </pre>
+        )}
       </div>
       <TemplateCollectionEditor
         title={localizeUi("ui.agents.storyboard.gamePromptLibrary")}

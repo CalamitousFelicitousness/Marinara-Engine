@@ -1400,7 +1400,6 @@
   "ui.agents.storyboard.roleplayOutputPrompts": "롤플레이 출력 규격",
   "ui.agents.storyboard.roleplayOutputPromptsDescription": "롤플레이의 정지 및 애니메이션 계획에서 공유되는, 편집 가능한 구조화 출력 지침입니다.",
   "ui.agents.storyboard.roleplayPromptChainDescription": "롤플레이 계획은 선택한 에피소드, 스타일, 선택적 애니메이션, 출력 레이어를 사용합니다. 게임 모드 플래너는 변경되지 않습니다.",
-  "ui.agents.storyboard.roleplayPromptLibrary": "롤플레이 프롬프트 라이브러리",
   "ui.agents.storyboard.roleplayPromptLibraryDescription": "완료된 롤플레이 에피소드를 위한 계층형 프롬프트입니다. 최적화된 게임 모드 플래너를 대체하거나 다시 작성하지 않습니다.",
   "ui.agents.storyboard.roleplayRunInterval": "기본 롤플레이 에피소드 간격",
   "ui.agents.storyboard.roleplayRunIntervalDescription": "새로 완료된 어시스턴트 응답이 지정한 수만큼 쌓이면 실행됩니다. 각 에피소드에는 성공한 스토리보드 사이의 사용자 메시지도 포함됩니다.",

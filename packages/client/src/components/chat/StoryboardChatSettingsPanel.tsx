@@ -546,25 +546,29 @@ export function StoryboardChatSettingsPanel({
                   }
                 />
               </StoryboardChatWorkflowStage>
-              <StoryboardImageAwarePlannerOverride settings={settings} metadata={metadata} onUpdate={onUpdate} />
-              <StoryboardChatWorkflowStage
-                number={4}
-                title={localizeUi("ui.agents.storyboard.promptStage4Title")}
-                description={localizeUi("ui.agents.storyboard.promptStage4Description")}
-              >
-                <GamePromptTemplateSelect
-                  label={localizeUi("ui.chat.chatsettingsdrawer.storyboardVideoPrompt")}
-                  description={localizeUi(
-                    "ui.chat.chatsettingsdrawer.combinesTheGeneratedKeyframeAndMotionPlanIntoThe",
-                  )}
-                  options={settings.videoTemplates}
-                  selectedId={videoTemplateId}
-                  fallbackId={settings.videoTemplateId ?? ""}
-                  onChange={(id) =>
-                    onUpdate({ gameStoryboardVideoPromptTemplateId: id === settings.videoTemplateId ? null : id })
-                  }
-                />
-              </StoryboardChatWorkflowStage>
+              {autoAnimationsEnabled ? (
+                <>
+                  <StoryboardImageAwarePlannerOverride settings={settings} metadata={metadata} onUpdate={onUpdate} />
+                  <StoryboardChatWorkflowStage
+                    number={4}
+                    title={localizeUi("ui.agents.storyboard.promptStage4Title")}
+                    description={localizeUi("ui.agents.storyboard.promptStage4Description")}
+                  >
+                    <GamePromptTemplateSelect
+                      label={localizeUi("ui.chat.chatsettingsdrawer.storyboardVideoPrompt")}
+                      description={localizeUi(
+                        "ui.chat.chatsettingsdrawer.combinesTheGeneratedKeyframeAndMotionPlanIntoThe",
+                      )}
+                      options={settings.videoTemplates}
+                      selectedId={videoTemplateId}
+                      fallbackId={settings.videoTemplateId ?? ""}
+                      onChange={(id) =>
+                        onUpdate({ gameStoryboardVideoPromptTemplateId: id === settings.videoTemplateId ? null : id })
+                      }
+                    />
+                  </StoryboardChatWorkflowStage>
+                </>
+              ) : null}
             </div>
           </div>
 
@@ -907,23 +911,29 @@ function RoleplayStoryboardChatSettingsPanel({
                 }
               />
             </StoryboardChatWorkflowStage>
-            <StoryboardImageAwarePlannerOverride settings={settings} metadata={metadata} onUpdate={onUpdate} />
-            <StoryboardChatWorkflowStage
-              number={4}
-              title={localizeUi("ui.agents.storyboard.promptStage4Title")}
-              description={localizeUi("ui.agents.storyboard.promptStage4Description")}
-            >
-              <GamePromptTemplateSelect
-                label={localizeUi("ui.chat.chatsettingsdrawer.storyboardVideoPrompt")}
-                description={localizeUi("ui.chat.chatsettingsdrawer.combinesTheGeneratedKeyframeAndMotionPlanIntoThe")}
-                options={settings.videoTemplates}
-                selectedId={videoTemplateId}
-                fallbackId={settings.videoTemplateId ?? ""}
-                onChange={(id) =>
-                  onUpdate({ roleplayStoryboardVideoPromptTemplateId: id === settings.videoTemplateId ? null : id })
-                }
-              />
-            </StoryboardChatWorkflowStage>
+            {autoGenerateMode === "animation" ? (
+              <>
+                <StoryboardImageAwarePlannerOverride settings={settings} metadata={metadata} onUpdate={onUpdate} />
+                <StoryboardChatWorkflowStage
+                  number={4}
+                  title={localizeUi("ui.agents.storyboard.promptStage4Title")}
+                  description={localizeUi("ui.agents.storyboard.promptStage4Description")}
+                >
+                  <GamePromptTemplateSelect
+                    label={localizeUi("ui.chat.chatsettingsdrawer.storyboardVideoPrompt")}
+                    description={localizeUi(
+                      "ui.chat.chatsettingsdrawer.combinesTheGeneratedKeyframeAndMotionPlanIntoThe",
+                    )}
+                    options={settings.videoTemplates}
+                    selectedId={videoTemplateId}
+                    fallbackId={settings.videoTemplateId ?? ""}
+                    onChange={(id) =>
+                      onUpdate({ roleplayStoryboardVideoPromptTemplateId: id === settings.videoTemplateId ? null : id })
+                    }
+                  />
+                </StoryboardChatWorkflowStage>
+              </>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">

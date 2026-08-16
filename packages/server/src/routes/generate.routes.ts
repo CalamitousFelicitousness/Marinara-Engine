@@ -1159,7 +1159,12 @@ export async function generateRoutes(app: FastifyInstance) {
       }
     }
 
-    activeGenerations.set(input.chatId, { abortController, backendUrl: baseUrl });
+    const activeGeneration = activeGenerations.get(input.chatId);
+    if (activeGeneration?.abortController !== abortController) {
+      abortController.abort();
+      return reply.status(409).send({ error: "Generation ownership changed during setup" });
+    }
+    activeGeneration.backendUrl = baseUrl;
 
     // Set up SSE headers
     startSseReply(reply, { "X-Accel-Buffering": "no" });

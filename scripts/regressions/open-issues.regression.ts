@@ -30,6 +30,10 @@ import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/co
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
 import { validateCharacterGalleryReferences } from "../../packages/server/src/routes/characters.routes.js";
+import {
+  orderConversationRespondersByDelay,
+  remainingConversationPresenceDelay,
+} from "../../packages/server/src/routes/generate/conversation-presence-runtime.js";
 import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
 import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
@@ -4851,6 +4855,31 @@ assert.match(
   conversationPresenceSource,
   /respondingConvoCharInfo = respondingConvoCharInfo\.filter\(\s*\(character\) => effectiveStatus\(character\) !== "offline"/u,
   "Conversation response selection should remove offline characters before Sequential or Smart ordering",
+);
+const responderDelayOrder = orderConversationRespondersByDelay(
+  ["away", "active", "busy"],
+  new Map([
+    ["away", { delayMs: 120_000, status: "idle" }],
+    ["active", { delayMs: 0, status: "online" }],
+    ["busy", { delayMs: 240_000, status: "dnd" }],
+  ]),
+);
+assert.deepEqual(
+  responderDelayOrder,
+  ["active", "away", "busy"],
+  "individual Conversation responders should run in availability order without changing equal-delay order",
+);
+assert.equal(remainingConversationPresenceDelay(120_000, 1_000, 31_000), 90_000);
+assert.equal(remainingConversationPresenceDelay(120_000, 1_000, 151_000), 0);
+assert.match(
+  conversationPresenceSource,
+  /deferPresenceDelayToResponders[\s\S]{0,2500}responderDelays = Object\.fromEntries/u,
+  "individual Conversation presence should retain one delay per responder instead of waiting on the worst status",
+);
+assert.match(
+  conversationGenerationSource,
+  /remainingConversationPresenceDelay\([\s\S]{0,1200}type: "delayed"[\s\S]{0,1200}waitForConversationPresenceDelay[\s\S]{0,800}type: "typing"/u,
+  "individual Conversation generation should wait only when the current responder's delay remains",
 );
 assert.match(
   conversationGenerationSource,

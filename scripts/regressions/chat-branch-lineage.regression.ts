@@ -119,7 +119,17 @@ try {
 
   const conversation = await create("Conversation scene origin", "conversation");
   const conversationMessage = await addMessage(conversation.id, "Convert this conversation into a scene");
+  const conversationSwipeResponse = await app.inject({
+    method: "POST",
+    url: `/api/chats/${conversation.id}/messages/${conversationMessage.id}/swipes`,
+    payload: { content: "Play the alternate continuation", silent: true },
+  });
+  assert.equal(conversationSwipeResponse.statusCode, 200);
+  const conversationSwipe = conversationSwipeResponse.json();
+  assert.equal(conversationSwipe.index, 1);
   const conversationState = JSON.stringify({ position: "after-e4", turn: "black" });
+  const alternateConversationState = JSON.stringify({ position: "after-d4", turn: "black" });
+  const conversationBootstrapState = JSON.stringify({ phase: "waiting-for-players" });
   await engineStore.create({
     chatId: conversation.id,
     messageId: conversationMessage.id,
@@ -127,6 +137,24 @@ try {
     gameType: "chess",
     schemaVersion: 1,
     state: conversationState,
+    committed: true,
+  });
+  await engineStore.create({
+    chatId: conversation.id,
+    messageId: conversationMessage.id,
+    swipeIndex: conversationSwipe.index,
+    gameType: "chess",
+    schemaVersion: 1,
+    state: alternateConversationState,
+    committed: true,
+  });
+  await engineStore.create({
+    chatId: conversation.id,
+    messageId: "",
+    swipeIndex: 0,
+    gameType: "uno",
+    schemaVersion: 1,
+    state: conversationBootstrapState,
     committed: true,
   });
   const conversationBranchResponse = await app.inject({
@@ -151,6 +179,19 @@ try {
   assert.equal(copiedConversationState[0].gameType, "chess");
   assert.equal(copiedConversationState[0].state, conversationState);
   assert.equal(copiedConversationState[0].committed, 1);
+  const copiedAlternateConversationState = await engineStore.listByChatAndMessage(
+    conversationBranch.id,
+    conversationBranchMessages.at(-1).id,
+    conversationSwipe.index,
+  );
+  assert.equal(copiedAlternateConversationState.length, 1);
+  assert.equal(copiedAlternateConversationState[0].messageId, conversationBranchMessages.at(-1).id);
+  assert.equal(copiedAlternateConversationState[0].swipeIndex, 1);
+  assert.equal(copiedAlternateConversationState[0].state, alternateConversationState);
+  const copiedConversationBootstrap = await engineStore.listByChatAndMessage(conversationBranch.id, "", 0);
+  assert.equal(copiedConversationBootstrap.length, 1, "Conversation branches must retain bootstrap turn-game state");
+  assert.equal(copiedConversationBootstrap[0].gameType, "uno");
+  assert.equal(copiedConversationBootstrap[0].state, conversationBootstrapState);
   const groupedConversation = (await app.inject({ method: "GET", url: `/api/chats/${conversation.id}` })).json();
   assert.equal(typeof groupedConversation.groupId, "string");
 

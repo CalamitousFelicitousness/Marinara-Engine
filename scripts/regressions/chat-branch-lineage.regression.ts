@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-chat-branch-lineage-"));
+const fileStorageDir = join(dataDir, "storage");
 process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = fileStorageDir;
 process.env.NODE_ENV = "test";
 process.env.MARINARA_LITE = "true";
 

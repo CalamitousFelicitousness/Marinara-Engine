@@ -28,10 +28,14 @@ const fileDb = await createFileNativeDB();
 try {
   const db = fileDb as unknown as DB;
   const noodle = createNoodleStorage(db);
+  const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
+  const { characterDataSchema } = await import("../../packages/shared/src/schemas/character.schema.js");
+  const sourceCharacter = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Image Source" }));
+  if (!sourceCharacter) throw new Error("Could not create the Noodle image source character fixture");
   await noodle.updateSettings({ enableNoodler: true, autoPostingScheduleEnabled: true });
   const source = await noodle.upsertAccountFromProfile({
     kind: "character",
-    entityId: "image-source",
+    entityId: sourceCharacter.id,
     displayName: "Image Source",
   });
   const creator = await noodle.createNoodlerAccount(source.id, {

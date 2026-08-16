@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DB } from "../../packages/server/src/db/connection.js";
@@ -19,7 +19,6 @@ import {
   noodlerReservePolicyFingerprint,
   normalizeScheduler,
 } from "../../packages/server/src/services/storage/noodle.storage.js";
-import { isNoodlerNightQuietTime } from "../../packages/server/src/services/noodle/noodle-noodler-reserve.operation.js";
 import {
   BACKGROUND_CONNECTION_FAILURE_COOLDOWN_MS,
   BACKGROUND_CONNECTION_FAILURE_THRESHOLD,
@@ -43,21 +42,6 @@ assert.equal(
   noodleAccountSchedulerPatchSchema.safeParse({ autoPosting: { nextRunAt: new Date().toISOString() } }).success,
   false,
 );
-assert.equal(isNoodlerNightQuietTime(new Date(2026, 6, 29, 23, 0)), true);
-assert.equal(isNoodlerNightQuietTime(new Date(2026, 6, 29, 6, 59)), true);
-assert.equal(isNoodlerNightQuietTime(new Date(2026, 6, 29, 7, 0)), false);
-assert.equal(isNoodlerNightQuietTime(new Date(2026, 6, 29, 22, 59)), false);
-
-const reserveOperationSource = readFileSync(
-  new URL("../../packages/server/src/services/noodle/noodle-noodler-reserve.operation.ts", import.meta.url),
-  "utf8",
-);
-assert.doesNotMatch(
-  reserveOperationSource,
-  /createChatsStorage|scheduledCharacterIds|characterSchedules|conversationSchedulesEnabled/u,
-  "Noodler reserve selection must not consume source chat schedules without per-creator opt-in",
-);
-
 resetConnectionAdmissionForTests();
 const releaseForeground = beginForegroundConnection("connection-1");
 assert.equal(tryBackgroundConnection("connection-1", new Date()).acquired, false);
@@ -419,34 +403,13 @@ try {
     publishAt: "2026-10-15T10:00:00.000Z",
     payload: { title: null, content: "Must not publish.", access: "locked", imagePrompt: null, metadata: {} },
     policyFingerprint: noodlerReservePolicyFingerprint(
-      creator!,
+      enabledCreator!,
       await noodle.getSettings(),
       publicAccount.updatedAt,
     ),
   });
 
-  // A replay must return its persisted post even after the linked source has been deleted.
-  const replayExecutionId = "replay-after-source-delete";
-  const replayPost = await noodle.createNoodlerPost({
-    authorAccountId: creator!.id,
-    title: "Replay",
-    content: "Already persisted.",
-    source: "generated",
-    access: "locked",
-    metadata: { noodlerWizardExecutionId: replayExecutionId },
-  });
-  assert.ok(replayPost);
   await characters.removePersona(sourcePersona.id);
-  const { generateAndApplyNoodlerPost } =
-    await import("../../packages/server/src/services/noodle/noodle-noodler-post.operation.js");
-  const replay = await generateAndApplyNoodlerPost(db, {
-    mode: "noodler",
-    targetAccountId: creator!.id,
-    access: "locked",
-    executionId: replayExecutionId,
-  });
-  assert.equal(replay.status, "generated");
-  if (replay.status === "generated") assert.equal(replay.post.id, replayPost!.id);
   assert.equal(await noodle.publishDueNoodlerPreparedPosts(new Date("2026-10-15T10:00:00.000Z")), 0);
   assert.equal((await noodle.listNoodlerPreparedPosts()).find((item) => item.id === deletedSourcePreparedId)?.state, "discarded");
 

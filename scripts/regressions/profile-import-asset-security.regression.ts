@@ -169,20 +169,32 @@ try {
   assert.ok(validatedRaceSafeImage);
   const replacementPath = join(dataDir, "replacement.html");
   writeFileSync(replacementPath, html);
-  renameSync(replacementPath, raceSafePath);
-  const descriptorApp = Fastify();
-  descriptorApp.get("/validated-image", (req, reply) =>
-    sendValidatedMediaFile(reply, validatedRaceSafeImage, { method: req.method, rangeHeader: req.headers.range }),
-  );
-  await descriptorApp.ready();
-  const descriptorResponse = await descriptorApp.inject({ method: "GET", url: "/validated-image" });
-  assert.equal(descriptorResponse.statusCode, 200);
-  assert.deepEqual(
-    descriptorResponse.rawPayload,
-    validPng,
-    "serving must use the validated descriptor even when its path is replaced",
-  );
-  await descriptorApp.close();
+  if (process.platform === "win32") {
+    try {
+      assert.throws(
+        () => renameSync(replacementPath, raceSafePath),
+        (error: unknown) => (error as NodeJS.ErrnoException).code === "EPERM",
+        "Windows must block replacing the validated file while its descriptor is open",
+      );
+    } finally {
+      await validatedRaceSafeImage.handle.close();
+    }
+  } else {
+    renameSync(replacementPath, raceSafePath);
+    const descriptorApp = Fastify();
+    descriptorApp.get("/validated-image", (req, reply) =>
+      sendValidatedMediaFile(reply, validatedRaceSafeImage, { method: req.method, rangeHeader: req.headers.range }),
+    );
+    await descriptorApp.ready();
+    const descriptorResponse = await descriptorApp.inject({ method: "GET", url: "/validated-image" });
+    assert.equal(descriptorResponse.statusCode, 200);
+    assert.deepEqual(
+      descriptorResponse.rawPayload,
+      validPng,
+      "serving must use the validated descriptor even when its path is replaced",
+    );
+    await descriptorApp.close();
+  }
 
   const videoPath = join(dataDir, "range.mp4");
   const rangeVideo = Buffer.concat([validMp4, Buffer.from(Array.from({ length: 128 }, (_, index) => index))]);

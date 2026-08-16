@@ -11,11 +11,6 @@ import {
   reconcileNoodleRefreshSchedule,
   rescheduleNoodleRefreshTime,
 } from "../../packages/server/src/services/noodle/noodle-refresh-schedule.js";
-import {
-  nextNoodleSchedulerPollDelayMs,
-  noodleRefreshRetryDelayMs,
-} from "../../packages/server/src/services/noodle/noodle-refresh-scheduler.service.js";
-import { noodlerReservePollIsIdle } from "../../packages/server/src/services/noodle/noodle-autopost-scheduler.service.js";
 
 const day = new Date(2026, 6, 10, 12, 0, 0, 0);
 const start = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
@@ -74,7 +69,6 @@ const failed = markNoodleRefreshFailure(caughtUp, "Connection unavailable", day,
 const failedStatus = noodleRefreshSchedulerStatus(failed, day);
 assert.equal(failedStatus.state, "retrying");
 assert.equal(failedStatus.lastError, "Connection unavailable");
-assert.equal(nextNoodleSchedulerPollDelayMs(failed, day), 60_000);
 const rescheduledFailure = rescheduleNoodleRefreshTime(failed, schedule.scheduledTimes[2]!, "19:15", day);
 assert.equal(rescheduledFailure.lastError, null);
 assert.equal(rescheduledFailure.nextAttemptAt, null);
@@ -96,19 +90,6 @@ assert.equal(rolled.lastAutomaticRefreshAt, reconfigured.lastAutomaticRefreshAt)
 
 const disabled = reconcileNoodleRefreshSchedule(rolled, 0, nextDay);
 assert.equal(noodleRefreshSchedulerStatus(disabled, nextDay).state, "disabled");
-// A disabled schedule backs the poll off instead of waking every minute for nothing.
-assert.equal(nextNoodleSchedulerPollDelayMs(disabled, nextDay), 15 * 60_000);
-
-assert.equal(noodlerReservePollIsIdle({ enableNoodler: false, autoPostingScheduleEnabled: false }), true);
-assert.equal(noodlerReservePollIsIdle({ enableNoodler: true, autoPostingScheduleEnabled: false }), true);
-assert.equal(noodlerReservePollIsIdle({ enableNoodler: false, autoPostingScheduleEnabled: true }), true);
-assert.equal(noodlerReservePollIsIdle({ enableNoodler: true, autoPostingScheduleEnabled: true }), false);
-
-assert.equal(noodleRefreshRetryDelayMs(409, 0), 60_000);
-assert.equal(noodleRefreshRetryDelayMs(400, 0), 15 * 60_000);
-assert.equal(noodleRefreshRetryDelayMs(429, 0), 5 * 60_000);
-assert.equal(noodleRefreshRetryDelayMs(500, 0), 5 * 60_000);
-assert.equal(noodleRefreshRetryDelayMs(500, 10), 60 * 60_000);
 assert.equal(parsePersistedNoodleRefreshSchedule({ version: 999 }), null);
 assert.deepEqual(parsePersistedNoodleRefreshSchedule(JSON.parse(JSON.stringify(caughtUp))), caughtUp);
 

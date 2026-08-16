@@ -8,7 +8,8 @@
 //   - a sidecar past its retention deadline is pruned on load,
 //   - the persisted set is capped so it cannot grow without bound.
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
@@ -28,6 +29,35 @@ function tempStorageDir() {
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 
 const sidecarPath = (dir: string, id: string) => join(dir, "journal", "pending", `${id}.json`);
+
+async function withRenameFailure<T>(sourcePath: string, action: () => Promise<T>): Promise<T> {
+  const originalRenameSync = fs.renameSync;
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    fs.renameSync = originalRenameSync;
+    syncBuiltinESMExports();
+    restored = true;
+  };
+
+  fs.renameSync = ((source, destination) => {
+    if (source === sourcePath) {
+      throw Object.assign(new Error(`EBUSY: resource busy or locked, rename '${sourcePath}'`), {
+        code: "EBUSY",
+        path: sourcePath,
+        syscall: "rename",
+      }) as NodeJS.ErrnoException;
+    }
+    return originalRenameSync(source, destination);
+  }) as typeof fs.renameSync;
+  syncBuiltinESMExports();
+
+  try {
+    return await action();
+  } finally {
+    restore();
+  }
+}
 
 try {
   // ── Professor Mari can create a persona with every required storage default ──
@@ -236,22 +266,29 @@ try {
         "the persisted sidecars are capped in lockstep with the in-memory set",
       );
 
-      chmodSync(pendingDir, 0o500);
-      const appliedPastLockedCap = await mari.executeAction({
-        action: "character.create",
-        characterId: "capped-character-locked-sidecar",
-        data: { name: "Applied despite locked retention" },
-        apply: true,
-      });
-      assert.ok(appliedPastLockedCap.approval?.id, "retention cleanup cannot report an applied mutation as failed");
+      const oldestRetained = cappedPending[0];
+      assert.ok(oldestRetained, "the capped pending set contains an oldest retained review");
+      const oldestRetainedPath = sidecarPath(dir, oldestRetained.id);
+      const appliedPastLockedCap = await withRenameFailure(oldestRetainedPath, () =>
+        mari.executeAction({
+          action: "character.create",
+          characterId: "capped-character-locked-sidecar",
+          data: { name: "Applied despite locked retention" },
+          apply: true,
+        }),
+      );
+      assert.equal(appliedPastLockedCap.approval?.status, "pending", "retention cleanup cannot report an applied mutation as failed");
       assert.equal(
         mari.getPendingApprovals().length,
         PENDING_REVIEW_LIMIT + 1,
         "a locked oldest sidecar is retained temporarily instead of losing its undo",
       );
-      chmodSync(pendingDir, 0o700);
+      assert.ok(
+        mari.getPendingApprovals().some((approval) => approval.id === oldestRetained.id),
+        "the selected oldest review stays pending when its retirement fails",
+      );
+      assert.ok(existsSync(oldestRetainedPath), "the selected oldest sidecar remains on disk when retirement fails");
     } finally {
-      chmodSync(pendingDir, 0o700);
       await db._fileStore.close();
       rmSync(dir, { recursive: true, force: true });
     }
@@ -430,7 +467,6 @@ try {
   {
     const dir = tempStorageDir();
     const db = await createFileNativeDB();
-    const pendingDir = join(dir, "journal", "pending");
     try {
       const mari = new MariDbService(db);
       const created = await mari.executeAction({
@@ -441,16 +477,15 @@ try {
       });
       const reviewId = created.approval?.id;
       assert.ok(reviewId);
-      chmodSync(pendingDir, 0o500);
-      await assert.rejects(mari.keepAppliedReview(reviewId), /EACCES|EPERM|permission denied/iu);
-      assert.ok(mari.getPendingApprovals().some((approval) => approval.id === reviewId));
-      chmodSync(pendingDir, 0o700);
+      await withRenameFailure(sidecarPath(dir, reviewId), async () => {
+        await assert.rejects(mari.keepAppliedReview(reviewId), (error: unknown) => (error as NodeJS.ErrnoException).code === "EBUSY");
+      });
+      assert.ok(mari.getPendingApprovals().some((approval) => approval.id === reviewId), "failed Keep stays pending");
       assert.ok(
         new MariDbService(db).getPendingApprovals().some((approval) => approval.id === reviewId),
         "failed Keep survives restart",
       );
     } finally {
-      chmodSync(pendingDir, 0o700);
       await db._fileStore.close();
       rmSync(dir, { recursive: true, force: true });
     }

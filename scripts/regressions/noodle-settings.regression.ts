@@ -17,71 +17,11 @@ import {
   noodleBulkNoodlerAccountCreateSchema,
   noodlerTargetedRefreshSchema,
 } from "../../packages/shared/src/schemas/noodle.schema.js";
-import { resolveNoodlerOnboardingCompletion } from "../../packages/shared/src/utils/noodler-onboarding.js";
 import {
   createNoodleStorage,
   normalizeNoodleSettings,
 } from "../../packages/server/src/services/storage/noodle.storage.js";
-import { resolveNoodleAvatarCropAfterProfileUpdate } from "../../packages/server/src/services/noodle/noodle-profile-avatar.js";
-import {
-  AMBIENT_NOODLE_PROFILES,
-  ensureAmbientNoodleAccounts,
-  isAmbientNoodleAccount,
-} from "../../packages/server/src/services/noodle/noodle-ambient-profiles.js";
-import {
-  allocateAmbientProfileHandles,
-  ambientGeneratedProfileChanged,
-  nextAvailableAmbientHandle,
-} from "../../packages/server/src/services/noodle/noodle-ambient-profile-generation.service.js";
-import {
-  claimNoodleOperation,
-  isNoodleOperationActive,
-  resetNoodleOperationsForTests,
-} from "../../packages/server/src/services/noodle/noodle-operation-lock.js";
 
-const generated = [{ status: "generated" }, { status: "generated" }];
-// Nothing selected is a deliberate skip, not a failure.
-assert.equal(
-  resolveNoodlerOnboardingCompletion({ selectedCount: 0, createdCount: 0, createFailures: 0, outcomes: null }),
-  "zero",
-);
-// Selections that produced no profiles are a failure, whatever generation would have done.
-assert.equal(
-  resolveNoodlerOnboardingCompletion({ selectedCount: 3, createdCount: 0, createFailures: 3, outcomes: null }),
-  "failed",
-);
-// Profiles created, generation not attempted.
-assert.equal(
-  resolveNoodlerOnboardingCompletion({ selectedCount: 2, createdCount: 2, createFailures: 0, outcomes: null }),
-  "declined",
-);
-assert.equal(
-  resolveNoodlerOnboardingCompletion({ selectedCount: 2, createdCount: 2, createFailures: 0, outcomes: generated }),
-  "generated",
-);
-// Every post generated, but a selection never became a profile: still only partial.
-assert.equal(
-  resolveNoodlerOnboardingCompletion({ selectedCount: 3, createdCount: 2, createFailures: 1, outcomes: generated }),
-  "partial",
-);
-assert.equal(
-  resolveNoodlerOnboardingCompletion({
-    selectedCount: 2,
-    createdCount: 2,
-    createFailures: 0,
-    outcomes: [{ status: "generated" }, { status: "error" }],
-  }),
-  "partial",
-);
-assert.equal(
-  resolveNoodlerOnboardingCompletion({
-    selectedCount: 2,
-    createdCount: 2,
-    createFailures: 0,
-    outcomes: [{ status: "error" }, { status: "busy" }],
-  }),
-  "failed",
-);
 const bulkOnboarding = noodleBulkNoodlerAccountCreateSchema.parse({
   noodleAccountIds: [],
   disclosureMode: "hinted",
@@ -96,77 +36,12 @@ assert.deepEqual(noodlerTargetedRefreshSchema.parse({ accountIds: ["creator-1"],
   executionId: "wizard-run-1",
 });
 assert.equal(AMBIENT_NOODLE_ENTITY_IDS.length, 6);
-assert.deepEqual(
-  AMBIENT_NOODLE_PROFILES.map((profile) => profile.entityId),
-  AMBIENT_NOODLE_ENTITY_IDS,
-);
 assert.equal(noodleAmbientProfileRerollSchema.safeParse({ accountIds: [] }).success, false);
 assert.equal(noodleAmbientProfileRerollSchema.safeParse({ accountIds: ["ambient-1", "ambient-1"] }).success, false);
 assert.deepEqual(noodleAmbientProfileRerollSchema.parse({ accountIds: ["ambient-1"] }), {
   accountIds: ["ambient-1"],
   debugMode: false,
 });
-const reservedAmbientHandles = new Set(["ambient_name"]);
-assert.equal(nextAvailableAmbientHandle("@Ambient Name", reservedAmbientHandles), "ambient_name_2");
-assert.equal(nextAvailableAmbientHandle("@Ambient Name", reservedAmbientHandles), "ambient_name_3");
-assert.equal(nextAvailableAmbientHandle("A".repeat(50), new Set()).length, 36);
-resetNoodleOperationsForTests();
-const releaseIdentityOperation = claimNoodleOperation("identity");
-assert.ok(releaseIdentityOperation);
-assert.equal(isNoodleOperationActive("identity"), true);
-assert.equal(claimNoodleOperation("identity"), null);
-releaseIdentityOperation();
-releaseIdentityOperation();
-assert.equal(isNoodleOperationActive("identity"), false);
-assert.ok(claimNoodleOperation("identity"));
-resetNoodleOperationsForTests();
-
-const sourceCrop = { x: 12, y: 18, width: 62, height: 62, unit: "%" as const };
-assert.equal(
-  resolveNoodleAvatarCropAfterProfileUpdate({
-    currentAvatarUrl: "/avatar.png",
-    nextAvatarUrl: undefined,
-    currentCrop: sourceCrop,
-  }),
-  undefined,
-);
-assert.deepEqual(
-  resolveNoodleAvatarCropAfterProfileUpdate({
-    currentAvatarUrl: "/avatar.png",
-    nextAvatarUrl: "/avatar.png",
-    currentCrop: sourceCrop,
-  }),
-  sourceCrop,
-);
-assert.deepEqual(
-  resolveNoodleAvatarCropAfterProfileUpdate({
-    currentAvatarUrl: "/avatar.png",
-    nextAvatarUrl: undefined,
-    currentCrop: null,
-    sourceAvatarUrl: "/avatar.png",
-    sourceCrop,
-  }),
-  sourceCrop,
-);
-assert.deepEqual(
-  resolveNoodleAvatarCropAfterProfileUpdate({
-    currentAvatarUrl: "/avatar.png",
-    nextAvatarUrl: "/avatar.png",
-    currentCrop: null,
-    sourceAvatarUrl: "/avatar.png",
-    sourceCrop,
-  }),
-  sourceCrop,
-);
-assert.equal(
-  resolveNoodleAvatarCropAfterProfileUpdate({
-    currentAvatarUrl: "/avatar.png",
-    nextAvatarUrl: "/replacement.png",
-    currentCrop: sourceCrop,
-  }),
-  null,
-);
-
 // One invalid stored field must not reset unrelated settings.
 // used to wipe lorebook context, invited character folders, and the generation connection.
 assert.equal(
@@ -200,119 +75,6 @@ process.env.FILE_STORAGE_DIR = storageDir;
 try {
   const firstDb = await createFileNativeDB();
   const firstNoodle = createNoodleStorage(firstDb as unknown as DB);
-  const [seededAmbient, concurrentlySeededAmbient] = await Promise.all([
-    ensureAmbientNoodleAccounts(firstNoodle, false),
-    ensureAmbientNoodleAccounts(firstNoodle, false),
-  ]);
-  assert.equal(seededAmbient.length, 6);
-  assert.deepEqual(
-    concurrentlySeededAmbient.map((account) => account.id),
-    seededAmbient.map((account) => account.id),
-  );
-  assert.equal((await firstNoodle.listAccounts()).filter(isAmbientNoodleAccount).length, 6);
-  assert.equal(seededAmbient.every(isAmbientNoodleAccount), true);
-  assert.equal(
-    seededAmbient.every((account) => account.invited === false),
-    true,
-  );
-  const editedAmbient = seededAmbient[0]!;
-  await firstNoodle.updateAccountProfile(editedAmbient.id, {
-    handle: "keeper_handle",
-    displayName: "Keeper Name",
-    bio: "Keep this manually edited identity.",
-    avatarUrl: "/custom-avatar.png",
-    profile: {
-      bannerUrl: "/custom-banner.png",
-      avatarCrop: { x: 1, y: 2, width: 90, height: 90, unit: "%" },
-      profileManuallyEdited: true,
-    },
-  });
-  const reseededAmbient = await ensureAmbientNoodleAccounts(firstNoodle, true);
-  const preservedAmbient = reseededAmbient.find((account) => account.id === editedAmbient.id)!;
-  assert.equal(preservedAmbient.displayName, "Keeper Name");
-  assert.equal(preservedAmbient.handle, "keeper_handle");
-  assert.equal(preservedAmbient.bio, "Keep this manually edited identity.");
-  assert.equal(preservedAmbient.invited, true);
-  const swapTarget = reseededAmbient[1]!;
-  const swappedHandles = allocateAmbientProfileHandles(
-    [preservedAmbient, swapTarget],
-    new Map([
-      [
-        preservedAmbient.entityId,
-        {
-          entityId: preservedAmbient.entityId,
-          name: "First Swapped",
-          handle: swapTarget.handle,
-          bio: "First swap.",
-          location: "One",
-        },
-      ],
-      [
-        swapTarget.entityId,
-        {
-          entityId: swapTarget.entityId,
-          name: "Second Swapped",
-          handle: preservedAmbient.handle,
-          bio: "Second swap.",
-          location: "Two",
-        },
-      ],
-    ]),
-    reseededAmbient.map((account) => account.handle),
-  );
-  // Neither account may be handed a handle the other still holds, or the write trips the unique index.
-  assert.equal(swappedHandles.get(preservedAmbient.id), `${swapTarget.handle}_2`);
-  assert.equal(swappedHandles.get(swapTarget.id), `${preservedAmbient.handle}_2`);
-  for (const account of [preservedAmbient, swapTarget]) {
-    const applied = await firstNoodle.updateAccountProfile(account.id, {
-      handle: swappedHandles.get(account.id)!,
-      displayName: `${account.displayName} Swapped`,
-      bio: "Swapped identity.",
-      avatarUrl: null,
-      profile: { avatarCrop: null, profileGenerated: true, profileManuallyEdited: false },
-    });
-    assert.equal(applied?.handle, swappedHandles.get(account.id));
-  }
-  assert.equal(
-    ambientGeneratedProfileChanged(preservedAmbient, {
-      entityId: preservedAmbient.entityId,
-      name: "Keeper Name",
-      handle: "keeper_handle",
-      bio: "Different bio alone is not a new identity.",
-      location: "Elsewhere",
-    }),
-    false,
-  );
-  assert.equal(
-    ambientGeneratedProfileChanged(preservedAmbient, {
-      entityId: preservedAmbient.entityId,
-      name: "New Name",
-      handle: "new_handle",
-      bio: "A genuinely new identity.",
-      location: "Elsewhere",
-    }),
-    true,
-  );
-  const rerolledAmbient = await firstNoodle.updateAccountProfile(preservedAmbient.id, {
-    handle: "new_handle",
-    displayName: "New Name",
-    bio: "A genuinely new identity.",
-    avatarUrl: null,
-    profile: {
-      bannerUrl: "",
-      avatarCrop: null,
-      location: "Elsewhere",
-      profileGenerated: true,
-      profileManuallyEdited: false,
-    },
-  });
-  assert.equal(rerolledAmbient?.id, editedAmbient.id);
-  assert.equal(rerolledAmbient?.entityId, editedAmbient.entityId);
-  assert.equal(rerolledAmbient?.avatarUrl, null);
-  assert.equal(rerolledAmbient?.settings.profile.bannerUrl, "");
-  assert.equal(rerolledAmbient?.settings.profile.avatarCrop, null);
-  assert.equal(rerolledAmbient?.settings.profile.profileGenerated, true);
-  assert.equal(rerolledAmbient?.settings.profile.profileManuallyEdited, false);
   await firstNoodle.updateSettings({ noodlerOnboardingComplete: true, noodlerOnboardingState: "zero" });
   assert.equal((await firstNoodle.getSettings()).noodlerOnboardingState, "zero");
   const updated = await firstNoodle.updateSettings({

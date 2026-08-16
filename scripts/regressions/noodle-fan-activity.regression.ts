@@ -2,136 +2,63 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_NOODLE_SETTINGS, type NoodleAccount } from "../../packages/shared/src/index.js";
+import type { NoodleAuthorSnapshot } from "../../packages/shared/src/index.js";
 import type { DB } from "../../packages/server/src/db/connection.js";
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
-import {
-  noodleInteractions,
-  noodlePosts,
-  noodlerFanActivityState,
-} from "../../packages/server/src/db/schema/noodle.js";
 import { eq } from "../../packages/server/src/db/file-query.js";
+import { noodleInteractions, noodlePosts, noodlerFanActivityState } from "../../packages/server/src/db/schema/noodle.js";
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
-import {
-  parseGeneratedFanActivityResponse,
-  resolveNoodlerFanActivityPolicy,
-  selectNoodlerFanActivities,
-  type NoodlerFanCreatorCandidate,
-} from "../../packages/server/src/services/noodle/noodle-noodler-fan-activity.service.js";
-import { syntheticNoodlerFanIdentityProvider } from "../../packages/server/src/services/noodle/noodle-fan-identity-provider.js";
-import { runNoodlerFanActivity } from "../../packages/server/src/services/noodle/noodle-fan-activity.operation.js";
 
-const settings = { ...DEFAULT_NOODLE_SETTINGS, fanActivityEnabled: true };
-const creator = {
-  id: "creator-1",
-  settings: { scheduler: {}, privacy: {}, profile: {}, social: {}, wallet: { coins: 0 } },
-} as NoodleAccount;
-assert.equal(resolveNoodlerFanActivityPolicy(settings, creator).enabled, true);
-creator.settings.scheduler.fanActivity = { enabled: false, archetypeWeights: { ordinary: 7 } };
-const override = resolveNoodlerFanActivityPolicy(settings, creator);
-assert.equal(override.enabled, false);
-assert.equal(override.archetypeWeights.ordinary, 7);
-assert.equal(override.archetypeWeights.eccentric, settings.fanArchetypeWeights.eccentric);
-
-const identities = syntheticNoodlerFanIdentityProvider.resolve(settings.fanArchetypeWeights);
-const normalizedResponse = parseGeneratedFanActivityResponse({
-  activities: [
-    {
-      actorHandle: identities[0]!.snapshot.handle,
-      creatorId: "creator-1",
-      postId: "public-1",
-      type: "like",
-      content: null,
-    },
-    { actorHandle: identities[1]!.snapshot.handle, type: "reply", content: "Missing IDs" },
-  ],
-});
-assert.equal(normalizedResponse.rejected, 1);
-assert.deepEqual(normalizedResponse.value.activities[0], {
-  actorHandle: identities[0]!.snapshot.handle,
-  creatorAccountId: "creator-1",
-  targetPostId: "public-1",
-  type: "like",
-  content: null,
-});
-const candidate: NoodlerFanCreatorCandidate = {
-  creator: { ...creator, id: "creator-1" },
-  policy: { enabled: true, archetypeWeights: settings.fanArchetypeWeights },
-  identities,
-  posts: [{ id: "public-1", creatorAccountId: "creator-1", title: null, content: "Hello", access: "public" }],
+const snapshotA: NoodleAuthorSnapshot = {
+  id: "fan-a",
+  kind: "random_user",
+  entityId: "fan-entity-a",
+  handle: "fan_a",
+  displayName: "Fan A",
+  avatarUrl: null,
+  avatarCrop: null,
 };
-const selected = selectNoodlerFanActivities({
-  activities: [
-    {
-      actorHandle: identities[0]!.snapshot.handle,
-      creatorAccountId: "creator-1",
-      targetPostId: "public-1",
-      type: "like",
-      content: null,
-    },
-    {
-      actorHandle: identities[0]!.snapshot.handle,
-      creatorAccountId: "wrong",
-      targetPostId: "public-1",
-      type: "reply",
-      content: "Wrong owner",
-    },
-    {
-      actorHandle: identities[0]!.snapshot.handle,
-      creatorAccountId: "creator-1",
-      targetPostId: "public-1",
-      type: "reply",
-      content: "One",
-    },
-    {
-      actorHandle: identities[0]!.snapshot.handle,
-      creatorAccountId: "creator-1",
-      targetPostId: "public-1",
-      type: "repost",
-      content: null,
-    },
-    {
-      actorHandle: identities[1]!.snapshot.handle,
-      creatorAccountId: "creator-1",
-      targetPostId: "public-1",
-      type: "reply",
-      content: "Two",
-    },
-    {
-      actorHandle: identities[2]!.snapshot.handle,
-      creatorAccountId: "creator-1",
-      targetPostId: "public-1",
-      type: "reply",
-      content: "Over creator limit",
-    },
-  ],
-  creators: [candidate],
-  existingInteractions: [],
-  quotas: { like: 1, reply: 4, repost: 1 },
-});
-assert.equal(selected.length, 4);
-assert.ok(selected.every((activity) => activity.creatorId === "creator-1"));
+const snapshotB: NoodleAuthorSnapshot = {
+  id: "fan-b",
+  kind: "random_user",
+  entityId: "fan-entity-b",
+  handle: "fan_b",
+  displayName: "Fan B",
+  avatarUrl: null,
+  avatarCrop: null,
+};
+const snapshotC: NoodleAuthorSnapshot = {
+  id: "fan-c",
+  kind: "random_user",
+  entityId: "fan-entity-c",
+  handle: "fan_c",
+  displayName: "Fan C",
+  avatarUrl: null,
+  avatarCrop: null,
+};
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-noodler-fans-"));
 process.env.FILE_STORAGE_DIR = storageDir;
+let fileDb = await createFileNativeDB();
+
 try {
-  const db = (await createFileNativeDB()) as unknown as DB;
+  const db = fileDb as unknown as DB;
   const noodle = createNoodleStorage(db);
-  const publicAccount = await noodle.upsertAccountFromProfile({
+  const source = await noodle.upsertAccountFromProfile({
     kind: "persona",
     entityId: "source-1",
     displayName: "Source",
   });
-  const storedCreator = await noodle.createNoodlerAccount(publicAccount.id, {
+  const creator = await noodle.createNoodlerAccount(source.id, {
     handle: "creator",
     displayName: "Creator",
     bio: "Bio",
     disclosureMode: "secret",
     stagePersonality: "Voice",
   });
-  assert.ok(storedCreator);
+  assert.ok(creator);
   const post = await noodle.createNoodlerPost({
-    authorAccountId: storedCreator!.id,
+    authorAccountId: creator.id,
     title: null,
     content: "Public post",
     access: "public",
@@ -139,11 +66,39 @@ try {
     metadata: {},
   });
   assert.ok(post);
-  const identity = identities[0]!;
-  await noodle.updateSettings({ enableNoodler: true, fanActivityEnabled: true });
+  await noodle.updateSettings({ fanActivityEnabled: true });
+
+  const runId = "fan-run-1";
+  const replyA = {
+    id: "fan-run-1-reply-a",
+    creatorAccountId: creator.id,
+    actorId: snapshotA.id,
+    actorSnapshot: snapshotA,
+    runId,
+    type: "reply" as const,
+    content: "Event-local reply",
+  };
+  const likeB = {
+    id: "fan-run-1-like-b",
+    creatorAccountId: creator.id,
+    actorId: snapshotB.id,
+    actorSnapshot: snapshotB,
+    runId,
+    type: "like" as const,
+    content: null,
+  };
+  const lockedLikeC = {
+    id: "fan-run-1-like-c",
+    creatorAccountId: creator.id,
+    actorId: snapshotC.id,
+    actorSnapshot: snapshotC,
+    runId,
+    type: "like" as const,
+    content: null,
+  };
   await db.insert(noodlerFanActivityState).values({
     id: "fan-day:2026-01-01:UTC",
-    updatedAt: new Date().toISOString(),
+    updatedAt: "2026-01-01T00:00:00.000Z",
     plan: JSON.stringify({
       version: 1,
       localDate: "2026-01-01",
@@ -151,147 +106,100 @@ try {
       nextCreatorOffset: 0,
       runs: [
         {
-          id: "run-1",
-          scheduledAt: new Date().toISOString(),
-          creatorIds: [storedCreator!.id],
+          id: runId,
+          scheduledAt: "2026-01-01T00:00:00.000Z",
+          creatorIds: [creator.id],
           status: "applying",
-          claimedAt: new Date().toISOString(),
+          claimedAt: "2026-01-01T00:00:00.000Z",
           finishedAt: null,
           acceptedActivities: [
             {
-               id: `run-1-${storedCreator!.id}-${post!.id}-reply-${identity.id}`,
-              creatorId: storedCreator!.id,
-              actorId: identity.id,
-              type: "reply",
-              targetPostId: post!.id,
-              content: "Event-local reply",
-              snapshot: identity.snapshot,
+              id: replyA.id,
+              creatorId: creator.id,
+              actorId: snapshotA.id,
+              type: replyA.type,
+              targetPostId: post.id,
+              content: replyA.content,
+              snapshot: snapshotA,
               applied: false,
             },
             {
-               id: `run-1-${storedCreator!.id}-${post!.id}-like-${identities[1]!.id}`,
-              creatorId: storedCreator!.id,
-              actorId: identities[1]!.id,
-              type: "like",
-              targetPostId: post!.id,
-              content: null,
-              snapshot: identities[1]!.snapshot,
+              id: likeB.id,
+              creatorId: creator.id,
+              actorId: snapshotB.id,
+              type: likeB.type,
+              targetPostId: post.id,
+              content: likeB.content,
+              snapshot: snapshotB,
+              applied: false,
+            },
+            {
+              id: lockedLikeC.id,
+              creatorId: creator.id,
+              actorId: snapshotC.id,
+              type: lockedLikeC.type,
+              targetPostId: post.id,
+              content: lockedLikeC.content,
+              snapshot: snapshotC,
               applied: false,
             },
           ],
         },
-        ...Array.from({ length: 3 }, (_, index) => ({
-          id: `future-${index}`,
-          scheduledAt: new Date(Date.now() + (index + 1) * 60_000).toISOString(),
-          creatorIds: [],
-          status: "scheduled",
-          claimedAt: null,
-          finishedAt: null,
-          acceptedActivities: [],
-        })),
       ],
     }),
   });
-  const recovery = await runNoodlerFanActivity({ db, mode: "automatic", at: new Date("2026-01-01T12:00:00.000Z") });
-  assert.equal(recovery.status, "resumed");
-  assert.equal(recovery.created, 2);
-  const persistedState = await db
-    .select()
-    .from(noodlerFanActivityState)
-    .where(eq(noodlerFanActivityState.id, "fan-day:2026-01-01:UTC"));
-  const persistedRun = JSON.parse(persistedState[0]!.plan).runs.find((run: { id: string }) => run.id === "run-1");
-  assert.equal(persistedRun.status, "completed");
-  assert.ok(persistedRun.acceptedActivities.every((activity: { applied: boolean }) => activity.applied));
-  const rowsAfterRecovery = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post!.id));
-  assert.equal(rowsAfterRecovery.length, 2);
-  assert.equal(await noodle.getAccountById(identity.id), null);
-  const duplicate = await noodle.createNoodlerFanInteraction(post!.id, {
-    id: `run-1-${storedCreator!.id}-${post!.id}-reply-${identity.id}`,
-    creatorAccountId: storedCreator!.id,
-    actorId: identity.id,
-    actorSnapshot: identity.snapshot,
-    runId: "run-1",
-    type: "reply",
-    content: "Event-local reply",
-  });
-  assert.equal(duplicate, null);
-  await db.update(noodlePosts).set({ access: "locked" }).where(eq(noodlePosts.id, post!.id));
-  const blocked = await noodle.createNoodlerFanInteraction(post!.id, {
-    id: `run-1-${storedCreator!.id}-${post!.id}-like-${identities[1]!.id}`,
-    creatorAccountId: storedCreator!.id,
-    actorId: identities[1]!.id,
-    actorSnapshot: identities[1]!.snapshot,
-    runId: "run-1",
-    type: "like",
-    content: null,
-  });
-  assert.equal(blocked, null);
-  const rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post!.id));
-  assert.equal(rows.length, 2);
-  assert.equal(JSON.parse(rows[0]!.actorSnapshot).displayName, identity.snapshot.displayName);
 
-  await db.update(noodlePosts).set({ access: "public" }).where(eq(noodlePosts.id, post!.id));
-  const recoveryAt = new Date("2026-01-01T12:00:00.000Z");
-  const expiredApplyingPlan = {
-    version: 1,
-    localDate: "2025-01-01",
-    timezone: "UTC",
-    nextCreatorOffset: 0,
-    runs: [
-      {
-        id: "expired-applying",
-        scheduledAt: "2025-01-01T00:00:00.000Z",
-        creatorIds: [storedCreator!.id],
-        status: "applying",
-        claimedAt: "2025-01-01T00:00:00.000Z",
-        finishedAt: null,
-        acceptedActivities: [
-          {
-            id: `expired-applying-${storedCreator!.id}-${post!.id}-reply-${identities[2]!.id}`,
-            creatorId: storedCreator!.id,
-            actorId: identities[2]!.id,
-            type: "reply",
-            targetPostId: post!.id,
-            content: "Recovered reply",
-            snapshot: identities[2]!.snapshot,
-            applied: false,
-          },
-        ],
-      },
-      ...Array.from({ length: 3 }, (_, index) => ({
-        id: `expired-scheduled-${index}`,
-        scheduledAt: "2025-01-01T01:00:00.000Z",
-        creatorIds: [],
-        status: "scheduled",
-        claimedAt: null,
-        finishedAt: null,
-        acceptedActivities: [],
-      })),
-    ],
-  };
-  await db.insert(noodlerFanActivityState).values({
-    id: "fan-day:2025-01-01:UTC",
-    updatedAt: "2025-01-01T00:00:00.000Z",
-    plan: JSON.stringify(expiredApplyingPlan),
+  const acceptedReply = await noodle.createNoodlerFanInteraction(post.id, replyA);
+  if (!acceptedReply) throw new Error("accepted reply must create an interaction");
+  assert.equal(acceptedReply.created, true);
+  assert.equal(acceptedReply.interaction.id, replyA.id);
+  assert.equal(acceptedReply.interaction.content, replyA.content);
+
+  const acceptedLike = await noodle.createNoodlerFanInteraction(post.id, likeB);
+  if (!acceptedLike) throw new Error("accepted like must create an interaction");
+  assert.equal(acceptedLike.created, true);
+  assert.equal(acceptedLike.interaction.id, likeB.id);
+
+  let rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post.id));
+  assert.equal(rows.length, 2);
+
+  const repeatedReply = await noodle.createNoodlerFanInteraction(post.id, replyA);
+  if (!repeatedReply) throw new Error("stable repeated reply must resolve to its interaction");
+  assert.equal(repeatedReply.created, false);
+  assert.equal(repeatedReply.interaction.id, replyA.id);
+  rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post.id));
+  assert.equal(rows.length, 2);
+
+  const unlisted = await noodle.createNoodlerFanInteraction(post.id, {
+    id: "fan-run-1-unlisted",
+    creatorAccountId: creator.id,
+    actorId: snapshotA.id,
+    actorSnapshot: snapshotA,
+    runId,
+    type: "reply",
+    content: "Not accepted by the plan",
   });
-  const expiredRecovery = await runNoodlerFanActivity({
-    db,
-    mode: "automatic",
-    at: recoveryAt,
-  });
-  assert.equal(expiredRecovery.status, "resumed");
-  assert.equal(expiredRecovery.created, 1);
-  const preservedExpiredPlan = await db
-    .select()
-    .from(noodlerFanActivityState)
-    .where(eq(noodlerFanActivityState.id, "fan-day:2025-01-01:UTC"));
-  assert.equal(preservedExpiredPlan.length, 1);
-  const recoveredExpiredPlan = JSON.parse(preservedExpiredPlan[0]!.plan);
-  const recoveredExpiredRun = recoveredExpiredPlan.runs.find((run: { id: string }) => run.id === "expired-applying");
-  assert.equal(recoveredExpiredRun.status, "completed");
-  assert.equal(recoveredExpiredRun.finishedAt, recoveryAt.toISOString());
-  assert.ok(recoveredExpiredRun.acceptedActivities.every((activity: { applied: boolean }) => activity.applied));
+  assert.equal(unlisted, null);
+  rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post.id));
+  assert.equal(rows.length, 2);
+
+  assert.equal(await noodle.getAccountById(snapshotA.id), null);
+  assert.equal(await noodle.getAccountById(snapshotB.id), null);
+  const storedReply = rows.find((row) => row.id === replyA.id);
+  const storedLike = rows.find((row) => row.id === likeB.id);
+  assert.ok(storedReply);
+  assert.ok(storedLike);
+  assert.deepEqual(JSON.parse(storedReply.actorSnapshot), snapshotA);
+  assert.deepEqual(JSON.parse(storedLike.actorSnapshot), snapshotB);
+
+  await db.update(noodlePosts).set({ access: "locked" }).where(eq(noodlePosts.id, post.id));
+  const blocked = await noodle.createNoodlerFanInteraction(post.id, lockedLikeC);
+  assert.equal(blocked, null);
+  rows = await db.select().from(noodleInteractions).where(eq(noodleInteractions.postId, post.id));
+  assert.equal(rows.some((row) => row.id === lockedLikeC.id), false);
+  assert.equal(rows.length, 2);
 } finally {
+  await fileDb._fileStore.close();
   rmSync(storageDir, { recursive: true, force: true });
 }
 

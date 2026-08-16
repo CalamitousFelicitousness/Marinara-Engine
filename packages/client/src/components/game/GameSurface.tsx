@@ -2351,12 +2351,42 @@ function GameSurfaceComponent({
   const useJsonMusicDjGameMusic = useYoutubeGameMusic || useCustomGameMusic;
   const useMusicDjPlayerMusic = useSpotifyGameMusic || useJsonMusicDjGameMusic;
   const { data: ttsConfig } = useTTSConfig();
-  const generateGameSoundEffects = ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true;
-  const generateGameMusic =
-    ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true && !useMusicDjPlayerMusic;
   const activeGameMetaId = typeof chatMeta.gameId === "string" ? chatMeta.gameId : "";
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
+  // Game audio capability: the game's audio connection (explicit pick, else the
+  // category default, else the fallback) wins; the legacy TTS settings blob
+  // still gates setups that predate audio connections. Mirrors the server's
+  // resolveAudioConfig order.
+  const gameAudioConnection = useMemo(() => {
+    const isTrue = (value: unknown) => value === true || value === "true";
+    const rows = ((connectionsList ?? []) as Record<string, unknown>[]).filter(
+      (connection) => connection.provider === "audio",
+    );
+    const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
+    return (
+      (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??
+      rows.find((connection) => isTrue(connection.defaultForAgents)) ??
+      rows.find((connection) => isTrue(connection.fallbackForAgents)) ??
+      null
+    );
+  }, [connectionsList, chatMeta.gameAudioConnectionId]);
+  const gameAudioConnectionIsElevenLabs =
+    gameAudioConnection != null &&
+    ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
+  const generateGameSoundEffects =
+    (gameAudioConnection
+      ? gameAudioConnectionIsElevenLabs &&
+        (gameAudioConnection.audioSoundEffects === true || gameAudioConnection.audioSoundEffects === "true")
+      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true) &&
+    chatMeta.gameAudioSoundEffectsEnabled !== false;
+  const generateGameMusic =
+    (gameAudioConnection
+      ? gameAudioConnectionIsElevenLabs &&
+        (gameAudioConnection.audioMusic === true || gameAudioConnection.audioMusic === "true")
+      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true) &&
+    chatMeta.gameAudioMusicEnabled !== false &&
+    !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
     queryKey: ["game", "scene-videos", activeChatId],
     queryFn: () => api.get<{ videos: GeneratedSceneVideo[] }>(`/game/scene-videos/${activeChatId}`),
@@ -2532,12 +2562,18 @@ function GameSurfaceComponent({
       ...generatedAudioAssetsRef.current,
     };
   }, [gameAssetExcludedFolders, queryClient]);
+  const gameAudioConnectionId = gameAudioConnection ? (gameAudioConnection.id as string) : undefined;
   const generateGameAudioAsset = useCallback(async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
     const category = kind === "sfx" ? "sfx" : "music";
     if (prompt.startsWith(`${category}:generated:`)) return prompt;
     try {
       const generated = await withTimeout(
-        (signal) => api.post<{ tag: string; path: string }>("/tts/game-audio", { kind, prompt }, { signal }),
+        (signal) =>
+          api.post<{ tag: string; path: string }>(
+            "/tts/game-audio",
+            { kind, prompt, ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}) },
+            { signal },
+          ),
         GAME_AUDIO_GENERATION_TIMEOUT_MS,
       );
       generatedAudioAssetsRef.current[generated.tag] = {
@@ -2553,7 +2589,7 @@ function GameSurfaceComponent({
       console.warn(`[game-audio] Failed to generate ${kind}:`, error);
       return null;
     }
-  }, []);
+  }, [gameAudioConnectionId]);
   const materializeGeneratedGameAudio = useCallback(
     async (input: SceneAnalysis): Promise<SceneAnalysis> => {
       if (!generateGameSoundEffects && !generateGameMusic) return input;

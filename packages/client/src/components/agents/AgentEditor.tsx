@@ -638,7 +638,10 @@ export function AgentEditor() {
       llmIds: new Set(
         rows
           .filter(
-            (connection) => connection.provider !== "image_generation" && connection.provider !== "video_generation",
+            (connection) =>
+              connection.provider !== "image_generation" &&
+              connection.provider !== "video_generation" &&
+              connection.provider !== "audio",
           )
           .map((connection) => connection.id),
       ),
@@ -1137,7 +1140,7 @@ export function AgentEditor() {
       | undefined) ?? [];
 
   const llmConnections = allConnections.filter(
-    (conn) => conn.provider !== "image_generation" && conn.provider !== "video_generation",
+    (conn) => conn.provider !== "image_generation" && conn.provider !== "video_generation" && conn.provider !== "audio",
   );
   const imageConnections = allConnections.filter((conn) => conn.provider === "image_generation");
 
@@ -1145,6 +1148,7 @@ export function AgentEditor() {
     (c) =>
       c.provider !== "image_generation" &&
       c.provider !== "video_generation" &&
+      c.provider !== "audio" &&
       (c.defaultForAgents === true || c.defaultForAgents === "true"),
   );
 

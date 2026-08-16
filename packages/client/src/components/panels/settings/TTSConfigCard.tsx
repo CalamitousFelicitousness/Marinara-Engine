@@ -184,7 +184,8 @@ function isTTSLanguageConnectionOption(value: unknown): value is TTSLanguageConn
     typeof connection.name === "string" &&
     typeof connection.model === "string" &&
     connection.provider !== "image_generation" &&
-    connection.provider !== "video_generation"
+    connection.provider !== "video_generation" &&
+    connection.provider !== "audio"
   );
 }
 

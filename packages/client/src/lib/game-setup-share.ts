@@ -32,6 +32,7 @@ export interface GameSetupShareSource {
     scene?: GameInitialSetupConnectionSnapshot | null;
     image?: GameInitialSetupConnectionSnapshot | null;
     video?: GameInitialSetupConnectionSnapshot | null;
+    audio?: GameInitialSetupConnectionSnapshot | null;
   };
   fallbackGmConnectionId?: string | null;
   labels?: GameSetupShareLabels;
@@ -148,6 +149,7 @@ function parseShareConnections(value: unknown): GameInitialSetupSnapshot["connec
     scene: parseConnectionSnapshot(value.scene),
     image: parseConnectionSnapshot(value.image),
     video: parseConnectionSnapshot(value.video),
+    audio: parseConnectionSnapshot(value.audio),
   };
 }
 
@@ -295,6 +297,7 @@ export function buildGameSetupShareFile(
             scene: source.connections.scene ?? null,
             image: source.connections.image ?? null,
             video: source.connections.video ?? null,
+            audio: source.connections.audio ?? null,
           }
         : undefined,
       labels,
@@ -462,6 +465,7 @@ export function resolveGameSetupImport(
   const sceneConnectionId = resolveConnectionId(sourceConfig.sceneConnectionId, snapshots?.scene, context.connections);
   const imageConnectionId = resolveConnectionId(sourceConfig.imageConnectionId, snapshots?.image, context.connections);
   const videoConnectionId = resolveConnectionId(sourceConfig.videoConnectionId, snapshots?.video, context.connections);
+  const audioConnectionId = resolveConnectionId(sourceConfig.audioConnectionId, snapshots?.audio, context.connections);
   if ((sourceConfig.sceneConnectionId || snapshots?.scene) && !sceneConnectionId) {
     warnings.push(`${describeSavedResource(snapshots?.scene?.name, "The saved scene connection")} is unavailable.`);
   }
@@ -470,6 +474,9 @@ export function resolveGameSetupImport(
   }
   if ((sourceConfig.videoConnectionId || snapshots?.video) && !videoConnectionId) {
     warnings.push(`${describeSavedResource(snapshots?.video?.name, "The saved video connection")} is unavailable.`);
+  }
+  if ((sourceConfig.audioConnectionId || snapshots?.audio) && !audioConnectionId) {
+    warnings.push(`${describeSavedResource(snapshots?.audio?.name, "The saved audio connection")} is unavailable.`);
   }
 
   return {
@@ -483,6 +490,7 @@ export function resolveGameSetupImport(
       sceneConnectionId: sceneConnectionId ?? undefined,
       imageConnectionId: imageConnectionId ?? undefined,
       videoConnectionId: videoConnectionId ?? undefined,
+      audioConnectionId: audioConnectionId ?? undefined,
       activeLorebookIds: [...new Set(activeLorebookIds)],
       promptPresetId,
     },
@@ -691,6 +699,10 @@ export function buildGameSetupSummarySections(source: GameSetupShareSource): Gam
         {
           label: "Video connection",
           value: formatConnection(connections?.video, config.videoConnectionId, labels?.connectionNames, "None"),
+        },
+        {
+          label: "Audio connection",
+          value: formatConnection(connections?.audio, config.audioConnectionId, labels?.connectionNames, "Default"),
         },
         {
           label: "Storyboard director",

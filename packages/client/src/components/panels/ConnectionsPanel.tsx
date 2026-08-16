@@ -73,6 +73,7 @@ import {
   Sparkles,
   ImageIcon,
   Film,
+  Music,
   Mic,
   Loader2,
   HardDriveDownload,
@@ -124,12 +125,14 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   custom: CONNECTION_ICON_COLORS,
   image_generation: CONNECTION_ICON_COLORS,
   video_generation: CONNECTION_ICON_COLORS,
+  audio: CONNECTION_ICON_COLORS,
 };
 const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
 
 function getConnectionFallbackIcon(provider: string) {
   if (provider === "image_generation") return <ImageIcon size="1rem" />;
   if (provider === "video_generation") return <Film size="1rem" />;
+  if (provider === "audio") return <Music size="1rem" />;
   return <Link size="1rem" />;
 }
 
@@ -871,7 +874,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   const languageConnections = useMemo(
     () =>
       connectionsList.filter(
-        (connection) => connection.provider !== "image_generation" && connection.provider !== "video_generation",
+        (connection) =>
+          connection.provider !== "image_generation" &&
+          connection.provider !== "video_generation" &&
+          connection.provider !== "audio",
       ),
     [connectionsList],
   );
@@ -881,6 +887,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   );
   const videoConnections = useMemo(
     () => connectionsList.filter((connection) => connection.provider === "video_generation"),
+    [connectionsList],
+  );
+  const audioConnections = useMemo(
+    () => connectionsList.filter((connection) => connection.provider === "audio"),
     [connectionsList],
   );
 
@@ -948,6 +958,15 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackField="fallbackForAgents"
             primaryEmptyLabel="No default video connection"
             fallbackModelLabel="Video generation"
+          />
+          <ConnectionDefaultPair
+            title={localizeUi("ui.panels.connectiondefaultssection.audio")}
+            icon={<Music size="0.875rem" />}
+            connections={audioConnections}
+            primaryField="defaultForAgents"
+            fallbackField="fallbackForAgents"
+            primaryEmptyLabel="No default audio connection"
+            fallbackModelLabel="Audio generation"
           />
         </div>
       </SmoothFolderContent>

@@ -58,6 +58,10 @@ export type CreateConnectionPayload = {
   imageGenerationQuality?: ImageGenerationQuality;
   videoGenerationSource?: string | null;
   videoService?: string | null;
+  audioSource?: string | null;
+  audioVoice?: string | null;
+  audioSoundEffects?: boolean;
+  audioMusic?: boolean;
   promptPresetId?: string | null;
   maxTokensOverride?: number | null;
   maxParallelJobs?: number;

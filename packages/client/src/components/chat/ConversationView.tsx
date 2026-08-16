@@ -334,8 +334,7 @@ export function ConversationView({
   const turnGamePackages = installedCapabilities.filter(
     (item) => item.status === "active" && item.manifest.kind.includes("turn-game") && item.manifest.entrypoints.client,
   );
-  const isStreamCommitted = useChatStore((s) => s.committedStreamChatIds.has(chatId));
-  const hasLiveStream = isStreaming && !isStreamCommitted;
+  const hasLiveStream = isStreaming;
   const streamBuffer = useThrottledStreamBuffer();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
   const regenerateMessageId = useChatStore((s) => s.regenerateMessageId);

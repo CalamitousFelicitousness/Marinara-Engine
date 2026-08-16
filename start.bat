@@ -104,7 +104,10 @@ if defined AUTO_UPDATE_DISABLED (
     node scripts\check-launcher-update.mjs
     goto :skip_update
 )
-if not exist ".git" goto :skip_update
+if not exist ".git" (
+    echo  [OK] Not a git checkout; automatic updates are unavailable for this install.
+    goto :skip_update
+)
 echo  [..] Checking for updates...
 for /f "tokens=*" %%i in ('git rev-parse HEAD 2^>nul') do set "OLD_HEAD=%%i"
 set "CURRENT_BRANCH="

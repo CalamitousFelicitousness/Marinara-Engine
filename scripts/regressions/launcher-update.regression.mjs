@@ -247,6 +247,11 @@ assertPosixReminderRouting("start-termux.sh");
 
 const windowsLauncherSource = readFileSync(join(repositoryRoot, "start.bat"), "utf8");
 assert.match(windowsLauncherSource, /check-launcher-update\.mjs/u);
+assert.match(
+  windowsLauncherSource,
+  /if not exist "\.git" \(\s*echo  \[OK\] Not a git checkout; automatic updates are unavailable for this install\.\s*goto :skip_update\s*\)/u,
+  "start.bat must explain why automatic updates are unavailable outside a git checkout",
+);
 
 for (const launcherName of ["start.sh", "start-termux.sh", "start.bat"]) {
   const launcherSource = readFileSync(join(repositoryRoot, launcherName), "utf8");

@@ -135,21 +135,29 @@ mirror the generation's progress and failure so a package is never left waiting 
 regardless of the `capabilityApi` it declares — the 1.11 label marks when they appeared, so a
 package that *requires* them declares 1.11 and older Engines refuse it cleanly.
 
+### Capability API 1.12: spatial events for the owning Experience
+
 Capability API 1.12 addresses the spatial capability events to the game-owning Experience
 package as well. `spatial_transition_committed`, `spatial_transition_rejected`, and the
 untyped `spatial_context_refresh` nudge — previously addressed only to `hierarchical-maps` on
 the `marinara-capability-server-event` window event — are now dual-dispatched with
-`packageId` set to the chat's `gameExperienceId`, carrying the same payload
-(`chatId`, `commandId`, `currentLocationId`, `definitionRevision`, optional `travel`). An
-Experience that sent a travel command via `sendMessage`'s `pendingSpatialTransition` argument
-can therefore confirm or clear its journey the moment the host knows, instead of inferring
-the outcome from later state reads. 1.12 also closes a gap that affected World Maps itself:
-transitions rejected on the pre-stream commit path (an HTTP error, so no SSE event existed)
-now synthesize a `spatial_transition_rejected` event client-side, with the error `code` in
-the payload. Note that a committed event whose `travel.mode` is `"step_by_step"` with
-`complete: false` means the journey continues — keep your pending state until the completing
-event. This is a soft seam like 1.11: events are delivered regardless of the declared
-`capabilityApi`; declare 1.12 only if your package requires them.
+`packageId` set to the chat's `gameExperienceId`. Payloads differ per event: a committed
+event carries `{ chatId, commandId, currentLocationId, definitionRevision, travel? }`; a
+rejected event carries `{ chatId, commandId, code?, message? }` (no location fields — the
+move did not happen); the refresh nudge carries `data: null`. An Experience that sent a
+travel command via `sendMessage`'s `pendingSpatialTransition` argument can therefore confirm
+or clear its journey the moment the host knows, instead of inferring the outcome from later
+state reads. 1.12 also closes a gap that affected World Maps itself: transitions rejected on
+either silent HTTP path — the pre-stream owner-turn commit inside a generation, or the
+standalone REST commit — previously produced no event at all; both now synthesize
+`spatial_transition_rejected`, and only on definitive evidence (a `spatial_*` error code
+other than `already_applied`). Inconclusive failures — a network error that may have lost a
+successful commit — deliver the untyped `spatial_context_refresh` nudge instead, so listeners
+reconcile from server state rather than a fabricated verdict. Note that a committed event
+whose `travel.mode` is `"step_by_step"` with `complete: false` means the journey continues —
+keep your pending state until the completing event. This is a soft seam like 1.11: events are
+delivered regardless of the declared `capabilityApi`; declare 1.12 only if your package
+requires them.
 
 ## Initial packages
 

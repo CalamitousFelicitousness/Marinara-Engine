@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  Chat,
   GenerateSpatialMapDraftRequest,
   GenerateSpatialMapDraftResponse,
   Message,
@@ -121,12 +122,17 @@ export function useSpatialContext(chatId: string | null, enabled = true) {
 }
 
 /** Mirror of use-generate's resolver: the Experience package owning this
- *  chat's game, read from the cached chat row (active chat first — the commit
- *  path always runs on the open chat). */
-function getGameExperiencePackageId(chatId: string): string | null {
+ *  chat's game. Active chat first, then the query caches — the dispatch often
+ *  runs after an await, and a chat switch in that window must not silently
+ *  drop the Experience audience (review finding). */
+function getGameExperiencePackageId(queryClient: ReturnType<typeof useQueryClient>, chatId: string): string | null {
   const activeChat = useChatStore.getState().activeChat;
-  if (activeChat?.id !== chatId) return null;
-  const raw = activeChat.metadata;
+  const chat =
+    activeChat?.id === chatId
+      ? activeChat
+      : (queryClient.getQueryData<Chat>(chatKeys.detail(chatId)) ??
+        queryClient.getQueryData<Chat[]>(chatKeys.list())?.find((candidate) => candidate.id === chatId));
+  const raw = chat?.metadata;
   let metadata: Record<string, unknown> | null = null;
   if (raw && typeof raw === "object") metadata = raw as Record<string, unknown>;
   else if (typeof raw === "string") {
@@ -150,7 +156,7 @@ export function useCommitSpatialOwnerTurn() {
       if (!stepwiseRouteRemainsQueued) {
         useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
       }
-      dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
+      dispatchSpatialCapabilityEvent(getGameExperiencePackageId(queryClient, variables.chatId), {
         type: "spatial_transition_committed",
         chatId: variables.chatId,
         data: {
@@ -180,7 +186,7 @@ export function useCommitSpatialOwnerTurn() {
         if (!stepwiseRouteRemainsQueued) {
           useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
         }
-        dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
+        dispatchSpatialCapabilityEvent(getGameExperiencePackageId(queryClient, variables.chatId), {
           type: "spatial_transition_committed",
           chatId: variables.chatId,
           data: {
@@ -194,21 +200,38 @@ export function useCommitSpatialOwnerTurn() {
       } else {
         useChatStore.getState().setPendingSpatialTransitionStatus(variables.chatId, "needs_review");
         // The REST commit path had the same silent-reject gap as the pre-stream
-        // game turn: the mutation error never became a capability event, so
-        // listeners (World Maps included) only saw an untyped cache refresh.
+        // game turn: the mutation error never became a capability event. But a
+        // reject is synthesized ONLY on definitive evidence — a spatial_* code
+        // that is not already_applied. A network-lost 200 (the server applied
+        // the move) or an already_applied 409 with a failed recovery GET are
+        // inconclusive; those get the untyped refresh nudge instead, so
+        // listeners reconcile from server truth rather than a fabricated
+        // verdict (review finding).
         const rejectCode =
           error instanceof ApiError && error.payload && typeof error.payload === "object"
             ? (error.payload as Record<string, unknown>).code
             : undefined;
-        dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
-          type: "spatial_transition_rejected",
-          chatId: variables.chatId,
-          data: {
+        const definitiveReject =
+          typeof rejectCode === "string" &&
+          rejectCode.startsWith("spatial_") &&
+          rejectCode !== "spatial_transition_already_applied";
+        if (definitiveReject) {
+          dispatchSpatialCapabilityEvent(getGameExperiencePackageId(queryClient, variables.chatId), {
+            type: "spatial_transition_rejected",
             chatId: variables.chatId,
-            commandId: variables.transition.commandId,
-            ...(typeof rejectCode === "string" ? { code: rejectCode } : {}),
-          },
-        });
+            data: {
+              chatId: variables.chatId,
+              commandId: variables.transition.commandId,
+              code: rejectCode,
+            },
+          });
+        } else {
+          dispatchSpatialCapabilityEvent(getGameExperiencePackageId(queryClient, variables.chatId), {
+            type: "spatial_context_refresh",
+            chatId: variables.chatId,
+            data: null,
+          });
+        }
       }
       void queryClient.invalidateQueries({ queryKey: spatialContextKeys.detail(variables.chatId) });
     },

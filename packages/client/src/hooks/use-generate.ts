@@ -2877,20 +2877,27 @@ export function useGenerate() {
             // The game/roleplay owner-turn commit runs BEFORE the SSE stream
             // opens, so a rejection surfaces as this HTTP error and no
             // spatial_transition_rejected event ever reaches the capability
-            // listeners — synthesize it here. World Maps reconciles its pending
-            // state; the owning Experience learns the journey failed NOW
-            // instead of inferring it turns later.
-            spatialCapabilityRefreshDispatched = true;
-            dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
-              type: "spatial_transition_rejected",
-              chatId: params.chatId,
-              data: {
+            // listeners — synthesize it here, but ONLY on definitive evidence:
+            // a spatial_* code that is not already_applied. A codeless failure
+            // (network death after the pre-stream commit succeeded) and an
+            // already_applied 409 with a failed recovery GET are cases where
+            // the move may well have COMMITTED — announcing a reject there
+            // tells both audiences the opposite of the truth. Leaving the flag
+            // unset lets the finally-block spatial_context_refresh reconcile
+            // everyone from server state instead (review finding).
+            if (spatialErrorCode?.startsWith("spatial_") && spatialErrorCode !== "spatial_transition_already_applied") {
+              spatialCapabilityRefreshDispatched = true;
+              dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
+                type: "spatial_transition_rejected",
                 chatId: params.chatId,
-                commandId: params.pendingSpatialTransition.commandId,
-                ...(spatialErrorCode ? { code: spatialErrorCode } : {}),
-              },
-            });
-            void qc.invalidateQueries({ queryKey: spatialContextKeys.detail(params.chatId) });
+                data: {
+                  chatId: params.chatId,
+                  commandId: params.pendingSpatialTransition.commandId,
+                  code: spatialErrorCode,
+                },
+              });
+              void qc.invalidateQueries({ queryKey: spatialContextKeys.detail(params.chatId) });
+            }
           }
         }
         const msg = error instanceof Error ? error.message : "Generation failed";

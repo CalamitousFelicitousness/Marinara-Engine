@@ -461,8 +461,27 @@ assert.match(
 );
 assert.match(
   useGenerateSource,
-  /setPendingSpatialTransitionStatus\(params\.chatId, "needs_review"\);[\s\S]{0,900}?type: "spatial_transition_rejected",/u,
-  "an HTTP-rejected owner-turn transition must synthesize spatial_transition_rejected for capability listeners",
+  /setPendingSpatialTransitionStatus\(params\.chatId, "needs_review"\);[\s\S]{0,1400}?dispatchSpatialCapabilityEvent\(getGameExperiencePackageId\(qc, params\.chatId\), \{[\s\S]{0,200}?type: "spatial_transition_rejected",/u,
+  "an HTTP-rejected owner-turn transition must synthesize spatial_transition_rejected to BOTH audiences",
+);
+assert.match(
+  useGenerateSource,
+  /spatialErrorCode\?\.startsWith\("spatial_"\) && spatialErrorCode !== "spatial_transition_already_applied"/u,
+  "the synthesized reject must fire only on definitive evidence — never for already_applied or codeless failures",
+);
+const useSpatialContextSource = readSourceText(
+  new URL("../../packages/client/src/hooks/use-spatial-context.ts", import.meta.url),
+  "utf8",
+);
+assert.match(
+  useSpatialContextSource,
+  /rejectCode !== "spatial_transition_already_applied";[\s\S]{0,700}?dispatchSpatialCapabilityEvent\(getGameExperiencePackageId\(queryClient, variables\.chatId\), \{[\s\S]{0,200}?type: "spatial_transition_rejected",/u,
+  "the REST owner-turn commit must synthesize its reject to BOTH audiences, gated on definitive evidence",
+);
+assert.match(
+  useSpatialContextSource,
+  /type: "spatial_context_refresh",[\s\S]{0,120}?chatId: variables\.chatId,/u,
+  "inconclusive REST commit failures must fall back to the untyped refresh nudge",
 );
 assert.match(
   useGenerateSource,

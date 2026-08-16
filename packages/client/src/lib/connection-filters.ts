@@ -22,6 +22,11 @@ export type LocalSidecarConnectionOption = {
   useForRandom?: "false";
 };
 
+/** Storage returns connection flags as "true"/"false" strings; client payloads use booleans. */
+export function isConnectionFlagTrue(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
 export function isLanguageGenerationConnection(connection: ConnectionProviderLike): boolean {
   return (
     connection.provider !== "image_generation" &&

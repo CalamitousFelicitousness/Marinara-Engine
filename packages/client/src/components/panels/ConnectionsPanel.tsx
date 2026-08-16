@@ -965,8 +965,8 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             connections={audioConnections}
             primaryField="defaultForAgents"
             fallbackField="fallbackForAgents"
-            primaryEmptyLabel="No default audio connection"
-            fallbackModelLabel="Audio generation"
+            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
+            fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
         </div>
       </SmoothFolderContent>

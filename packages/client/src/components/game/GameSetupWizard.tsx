@@ -86,6 +86,7 @@ import {
   resolveGameSetupImport,
 } from "../../lib/game-setup-share";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
+import { filterLanguageGenerationConnections, isConnectionFlagTrue } from "../../lib/connection-filters";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 
@@ -157,10 +158,7 @@ interface WizardConnection {
   isDefault?: boolean | string;
   defaultForAgents?: boolean | string;
   fallbackForAgents?: boolean | string;
-}
-
-function isConnectionFlagTrue(value: boolean | string | undefined): boolean {
-  return value === true || value === "true";
+  profileImportReviewRequired?: boolean | string;
 }
 
 function CharacterAvatar({
@@ -639,13 +637,7 @@ export function GameSetupWizard({
   );
   // GM and scene-helper pickers offer language connections only; media
   // connections have their own dedicated pickers further into the wizard.
-  const languageConnections = useMemo(
-    () =>
-      connections.filter(
-        (c) => c.provider !== "image_generation" && c.provider !== "video_generation" && c.provider !== "audio",
-      ),
-    [connections],
-  );
+  const languageConnections = useMemo(() => filterLanguageGenerationConnections(connections), [connections]);
   const selectedGmConnection = useMemo(
     () => connections.find((connection) => connection.id === gmConnectionId) ?? null,
     [connections, gmConnectionId],
@@ -659,12 +651,7 @@ export function GameSetupWizard({
   // Quarantined (review-required) imports are refused by the server's
   // resolution, so they must not be offered or previewed here either.
   const audioConnections = useMemo(
-    () =>
-      connections.filter(
-        (c) =>
-          c.provider === "audio" &&
-          (c as { profileImportReviewRequired?: boolean | string }).profileImportReviewRequired !== "true",
-      ),
+    () => connections.filter((c) => c.provider === "audio" && c.profileImportReviewRequired !== "true"),
     [connections],
   );
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
@@ -2519,7 +2506,7 @@ export function GameSetupWizard({
                   />
                 </span>
               </button>
-              {resolvedAudioConnection != null && !audioConnectionSupportsSfx && !audioConnectionSupportsMusic && (
+              {resolvedAudioConnection != null && (!audioConnectionSupportsSfx || !audioConnectionSupportsMusic) && (
                 <p className="mt-2 text-[0.55rem] text-amber-700 dark:text-amber-400/80">{localizeUi("ui.game.gamesetupwizard.soundEffectAndMusicGenerationRequiresAnElevenlabsAudio")}</p>
               )}
             </div>

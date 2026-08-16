@@ -90,7 +90,7 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
-import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
+import { filterLanguageGenerationConnections, isConnectionFlagTrue } from "../../lib/connection-filters";
 import { gameAssetFileUrl } from "../../lib/game-asset-urls";
 import { audioManager } from "../../lib/game-audio";
 import {
@@ -2359,7 +2359,6 @@ function GameSurfaceComponent({
   // still gates setups that predate audio connections. Mirrors the server's
   // resolveAudioConfig order.
   const gameAudioConnection = useMemo(() => {
-    const isTrue = (value: unknown) => value === true || value === "true";
     // Quarantined (review-required) imports are refused by the server's
     // resolution (getWithKey/getDefaultForAudio return null for them), so
     // they must not drive capability gating here either.
@@ -2369,8 +2368,8 @@ function GameSurfaceComponent({
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
     return (
       (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??
-      rows.find((connection) => isTrue(connection.defaultForAgents)) ??
-      rows.find((connection) => isTrue(connection.fallbackForAgents)) ??
+      rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
+      rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
       null
     );
   }, [connectionsList, chatMeta.gameAudioConnectionId]);
@@ -2379,14 +2378,12 @@ function GameSurfaceComponent({
     ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
   const generateGameSoundEffects =
     (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs &&
-        (gameAudioConnection.audioSoundEffects === true || gameAudioConnection.audioSoundEffects === "true")
+      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioSoundEffects)
       : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true) &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
     (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs &&
-        (gameAudioConnection.audioMusic === true || gameAudioConnection.audioMusic === "true")
+      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioMusic)
       : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true) &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;

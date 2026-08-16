@@ -247,6 +247,11 @@ assertPosixReminderRouting("start-termux.sh");
 
 const windowsLauncherSource = readFileSync(join(repositoryRoot, "start.bat"), "utf8");
 assert.match(windowsLauncherSource, /check-launcher-update\.mjs/u);
+assert.match(
+  windowsLauncherSource,
+  /if not exist "\.git" \(\s*echo  \[OK\] Not a Git checkout; automatic updates and commit-based stale-build checks are unavailable\. Version checks will still run\.\s*goto :skip_update\s*\)/u,
+  "start.bat must distinguish unavailable Git checks from the retained version check",
+);
 
 for (const launcherName of ["start.sh", "start-termux.sh", "start.bat"]) {
   const launcherSource = readFileSync(join(repositoryRoot, launcherName), "utf8");

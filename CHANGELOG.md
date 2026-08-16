@@ -21,6 +21,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Kept launcher update snapshots small by excluding downloaded model caches and sidecar runtimes, while continuing to preserve user content and recovery backups (#5124).
+- Explained in the Windows launcher that non-Git installations cannot use automatic updates or commit-based stale-build checks, while version-based validation still runs (#5123).
 - Kept active characters in individual Conversation group chats responsive when another selected character is away, while preserving the away character's own configured delay and mention shortcut (#5122).
 - Reordered Storyboard Agent settings around separate Roleplay and Game Mode active flows, showed planning and provider-formatting stages in runtime order, kept setup visible, exposed image-aware Step 3 overrides in both chat editors, nested complete prompt collection editors inside their numbered stages, renamed the Stage 4 passthrough formatter, changed the default animation duration to 5 seconds, and hid animation-only controls for still-image defaults (#5120).
 - Added newly shipped built-in prompt choices to existing Storyboard agent configurations after package updates while preserving saved overrides, custom prompts, and current selections (#5118).

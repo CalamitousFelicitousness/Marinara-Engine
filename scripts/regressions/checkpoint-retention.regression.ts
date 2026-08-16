@@ -106,6 +106,26 @@ try {
     );
   }
 
+  // ── Part 2b: protectId under a same-millisecond tie must survive AND leave the cap at MAX ──
+  // Six rows share one createdAt; the (createdAt desc, id desc) sort puts the smallest id last, in
+  // the overflow window. Passing that smallest id as protectId must keep it without leaving MAX+1
+  // rows behind — merely skipping it in the overflow slice (the earlier bug) retained MAX+1.
+  {
+    const chat = await chats.create({ name: "retention protect", mode: "game", characterIds: [] });
+    assert.ok(chat);
+    createdChatIds.push(chat.id);
+    const ids = Array.from({ length: N + 1 }, (_, i) => `z${String(i).padStart(2, "0")}`);
+    for (const id of ids) await seedCheckpoint(chat.id, "location_change", 1, id); // all at ts(1)
+    const protectId = ids[0]!; // smallest id -> sorts into the overflow tail under the id tiebreak
+    await pruneAutoCheckpoints(db, chat.id, protectId);
+    const kept = (await checkpointSvc.listForChat(chat.id))
+      .filter((r) => r.triggerType === "location_change")
+      .map((r) => r.id);
+    assert.equal(kept.length, N, "the cap holds at MAX even when protectId sorts into the overflow window (not MAX+1)");
+    assert.ok(kept.includes(protectId), "protectId survives even when the id tiebreak sorts it out of the newest MAX");
+    assert.ok(!kept.includes(ids[1]!), "the oldest non-protected row is evicted to make room under the cap");
+  }
+
   // ── Part 3: end-to-end create() enforces the cap, exempts manual, protects the new row ──
   {
     const chat = await chats.create({ name: "retention integration", mode: "game", characterIds: [] });

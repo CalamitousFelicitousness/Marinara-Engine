@@ -93,8 +93,19 @@ export async function pruneAutoCheckpoints(db: DB, chatId: string, protectId?: s
     bucket.sort((a, b) =>
       a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
     );
-    for (const row of bucket.slice(MAX_AUTO_CHECKPOINTS_PER_TRIGGER)) {
-      if (row.id !== protectId) overflowIds.push(row.id);
+    // Retain exactly MAX rows, but always keep protectId — the row create() just inserted. A
+    // same-millisecond createdAt tie can sort that fresh row out of the newest MAX by the id
+    // tiebreak even though it is by definition the newest, so keep it plus the newest others up
+    // to the cap. This still evicts down to MAX (keeping protectId out of the overflow slice
+    // alone would leave MAX+1 rows behind).
+    const keep = new Set<string>();
+    if (protectId !== undefined && bucket.some((row) => row.id === protectId)) keep.add(protectId);
+    for (const row of bucket) {
+      if (keep.size >= MAX_AUTO_CHECKPOINTS_PER_TRIGGER) break;
+      keep.add(row.id);
+    }
+    for (const row of bucket) {
+      if (!keep.has(row.id)) overflowIds.push(row.id);
     }
   }
 

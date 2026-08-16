@@ -492,6 +492,9 @@ export interface GameCombatStateSnapshot {
   dialogueCues: CombatDialogueCue[];
   /** ID of the assistant message whose `[combat:]` tag opened this encounter. */
   startMessageId: string | null;
+  /** Encounter tier for context-bound combat music (#5161). Optional so
+   *  snapshots from older clients stay valid. */
+  musicTier?: string | null;
 }
 
 /** Post-combat summary handed to the GM for narration. */

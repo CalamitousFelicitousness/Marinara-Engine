@@ -161,6 +161,10 @@ import {
   mergeGameSetupConfigPreservingDynamicPrompt,
   resolveGameSetupArtStylePrompt,
   scoreMusic,
+  musicAreaSlug,
+  normalizeMusicEnemyTier,
+  isContextMusicTag,
+  type MusicEnemyTier,
   scoreAmbient,
 } from "@marinara-engine/shared";
 import { GameNarration, formatNarration } from "./GameNarration";
@@ -453,6 +457,40 @@ const GAME_ASSET_GENERATION_TIMEOUT_MS = 240_000;
 const GAME_ASSET_PREVIEW_TIMEOUT_MS = 180_000;
 const GAME_ASSET_PROMPT_REVIEW_TIMEOUT_MS = 180_000;
 const GAME_AUDIO_GENERATION_TIMEOUT_MS = 190_000;
+// Context tracks are longer compositions (server allows up to 300s of render time).
+const CONTEXT_MUSIC_GENERATION_TIMEOUT_MS = 310_000;
+
+function buildAreaMusicPrompt(
+  location: string,
+  opts: { genre?: string | null; setting?: string | null; timeOfDay?: string | null },
+): string {
+  return [
+    `Looping instrumental background theme for ${location}.`,
+    opts.genre ? `Genre: ${opts.genre}.` : "",
+    opts.setting ? `Setting: ${opts.setting}.` : "",
+    opts.timeOfDay ? `Time of day: ${opts.timeOfDay}.` : "",
+    "Seamless loop, no vocals, a consistent mood that can play for minutes without wearing out.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+const TIER_MUSIC_MOODS: Record<MusicEnemyTier, string> = {
+  common: "Driving but steady battle theme for an ordinary encounter — energetic, loopable, not overwhelming.",
+  miniboss: "Elevated-stakes battle theme for a dangerous named foe — urgent percussion, rising tension.",
+  boss: "Epic boss battle theme — full intensity, dramatic motifs, triumphant and threatening in equal measure.",
+  special: "Unusual, otherworldly encounter theme — unsettling or wondrous, memorable and distinct from normal combat.",
+};
+
+function buildTierMusicPrompt(tier: MusicEnemyTier, genre: string | null): string {
+  return [
+    `Looping instrumental combat music. ${TIER_MUSIC_MOODS[tier]}`,
+    genre ? `Genre: ${genre}.` : "",
+    "Seamless loop, no vocals.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 const SCENE_VIDEO_GENERATION_TIMEOUT_MS = 1_800_000;
 const IMAGE_PROMPT_REVIEW_TIMED_OUT = Symbol("IMAGE_PROMPT_REVIEW_TIMED_OUT");
 
@@ -2095,7 +2133,10 @@ function normalizeRecentMusicHistory(value: unknown): string[] {
 }
 
 function appendRecentMusic(history: string[], tag: string | null | undefined): string[] {
-  if (!tag) return history.slice(0, RECENT_MUSIC_HISTORY_LIMIT);
+  // Context tracks (#5161) are deliberately KEPT for long stretches; letting
+  // them into the anti-repeat window would fill it with one repeated tag and
+  // disable the legacy pool's rotation memory.
+  if (!tag || isContextMusicTag(tag)) return history.slice(0, RECENT_MUSIC_HISTORY_LIMIT);
   return [tag, ...history.filter((entry) => entry !== tag)].slice(0, RECENT_MUSIC_HISTORY_LIMIT);
 }
 
@@ -2545,15 +2586,35 @@ function GameSurfaceComponent({
   );
   const { data: assetManifest, refetch: fetchManifest } = useGameAssetManifest();
   const generatedAudioAssetsRef = useRef<Record<string, GameAssetEntry>>({});
+  // Session dedup for context-track generation requests (#5161), keyed `${axis}\0${key}`.
+  const contextMusicRequestRef = useRef<Set<string>>(new Set());
+  // Render-fresh mirrors for async music callbacks (#5161): a tier-track
+  // generation resolves minutes after the closure captured state.
+  const combatMusicTierRef = useRef<MusicEnemyTier | null>(null);
+  const musicDjSuppressedRef = useRef(false);
+  musicDjSuppressedRef.current = useMusicDjPlayerMusic;
+  // Unmount latch: audioManager and the asset store are module singletons, so
+  // a generation resolving after the surface unmounted must never play into
+  // whatever view the user is in now (review-found).
+  const gameSurfaceMountedRef = useRef(true);
+  useEffect(() => {
+    gameSurfaceMountedRef.current = true;
+    return () => {
+      gameSurfaceMountedRef.current = false;
+    };
+  }, []);
   const currentBackground = useGameAssetStore((s) => s.currentBackground);
   const gameAssetExcludedFolders = useMemo(
     () => parseGameAssetExcludedFolders(chatMeta.gameAssetSelection),
     [chatMeta.gameAssetSelection],
   );
+  // Session-generated entries obey the same per-chat folder exclusions as the
+  // manifest — merging them unfiltered re-injected excluded context tracks
+  // ahead of the blacklist (review-found).
   const scopedAssetMap = useMemo(
     () => ({
       ...(filterGameAssetMap(assetManifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...generatedAudioAssetsRef.current,
+      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
     }),
     [assetManifest?.assets, gameAssetExcludedFolders],
   );
@@ -2561,9 +2622,20 @@ function GameSurfaceComponent({
     const manifest = queryClient.getQueryData<GameAssetManifest>(gameAssetKeys.manifest());
     return {
       ...(filterGameAssetMap(manifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...generatedAudioAssetsRef.current,
+      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
     };
   }, [gameAssetExcludedFolders, queryClient]);
+  // Once the served manifest carries a session-generated tag, the manifest is
+  // authoritative — dropping our shadow copy lets later renames/deletes in
+  // the Game Assets panel take effect instead of a dead tag staying
+  // selectable all session (review-found).
+  useEffect(() => {
+    const manifestAssets = assetManifest?.assets;
+    if (!manifestAssets) return;
+    for (const tag of Object.keys(generatedAudioAssetsRef.current)) {
+      if (manifestAssets[tag]) delete generatedAudioAssetsRef.current[tag];
+    }
+  }, [assetManifest?.assets]);
   const gameAudioConnectionId = gameAudioConnection ? (gameAudioConnection.id as string) : undefined;
   const generateGameAudioAsset = useCallback(async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
     const category = kind === "sfx" ? "sfx" : "music";
@@ -2592,9 +2664,12 @@ function GameSurfaceComponent({
       return null;
     }
   }, [gameAudioConnectionId]);
+  // SFX only since #5161: music is never a per-turn generation prompt anymore —
+  // scoring picks from the library (context tracks included), and the library
+  // fills lazily via ensureContextMusicTrack.
   const materializeGeneratedGameAudio = useCallback(
     async (input: SceneAnalysis): Promise<SceneAnalysis> => {
-      if (!generateGameSoundEffects && !generateGameMusic) return input;
+      if (!generateGameSoundEffects) return input;
       const result: SceneAnalysis = {
         ...input,
         segmentEffects: input.segmentEffects?.map((effect) => ({
@@ -2602,17 +2677,11 @@ function GameSurfaceComponent({
           sfx: effect.sfx ? [...effect.sfx] : undefined,
         })),
       };
-      if (generateGameMusic && result.music) {
-        result.music = await generateGameAudioAsset("music", result.music);
-      }
       if (result.segmentEffects?.length) {
         result.segmentEffects = await Promise.all(
           result.segmentEffects.map(async (effect) => {
             const next = { ...effect };
-            if (generateGameMusic && next.music) {
-              next.music = (await generateGameAudioAsset("music", next.music)) ?? undefined;
-            }
-            if (generateGameSoundEffects && next.sfx?.length) {
+            if (next.sfx?.length) {
               const generated = await Promise.all(next.sfx.map((prompt) => generateGameAudioAsset("sfx", prompt)));
               next.sfx = generated.filter((tag): tag is string => !!tag);
             }
@@ -2622,7 +2691,94 @@ function GameSurfaceComponent({
       }
       return result;
     },
-    [generateGameAudioAsset, generateGameMusic, generateGameSoundEffects],
+    [generateGameAudioAsset, generateGameSoundEffects],
+  );
+
+  /** Direct scoring+play for combat (#5161): no scene-analysis pass runs
+   *  while the combat overlay is up, so tier music must be applied the moment
+   *  the tier becomes known or its track lands — otherwise tier tracks are
+   *  generated but never audible (review-found). Falls back to the legacy
+   *  combat pool while the tier track is still rendering. */
+  const playContextCombatMusic = useCallback(
+    (tier: MusicEnemyTier) => {
+      if (musicDjSuppressedRef.current) return;
+      const assetMap = getScopedAssetMap();
+      const scored = scoreMusic({
+        state: "combat",
+        musicIntensity: "intense",
+        enemyTier: tier,
+        currentMusic: useGameAssetStore.getState().currentMusic,
+        recentMusic: recentMusicHistoryRef.current,
+        availableMusic: Object.keys(assetMap ?? {}).filter((tag) => tag.startsWith("music:")),
+      });
+      if (scored) {
+        audioManager.playMusic(scored, assetMap);
+        useGameAssetStore.getState().setCurrentMusic(scored);
+      }
+    },
+    [getScopedAssetMap],
+  );
+
+  /** Lazily fill the context-music library (#5161): one composition per area
+   *  slug / encounter tier, generated once server-side into the scoreable
+   *  library. A library fill first — playback stays with the deterministic
+   *  scoring pass for areas (picked up on the next transition, so music never
+   *  lurches mid-narration); tier tracks additionally crossfade in on arrival
+   *  because combat has no further scoring passes. Failures clear the dedup
+   *  key and retry on a later turn. */
+  const ensureContextMusicTrack = useCallback(
+    (axis: "area" | "tier", key: string, prompt: string) => {
+      if (!generateGameMusic || !key || !prompt) return;
+      const prefix = `music:${axis}:${key}:`;
+      if (Object.keys(getScopedAssetMap()).some((tag) => tag.startsWith(prefix))) return;
+      const requestKey = `${axis}\0${key}`;
+      if (contextMusicRequestRef.current.has(requestKey)) return;
+      contextMusicRequestRef.current.add(requestKey);
+      // Scope the continuation like generateCombatStateForMessage does: the
+      // request belongs to THIS chat on THIS mounted surface.
+      const requestChatId = activeChatIdRef.current;
+      void (async () => {
+        try {
+          const generated = await withTimeout(
+            (signal) =>
+              api.post<{ tag: string; path: string }>(
+                "/tts/game-audio",
+                {
+                  kind: "music",
+                  prompt,
+                  context: { axis, key },
+                  ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}),
+                },
+                { signal },
+              ),
+            CONTEXT_MUSIC_GENERATION_TIMEOUT_MS,
+          );
+          if (!gameSurfaceMountedRef.current || activeChatIdRef.current !== requestChatId) {
+            // The file exists server-side either way; the new scope's own
+            // manifest pass will surface it. Just never PLAY into it.
+            contextMusicRequestRef.current.delete(requestKey);
+            return;
+          }
+          generatedAudioAssetsRef.current[generated.tag] = {
+            tag: generated.tag,
+            category: "music",
+            subcategory: axis,
+            name: generated.tag.split(":").at(-1) ?? generated.tag,
+            path: generated.path,
+            ext: ".mp3",
+          };
+          // Combat has no later scoring pass to adopt the track; crossfade in
+          // now if the fight this was generated for is still running.
+          if (axis === "tier" && combatMusicTierRef.current === key) {
+            playContextCombatMusic(key as MusicEnemyTier);
+          }
+        } catch (error) {
+          contextMusicRequestRef.current.delete(requestKey);
+          console.warn(`[game-audio] Failed to generate ${axis} music for "${key}":`, error);
+        }
+      })();
+    },
+    [generateGameMusic, getScopedAssetMap, gameAudioConnectionId, playContextCombatMusic],
   );
   const audioMuted = useGameAssetStore((s) => s.audioMuted);
 
@@ -2746,6 +2902,11 @@ function GameSurfaceComponent({
     formation: string | null;
     styleNotes: CombatStyleNotes | null;
   } | null>(null);
+  // Encounter tier for context-bound combat music (#5161): set from the
+  // /encounter/init blueprint (falling back from isBossFight), cleared with
+  // the rest of the combat state. Drives music:tier:<tier> selection.
+  const [combatMusicTier, setCombatMusicTier] = useState<MusicEnemyTier | null>(null);
+  combatMusicTierRef.current = combatMusicTier;
   // Guards the fire-once-per-battle auto background generation for tactical combat,
   // keyed by combatStartMessageId so a subsequent battle fires again.
   const tacticalAutoBackgroundFiredRef = useRef<string | null>(null);
@@ -3130,6 +3291,8 @@ function GameSurfaceComponent({
     setCombatParty(null);
     setCombatEnemies(null);
     setCombatSceneMeta(null);
+    setCombatMusicTier(null);
+    contextMusicRequestRef.current.clear();
     setCombatSpriteSuggestion(null);
     setNarrationDoneMsgId(null);
     lastProcessedMsgRef.current = null;
@@ -4458,8 +4621,19 @@ function GameSurfaceComponent({
     setCombatMechanics(Array.isArray(snapshot.mechanics) ? snapshot.mechanics : []);
     setCombatDialogueCues(Array.isArray(snapshot.dialogueCues) ? snapshot.dialogueCues : []);
     if (snapshot.startMessageId) setCombatStartMessageId(snapshot.startMessageId);
+    // #5161: restore the encounter tier so a mid-fight refresh doesn't swap
+    // the boss theme for generic combat music. Older snapshots (no field)
+    // fall back to the tier baked into the persisted current track, else
+    // "common" — the tier branch must stay engaged during a live fight.
+    setCombatMusicTier(
+      normalizeMusicEnemyTier(snapshot.musicTier ?? null) ??
+        normalizeMusicEnemyTier(
+          typeof chatMeta.gameSceneMusic === "string" ? /^music:tier:([a-z]+):/.exec(chatMeta.gameSceneMusic)?.[1] : null,
+        ) ??
+        "common",
+    );
     useGameModeStore.getState().setGameState("combat");
-  }, [activeChatId, chatMeta.gameCombatState, chatMeta.gameActiveState, isMessagesLoading]);
+  }, [activeChatId, chatMeta.gameCombatState, chatMeta.gameActiveState, chatMeta.gameSceneMusic, isMessagesLoading]);
 
   // ── Persist live combat snapshot to chat metadata (debounced) ──
   // Mirrors the scene-asset persistence above but only fires while combat is active.
@@ -4493,6 +4667,7 @@ function GameSurfaceComponent({
       mechanics: combatMechanics,
       dialogueCues: combatDialogueCues,
       startMessageId: combatStartMessageId,
+      musicTier: combatMusicTier,
     };
     combatPendingSnapshotRef.current = { chatId: activeChatId, snapshot };
     combatPersistTimer.current = setTimeout(() => {
@@ -4526,6 +4701,7 @@ function GameSurfaceComponent({
     };
   }, [
     activeChatId,
+    combatMusicTier,
     combatParty,
     combatEnemies,
     combatItemEffects,
@@ -4707,6 +4883,10 @@ function GameSurfaceComponent({
   // Uses a Zustand subscription to detect isStreaming going false, which is
   // immune to React effect timing / dependency issues.
   const processSceneRef = useRef<(() => void) | null>(null);
+  // Render-fresh handle for the skip button (#5161 review-found: the memoized
+  // skipSceneAnalysis captured a first-render applyInlineTags, so context
+  // music scoring ran with null location/tier forever).
+  const applyInlineTagsRef = useRef<typeof applyInlineTags | null>(null);
 
   // Keep the processing function fresh on every render so it captures current closure values
   processSceneRef.current = () => {
@@ -4955,6 +5135,7 @@ function GameSurfaceComponent({
       recentSpotifyTracks: recentSpotifyTrackHistoryRef.current,
       currentAmbient: useGameAssetStore.getState().currentAmbient,
       currentLocation: gameSnapshot?.location ?? null,
+      enemyTier: combatMusicTier,
       currentWeather: gameSnapshot?.weather ?? null,
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.genre as string | undefined) ?? null,
@@ -5077,6 +5258,28 @@ function GameSurfaceComponent({
       });
     }
 
+    // #5161: make sure this area has its persistent theme in the library.
+    // This sits on the path COMMON to every scene route — sidecar, scene
+    // connection, inline-only, and the error/timeout fallbacks — so lazy
+    // area generation is path-independent (review-found: it originally lived
+    // only on the inline fallback, leaving the feature inert for the default
+    // agent-enabled configuration). The next scoring pass picks the track up.
+    if (!useMusicDjPlayerMusic && gameSnapshot?.location) {
+      const areaSlug = musicAreaSlug(gameSnapshot.location);
+      if (areaSlug) {
+        const setup = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
+        ensureContextMusicTrack(
+          "area",
+          areaSlug,
+          buildAreaMusicPrompt(gameSnapshot.location, {
+            genre: (setup?.genre as string | undefined) ?? null,
+            setting: (setup?.setting as string | undefined) ?? null,
+            timeOfDay: gameSnapshot?.time ?? metaTime ?? null,
+          }),
+        );
+      }
+    }
+
     runSceneAnalysis(sceneContext);
   };
 
@@ -5101,6 +5304,8 @@ function GameSurfaceComponent({
       timeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       musicIntensity:
         sceneAnalysisState === "combat" ? "intense" : sceneAnalysisState === "travel_rest" ? "calm" : null,
+      locationSlug: musicAreaSlug(gameSnapshot?.location ?? null),
+      enemyTier: sceneAnalysisState === "combat" ? combatMusicTier : null,
       currentMusic: useGameAssetStore.getState().currentMusic,
       recentMusic: recentMusicHistoryRef.current,
       availableMusic: musicTags,
@@ -5609,6 +5814,7 @@ function GameSurfaceComponent({
 
   // Keep ref up-to-date so retry button can call it
   applySceneResultRef.current = (r) => applySceneResult(r, latestAssistantMsg!);
+  applyInlineTagsRef.current = applyInlineTags;
 
   /** Retry scene analysis: re-run the full processing pipeline for the current message. */
   const retrySceneAnalysis = useCallback(() => {
@@ -5625,8 +5831,8 @@ function GameSurfaceComponent({
     if (!msg?.content) return;
     const tags = parseGmTags(msg.content);
     setSceneAnalysisFailed(false);
-    applyInlineTags(tags, getScopedAssetMap(), msg);
-  }, [getScopedAssetMap]); // eslint-disable-line react-hooks/exhaustive-deps
+    applyInlineTagsRef.current?.(tags, getScopedAssetMap(), msg);
+  }, [getScopedAssetMap]);
 
   /** Retry failed image/NPC avatar generation. */
   const requestAssetGeneration = useCallback(
@@ -6518,6 +6724,7 @@ function GameSurfaceComponent({
       recentSpotifyTracks: recentSpotifyTrackHistoryRef.current,
       currentAmbient: useGameAssetStore.getState().currentAmbient,
       currentLocation: gameSnapshot?.location ?? null,
+      enemyTier: combatMusicTier,
       currentWeather: gameSnapshot?.weather ?? null,
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
@@ -6575,6 +6782,7 @@ function GameSurfaceComponent({
   }, [
     activeChatId,
     assistantTurnCount,
+    combatMusicTier,
     chatMeta.gameImagePromptInstructions,
     chatMeta.gameSceneConnectionId,
     chatMeta.gameSetupConfig,
@@ -8247,6 +8455,27 @@ function GameSurfaceComponent({
           }
 
           const visuals = response.combatState.visuals;
+          // #5161: classify the encounter for context-bound combat music and
+          // make sure the tier's persistent track exists in the library.
+          const encounterTier =
+            normalizeMusicEnemyTier(visuals?.encounterTier ?? null) ?? (visuals?.isBossFight ? "boss" : "common");
+          setCombatMusicTier(encounterTier);
+          // Sync the mirror NOW: the generation below may resolve before the
+          // state commit re-renders, and its still-in-this-fight check reads
+          // the ref.
+          combatMusicTierRef.current = encounterTier;
+          ensureContextMusicTrack(
+            "tier",
+            encounterTier,
+            buildTierMusicPrompt(
+              encounterTier,
+              ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.genre as string | undefined) ?? null,
+            ),
+          );
+          // Apply combat music immediately: no scene-analysis pass runs while
+          // the overlay is up. Plays the tier track when it already exists,
+          // else the legacy combat pool until the composition lands.
+          playContextCombatMusic(encounterTier);
           const enemyAvatarRequests = (
             Array.isArray(visuals?.enemyImagePrompts) && visuals.enemyImagePrompts.length > 0
               ? visuals.enemyImagePrompts
@@ -8381,6 +8610,9 @@ function GameSurfaceComponent({
       gameImageAutoGenerationEnabled,
       hydrateGeneratedCombatState,
       requestAssetGeneration,
+      ensureContextMusicTrack,
+      playContextCombatMusic,
+      chatMeta.gameSetupConfig,
       localizeUi,
     ],
   );
@@ -9809,6 +10041,7 @@ function GameSurfaceComponent({
     setCombatParty(null);
     setCombatEnemies(null);
     setCombatSceneMeta(null);
+    setCombatMusicTier(null);
     setPendingEncounter(null);
     setQueuedEncounter(null);
     setQueuedCombatGeneration(null);
@@ -9844,6 +10077,7 @@ function GameSurfaceComponent({
       setCombatParty(null);
       setCombatEnemies(null);
       setCombatSceneMeta(null);
+      setCombatMusicTier(null);
       setQueuedCombatGeneration(null);
       setCombatGenerationPending(false);
       setCombatItemEffects([]);
@@ -10144,6 +10378,7 @@ function GameSurfaceComponent({
       recentMusic: recentMusicHistoryRef.current,
       currentAmbient: useGameAssetStore.getState().currentAmbient,
       currentLocation: gameSnapshot?.location ?? null,
+      enemyTier: combatMusicTier,
       currentWeather: gameSnapshot?.weather ?? null,
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
@@ -10181,6 +10416,7 @@ function GameSurfaceComponent({
     }
   }, [
     assistantTurnCount,
+    combatMusicTier,
     latestAssistantMsg,
     scopedAssetMap,
     gameState,

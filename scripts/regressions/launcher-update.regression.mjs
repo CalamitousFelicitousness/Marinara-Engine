@@ -247,6 +247,11 @@ assertPosixReminderRouting("start-termux.sh");
 
 const windowsLauncherSource = readFileSync(join(repositoryRoot, "start.bat"), "utf8");
 assert.match(windowsLauncherSource, /check-launcher-update\.mjs/u);
+assert.match(
+  windowsLauncherSource,
+  /if not exist "\.git" \(\s*echo  \[OK\] Not a Git checkout; automatic updates and commit-based stale-build checks are unavailable\. Version checks will still run\.\s*goto :skip_update\s*\)/u,
+  "start.bat must distinguish unavailable Git checks from the retained version check",
+);
 
 for (const launcherName of ["start.sh", "start-termux.sh", "start.bat"]) {
   const launcherSource = readFileSync(join(repositoryRoot, launcherName), "utf8");
@@ -337,6 +342,14 @@ try {
   mkdirSync(capabilityRuntimeDependencies, { recursive: true });
   writeFileSync(join(capabilityPackagesDir, "installed.json"), '{"preserved":true}\n');
   writeFileSync(join(capabilityRuntimeDependencies, "runtime.js"), "export {};\n");
+  for (const downloadableDir of ["models", "sidecar-runtime"]) {
+    const path = join(defaultDataDir, downloadableDir);
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "downloaded.bin"), "downloaded runtime data\n");
+  }
+  const galleryDir = join(defaultDataDir, "gallery");
+  mkdirSync(galleryDir, { recursive: true });
+  writeFileSync(join(galleryDir, "selfie.png"), "irreplaceable user data\n");
   symlinkSync(
     capabilityRuntimeDependencies,
     join(capabilityPackagesDir, "node_modules"),
@@ -361,6 +374,18 @@ try {
     false,
     "Launcher snapshots must omit the generated capability runtime junction",
   );
+  for (const downloadableDir of ["models", "sidecar-runtime"]) {
+    assert.equal(
+      existsSync(join(snapshot.backupDir, "data", downloadableDir)),
+      false,
+      `Launcher snapshots must omit re-downloadable ${downloadableDir} data`,
+    );
+  }
+  assert.equal(
+    readFileSync(join(snapshot.backupDir, "data", "gallery", "selfie.png"), "utf8"),
+    "irreplaceable user data\n",
+    "Launcher snapshots must keep user-created media",
+  );
 
   rmSync(defaultDataDir, { recursive: true, force: true });
   const restore = await restoreLauncherDataIfMissing({ root: fixtureRoot, backupRoot: fixtureBackupRoot, env: {} });
@@ -371,6 +396,9 @@ try {
     '{"preserved":true}\n',
   );
   assert.equal(existsSync(join(defaultDataDir, "capability-packages", "node_modules")), false);
+  assert.equal(readFileSync(join(defaultDataDir, "gallery", "selfie.png"), "utf8"), "irreplaceable user data\n");
+  assert.equal(existsSync(join(defaultDataDir, "models")), false);
+  assert.equal(existsSync(join(defaultDataDir, "sidecar-runtime")), false);
 
   writeFileSync(join(fixtureRoot, ".env"), "DATA_DIR=../custom-data\n");
   assert.equal(

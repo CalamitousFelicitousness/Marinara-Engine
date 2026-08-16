@@ -776,6 +776,43 @@ function mergeRoleplayInventoryTrackerRowsWithLocks(
   });
 }
 
+/**
+ * Keep a currency or equipped item out of the carried list.
+ *
+ * The route filters carried rows before locks are applied, but
+ * `mergeNamedRowsWithLocks` deliberately re-appends a locked row the agent
+ * dropped — which is exactly what happens when a locked carried item gets
+ * equipped, leaving it in both lists. Re-check after merging so the invariant
+ * holds on every path into state, including the client's patch merge.
+ *
+ * Correcting the carried list can mean adding it to a patch that only touched
+ * `equipped`; that is intended, since omitting it would persist the duplicate.
+ */
+function enforceRoleplayInventoryTrackerExclusivity(
+  playerStatsPatch: Partial<PlayerStats>,
+  currentPlayerStats: PlayerStats,
+) {
+  const patchedCurrencies = playerStatsPatch.inventoryTrackerCurrencies;
+  const patchedEquipped = playerStatsPatch.inventoryTrackerEquipped;
+  const patchedCarried = playerStatsPatch.inventoryTrackerInventory;
+  if (!Array.isArray(patchedCurrencies) && !Array.isArray(patchedEquipped) && !Array.isArray(patchedCarried)) return;
+
+  const currencies = Array.isArray(patchedCurrencies)
+    ? patchedCurrencies
+    : (currentPlayerStats.inventoryTrackerCurrencies ?? []);
+  const equipped = Array.isArray(patchedEquipped)
+    ? patchedEquipped
+    : (currentPlayerStats.inventoryTrackerEquipped ?? []);
+  const carried = Array.isArray(patchedCarried)
+    ? patchedCarried
+    : (currentPlayerStats.inventoryTrackerInventory ?? []);
+  if (carried.length === 0 || (currencies.length === 0 && equipped.length === 0)) return;
+
+  const excluded = new Set([...currencies, ...equipped].map((row) => normalizeComparableText(row?.name)));
+  const deduped = carried.filter((row) => !excluded.has(normalizeComparableText(row?.name)));
+  if (deduped.length !== carried.length) playerStatsPatch.inventoryTrackerInventory = deduped;
+}
+
 function mergeCustomTrackerFieldsWithGenericLocks(
   nextFields: CustomTrackerField[],
   currentFields: CustomTrackerField[] | null | undefined,
@@ -1098,6 +1135,7 @@ export function applyTrackerFieldLocksToGameStatePatch<T extends Record<string, 
         locks,
       );
     }
+    enforceRoleplayInventoryTrackerExclusivity(playerStatsPatch, currentPlayerStats);
     next.playerStats = playerStatsPatch;
   }
 

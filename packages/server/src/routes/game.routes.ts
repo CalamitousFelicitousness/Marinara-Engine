@@ -1710,6 +1710,11 @@ const MAX_EXPERIENCE_STATE_CHARS = 262_144;
  *  older rows are unreachable — pruning them bounds the chat's game_engine_state shard. */
 const EXPERIENCE_STATE_KEEP_ANCHORS = 100;
 const GAME_REPUTATION_ACTION_MAX_LENGTH = 500;
+/** Shape and length ceiling for a game-surface Experience's package id (#5102). The setup schema
+ *  and the experience-state route's resolver must validate a stamp identically — a looser rule here
+ *  would mint ids the route then rejects with 409, a tighter one would strand already-stored stamps. */
+const GAME_EXPERIENCE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const GAME_EXPERIENCE_ID_MAX_CHARS = 80;
 const trimmedWidgetString = (max: number) => z.string().trim().min(1).max(max);
 
 const hudWidgetSchema = z.object({
@@ -1749,8 +1754,8 @@ const gameSetupConfigSchema = z.object({
    *  since this is matched against one to mount the surface. */
   gameExperienceId: z
     .string()
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .max(80)
+    .regex(GAME_EXPERIENCE_ID_PATTERN)
+    .max(GAME_EXPERIENCE_ID_MAX_CHARS)
     .optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
@@ -10010,7 +10015,9 @@ export async function gameRoutes(app: FastifyInstance) {
   const resolveExperienceStateGameType = (chat: { mode?: string | null; metadata?: unknown }): string | null => {
     if (chat.mode !== "game") return null;
     const id = parseMeta(chat.metadata).gameExperienceId;
-    if (typeof id !== "string" || id.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return null;
+    if (typeof id !== "string" || id.length > GAME_EXPERIENCE_ID_MAX_CHARS || !GAME_EXPERIENCE_ID_PATTERN.test(id)) {
+      return null;
+    }
     return `experience:${id}`;
   };
 
@@ -13457,10 +13464,10 @@ export async function gameRoutes(app: FastifyInstance) {
                 !!entry && typeof entry.gameType === "string" && typeof entry.state === "string",
             )
           : [];
-      } catch {
+      } catch (err) {
         // Corrupt capture: fall through to the legacy re-lookup below rather than
         // silently leaving the game on its post-checkpoint state.
-        logger.error("Unparseable checkpoint engineStateData for chat %s; using the legacy restore lookup", input.chatId);
+        logger.error(err, "Unparseable checkpoint engineStateData for chat %s; using the legacy restore lookup", input.chatId);
         return [];
       }
     })();

@@ -1253,7 +1253,9 @@ function matchesLike(value: unknown, pattern: unknown) {
   // searches over comment fields and, worse, let a crafted multi-line value escape
   // a notLike() namespace boundary (a non-match inverts to true).
   const escaped = String(pattern ?? "")
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    // Escape every regex metacharacter, including * and ? — in SQL LIKE only % and _ are wildcards,
+    // so * and ? are literals; leaving them unescaped made "*" throw and "a*b"/"a?b" match non-literally.
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replace(/%/g, "[\\s\\S]*")
     .replace(/_/g, "[\\s\\S]");
   return new RegExp(`^${escaped}$`, "i").test(String(value ?? ""));

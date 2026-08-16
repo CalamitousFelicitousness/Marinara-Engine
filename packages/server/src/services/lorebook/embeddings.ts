@@ -142,6 +142,13 @@ function getExistingEmbeddingSpaceId(entries: LorebookEntry[]): string | null {
   return null;
 }
 
+function hasIncompatibleEmbeddingSpace(entries: LorebookEntry[], activeSpaceId: string): boolean {
+  return entries.some(
+    (entry) =>
+      !entry.excludeFromVectorization && Boolean(entry.embedding?.length) && entry.embeddingSpaceId !== activeSpaceId,
+  );
+}
+
 async function embedLorebookTexts(
   texts: string[],
   options: LorebookEmbeddingOptions,
@@ -176,7 +183,11 @@ export async function warmLorebookEntryEmbeddings(
   const existingDimension = getExistingEmbeddingDimension(entries);
   const existingSpaceId = getExistingEmbeddingSpaceId(entries);
   const embeddingSpaceId = options.embeddingSource?.spaceId ?? null;
-  if (existingSpaceId && embeddingSpaceId && existingSpaceId !== embeddingSpaceId) {
+  if (
+    embeddingSpaceId &&
+    (hasIncompatibleEmbeddingSpace(entries, embeddingSpaceId) ||
+      (existingSpaceId !== null && existingSpaceId !== embeddingSpaceId))
+  ) {
     logger.warn(
       "[lorebook-embeddings] Skipping warmup because stored entries use a different embedding source. Refresh lorebook embeddings before switching provider or model.",
     );
@@ -228,11 +239,7 @@ export async function semanticShortlistLorebookEntries(
     .map((entry) => {
       const embedding = entry.embedding;
       if (!embedding || embedding.length === 0) return null;
-      if (
-        entry.embeddingSpaceId &&
-        options.embeddingSource?.spaceId &&
-        entry.embeddingSpaceId !== options.embeddingSource.spaceId
-      ) {
+      if (options.embeddingSource?.spaceId && entry.embeddingSpaceId !== options.embeddingSource.spaceId) {
         if (!sourceMismatchLogged) {
           sourceMismatchLogged = true;
           logger.warn(

@@ -9814,6 +9814,13 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         semanticThreshold: 0.3,
       });
       assert.equal(incompatible.length, 0);
+
+      const unknownProvenance = scanForActivatedEntries(scanMessages, [{ ...entry, embeddingSpaceId: null } as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingSpaceId: "test-space",
+        semanticThreshold: 0.3,
+      });
+      assert.equal(unknownProvenance.length, 0, "legacy vectors without provenance must be re-vectorized");
     },
   },
   {

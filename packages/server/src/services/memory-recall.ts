@@ -24,6 +24,7 @@ const SIMILARITY_THRESHOLD = 0.25;
 
 /** Maximum number of recalled memories per generation. */
 const DEFAULT_TOP_K = 8;
+export const DEFAULT_LOCAL_MEMORY_EMBEDDING_SPACE_ID = "local:Xenova/all-MiniLM-L6-v2:plain-v1";
 const memoryMutationTails = new Map<string, Promise<void>>();
 
 async function serializeMemoryMutation<T>(chatId: string, task: () => Promise<T>): Promise<T> {
@@ -111,6 +112,11 @@ export interface ChunkAndEmbedMessagesOptions extends MemoryRecallEmbeddingOptio
    * active prompt window.
    */
   readBehindMessageCount?: number | null;
+}
+
+function resolveMemoryEmbeddingSpaceId(options: MemoryRecallEmbeddingOptions): string | null {
+  if (options.embeddingSource) return options.embeddingSource.spaceId?.trim() || null;
+  return DEFAULT_LOCAL_MEMORY_EMBEDDING_SPACE_ID;
 }
 
 export async function embedMemoryRecallTexts(
@@ -288,6 +294,24 @@ async function chunkAndEmbedMessagesUnlocked(
   options: ChunkAndEmbedMessagesOptions = {},
 ): Promise<void> {
   if (isLite) return;
+  const embeddingSpaceId = resolveMemoryEmbeddingSpaceId(options);
+  if (!embeddingSpaceId) {
+    logger.warn("[memory-recall] Skipping memory chunking because the active embedding source has no space ID");
+    return;
+  }
+
+  const existingEmbeddingSpaces = await db
+    .select({ embeddingSpaceId: memoryChunks.embeddingSpaceId })
+    .from(memoryChunks)
+    .where(and(eq(memoryChunks.chatId, chatId), isNull(memoryChunks.sourceChatId), isNotNull(memoryChunks.embedding)));
+  if (existingEmbeddingSpaces.some((chunk) => chunk.embeddingSpaceId !== embeddingSpaceId)) {
+    await db.delete(memoryChunks).where(and(eq(memoryChunks.chatId, chatId), isNull(memoryChunks.sourceChatId)));
+    logger.warn(
+      "[memory-recall] Rebuilding native memory chunks for chat %s because the embedding provider, model, or input profile changed",
+      chatId,
+    );
+  }
+
   const allMessages = await db
     .select({
       id: messages.id,
@@ -407,6 +431,7 @@ async function chunkAndEmbedMessagesUnlocked(
       chatId,
       content: chunk.content,
       embedding: JSON.stringify(embeddings[i]!),
+      embeddingSpaceId,
       messageCount: chunk.messageCount,
       firstMessageAt: chunk.firstMessageAt,
       lastMessageAt: chunk.lastMessageAt,
@@ -461,6 +486,11 @@ export async function recallMemories(
 ): Promise<RecalledMemory[]> {
   if (isLite) return [];
   if (chatIds.length === 0) return [];
+  const embeddingSpaceId = resolveMemoryEmbeddingSpaceId(options);
+  if (!embeddingSpaceId) {
+    logger.warn("[memory-recall] Skipping recall because the active embedding source has no space ID");
+    return [];
+  }
 
   // Embed the query using local model
   const queryEmbeddings = await embedMemoryRecallTexts([query], { ...options, inputType: "query" });
@@ -480,6 +510,7 @@ export async function recallMemories(
       chatId: memoryChunks.chatId,
       content: memoryChunks.content,
       embedding: memoryChunks.embedding,
+      embeddingSpaceId: memoryChunks.embeddingSpaceId,
       firstMessageAt: memoryChunks.firstMessageAt,
       lastMessageAt: memoryChunks.lastMessageAt,
     })
@@ -495,10 +526,20 @@ export async function recallMemories(
   if (chunks.length === 0) return [];
 
   let dimensionMismatchLogged = false;
+  let sourceMismatchLogged = false;
 
   // Score each chunk by cosine similarity
   const scored = chunks
     .map((chunk): RecalledMemory | null => {
+      if (chunk.embeddingSpaceId !== embeddingSpaceId) {
+        if (!sourceMismatchLogged) {
+          sourceMismatchLogged = true;
+          logger.warn(
+            "[memory-recall] Skipping one or more memory chunks from an unknown or different embedding provider, model, or input profile. Rebuild memories before recall.",
+          );
+        }
+        return null;
+      }
       const embedding = parseStoredEmbedding(chunk.embedding);
       if (!embedding || embedding.length !== queryEmbedding.length) {
         if (!dimensionMismatchLogged) {

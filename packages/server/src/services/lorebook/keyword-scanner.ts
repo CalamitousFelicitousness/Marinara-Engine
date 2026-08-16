@@ -609,7 +609,7 @@ export function scanForActivatedEntries(
       if (!entry.embedding || entry.embedding.length === 0) continue;
       const queryEmbedding = semanticEmbeddingsByLorebookId.get(entry.lorebookId) ?? chatEmbedding;
       if (!queryEmbedding || queryEmbedding.length === 0) continue;
-      if (entry.embeddingSpaceId && semanticEmbeddingSpaceId && entry.embeddingSpaceId !== semanticEmbeddingSpaceId) {
+      if (semanticEmbeddingSpaceId && entry.embeddingSpaceId !== semanticEmbeddingSpaceId) {
         logger.debug(
           "[lorebook-vectors] Rejected entry %s: stored vector space %s differs from active space %s",
           entry.id,

@@ -1224,21 +1224,24 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       embeddingProfileModel,
       "document",
     );
-    const existingEmbeddingDimension = body.onlyMissing
-      ? ((allEntries as Array<Record<string, unknown>>)
-          .map((entry) => entry.embedding)
-          .find((embedding): embedding is unknown[] => Array.isArray(embedding) && embedding.length > 0)?.length ??
-        null)
+    const existingVectorEntries = body.onlyMissing
+      ? (allEntries as Array<Record<string, unknown>>).filter(
+          (entry) => Array.isArray(entry.embedding) && entry.embedding.length > 0,
+        )
+      : [];
+    const existingEmbeddingDimension = Array.isArray(existingVectorEntries[0]?.embedding)
+      ? existingVectorEntries[0].embedding.length
       : null;
-    const existingEmbeddingSpaceId = body.onlyMissing
-      ? ((allEntries as Array<Record<string, unknown>>)
-          .map((entry) => entry.embeddingSpaceId)
-          .find((spaceId): spaceId is string => typeof spaceId === "string" && spaceId.length > 0) ?? null)
-      : null;
-    if (existingEmbeddingSpaceId && existingEmbeddingSpaceId !== embeddingSpaceId) {
+    const hasUnknownEmbeddingSpace = existingVectorEntries.some(
+      (entry) => typeof entry.embeddingSpaceId !== "string" || !entry.embeddingSpaceId.trim(),
+    );
+    const hasDifferentEmbeddingSpace = existingVectorEntries.some(
+      (entry) => entry.embeddingSpaceId !== embeddingSpaceId,
+    );
+    if (hasUnknownEmbeddingSpace || hasDifferentEmbeddingSpace) {
       return reply.status(409).send({
         error:
-          "The existing vectors use a different embedding provider or model. Use Re-vectorize all entries before switching embedding sources.",
+          "The existing vectors use an unknown or different embedding provider, model, or input profile. Use Re-vectorize all entries before switching embedding sources.",
       });
     }
 

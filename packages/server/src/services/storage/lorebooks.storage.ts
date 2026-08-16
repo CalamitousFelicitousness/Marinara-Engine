@@ -944,7 +944,10 @@ export function createLorebooksStorage(db: DB) {
       if (input.delayUntilRecursion !== undefined) updates.delayUntilRecursion = String(input.delayUntilRecursion);
       if (input.excludeFromVectorization !== undefined)
         updates.excludeFromVectorization = String(input.excludeFromVectorization);
-      if (shouldClearEmbedding) updates.embedding = null;
+      if (shouldClearEmbedding) {
+        updates.embedding = null;
+        updates.embeddingSpaceId = null;
+      }
 
       await db.update(lorebookEntries).set(updates).where(eq(lorebookEntries.id, id));
       return this.getEntry(id);

@@ -73,6 +73,14 @@ export const apiConnections = fileTable("api_connections", {
   videoGenerationSource: text("video_generation_source"),
   /** Video generation: explicitly selected service ID. */
   videoService: text("video_service"),
+  /** Audio backend for audio connections (openai | elevenlabs | pockettts | xai). */
+  audioSource: text("audio_source"),
+  /** Default voice id/name for speech synthesis on this audio connection. */
+  audioVoice: text("audio_voice"),
+  /** Whether this audio connection may generate game sound effects ("true"/"false"). */
+  audioSoundEffects: text("audio_sound_effects").notNull().default("false"),
+  /** Whether this audio connection may generate game music ("true"/"false"). */
+  audioMusic: text("audio_music").notNull().default("false"),
   /** Default generation parameters (stored as JSON) for new chats using this connection */
   defaultParameters: text("default_parameters"),
   /** Optional prompt preset override for Roleplay chats using this connection */

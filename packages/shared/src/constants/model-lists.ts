@@ -992,6 +992,9 @@ export const MODEL_LISTS: Record<APIProvider, KnownModel[]> = {
   custom: [...OPENAI_MODELS, ...ZAI_MODELS],
   image_generation: IMAGE_GEN_MODELS,
   video_generation: VIDEO_GEN_MODELS,
+  // Audio backends have no unified model catalog; models/voices are fetched
+  // per-source through the TTS discovery endpoints.
+  audio: [],
 };
 
 const OPENAI_COMPATIBLE_AGGREGATOR_MODELS: KnownModel[] = [

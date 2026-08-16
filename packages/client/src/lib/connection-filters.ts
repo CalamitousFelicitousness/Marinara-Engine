@@ -23,7 +23,11 @@ export type LocalSidecarConnectionOption = {
 };
 
 export function isLanguageGenerationConnection(connection: ConnectionProviderLike): boolean {
-  return connection.provider !== "image_generation" && connection.provider !== "video_generation";
+  return (
+    connection.provider !== "image_generation" &&
+    connection.provider !== "video_generation" &&
+    connection.provider !== "audio"
+  );
 }
 
 export function filterLanguageGenerationConnections<T extends ConnectionProviderLike>(

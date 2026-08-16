@@ -148,7 +148,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
-- Fixed Playwright web-server startup on Windows when pnpm launcher metadata or inherited stdin is unavailable (#ISSUE).
+- Fixed Playwright web-server startup on Windows when pnpm launcher metadata or inherited stdin is unavailable (#5126).
 - Included Noodle in Professor Mari's official 32-package catalog knowledge and corrected the current downloadable-package documentation for the v2.4.2 Agent catalog (#4992).
 - Kept version-tagged Docker release images on the stable Marinara Agents catalog instead of following staging after publication.
 - Kept dependency security updates pinned to patched resolutions and made the existing pnpm launcher handoff checks a required pull-request gate, protecting upgrades without forcing users onto a new package-manager major version (#4988).

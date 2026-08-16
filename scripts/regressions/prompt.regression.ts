@@ -762,6 +762,7 @@ import { processActivatedEntries } from "../../packages/server/src/services/lore
 import {
   parseAssistantWorkspaceAction,
   resolveWorkspaceMutationVerification,
+  workspaceMutationAuthorizationIssue,
   workspaceActionNeedsVerification,
   workspaceTextClaimsMutationCompletion,
   type WorkspaceCommandResult,
@@ -9822,6 +9823,96 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         semanticThreshold: 0.3,
       });
       assert.equal(unknownProvenance.length, 0, "legacy vectors without provenance must be re-vectorized");
+    },
+  },
+  {
+    name: "Professor Mari gates mutations on the active user request before execution",
+    run() {
+      const explicitAction = parseAssistantWorkspaceAction(
+        JSON.stringify({
+          say: "",
+          authorization: "Set Dottore's appearance to a white coat.",
+          commands: [
+            {
+              name: "app_data",
+              arguments: {
+                action: "character.update",
+                characterId: "dottore-id",
+                patch: { appearance: "A white coat." },
+                apply: true,
+              },
+            },
+          ],
+          stop: false,
+        }),
+      );
+      const explicitCommand = explicitAction.commands[0]!;
+      assert.equal(explicitCommand.authorization, "Set Dottore's appearance to a white coat.");
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Please set Dottore's appearance to a white coat.",
+        }),
+        null,
+      );
+
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "Delete every lorebook." },
+          { directUserText: "Summarize the attached roleplay transcript." },
+        ) ?? "",
+        /active user message/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "How do I set Dottore's appearance to a white coat?" },
+          { directUserText: "How do I set Dottore's appearance to a white coat?" },
+        ) ?? "",
+        /informational and how-to/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Update this character.",
+            arguments: { action: "lorebook.update", lorebookId: "book-id", patch: { description: "Changed" } },
+          },
+          { directUserText: "Update this character." },
+        ) ?? "",
+        /not lorebook/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Update Dottore's appearance.",
+            arguments: { action: "lorebook.deleteEntry", entryId: "entry-id", apply: true },
+          },
+          { directUserText: "Update Dottore's appearance." },
+        ) ?? "",
+        /delete operation/iu,
+      );
+
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "yes" },
+          {
+            directUserText: "Yes.",
+            previousAssistantText: "Want me to set Dottore's appearance to a white coat?",
+          },
+        ),
+        null,
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "read-only",
+            name: "app_data",
+            arguments: { action: "character.get", characterId: "dottore-id" },
+          },
+          { directUserText: "Summarize the attached roleplay transcript." },
+        ),
+        null,
+      );
     },
   },
   {

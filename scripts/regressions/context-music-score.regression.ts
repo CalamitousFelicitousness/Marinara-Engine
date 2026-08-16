@@ -103,14 +103,23 @@ assert.equal(musicAreaSlug("  "), null);
 assert.equal(musicAreaSlug(null), null);
 assert.equal(musicAreaSlug("---Neon District---"), "neon-district");
 
-// 10. Uncontrolled input stays linear (CodeQL polynomial-regex alert): a
+// 10. Non-Latin location names keep the area axis alive through a stable
+// hash key instead of silently disabling it.
+{
+  const cjk = musicAreaSlug("東京タワー");
+  assert.ok(cjk && /^x[0-9a-z]+$/.test(cjk), `non-Latin names get a stable hash key (got ${cjk})`);
+  assert.equal(musicAreaSlug("東京タワー"), cjk, "the hash key is deterministic");
+}
+
+// 11. Uncontrolled input stays linear (CodeQL polynomial-regex alert): a
 // dash flood must neither blow up nor produce a dangling-dash slug. Inputs
-// are capped before regex work, so content past the cap is deliberately
-// ignored rather than scanned.
+// are capped before any scanning, so content past the cap is deliberately
+// ignored — the flood and the flood-plus-suffix resolve identically.
 {
   const started = Date.now();
-  assert.equal(musicAreaSlug("-".repeat(500_000)), null);
-  assert.equal(musicAreaSlug(`${"-".repeat(500_000)}x`), null, "content beyond the input cap is not scanned");
+  const flood = musicAreaSlug("-".repeat(500_000));
+  assert.ok(flood && flood.startsWith("x"), "a punctuation-only name still gets a stable hash key");
+  assert.equal(musicAreaSlug(`${"-".repeat(500_000)}x`), flood, "content beyond the input cap is not scanned");
   assert.equal(musicAreaSlug(`abc${"-".repeat(500_000)}`), "abc");
   assert.ok(Date.now() - started < 1_000, "slugging a dash flood stays fast");
 }

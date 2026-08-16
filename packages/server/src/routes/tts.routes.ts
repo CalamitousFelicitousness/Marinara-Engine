@@ -235,7 +235,9 @@ async function generateElevenLabsGameAudio(
     // the key is covered, regardless of how today's prompt is worded.
     category = `music/${context.axis}/${context.key}`;
     const existing = (await readdir(join(GAME_ASSETS_DIR, "music", context.axis, context.key)).catch(() => [])).filter(
-      (name) => AUDIO_FILE_PATTERN.test(name),
+      // Dotfiles never enter the manifest; counting one as coverage would
+      // permanently block generation for the key.
+      (name) => !name.startsWith(".") && AUDIO_FILE_PATTERN.test(name),
     );
     const coveredBy = existing[0];
     if (coveredBy) {
@@ -1325,8 +1327,15 @@ export async function ttsRoutes(app: FastifyInstance) {
     if (context && kind !== "music") {
       return reply.status(400).send({ error: "Context tracks are music only" });
     }
-    if (context?.axis === "tier" && !normalizeMusicEnemyTier(context.key)) {
-      return reply.status(400).send({ error: `Unknown encounter tier "${context.key}"` });
+    if (context?.axis === "tier") {
+      // Aliases (elite, legendary, …) are accepted but the STORED key must be
+      // canonical — a music/tier/elite/ folder would be a paid composition the
+      // scorer can never select.
+      const canonicalTier = normalizeMusicEnemyTier(context.key);
+      if (!canonicalTier) {
+        return reply.status(400).send({ error: `Unknown encounter tier "${context.key}"` });
+      }
+      context.key = canonicalTier;
     }
     const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
     const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;

@@ -123,7 +123,17 @@ export function musicAreaSlug(value: string | null | undefined): string | null {
   let tail = slug.length;
   while (tail > 0 && slug.charCodeAt(tail - 1) === 45) tail--;
   slug = slug.slice(0, tail);
-  return slug || null;
+  if (slug) return slug;
+  // Non-Latin location names (CJK, Cyrillic, …) strip to nothing; a stable
+  // hash keeps the area axis alive for them instead of silently disabling it.
+  const source = (value ?? "").slice(0, 200).trim().toLowerCase();
+  if (!source) return null;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < source.length; i++) {
+    h ^= source.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `x${(h >>> 0).toString(36)}`;
 }
 
 const INTENSITY_RANK: Record<MusicIntensity, number> = {
@@ -320,11 +330,21 @@ function parseContextMusicTag(tag: string): ParsedContextMusicTag | null {
   const parts = tag.split(":");
   if (parts.length < 4 || parts[0] !== "music") return null;
   const axis = parts[1];
-  const key = parts[2];
+  const key = parts[2]?.toLowerCase();
   if (!key) return null;
-  if (axis === "area") return { tag, axis: "area", key: key.toLowerCase() };
+  if (axis === "area") return { tag, axis: "area", key };
+  // Case-insensitive like area keys: a user-created music/tier/Boss folder
+  // must not be silently unselectable.
   if (axis === "tier" && MUSIC_ENEMY_TIER_SET.has(key)) return { tag, axis: "tier", key };
   return null;
+}
+
+/** True for #5161 context tracks (music:area:* / music:tier:*). Used by the
+ *  client to keep context tags OUT of the recent-music anti-repeat history —
+ *  a kept area theme would otherwise fill the whole window and disable the
+ *  legacy pool's rotation memory. */
+export function isContextMusicTag(tag: string): boolean {
+  return parseContextMusicTag(tag) !== null;
 }
 
 /** Stability contract for context tracks: keep the current track whenever it
@@ -422,8 +442,11 @@ function scoreStructuredMusic(
 
 /**
  * Pick the best music tag for the current game context.
- * Returns `null` only when there is no music or no structured candidates for this state; deliberately
- * rotates off `currentMusic` when alternatives exist (the keep-current contract belongs to `scoreAmbient`).
+ * Returns `null` only when there is no music or no structured candidates for this state.
+ * Since #5161 the keep-current contract applies everywhere: the current track is
+ * KEPT while it still fits the context (context set membership, or a legacy score
+ * within one point of the best), and rotation happens only when the context — the
+ * area, the encounter tier, or the state/genre/intensity — actually moved.
  */
 export function scoreMusic(input: MusicScoreInput): string | null {
   const { state, weather, timeOfDay, currentMusic, recentMusic, availableMusic } = input;
@@ -476,9 +499,13 @@ export function scoreMusic(input: MusicScoreInput): string | null {
 
   const bestScore = Math.max(...scored.map((entry) => entry.score));
   const currentScore = currentMusic ? scored.find((entry) => entry.tag === currentMusic)?.score : undefined;
+  // Keep-current (#5161): scoring now runs on every turn, and per-turn
+  // rotation of a still-fitting track is exactly the churn this feature
+  // removes. The track only changes when its fit degraded — state, genre,
+  // or intensity moved — which is when the score falls behind.
+  if (currentScore !== undefined && currentScore >= bestScore - 1) return currentMusic ?? null;
   const poolBestScore = Math.max(...poolBase.map((entry) => entry.score));
-  const rotationWindow = currentScore !== undefined && currentScore >= bestScore - 1 ? 8 : 1;
-  const selectionPool = poolBase.filter((entry) => entry.score >= poolBestScore - rotationWindow);
+  const selectionPool = poolBase.filter((entry) => entry.score >= poolBestScore - 1);
   return pickRandom(selectionPool).tag;
 }
 

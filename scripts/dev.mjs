@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { basename } from "node:path";
 import { getWorkspaceInstallProblems } from "./check-workspace-install.mjs";
 import { resolveDevSharedBuildScript } from "./dev-shared-build.mjs";
+import { resolvePnpmRunner } from "./pnpm-runner.mjs";
 
 function parseIntegerEnv(name, fallback) {
   const raw = process.env[name];
@@ -15,17 +15,12 @@ const SERVER_HEALTH_URL = `http://127.0.0.1:${SERVER_PORT}/api/health`;
 const HEALTH_TIMEOUT_MS = parseIntegerEnv("DEV_SERVER_READY_TIMEOUT_MS", 120_000);
 const SHARED_BUILD_SCRIPT = resolveDevSharedBuildScript();
 
-const pnpmCliPath = process.env.npm_execpath;
-const npmUserAgent = process.env.npm_config_user_agent ?? "";
-const useCurrentPnpm =
-  Boolean(pnpmCliPath) && (npmUserAgent.startsWith("pnpm/") || basename(pnpmCliPath ?? "").startsWith("pnpm"));
-const pnpmCommand = useCurrentPnpm ? process.execPath : "pnpm";
-const pnpmBaseArgs = useCurrentPnpm && pnpmCliPath ? [pnpmCliPath] : [];
+const pnpmRunner = resolvePnpmRunner();
 const children = new Set();
 let shuttingDown = false;
 
 function spawnPnpm(args, options = {}) {
-  const child = spawn(pnpmCommand, [...pnpmBaseArgs, ...args], {
+  const child = spawn(pnpmRunner.command, [...pnpmRunner.args, ...args], {
     stdio: "inherit",
     windowsHide: true,
     detached: process.platform !== "win32",

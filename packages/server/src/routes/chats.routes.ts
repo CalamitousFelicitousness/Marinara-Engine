@@ -3880,20 +3880,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     // them to the new branch's message IDs. Copying all snapshots (not just the latest)
     // ensures that branching a branch at an earlier point finds the correct tracker state
     // for that specific message, not just the latest snapshot in the source chat.
-    const spatialStore = createSpatialContextStorage();
-    const spatialBootstrap = await spatialStore.getBootstrap(req.params.id);
-    if (spatialBootstrap) {
-      await spatialStore.replaceBootstrap({
-        chatId: newChat.id,
-        currentLocationId: spatialBootstrap.currentLocationId,
-        definitionRevision: spatialBootstrap.definitionRevision,
-        source: "branch_copy",
-        transitionCommandId: null,
-        transitionPayloadHash: null,
-      });
-    }
-
     try {
+      const spatialStore = createSpatialContextStorage();
+      const spatialBootstrap = await spatialStore.getBootstrap(req.params.id);
+      if (spatialBootstrap) {
+        await spatialStore.replaceBootstrap({
+          chatId: newChat.id,
+          currentLocationId: spatialBootstrap.currentLocationId,
+          definitionRevision: spatialBootstrap.definitionRevision,
+          source: "branch_copy",
+          transitionCommandId: null,
+          transitionPayloadHash: null,
+        });
+      }
+
       const { createGameStateStorage } = await import("../services/storage/game-state.storage.js");
       const gameStateStore = createGameStateStorage(app.db);
       const gameEngineStore =

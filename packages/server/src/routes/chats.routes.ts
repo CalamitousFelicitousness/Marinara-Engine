@@ -3944,7 +3944,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             overrides,
           );
         } catch (err) {
-          logger.warn(err, "Failed to copy tracker snapshot while branching chat");
+          logger.error(err, "Failed to copy tracker snapshot while branching chat");
           throw err;
         }
       };
@@ -4024,6 +4024,16 @@ export async function chatsRoutes(app: FastifyInstance) {
         await storage.remove(newChat.id);
       } catch (cleanupErr) {
         logger.error(cleanupErr, "Failed to remove incomplete chat branch after state copy failed");
+      }
+      if (!sourceChat.groupId) {
+        try {
+          const remainingGroupChats = await storage.listByGroup(groupId);
+          if (remainingGroupChats.every((chat) => chat.id === sourceChat.id)) {
+            await storage.update(sourceChat.id, { groupId: null });
+          }
+        } catch (restoreErr) {
+          logger.error(restoreErr, "Failed to restore source chat grouping after branch copy failed");
+        }
       }
       throw err;
     }

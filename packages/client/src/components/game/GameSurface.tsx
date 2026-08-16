@@ -2363,7 +2363,7 @@ function GameSurfaceComponent({
     // resolution (getWithKey/getDefaultForAudio return null for them), so
     // they must not drive capability gating here either.
     const rows = ((connectionsList ?? []) as Record<string, unknown>[]).filter(
-      (connection) => connection.provider === "audio" && connection.profileImportReviewRequired !== "true",
+      (connection) => connection.provider === "audio" && !isConnectionFlagTrue(connection.profileImportReviewRequired),
     );
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
     return (

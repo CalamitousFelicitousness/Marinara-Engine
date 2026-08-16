@@ -651,7 +651,7 @@ export function GameSetupWizard({
   // Quarantined (review-required) imports are refused by the server's
   // resolution, so they must not be offered or previewed here either.
   const audioConnections = useMemo(
-    () => connections.filter((c) => c.provider === "audio" && c.profileImportReviewRequired !== "true"),
+    () => connections.filter((c) => c.provider === "audio" && !isConnectionFlagTrue(c.profileImportReviewRequired)),
     [connections],
   );
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);

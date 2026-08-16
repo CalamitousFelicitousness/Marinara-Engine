@@ -1770,6 +1770,9 @@ const gameSetupConfigSchema = z.object({
   gameImageDynamicPromptEnabled: z.boolean().optional(),
   imageConnectionId: z.string().optional(),
   videoConnectionId: z.string().optional(),
+  audioConnectionId: z.string().optional(),
+  enableGameSoundEffects: z.boolean().optional(),
+  enableGameMusic: z.boolean().optional(),
   gameStoryboardAutoIllustrationsEnabled: z.boolean().optional(),
   gameStoryboardAutoGenerationEnabled: z.boolean().optional(),
   gameStoryboardsEnabled: z.boolean().optional(),
@@ -2987,6 +2990,7 @@ type InitialSetupConnectionRow = {
   imageService?: unknown;
   videoGenerationSource?: unknown;
   videoService?: unknown;
+  audioSource?: unknown;
 };
 
 function snapshotInitialSetupConnection(
@@ -3002,6 +3006,7 @@ function snapshotInitialSetupConnection(
     service: firstString(
       connection.imageService,
       connection.videoService,
+      connection.audioSource,
       connection.imageGenerationSource,
       connection.videoGenerationSource,
     ),
@@ -6410,11 +6415,12 @@ export async function gameRoutes(app: FastifyInstance) {
       if (id === "local") return { name: "Local scene helper", provider: "local" };
       return snapshotInitialSetupConnection(await connectionStorage.getById(id));
     };
-    const [gmConnection, sceneConnection, imageConnection, videoConnection] = await Promise.all([
+    const [gmConnection, sceneConnection, imageConnection, videoConnection, audioConnection] = await Promise.all([
       snapshotConnection(resolvedGmConnectionId),
       snapshotConnection(setupConfig.sceneConnectionId),
       snapshotConnection(setupConfig.imageConnectionId),
       snapshotConnection(setupConfig.videoConnectionId),
+      snapshotConnection(setupConfig.audioConnectionId),
     ]);
     await chats.updateMetadata(sessionChat.id, {
       ...sessionMeta,
@@ -6451,6 +6457,7 @@ export async function gameRoutes(app: FastifyInstance) {
           scene: sceneConnection,
           image: imageConnection,
           video: videoConnection,
+          audio: audioConnection,
         },
         labels: shareLabels,
         createdAt: new Date().toISOString(),
@@ -6467,6 +6474,9 @@ export async function gameRoutes(app: FastifyInstance) {
       gameImageDynamicPromptEnabled: resolveGameImageDynamicPromptEnabled(setupConfig),
       gameImageConnectionId: setupConfig.imageConnectionId || null,
       gameVideoConnectionId: setupConfig.videoConnectionId || null,
+      gameAudioConnectionId: setupConfig.audioConnectionId || null,
+      gameAudioSoundEffectsEnabled: setupConfig.enableGameSoundEffects !== false,
+      gameAudioMusicEnabled: setupConfig.enableGameMusic !== false,
       gameSceneVideosEnabled: false,
       gameStoryboardAutoIllustrationsEnabled: setupConfig.gameStoryboardAutoIllustrationsEnabled !== false,
       gameStoryboardAutoGenerationEnabled: setupConfig.gameStoryboardAutoGenerationEnabled === true,

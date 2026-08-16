@@ -19,7 +19,12 @@ export type APIProvider =
   | "arli"
   | "custom"
   | "image_generation"
-  | "video_generation";
+  | "video_generation"
+  | "audio";
+
+/** Audio backends an audio connection can target (the former TTS sources). */
+export const AUDIO_GENERATION_SOURCES = ["openai", "elevenlabs", "pockettts", "xai"] as const;
+export type AudioGenerationSource = (typeof AUDIO_GENERATION_SOURCES)[number];
 
 export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high"] as const;
 export type ImageGenerationQuality = (typeof IMAGE_GENERATION_QUALITIES)[number];
@@ -77,6 +82,14 @@ export interface APIConnection {
   videoGenerationSource: string | null;
   /** Explicitly selected video generation service ID. Overrides URL/model inference when set. */
   videoService: string | null;
+  /** Audio backend for audio connections (e.g. "elevenlabs"). Null for non-audio providers. */
+  audioSource: AudioGenerationSource | null;
+  /** Default voice id/name for speech synthesis on this audio connection. */
+  audioVoice: string | null;
+  /** Whether this audio connection may generate game sound effects (ElevenLabs only today). */
+  audioSoundEffects: boolean;
+  /** Whether this audio connection may generate game music (ElevenLabs only today). */
+  audioMusic: boolean;
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
   /** Prompt preset to use instead of a chat's selected preset when this connection is active */

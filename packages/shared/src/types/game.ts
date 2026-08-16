@@ -215,6 +215,12 @@ export interface GameSetupConfig {
   imageConnectionId?: string;
   /** Connection ID for video generation (animated scene clips from generated illustrations). */
   videoConnectionId?: string;
+  /** Connection ID for audio generation (speech, game sound effects, and music). */
+  audioConnectionId?: string;
+  /** Generate scene sound effects for this game (requires a capable audio connection). Defaults to true. */
+  enableGameSoundEffects?: boolean;
+  /** Generate scene music for this game (requires a capable audio connection). Defaults to true. */
+  enableGameMusic?: boolean;
   /** Automatically create storyboard keyframe illustrations after completed GM turns. */
   gameStoryboardAutoIllustrationsEnabled?: boolean;
   /** Automatically create storyboard keyframe videos after completed GM turns. */
@@ -317,6 +323,7 @@ export interface GameInitialSetupSnapshot {
     scene?: GameInitialSetupConnectionSnapshot | null;
     image?: GameInitialSetupConnectionSnapshot | null;
     video?: GameInitialSetupConnectionSnapshot | null;
+    audio?: GameInitialSetupConnectionSnapshot | null;
   };
   labels?: GameInitialSetupLabels;
   createdAt: string;

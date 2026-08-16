@@ -12,6 +12,8 @@ export interface TTSSpeakOptions {
   speaker?: string;
   tone?: string;
   voice?: string;
+  /** Explicit audio connection to synthesize with. Empty string forces the legacy TTS settings blob. */
+  audioConnectionId?: string;
   signal?: AbortSignal;
   throwOnError?: boolean;
   cacheKey?: string;
@@ -248,6 +250,8 @@ class TTSService {
         ...(options.speaker ? { speaker: options.speaker } : {}),
         ...(options.tone ? { tone: options.tone } : {}),
         ...(options.voice ? { voice: options.voice } : {}),
+        // "" is meaningful (legacy-blob sentinel), so gate on undefined.
+        ...(options.audioConnectionId !== undefined ? { audioConnectionId: options.audioConnectionId } : {}),
       }),
       signal: options.signal,
     });

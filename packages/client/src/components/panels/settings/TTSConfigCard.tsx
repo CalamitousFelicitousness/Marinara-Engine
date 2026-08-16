@@ -184,7 +184,8 @@ function isTTSLanguageConnectionOption(value: unknown): value is TTSLanguageConn
     typeof connection.name === "string" &&
     typeof connection.model === "string" &&
     connection.provider !== "image_generation" &&
-    connection.provider !== "video_generation"
+    connection.provider !== "video_generation" &&
+    connection.provider !== "audio"
   );
 }
 
@@ -1164,6 +1165,9 @@ export function TTSConfigCard() {
         await ttsService.speak("Hello! This is a preview of the text to speech voice.", "tts-preview", {
           throwOnError: true,
           voice: previewVoice,
+          // This card configures the legacy settings blob; the preview must
+          // test THAT, not whatever audio connection is the category default.
+          audioConnectionId: "",
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "TTS preview failed.";

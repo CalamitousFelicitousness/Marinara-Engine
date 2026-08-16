@@ -608,7 +608,10 @@ function RoleplayStoryboardChatSettingsPanel({
   const imageConnections = connections.filter((connection) => connection.provider === "image_generation");
   const videoConnections = connections.filter((connection) => connection.provider === "video_generation");
   const promptConnections = connections.filter(
-    (connection) => connection.provider !== "image_generation" && connection.provider !== "video_generation",
+    (connection) =>
+      connection.provider !== "image_generation" &&
+      connection.provider !== "video_generation" &&
+      connection.provider !== "audio",
   );
   const autoModeOverridden =
     metadata.roleplayStoryboardAutoGenerateMode === "manual" ||

@@ -73,6 +73,7 @@ import {
   Sparkles,
   ImageIcon,
   Film,
+  Music,
   Mic,
   Loader2,
   HardDriveDownload,
@@ -124,12 +125,14 @@ const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; 
   custom: CONNECTION_ICON_COLORS,
   image_generation: CONNECTION_ICON_COLORS,
   video_generation: CONNECTION_ICON_COLORS,
+  audio: CONNECTION_ICON_COLORS,
 };
 const DEFAULT_COLOR = CONNECTION_ICON_COLORS;
 
 function getConnectionFallbackIcon(provider: string) {
   if (provider === "image_generation") return <ImageIcon size="1rem" />;
   if (provider === "video_generation") return <Film size="1rem" />;
+  if (provider === "audio") return <Music size="1rem" />;
   return <Link size="1rem" />;
 }
 
@@ -871,7 +874,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   const languageConnections = useMemo(
     () =>
       connectionsList.filter(
-        (connection) => connection.provider !== "image_generation" && connection.provider !== "video_generation",
+        (connection) =>
+          connection.provider !== "image_generation" &&
+          connection.provider !== "video_generation" &&
+          connection.provider !== "audio",
       ),
     [connectionsList],
   );
@@ -881,6 +887,10 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   );
   const videoConnections = useMemo(
     () => connectionsList.filter((connection) => connection.provider === "video_generation"),
+    [connectionsList],
+  );
+  const audioConnections = useMemo(
+    () => connectionsList.filter((connection) => connection.provider === "audio"),
     [connectionsList],
   );
 
@@ -948,6 +958,15 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackField="fallbackForAgents"
             primaryEmptyLabel="No default video connection"
             fallbackModelLabel="Video generation"
+          />
+          <ConnectionDefaultPair
+            title={localizeUi("ui.panels.connectiondefaultssection.audio")}
+            icon={<Music size="0.875rem" />}
+            connections={audioConnections}
+            primaryField="defaultForAgents"
+            fallbackField="fallbackForAgents"
+            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
+            fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
         </div>
       </SmoothFolderContent>
@@ -1093,21 +1112,23 @@ function ConnectionRow({
             ...(isLanguageGenerationConnection(conn) ? {} : { unsupported: "connection-kind" as const }),
           }}
         />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            updateConnection.mutate({ id: conn.id, useForRandom: !inRandomPool });
-          }}
-          className={cn(
-            "rounded-lg p-1.5 transition-all active:scale-90",
-            inRandomPool
-              ? "bg-foreground/10 text-foreground/75 ring-1 ring-foreground/20"
-              : "text-foreground/45 hover:bg-foreground/10 hover:text-foreground/75",
-          )}
-          title={inRandomPool ?localizeUi("ui.panels.connectionrow.inRandomPoolClickToRemove") :localizeUi("ui.panels.connectionrow.addToRandomPool")}
-        >
-          <Shuffle size="0.75rem" />
-        </button>
+        {conn.provider !== "audio" && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateConnection.mutate({ id: conn.id, useForRandom: !inRandomPool });
+            }}
+            className={cn(
+              "rounded-lg p-1.5 transition-all active:scale-90",
+              inRandomPool
+                ? "bg-foreground/10 text-foreground/75 ring-1 ring-foreground/20"
+                : "text-foreground/45 hover:bg-foreground/10 hover:text-foreground/75",
+            )}
+            title={inRandomPool ?localizeUi("ui.panels.connectionrow.inRandomPoolClickToRemove") :localizeUi("ui.panels.connectionrow.addToRandomPool")}
+          >
+            <Shuffle size="0.75rem" />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

@@ -44,6 +44,7 @@ import {
   ExternalLink,
   ImageIcon,
   Film,
+  Music,
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
@@ -101,6 +102,7 @@ import {
   normalizeImagePromptInstructions,
   parseConnectionImageCaptioningDefaults,
   type APIProvider,
+  type AudioGenerationSource,
   type ComfyUiLoraSetting,
   type ImageDefaultsService,
   type ImageGenerationDefaultsProfile,
@@ -216,14 +218,59 @@ function normalizeEndpointUrlInput(raw: string, label: string): { value: string;
   return { value, error: null };
 }
 
+// Mirrors TTS_SOURCE_DEFAULTS in TTSConfigCard so a fresh audio connection
+// seeds the same base URL / model / voice the legacy TTS settings used.
+const AUDIO_SOURCE_OPTIONS: Array<{
+  id: AudioGenerationSource;
+  name: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
+  defaultVoice: string;
+}> = [
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    defaultBaseUrl: "https://api.elevenlabs.io",
+    defaultModel: "eleven_multilingual_v2",
+    defaultVoice: "",
+  },
+  {
+    id: "openai",
+    name: "OpenAI-compatible",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    defaultModel: "tts-1",
+    defaultVoice: "alloy",
+  },
+  {
+    id: "pockettts",
+    name: "PocketTTS",
+    defaultBaseUrl: "http://localhost:8000",
+    defaultModel: "pocket-tts",
+    defaultVoice: "alba",
+  },
+  {
+    id: "xai",
+    name: "xAI Voice",
+    defaultBaseUrl: "https://api.x.ai/v1",
+    defaultModel: "grok-tts",
+    defaultVoice: "eve",
+  },
+];
+
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
-  return provider !== "image_generation" && provider !== "video_generation" && !isLocalAuthConnectionProvider(provider);
+  return (
+    provider !== "image_generation" &&
+    provider !== "video_generation" &&
+    provider !== "audio" &&
+    !isLocalAuthConnectionProvider(provider)
+  );
 }
 
 function providerSupportsDirectEmbeddingConfig(provider: APIProvider): boolean {
   return (
     provider !== "image_generation" &&
     provider !== "video_generation" &&
+    provider !== "audio" &&
     provider !== "anthropic" &&
     !isLocalAuthConnectionProvider(provider)
   );
@@ -309,6 +356,10 @@ export function ConnectionEditor() {
   const [localImageGenerationQuality, setLocalImageGenerationQuality] = useState<ImageGenerationQuality>("auto");
   const [localVideoGenerationSource, setLocalVideoGenerationSource] = useState("");
   const [localVideoService, setLocalVideoService] = useState<string | null>(null);
+  const [localAudioSource, setLocalAudioSource] = useState("elevenlabs");
+  const [localAudioVoice, setLocalAudioVoice] = useState("");
+  const [localAudioSoundEffects, setLocalAudioSoundEffects] = useState(false);
+  const [localAudioMusic, setLocalAudioMusic] = useState(false);
   const [localMaxTokensOverride, setLocalMaxTokensOverride] = useState<number | null>(null);
   const [localClaudeFastMode, setLocalClaudeFastMode] = useState(false);
   const [localTreatAsLocalEndpoint, setLocalTreatAsLocalEndpoint] = useState(false);
@@ -434,6 +485,10 @@ export function ConnectionEditor() {
     );
     setLocalVideoGenerationSource(videoProviderSource);
     setLocalVideoService(videoDefaultsService);
+    setLocalAudioSource((c.audioSource as string) || "elevenlabs");
+    setLocalAudioVoice((c.audioVoice as string) ?? "");
+    setLocalAudioSoundEffects(c.audioSoundEffects === "true" || c.audioSoundEffects === true);
+    setLocalAudioMusic(c.audioMusic === "true" || c.audioMusic === true);
     setLocalMaxTokensOverride(typeof c.maxTokensOverride === "number" ? (c.maxTokensOverride as number) : null);
     setLocalClaudeFastMode(c.claudeFastMode === "true" || c.claudeFastMode === true);
     setLocalTreatAsLocalEndpoint(c.treatAsLocalEndpoint === "true" || c.treatAsLocalEndpoint === true);
@@ -710,7 +765,8 @@ export function ConnectionEditor() {
     }
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
-    const isMediaProvider = isImageProvider || isVideoProvider;
+    const isAudioProvider = localProvider === "audio";
+    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider;
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const canTreatAsLocalEndpoint = canProviderTreatAsLocalEndpoint(localProvider);
     const existingEmbeddingModel = (conn as { embeddingModel?: string | null } | undefined)?.embeddingModel ?? "";
@@ -754,6 +810,11 @@ export function ConnectionEditor() {
       maxTokensOverride: localMaxTokensOverride ?? null,
       claudeFastMode: localClaudeFastMode,
       treatAsLocalEndpoint: canTreatAsLocalEndpoint ? localTreatAsLocalEndpoint : false,
+      audioSource: isAudioProvider ? localAudioSource || null : null,
+      audioVoice: isAudioProvider ? localAudioVoice || null : null,
+      // Only ElevenLabs can generate game sound effects / music today.
+      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
+      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
     };
     // Only send API key if user typed a new one
     if (isLocalAuthProvider) {
@@ -789,7 +850,7 @@ export function ConnectionEditor() {
             nextImageDefaults,
           ),
         });
-      } else {
+      } else if (isVideoProvider) {
         const nextVideoDefaults = localVideoDefaults
           ? sanitizeVideoGenerationProfile({ ...localVideoDefaults, service: selectedVideoDefaultsService })
           : null;
@@ -856,6 +917,10 @@ export function ConnectionEditor() {
     localDefaultParameters,
     localImageCaptioningEnabled,
     localImageCaptioningConnectionId,
+    localAudioSource,
+    localAudioVoice,
+    localAudioSoundEffects,
+    localAudioMusic,
     selectedImageService,
     swarmUiWorkflowError,
     selectedImageDefaultsService,
@@ -897,7 +962,8 @@ export function ConnectionEditor() {
     const currentConnection = conn as Record<string, unknown>;
     const isImageProvider = localProvider === "image_generation";
     const isVideoProvider = localProvider === "video_generation";
-    const isMediaProvider = isImageProvider || isVideoProvider;
+    const isAudioProvider = localProvider === "audio";
+    const isMediaProvider = isImageProvider || isVideoProvider || isAudioProvider;
     const isLocalAuthProvider = isLocalAuthConnectionProvider(localProvider);
     const defaultParameters = isImageProvider
       ? buildImageDefaultParameters(
@@ -913,13 +979,15 @@ export function ConnectionEditor() {
               ? sanitizeVideoGenerationProfile({ ...localVideoDefaults, service: selectedVideoDefaultsService })
               : null,
           )
-        : localDefaultParametersEnabled
-          ? buildLanguageDefaultParameters(
-              localDefaultParameters,
-              localImageCaptioningEnabled,
-              localImageCaptioningConnectionId,
-            )
-          : null;
+        : isAudioProvider
+          ? null
+          : localDefaultParametersEnabled
+            ? buildLanguageDefaultParameters(
+                localDefaultParameters,
+                localImageCaptioningEnabled,
+                localImageCaptioningConnectionId,
+              )
+            : null;
     const imageService = isImageProvider ? localImageGenerationSource || localImageService || null : null;
     const videoProvider = isVideoProvider ? selectedVideoProvider || null : null;
     const videoService = isVideoProvider
@@ -954,6 +1022,10 @@ export function ConnectionEditor() {
       imageService,
       videoGenerationSource: videoProvider,
       videoService,
+      audioSource: isAudioProvider ? localAudioSource || null : null,
+      audioVoice: isAudioProvider ? localAudioVoice || null : null,
+      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
+      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
@@ -1004,6 +1076,10 @@ export function ConnectionEditor() {
     selectedImageDefaultsService,
     selectedVideoDefaultsService,
     localVideoDefaults, localizeUi,
+    localAudioSource,
+    localAudioVoice,
+    localAudioSoundEffects,
+    localAudioMusic,
   ]);
 
   const handleTestConnection = useCallback(async () => {
@@ -1217,7 +1293,8 @@ export function ConnectionEditor() {
   const providerDef = PROVIDERS[localProvider];
   const isImageGenerationProvider = localProvider === "image_generation";
   const isVideoGenerationProvider = localProvider === "video_generation";
-  const isMediaGenerationProvider = isImageGenerationProvider || isVideoGenerationProvider;
+  const isAudioProvider = localProvider === "audio";
+  const isMediaGenerationProvider = isImageGenerationProvider || isVideoGenerationProvider || isAudioProvider;
   const isClaudeSubscriptionProvider = localProvider === "claude_subscription";
   const isOpenAIChatGPTProvider = localProvider === "openai_chatgpt";
   const isGrokSubscriptionProvider = localProvider === "grok_subscription";
@@ -1397,6 +1474,16 @@ export function ConnectionEditor() {
                     setLocalMaxTokensOverride(null);
                     setLocalDefaultParametersEnabled(false);
                     setLocalDefaultParameters(CONNECTION_PARAMETER_DEFAULTS);
+                    if (key === "audio") {
+                      // The provider tile seeds ElevenLabs base URL/model, so
+                      // the audio source must reset to match — otherwise a
+                      // pockettts/openai/xai source survives the switch under
+                      // ElevenLabs endpoints and saves a self-inconsistent row.
+                      setLocalAudioSource("elevenlabs");
+                      setLocalAudioVoice("");
+                      setLocalAudioSoundEffects(false);
+                      setLocalAudioMusic(false);
+                    }
                     // Provider switches must not keep an encrypted key from
                     // the previous provider under the new provider identity.
                     setLocalApiKey("");
@@ -1750,6 +1837,109 @@ export function ConnectionEditor() {
                 </p>
               )}
               <p className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.connections.connectioneditor.sceneVideosAreGeneratedFromTheCurrentGameIllustration")}</p>
+            </FieldGroup>
+          )}
+
+          {/* ── Audio Source (only for audio provider) ── */}
+          {isAudioProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.audioSource")}
+              icon={<Music size="0.875rem" className="text-sky-400" />}
+              help={localizeUi("ui.connections.connectioneditor.pickTheSpeechBackendBaseUrlModelAndVoice")}
+            >
+              <div className="grid grid-cols-2 gap-1.5">
+                {AUDIO_SOURCE_OPTIONS.map((src) => {
+                  const isActive = localAudioSource === src.id;
+                  return (
+                    <button
+                      key={src.id}
+                      onClick={() => {
+                        if (localAudioSource === src.id) return;
+                        const previousSource = AUDIO_SOURCE_OPTIONS.find(
+                          (candidate) => candidate.id === localAudioSource,
+                        );
+                        if (!localBaseUrl || localBaseUrl === previousSource?.defaultBaseUrl) {
+                          setLocalBaseUrl(src.defaultBaseUrl);
+                        }
+                        if (!localModel || localModel === previousSource?.defaultModel) {
+                          setLocalModel(src.defaultModel);
+                        }
+                        if (!localAudioVoice || localAudioVoice === previousSource?.defaultVoice) {
+                          setLocalAudioVoice(src.defaultVoice);
+                        }
+                        setLocalAudioSource(src.id);
+                        markDirty();
+                      }}
+                      className={cn(
+                        "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
+                        isActive
+                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
+                          : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">{src.name}</span>
+                        {isActive && <Check size="0.625rem" />}
+                      </div>
+                      <span className="text-[0.625rem] opacity-80">
+                        {src.id === "elevenlabs"
+                          ? localizeUi("ui.connections.connectioneditor.speechSoundEffectsAndMusicGeneration")
+                          : src.id === "openai"
+                            ? localizeUi("ui.connections.connectioneditor.openaiOrAnyCompatibleAudioSpeechEndpoint")
+                            : src.id === "pockettts"
+                              ? localizeUi("ui.connections.connectioneditor.localPocketttsServerFreePrivateOffline")
+                              : localizeUi("ui.connections.connectioneditor.xaiGrokVoiceSynthesis")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-medium text-[var(--muted-foreground)]">
+                  {localizeUi("ui.connections.connectioneditor.defaultVoice")}
+                </span>
+                <input
+                  value={localAudioVoice}
+                  onChange={(event) => {
+                    setLocalAudioVoice(event.target.value);
+                    markDirty();
+                  }}
+                  className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                  placeholder={
+                    AUDIO_SOURCE_OPTIONS.find((candidate) => candidate.id === localAudioSource)?.defaultVoice ||
+                    localizeUi("ui.connections.connectioneditor.eGAVoiceIdFromYourProvider")
+                  }
+                />
+                <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                  {localizeUi("ui.connections.connectioneditor.voiceIdOrNameUsedWhenNothingMoreSpecific")}
+                </p>
+              </label>
+              {localAudioSource === "elevenlabs" ? (
+                <div className="space-y-2">
+                  <SettingsSwitch
+                    label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
+                    description={localizeUi("ui.connections.connectioneditor.letGameModeGenerateSoundEffectsWithThisConnection")}
+                    checked={localAudioSoundEffects}
+                    onChange={(checked) => {
+                      setLocalAudioSoundEffects(checked);
+                      markDirty();
+                    }}
+                  />
+                  <SettingsSwitch
+                    label={localizeUi("ui.connections.connectioneditor.gameMusic")}
+                    description={localizeUi("ui.connections.connectioneditor.letGameModeGenerateMusicWithThisConnection")}
+                    checked={localAudioMusic}
+                    onChange={(checked) => {
+                      setLocalAudioMusic(checked);
+                      markDirty();
+                    }}
+                  />
+                </div>
+              ) : (
+                <p className="rounded-xl bg-[var(--secondary)]/40 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+                  {localizeUi("ui.connections.connectioneditor.soundEffectAndMusicGenerationCurrentlyRequiresTheElevenlabs")}
+                </p>
+              )}
             </FieldGroup>
           )}
 
@@ -2334,7 +2524,8 @@ export function ConnectionEditor() {
                               (connection) =>
                                 connection.id !== connectionDetailId &&
                                 connection.provider !== "image_generation" &&
-                                connection.provider !== "video_generation",
+                                connection.provider !== "video_generation" &&
+                                connection.provider !== "audio",
                             )
                             .map((connection) => (
                               <option key={connection.id as string} value={connection.id as string}>
@@ -2594,7 +2785,8 @@ export function ConnectionEditor() {
                       (c) =>
                         c.id !== connectionDetailId &&
                         c.provider !== "image_generation" &&
-                        c.provider !== "video_generation",
+                        c.provider !== "video_generation" &&
+                        c.provider !== "audio",
                     )
                     .map((c) => (
                       <option key={c.id as string} value={c.id as string}>

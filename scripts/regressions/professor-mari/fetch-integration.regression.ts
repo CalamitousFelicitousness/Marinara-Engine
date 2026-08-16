@@ -11,25 +11,26 @@ import { PROFESSOR_MARI_ID } from "../../../packages/shared/src/constants/defaul
 import { createBowStubEmbedder } from "./helpers/bow-stub-embedder.js";
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
-const storageDir = mkdtempSync(join(tmpdir(), "marinara-fetch-int-"));
-process.env.FILE_STORAGE_DIR = storageDir;
-
-const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
-const { characters, chats } = await import("../../../packages/server/src/db/schema/index.js");
-const { createCharactersStorage } = await import("../../../packages/server/src/services/storage/characters.storage.js");
-const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
-const { createLorebooksStorage } = await import("../../../packages/server/src/services/storage/lorebooks.storage.js");
-const { createPromptsStorage } = await import("../../../packages/server/src/services/storage/prompts.storage.js");
-const { handleProfessorMariCommand } = await import(
-  "../../../packages/server/src/services/generation/professor-mari-command-runtime.js"
-);
-
-// Deterministic, collision-free bag-of-words embedder shared with the other
-// Mari fetch regressions (token overlap → exact cosine).
-const embeddingSource = createBowStubEmbedder(undefined, "fetch-integration regression");
-
-let fileDb: Awaited<ReturnType<typeof createFileNativeDB>> | undefined;
+let storageDir: string | undefined;
+let fileDb: Awaited<ReturnType<typeof import("../../../packages/server/src/db/file-backed-store.js").createFileNativeDB>> | undefined;
 try {
+  storageDir = mkdtempSync(join(tmpdir(), "marinara-fetch-int-"));
+  process.env.FILE_STORAGE_DIR = storageDir;
+
+  const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
+  const { characters, chats } = await import("../../../packages/server/src/db/schema/index.js");
+  const { createCharactersStorage } = await import("../../../packages/server/src/services/storage/characters.storage.js");
+  const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
+  const { createLorebooksStorage } = await import("../../../packages/server/src/services/storage/lorebooks.storage.js");
+  const { createPromptsStorage } = await import("../../../packages/server/src/services/storage/prompts.storage.js");
+  const { handleProfessorMariCommand } = await import(
+    "../../../packages/server/src/services/generation/professor-mari-command-runtime.js"
+  );
+
+  // Deterministic, collision-free bag-of-words embedder shared with the other
+  // Mari fetch regressions (token overlap → exact cosine).
+  const embeddingSource = createBowStubEmbedder(undefined, "fetch-integration regression");
+
   const db = await createFileNativeDB();
   fileDb = db;
 const chars = createCharactersStorage(db);
@@ -171,7 +172,7 @@ process.stdout.write("Professor Mari fetch-integration regression passed.\n");
   try {
     if (fileDb) await fileDb._fileStore.close();
   } finally {
-    rmSync(storageDir, { recursive: true, force: true });
+    if (storageDir) rmSync(storageDir, { recursive: true, force: true });
     if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
     else process.env.FILE_STORAGE_DIR = previousFileStorageDir;
   }

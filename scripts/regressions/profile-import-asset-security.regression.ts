@@ -180,20 +180,23 @@ try {
       await validatedRaceSafeImage.handle.close();
     }
   } else {
-    renameSync(replacementPath, raceSafePath);
     const descriptorApp = Fastify();
-    descriptorApp.get("/validated-image", (req, reply) =>
-      sendValidatedMediaFile(reply, validatedRaceSafeImage, { method: req.method, rangeHeader: req.headers.range }),
-    );
-    await descriptorApp.ready();
-    const descriptorResponse = await descriptorApp.inject({ method: "GET", url: "/validated-image" });
-    assert.equal(descriptorResponse.statusCode, 200);
-    assert.deepEqual(
-      descriptorResponse.rawPayload,
-      validPng,
-      "serving must use the validated descriptor even when its path is replaced",
-    );
-    await descriptorApp.close();
+    try {
+      renameSync(replacementPath, raceSafePath);
+      descriptorApp.get("/validated-image", (req, reply) =>
+        sendValidatedMediaFile(reply, validatedRaceSafeImage, { method: req.method, rangeHeader: req.headers.range }),
+      );
+      await descriptorApp.ready();
+      const descriptorResponse = await descriptorApp.inject({ method: "GET", url: "/validated-image" });
+      assert.equal(descriptorResponse.statusCode, 200);
+      assert.deepEqual(
+        descriptorResponse.rawPayload,
+        validPng,
+        "serving must use the validated descriptor even when its path is replaced",
+      );
+    } finally {
+      await descriptorApp.close();
+    }
   }
 
   const videoPath = join(dataDir, "range.mp4");

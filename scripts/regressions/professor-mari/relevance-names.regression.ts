@@ -10,22 +10,23 @@ import type { MemoryRecallEmbeddingSource } from "../../../packages/server/src/s
 import { BOW_STUB_DIM as DIM, createBowStubEmbedder } from "./helpers/bow-stub-embedder.js";
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
-const storageDir = mkdtempSync(join(tmpdir(), "marinara-relevance-"));
-process.env.FILE_STORAGE_DIR = storageDir;
-
-const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
-const { characters } = await import("../../../packages/server/src/db/schema/index.js");
-const { createEntityEmbeddingStore } = await import("../../../packages/server/src/services/entity-embedding-store.js");
-const { resolveProfessorMariPromptContext } = await import(
-  "../../../packages/server/src/routes/generate/professor-mari-prompt-context.js"
-);
-
-// Deterministic, collision-free bag-of-words embedder shared with the other Mari
-// fetch regressions (token overlap → exact cosine).
-const stubSource = createBowStubEmbedder("stub-space", "relevance regression");
-
-let fileDb: Awaited<ReturnType<typeof createFileNativeDB>> | undefined;
+let storageDir: string | undefined;
+let fileDb: Awaited<ReturnType<typeof import("../../../packages/server/src/db/file-backed-store.js").createFileNativeDB>> | undefined;
 try {
+  storageDir = mkdtempSync(join(tmpdir(), "marinara-relevance-"));
+  process.env.FILE_STORAGE_DIR = storageDir;
+
+  const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
+  const { characters } = await import("../../../packages/server/src/db/schema/index.js");
+  const { createEntityEmbeddingStore } = await import("../../../packages/server/src/services/entity-embedding-store.js");
+  const { resolveProfessorMariPromptContext } = await import(
+    "../../../packages/server/src/routes/generate/professor-mari-prompt-context.js"
+  );
+
+  // Deterministic, collision-free bag-of-words embedder shared with the other Mari
+  // fetch regressions (token overlap → exact cosine).
+  const stubSource = createBowStubEmbedder("stub-space", "relevance regression");
+
   const db = await createFileNativeDB();
   fileDb = db;
 const STAMP = "2026-01-01T00:00:00.000Z";
@@ -187,7 +188,7 @@ process.stdout.write("Professor Mari relevance-names regression passed.\n");
   try {
     if (fileDb) await fileDb._fileStore.close();
   } finally {
-    rmSync(storageDir, { recursive: true, force: true });
+    if (storageDir) rmSync(storageDir, { recursive: true, force: true });
     if (previousFileStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
     else process.env.FILE_STORAGE_DIR = previousFileStorageDir;
   }

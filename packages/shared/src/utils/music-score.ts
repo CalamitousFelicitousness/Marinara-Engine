@@ -1,8 +1,15 @@
 // ──────────────────────────────────────────────
 // Game Audio Score — Rule-Based Selectors
 //
-// Music uses the structured format:
-// music:<state>:<genre>:<intensity>:<filename>
+// Music uses two structured formats:
+// - music:<state>:<genre>:<intensity>:<filename>   (the bundled/state library)
+// - music:area:<slug>:<filename>                   (context tracks, #5161)
+//   music:tier:<tier>:<filename>
+//
+// Context tracks are persistent per-place / per-encounter-tier compositions;
+// when one matches the current context it wins outright and the CURRENT track
+// is kept if it already belongs to that context — music changes when context
+// changes, never per turn. The state library remains the universal fallback.
 //
 // Scene analysis provides compact direction fields (genre, intensity,
 // location kind); the server/client pick actual asset tags deterministically.
@@ -30,6 +37,9 @@ export type MusicIntensity = (typeof MUSIC_INTENSITIES)[number];
 export const LOCATION_KINDS = ["interior", "exterior", "underground", "urban", "nature"] as const;
 export type LocationKind = (typeof LOCATION_KINDS)[number];
 
+export const MUSIC_ENEMY_TIERS = ["common", "miniboss", "boss", "special"] as const;
+export type MusicEnemyTier = (typeof MUSIC_ENEMY_TIERS)[number];
+
 export interface MusicScoreInput {
   state: GameActiveState;
   /** Small tie-breaker only. Main music selection comes from musicGenre/musicIntensity. */
@@ -38,6 +48,11 @@ export interface MusicScoreInput {
   timeOfDay?: string | null;
   musicGenre?: MusicGenre | string | null;
   musicIntensity?: MusicIntensity | string | null;
+  /** Stable slug of the current area (the same slug backgrounds key on).
+   *  Outside combat, a matching `music:area:<slug>:*` track wins outright. */
+  locationSlug?: string | null;
+  /** Encounter tier while in combat; a matching `music:tier:<tier>:*` track wins outright. */
+  enemyTier?: MusicEnemyTier | string | null;
   currentMusic?: string | null;
   recentMusic?: string[] | null;
   availableMusic: string[];
@@ -66,6 +81,24 @@ const GAME_STATES = new Set<GameActiveState>(["exploration", "dialogue", "combat
 const MUSIC_GENRE_SET = new Set<string>(MUSIC_GENRES);
 const MUSIC_INTENSITY_SET = new Set<string>(MUSIC_INTENSITIES);
 const LOCATION_KIND_SET = new Set<string>(LOCATION_KINDS);
+const MUSIC_ENEMY_TIER_SET = new Set<string>(MUSIC_ENEMY_TIERS);
+
+const ENEMY_TIER_ALIASES: Record<string, MusicEnemyTier> = {
+  elite: "miniboss",
+  mini_boss: "miniboss",
+  "mini-boss": "miniboss",
+  final_boss: "boss",
+  finalboss: "boss",
+  unique: "special",
+  legendary: "special",
+};
+
+export function normalizeMusicEnemyTier(value: string | null | undefined): MusicEnemyTier | null {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (MUSIC_ENEMY_TIER_SET.has(normalized)) return normalized as MusicEnemyTier;
+  return ENEMY_TIER_ALIASES[normalized] ?? null;
+}
 
 const INTENSITY_RANK: Record<MusicIntensity, number> = {
   calm: 0,
@@ -254,6 +287,30 @@ export function normalizeLocationKind(value: unknown): LocationKind | null {
   return LOCATION_KIND_SET.has(normalized) ? (normalized as LocationKind) : null;
 }
 
+type ParsedContextMusicTag = { tag: string; axis: "area" | "tier"; key: string };
+
+/** Context tracks (#5161): music:area:<slug>:<name> and music:tier:<tier>:<name>. */
+function parseContextMusicTag(tag: string): ParsedContextMusicTag | null {
+  const parts = tag.split(":");
+  if (parts.length < 4 || parts[0] !== "music") return null;
+  const axis = parts[1];
+  const key = parts[2];
+  if (!key) return null;
+  if (axis === "area") return { tag, axis: "area", key: key.toLowerCase() };
+  if (axis === "tier" && MUSIC_ENEMY_TIER_SET.has(key)) return { tag, axis: "tier", key };
+  return null;
+}
+
+/** Stability contract for context tracks: keep the current track whenever it
+ *  still belongs to the selected context; otherwise prefer a variant that
+ *  hasn't just played. */
+function pickContextTrack(tags: string[], currentMusic?: string | null, recentMusic?: string[] | null): string {
+  if (currentMusic && tags.includes(currentMusic)) return currentMusic;
+  const recent = new Set(recentMusic ?? []);
+  const fresh = tags.filter((tag) => !recent.has(tag));
+  return pickRandom(fresh.length ? fresh : tags);
+}
+
 function parseMusicTag(tag: string): ParsedMusicTag | null {
   const parts = tag.split(":");
   if (parts.length < 5 || parts[0] !== "music") return null;
@@ -345,6 +402,30 @@ function scoreStructuredMusic(
 export function scoreMusic(input: MusicScoreInput): string | null {
   const { state, weather, timeOfDay, currentMusic, recentMusic, availableMusic } = input;
   if (!availableMusic.length) return null;
+
+  // Context tracks win outright (#5161): tier tracks during combat, area
+  // tracks everywhere else. The state library below never sees these tags
+  // (parseMusicTag rejects them), and they never leak across contexts.
+  const contextTags = availableMusic
+    .map((tag) => parseContextMusicTag(tag))
+    .filter((candidate): candidate is ParsedContextMusicTag => !!candidate);
+  if (state === "combat") {
+    const tier = normalizeMusicEnemyTier(typeof input.enemyTier === "string" ? input.enemyTier : null);
+    if (tier) {
+      const tierTags = contextTags
+        .filter((candidate) => candidate.axis === "tier" && candidate.key === tier)
+        .map((candidate) => candidate.tag);
+      if (tierTags.length) return pickContextTrack(tierTags, currentMusic, recentMusic);
+    }
+  } else {
+    const slug = (input.locationSlug ?? "").trim().toLowerCase();
+    if (slug) {
+      const areaTags = contextTags
+        .filter((candidate) => candidate.axis === "area" && candidate.key === slug)
+        .map((candidate) => candidate.tag);
+      if (areaTags.length) return pickContextTrack(areaTags, currentMusic, recentMusic);
+    }
+  }
 
   const desiredGenre = normalizeMusicGenre(input.musicGenre);
   const desiredIntensity =

@@ -4,11 +4,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createHash, randomUUID } from "crypto";
-import { access, mkdir, rename, unlink, writeFile } from "fs/promises";
+import { access, mkdir, readdir, rename, unlink, writeFile } from "fs/promises";
 import { join } from "path";
 import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
+  normalizeMusicEnemyTier,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
   ttsRoleplaySpeakerExtractorResponseSchema,
@@ -174,7 +175,25 @@ const gameAudioSchema = z.object({
   prompt: z.string().trim().min(1).max(4_100),
   /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
   audioConnectionId: z.string().optional(),
+  /** Context-track request (#5161): a persistent composition generated ONCE
+   *  per area slug or encounter tier into the scoreable music library
+   *  (music/<axis>/<key>/), instead of a throwaway per-prompt clip. Music only. */
+  context: z
+    .object({
+      axis: z.enum(["area", "tier"]),
+      key: z
+        .string()
+        .trim()
+        .min(1)
+        .max(80)
+        .regex(/^[a-z0-9][a-z0-9_-]*$/),
+      /** Composition length; context tracks default to 120s. */
+      lengthMs: z.number().int().min(10_000).max(300_000).optional(),
+    })
+    .optional(),
 });
+
+const AUDIO_FILE_PATTERN = /\.(mp3|wav|ogg|m4a|flac)$/i;
 
 type VoiceOption = NonNullable<TTSVoicesResponse["voiceOptions"]>[number];
 type ModelOption = TTSModelsResponse["models"][number];
@@ -196,18 +215,47 @@ function scheduleGameAssetManifestRebuild(): void {
   gameAssetManifestRebuildTimer.unref();
 }
 
+type GameAudioContext = { axis: "area" | "tier"; key: string; lengthMs?: number };
+
 async function generateElevenLabsGameAudio(
   cfg: TTSConfig,
   kind: "sfx" | "music",
   prompt: string,
+  context?: GameAudioContext,
 ): Promise<{ tag: string; path: string; cached: boolean }> {
   const normalizedPrompt = normalizeGameAudioPrompt(prompt);
   const hash = createHash("sha256").update(`${kind}\0${normalizedPrompt.toLowerCase()}`).digest("hex");
-  const category = kind === "sfx" ? "sfx" : "music";
-  const relativePath = `${category}/generated/${hash}.mp3`;
-  const targetDirectory = join(GAME_ASSETS_DIR, category, "generated");
+  let category: string;
+  let fileName: string;
+  let tag: string;
+  if (context) {
+    // Context tracks (#5161) land in the scoreable library keyed by area/tier
+    // and generate ONCE per key: ANY existing audio file under the key —
+    // generated earlier or dropped in by the user as a replacement — means
+    // the key is covered, regardless of how today's prompt is worded.
+    category = `music/${context.axis}/${context.key}`;
+    const existing = (await readdir(join(GAME_ASSETS_DIR, "music", context.axis, context.key)).catch(() => [])).filter(
+      (name) => AUDIO_FILE_PATTERN.test(name),
+    );
+    const coveredBy = existing[0];
+    if (coveredBy) {
+      return {
+        tag: `music:${context.axis}:${context.key}:${coveredBy.replace(/\.[^.]+$/, "")}`,
+        path: `${category}/${coveredBy}`,
+        cached: true,
+      };
+    }
+    fileName = `generated-${hash.slice(0, 16)}.mp3`;
+    tag = `music:${context.axis}:${context.key}:${fileName.replace(/\.mp3$/, "")}`;
+  } else {
+    category = kind === "sfx" ? "sfx" : "music";
+    fileName = `${hash}.mp3`;
+    tag = `${category}:generated:${hash}`;
+    category = `${category}/generated`;
+  }
+  const relativePath = `${category}/${fileName}`;
+  const targetDirectory = join(GAME_ASSETS_DIR, category);
   const targetPath = join(GAME_ASSETS_DIR, relativePath);
-  const tag = `${category}:generated:${hash}`;
 
   try {
     await access(targetPath);
@@ -217,15 +265,22 @@ async function generateElevenLabsGameAudio(
   }
 
   const endpoint = kind === "sfx" ? "/v1/sound-generation" : "/v1/music";
+  // Longer compositions take the provider longer to render; give context
+  // tracks the headroom a 2-minute piece needs.
+  const timeoutMs = context ? 300_000 : 180_000;
   const response = await safeFetch(`${elevenLabsApiRoot(configuredBaseUrl(cfg))}${endpoint}`, {
     method: "POST",
     headers: elevenLabsHeaders(cfg.apiKey),
     body: JSON.stringify(
       kind === "sfx"
         ? { text: normalizedPrompt, prompt_influence: 0.3 }
-        : { prompt: normalizedPrompt, music_length_ms: 30_000, force_instrumental: true },
+        : {
+            prompt: normalizedPrompt,
+            music_length_ms: context ? (context.lengthMs ?? 120_000) : 30_000,
+            force_instrumental: true,
+          },
     ),
-    signal: AbortSignal.timeout(180_000),
+    signal: AbortSignal.timeout(timeoutMs),
     policy: {
       allowLocal: false,
       allowedProtocols: ["https:"],
@@ -1266,7 +1321,13 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Generates and caches scene-specific Game Mode music or sound effects.
    */
   app.post("/game-audio", async (req, reply) => {
-    const { kind, prompt, audioConnectionId } = gameAudioSchema.parse(req.body);
+    const { kind, prompt, audioConnectionId, context } = gameAudioSchema.parse(req.body);
+    if (context && kind !== "music") {
+      return reply.status(400).send({ error: "Context tracks are music only" });
+    }
+    if (context?.axis === "tier" && !normalizeMusicEnemyTier(context.key)) {
+      return reply.status(400).send({ error: `Unknown encounter tier "${context.key}"` });
+    }
     const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
     const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
     if (cfg.source !== "elevenlabs" || !enabled) {
@@ -1277,10 +1338,14 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
 
     const normalizedPrompt = normalizeGameAudioPrompt(prompt);
-    const lockKey = `${kind}\0${normalizedPrompt.toLowerCase()}`;
+    // Context generations lock on their KEY: two turns racing the same area
+    // must collapse into one composition even when their prompts differ.
+    const lockKey = context
+      ? `context\0${context.axis}\0${context.key}`
+      : `${kind}\0${normalizedPrompt.toLowerCase()}`;
     let generation = gameAudioGenerationLocks.get(lockKey);
     if (!generation) {
-      generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt).finally(() => {
+      generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt, context).finally(() => {
         gameAudioGenerationLocks.delete(lockKey);
       });
       gameAudioGenerationLocks.set(lockKey, generation);

@@ -174,7 +174,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.10: contributions.assets — general package-owned static asset delivery.
 // 1.11: Experience combat seam — combatActive/combatStyle/requestCombat on the
 //        game-surface capabilityProps.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 11 } as const);
+// 1.12: spatial transition commit/reject/refresh capability events are also
+//        addressed to the game-owning Experience package (soft seam: delivered
+//        regardless of declared capabilityApi; declare 1.12 only to REQUIRE it).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 12 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

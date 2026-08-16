@@ -135,6 +135,22 @@ mirror the generation's progress and failure so a package is never left waiting 
 regardless of the `capabilityApi` it declares — the 1.11 label marks when they appeared, so a
 package that *requires* them declares 1.11 and older Engines refuse it cleanly.
 
+Capability API 1.12 addresses the spatial capability events to the game-owning Experience
+package as well. `spatial_transition_committed`, `spatial_transition_rejected`, and the
+untyped `spatial_context_refresh` nudge — previously addressed only to `hierarchical-maps` on
+the `marinara-capability-server-event` window event — are now dual-dispatched with
+`packageId` set to the chat's `gameExperienceId`, carrying the same payload
+(`chatId`, `commandId`, `currentLocationId`, `definitionRevision`, optional `travel`). An
+Experience that sent a travel command via `sendMessage`'s `pendingSpatialTransition` argument
+can therefore confirm or clear its journey the moment the host knows, instead of inferring
+the outcome from later state reads. 1.12 also closes a gap that affected World Maps itself:
+transitions rejected on the pre-stream commit path (an HTTP error, so no SSE event existed)
+now synthesize a `spatial_transition_rejected` event client-side, with the error `code` in
+the payload. Note that a committed event whose `travel.mode` is `"step_by_step"` with
+`complete: false` means the journey continues — keep your pending state until the completing
+event. This is a soft seam like 1.11: events are delivered regardless of the declared
+`capabilityApi`; declare 1.12 only if your package requires them.
+
 ## Initial packages
 
 - all currently built-in agents;

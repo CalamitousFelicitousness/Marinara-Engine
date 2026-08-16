@@ -11,7 +11,7 @@ import type {
 } from "@marinara-engine/shared";
 import { api, ApiError } from "../lib/api-client";
 import { useChatStore } from "../stores/chat.store";
-import { dispatchCapabilityClientEvent } from "../lib/capability-client-events";
+import { dispatchSpatialCapabilityEvent, resolveGameExperiencePackageId } from "../lib/capability-client-events";
 import { chatKeys } from "./use-chats";
 import {
   shouldKeepPendingSpatialTransition,
@@ -120,6 +120,25 @@ export function useSpatialContext(chatId: string | null, enabled = true) {
   });
 }
 
+/** Mirror of use-generate's resolver: the Experience package owning this
+ *  chat's game, read from the cached chat row (active chat first — the commit
+ *  path always runs on the open chat). */
+function getGameExperiencePackageId(chatId: string): string | null {
+  const activeChat = useChatStore.getState().activeChat;
+  if (activeChat?.id !== chatId) return null;
+  const raw = activeChat.metadata;
+  let metadata: Record<string, unknown> | null = null;
+  if (raw && typeof raw === "object") metadata = raw as Record<string, unknown>;
+  else if (typeof raw === "string") {
+    try {
+      metadata = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      metadata = null;
+    }
+  }
+  return resolveGameExperiencePackageId(metadata);
+}
+
 export function useCommitSpatialOwnerTurn() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -131,8 +150,7 @@ export function useCommitSpatialOwnerTurn() {
       if (!stepwiseRouteRemainsQueued) {
         useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
       }
-      dispatchCapabilityClientEvent({
-        packageId: "hierarchical-maps",
+      dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
         type: "spatial_transition_committed",
         chatId: variables.chatId,
         data: {
@@ -148,7 +166,7 @@ export function useCommitSpatialOwnerTurn() {
       void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
       void queryClient.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
     },
-    onError: async (_error, variables) => {
+    onError: async (error, variables) => {
       let recovered: RecoveredSpatialOwnerTurnResponse | null = null;
       try {
         recovered = await api.get<RecoveredSpatialOwnerTurnResponse>(
@@ -162,8 +180,7 @@ export function useCommitSpatialOwnerTurn() {
         if (!stepwiseRouteRemainsQueued) {
           useChatStore.getState().clearPendingSpatialTransition(variables.chatId, variables.transition.commandId);
         }
-        dispatchCapabilityClientEvent({
-          packageId: "hierarchical-maps",
+        dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
           type: "spatial_transition_committed",
           chatId: variables.chatId,
           data: {
@@ -176,6 +193,22 @@ export function useCommitSpatialOwnerTurn() {
         });
       } else {
         useChatStore.getState().setPendingSpatialTransitionStatus(variables.chatId, "needs_review");
+        // The REST commit path had the same silent-reject gap as the pre-stream
+        // game turn: the mutation error never became a capability event, so
+        // listeners (World Maps included) only saw an untyped cache refresh.
+        const rejectCode =
+          error instanceof ApiError && error.payload && typeof error.payload === "object"
+            ? (error.payload as Record<string, unknown>).code
+            : undefined;
+        dispatchSpatialCapabilityEvent(getGameExperiencePackageId(variables.chatId), {
+          type: "spatial_transition_rejected",
+          chatId: variables.chatId,
+          data: {
+            chatId: variables.chatId,
+            commandId: variables.transition.commandId,
+            ...(typeof rejectCode === "string" ? { code: rejectCode } : {}),
+          },
+        });
       }
       void queryClient.invalidateQueries({ queryKey: spatialContextKeys.detail(variables.chatId) });
     },

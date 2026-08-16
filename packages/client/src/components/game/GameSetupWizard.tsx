@@ -86,7 +86,11 @@ import {
   resolveGameSetupImport,
 } from "../../lib/game-setup-share";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
-import { filterLanguageGenerationConnections, isConnectionFlagTrue } from "../../lib/connection-filters";
+import {
+  filterAudioGenerationConnections,
+  filterLanguageGenerationConnections,
+  isConnectionFlagTrue,
+} from "../../lib/connection-filters";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 
@@ -650,10 +654,7 @@ export function GameSetupWizard({
   const videoConnections = useMemo(() => connections.filter((c) => c.provider === "video_generation"), [connections]);
   // Quarantined (review-required) imports are refused by the server's
   // resolution, so they must not be offered or previewed here either.
-  const audioConnections = useMemo(
-    () => connections.filter((c) => c.provider === "audio" && !isConnectionFlagTrue(c.profileImportReviewRequired)),
-    [connections],
-  );
+  const audioConnections = useMemo(() => filterAudioGenerationConnections(connections), [connections]);
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
   // "Use default" previews the runtime resolution (category default, else its
   // fallback), extended by a first-connection convenience step. When the

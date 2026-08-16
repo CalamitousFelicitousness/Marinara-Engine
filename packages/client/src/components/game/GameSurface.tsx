@@ -90,7 +90,11 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
-import { filterLanguageGenerationConnections, isConnectionFlagTrue } from "../../lib/connection-filters";
+import {
+  filterAudioGenerationConnections,
+  filterLanguageGenerationConnections,
+  isConnectionFlagTrue,
+} from "../../lib/connection-filters";
 import { gameAssetFileUrl } from "../../lib/game-asset-urls";
 import { audioManager } from "../../lib/game-audio";
 import {
@@ -2362,9 +2366,7 @@ function GameSurfaceComponent({
     // Quarantined (review-required) imports are refused by the server's
     // resolution (getWithKey/getDefaultForAudio return null for them), so
     // they must not drive capability gating here either.
-    const rows = ((connectionsList ?? []) as Record<string, unknown>[]).filter(
-      (connection) => connection.provider === "audio" && !isConnectionFlagTrue(connection.profileImportReviewRequired),
-    );
+    const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
     return (
       (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??

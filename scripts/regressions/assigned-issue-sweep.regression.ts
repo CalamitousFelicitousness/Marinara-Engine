@@ -353,7 +353,7 @@ assert.doesNotMatch(
   "unsupported SillyTavern placements must not discard the entire preset regex entry",
 );
 const regexBeforeSuccessfulImport =
-  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await createRegexScript\.mutateAsync\(normalized\);/u.exec(
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await importRegexScript\.mutateAsync\(normalized\);/u.exec(
     presetsPanelSource,
   )?.[0];
 assert.ok(regexBeforeSuccessfulImport, "the preset regex pre-import path remains discoverable");
@@ -363,13 +363,13 @@ assert.doesNotMatch(
   "unsupported placement warnings must not be emitted before the regex imports successfully",
 );
 const successfulRegexImportWarning =
-  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
+  /await importRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
     presetsPanelSource,
   )?.[0];
 assert.ok(successfulRegexImportWarning, "the successful preset regex import warning remains discoverable");
 assert.match(
   successfulRegexImportWarning,
-  /await createRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push/u,
+  /await importRegexScript\.mutateAsync\(normalized\);[\s\S]*?warnings\.push/u,
   "ignored SillyTavern placements produce a warning only after the regex imports successfully",
 );
 assert.match(
@@ -393,7 +393,7 @@ assert.doesNotMatch(
   "unsupported SillyTavern placements must not discard an entire character-scoped regex entry",
 );
 const scopedRegexBeforeSuccessfulImport =
-  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await createRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);/u.exec(
+  /const unsupportedPlacements = getUnsupportedStRegexPlacements\(entry\);[\s\S]*?await importRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);/u.exec(
     characterRegexSectionSource,
   )?.[0];
 assert.ok(scopedRegexBeforeSuccessfulImport, "the character-scoped regex pre-import path remains discoverable");
@@ -412,7 +412,7 @@ assert.doesNotMatch(
   "supported character-scoped regex entries must reach the import even when some placements are unsupported",
 );
 const successfulScopedRegexImportWarning =
-  /await createRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
+  /await importRegex\.mutateAsync\(\{ \.\.\.normalized, targetCharacterIds: \[characterId\] \}\);[\s\S]*?warnings\.push\([\s\S]*?ignoredUnsupportedRegexPlacements"/u.exec(
     characterRegexSectionSource,
   )?.[0];
 assert.ok(

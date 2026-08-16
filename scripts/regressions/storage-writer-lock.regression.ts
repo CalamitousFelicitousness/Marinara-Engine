@@ -109,54 +109,60 @@ try {
       await afterCrash._fileStore.close();
     }
 
-    // Termux has no stable machine ID on some Android devices. Its HOME is
-    // app-private, so an exited lease there is safe to reclaim after reboot;
-    // the same fallback must not apply to storage outside that HOME.
-    const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
-    const previousHome = process.env.HOME;
-    const termuxHome = mkdtempSync(join(tmpdir(), "marinara-termux-home-"));
-    tempDirs.push(termuxHome);
-    const termuxStorage = join(termuxHome, "Marinara-Engine", "packages", "server", "data", "storage");
-    process.env.FILE_STORAGE_DIR = termuxStorage;
-    mkdirSync(leasePath(termuxStorage), { recursive: true });
-    writeFileSync(
-      ownerPath(termuxStorage),
-      JSON.stringify({
-        ...leaseTemplate,
-        pid: await exitedPid(),
-        hostId: null,
-        token: "stale-termux-token",
-      }),
-    );
-    let termuxDb: Awaited<ReturnType<typeof createFileNativeDB>> | undefined;
-    try {
-      Object.defineProperty(process, "platform", { ...platformDescriptor, value: "android" });
-      process.env.HOME = termuxHome;
-      termuxDb = await createFileNativeDB();
-      assert.notEqual(readJson<LeaseRecord>(ownerPath(termuxStorage)).token, "stale-termux-token");
-      await termuxDb._fileStore.close();
-      termuxDb = undefined;
-
-      const outsideHome = useTempStorage("termux-outside-home");
-      mkdirSync(leasePath(outsideHome));
+    // Windows cannot faithfully simulate Android's POSIX permission semantics;
+    // retain this Termux-specific proof on real POSIX-capable hosts.
+    if (process.platform !== "win32") {
+      // Termux has no stable machine ID on some Android devices. Its HOME is
+      // app-private, so an exited lease there is safe to reclaim after reboot;
+      // the same fallback must not apply to storage outside that HOME.
+      const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+      const previousHome = process.env.HOME;
+      const termuxHome = mkdtempSync(join(tmpdir(), "marinara-termux-home-"));
+      tempDirs.push(termuxHome);
+      const termuxStorage = join(termuxHome, "Marinara-Engine", "packages", "server", "data", "storage");
+      process.env.FILE_STORAGE_DIR = termuxStorage;
+      mkdirSync(leasePath(termuxStorage), { recursive: true });
       writeFileSync(
-        ownerPath(outsideHome),
+        ownerPath(termuxStorage),
         JSON.stringify({
           ...leaseTemplate,
           pid: await exitedPid(),
           hostId: null,
-          token: "outside-termux-home-token",
+          token: "stale-termux-token",
         }),
       );
-      const linkedOutsideHome = join(termuxHome, "shared-storage");
-      symlinkSync(outsideHome, linkedOutsideHome, "dir");
-      process.env.FILE_STORAGE_DIR = linkedOutsideHome;
-      await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
-    } finally {
-      if (termuxDb) await termuxDb._fileStore.close();
-      Object.defineProperty(process, "platform", platformDescriptor);
-      if (previousHome === undefined) delete process.env.HOME;
-      else process.env.HOME = previousHome;
+      let termuxDb: Awaited<ReturnType<typeof createFileNativeDB>> | undefined;
+      try {
+        Object.defineProperty(process, "platform", { ...platformDescriptor, value: "android" });
+        process.env.HOME = termuxHome;
+        termuxDb = await createFileNativeDB();
+        assert.notEqual(readJson<LeaseRecord>(ownerPath(termuxStorage)).token, "stale-termux-token");
+        await termuxDb._fileStore.close();
+        termuxDb = undefined;
+
+        const outsideHome = useTempStorage("termux-outside-home");
+        mkdirSync(leasePath(outsideHome));
+        writeFileSync(
+          ownerPath(outsideHome),
+          JSON.stringify({
+            ...leaseTemplate,
+            pid: await exitedPid(),
+            hostId: null,
+            token: "outside-termux-home-token",
+          }),
+        );
+        const linkedOutsideHome = join(termuxHome, "shared-storage");
+        symlinkSync(outsideHome, linkedOutsideHome, "dir");
+        process.env.FILE_STORAGE_DIR = linkedOutsideHome;
+        await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
+      } finally {
+        if (termuxDb) await termuxDb._fileStore.close();
+        Object.defineProperty(process, "platform", platformDescriptor);
+        if (previousHome === undefined) delete process.env.HOME;
+        else process.env.HOME = previousHome;
+      }
+    } else {
+      process.stdout.write("Skipping Termux-specific writer-lock proof on Windows.\n");
     }
     process.env.FILE_STORAGE_DIR = dir;
 

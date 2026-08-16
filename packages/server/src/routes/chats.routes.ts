@@ -3897,7 +3897,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       const { createGameStateStorage } = await import("../services/storage/game-state.storage.js");
       const gameStateStore = createGameStateStorage(app.db);
       const gameEngineStore =
-        sourceChat.mode === "game"
+        sourceChat.mode === "game" || sourceChat.mode === "conversation"
           ? (await import("../services/storage/game-engine-state.storage.js")).createGameEngineStateStorage(app.db)
           : null;
 

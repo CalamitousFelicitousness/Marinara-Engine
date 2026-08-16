@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added a host-run structured generation call for game-surface Experiences: `POST /api/game/:chatId/experience-generation` runs one bounded, non-streaming JSON call on the chat's GM connection with package-supplied instructions and an optional JSON schema (forwarded as provider-native structured output where supported), gated on the chat's stamped Experience, rate-limited in the one-shot-call class, serialized per chat, and answering truncation with an actionable error before the tolerant parser can repair a cut-off reply into a silently incomplete document (#5135).
 - Consolidated local regression commands around the filesystem-discovered Node lane: `pnpm regression` and `pnpm regression:node` now collect all 121 Node regressions with one shared build, `pnpm regression:ui` owns the separate Playwright lane with `pnpm smoke:ui` retained as a compatibility alias, and `pnpm test` checks the installer layout before the Node-only lane. Retained focused commands use exact runner filters, and 61 package-script aliases were removed without deleting regression files (#5132).
 
 - Grouped 31 clear-owner Launcher, Mari, Professor Mari, and Noodle regressions into domain directories while preserving all 121 automatically discovered files and stable focused commands. The move also ensures three file-backed regression fixtures close their databases before removing owned temporary storage (#5132).

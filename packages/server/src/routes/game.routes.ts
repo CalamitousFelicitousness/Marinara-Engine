@@ -10147,6 +10147,276 @@ export async function gameRoutes(app: FastifyInstance) {
     });
   });
 
+  // ── POST /game/:chatId/experience-generation (#5135) ──
+  // One host-run, bounded, non-streaming structured-output call for the chat's
+  // stamped game-surface Experience — e.g. turning wizard preferences into a
+  // compact world brief its deterministic generator compiles into a tile world.
+  // Packages are client-only, so this is the sanctioned way for one to spend a
+  // single LLM call; the gate is the same stamp the experience-state routes
+  // enforce, the connection is the chat's own GM connection, and both a
+  // dedicated rate-limit class and the per-chat asset-generation lock bound the
+  // spend. Modeled on /game/scene-wrap, with the illustrator's repair
+  // round-trip instead of a blind retry.
+  const experienceGenerationSchema = z.object({
+    /** The package's guidance: what to produce, the schema description, vocabularies. */
+    instructions: z.string().min(1).max(16_000),
+    /** The request payload (e.g. the player's preferences), appended as the user turn. */
+    userContent: z.string().max(8_000).default(""),
+    /** Optional JSON schema forwarded as provider-native structured output where
+     *  supported (OpenAI-compatible, Google). Advisory elsewhere: Anthropic and
+     *  the local sidecar ignore it, so the tolerant parser is the real contract. */
+    schema: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .refine(
+        (value) => {
+          if (value === undefined) return true;
+          // stringify can throw on pathological nesting depth; that is a
+          // validation failure (→ 400), not a server error.
+          try {
+            return JSON.stringify(value).length <= 8_000;
+          } catch {
+            return false;
+          }
+        },
+        { message: "schema must serialize to at most 8000 characters" },
+      ),
+    schemaName: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]{1,64}$/)
+      .default("experience_generation"),
+    /** OpenAI strict structured outputs reject most hand-written schemas
+     *  (additionalProperties, required-completeness rules), so strict is
+     *  opt-in for packages that author their schema to that dialect. */
+    strictSchema: z.boolean().default(false),
+    debugMode: z.boolean().default(false),
+    connectionId: z.string().optional(),
+    /** Optional tightening of the stored max-output-token parameter; never a raise. */
+    maxTokens: z.number().int().min(256).max(8_192).optional(),
+  });
+
+  app.post<{ Params: { chatId: string } }>(
+    "/:chatId/experience-generation",
+    { bodyLimit: 64 * 1024 },
+    async (req, reply) => {
+      const input = experienceGenerationSchema.parse(req.body ?? {});
+      const chats = createChatsStorage(app.db);
+      const connections = createConnectionsStorage(app.db);
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.code(404).send({ error: "Chat not found" });
+      const gameType = resolveExperienceStateGameType(chat);
+      if (!gameType) {
+        return reply.code(409).send({
+          error: "This chat has no game-surface Experience, so it cannot run experience generation",
+        });
+      }
+
+      const meta = parseMeta(chat.metadata);
+      const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
+        connections,
+        input.connectionId,
+        chat.connectionId,
+      );
+      const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
+      const provider = await createGameMainProvider(connections, conn, baseUrl);
+
+      const baseMessages: ChatMessage[] = [
+        { role: "system", content: input.instructions },
+        {
+          role: "user",
+          content:
+            `${input.userContent}\n\nREMEMBER: Output ONLY the requested JSON object — no prose, no markdown fences.`.trim(),
+        },
+      ];
+
+      // Fast-fail when the chat's generation lock is held (a storyboard or
+      // asset run can hold it for many minutes): parking here would consume a
+      // five-minute socket per request and then surface as an opaque 500. The
+      // has() check races the acquire by a tick at worst; the park it leaves
+      // behind is then bounded by the other caller's own watchdog.
+      if (gameAssetGenerationLocks.has(req.params.chatId)) {
+        reply.header("Retry-After", "15");
+        return reply.code(409).send({
+          error: "This chat already has a generation in flight. Try again shortly.",
+          code: "chat_busy",
+        });
+      }
+      const signal = createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Experience generation");
+      const release = await acquireGameAssetGenerationLock(req.params.chatId, signal);
+      try {
+        // 2048 lifts the STORED parameter so a brief-sized reply has headroom
+        // (mirroring GAME_SETUP_MIN_OUTPUT_TOKENS); the known-model cap still
+        // applies, and an explicit package maxTokens may tighten below the
+        // floor — a caller asking for less gets less.
+        // The override slot is a ceiling; both the connection's own configured
+        // cap and the package's requested tightening must survive, so pass the
+        // tighter of the two.
+        const maxTokens = clampGameMaxOutputTokens({
+          provider: conn.provider,
+          model: conn.model ?? "",
+          maxTokens: Math.max(2_048, gameGenerationParameters?.maxTokens ?? 0),
+          maxTokensOverride:
+            input.maxTokens != null && conn.maxTokensOverride != null
+              ? Math.min(input.maxTokens, conn.maxTokensOverride)
+              : (input.maxTokens ?? conn.maxTokensOverride ?? null),
+        });
+        const options = gameGenOptions(
+          conn.model ?? "",
+          { stream: false, maxTokens, signal },
+          gameGenerationParameters,
+          conn.provider,
+        );
+        // Set AFTER gameGenOptions (its suppressModelParameters branch drops
+        // unknown overrides). Providers under that policy may STILL drop
+        // response_format at their own layer — for them the prompt + tolerant
+        // parser are the contract, which is also true of Anthropic and the
+        // local sidecar by design. The FLAT json_schema form is the universal
+        // donor shape: the OpenAI chat-completions normalizer re-nests it, the
+        // Responses path consumes it as-is, and Google reads `.schema` first.
+        options.responseFormat = input.schema
+          ? { type: "json_schema", name: input.schemaName, schema: input.schema, strict: input.strictSchema }
+          : { type: "json_object" };
+
+        const debugLogsEnabled = input.debugMode || isDebugAgentsEnabled() || logger.isLevelEnabled("debug");
+        const debugLog = (message: string, ...args: unknown[]) => {
+          logDebugOverride(input.debugMode || isDebugAgentsEnabled(), message, ...args);
+        };
+        if (debugLogsEnabled) {
+          debugLog(
+            "[debug/game/experience-generation] chatId=%s model=%s gameType=%s maxTokens=%d strict=%s responseFormat=%s",
+            req.params.chatId,
+            conn.model ?? "",
+            gameType,
+            maxTokens,
+            input.strictSchema,
+            JSON.stringify(options.responseFormat),
+          );
+        }
+
+        // Worst case THREE upstream calls per request: attempt 1 buffered, an
+        // empty-buffered streamed rescue (attempt 1 only), and one repair
+        // round-trip. The rate-limit class is sized with that fan-out in mind.
+        const runAttempt = async (attemptMessages: ChatMessage[], allowStreamedRescue: boolean) => {
+          if (debugLogsEnabled) {
+            for (const message of attemptMessages) {
+              debugLog("[debug/game/experience-generation] %s message:\n%s", message.role, message.content);
+            }
+          }
+          const result = await runGameChatComplete(provider, attemptMessages, options, "Experience generation");
+          let extraction = extractLeadingThinkingBlocks(
+            result.content || "",
+            gameGenerationParameters?.customThinkingTags,
+          );
+          let raw = extraction.content;
+          let finishReason: string | null = result.finishReason ?? null;
+          if (!raw.trim() && allowStreamedRescue) {
+            // Some provider/model combos return empty content on the buffered
+            // path (scene-wrap precedent). The streamed collection has no
+            // reliable finish reason — the discarded buffered one must not be
+            // allowed to condemn a complete streamed reply as truncated.
+            logger.warn("[game/experience-generation] Empty buffered response, retrying with streamed collection");
+            const streamed = await runGameChatStream(
+              provider,
+              attemptMessages,
+              options,
+              "Experience generation streamed retry",
+            );
+            extraction = extractLeadingThinkingBlocks(streamed, gameGenerationParameters?.customThinkingTags);
+            raw = extraction.content;
+            finishReason = null;
+          }
+          if (debugLogsEnabled) {
+            debugLog(
+              "[debug/game/experience-generation] raw response (%d chars, finishReason=%s):\n%s",
+              raw.length,
+              finishReason ?? "null",
+              raw,
+            );
+          }
+          return { raw, finishReason };
+        };
+
+        let attemptMessages = baseMessages;
+        let lastRaw = "";
+        let lastFinishReason: string | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let raw: string;
+          let finishReason: string | null;
+          try {
+            ({ raw, finishReason } = await runAttempt(attemptMessages, attempt === 1));
+          } catch (error) {
+            // A provider rejection (strict-schema refusal, 4xx, network) is a
+            // degradation case for the package, not a server fault — but a
+            // client abort/timeout stays a plain error.
+            if (signal.aborted) throw error;
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn(error, "[game/experience-generation] Provider call failed: %s", message);
+            return reply.code(422).send({
+              error: `The model provider rejected the request: ${message}`,
+              code: "provider_error",
+              truncated: false,
+            });
+          }
+          lastRaw = raw;
+          lastFinishReason = finishReason;
+          // The authoritative cut signal is checked BEFORE the parse: the
+          // tolerant parser happily repairs a cut-off reply by closing its
+          // containers, which would hand the package a silently amputated
+          // document as ok:true — and there is no host-side semantic validator
+          // behind this route to catch that. The heuristic container scan is
+          // only consulted when the parse fails, so its rare false positives
+          // on unusual-but-complete output cannot 422 a parseable reply.
+          if (finishReason === "length") {
+            return reply.code(422).send({
+              error:
+                "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+              truncated: true,
+              raw: raw.slice(0, 20_000),
+              finishReason,
+            });
+          }
+          try {
+            const data = parseJSON(raw);
+            return { ok: true, data };
+          } catch {
+            if (isLikelyTruncatedJsonResponse(raw, finishReason ?? undefined)) {
+              return reply.code(422).send({
+                error:
+                  "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+                truncated: true,
+                raw: raw.slice(0, 20_000),
+                finishReason,
+              });
+            }
+            if (attempt === 1) {
+              // Repair round-trip: showing the model its own bad output plus a
+              // correction converges far better than a blind re-run.
+              attemptMessages = [
+                ...baseMessages,
+                { role: "assistant", content: raw.slice(0, 4_000) },
+                {
+                  role: "user",
+                  content:
+                    "That response was not the requested JSON. Reply again with ONLY the corrected JSON object — no prose, no fences.",
+                },
+              ];
+            }
+          }
+        }
+        // The package degrades to its own defaults; hand it the raw text so it
+        // can log or salvage, never a hand-repair dialog (this is not a wizard).
+        return reply.code(422).send({
+          error: "The model did not return parseable JSON",
+          truncated: false,
+          raw: lastRaw.slice(0, 20_000),
+          finishReason: lastFinishReason,
+        });
+      } finally {
+        release();
+      }
+    },
+  );
+
   // ── PUT /game/:chatId/widgets ──
   app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req) => {
     const { widgets: rawWidgets } = z

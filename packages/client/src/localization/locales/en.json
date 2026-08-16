@@ -7322,7 +7322,7 @@
   "ui.panels.connectiondefaultssection.expandConnectionDefaults": "Expand connection defaults",
   "ui.panels.connectiondefaultssection.images": "Images",
   "ui.panels.connectiondefaultssection.main": "Main",
-  "ui.panels.connectiondefaultssection.mainAgentsImagesAndVideosDefaultsAndFallbacks": "Main, Agents, Images, and Videos defaults and fallbacks",
+  "ui.panels.connectiondefaultssection.mainAgentsImagesAndVideosDefaultsAndFallbacks": "Main, Agents, Images, Videos, and Audio defaults and fallbacks",
   "ui.panels.connectiondefaultssection.videos": "Videos",
   "ui.panels.connectionrow.addToRandomPool": "Add to random pool",
   "ui.panels.connectionrow.deleteConnection": "Delete Connection",

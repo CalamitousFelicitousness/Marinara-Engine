@@ -637,6 +637,15 @@ export function GameSetupWizard({
       (connectionsList as WizardConnection[]) ?? [],
     [connectionsList],
   );
+  // GM and scene-helper pickers offer language connections only; media
+  // connections have their own dedicated pickers further into the wizard.
+  const languageConnections = useMemo(
+    () =>
+      connections.filter(
+        (c) => c.provider !== "image_generation" && c.provider !== "video_generation" && c.provider !== "audio",
+      ),
+    [connections],
+  );
   const selectedGmConnection = useMemo(
     () => connections.find((connection) => connection.id === gmConnectionId) ?? null,
     [connections, gmConnectionId],
@@ -1404,7 +1413,7 @@ export function GameSetupWizard({
                 className={GAME_SETUP_INPUT_CLASS}
               >
                 <option value="">{localizeUi("ui.game.gamesetupwizard.selectAConnection")}</option>
-                {connections.map((c) => (
+                {languageConnections.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                     {c.model ?localizeUi("ui.game.gamesetupwizard.value1", { value1: c.model }) : ""}
@@ -1445,7 +1454,7 @@ export function GameSetupWizard({
                   </div>
                 )}
               </div>
-              {connections.length === 0 && (
+              {languageConnections.length === 0 && (
                 <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.game.gamesetupwizard.noConnectionsConfiguredAddOneInSettingsConnections")}</p>
               )}
             </div>
@@ -1469,7 +1478,7 @@ export function GameSetupWizard({
               >
                 <option value="">{localizeUi("ui.game.gamesetupwizard.skipUseInlineTagsFromGm")}</option>
                 {sidecarAvailable && <option value="local">{localizeUi("ui.game.gamesetupwizard.localModelGemma")}</option>}
-                {connections.map((c) => (
+                {languageConnections.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                     {c.model ?localizeUi("ui.game.gamesetupwizard.value1", { value1: c.model }) : ""}

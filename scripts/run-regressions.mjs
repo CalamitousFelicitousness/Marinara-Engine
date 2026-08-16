@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,7 @@ const REGRESSION_SUFFIXES = ['.regression.ts', '.regression.mjs', '.regression.j
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGBREAK: 1 };
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const regressionsRoot = path.join(repositoryRoot, 'scripts', 'regressions');
+const serverRequire = createRequire(path.join(repositoryRoot, 'packages', 'server', 'package.json'));
 let activeChild;
 let activeTermination = false;
 let activeForceTimer;
@@ -116,7 +118,7 @@ function commandFor(relativePath) {
   if (relativePath.endsWith('.regression.ts')) {
     return {
       command: process.execPath,
-      args: [path.join(repositoryRoot, 'packages', 'server', 'node_modules', 'tsx', 'dist', 'cli.mjs'), `../../${relativePath}`],
+      args: [serverRequire.resolve('tsx/cli'), path.join(repositoryRoot, relativePath)],
       cwd: path.join(repositoryRoot, 'packages', 'server'),
     };
   }
@@ -188,6 +190,7 @@ async function main() {
 
   const results = [];
   for (const file of selected) {
+    if (interruption) return;
     const result = await runRegression(file);
     results.push({ file, ...result });
     if (interruption) return;

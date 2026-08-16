@@ -9817,6 +9817,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       const unknownProvenance = scanForActivatedEntries(scanMessages, [{ ...entry, embeddingSpaceId: null } as any], {
         chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingsByLorebookId: semantic.embeddingsByLorebookId,
         semanticEmbeddingSpaceId: "test-space",
         semanticThreshold: 0.3,
       });

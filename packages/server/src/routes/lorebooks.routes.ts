@@ -1225,7 +1225,7 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       "document",
     );
     const existingVectorEntries = body.onlyMissing
-      ? (allEntries as Array<Record<string, unknown>>).filter(
+      ? (vectorizableEntries as Array<Record<string, unknown>>).filter(
           (entry) => Array.isArray(entry.embedding) && entry.embedding.length > 0,
         )
       : [];

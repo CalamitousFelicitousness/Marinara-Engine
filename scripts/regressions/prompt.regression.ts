@@ -746,9 +746,12 @@ import { isChatToolEnabledByDefault } from "../../packages/server/src/services/g
 import { scopeIndividualGroupMessagesForTarget } from "../../packages/server/src/services/generation/prompt-message-scope.js";
 import { resolveGenerationPromptPresetChoices } from "../../packages/server/src/routes/generate/prompt-preset-selection.js";
 import {
+  buildLorebookSemanticEmbeddingsById,
   calibrateLorebookSimilarity,
   lorebookSimilarityBaseline,
+  selectLorebookVectorQueryText,
 } from "../../packages/server/src/services/lorebook/embeddings.js";
+import { formatMemoryRecallEmbeddingTexts } from "../../packages/server/src/services/memory-recall-embedding.js";
 import {
   filterRelevantLorebooks,
   resolveAndBudgetActivatedLorebookEntries,
@@ -1446,10 +1449,7 @@ const cases: RegressionCase[] = [
     run() {
       const publicReference = readFileSync(new URL("../../docs/agents/built-in-agents.md", import.meta.url), "utf8");
       const publicReferenceLines = new Set(publicReference.split(/\r?\n/u));
-      const frontendArchitecture = readFileSync(
-        new URL("../../docs/development/frontend.md", import.meta.url),
-        "utf8",
-      );
+      const frontendArchitecture = readFileSync(new URL("../../docs/development/frontend.md", import.meta.url), "utf8");
       const frontendAgentCatalog = frontendArchitecture.match(
         /### First-party downloadable agents([\s\S]*?)### Agent result types/u,
       );
@@ -1465,14 +1465,17 @@ const cases: RegressionCase[] = [
 
       assert.equal(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.length, 32);
       assert.equal(new Set(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.map((entry) => entry.id)).size, 32);
-      assert.deepEqual(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"), {
-        id: "noodle",
-        name: "Noodle",
-        category: "misc",
-        modes: "Home",
-        summary:
-          "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
-      });
+      assert.deepEqual(
+        OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.find((entry) => entry.id === "noodle"),
+        {
+          id: "noodle",
+          name: "Noodle",
+          category: "misc",
+          modes: "Home",
+          summary:
+            "adds the optional local Noodle timeline and NoodleR creator-and-fan roleplay feed in a dedicated Home tab",
+        },
+      );
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "long-term-memory"));
       assert.ok(OFFICIAL_AGENT_KNOWLEDGE_ENTRIES.some((entry) => entry.id === "storyboard"));
       assert.deepEqual(
@@ -4799,10 +4802,7 @@ const cases: RegressionCase[] = [
         null,
       );
       assert.equal(
-        resolveStoryboardAnimationRefinement(
-          '{"classification":"unknown","narrationBeat":"One | Two"}',
-          motionIntent,
-        ),
+        resolveStoryboardAnimationRefinement('{"classification":"unknown","narrationBeat":"One | Two"}', motionIntent),
         null,
       );
       assert.equal(
@@ -9710,6 +9710,118 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         '{"say":"I could not create it because the name is missing.","commands":[],"stop":true}',
       );
       assert.equal(workspaceActionNeedsVerification(honestBlocker, []), null);
+    },
+  },
+  {
+    name: "lorebook vectors use retrieval intent and the latest user context",
+    async run() {
+      const scanMessages = [
+        { role: "assistant", content: "A long opening message about an unrelated ocean voyage." },
+        { role: "user", content: "Rocks stones mountain ore" },
+      ];
+      assert.equal(selectLorebookVectorQueryText(scanMessages, 10), "Rocks stones mountain ore");
+      assert.deepEqual(
+        formatMemoryRecallEmbeddingTexts(
+          ["Rocks stones mountain ore"],
+          "Casual-Autopsy/snowflake-arctic-embed-l-v2.0-gguf:Q8_0",
+          "query",
+        ),
+        ["query: Rocks stones mountain ore"],
+      );
+      assert.deepEqual(
+        formatMemoryRecallEmbeddingTexts(
+          ["Rocks stones mountain ore"],
+          "Casual-Autopsy/snowflake-arctic-embed-l-v2.0-gguf:Q8_0",
+          "document",
+        ),
+        ["Rocks stones mountain ore"],
+      );
+
+      const embeddingSource = {
+        spaceId: "test-space",
+        label: "asymmetric test embedder",
+        async embed(texts: string[], _signal?: AbortSignal, inputType?: "document" | "query") {
+          assert.equal(inputType, "query");
+          assert.equal(texts[0], "Rocks stones mountain ore");
+          return texts.map((_, index) =>
+            index === 0 ? [1, 0] : index === 1 ? [0, 1] : index === 2 ? [0, -1] : [-1, 0],
+          );
+        },
+      };
+      const entry = {
+        id: "entry-vector-exact",
+        lorebookId: "book-vector-exact",
+        name: "Mountain materials",
+        content: "Rocks stones mountain ore",
+        enabled: true,
+        constant: false,
+        selective: false,
+        keys: [],
+        secondaryKeys: [],
+        selectiveLogic: "and",
+        useRegex: false,
+        matchWholeWords: false,
+        caseSensitive: false,
+        locked: false,
+        preventRecursion: false,
+        excludeRecursion: false,
+        delayUntilRecursion: false,
+        excludeFromVectorization: false,
+        embedding: [1, 0],
+        embeddingSpaceId: "test-space",
+        order: 0,
+        group: null,
+        groupWeight: 100,
+        probability: 100,
+        sticky: null,
+        cooldown: null,
+        delay: null,
+        activationConditions: [],
+        schedule: null,
+        characterFilterMode: "any",
+        characterFilterIds: [],
+        characterTagFilterMode: "any",
+        characterTagFilters: [],
+        generationTriggerFilterMode: "any",
+        generationTriggerFilters: [],
+        additionalMatchingSources: [],
+        scanDepth: null,
+      };
+      const semantic = await buildLorebookSemanticEmbeddingsById({
+        lorebooks: [
+          {
+            id: "book-vector-exact",
+            excludeFromVectorization: false,
+            vectorQueryDepth: 10,
+          } as any,
+        ],
+        entries: [entry as any],
+        scanMessages,
+        embeddingSource,
+      });
+      const activated = scanForActivatedEntries(scanMessages, [entry as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingsByLorebookId: semantic.embeddingsByLorebookId,
+        semanticEmbeddingSpaceId: semantic.embeddingSpaceId,
+        semanticSimilarityBaseline: semantic.similarityBaseline,
+        semanticThresholdByLorebookId: new Map([["book-vector-exact", 0.3]]),
+      });
+      assert.equal(activated[0]?.entry.id, "entry-vector-exact");
+
+      const incompatible = scanForActivatedEntries(scanMessages, [entry as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingSpaceId: "different-space",
+        semanticThreshold: 0.3,
+      });
+      assert.equal(incompatible.length, 0);
+
+      const unknownProvenance = scanForActivatedEntries(scanMessages, [{ ...entry, embeddingSpaceId: null } as any], {
+        chatEmbedding: semantic.defaultEmbedding,
+        semanticEmbeddingsByLorebookId: semantic.embeddingsByLorebookId,
+        semanticEmbeddingSpaceId: "test-space",
+        semanticThreshold: 0.3,
+      });
+      assert.equal(unknownProvenance.length, 0, "legacy vectors without provenance must be re-vectorized");
     },
   },
   {

@@ -1972,6 +1972,7 @@ export async function generateRoutes(app: FastifyInstance) {
             tokenBudget: resolveLorebookTokenBudget(chatMeta),
             chatEmbedding: chatContextEmbedding,
             semanticEmbeddingsByLorebookId: lorebookSemanticEmbeddingsById,
+            semanticEmbeddingSpaceId: lorebookSemanticEmbeddingSpaceId,
             semanticSimilarityBaseline: lorebookSemanticSimilarityBaseline,
             entryStateOverrides: options.previewOnly
               ? deferredLorebookEntryStateBaseline
@@ -2051,6 +2052,7 @@ export async function generateRoutes(app: FastifyInstance) {
         let chatContextEmbedding: number[] | null = null;
         let lorebookSemanticEmbeddingsById: Map<string, number[] | null> | undefined;
         let lorebookSemanticSimilarityBaseline = 0;
+        let lorebookSemanticEmbeddingSpaceId: string | null = null;
         const knowledgeRouterActivatedLorebookEntryIds = new Set<string>();
         const knowledgeRouterExcludedLorebookEntryIds = new Set<string>();
         let knowledgeRouterActivationPassCompleted = false;
@@ -2082,6 +2084,7 @@ export async function generateRoutes(app: FastifyInstance) {
             chatContextEmbedding = semanticEmbeddings.defaultEmbedding;
             lorebookSemanticEmbeddingsById = semanticEmbeddings.embeddingsByLorebookId;
             lorebookSemanticSimilarityBaseline = semanticEmbeddings.similarityBaseline;
+            lorebookSemanticEmbeddingSpaceId = semanticEmbeddings.embeddingSpaceId;
           }
         } catch {
           // Embedding generation is optional — if it fails, fall back to keyword-only matching
@@ -2163,6 +2166,7 @@ export async function generateRoutes(app: FastifyInstance) {
             lorebookTokenBudget: resolveLorebookTokenBudget(chatMeta),
             chatEmbedding: chatContextEmbedding,
             semanticEmbeddingsByLorebookId: lorebookSemanticEmbeddingsById,
+            semanticEmbeddingSpaceId: lorebookSemanticEmbeddingSpaceId,
             semanticSimilarityBaseline: lorebookSemanticSimilarityBaseline,
             entryStateOverrides:
               (chatMeta.entryStateOverrides as Record<string, { ephemeral?: number | null; enabled?: boolean }>) ??
@@ -2720,6 +2724,7 @@ export async function generateRoutes(app: FastifyInstance) {
             tokenBudget: resolveLorebookTokenBudget(chatMeta),
             chatEmbedding: chatContextEmbedding,
             semanticEmbeddingsByLorebookId: lorebookSemanticEmbeddingsById,
+            semanticEmbeddingSpaceId: lorebookSemanticEmbeddingSpaceId,
             semanticSimilarityBaseline: lorebookSemanticSimilarityBaseline,
             entryStateOverrides:
               (chatMeta.entryStateOverrides as Record<string, { ephemeral?: number | null; enabled?: boolean }>) ??
@@ -3158,6 +3163,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 tokenBudget: resolveLorebookTokenBudget(chatMeta),
                 chatEmbedding: chatContextEmbedding,
                 semanticEmbeddingsByLorebookId: lorebookSemanticEmbeddingsById,
+                semanticEmbeddingSpaceId: lorebookSemanticEmbeddingSpaceId,
                 semanticSimilarityBaseline: lorebookSemanticSimilarityBaseline,
                 entryStateOverrides:
                   (chatMeta.entryStateOverrides as Record<string, { ephemeral?: number | null; enabled?: boolean }>) ??

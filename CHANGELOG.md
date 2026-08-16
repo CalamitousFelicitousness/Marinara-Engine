@@ -20,6 +20,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Fixed
 
 - Kept valid Gallery images visible on Windows when canonical paths differ only by drive-letter or directory casing, without weakening traversal and symlink containment checks (#5099).
+- Made vectorized lorebook recall use model-appropriate query/document formatting, prioritize recent user turns, and reject incompatible stored vector spaces with useful debug diagnostics (#5104).
 - Honored each image style profile's selected prompt grammar for character avatars, portraits, and sprites instead of silently forcing compact tags (#5083).
 - Game checkpoints now capture and restore the turn-game engine state, so loading a checkpoint rewinds an active turn-game (UNO, Chess, Poker, Eight Ball) along with the story and map instead of leaving it on its post-checkpoint state (#5077).
 - Routed Game Mode time-advance and weather-update through the queued per-chat metadata patch path so they no longer silently revert a concurrent metadata write, which could permanently lock World Map movement as a stale definition (#5076).

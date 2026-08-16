@@ -858,81 +858,61 @@ export async function updatesRoutes(app: FastifyInstance) {
       }
     }
 
-    // Return cached release info if fresh
-    if (cachedRelease && now - cacheTimestamp < CACHE_TTL_MS) {
-      const versionUpdate = isNewerVersion(APP_VERSION, cachedRelease.latestVersion);
-      return {
-        currentVersion: APP_VERSION,
-        currentCommit,
-        currentBuild,
-        channel: channel.id,
-        channelLabel: channel.label,
-        currentBranch,
-        channels: serializeUpdateChannels(),
-        ...buildReleasePayload(cachedRelease),
-        updateAvailable:
-          channelSwitch || (channel.id === "stable" && versionUpdate) || (commitsBehind != null && commitsBehind > 0),
-        versionUpdate: channel.id === "stable" ? versionUpdate : false,
-        commitsBehind: commitsBehind ?? 0,
-        installType,
-        serverPlatform,
-        clientPlatform,
-        ...applyAvailability,
-        targetRef: channel.targetRef,
-        targetCommit: gitInstall ? await resolveGitRef(root, channel.targetRef) : null,
-      };
-    }
+    let release = cachedRelease && now - cacheTimestamp < CACHE_TTL_MS ? cachedRelease : null;
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
+    if (!release) {
       try {
-        cachedRelease = await resolveLatestReleaseFromGitHub(controller.signal);
-      } finally {
-        clearTimeout(timeout);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        try {
+          release = await resolveLatestReleaseFromGitHub(controller.signal);
+        } finally {
+          clearTimeout(timeout);
+        }
+        cachedRelease = release;
+        cacheTimestamp = now;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.status(502).send({
+          error: `Failed to check for updates: ${message}`,
+          currentVersion: APP_VERSION,
+          currentCommit,
+          currentBuild,
+          channel: channel.id,
+          channelLabel: channel.label,
+          currentBranch,
+          channels: serializeUpdateChannels(),
+          updateAvailable: channelSwitch || (commitsBehind != null && commitsBehind > 0),
+          commitsBehind: commitsBehind ?? 0,
+          installType,
+          serverPlatform,
+          clientPlatform,
+          ...applyAvailability,
+        });
       }
-      cacheTimestamp = now;
-
-      const versionUpdate = isNewerVersion(APP_VERSION, cachedRelease.latestVersion);
-      return {
-        currentVersion: APP_VERSION,
-        currentCommit,
-        currentBuild,
-        channel: channel.id,
-        channelLabel: channel.label,
-        currentBranch,
-        channels: serializeUpdateChannels(),
-        ...buildReleasePayload(cachedRelease),
-        updateAvailable:
-          channelSwitch || (channel.id === "stable" && versionUpdate) || (commitsBehind != null && commitsBehind > 0),
-        versionUpdate: channel.id === "stable" ? versionUpdate : false,
-        commitsBehind: commitsBehind ?? 0,
-        installType,
-        serverPlatform,
-        clientPlatform,
-        ...applyAvailability,
-        targetRef: channel.targetRef,
-        targetCommit: gitInstall ? await resolveGitRef(root, channel.targetRef) : null,
-      };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return reply.status(502).send({
-        error: `Failed to check for updates: ${message}`,
-        currentVersion: APP_VERSION,
-        currentCommit,
-        currentBuild,
-        channel: channel.id,
-        channelLabel: channel.label,
-        currentBranch,
-        channels: serializeUpdateChannels(),
-        updateAvailable: channelSwitch || (commitsBehind != null && commitsBehind > 0),
-        commitsBehind: commitsBehind ?? 0,
-        installType,
-        serverPlatform,
-        clientPlatform,
-        ...applyAvailability,
-      });
     }
+
+    const versionUpdate = isNewerVersion(APP_VERSION, release.latestVersion);
+    return {
+      currentVersion: APP_VERSION,
+      currentCommit,
+      currentBuild,
+      channel: channel.id,
+      channelLabel: channel.label,
+      currentBranch,
+      channels: serializeUpdateChannels(),
+      ...buildReleasePayload(release),
+      updateAvailable:
+        channelSwitch || (channel.id === "stable" && versionUpdate) || (commitsBehind != null && commitsBehind > 0),
+      versionUpdate: channel.id === "stable" ? versionUpdate : false,
+      commitsBehind: commitsBehind ?? 0,
+      installType,
+      serverPlatform,
+      clientPlatform,
+      ...applyAvailability,
+      targetRef: channel.targetRef,
+      targetCommit: gitInstall ? await resolveGitRef(root, channel.targetRef) : null,
+    };
   });
 
   // ── Apply update (git installs only) ──

@@ -360,7 +360,6 @@ import { api, ApiError } from "@/lib/api-client";
 | `api.delete(path)`             | `DELETE /api{path}` | Delete resource                       |
 | `api.upload(path, FormData)`   | `POST /api{path}`   | Multipart file upload                 |
 | `api.download(path, filename)` | `GET /api{path}`    | Download plus save-as dialog          |
-| `api.stream(path, body)`       | `POST /api{path}`   | SSE async generator (tokens only)     |
 | `api.streamEvents(path, body)` | `POST /api{path}`   | SSE async generator (all event types) |
 
 Errors throw `ApiError`, which carries `status` and `message` properties.

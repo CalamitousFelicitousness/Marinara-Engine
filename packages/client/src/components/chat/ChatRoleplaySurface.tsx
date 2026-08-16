@@ -1382,10 +1382,9 @@ export function ChatRoleplaySurface({
   };
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
-  const isStreamCommitted = useChatStore((s) => s.committedStreamChatIds.has(activeChatId));
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);
   const hasMobileDraftInput = useChatStore((s) => isMobileToolbarViewport && s.hasCurrentInput);
-  const hasLiveStream = isStreaming && !isStreamCommitted;
+  const hasLiveStream = isStreaming;
   const linkedChatName = chat?.connectedChatId
     ? getConnectedChatDisplayName(allChats?.find((c) => c.id === chat.connectedChatId))
     : undefined;

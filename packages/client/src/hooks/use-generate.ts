@@ -1020,7 +1020,6 @@ function shouldRefreshGameStateAfterGeneration(qc: QueryClient, chatId: string) 
 }
 
 const pendingVisibleGameStateRefreshes = new Map<string, Promise<void>>();
-const activeGenerateLocks = new Set<string>();
 const PASSIVE_STREAM_SETTLE_POLL_MS = 1_500;
 const PASSIVE_STREAM_SETTLE_MAX_WAIT_MS = 30 * 60_000;
 const STREAM_TYPEWRITER_PREBUFFER_MS = 320;
@@ -1187,7 +1186,6 @@ export function useGenerate() {
   const setStreaming = useChatStore((s) => s.setStreaming);
   const setMariPhase = useChatStore((s) => s.setMariPhase);
   const setStreamBuffer = useChatStore((s) => s.setStreamBuffer);
-  const setStreamCommitted = useChatStore((s) => s.setStreamCommitted);
   const setStreamedMessageId = useChatStore((s) => s.setStreamedMessageId);
   const clearStreamBuffer = useChatStore((s) => s.clearStreamBuffer);
   const appendThinkingBuffer = useChatStore((s) => s.appendThinkingBuffer);
@@ -1257,7 +1255,6 @@ export function useGenerate() {
       const existingGenerationIsIllustrationOnly = generationState.backgroundIllustrationChatIds.has(params.chatId);
       if (
         isGenerationStartBlocked({
-          setupLocked: activeGenerateLocks.has(params.chatId),
           activeController: generationState.abortControllers.has(params.chatId),
           backgroundIllustration: existingGenerationIsIllustrationOnly,
         })
@@ -1265,7 +1262,6 @@ export function useGenerate() {
         console.warn("[Generate] Skipped — generation already in progress for this chat");
         return false;
       }
-      activeGenerateLocks.add(params.chatId);
 
       // Create an AbortController so the stop button can cancel this generation.
       const abortController = new AbortController();
@@ -1284,12 +1280,7 @@ export function useGenerate() {
           return false;
         }
       };
-      try {
-        useChatStore.getState().setAbortController(params.chatId, abortController);
-        useChatStore.getState().setBackgroundIllustration(params.chatId, false);
-      } finally {
-        activeGenerateLocks.delete(params.chatId);
-      }
+      useChatStore.getState().setAbortController(params.chatId, abortController);
       useChatStore.getState().clearThinkingBuffer(params.chatId);
 
       // Helper: returns true when this generation's chat is the one the user is viewing.
@@ -1677,11 +1668,8 @@ export function useGenerate() {
           startTypewriter();
         });
       };
-      const canRefreshCurrentMessagesNow = () => {
-        if (!streamingEnabled || !shouldDisplayRawStream) return true;
-        const streamState = useChatStore.getState();
-        return streamState.streamingChatId !== params.chatId || streamState.committedStreamChatIds.has(params.chatId);
-      };
+      const canRefreshCurrentMessagesNow = () =>
+        !streamingEnabled || !shouldDisplayRawStream || useChatStore.getState().streamingChatId !== params.chatId;
       const invalidateCurrentMessagesIfSafe = () => {
         if (!canRefreshCurrentMessagesNow()) return false;
         qc.invalidateQueries({ queryKey: chatKeys.messages(params.chatId) });
@@ -2174,7 +2162,6 @@ export function useGenerate() {
               }
               currentGroupTurnSavedMessage = null;
 
-              if (streamingEnabled) setStreamCommitted(params.chatId, false);
               if (isActiveChat()) setStreamingCharacterId(turn.characterId);
               break;
             }
@@ -2271,19 +2258,14 @@ export function useGenerate() {
                 leadingSpeakerPrefixFilter.discard();
                 if (holdingTextRewrite && heldTextRewriteMessage) {
                   thinkingStreamFilter.reset();
-                  const textRewriteUsesLiveStream =
-                    streamingEnabled &&
-                    shouldDisplayRawStream &&
-                    !useChatStore.getState().committedStreamChatIds.has(params.chatId);
+                  const textRewriteUsesLiveStream = streamingEnabled && shouldDisplayRawStream;
                   if (textRewriteUsesLiveStream) {
                     replaceGeneratedContentWithTypewriter(rewrittenText, { retype: rw.rewriteApplied === true });
                     await waitForTypewriterDrain();
                   } else {
                     fullBuffer = rewrittenText;
                     pendingText = "";
-                    if (!useChatStore.getState().committedStreamChatIds.has(params.chatId)) {
-                      setStreamBuffer(fullBuffer, params.chatId);
-                    }
+                    setStreamBuffer(fullBuffer, params.chatId);
                   }
                   const heldExtra = { ...parseMessageExtraRecord(heldTextRewriteMessage.extra) };
                   delete heldExtra.postProcessingPending;
@@ -2321,28 +2303,6 @@ export function useGenerate() {
                 }
                 fullBuffer = rewrittenText;
                 if (streamingEnabled && shouldDisplayRawStream) setStreamBuffer(fullBuffer, params.chatId);
-                if (useChatStore.getState().committedStreamChatIds.has(params.chatId)) {
-                  const latestSavedMessage = latestAssistantMessage(persistedMessages.values());
-                  if (latestSavedMessage) {
-                    const nextExtra = { ...parseMessageExtraRecord(latestSavedMessage.extra) };
-                    if (builtInRewriteApplied) {
-                      nextExtra.proseGuardianOriginalText = rw.originalText;
-                      nextExtra.proseGuardianRewrittenText = rewrittenText;
-                      nextExtra.proseGuardianRewrittenAt = new Date().toISOString();
-                    }
-                    const updatedMessage = {
-                      ...latestSavedMessage,
-                      content: fullBuffer,
-                      extra: nextExtra as unknown as Message["extra"],
-                    };
-                    rememberContinuedMessageContent(updatedMessage);
-                    persistedMessages.set(updatedMessage.id, updatedMessage);
-                    if (currentGroupTurnSavedMessage?.id === updatedMessage.id) {
-                      currentGroupTurnSavedMessage = updatedMessage;
-                    }
-                    upsertPersistedMessages(qc, params.chatId, [updatedMessage]);
-                  }
-                }
               }
               break;
             }
@@ -3312,7 +3272,6 @@ export function useGenerate() {
       setStreaming,
       setMariPhase,
       setStreamBuffer,
-      setStreamCommitted,
       setStreamedMessageId,
       clearStreamBuffer,
       appendThinkingBuffer,
@@ -3356,7 +3315,6 @@ export function useGenerate() {
         return false;
       }
       useChatStore.getState().setAbortController(chatId, abortController);
-      useChatStore.getState().setBackgroundIllustration(chatId, false);
       const isIllustratorOnlyRetry =
         agentTypes.length > 0 && agentTypes.every((agentType) => agentType === "illustrator");
       const isTrackerRetry = agentTypes.some(

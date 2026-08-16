@@ -21,6 +21,13 @@ export const BACKGROUND_THUMBNAIL_WIDTH = 320;
 /** Maximum length for image-backend instructions stored on an image connection. */
 export const MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH = 20_000;
 
+/** Process-wide ceiling on concurrent media (image/video) provider requests.
+ *  High enough that a single storyboard batch does not feel slower, low enough
+ *  that a tile/sprite batch cannot stampede a local ComfyUI GPU or fan out
+ *  unbounded calls against a paid provider (#5097). Overridable with the
+ *  MARINARA_MEDIA_GENERATION_CONCURRENCY environment variable. */
+export const DEFAULT_MEDIA_GENERATION_CONCURRENCY = 4;
+
 export function normalizeImagePromptInstructions(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().slice(0, MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH);

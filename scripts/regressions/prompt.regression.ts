@@ -9604,6 +9604,106 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         inventoryTrackerInventory: [{ name: "Scavenged axe", qty: 2 }],
       });
 
+      // A group the agent did not mention must survive the turn. Treating an
+      // absent key as an empty array silently wipes tracked state (#2370, #2724).
+      const partialInventoryPatch = buildLockedInventoryTrackerPatch({
+        data: { inventory: [{ name: "Billhook" }, { name: "Rope coil" }] },
+        snapshot: inventorySnapshot,
+        lockState: { ...inventoryLockState, fieldLocks: {} },
+      });
+      assert.deepEqual(
+        partialInventoryPatch.playerStats.inventoryTrackerCurrencies,
+        [{ name: "Silver coin", qty: 6 }],
+        "an omitted currencies group must be left unchanged, not cleared",
+      );
+      assert.deepEqual(
+        partialInventoryPatch.playerStats.inventoryTrackerEquipped,
+        [{ name: "Family heirloom longsword" }],
+        "an omitted equipped group must be left unchanged, not cleared",
+      );
+      assert.equal(
+        "inventoryTrackerCurrencies" in partialInventoryPatch.values,
+        false,
+        "an untouched group must stay out of the streamed patch",
+      );
+      assert.equal(
+        buildLockedInventoryTrackerPatch({ data: {}, snapshot: inventorySnapshot, lockState: null }).changed,
+        false,
+        "a result carrying no inventory groups must not rewrite the snapshot",
+      );
+
+      const normalizedEquipMovePatch = buildLockedInventoryTrackerPatch({
+        data: { equipped: [{ name: "Sword" }] },
+        snapshot: {
+          playerStats: JSON.stringify({
+            inventoryTrackerCurrencies: [],
+            inventoryTrackerEquipped: [],
+            inventoryTrackerInventory: [{ name: " Sword " }],
+          }),
+        },
+        lockState: null,
+      });
+      assert.deepEqual(
+        normalizedEquipMovePatch.values.inventoryTrackerInventory,
+        [],
+        "equipping an item must remove a whitespace variant from omitted carried state without lock data",
+      );
+
+      // Locks re-append a row the agent dropped, so equipping a locked carried
+      // item must not leave a copy behind in the carried list.
+      const equipMoveSnapshot = {
+        playerStats: JSON.stringify({
+          stats: [],
+          attributes: null,
+          skills: {},
+          inventory: [],
+          activeQuests: [],
+          status: "",
+          inventoryTrackerCurrencies: [],
+          inventoryTrackerEquipped: [],
+          inventoryTrackerInventory: [{ name: "Sword" }],
+        }),
+      };
+      const equipMovePatch = buildLockedInventoryTrackerPatch({
+        data: { currencies: [], equipped: [{ name: "Sword" }], inventory: [] },
+        snapshot: equipMoveSnapshot,
+        lockState: {
+          ...currentState,
+          playerStats: JSON.parse(equipMoveSnapshot.playerStats),
+          fieldLocks: { [roleplayInventoryTrackerLockKey("inventory", { name: "Sword" }, "qty", 0)]: true },
+        },
+      });
+      assert.deepEqual(
+        equipMovePatch.values.inventoryTrackerEquipped,
+        [{ name: "Sword" }],
+        "the equipped row should land",
+      );
+      assert.deepEqual(
+        equipMovePatch.values.inventoryTrackerInventory,
+        [],
+        "a locked carried row must move when equipped instead of appearing in both lists",
+      );
+
+      // Quantities must stay finite: Infinity serializes to null and the row's
+      // quantity can no longer be read back as a number.
+      const hugeQuantityPatch = buildLockedInventoryTrackerPatch({
+        data: {
+          inventory: [
+            { name: "Coin", qty: Number.MAX_VALUE },
+            { name: "Coin", qty: Number.MAX_VALUE },
+          ],
+        },
+        snapshot: { playerStats: JSON.stringify({}) },
+        lockState: null,
+      });
+      const hugeQuantityRow = hugeQuantityPatch.values.inventoryTrackerInventory?.[0];
+      assert.equal(hugeQuantityRow?.qty, Number.MAX_SAFE_INTEGER, "quantities must clamp to a safe integer");
+      assert.equal(
+        JSON.stringify(hugeQuantityPatch.values.inventoryTrackerInventory).includes('"qty":null'),
+        false,
+        "a persisted quantity must never serialize to null",
+      );
+
       const nextCharacters: Array<Record<string, unknown>> = [
         {
           characterId: "mira",

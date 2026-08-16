@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Every image and video generation path now runs under a process-wide concurrency ceiling — default 4, configurable with `MARINARA_MEDIA_GENERATION_CONCURRENCY` (`0` disables it) — enforced inside the generators themselves, so while the ceiling is enabled a batch can no longer stampede a local ComfyUI/SwarmUI GPU or fan out unbounded requests against a paid provider (setting the limit to `0` opts out and restores the old unbounded behavior). Batch/automatic work never occupies the last slot ahead of interactive requests, waits are bounded by default (`MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS`; `0` waits indefinitely) so saturation fails loudly instead of hanging, and fallback-connection retries reuse the original request's slot (#5097).
 - Added a dedicated Roleplay Inventory Tracker integration with separate currency, equipped, and carried-item lists; compact quantities; editable HUD and Tracker Panel grids; per-cell locks; retry support; and committed prompt context (#5105, Pasta-Devs/Marinara-Agents#361).
 - Added `POST /api/sprites/pixelize`: deterministic pixel-art post-processing for AI-generated images — nearest-kernel downscale to a target cell size, palette quantization against a supplied ramp, binary alpha, and a wrap-around seam score reporting tileability — so probabilistic model output can sit beside authored pixel art; identical input always produces identical bytes (#5096).
 - Character sprite-sheet generation accepts an optional `styleProfileId` so a bake can target a specific image style profile instead of always compiling against the user's active one; an absent field keeps today's resolution exactly, and unknown ids degrade the same way the gallery path degrades (#5095).
@@ -20,6 +21,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Preserved omitted Inventory Tracker groups, kept equipped items out of carried inventory after lock merging and name normalization, clamped oversized quantities, and migrated existing Tracker Panel layouts to show the new section (#5125).
 - Kept launcher update snapshots small by excluding downloaded model caches and sidecar runtimes, while continuing to preserve user content and recovery backups (#5124).
 - Explained in the Windows launcher that non-Git installations cannot use automatic updates or commit-based stale-build checks, while version-based validation still runs (#5123).
 - Kept active characters in individual Conversation group chats responsive when another selected character is away, while preserving the away character's own configured delay and mention shortcut (#5122).

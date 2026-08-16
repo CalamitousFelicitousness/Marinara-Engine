@@ -598,7 +598,11 @@ import { lorebookKeys } from "./use-lorebooks";
 import { presetKeys } from "./use-presets";
 import { playConfiguredNotificationPing } from "../lib/notification-sound";
 import { showLocalMessageNotification, showNativeMessageNotification } from "../lib/local-notifications";
-import { dispatchCapabilityClientEvent } from "../lib/capability-client-events";
+import {
+  dispatchCapabilityClientEvent,
+  dispatchSpatialCapabilityEvent,
+  resolveGameExperiencePackageId,
+} from "../lib/capability-client-events";
 import { messageHasPendingPostProcessing, parseMessageExtraRecord } from "../lib/chat-message-extra";
 import { stripGmTagsKeepReadables } from "../lib/game-tag-parser";
 import type { APIConnection, Chat, GameMap, Message } from "@marinara-engine/shared";
@@ -818,6 +822,14 @@ function getCachedChatForGeneration(qc: QueryClient, chatId: string): Chat | und
   if (detail) return detail;
   const list = qc.getQueryData<Chat[]>(chatKeys.list());
   return list?.find((chat) => chat.id === chatId);
+}
+
+/** The Experience package owning this chat's game, for spatial event
+ *  addressing. Resolved lazily at each dispatch so a cache filled after
+ *  generation started still counts; gameExperienceId is stamped at game
+ *  creation and never changes. */
+function getGameExperiencePackageId(qc: QueryClient, chatId: string): string | null {
+  return resolveGameExperiencePackageId(parseChatMetadata(getCachedChatForGeneration(qc, chatId)?.metadata));
 }
 
 function getActiveChatBackgroundForGeneration(chatId: string): string | null | undefined {
@@ -1379,8 +1391,7 @@ export function useGenerate() {
           spatialTransitionCommitted = recovered.applied;
           committedSpatialTravel = recovered.travel;
           spatialCapabilityRefreshDispatched = true;
-          dispatchCapabilityClientEvent({
-            packageId: "hierarchical-maps",
+          dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
             type: "spatial_transition_committed",
             chatId: params.chatId,
             data: {
@@ -1682,8 +1693,7 @@ export function useGenerate() {
                 if (!stepwiseRouteRemainsQueued) {
                   useChatStore.getState().clearPendingSpatialTransition(params.chatId, transitionData.commandId);
                 }
-                dispatchCapabilityClientEvent({
-                  packageId: "hierarchical-maps",
+                dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
                   type: event.type,
                   chatId: params.chatId,
                   data: event.data,
@@ -1704,8 +1714,7 @@ export function useGenerate() {
                 if (pending?.transition.commandId === transitionData.commandId) {
                   useChatStore.getState().setPendingSpatialTransitionStatus(params.chatId, "needs_review");
                 }
-                dispatchCapabilityClientEvent({
-                  packageId: "hierarchical-maps",
+                dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
                   type: event.type,
                   chatId: params.chatId,
                   data: event.data,
@@ -2865,6 +2874,30 @@ export function useGenerate() {
           }
           if (!params.impersonate || spatialErrorCode?.startsWith("spatial_")) {
             useChatStore.getState().setPendingSpatialTransitionStatus(params.chatId, "needs_review");
+            // The game/roleplay owner-turn commit runs BEFORE the SSE stream
+            // opens, so a rejection surfaces as this HTTP error and no
+            // spatial_transition_rejected event ever reaches the capability
+            // listeners — synthesize it here, but ONLY on definitive evidence:
+            // a spatial_* code that is not already_applied. A codeless failure
+            // (network death after the pre-stream commit succeeded) and an
+            // already_applied 409 with a failed recovery GET are cases where
+            // the move may well have COMMITTED — announcing a reject there
+            // tells both audiences the opposite of the truth. Leaving the flag
+            // unset lets the finally-block spatial_context_refresh reconcile
+            // everyone from server state instead (review finding).
+            if (spatialErrorCode?.startsWith("spatial_") && spatialErrorCode !== "spatial_transition_already_applied") {
+              spatialCapabilityRefreshDispatched = true;
+              dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
+                type: "spatial_transition_rejected",
+                chatId: params.chatId,
+                data: {
+                  chatId: params.chatId,
+                  commandId: params.pendingSpatialTransition.commandId,
+                  code: spatialErrorCode,
+                },
+              });
+              void qc.invalidateQueries({ queryKey: spatialContextKeys.detail(params.chatId) });
+            }
           }
         }
         const msg = error instanceof Error ? error.message : "Generation failed";
@@ -2900,8 +2933,7 @@ export function useGenerate() {
         ) {
           // Narrated Maps transitions commit near the end of the server stream.
           // Reconcile both client caches when the transition SSE was missed.
-          dispatchCapabilityClientEvent({
-            packageId: "hierarchical-maps",
+          dispatchSpatialCapabilityEvent(getGameExperiencePackageId(qc, params.chatId), {
             type: "spatial_context_refresh",
             chatId: params.chatId,
             data: null,

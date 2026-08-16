@@ -382,14 +382,23 @@ export const api = {
 
     if (!res.ok || !res.body) {
       let detail = `HTTP ${res.status}`;
+      let payload: unknown;
       try {
         const text = await res.text();
-        const json = JSON.parse(text);
-        detail = json.error || json.message || text.slice(0, 200);
+        try {
+          const json = JSON.parse(text) as Record<string, unknown>;
+          payload = json;
+          detail = (typeof json.error === "string" && json.error) || (typeof json.message === "string" && json.message) || text.slice(0, 200);
+        } catch {
+          detail = text.slice(0, 200) || detail;
+        }
       } catch {
-        /* couldn't parse body */
+        /* couldn't read body */
       }
-      throw new ApiError(res.status, detail);
+      // Carry the parsed body: pre-stream rejections (e.g. a spatial owner-turn
+      // 409) put their machine-readable `code` there, and the generate catch
+      // path forwards it into the synthesized capability event.
+      throw new ApiError(res.status, detail, payload);
     }
 
     const reader = res.body.getReader();

@@ -156,6 +156,16 @@ const reconciledMessages = reconcilePersistedMessages(
       chatId: "chat-reconciliation-proof",
       role: "user",
       characterId: null,
+      content: "Earlier durable server content",
+      activeSwipeIndex: 0,
+      createdAt: "2026-08-14T12:01:00.000Z",
+      extra: { submissionId: "submission-matching" },
+    },
+    {
+      id: "durable-matching",
+      chatId: "chat-reconciliation-proof",
+      role: "user",
+      characterId: null,
       content: "Literal durable server content",
       activeSwipeIndex: 0,
       createdAt: "2026-08-14T12:01:00.000Z",
@@ -179,6 +189,53 @@ assert.equal(
 );
 assert.equal(reconciledMessages.some((message) => message.id === "__optimistic_matching"), false);
 assert.equal(reconciledMessages.some((message) => message.id === "__optimistic_unmatched"), true);
+
+const duplicateIncoming: Parameters<typeof reconcilePersistedMessages>[1] = [
+  {
+    id: "durable-duplicate",
+    chatId: "chat-reconciliation-proof",
+    role: "assistant",
+    characterId: "character-1",
+    content: "Earlier duplicate content",
+    activeSwipeIndex: 0,
+    createdAt: "2026-08-14T12:03:00.000Z",
+    extra: {},
+  },
+  {
+    id: "durable-between",
+    chatId: "chat-reconciliation-proof",
+    role: "assistant",
+    characterId: "character-1",
+    content: "Between duplicate snapshots",
+    activeSwipeIndex: 0,
+    createdAt: "2026-08-14T12:04:00.000Z",
+    extra: {},
+  },
+  {
+    id: "durable-duplicate",
+    chatId: "chat-reconciliation-proof",
+    role: "assistant",
+    characterId: "character-1",
+    content: "Latest duplicate content",
+    activeSwipeIndex: 0,
+    createdAt: "2026-08-14T12:03:00.000Z",
+    extra: {},
+  },
+];
+for (const old of [undefined, { pageParams: [undefined], pages: [[]] }]) {
+  const deduped = reconcilePersistedMessages(old, duplicateIncoming).pages.flat();
+  assert.deepEqual(
+    deduped.map((message) => message.id),
+    ["durable-duplicate", "durable-between"],
+    "Duplicate durable IDs must collapse without changing their first incoming position",
+  );
+  assert.equal(
+    deduped[0]?.content,
+    "Latest duplicate content",
+    "The latest snapshot for a duplicate durable ID must supply its reconciled value",
+  );
+}
+
 const confirmDurableSubmittedUserTurnSource =
   /const confirmDurableSubmittedUserTurn = async \(\) => \{[\s\S]*?\n      \};/u.exec(useGenerateSource)?.[0];
 assert.ok(confirmDurableSubmittedUserTurnSource, "The failed-generation recovery helper must remain available");

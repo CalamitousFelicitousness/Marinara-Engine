@@ -35,18 +35,21 @@ export function reconcilePersistedMessages(
   old: InfiniteData<Message[]> | undefined,
   sortedIncoming: Message[],
 ): InfiniteData<Message[]> {
+  // Map preserves the first position for each ID while the latest durable
+  // snapshot replaces its value.
+  const uniqueIncoming = [...new Map(sortedIncoming.map((msg) => [msg.id, msg])).values()];
   if (!old?.pages) {
     return {
       pageParams: [undefined],
-      pages: [sortedIncoming],
+      pages: [uniqueIncoming],
     };
   }
 
-  const persistedById = new Map(sortedIncoming.map((msg) => [msg.id, msg]));
+  const persistedById = new Map(uniqueIncoming.map((msg) => [msg.id, msg]));
   // A just-sent user row starts with a temporary ID. Match its submission ID
   // once the server returns the durable row so edits cannot target the temporary ID.
   const persistedUserBySubmissionId = new Map(
-    sortedIncoming.flatMap((msg) => {
+    uniqueIncoming.flatMap((msg) => {
       const submissionId = parseMessageExtraRecord(msg.extra).submissionId;
       return msg.role === "user" &&
         !msg.id.startsWith("__optimistic_") &&
@@ -73,7 +76,7 @@ export function reconcilePersistedMessages(
     }),
   );
 
-  const missing = sortedIncoming.filter((msg) => !existingIds.has(msg.id));
+  const missing = uniqueIncoming.filter((msg) => !existingIds.has(msg.id));
   if (missing.length > 0) {
     if (pages.length === 0) {
       pages.push(missing);

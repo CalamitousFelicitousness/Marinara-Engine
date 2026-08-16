@@ -552,7 +552,15 @@ export function createConnectionsStorage(db: DB) {
         .select()
         .from(apiConnections)
         .where(and(eq(apiConnections.useForRandom, "true"), ne(apiConnections.profileImportReviewRequired, "true")));
-      return rows.map((r: any) => ({ ...r, apiKey: decryptApiKey(r.apiKeyEncrypted) }));
+      // The pool is drawn as the live chat LLM — media connections can never
+      // serve a chat turn, so they are excluded even if a row was flagged
+      // before its provider changed.
+      return rows
+        .filter(
+          (r: any) =>
+            r.provider !== "audio" && r.provider !== "image_generation" && r.provider !== "video_generation",
+        )
+        .map((r: any) => ({ ...r, apiKey: decryptApiKey(r.apiKeyEncrypted) }));
     },
 
     async remove(id: string) {

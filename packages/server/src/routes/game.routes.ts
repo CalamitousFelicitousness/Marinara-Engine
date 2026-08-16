@@ -2990,6 +2990,7 @@ type InitialSetupConnectionRow = {
   imageService?: unknown;
   videoGenerationSource?: unknown;
   videoService?: unknown;
+  audioSource?: unknown;
 };
 
 function snapshotInitialSetupConnection(
@@ -3005,6 +3006,7 @@ function snapshotInitialSetupConnection(
     service: firstString(
       connection.imageService,
       connection.videoService,
+      connection.audioSource,
       connection.imageGenerationSource,
       connection.videoGenerationSource,
     ),

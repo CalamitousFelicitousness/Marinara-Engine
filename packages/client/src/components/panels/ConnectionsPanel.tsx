@@ -1112,21 +1112,23 @@ function ConnectionRow({
             ...(isLanguageGenerationConnection(conn) ? {} : { unsupported: "connection-kind" as const }),
           }}
         />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            updateConnection.mutate({ id: conn.id, useForRandom: !inRandomPool });
-          }}
-          className={cn(
-            "rounded-lg p-1.5 transition-all active:scale-90",
-            inRandomPool
-              ? "bg-foreground/10 text-foreground/75 ring-1 ring-foreground/20"
-              : "text-foreground/45 hover:bg-foreground/10 hover:text-foreground/75",
-          )}
-          title={inRandomPool ?localizeUi("ui.panels.connectionrow.inRandomPoolClickToRemove") :localizeUi("ui.panels.connectionrow.addToRandomPool")}
-        >
-          <Shuffle size="0.75rem" />
-        </button>
+        {conn.provider !== "audio" && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateConnection.mutate({ id: conn.id, useForRandom: !inRandomPool });
+            }}
+            className={cn(
+              "rounded-lg p-1.5 transition-all active:scale-90",
+              inRandomPool
+                ? "bg-foreground/10 text-foreground/75 ring-1 ring-foreground/20"
+                : "text-foreground/45 hover:bg-foreground/10 hover:text-foreground/75",
+            )}
+            title={inRandomPool ?localizeUi("ui.panels.connectionrow.inRandomPoolClickToRemove") :localizeUi("ui.panels.connectionrow.addToRandomPool")}
+          >
+            <Shuffle size="0.75rem" />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

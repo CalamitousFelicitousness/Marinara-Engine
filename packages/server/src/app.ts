@@ -139,7 +139,11 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await seedDefaultRegexScripts(db);
   await migrateLegacyDefaultAgentPrompts(db);
   await migrateCharacterExtendedDescriptionsToLorebooks(db);
-  await migrateTtsSettingsToAudioConnection(db);
+  try {
+    await migrateTtsSettingsToAudioConnection(db);
+  } catch (error) {
+    app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
+  }
   await seedDefaultBackgrounds();
   await seedDefaultGameAssets();
 

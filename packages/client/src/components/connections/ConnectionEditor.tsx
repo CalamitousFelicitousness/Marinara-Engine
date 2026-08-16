@@ -1474,6 +1474,16 @@ export function ConnectionEditor() {
                     setLocalMaxTokensOverride(null);
                     setLocalDefaultParametersEnabled(false);
                     setLocalDefaultParameters(CONNECTION_PARAMETER_DEFAULTS);
+                    if (key === "audio") {
+                      // The provider tile seeds ElevenLabs base URL/model, so
+                      // the audio source must reset to match — otherwise a
+                      // pockettts/openai/xai source survives the switch under
+                      // ElevenLabs endpoints and saves a self-inconsistent row.
+                      setLocalAudioSource("elevenlabs");
+                      setLocalAudioVoice("");
+                      setLocalAudioSoundEffects(false);
+                      setLocalAudioMusic(false);
+                    }
                     // Provider switches must not keep an encrypted key from
                     // the previous provider under the new provider identity.
                     setLocalApiKey("");

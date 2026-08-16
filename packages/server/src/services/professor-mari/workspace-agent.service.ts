@@ -3240,7 +3240,8 @@ ${sections.join("\n\n")}
 
     const rows = (await this.app.db.select().from(apiConnections)) as Array<typeof apiConnections.$inferSelect>;
     const languageRows = rows.filter(
-      (row) => row.provider !== "image_generation" && row.provider !== "video_generation",
+      (row) =>
+        row.provider !== "image_generation" && row.provider !== "video_generation" && row.provider !== "audio",
     );
     const selected = connectionId ? languageRows.find((row) => row.id === connectionId) : null;
     const fallback =

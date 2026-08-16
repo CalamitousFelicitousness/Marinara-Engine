@@ -55,6 +55,7 @@ export interface GameSetupImportConnection {
   model?: string | null;
   imageService?: string | null;
   videoService?: string | null;
+  audioSource?: string | null;
 }
 
 export interface GameSetupImportContext {
@@ -177,6 +178,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     sceneConnectionId: 1_000,
     imageConnectionId: 1_000,
     videoConnectionId: 1_000,
+    audioConnectionId: 1_000,
     gameGmPromptTemplateId: 200,
     gameStoryboardAnimationPromptTemplateId: 200,
     gameStoryboardImagePromptTemplateId: 200,
@@ -211,6 +213,8 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     "enableCustomWidgets",
     "enableSpotifyDj",
     "enableLorebookKeeper",
+    "enableGameSoundEffects",
+    "enableGameMusic",
   ];
   for (const key of optionalBooleans) {
     if (value[key] !== undefined && typeof value[key] !== "boolean") {
@@ -389,7 +393,7 @@ function resolveConnectionId(
       if (model && normalizeLookupValue(connection.model) === model) score += 3;
       if (
         service &&
-        [connection.imageService, connection.videoService].some(
+        [connection.imageService, connection.videoService, connection.audioSource].some(
           (candidate) => normalizeLookupValue(candidate) === service,
         )
       ) {

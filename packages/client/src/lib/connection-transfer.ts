@@ -152,7 +152,7 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       imageGenerationQuality: asImageGenerationQuality(value.imageGenerationQuality),
       videoGenerationSource: provider === "video_generation" ? asNullableString(value.videoGenerationSource) : null,
       videoService,
-      audioSource: provider === "audio" ? asNullableString(value.audioSource ?? value.service) : null,
+      audioSource: provider === "audio" ? asAudioGenerationSource(value.audioSource ?? value.service) : null,
       audioVoice: provider === "audio" ? asNullableString(value.audioVoice) : null,
       audioSoundEffects: provider === "audio" && asBoolean(value.audioSoundEffects),
       audioMusic: provider === "audio" && asBoolean(value.audioMusic),
@@ -212,6 +212,12 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
 
 function asImageGenerationQuality(value: unknown): ImageGenerationQuality {
   return value === "low" || value === "medium" || value === "high" ? value : "auto";
+}
+
+/** Unknown sources degrade to null (resolved as ElevenLabs) instead of failing the whole connection import. */
+function asAudioGenerationSource(value: unknown): string | null {
+  const text = asNullableString(value);
+  return text === "openai" || text === "elevenlabs" || text === "pockettts" || text === "xai" ? text : null;
 }
 
 function parseDefaultParameters(value: unknown): Record<string, unknown> | null {

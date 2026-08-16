@@ -656,18 +656,32 @@ export function GameSetupWizard({
   );
   const imageConnections = useMemo(() => connections.filter((c) => c.provider === "image_generation"), [connections]);
   const videoConnections = useMemo(() => connections.filter((c) => c.provider === "video_generation"), [connections]);
-  const audioConnections = useMemo(() => connections.filter((c) => c.provider === "audio"), [connections]);
+  // Quarantined (review-required) imports are refused by the server's
+  // resolution, so they must not be offered or previewed here either.
+  const audioConnections = useMemo(
+    () =>
+      connections.filter(
+        (c) =>
+          c.provider === "audio" &&
+          (c as { profileImportReviewRequired?: boolean | string }).profileImportReviewRequired !== "true",
+      ),
+    [connections],
+  );
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
-  // "Use default" resolves the way the server does at runtime: the audio
-  // category default, else its fallback, else the only/first audio connection.
-  const preferredAudioConnectionId = useMemo(
+  // "Use default" previews the runtime resolution (category default, else its
+  // fallback), extended by a first-connection convenience step. When the
+  // preview relied on that extra step, buildSetupConfig PINS the previewed
+  // row's id into the game so runtime resolution agrees with what this screen
+  // showed — the server and GameSurface never pick "first audio row" on
+  // their own.
+  const audioCategoryDefaultId = useMemo(
     () =>
       audioConnections.find((connection) => isConnectionFlagTrue(connection.defaultForAgents))?.id ??
       audioConnections.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents))?.id ??
-      audioConnections[0]?.id ??
       null,
     [audioConnections],
   );
+  const preferredAudioConnectionId = audioCategoryDefaultId ?? audioConnections[0]?.id ?? null;
   const resolvedAudioConnection = useMemo(
     () =>
       audioConnections.find((connection) => connection.id === (audioConnectionId ?? preferredAudioConnectionId)) ??
@@ -1170,9 +1184,15 @@ export function GameSetupWizard({
       gameImageDynamicPromptEnabled: illustratorEnabled && gameImageDynamicPromptEnabled,
       imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
       videoConnectionId: illustratorEnabled && videoConnectionId ? videoConnectionId : undefined,
-      audioConnectionId: audioConnectionId || undefined,
-      enableGameSoundEffects: enableGameSoundEffects ? undefined : false,
-      enableGameMusic: enableGameMusic ? undefined : false,
+      // With no category default/fallback set, "Use default" previewed the
+      // first audio row — pin it so runtime resolution matches this screen.
+      audioConnectionId:
+        audioConnectionId ||
+        (!audioCategoryDefaultId && resolvedAudioConnection ? resolvedAudioConnection.id : undefined),
+      // Persist the DISPLAYED toggle state: a toggle grayed out by a
+      // non-capable connection reads OFF, so OFF is what the game records.
+      enableGameSoundEffects: enableGameSoundEffects && audioConnectionSupportsSfx ? undefined : false,
+      enableGameMusic: enableGameMusic && audioConnectionSupportsMusic ? undefined : false,
       ...(importedArtStyleSettingsRef.current ?? {}),
       activeLorebookIds: activeLorebookIds.length > 0 ? activeLorebookIds : undefined,
       enableCustomWidgets,

@@ -2360,8 +2360,11 @@ function GameSurfaceComponent({
   // resolveAudioConfig order.
   const gameAudioConnection = useMemo(() => {
     const isTrue = (value: unknown) => value === true || value === "true";
+    // Quarantined (review-required) imports are refused by the server's
+    // resolution (getWithKey/getDefaultForAudio return null for them), so
+    // they must not drive capability gating here either.
     const rows = ((connectionsList ?? []) as Record<string, unknown>[]).filter(
-      (connection) => connection.provider === "audio",
+      (connection) => connection.provider === "audio" && connection.profileImportReviewRequired !== "true",
     );
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
     return (

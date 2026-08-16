@@ -408,21 +408,32 @@ async function searchSpotifyTracks(
     [];
   for (let offset = 0; items.length < limit; offset += SPOTIFY_SEARCH_PAGE_LIMIT) {
     const pageLimit = Math.min(SPOTIFY_SEARCH_PAGE_LIMIT, limit - items.length);
-    const res = await fetchSpotifyApi(
-      credentials,
-      `/search?${new URLSearchParams({ q, type: "track", limit: String(pageLimit), offset: String(offset) })}`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      spotifyError(res.status, `Spotify search failed (${res.status}): ${body.slice(0, 200)}`);
-    }
-    const data = (await res.json()) as {
-      tracks?: {
-        items?: Array<{ uri?: string; name?: string; artists?: Array<{ name?: string }>; album?: { name?: string } }>;
+    let page: typeof items;
+    try {
+      const res = await fetchSpotifyApi(
+        credentials,
+        `/search?${new URLSearchParams({ q, type: "track", limit: String(pageLimit), offset: String(offset) })}`,
+        { signal: AbortSignal.timeout(15_000) },
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        spotifyError(res.status, `Spotify search failed (${res.status}): ${body.slice(0, 200)}`);
+      }
+      const data = (await res.json()) as {
+        tracks?: {
+          items?: Array<{ uri?: string; name?: string; artists?: Array<{ name?: string }>; album?: { name?: string } }>;
+        };
       };
-    };
-    const page = data.tracks?.items ?? [];
+      page = data.tracks?.items ?? [];
+    } catch (error) {
+      // Pagination multiplies the transient-failure surface; a later page
+      // dying must not discard the usable results already collected.
+      if (items.length > 0) {
+        logger.warn(error, "Spotify search page at offset %d failed; returning %d partial results", offset, items.length);
+        break;
+      }
+      throw error;
+    }
     items.push(...page);
     // A short page means the catalog ran out for this query.
     if (page.length < pageLimit) break;

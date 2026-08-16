@@ -1327,6 +1327,12 @@ export async function ttsRoutes(app: FastifyInstance) {
     if (context && kind !== "music") {
       return reply.status(400).send({ error: "Context tracks are music only" });
     }
+    if (kind === "music" && !context) {
+      // The per-prompt 30-second music path is retired (#5161); leaving it
+      // reachable would let stray callers keep filling music/generated/ with
+      // clips nothing selects.
+      return reply.status(400).send({ error: "Music generation requires a context key (area or tier)" });
+    }
     if (context?.axis === "tier") {
       // Aliases (elite, legendary, …) are accepted but the STORED key must be
       // canonical — a music/tier/elite/ folder would be a paid composition the

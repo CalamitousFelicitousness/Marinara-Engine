@@ -7949,6 +7949,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   // the analyzer is asked for genre/intensity hints, never a music prompt.
   assert.doesNotMatch(prompt, /concise instrumental scene music prompt/u);
   assert.match(prompt, /musicGenre/u);
+  assert.match(prompt, /musicIntensity/u);
 
   const processed = postProcessSceneResult(
     {

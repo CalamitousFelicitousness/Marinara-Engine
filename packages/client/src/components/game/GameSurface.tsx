@@ -2593,6 +2593,16 @@ function GameSurfaceComponent({
   const combatMusicTierRef = useRef<MusicEnemyTier | null>(null);
   const musicDjSuppressedRef = useRef(false);
   musicDjSuppressedRef.current = useMusicDjPlayerMusic;
+  // Unmount latch: audioManager and the asset store are module singletons, so
+  // a generation resolving after the surface unmounted must never play into
+  // whatever view the user is in now (review-found).
+  const gameSurfaceMountedRef = useRef(true);
+  useEffect(() => {
+    gameSurfaceMountedRef.current = true;
+    return () => {
+      gameSurfaceMountedRef.current = false;
+    };
+  }, []);
   const currentBackground = useGameAssetStore((s) => s.currentBackground);
   const gameAssetExcludedFolders = useMemo(
     () => parseGameAssetExcludedFolders(chatMeta.gameAssetSelection),
@@ -2724,6 +2734,9 @@ function GameSurfaceComponent({
       const requestKey = `${axis}\0${key}`;
       if (contextMusicRequestRef.current.has(requestKey)) return;
       contextMusicRequestRef.current.add(requestKey);
+      // Scope the continuation like generateCombatStateForMessage does: the
+      // request belongs to THIS chat on THIS mounted surface.
+      const requestChatId = activeChatIdRef.current;
       void (async () => {
         try {
           const generated = await withTimeout(
@@ -2740,6 +2753,12 @@ function GameSurfaceComponent({
               ),
             CONTEXT_MUSIC_GENERATION_TIMEOUT_MS,
           );
+          if (!gameSurfaceMountedRef.current || activeChatIdRef.current !== requestChatId) {
+            // The file exists server-side either way; the new scope's own
+            // manifest pass will surface it. Just never PLAY into it.
+            contextMusicRequestRef.current.delete(requestKey);
+            return;
+          }
           generatedAudioAssetsRef.current[generated.tag] = {
             tag: generated.tag,
             category: "music",

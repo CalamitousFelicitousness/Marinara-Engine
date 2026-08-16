@@ -100,8 +100,10 @@ export function normalizeMusicEnemyTier(value: string | null | undefined): Music
   return ENEMY_TIER_ALIASES[normalized] ?? null;
 }
 
-/** Canonical area key for context music: the same slugification generated
- *  backgrounds use, so an area's music and its background share one identity.
+/** Canonical area key for context music. The style follows the background
+ *  slug conventions, but the key is its OWN namespace (music/area/<slug>) —
+ *  nothing joins it to background slugs, whose generators use their own
+ *  slugification and may differ on accented or very long names.
  *  Input is length-capped before any regex work and dash runs are trimmed
  *  with linear scans, never anchored `-+` patterns — location strings arrive
  *  from request payloads, and CodeQL rightly flags polynomial regexes on

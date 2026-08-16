@@ -3945,7 +3945,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           );
         } catch (err) {
           logger.warn(err, "Failed to copy tracker snapshot while branching chat");
-          // Ignore individual snapshot copy failures; branching should still succeed.
+          throw err;
         }
       };
       const copyEngineSnapshot = async (
@@ -3991,11 +3991,13 @@ export async function chatsRoutes(app: FastifyInstance) {
             if (gameEngineStore) {
               // One anchor can hold a row per gameType writer (a turn-game AND an
               // Experience, #5102) — branching must copy every one, not limit(1).
-              for (const engineSnapshot of await gameEngineStore.listByChatAndMessage(
+              const engineSnapshots = await gameEngineStore.listByChatAndMessage(
                 req.params.id,
                 srcMsg.id,
                 swipeIndex,
-              )) {
+              );
+              // Reads are newest-first; replay oldest-first so the source-effective row wins dedupe.
+              for (const engineSnapshot of engineSnapshots.reverse()) {
                 await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);
               }
             }
@@ -4011,7 +4013,9 @@ export async function chatsRoutes(app: FastifyInstance) {
         await copySnapshot(bootstrap, "", 0);
       }
       if (gameEngineStore) {
-        for (const engineBootstrap of await gameEngineStore.listByChatAndMessage(req.params.id, "", 0)) {
+        const engineBootstraps = await gameEngineStore.listByChatAndMessage(req.params.id, "", 0);
+        // Preserve the same effective row when a legacy anchor contains history.
+        for (const engineBootstrap of engineBootstraps.reverse()) {
           await copyEngineSnapshot(engineBootstrap, "", 0);
         }
       }

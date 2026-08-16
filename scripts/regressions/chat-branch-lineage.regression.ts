@@ -128,8 +128,19 @@ try {
   const conversationSwipe = conversationSwipeResponse.json();
   assert.equal(conversationSwipe.index, 1);
   const conversationState = JSON.stringify({ position: "after-e4", turn: "black" });
+  const olderConversationState = JSON.stringify({ position: "opening", turn: "white" });
   const alternateConversationState = JSON.stringify({ position: "after-d4", turn: "black" });
   const conversationBootstrapState = JSON.stringify({ phase: "waiting-for-players" });
+  const olderConversationStateId = await engineStore.create({
+    chatId: conversation.id,
+    messageId: "legacy-chess-history",
+    swipeIndex: 0,
+    gameType: "chess",
+    schemaVersion: 1,
+    state: olderConversationState,
+    committed: true,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 2));
   await engineStore.create({
     chatId: conversation.id,
     messageId: conversationMessage.id,
@@ -139,6 +150,11 @@ try {
     state: conversationState,
     committed: true,
   });
+  await engineStore.reanchor(olderConversationStateId, conversationMessage.id, 0);
+  assert.equal(
+    (await engineStore.getByChatAndMessage(conversation.id, conversationMessage.id, 0))?.state,
+    conversationState,
+  );
   await engineStore.create({
     chatId: conversation.id,
     messageId: conversationMessage.id,

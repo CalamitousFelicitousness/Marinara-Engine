@@ -27,6 +27,7 @@ import {
   buildPromptMacroContext,
   collectCharacterAdvancedPromptEntries,
   MAX_REFERENCED_CHARACTERS,
+  resolveMacrosForPreview,
   resolveMacrosWithVariableSnapshot,
 } from "./macro-context.js";
 
@@ -171,6 +172,8 @@ export interface AssemblerInput {
   }>;
   /** Per-chat variable selections: { [variableName]: value | value[] } */
   chatChoices: Record<string, string | string[]>;
+  /** SillyTavern-compatible local variables persisted in this chat. */
+  localVariables?: Record<string, string>;
   /** Chat context */
   chatId: string;
   characterIds: string[];
@@ -343,6 +346,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     personaDescription: input.personaDescription,
     personaFields: input.personaFields,
     variables: variableValues,
+    localVariables: input.localVariables,
     groupScenarioOverrideText: input.groupScenarioOverrideText,
     lastInput: [...input.chatMessages].reverse().find((message) => message.role === "user")?.content,
     chatId: input.chatId,
@@ -424,7 +428,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     if (extraContext.content) referencedCharacterContextBlocks.push(extraContext.content);
 
     const resolveReferenceMacros = (value: string) =>
-      resolveMacros(value, { ...macroCtx, variables: { ...macroCtx.variables } }, deferNameMacroOptions);
+      resolveMacrosForPreview(value, macroCtx, deferNameMacroOptions);
     result.worldInfoBefore = resolveReferenceMacros(result.worldInfoBefore);
     result.worldInfoAfter = resolveReferenceMacros(result.worldInfoAfter);
     result.depthEntries = result.depthEntries.map((entry) => ({

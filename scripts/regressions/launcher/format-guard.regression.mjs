@@ -81,9 +81,7 @@ assert.match(
   "the Termux launcher must release its wake lock whenever the server exits",
 );
 const wakeLockTrapIndex = termuxLauncherSource.search(/^[ \t]*trap release_termux_wake_lock EXIT[ \t]*$/mu);
-const wakeLockAcquireIndex = termuxLauncherSource.search(
-  /^[ \t]*if[ \t]+termux-wake-lock\b[^\n]*;[ \t]*then[ \t]*$/mu,
-);
+const wakeLockAcquireIndex = termuxLauncherSource.search(/^[ \t]*if[ \t]+termux-wake-lock\b[^\n]*;[ \t]*then[ \t]*$/mu);
 const serverStartIndex = termuxLauncherSource.lastIndexOf("node dist/index.js");
 assert.ok(
   wakeLockTrapIndex >= 0 && wakeLockAcquireIndex >= 0 && wakeLockTrapIndex < wakeLockAcquireIndex,
@@ -97,6 +95,31 @@ assert.doesNotMatch(
   termuxLauncherSource,
   /exec node dist\/index\.js/u,
   "the Termux launcher must retain its shell so the EXIT cleanup trap can run",
+);
+assert.match(
+  termuxLauncherSource,
+  /node dist\/index\.js 2>&1 \| tee -a "\$MARINARA_TERMUX_LOG_FILE"/u,
+  "the Termux launcher must preserve server output in a durable per-run log",
+);
+assert.match(
+  termuxLauncherSource,
+  /MARINARA_PIPE_STATUS=\("\$\{PIPESTATUS\[@\]\}"\)[\s\S]{0,180}MARINARA_SERVER_STATUS=\$\{MARINARA_PIPE_STATUS\[0\]\}[\s\S]{0,120}MARINARA_TEE_STATUS=\$\{MARINARA_PIPE_STATUS\[1\]\}/u,
+  "the Termux launcher must capture both pipeline statuses before another command overwrites PIPESTATUS",
+);
+assert.match(
+  termuxLauncherSource,
+  /exit "\$MARINARA_SERVER_STATUS"/u,
+  "the Termux launcher must preserve the server process exit status",
+);
+assert.match(
+  termuxLauncherSource,
+  /if \[ "\$MARINARA_TEE_STATUS" -ne 0 \]; then[\s\S]{0,180}Could not write the persistent server log/u,
+  "the Termux launcher must report a persistent-log write failure",
+);
+assert.match(
+  termuxLauncherSource,
+  /if \[ "\$MARINARA_TEE_STATUS" -ne 0 \]; then[\s\S]{0,120}exit "\$MARINARA_TEE_STATUS"/u,
+  "the Termux launcher must propagate a nonzero tee exit status",
 );
 const installerSource = readFileSync(join(repositoryRoot, "win/installer/install.bat"), "utf8");
 assert.ok(
@@ -115,10 +138,7 @@ for (const dockerfile of ["Dockerfile", "Dockerfile.lite"]) {
     `${dockerfile} must ship protect-launcher-data.mjs — docs/TROUBLESHOOTING.md tells Docker users to run unshard in a one-off container`,
   );
 }
-const updatesRoutesSource = readFileSync(
-  join(repositoryRoot, "packages/server/src/routes/updates.routes.ts"),
-  "utf8",
-);
+const updatesRoutesSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/updates.routes.ts"), "utf8");
 for (const pinnedFragment of ["checkTargetStorageFormat", ":storage-format.json", "targetFormat >= onDiskFormat"]) {
   assert.ok(
     updatesRoutesSource.includes(pinnedFragment),
@@ -143,7 +163,12 @@ const parseTableList = (source, label) => {
   assert.ok(raw, `could not find SHARDED_TABLES in ${label}`);
   return raw
     .split(",")
-    .map((entry) => entry.replace(/\/\/[^\n]*/g, "").trim().replace(/^["']|["']$/g, ""))
+    .map((entry) =>
+      entry
+        .replace(/\/\/[^\n]*/g, "")
+        .trim()
+        .replace(/^["']|["']$/g, ""),
+    )
     .filter(Boolean);
 };
 assert.deepEqual(
@@ -182,7 +207,12 @@ function storageFixture(manifestVersion) {
   if (manifestVersion !== null) {
     writeFileSync(
       join(dir, "manifest.json"),
-      JSON.stringify({ version: manifestVersion, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
+      JSON.stringify({
+        version: manifestVersion,
+        savedAt: "2026-08-08T00:00:00.000Z",
+        backend: "file-native",
+        tables: {},
+      }),
     );
   }
   return dir;
@@ -195,7 +225,11 @@ function storageFixture(manifestVersion) {
   const freshData = storageFixture(null);
   const envFor = (dir) => ({ FILE_STORAGE_DIR: dir });
   try {
-    const blocked = await checkTargetStorageFormat({ root: repo, env: envFor(formatThreeData), targetRef: preShardingRef });
+    const blocked = await checkTargetStorageFormat({
+      root: repo,
+      env: envFor(formatThreeData),
+      targetRef: preShardingRef,
+    });
     assert.deepEqual(
       blocked,
       { compatible: false, verified: true, onDiskFormat: 3, targetFormat: 2 },
@@ -205,7 +239,11 @@ function storageFixture(manifestVersion) {
     assert.equal(allowed.compatible, true, "format-3 data accepts a format-3 target");
     const upgrade = await checkTargetStorageFormat({ root: repo, env: envFor(formatTwoData), targetRef: shardedRef });
     assert.equal(upgrade.compatible, true, "format-2 data accepts a NEWER target (upgrades are always allowed)");
-    const sideways = await checkTargetStorageFormat({ root: repo, env: envFor(formatTwoData), targetRef: preShardingRef });
+    const sideways = await checkTargetStorageFormat({
+      root: repo,
+      env: envFor(formatTwoData),
+      targetRef: preShardingRef,
+    });
     assert.equal(sideways.compatible, true, "format-2 data accepts a format-2 target");
     const fresh = await checkTargetStorageFormat({ root: repo, env: envFor(freshData), targetRef: preShardingRef });
     assert.deepEqual(
@@ -234,7 +272,11 @@ function storageFixture(manifestVersion) {
         join(bakOnlyData, "manifest.json.bak"),
         JSON.stringify({ version: 3, savedAt: "2026-08-08T00:00:00.000Z", backend: "file-native", tables: {} }),
       );
-      const bakOnly = await checkTargetStorageFormat({ root: repo, env: envFor(bakOnlyData), targetRef: preShardingRef });
+      const bakOnly = await checkTargetStorageFormat({
+        root: repo,
+        env: envFor(bakOnlyData),
+        targetRef: preShardingRef,
+      });
       assert.deepEqual(
         bakOnly,
         { compatible: false, verified: true, onDiskFormat: 3, targetFormat: 2 },
@@ -251,7 +293,11 @@ function storageFixture(manifestVersion) {
       encoding: "utf8",
     }).trim();
     rmSync(join(repo, ".git", "objects", blobSha.slice(0, 2), blobSha.slice(2)), { force: true });
-    const unreadable = await checkTargetStorageFormat({ root: repo, env: envFor(formatThreeData), targetRef: shardedRef });
+    const unreadable = await checkTargetStorageFormat({
+      root: repo,
+      env: envFor(formatThreeData),
+      targetRef: shardedRef,
+    });
     assert.deepEqual(
       unreadable,
       { compatible: false, verified: false, onDiskFormat: 3, targetFormat: null },
@@ -322,7 +368,10 @@ function shardedStorageFixture() {
   const dir = shardedStorageFixture();
   writeFileSync(
     join(dir, "tables", "messages", "chat-a.json"),
-    JSON.stringify([row("m-2", "chat-a", "2026-08-08T10:00:02.000Z", "second"), row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "first")]),
+    JSON.stringify([
+      row("m-2", "chat-a", "2026-08-08T10:00:02.000Z", "second"),
+      row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "first"),
+    ]),
   );
   writeFileSync(
     join(dir, "tables", "messages", "chat-b.json"),
@@ -330,7 +379,9 @@ function shardedStorageFixture() {
   );
   writeFileSync(
     join(dir, "tables", "message_swipes", "orphaned-rows.json"),
-    JSON.stringify([{ id: "s-1", messageId: "m-gone", index: 0, content: "orphan", createdAt: "2026-08-08T10:00:04.000Z" }]),
+    JSON.stringify([
+      { id: "s-1", messageId: "m-gone", index: 0, content: "orphan", createdAt: "2026-08-08T10:00:04.000Z" },
+    ]),
   );
   try {
     const result = await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
@@ -348,7 +399,11 @@ function shardedStorageFixture() {
       "the shard files are kept as .post-unshard-<timestamp>, never deleted",
     );
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
-    assert.equal(manifest.version, 2, "the manifest is rewritten as format 2 so the guard stops refusing the downgrade");
+    assert.equal(
+      manifest.version,
+      2,
+      "the manifest is rewritten as format 2 so the guard stops refusing the downgrade",
+    );
     assert.equal("shards" in manifest, false, "the shards diagnostic is dropped from the format-2 manifest");
     assert.equal(result.warnings.length, 0, "a clean conversion reports no warnings");
   } finally {
@@ -416,13 +471,23 @@ function shardedStorageFixture() {
 
 {
   const dir = shardedStorageFixture();
-  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "authoritative")]));
-  writeFileSync(join(dir, "tables", "messages", "chat-a.json"), JSON.stringify([row("m-partial", "chat-a", "2026-08-08T10:00:01.000Z", "partial")]));
+  writeFileSync(
+    join(dir, "tables", "messages.json"),
+    JSON.stringify([row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "authoritative")]),
+  );
+  writeFileSync(
+    join(dir, "tables", "messages", "chat-a.json"),
+    JSON.stringify([row("m-partial", "chat-a", "2026-08-08T10:00:01.000Z", "partial")]),
+  );
   writeFileSync(join(dir, "tables", "messages", ".migrating"), "2026-08-08T00:00:00.000Z");
   try {
     await unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false });
     const monolith = JSON.parse(readFileSync(join(dir, "tables", "messages.json"), "utf8"));
-    assert.equal(monolith[0].content, "authoritative", "a crashed migration's monolith is kept, never overwritten from partial shards");
+    assert.equal(
+      monolith[0].content,
+      "authoritative",
+      "a crashed migration's monolith is kept, never overwritten from partial shards",
+    );
     assert.equal(existsSync(join(dir, "tables", "messages")), false, "the partial shard dir is still moved aside");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -433,8 +498,14 @@ function shardedStorageFixture() {
 
 {
   const dir = shardedStorageFixture();
-  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify([row("m-old", "chat-a", "2026-08-08T10:00:01.000Z", "old-build rows")]));
-  writeFileSync(join(dir, "tables", "messages", "chat-a.json"), JSON.stringify([row("m-new", "chat-a", "2026-08-08T10:00:02.000Z", "sharded rows")]));
+  writeFileSync(
+    join(dir, "tables", "messages.json"),
+    JSON.stringify([row("m-old", "chat-a", "2026-08-08T10:00:01.000Z", "old-build rows")]),
+  );
+  writeFileSync(
+    join(dir, "tables", "messages", "chat-a.json"),
+    JSON.stringify([row("m-new", "chat-a", "2026-08-08T10:00:02.000Z", "sharded rows")]),
+  );
   try {
     await assert.rejects(
       unshardLauncherStorage({ env: { FILE_STORAGE_DIR: dir }, probeServer: false }),
@@ -453,7 +524,10 @@ function shardedStorageFixture() {
 
 {
   const dir = shardedStorageFixture();
-  writeFileSync(join(dir, "tables", "messages", "chat-a.json"), JSON.stringify([row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "fine")]));
+  writeFileSync(
+    join(dir, "tables", "messages", "chat-a.json"),
+    JSON.stringify([row("m-1", "chat-a", "2026-08-08T10:00:01.000Z", "fine")]),
+  );
   writeFileSync(join(dir, "tables", "messages", "chat-b.json"), "{not json");
   try {
     await assert.rejects(

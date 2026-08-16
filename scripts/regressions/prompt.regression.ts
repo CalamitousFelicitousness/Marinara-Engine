@@ -2169,6 +2169,53 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "Spotify search pages requests above the provider's ten-result limit",
+    async run() {
+      const originalFetch = globalThis.fetch;
+      const requestedPages: Array<{ limit: number; offset: number }> = [];
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+        const limit = Number(url.searchParams.get("limit"));
+        const offset = Number(url.searchParams.get("offset"));
+        requestedPages.push({ limit, offset });
+        return new Response(
+          JSON.stringify({
+            tracks: {
+              items: Array.from({ length: limit }, (_, index) => ({
+                uri: `spotify:track:search${offset + index}`,
+                name: `Search result ${offset + index}`,
+                artists: [{ name: "Regression Artist" }],
+                album: { name: "Regression Album" },
+              })),
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }) as typeof fetch;
+
+      try {
+        const [result] = await executeToolCalls(
+          [
+            {
+              id: "call_spotify_search_twenty",
+              type: "function",
+              function: { name: "spotify_search", arguments: JSON.stringify({ query: "laboratory", limit: 20 }) },
+            },
+          ],
+          { spotify: { accessToken: "regression-token" } },
+        );
+        assert.equal(result?.success, true);
+        assert.deepEqual(requestedPages, [
+          { limit: 10, offset: 0 },
+          { limit: 10, offset: 10 },
+        ]);
+        assert.equal((JSON.parse(result!.result) as { count?: number }).count, 20);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    },
+  },
+  {
     name: "Spotify playlist candidates suppress the extended recent-track window",
     async run() {
       const originalFetch = globalThis.fetch;
@@ -2395,17 +2442,20 @@ const cases: RegressionCase[] = [
       const selectedUris = ["spotify:track:EEEEEEEEEEEEEEEEEEEEEE", "spotify:track:FFFFFFFFFFFFFFFFFFFFFF"];
       let activeUri = "spotify:track:ZZZZZZZZZZZZZZZZZZZZZZ";
       let repeatRequests = 0;
+      let playbackReads = 0;
+      const repeatDeviceIds: Array<string | null> = [];
 
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
         const method = init?.method ?? "GET";
         if (url.pathname === "/v1/me/player" && method === "GET") {
+          const deviceId = playbackReads++ === 0 ? "target-device" : "other-active-device";
           return new Response(
             JSON.stringify({
               is_playing: true,
               repeat_state: "off",
               item: { uri: activeUri },
-              device: { id: "regression-device", name: "Regression device", type: "computer" },
+              device: { id: deviceId, name: "Regression device", type: "computer" },
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
@@ -2417,6 +2467,7 @@ const cases: RegressionCase[] = [
         }
         if (url.pathname === "/v1/me/player/repeat" && method === "PUT") {
           repeatRequests++;
+          repeatDeviceIds.push(url.searchParams.get("device_id"));
           return new Response(null, { status: 204 });
         }
         throw new Error(`Unexpected Spotify regression request: ${method} ${url.pathname}`);
@@ -2449,6 +2500,11 @@ const cases: RegressionCase[] = [
           repeatState?: string;
         };
         assert.equal(repeatRequests, 3, "Spotify repeat should be retried while playback reports it as off");
+        assert.deepEqual(
+          repeatDeviceIds,
+          ["target-device", "target-device", "target-device"],
+          "delayed verification must not redirect repeat retries to a different active device",
+        );
         assert.match(payload.error ?? "", /failed to apply context repeat mode/u);
         assert.equal(payload.applied, undefined);
         assert.equal(payload.playbackPending, undefined);
@@ -2573,11 +2629,17 @@ const cases: RegressionCase[] = [
         buildElevenLabsTextInput("Reserved. Tomorrow afternoon.", "neutral"),
         "[neutral] Reserved. Tomorrow afternoon.",
       );
-      assert.equal(buildElevenLabsTextInput("Your ribs require rest.", "thinking"), "[thinking] Your ribs require rest.");
+      assert.equal(
+        buildElevenLabsTextInput("Your ribs require rest.", "thinking"),
+        "[thinking] Your ribs require rest.",
+      );
       assert.equal(buildElevenLabsTextInput("A bold strategy.", "smirk"), "[smirk] A bold strategy.");
       assert.equal(buildElevenLabsTextInput("Stay close.", "[soft]\n"), "[soft] Stay close.");
       assert.equal(buildElevenLabsTextInput("No cue needed.", " \n[] "), "No cue needed.");
-      assert.equal(buildElevenLabsTextInput("  [neutral] Already prepared.", "neutral"), "  [neutral] Already prepared.");
+      assert.equal(
+        buildElevenLabsTextInput("  [neutral] Already prepared.", "neutral"),
+        "  [neutral] Already prepared.",
+      );
     },
   },
   {
@@ -2773,7 +2835,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "addnumvar adds numbers without changing addvar concatenation",
+    name: "local variable macros match SillyTavern numeric and return-value semantics",
     run() {
       const resolve = (template: string) =>
         resolveMacros(template, {
@@ -2797,7 +2859,57 @@ const cases: RegressionCase[] = [
         resolve("{{setvar::score::1e308}}{{addnumvar::score::1e308}}{{addnumvar::score::-1e308}}{{getvar::score}}"),
         "0",
       );
-      assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "20-2");
+      assert.equal(resolve("{{setvar::score::20}}{{addvar::score::-2}}{{getvar::score}}"), "18");
+      assert.equal(resolve("{{setvar::label::Lab}}{{addvar::label:: Thirteen}}{{getvar::label}}"), "Lab Thirteen");
+      assert.equal(resolve("{{setvar::score::2}}{{incvar::score}}/{{decvar::score}}/{{getvar::score}}"), "3/2/2");
+
+      const prototypeNamedVariables: Record<string, string> = {};
+      const resolvePrototypeName = (template: string) =>
+        resolveMacros(template, {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+          localVariables: prototypeNamedVariables,
+        });
+      assert.equal(resolvePrototypeName("{{getvar::constructor}}"), "");
+      assert.equal(resolvePrototypeName("{{setvar::constructor::safe}}{{getvar::constructor}}"), "safe");
+      assert.equal(resolvePrototypeName("{{addvar::toString::value}}{{getvar::toString}}"), "value");
+      assert.equal(resolvePrototypeName("{{setvar::__proto__::owned}}{{incvar::__proto__}}"), "1");
+      assert.equal(Object.getPrototypeOf(prototypeNamedVariables), Object.prototype);
+      assert.equal(Object.prototype.hasOwnProperty.call(prototypeNamedVariables, "__proto__"), true);
+
+      const firstChatVariables: Record<string, string> = {};
+      resolveMacros("{{setvar::remembered::across turns}}", {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: {},
+        localVariables: firstChatVariables,
+      });
+      const reloadedFirstChatVariables = { ...firstChatVariables };
+      assert.equal(
+        resolveMacros("{{getvar::remembered}}", {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+          localVariables: reloadedFirstChatVariables,
+        }),
+        "across turns",
+        "a fresh prompt context must read the chat-persisted variable map",
+      );
+      assert.equal(
+        resolveMacros("{{getvar::remembered}}", {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+          localVariables: {},
+        }),
+        "",
+        "another chat must not inherit local variables",
+      );
 
       const conditionalVariables = { score: "10" };
       resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {

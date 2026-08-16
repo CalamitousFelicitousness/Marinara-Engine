@@ -36,6 +36,7 @@ export interface BuildPromptMacroContextInput {
   personaDescription?: string;
   personaFields?: PersonaFields;
   variables?: Record<string, string>;
+  localVariables?: Record<string, string>;
   groupScenarioOverrideText?: string | null;
   lastInput?: string;
   chatId?: string;
@@ -75,6 +76,35 @@ export interface MacroResolutionTransaction {
 export const MAX_REFERENCED_CHARACTERS = 8;
 const MAX_REFERENCED_FIELD_CHARS = 8_000;
 const MAX_REFERENCED_LOREBOOK_CHARS = 8_000;
+
+export function normalizeChatMacroVariables(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries: Array<[string, string]> = [];
+  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[\w.-]+$/u.test(name) || typeof entry !== "string") continue;
+    entries.push([name, entry]);
+    if (entries.length >= 500) break;
+  }
+  return Object.fromEntries(entries);
+}
+
+/** Clone mutable macro maps for preview-only resolution that must discard variable writes. */
+export function cloneMacroContextForPreview(macroCtx: MacroContext): MacroContext {
+  return {
+    ...macroCtx,
+    variables: { ...macroCtx.variables },
+    localVariables: { ...macroCtx.localVariables },
+  };
+}
+
+/** Resolve macros while discarding variable writes made by preview and scan-only paths. */
+export function resolveMacrosForPreview(
+  template: string,
+  macroCtx: MacroContext,
+  options?: ResolveMacroOptions,
+): string {
+  return resolveMacros(template, cloneMacroContextForPreview(macroCtx), options);
+}
 
 export function extractCharacterReferenceIds(sources: readonly string[]): string[] {
   const ids: string[] = [];
@@ -129,9 +159,9 @@ function clipReferencedText(value: string, limit: number): string {
 }
 
 function resolveReferencedField(value: string, macroCtx: MacroContext, wrapFormat: WrapFormat): string {
-  const resolved = resolveMacros(
+  const resolved = resolveMacrosForPreview(
     clipReferencedText(stripMacroComments(value), MAX_REFERENCED_FIELD_CHARS),
-    { ...macroCtx, variables: { ...macroCtx.variables } },
+    macroCtx,
     { trimResult: false },
   ).trim();
   return resolved ? sanitizePromptLeaf(resolved, wrapFormat) : "";
@@ -241,11 +271,7 @@ export async function buildReferencedCharacterContext(input: {
   const excludedByRequest = new Set(input.excludedLorebookIds ?? []);
   const scanMessages = input.chatMessages.map((message) => ({
     ...message,
-    content: resolveMacros(
-      message.content,
-      { ...macroCtx, variables: { ...macroCtx.variables } },
-      { trimResult: false },
-    ),
+    content: resolveMacrosForPreview(message.content, macroCtx, { trimResult: false }),
   }));
   const blocks: string[] = [];
 
@@ -267,8 +293,7 @@ export async function buildReferencedCharacterContext(input: {
             excludedSourceAgentIds: input.excludedLorebookSourceAgentIds,
             previewOnly: true,
             generationTriggers: input.generationTriggers,
-            resolveContent: (value) =>
-              resolveMacros(value, { ...scopedContext, variables: { ...scopedContext.variables } }),
+            resolveContent: (value) => resolveMacrosForPreview(value, scopedContext),
           })
         : null;
     blocks.push(buildReferencedCharacterFields(id, data, macroCtx, input.wrapFormat, lorebookScan));
@@ -286,12 +311,16 @@ export function resolveMacrosWithVariableSnapshot(
   options?: ResolveMacroOptions,
 ): MacroResolutionTransaction {
   const before = { ...macroCtx.variables };
+  const localBefore = { ...macroCtx.localVariables };
   const content = resolveMacros(template, macroCtx, options);
   let settled = false;
 
   const rollback = () => {
     if (settled) return;
     macroCtx.variables = before;
+    const localVariables = (macroCtx.localVariables ??= {});
+    for (const key of Object.keys(localVariables)) delete localVariables[key];
+    Object.assign(localVariables, localBefore);
     settled = true;
   };
 
@@ -478,6 +507,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     groupCharacters: groupCharacterMacroData.names,
     characterProfiles: characterMacroData.profiles,
     variables,
+    localVariables: input.localVariables,
     lastInput: input.lastInput,
     chatId: input.chatId,
     model: input.model,

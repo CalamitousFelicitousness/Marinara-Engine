@@ -17,6 +17,9 @@ import {
   shouldRunAndroidHostHeartbeat,
 } from "../../packages/client/src/lib/keep-alive.js";
 import { useAgentStore } from "../../packages/client/src/stores/agent.store.js";
+import { agentResultMatchesVisibleSwipe } from "../../packages/client/src/lib/agent-result-ownership.js";
+import { createAgentEventDispatcher } from "../../packages/server/src/services/generation/agent-event-dispatcher.js";
+import { resolveMacrosForPreview } from "../../packages/server/src/services/prompt/macro-context.js";
 import {
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
@@ -27,6 +30,63 @@ import {
 } from "../../packages/shared/src/types/game.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+
+const dispatchedAgentEvents: Array<Record<string, unknown>> = [];
+const immutableAgentOwnership = {
+  chatId: "roleplay-chat",
+  messageId: "assistant-message",
+  swipeIndex: 1,
+  generationId: "generation-one",
+};
+createAgentEventDispatcher({
+  resolvedAgents: [],
+  sendEvent: (payload) => dispatchedAgentEvents.push(payload),
+  getOwnership: () => immutableAgentOwnership,
+}).sendAgentResultEvent({
+  agentId: "quest",
+  agentType: "quest",
+  type: "quest_update",
+  data: {},
+  tokensUsed: 0,
+  durationMs: 1,
+  success: true,
+  error: null,
+});
+assert.deepEqual(
+  (dispatchedAgentEvents[0]?.data as Record<string, unknown> | undefined) ?? {},
+  {
+    agentType: "quest",
+    agentName: "quest",
+    resultType: "quest_update",
+    data: {},
+    success: true,
+    error: null,
+    durationMs: 1,
+    ...immutableAgentOwnership,
+  },
+  "agent result events must carry the immutable message, swipe, and generation owner",
+);
+const ownershipMessages = [{ id: "assistant-message", activeSwipeIndex: 1 }] as never;
+assert.equal(agentResultMatchesVisibleSwipe(ownershipMessages, immutableAgentOwnership), true);
+assert.equal(
+  agentResultMatchesVisibleSwipe(ownershipMessages, { ...immutableAgentOwnership, swipeIndex: 2 }),
+  false,
+  "an old agent result must not update UI stores after the user changes swipes",
+);
+
+useAgentStore.getState().reset();
+useAgentStore.getState().setProcessingRun("older-swipe", true, "roleplay-chat");
+useAgentStore.getState().setProcessingRun("newer-swipe", true, "roleplay-chat");
+useAgentStore.getState().setProcessingRun("older-swipe", false, "roleplay-chat");
+assert.equal(
+  useAgentStore.getState().isProcessing,
+  true,
+  "finishing an older swipe pipeline must not clear a newer pipeline's processing state",
+);
+assert.deepEqual(useAgentStore.getState().processingChatIds, ["roleplay-chat"]);
+useAgentStore.getState().setProcessingRun("newer-swipe", false, "roleplay-chat");
+assert.equal(useAgentStore.getState().isProcessing, false);
+useAgentStore.getState().reset();
 
 assert.equal(
   resolveGameImageDynamicPromptEnabled({}),
@@ -274,6 +334,11 @@ const presetEditorSource = readFileSync(
   join(repositoryRoot, "packages/client/src/components/presets/PresetEditor.tsx"),
   "utf8",
 );
+assert.match(
+  presetEditorSource,
+  /useLayoutEffect\(\(\) => \{\s*currentPresetIdRef\.current = presetId;\s*\}, \[presetId\]\)/u,
+  "quick preset copy ownership updates only after the selected preset commits",
+);
 assert.equal(
   presetEditorSource.match(/showMarkdownPreview/gu)?.length,
   3,
@@ -474,6 +539,24 @@ assert.equal(
   canonicalEnglish["ui.chat.edittextarea.saveCmdEnter"],
   "Save (Cmd/Ctrl+Enter)",
   "the message editor shortcut hint covers both macOS and Windows modifiers",
+);
+
+const liveMacroContext = {
+  user: "Mari",
+  char: "Dottore",
+  characters: ["Dottore"],
+  variables: {},
+  localVariables: { existing: "kept" },
+};
+const previewMacroResult = resolveMacrosForPreview(
+  "{{setvar::previewOnly::yes}}{{getvar::previewOnly}}",
+  liveMacroContext,
+);
+assert.equal(previewMacroResult, "yes", "the production preview resolver evaluates against its isolated clone");
+assert.deepEqual(
+  liveMacroContext.localVariables,
+  { existing: "kept" },
+  "preview macro resolution cannot mutate the live chat-local variables",
 );
 
 console.info("Assigned issue-sweep regressions passed.");

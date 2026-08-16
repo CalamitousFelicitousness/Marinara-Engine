@@ -2,6 +2,7 @@
 // Routes: Generation (SSE Streaming with Tool Use + Agent Pipeline)
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -138,10 +139,12 @@ import { buildSpotifyDjConstraints } from "../services/spotify/spotify-dj-constr
 import {
   assemblePrompt,
   buildPromptMacroContext,
+  normalizeChatMacroVariables,
   collectCharacterAdvancedPromptEntries,
   resolveCharacterAdvancedPromptIds,
   resolveCharacterMacroData,
   resolveMacrosWithVariableSnapshot,
+  resolveMacrosForPreview,
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
   resolvePromptMessageMacros,
@@ -695,6 +698,7 @@ function decodeDeferredRelocationConditionals(
   const evalContext: MacroContext = {
     ...baseContext,
     variables: { ...baseContext.variables, ...relocationVariables },
+    localVariables: { ...baseContext.localVariables },
   };
 
   for (let index = 0; index < messages.length; index += 1) {
@@ -894,6 +898,7 @@ export async function generateRoutes(app: FastifyInstance) {
     // awaits DB/connection work, so delaying this left a small double-submit
     // window where two requests for the same chat could both pass the guard.
     const abortController = new AbortController();
+    const generationId = randomUUID();
     activeGenerations.set(input.chatId, { abortController, backendUrl: null });
     const releaseActiveGeneration = () => {
       if (activeGenerations.get(input.chatId)?.abortController === abortController) {
@@ -1601,11 +1606,35 @@ export async function generateRoutes(app: FastifyInstance) {
       let runningMessagesForFollowUp: GenerationPromptMessage[] = [...mappedMessages];
       let followUpIteration = 0;
       const MAX_FOLLOW_UP_ITERATIONS = 2;
+      const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
+      let persistedMacroVariables = JSON.stringify(chatMacroVariables);
+      let persistedMacroVariableSnapshot = { ...chatMacroVariables };
+      const persistChatMacroVariables = async () => {
+        const serialized = JSON.stringify(chatMacroVariables);
+        if (serialized === persistedMacroVariables) return;
+        const requestChanges = Object.fromEntries(
+          Object.entries(chatMacroVariables).filter(([name, value]) => persistedMacroVariableSnapshot[name] !== value),
+        );
+        await chats.patchMetadata(
+          input.chatId,
+          (current) => ({
+            ...current,
+            macroVariables: normalizeChatMacroVariables({
+              ...normalizeChatMacroVariables(current.macroVariables),
+              ...requestChanges,
+            }),
+          }),
+          { touchUpdatedAt: false },
+        );
+        persistedMacroVariables = serialized;
+        persistedMacroVariableSnapshot = { ...chatMacroVariables };
+      };
 
       // Hoisted out of the loop so the SSE flush, OOC posting, and
       // illustration await at the end see state from the latest iteration.
       let firstSavedMsg: any = null;
       let lastSavedMsg: any = null;
+      let lastSavedSwipeIndex: number | null = null;
       let pendingIllustration: Promise<void> | null = null;
       let pendingIllustratorBackground: (() => Promise<void>) | null = null;
       const collectedCommands: Array<{
@@ -1833,6 +1862,7 @@ export async function generateRoutes(app: FastifyInstance) {
               normalizeGameStoryboardKeyframeCount(chatMeta.gameStoryboardKeyframeCount),
             ),
           },
+          localVariables: chatMacroVariables,
           groupScenarioOverrideText:
             typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
               ? (chatMeta.groupScenarioText as string).trim()
@@ -1851,11 +1881,7 @@ export async function generateRoutes(app: FastifyInstance) {
         ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
         const resolvePromptMacros = (value: string) => resolveMacros(value, promptMacroContext);
         const resolvePromptMacrosWithoutVariableWrites = (value: string) =>
-          resolveMacros(
-            value,
-            { ...promptMacroContext, variables: { ...promptMacroContext.variables } },
-            { trimResult: false },
-          );
+          resolveMacrosForPreview(value, promptMacroContext, { trimResult: false });
         const resolvePromptMacrosForLorebook = (value: string) =>
           resolveMacrosWithVariableSnapshot(
             value,
@@ -2133,6 +2159,7 @@ export async function generateRoutes(app: FastifyInstance) {
             groups: groups as any,
             choiceBlocks: choiceBlocks as any,
             chatChoices,
+            localVariables: chatMacroVariables,
             chatId: input.chatId,
             characterIds: promptCharacterIds,
             groupCharacterIds: characterIds,
@@ -4302,6 +4329,12 @@ export async function generateRoutes(app: FastifyInstance) {
           createAgentEventDispatcher({
             resolvedAgents: agentEventResolvedAgents,
             sendEvent: (payload) => sendSseEvent(reply, payload),
+            getOwnership: () => ({
+              chatId: input.chatId,
+              messageId: typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null,
+              swipeIndex: lastSavedSwipeIndex,
+              generationId,
+            }),
           });
         const sendAgentEvent = (result: AgentResult, options?: { finalized?: boolean }) => {
           const nextResult = markLorebookResultForApproval(result);
@@ -5473,6 +5506,7 @@ export async function generateRoutes(app: FastifyInstance) {
           speaksOnlyTargetCharacter = true,
         ): Promise<{
           savedMsg: Awaited<ReturnType<typeof chats.createMessage>>;
+          savedSwipeIndex: number | null;
           response: string;
           commands: CharacterCommand[];
           commandCharacterIds: (string | null)[] | null;
@@ -6728,6 +6762,8 @@ export async function generateRoutes(app: FastifyInstance) {
               await recordSavedAutonomousGeneration(targetCharId);
               return {
                 savedMsg: anchoredMsg,
+                savedSwipeIndex:
+                  typeof anchoredMsg?.activeSwipeIndex === "number" ? anchoredMsg.activeSwipeIndex : null,
                 response: "",
                 commands: parsedCommands,
                 commandCharacterIds: parsedCommandCharacterIds,
@@ -7066,6 +7102,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
           return {
             savedMsg,
+            savedSwipeIndex,
             response: fullResponse,
             commands: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommands,
             commandCharacterIds: recoveredAlreadyAppliedSpatialTurn ? [] : parsedCommandCharacterIds,
@@ -7176,6 +7213,7 @@ export async function generateRoutes(app: FastifyInstance) {
             }
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
+            lastSavedSwipeIndex = genResult.savedSwipeIndex;
             currentIterationSavedMsg = genResult.savedMsg;
             if (typeof genResult.savedMsg?.id === "string") {
               knownConversationMessageIds.add(genResult.savedMsg.id);
@@ -7188,7 +7226,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 command: cmd,
                 characterId: charId,
                 messageId: genResult.savedMsg?.id ?? "",
-                swipeIndex: genResult.savedMsg?.activeSwipeIndex ?? 0,
+                swipeIndex: genResult.savedSwipeIndex ?? genResult.savedMsg?.activeSwipeIndex ?? 0,
               });
             }
             collectedOocMessages.push(...genResult.oocMessages);
@@ -7269,6 +7307,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (genResult) {
             firstSavedMsg ??= genResult.savedMsg;
             lastSavedMsg = genResult.savedMsg;
+            lastSavedSwipeIndex = genResult.savedSwipeIndex;
             currentIterationSavedMsg = genResult.savedMsg;
             recordExpressionTarget(genResult.savedMsg, genResult.characterId);
             for (let cmdIndex = 0; cmdIndex < genResult.commands.length; cmdIndex++) {
@@ -7278,7 +7317,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 // back to the generation's character when no attribution is available.
                 characterId: genResult.commandCharacterIds?.[cmdIndex] ?? genResult.characterId,
                 messageId: genResult.savedMsg?.id ?? "",
-                swipeIndex: genResult.savedMsg?.activeSwipeIndex ?? 0,
+                swipeIndex: genResult.savedSwipeIndex ?? genResult.savedMsg?.activeSwipeIndex ?? 0,
               });
             }
             collectedOocMessages.push(...genResult.oocMessages);
@@ -7328,6 +7367,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const activatedTextRewriteRunAgents = textRewriteRunAgents.filter(
           (agent) => !inactivePostProcessingAgentIds.has(agent.id),
         );
+        await persistChatMacroVariables();
         let assistantMessageReadySent = false;
         const sendAssistantMessageReady = async (savedMessage?: typeof currentIterationSavedMsg) => {
           if (assistantMessageReadySent || abortController.signal.aborted || input.impersonate) return;
@@ -7345,6 +7385,9 @@ export async function generateRoutes(app: FastifyInstance) {
         // Illustrator, trackers, summaries, or other non-rewriting agents.
         if (activatedTextRewriteRunAgents.length === 0) {
           await sendAssistantMessageReady(currentIterationSavedMsg);
+          // Roleplay post-processing is anchored to the saved message/swipe
+          // below, so it no longer needs to hold the chat-wide generation slot.
+          if (chatMode === "roleplay" && assistantMessageReadySent) releaseActiveGeneration();
         }
 
         // ────────────────────────────────────────
@@ -7882,11 +7925,15 @@ export async function generateRoutes(app: FastifyInstance) {
           const messageId = (lastSavedMsg as any)?.id ?? "";
           // Determine swipe index for this generation so ALL tracker agents target the
           // same (messageId, swipeIndex) snapshot that the world-state agent creates.
-          let targetSwipeIndex = 0;
-          if (input.regenerateMessageId && messageId) {
-            const refreshedForSwipe = await chats.getMessage(messageId);
-            if (refreshedForSwipe) targetSwipeIndex = refreshedForSwipe.activeSwipeIndex ?? 0;
-          }
+          // Capture the immutable swipe selected when this response was saved.
+          // Re-reading the message here can observe a newer user-selected swipe
+          // while these agents are still running and attach old results to it.
+          const targetSwipeIndex =
+            typeof lastSavedSwipeIndex === "number"
+              ? lastSavedSwipeIndex
+              : typeof (lastSavedMsg as { activeSwipeIndex?: unknown } | null)?.activeSwipeIndex === "number"
+                ? (lastSavedMsg as { activeSwipeIndex: number }).activeSwipeIndex
+                : 0;
           const siblingSwipeSnapshot = projectGameSnapshotLocation(
             input.regenerateMessageId && messageId && targetSwipeIndex > 0
               ? await gameStateStore.getByMessage(messageId, targetSwipeIndex - 1)
@@ -8491,10 +8538,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   `[generate] character-tracker: updateByMessage returned ${updated ? "ok" : "null (no snapshot)"}`,
                 );
                 // Merge into the game_state SSE event for the HUD
-                logger.debug(
-                  "[game_state_patch] character-tracker: %s",
-                  chars.map((c: any) => c.name ?? c).join(", "),
-                );
+                logger.debug("[game_state_patch] character-tracker: %s", chars.map((c: any) => c.name ?? c).join(", "));
                 sendSseEvent(reply, { type: "game_state_patch", data: { presentCharacters: chars } });
 
                 // Auto-populate journal: NPC encounters
@@ -9610,6 +9654,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // persisted edit (or no-op result) before releasing TTS.
         if (activatedTextRewriteRunAgents.length > 0) {
           await sendAssistantMessageReady();
+          if (chatMode === "roleplay" && assistantMessageReadySent) releaseActiveGeneration();
         }
 
         if (!recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {
@@ -9933,6 +9978,8 @@ export async function generateRoutes(app: FastifyInstance) {
         }
         break;
       } // end of Professor Mari follow-up loop
+
+      await persistChatMacroVariables();
 
       // ── Post OOC messages to connected conversation (Roleplay → Conversation) ──
       if (collectedOocMessages.length > 0 && chat.connectedChatId && !abortController.signal.aborted) {

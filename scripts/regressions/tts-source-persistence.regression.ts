@@ -341,8 +341,8 @@ const extractorMessage = 'Dottore sighs. "Enough of this," he says. A pause foll
 const extractedSegments = parseRoleplaySpeakerExtractorOutput(
   JSON.stringify({
     dialogue: [
-      { speaker: "Dottore", text: '"Enough of this,"', tone: "[irritated]" },
-      { speaker: "Mari", text: '"Skill issue,"', tone: "chuckle" },
+      { speaker: "Dottore", text: '"Enough of this,"', speech: '[irritated] "Enough of this,"' },
+      { speaker: "Mari", text: '"Skill issue,"', speech: '[chuckle] "Skill issue,"' },
     ],
   }),
   extractorMessage,
@@ -350,9 +350,9 @@ const extractedSegments = parseRoleplaySpeakerExtractorOutput(
 ).segments;
 assert.deepEqual(extractedSegments, [
   { kind: "narration", text: "Dottore sighs." },
-  { kind: "dialogue", speaker: "Dottore", text: '"Enough of this,"', tone: "irritated" },
+  { kind: "dialogue", speaker: "Dottore", text: '[irritated] "Enough of this,"' },
   { kind: "narration", text: "he says. A pause follows." },
-  { kind: "dialogue", speaker: "Mari", text: '"Skill issue,"', tone: "chuckle" },
+  { kind: "dialogue", speaker: "Mari", text: '[chuckle] "Skill issue,"' },
   { kind: "narration", text: "Mari chuckles." },
 ]);
 assert.throws(
@@ -364,6 +364,49 @@ assert.throws(
     ),
   /changed or could not locate/,
 );
+assert.throws(
+  () =>
+    parseRoleplaySpeakerExtractorOutput(
+      JSON.stringify({
+        dialogue: [
+          {
+            speaker: "Dottore",
+            text: '"Enough of this,"',
+            speech: '[irritated] "I have had enough,"',
+          },
+        ],
+      }),
+      extractorMessage,
+      true,
+    ),
+  /changed dialogue while adding emotion indicators/,
+);
+assert.throws(
+  () =>
+    parseRoleplaySpeakerExtractorOutput(
+      JSON.stringify({
+        dialogue: [{ speaker: "Dottore", text: '"Wait  here."', speech: '[tense] "Wait here."' }],
+      }),
+      'Dottore says, "Wait  here."',
+      true,
+    ),
+  /changed dialogue while adding emotion indicators/,
+  "emotion annotation must not normalize or rewrite source whitespace",
+);
+assert.deepEqual(
+  parseRoleplaySpeakerExtractorOutput(
+    JSON.stringify({
+      dialogue: [{ speaker: "Dottore", text: '"Use [A] now."', speech: '[firm] "Use [A] now."' }],
+    }),
+    'Dottore orders, "Use [A] now."',
+    true,
+  ).segments,
+  [
+    { kind: "narration", text: "Dottore orders," },
+    { kind: "dialogue", speaker: "Dottore", text: '[firm] "Use [A] now."' },
+  ],
+  "source-authored brackets must survive alongside inserted emotion indicators",
+);
 assert.match(
   buildRoleplaySpeakerExtractorPrompt({
     group: "Lab group",
@@ -371,7 +414,16 @@ assert.match(
     characters: ["Dottore", "Mari"],
     includeEmotions: true,
   }),
-  /"tone":"emotion"/,
+  /"speech":"Exact dialogue with only inserted \[indicators\]"/,
+);
+assert.match(
+  buildRoleplaySpeakerExtractorPrompt({
+    group: "Lab group",
+    user: "Mari",
+    characters: ["Dottore", "Mari"],
+    includeEmotions: true,
+  }),
+  /\[irritated\].*\[sigh\]/s,
 );
 const responsesCompatibleExtractorInput = buildRoleplaySpeakerExtractorUserPrompt('Columbina says, "Sing."');
 assert.match(responsesCompatibleExtractorInput, /\bjson\b/u);
@@ -451,13 +503,13 @@ const extractedVoiceRequests = buildExtractedRoleplayTTSVoiceRequests(
   (speaker) => extractedCharacterIds[speaker ?? ""],
 );
 assert.deepEqual(
-  extractedVoiceRequests.map(({ speaker, voice, tone }) => ({ speaker, voice, tone })),
+  extractedVoiceRequests.map(({ speaker, voice, text }) => ({ speaker, voice, text })),
   [
-    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
-    { speaker: "Dottore", voice: "dottore-voice", tone: "irritated" },
-    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
-    { speaker: "Mari", voice: "mari-voice", tone: "chuckle" },
-    { speaker: "Narrator", voice: "narrator-voice", tone: undefined },
+    { speaker: "Narrator", voice: "narrator-voice", text: "Dottore sighs." },
+    { speaker: "Dottore", voice: "dottore-voice", text: '[irritated] "Enough of this,"' },
+    { speaker: "Narrator", voice: "narrator-voice", text: "he says. A pause follows." },
+    { speaker: "Mari", voice: "mari-voice", text: '[chuckle] "Skill issue,"' },
+    { speaker: "Narrator", voice: "narrator-voice", text: "Mari chuckles." },
   ],
 );
 const extractedGlobalNarrationRequests = buildExtractedRoleplayTTSVoiceRequests(

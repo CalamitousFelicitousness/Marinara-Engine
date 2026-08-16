@@ -164,7 +164,7 @@ const extractedDialogueSchema = z.object({
       z.object({
         speaker: z.string().trim().min(1).max(120),
         text: z.string().trim().min(1).max(100_000),
-        tone: z.string().trim().min(1).max(80).optional(),
+        speech: z.string().trim().min(1).max(100_000).optional(),
       }),
     )
     .max(500),
@@ -324,8 +324,8 @@ export function buildRoleplaySpeakerExtractorPrompt(input: {
   const participants = input.characters.length > 0 ? input.characters.join(", ") : "the roleplay characters";
   const roleplayName = input.group || participants;
   const emotionInstruction = input.includeEmotions
-    ? 'Add a short emotional indicator or expression in the optional "tone" field for each line, such as "irritated" or "chuckle".'
-    : 'Do not add emotional indicators. Omit the "tone" field.';
+    ? 'In "speech", copy the exact dialogue and insert emotional indicators directly in [brackets] before the words they affect. You may use multiple bracketed emotional indicators within a dialogue line, including pauses, small sounds, sighs, and different intonations for different parts. Do not otherwise add, remove, reorder, or rewrite any dialogue.'
+    : 'Do not add emotional indicators. Omit the "speech" field.';
 
   return `You are preparing a message for text-to-speech reading from a roleplay chat between ${roleplayName} and ${input.user}, but it is possible there are other characters involved and mentioned in the message itself.
 
@@ -334,7 +334,7 @@ Known chat characters: ${participants}
 Extract all dialogue lines. Copy every dialogue line exactly without changing any part of it, skip all narration beats, and assign who says it. ${emotionInstruction}
 
 Return JSON only in this exact shape:
-{"dialogue":[{"speaker":"Name","text":"Exact dialogue line"${input.includeEmotions ? ',"tone":"emotion"' : ""}}]}
+{"dialogue":[{"speaker":"Name","text":"Exact source dialogue line"${input.includeEmotions ? ',"speech":"Exact dialogue with only inserted [indicators]"' : ""}}]}
 
 Example input:
 Dottore sighs and stands up. "I've had enough of your shenanigans," he drawls. "You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen."
@@ -342,7 +342,7 @@ A pregnant pause settles in the room.
 "Skill issue," Mari chuckles, crossing her arms.
 
 Example output:
-{"dialogue":[{"speaker":"Dottore","text":"\\\"I've had enough of your shenanigans,\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Dottore","text":"\\\"You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen.\\\""${input.includeEmotions ? ',"tone":"irritated"' : ""}},{"speaker":"Mari","text":"\\\"Skill issue,\\\""${input.includeEmotions ? ',"tone":"chuckle"' : ""}}]}`;
+{"dialogue":[{"speaker":"Dottore","text":"\\\"I've had enough of your shenanigans,\\\""${input.includeEmotions ? ',"speech":"[irritated] \\\"I\'ve had enough of your shenanigans,\\\""' : ""}},{"speaker":"Dottore","text":"\\\"You're wasting my time, subject. This is your last chance to change my mind before I send you to Lab Thirteen.\\\""${input.includeEmotions ? ',"speech":"[irritated] \\\"You\'re wasting my time, subject. [sigh] This is your last chance to change my mind before I send you to Lab Thirteen.\\\""' : ""}},{"speaker":"Mari","text":"\\\"Skill issue,\\\""${input.includeEmotions ? ',"speech":"[chuckle] \\\"Skill issue,\\\""' : ""}}]}`;
 }
 
 export function buildRoleplaySpeakerExtractorUserPrompt(message: string): string {
@@ -358,6 +358,42 @@ function extractJsonObject(value: string): string {
   const end = value.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("Speaker extractor returned no JSON object");
   return value.slice(start, end + 1);
+}
+
+function validateAnnotatedDialogue(source: string, speech: string): string {
+  let sourceCursor = 0;
+  let speechCursor = 0;
+  while (speechCursor < speech.length) {
+    if (speech[speechCursor] === "[") {
+      let indicatorEnd = -1;
+      for (let cursor = speechCursor + 1; cursor <= speechCursor + 81 && cursor < speech.length; cursor++) {
+        if (speech[cursor] === "\r" || speech[cursor] === "\n") break;
+        if (speech[cursor] === "]") {
+          indicatorEnd = cursor;
+          break;
+        }
+      }
+      if (indicatorEnd > speechCursor + 1) {
+        const bracketSpan = speech.slice(speechCursor, indicatorEnd + 1);
+        if (source.startsWith(bracketSpan, sourceCursor)) {
+          sourceCursor += bracketSpan.length;
+          speechCursor += bracketSpan.length;
+        } else {
+          speechCursor = indicatorEnd + 1;
+          if (speech[speechCursor] === " " && source[sourceCursor] !== " ") speechCursor += 1;
+        }
+        continue;
+      }
+    }
+
+    if (sourceCursor >= source.length || speech[speechCursor] !== source[sourceCursor]) {
+      throw new Error("Speaker extractor changed dialogue while adding emotion indicators");
+    }
+    sourceCursor += 1;
+    speechCursor += 1;
+  }
+  if (sourceCursor === source.length) return speech;
+  throw new Error("Speaker extractor changed dialogue while adding emotion indicators");
 }
 
 /** Build an exact, ordered queue by locating extracted dialogue inside the original message. */
@@ -381,8 +417,10 @@ export function parseRoleplaySpeakerExtractorOutput(
     segments.push({
       kind: "dialogue",
       speaker: line.speaker,
-      text: message.slice(dialogueIndex, dialogueIndex + line.text.length),
-      ...(includeEmotions && line.tone ? { tone: line.tone.replace(/^\[|\]$/g, "").trim() } : {}),
+      text:
+        includeEmotions && line.speech
+          ? validateAnnotatedDialogue(line.text, line.speech)
+          : message.slice(dialogueIndex, dialogueIndex + line.text.length),
     });
     cursor = dialogueIndex + line.text.length;
   }
@@ -1355,9 +1393,7 @@ export async function ttsRoutes(app: FastifyInstance) {
     const normalizedPrompt = normalizeGameAudioPrompt(prompt);
     // Context generations lock on their KEY: two turns racing the same area
     // must collapse into one composition even when their prompts differ.
-    const lockKey = context
-      ? `context\0${context.axis}\0${context.key}`
-      : `${kind}\0${normalizedPrompt.toLowerCase()}`;
+    const lockKey = context ? `context\0${context.axis}\0${context.key}` : `${kind}\0${normalizedPrompt.toLowerCase()}`;
     let generation = gameAudioGenerationLocks.get(lockKey);
     if (!generation) {
       generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt, context).finally(() => {

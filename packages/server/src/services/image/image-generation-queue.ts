@@ -51,12 +51,25 @@ function resolveGlobalMediaGenerationLimit(): number {
 }
 
 const DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
+let warnedInvalidWaitTimeoutEnv = false;
 
-/** Bound on how long a caller may WAIT for a permit (`0` disables the bound). */
+/** Bound on how long a caller may WAIT for a permit (`0` disables the bound); invalid values
+ *  warn once and use the default, matching `resolveGlobalMediaGenerationLimit`. */
 function resolveGlobalMediaGenerationWaitTimeoutMs(): number {
   const raw = (process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS ?? "").trim();
-  const value = raw ? parseStrictNonNegativeInt(raw) : null;
-  if (value === null) return DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
+  if (!raw) return DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
+  const value = parseStrictNonNegativeInt(raw);
+  if (value === null) {
+    if (!warnedInvalidWaitTimeoutEnv) {
+      warnedInvalidWaitTimeoutEnv = true;
+      logger.warn(
+        "Ignoring invalid MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS value %s; using the default of %dms",
+        raw,
+        DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS,
+      );
+    }
+    return DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
+  }
   return value === 0 ? Number.POSITIVE_INFINITY : value;
 }
 

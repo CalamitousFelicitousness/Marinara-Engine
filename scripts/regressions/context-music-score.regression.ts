@@ -101,5 +101,18 @@ assert.equal(normalizeMusicEnemyTier("swarm"), null);
 assert.equal(musicAreaSlug("The Slag Bar, Kepler's Rest"), "the-slag-bar-kepler-s-rest");
 assert.equal(musicAreaSlug("  "), null);
 assert.equal(musicAreaSlug(null), null);
+assert.equal(musicAreaSlug("---Neon District---"), "neon-district");
+
+// 10. Uncontrolled input stays linear (CodeQL polynomial-regex alert): a
+// dash flood must neither blow up nor produce a dangling-dash slug. Inputs
+// are capped before regex work, so content past the cap is deliberately
+// ignored rather than scanned.
+{
+  const started = Date.now();
+  assert.equal(musicAreaSlug("-".repeat(500_000)), null);
+  assert.equal(musicAreaSlug(`${"-".repeat(500_000)}x`), null, "content beyond the input cap is not scanned");
+  assert.equal(musicAreaSlug(`abc${"-".repeat(500_000)}`), "abc");
+  assert.ok(Date.now() - started < 1_000, "slugging a dash flood stays fast");
+}
 
 console.log("context-music-score: all cases passed");

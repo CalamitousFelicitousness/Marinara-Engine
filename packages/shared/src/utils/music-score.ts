@@ -101,15 +101,28 @@ export function normalizeMusicEnemyTier(value: string | null | undefined): Music
 }
 
 /** Canonical area key for context music: the same slugification generated
- *  backgrounds use, so an area's music and its background share one identity. */
+ *  backgrounds use, so an area's music and its background share one identity.
+ *  Input is length-capped before any regex work and dash runs are trimmed
+ *  with linear scans, never anchored `-+` patterns — location strings arrive
+ *  from request payloads, and CodeQL rightly flags polynomial regexes on
+ *  uncontrolled input (the class this repo scrubbed in #5067). */
 export function musicAreaSlug(value: string | null | undefined): string | null {
-  const slug = (value ?? "")
+  // Only the first 60 slug chars ever matter; 200 source chars is generous
+  // headroom for leading punctuation while keeping regex input bounded.
+  const collapsed = (value ?? "")
+    .slice(0, 200)
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/-+$/, "");
+    .replace(/[^a-z0-9]+/g, "-");
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed.charCodeAt(start) === 45 /* '-' */) start++;
+  while (end > start && collapsed.charCodeAt(end - 1) === 45) end--;
+  let slug = collapsed.slice(start, end).slice(0, 60);
+  // The 60-char cut can land on a dash; retrim the tail the same way.
+  let tail = slug.length;
+  while (tail > 0 && slug.charCodeAt(tail - 1) === 45) tail--;
+  slug = slug.slice(0, tail);
   return slug || null;
 }
 

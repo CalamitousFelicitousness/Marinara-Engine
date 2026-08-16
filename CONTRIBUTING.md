@@ -103,16 +103,18 @@ Useful follow-up checks:
 
 ```bash
 pnpm version:check
+pnpm regression
 pnpm regression:prompt
-pnpm smoke:ui
+pnpm regression:ui
 ```
 
 Regression guards:
 
+- `pnpm regression` (or `pnpm regression:node`) builds the shared package once, discovers the complete Node regression set from the filesystem, and runs it serially.
 - `pnpm regression:prompt` runs fast deterministic checks for prompt assembly, lorebook keyword matching, macros, summaries, and mode-specific generation gates.
-- `pnpm smoke:ui` runs the Playwright browser smoke suite against isolated temporary app data.
-  Each run clears `.tmp/playwright-data` and starts separate desktop and mobile app servers so their mutable fixtures cannot overlap. Stop any process already using the configured Playwright ports before running it; existing fixture state is disposable and the smoke suite does not reuse a running development server.
-- `pnpm regression` runs both lanes.
+- `pnpm regression:ui` runs the Playwright browser suite; `pnpm smoke:ui` remains a compatibility alias for the same full UI lane.
+  Each run clears `.tmp/playwright-data` and starts separate desktop and mobile app servers so their mutable fixtures cannot overlap. Stop any process already using the configured Playwright ports before running it; existing fixture state is disposable and the suite does not reuse a running development server.
+- `pnpm test` checks the Windows installer layout, then runs the Node regression lane. It does not run the UI lane; invoke `pnpm regression:ui` explicitly for browser validation.
 
 These checks are intentionally small and do not replace manual verification. When you change behavior, include the manual verification you performed and add or update a regression guard for the bug class when practical.
 

@@ -19,6 +19,7 @@ import {
   createDefaultImageStyleProfileSettings,
   characterTrackerCustomFieldDefaultsToRecord,
   getDefaultBuiltInAgentSettings,
+  mergeBuiltInAgentSettings,
   generateChatSummaryEntryTitle,
   isAgentAvailableInChatMode,
   isPatternSafe,
@@ -922,6 +923,76 @@ const keywordOptions = {
 };
 
 const cases: RegressionCase[] = [
+  {
+    name: "Storyboard package updates merge new built-in prompts without replacing saved choices",
+    run() {
+      const collectionKeys = [
+        "illustrationTemplates",
+        "videoTemplates",
+        "animationRefinementTemplates",
+        "roleplayEpisodeTemplates",
+        "roleplayStyleTemplates",
+        "roleplayAnimationTemplates",
+        "roleplayOutputTemplates",
+      ] as const;
+      const storyboardDefinition = {
+        id: "storyboard",
+        name: "Storyboard",
+        description: "Storyboard regression fixture.",
+        phase: "post_processing" as const,
+        enabledByDefault: false,
+        category: "misc" as const,
+        defaultTools: [],
+        defaultPromptTemplate: "Plan a storyboard.",
+        defaultSettings: Object.fromEntries(
+          collectionKeys.map((key) => [
+            key,
+            [
+              { id: `${key.toLowerCase()}-existing`, name: "Existing built-in", promptTemplate: `DEFAULT ${key}` },
+              { id: `${key.toLowerCase()}-new`, name: "New built-in", promptTemplate: `NEW ${key}` },
+            ],
+          ]),
+        ),
+      };
+      replaceBuiltInAgentDefinitions([...regressionAgentDefinitions, storyboardDefinition]);
+
+      try {
+        const savedSettings = Object.fromEntries(
+          collectionKeys.map((key) => [
+            key,
+            [
+              { id: `${key.toLowerCase()}-existing`, name: "Saved override", promptTemplate: `SAVED ${key}` },
+              { id: `${key.toLowerCase()}-custom`, name: "Custom prompt", promptTemplate: `CUSTOM ${key}` },
+            ],
+          ]),
+        );
+        const merged = mergeBuiltInAgentSettings("storyboard", {
+          ...savedSettings,
+          roleplayAnimationTemplateId: "roleplayanimationtemplates-custom",
+        });
+
+        for (const key of collectionKeys) {
+          const templates = merged[key] as Array<{ id: string; promptTemplate: string }>;
+          assert.deepEqual(
+            templates.map((template) => [template.id, template.promptTemplate]),
+            [
+              [`${key.toLowerCase()}-existing`, `SAVED ${key}`],
+              [`${key.toLowerCase()}-new`, `NEW ${key}`],
+              [`${key.toLowerCase()}-custom`, `CUSTOM ${key}`],
+            ],
+            `${key} must add new built-ins while preserving saved overrides and custom prompts`,
+          );
+        }
+        assert.equal(
+          merged.roleplayAnimationTemplateId,
+          "roleplayanimationtemplates-custom",
+          "merging package defaults must preserve the selected prompt id",
+        );
+      } finally {
+        replaceBuiltInAgentDefinitions(regressionAgentDefinitions);
+      }
+    },
+  },
   {
     name: "explicitly selected persona lorebooks remain usable outside their owner persona",
     run() {

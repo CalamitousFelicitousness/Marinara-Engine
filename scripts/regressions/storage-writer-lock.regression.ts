@@ -161,6 +161,8 @@ try {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
       }
+    } else {
+      process.stdout.write("Skipping Termux-specific writer-lock proof on Windows.\n");
     }
     process.env.FILE_STORAGE_DIR = dir;
 

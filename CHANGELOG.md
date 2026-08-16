@@ -21,6 +21,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Reordered Storyboard Agent settings around separate Roleplay and Game Mode active flows, showed planning and provider-formatting stages in runtime order, kept setup visible, exposed image-aware Step 3 overrides in both chat editors, nested complete prompt collection editors inside their numbered stages, renamed the Stage 4 passthrough formatter, changed the default animation duration to 5 seconds, and hid animation-only controls for still-image defaults (#5120).
+- Added newly shipped built-in prompt choices to existing Storyboard agent configurations after package updates while preserving saved overrides, custom prompts, and current selections (#5118).
 - Kept valid Gallery images visible on Windows when canonical paths differ only by drive-letter or directory casing, without weakening traversal and symlink containment checks (#5099).
 - Made vectorized lorebook recall use model-appropriate query/document formatting, prioritize recent user turns, and reject incompatible stored vector spaces with useful debug diagnostics (#5104).
 - Added a server-side pre-execution authorization gate that binds Professor Mari workspace mutations to an explicit excerpt from the active user request, while retaining Keep/Restore as a second line of defense (#5093).
@@ -147,6 +149,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Fixed Playwright web-server startup on Windows when pnpm launcher metadata or inherited stdin is unavailable (#5126).
 - Included Noodle in Professor Mari's official 32-package catalog knowledge and corrected the current downloadable-package documentation for the v2.4.2 Agent catalog (#4992).
 - Kept version-tagged Docker release images on the stable Marinara Agents catalog instead of following staging after publication.
 - Kept dependency security updates pinned to patched resolutions and made the existing pnpm launcher handoff checks a required pull-request gate, protecting upgrades without forcing users onto a new package-manager major version (#4988).

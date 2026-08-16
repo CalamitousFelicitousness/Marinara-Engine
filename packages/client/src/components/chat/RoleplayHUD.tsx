@@ -10,6 +10,7 @@ import {
   MapPin,
   Users,
   Package,
+  Backpack,
   Scroll,
   Sparkles,
   Swords,
@@ -51,6 +52,7 @@ import type {
   PresentCharacter,
   CharacterStat,
   InventoryItem,
+  InventoryTrackerRow,
   QuestProgress,
   CustomTrackerField,
   WorldCustomField,
@@ -100,6 +102,9 @@ const CharactersPanel = lazy(async () =>
 );
 const InventoryPanel = lazy(async () =>
   import("./RoleplayHUDPanels").then((module) => ({ default: module.InventoryPanel })),
+);
+const RoleplayInventoryTrackerPanel = lazy(async () =>
+  import("./RoleplayHUDPanels").then((module) => ({ default: module.RoleplayInventoryTrackerPanel })),
 );
 const QuestsPanel = lazy(async () => import("./RoleplayHUDPanels").then((module) => ({ default: module.QuestsPanel })));
 const CustomTrackerPanel = lazy(async () =>
@@ -186,6 +191,9 @@ export function RoleplayHUD({
         attributes: null,
         skills: {},
         inventory: [],
+        inventoryTrackerCurrencies: [],
+        inventoryTrackerEquipped: [],
+        inventoryTrackerInventory: [],
         activeQuests: [],
         status: "",
       },
@@ -226,6 +234,9 @@ export function RoleplayHUD({
   const inventory = playerStats?.inventory ?? EMPTY_INVENTORY;
   const activeQuests = playerStats?.activeQuests ?? [];
   const customTrackerFields = playerStats?.customTrackerFields ?? [];
+  const inventoryTrackerCurrencies = playerStats?.inventoryTrackerCurrencies ?? [];
+  const inventoryTrackerEquipped = playerStats?.inventoryTrackerEquipped ?? [];
+  const inventoryTrackerInventory = playerStats?.inventoryTrackerInventory ?? [];
   const fieldLocks = gameState ? normalizeTrackerFieldLocksForState(gameState.fieldLocks, gameState) : null;
   const hiddenTrackerFields = gameState ? normalizeTrackerHiddenFields(gameState.hiddenTrackerFields) : null;
   const updateFieldLocks = useTrackerFieldLockUpdater({ chatId, fieldLocks, patchField });
@@ -265,6 +276,7 @@ export function RoleplayHUD({
     enabledAgentTypes.has("character-tracker") ||
     enabledAgentTypes.has("quest") ||
     enabledAgentTypes.has("custom-tracker");
+  const hasInventoryTracker = enabledAgentTypes.has("inventory-tracker");
 
   // If mobileCompact, widgets are even narrower and action buttons are not cut off
 
@@ -364,6 +376,19 @@ export function RoleplayHUD({
               />
             )}
 
+            {hasInventoryTracker && (
+              <InventoryTrackerWidget
+                currencies={inventoryTrackerCurrencies}
+                equipped={inventoryTrackerEquipped}
+                inventory={inventoryTrackerInventory}
+                onUpdateCurrencies={(rows) => patchPlayerStats("inventoryTrackerCurrencies", rows)}
+                onUpdateEquipped={(rows) => patchPlayerStats("inventoryTrackerEquipped", rows)}
+                onUpdateInventory={(rows) => patchPlayerStats("inventoryTrackerInventory", rows)}
+                onRerunSingleTracker={onRerunSingleTracker}
+                isTrackerRetryBusy={isTrackerBusy}
+              />
+            )}
+
             {/* Manual tracker trigger button (mobile) */}
             {manualTrackers && onRetriggerTrackers && (
               <button
@@ -449,6 +474,19 @@ export function RoleplayHUD({
               <CustomTrackerWidget
                 fields={customTrackerFields}
                 onUpdate={(fields) => patchPlayerStats("customTrackerFields", fields)}
+                onRerunSingleTracker={onRerunSingleTracker}
+                isTrackerRetryBusy={isTrackerBusy}
+              />
+            )}
+
+            {hasInventoryTracker && (
+              <InventoryTrackerWidget
+                currencies={inventoryTrackerCurrencies}
+                equipped={inventoryTrackerEquipped}
+                inventory={inventoryTrackerInventory}
+                onUpdateCurrencies={(rows) => patchPlayerStats("inventoryTrackerCurrencies", rows)}
+                onUpdateEquipped={(rows) => patchPlayerStats("inventoryTrackerEquipped", rows)}
+                onUpdateInventory={(rows) => patchPlayerStats("inventoryTrackerInventory", rows)}
                 onRerunSingleTracker={onRerunSingleTracker}
                 isTrackerRetryBusy={isTrackerBusy}
               />
@@ -1182,6 +1220,63 @@ function InventoryWidget({
       >
         <Suspense fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.inventorywidget.loadingInventory")} />}>
           <InventoryPanel items={items} onUpdate={onUpdate} onRemoveItem={onRemoveItem} />
+        </Suspense>
+      </WidgetPopover>
+    </div>
+  );
+}
+
+function InventoryTrackerWidget({
+  currencies,
+  equipped,
+  inventory,
+  onUpdateCurrencies,
+  onUpdateEquipped,
+  onUpdateInventory,
+  onRerunSingleTracker,
+  isTrackerRetryBusy,
+}: {
+  currencies: InventoryTrackerRow[];
+  equipped: InventoryTrackerRow[];
+  inventory: InventoryTrackerRow[];
+  onUpdateCurrencies: (rows: InventoryTrackerRow[]) => void;
+  onUpdateEquipped: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventory: (rows: InventoryTrackerRow[]) => void;
+  onRerunSingleTracker?: (agentType: string) => void;
+  isTrackerRetryBusy?: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const total = currencies.length + equipped.length + inventory.length;
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        onClick={() => setOpen(!open)}
+        className={WIDGET}
+        title={localizeUi("ui.chat.inventoryTracker.title")}
+      >
+        <Backpack size="0.875rem" className="max-md:h-3 max-md:w-3" />
+        {total > 0 && <span className="text-[0.5rem] font-semibold tabular-nums">{total}</span>}
+      </button>
+      <WidgetPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={buttonRef}
+        className="w-[min(34rem,calc(100vw-1rem))] max-h-80 overflow-y-auto"
+      >
+        <Suspense fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.inventoryTracker.loading")} />}>
+          <RoleplayInventoryTrackerPanel
+            currencies={currencies}
+            equipped={equipped}
+            inventory={inventory}
+            onUpdateCurrencies={onUpdateCurrencies}
+            onUpdateEquipped={onUpdateEquipped}
+            onUpdateInventory={onUpdateInventory}
+            onRerunSingleTracker={onRerunSingleTracker}
+            isTrackerRetryBusy={isTrackerRetryBusy}
+          />
         </Suspense>
       </WidgetPopover>
     </div>

@@ -99,6 +99,32 @@ export const AGENT_SUITE_TRACKER_SLICES: Record<string, AgentSuiteTrackerSlice> 
           }
         : { error: "Custom tracker fields must be a JSON array" },
   },
+  "inventory-tracker": {
+    label: "Inventory Tracker",
+    description: "Currencies, equipped items, and carried inventory maintained by the Inventory Tracker agent.",
+    getValue: (gameState) => ({
+      currencies: gameState.playerStats?.inventoryTrackerCurrencies ?? [],
+      equipped: gameState.playerStats?.inventoryTrackerEquipped ?? [],
+      inventory: gameState.playerStats?.inventoryTrackerInventory ?? [],
+    }),
+    buildPatch: (gameState, parsed) => {
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { error: "Inventory Tracker data must be a JSON object" };
+      }
+      const record = parsed as Record<string, unknown>;
+      if (!Array.isArray(record.currencies) || !Array.isArray(record.equipped) || !Array.isArray(record.inventory)) {
+        return { error: "Inventory Tracker data must include currencies, equipped, and inventory arrays" };
+      }
+      return {
+        playerStats: {
+          ...(gameState.playerStats ?? createEmptyPlayerStats()),
+          inventoryTrackerCurrencies: record.currencies,
+          inventoryTrackerEquipped: record.equipped,
+          inventoryTrackerInventory: record.inventory,
+        },
+      };
+    },
+  },
   quest: {
     label: "Active Quests",
     description: "Quest progress tracked for this chat.",

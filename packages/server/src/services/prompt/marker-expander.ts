@@ -4,11 +4,7 @@
 // ──────────────────────────────────────────────
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
-import {
-  formatRpgStatsForPrompt,
-  isExternallyImportedAgent,
-  resolveMacros,
-} from "@marinara-engine/shared";
+import { formatRpgStatsForPrompt, isExternallyImportedAgent, resolveMacros } from "@marinara-engine/shared";
 import type {
   CharacterMacroProfile,
   MarkerConfig,
@@ -69,6 +65,8 @@ export interface MarkerContext {
   chatEmbedding?: number[] | null;
   /** Per-lorebook pre-computed embeddings for semantic lorebook matching. */
   semanticEmbeddingsByLorebookId?: ReadonlyMap<string, number[] | null>;
+  /** Provider/model/profile identity used to create semantic query vectors. */
+  semanticEmbeddingSpaceId?: string | null;
   /** Unrelated-text cosine floor used to calibrate clustered embedding models. */
   semanticSimilarityBaseline?: number;
   /** Per-chat ephemeral state overrides for lorebook entries (from chat metadata). */
@@ -375,6 +373,7 @@ export async function ensureLorebookScan(ctx: MarkerContext): Promise<LorebookSc
         tokenBudget: ctx.lorebookTokenBudget,
         chatEmbedding: ctx.chatEmbedding ?? null,
         semanticEmbeddingsByLorebookId: ctx.semanticEmbeddingsByLorebookId,
+        semanticEmbeddingSpaceId: ctx.semanticEmbeddingSpaceId,
         semanticSimilarityBaseline: ctx.semanticSimilarityBaseline,
         entryStateOverrides: ctx.entryStateOverrides,
         entryTimingStates: ctx.entryTimingStates,
@@ -543,6 +542,7 @@ async function expandAgentData(config: MarkerConfig, ctx: MarkerContext): Promis
     "character-tracker",
     "persona-stats",
     "custom-tracker",
+    "inventory-tracker",
   ]);
   if (AUTO_INJECTED_TRACKERS.has(agentType)) return { content: "" };
 

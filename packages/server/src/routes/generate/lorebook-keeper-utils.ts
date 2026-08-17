@@ -24,11 +24,16 @@ type LorebookKeeperMessage = {
   characterId?: string | null;
 };
 
-const MAX_READ_BEHIND_MESSAGES = 100;
+export const MAX_READ_BEHIND_MESSAGES = 100;
 
 function normalizeNonNegativeInteger(value: unknown, fallback: number, max: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.max(0, Math.min(max, Math.trunc(value)));
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(max, Math.trunc(numeric)));
+}
+
+export function getCustomLorebookReadBehindMessages(settings: Record<string, unknown>): number {
+  return normalizeNonNegativeInteger(settings.lorebookReadBehindMessages, 0, MAX_READ_BEHIND_MESSAGES);
 }
 
 function isEnabledLorebook(value: unknown): boolean {

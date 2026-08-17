@@ -1237,6 +1237,7 @@
   "ui.agents.agenteditor.currentTurnContextInjectedBeforeTheReply": "Current-turn context injected before the reply.",
   "ui.agents.agenteditor.customAgentAbilities": "Custom Agent Abilities",
   "ui.agents.agenteditor.customImageAgentsUseTheLlmConnectionAboveToWrite": "Custom image agents use the LLM connection above to write an image prompt, then this connection generates the image. Leave it empty to use the default Images connection.",
+  "ui.agents.agenteditor.customLorebookReadBehindDescription": "0 processes the newest reply. Higher values wait that many assistant replies, and a message already handled by this agent is not processed again.",
   "ui.agents.agenteditor.customModeWillSearchAudioUploadedToGameAssets": "Custom mode will search audio uploaded to Game Assets.",
   "ui.agents.agenteditor.customModeWillSearchTheFolderSelectedFromThis": "Custom mode will search the folder selected from this device.",
   "ui.agents.agenteditor.customMusicLibrary": "Custom Music Library",

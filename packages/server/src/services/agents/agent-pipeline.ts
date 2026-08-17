@@ -129,10 +129,15 @@ function providerKey(provider: BaseLLMProvider): number {
 
 function postProcessingDataKey(agent: ResolvedAgent): string {
   if (agent.phase !== "post_processing") return "default";
+  const rawReadBehind = agent.settings.lorebookReadBehindMessages;
+  const numericReadBehind =
+    typeof rawReadBehind === "number" ? rawReadBehind : typeof rawReadBehind === "string" ? Number(rawReadBehind) : NaN;
+  const readBehind = Number.isFinite(numericReadBehind) ? Math.max(0, Math.trunc(numericReadBehind)) : 0;
   return [
     getAgentBatchLane(agent),
     agent.settings.includePreGenInjections === true ? "pre-gen" : "no-pre-gen",
     agent.settings.includeParallelResults === true ? "parallel" : "no-parallel",
+    `read-behind-${readBehind}`,
   ].join(":");
 }
 

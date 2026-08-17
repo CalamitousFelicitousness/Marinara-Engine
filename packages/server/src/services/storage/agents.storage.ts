@@ -361,6 +361,23 @@ export function createAgentsStorage(db: DB) {
       return rows[0]?.agent_runs ?? null;
     },
 
+    async hasSuccessfulRunForMessage(agentConfigId: string, chatId: string, messageId: string) {
+      const resolvedAgentConfigId = await resolveAgentConfigId(agentConfigId);
+      const rows = await db
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.agentConfigId, resolvedAgentConfigId),
+            eq(agentRuns.chatId, chatId),
+            eq(agentRuns.messageId, messageId),
+            eq(agentRuns.success, "true"),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0;
+    },
+
     /** Get all echo chamber messages for a chat, ordered by creation time. */
     async getEchoMessages(chatId: string) {
       const rows = await db

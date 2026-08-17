@@ -40,6 +40,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Custom lorebook-writing agents now support a configurable Read Behind delay, keep each delayed run attached to the assistant reply it processed, and avoid duplicate work when the newest reply is swiped. Lorebook Keeper's mobile Backfill controls now stack inside their settings card instead of overflowing it (#5191).
 - The staging update-channel warning now follows the active theme accent color instead of always rendering in amber (#5184).
 - Character avatar uploads now reject path-like character IDs before constructing their storage filename, keeping uploaded files confined to the avatar directory even when a malformed route parameter is supplied (#5181).
 - The Inventory Tracker section now appears for installs whose synced UI settings were saved before the section existed. The cross-device settings blob overwrote the locally migrated panel order on every load, and `trackerPanelSectionOrder` was the one tracker preference that blob never re-normalized on the way in, so the section stayed invisible until the panel was reordered by hand. Ingest now normalizes both the section order and the collapsed-section map and writes the corrected value back, so the stale order does not survive to re-arrive on another device. Any tracker section added in future would have hit the same gap.

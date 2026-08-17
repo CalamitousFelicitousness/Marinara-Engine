@@ -200,7 +200,12 @@ import {
   formatLorebookWriteApprovalText,
   parseLorebookWriteApprovalText,
 } from "../../packages/server/src/routes/generate/agent-write-approval.js";
-import { mergeLorebookKeeperUpdateContent } from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
+import {
+  buildHistoricalLorebookKeeperContext,
+  getCustomLorebookReadBehindMessages,
+  getLorebookKeeperAutomaticTarget,
+  mergeLorebookKeeperUpdateContent,
+} from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
 import { runImageGenerationRequest } from "../../packages/server/src/services/image/image-generation-queue.js";
 import {
   buildSwarmUiGenerationBody,
@@ -3832,6 +3837,44 @@ assert.equal(
   "Fact-only Lorebook Keeper updates must preserve the current body",
 );
 
+// Issue #5191 — custom lorebook writers can process a stable historical reply.
+{
+  const messages = [
+    { id: "user-1", role: "user", content: "First turn" },
+    { id: "assistant-1", role: "assistant", content: "First reply" },
+    { id: "user-2", role: "user", content: "Second turn" },
+    { id: "assistant-2", role: "assistant", content: "Second reply" },
+    { id: "user-3", role: "user", content: "Newest turn" },
+  ];
+  assert.equal(getCustomLorebookReadBehindMessages({ lorebookReadBehindMessages: "2" }), 2);
+  assert.equal(getCustomLorebookReadBehindMessages({ lorebookReadBehindMessages: 101 }), 100);
+  const target = getLorebookKeeperAutomaticTarget(messages, 1);
+  assert.equal(target?.id, "assistant-2");
+  const context = buildHistoricalLorebookKeeperContext(
+    {
+      chatId: "chat-1",
+      chatMode: "roleplay",
+      recentMessages: [],
+      mainResponse: "Newest reply",
+      gameState: null,
+      characters: [],
+      persona: null,
+      memory: {},
+      writableLorebookIds: ["lorebook-1"],
+      chatSummary: null,
+      authorNotes: null,
+      activatedLorebookEntries: [],
+    },
+    messages,
+    target!.id,
+  );
+  assert.equal(context?.mainResponse, "Second reply");
+  assert.deepEqual(
+    context?.recentMessages.map((message) => message.content),
+    ["First turn", "First reply", "Second turn"],
+  );
+}
+
 const completeProfessorMariPersona = buildPersonaCreateRow(
   {
     name: "Complete helper persona",
@@ -5191,6 +5234,16 @@ const gameSetupWizardSource = readFileSync(
 const chatSettingsDrawerSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
   "utf8",
+);
+assert.match(
+  agentEditorSource,
+  /lorebookReadBehindMessages:\s*localLorebookReadBehindMessages/u,
+  "Custom lorebook writer settings must persist Read Behind",
+);
+assert.match(
+  chatSettingsDrawerSource,
+  /flex w-full min-w-0 flex-col items-stretch gap-1\.5 sm:w-auto sm:shrink-0 sm:flex-row/u,
+  "Lorebook Keeper actions must stack inside their mobile settings card",
 );
 const characterGreetingsSource = readFileSync(
   new URL("../../packages/client/src/lib/character-greetings.ts", import.meta.url),

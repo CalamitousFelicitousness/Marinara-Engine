@@ -131,6 +131,7 @@ import {
 } from "./generate-route-utils.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  getCustomLorebookReadBehindMessages,
   getLorebookKeeperBackfillTargets,
   getLorebookKeeperSettings,
   loadLorebookKeeperExistingEntries,
@@ -2055,6 +2056,7 @@ async function executeRetryBatches(
   conns?: ReturnType<typeof createConnectionsStorage>,
   chatMode?: ChatMode,
   chatMeta?: Record<string, unknown>,
+  customLorebookReadBehindContexts: ReadonlyMap<string, AgentContext> = new Map(),
 ) {
   const retryAgents = mergeRetryPairedBuiltInRewriteAgents(resolvedAgents);
   const providerModelGroups = new Map<
@@ -2063,9 +2065,14 @@ async function executeRetryBatches(
   >();
 
   for (const entry of retryAgents) {
-    const context =
+    const phaseContext =
       preGenerationContext && entry.resolved.phase === "pre_generation" ? preGenerationContext : agentContext;
-    const contextKind = context === preGenerationContext ? "pre_generation" : "default";
+    const context = customLorebookReadBehindContexts.get(entry.resolved.id) ?? phaseContext;
+    const contextKind = customLorebookReadBehindContexts.has(entry.resolved.id)
+      ? `read-behind:${entry.resolved.id}`
+      : context === preGenerationContext
+        ? "pre_generation"
+        : "default";
     const key = `${retryProviderKey(entry.agentProvider)}::${entry.agentModel}::${contextKind}::${getAgentBatchLane(entry.resolved)}`;
     if (!providerModelGroups.has(key)) {
       providerModelGroups.set(key, {
@@ -2209,6 +2216,7 @@ async function persistRetryResults(
   chatId: string,
   messageId: string,
   results: AgentResult[],
+  messageIdsByAgentId: ReadonlyMap<string, string> = new Map(),
 ) {
   for (const result of results) {
     if (result.agentType === "illustrator" || result.type === "image_prompt") continue;
@@ -2216,7 +2224,7 @@ async function persistRetryResults(
       await agentsStore.saveRun({
         agentConfigId: result.agentId,
         chatId,
-        messageId,
+        messageId: messageIdsByAgentId.get(result.agentId) ?? messageId,
         result,
       });
     } catch {
@@ -3971,7 +3979,25 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
         throw new Error(forceScopeError);
       }
       const lorebookKeeperAgent = resolvedAgents.find((entry) => entry.resolved.type === "lorebook-keeper") ?? null;
-      const nonLorebookAgents = resolvedAgents.filter((entry) => entry.resolved.type !== "lorebook-keeper");
+      const customLorebookReadBehindTargets = new Map<string, { context: AgentContext; messageId: string }>();
+      const nonLorebookAgents = resolvedAgents.filter((entry) => {
+        if (entry.resolved.type === "lorebook-keeper") return false;
+        const readBehindMessages = getCustomLorebookReadBehindMessages(entry.resolved.settings);
+        const usesCustomLorebookReadBehind =
+          entry.resolved.phase === "post_processing" &&
+          entry.resolved.isCustomAgent === true &&
+          entry.resolved.settings.lorebookWriteEnabled === true &&
+          customAgentHasCapability(entry.resolved.settings, "edit_lorebooks") &&
+          readBehindMessages > 0;
+        if (!usesCustomLorebookReadBehind) return true;
+
+        const target = getLorebookKeeperBackfillTargets(recentMessages, readBehindMessages, null).at(-1);
+        if (!target) return false;
+        const context = buildHistoricalLorebookKeeperContext(agentContext, recentMessages, target.id);
+        if (!context) return false;
+        customLorebookReadBehindTargets.set(entry.resolved.id, { context, messageId: target.id });
+        return true;
+      });
       if (
         (illustratorPromptReviewOverride || isManualIllustratorBackgroundRequest || isManualIllustratorImageRequest) &&
         (nonLorebookAgents.length !== 1 || nonLorebookAgents[0]?.resolved.type !== "illustrator")
@@ -4030,6 +4056,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
                   conns,
                   chatMode,
                   chatMeta,
+                  new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.context])),
                 )
               : [];
       const results = rawResults
@@ -4186,7 +4213,13 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
       }
 
       const permittedResults = results.filter((result) => customAgentCanEmitRetryResult(result, resolvedAgents));
-      await persistRetryResults(agentsStore, chatId, retryMessageId, permittedResults);
+      await persistRetryResults(
+        agentsStore,
+        chatId,
+        retryMessageId,
+        permittedResults,
+        new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.messageId])),
+      );
       for (const entry of lorebookKeeperRunEntries) {
         try {
           await agentsStore.saveRun({

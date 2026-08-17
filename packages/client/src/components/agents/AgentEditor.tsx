@@ -151,6 +151,7 @@ function createCustomAgentType(name: string): string {
 
 const LOREBOOK_WRITE_TOOL_NAME = "save_lorebook_entry";
 const MESSAGE_EDIT_TOOL_NAME = "edit_chat_message";
+const MAX_LOREBOOK_READ_BEHIND_MESSAGES = 100;
 const DEFAULT_PROSE_GUARDIAN_BANNED_WORDS = "ozone";
 type MusicProvider = "spotify" | "youtube" | "custom";
 type CustomMusicSource = "game-assets" | "folder";
@@ -177,6 +178,12 @@ function normalizeMusicProvider(settings: Record<string, unknown>): MusicProvide
 function normalizeCustomMusicSource(settings: Record<string, unknown>): CustomMusicSource {
   const source = settings.customMusicSource ?? settings.localMusicSource;
   return source === "folder" ? "folder" : "game-assets";
+}
+
+function normalizeLorebookReadBehindMessages(value: unknown): number {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(MAX_LOREBOOK_READ_BEHIND_MESSAGES, Math.trunc(numeric)));
 }
 
 function normalizeExternalMusicFolderInput(value: unknown): string {
@@ -723,6 +730,7 @@ export function AgentEditor() {
   const [toolsSectionOpen, setToolsSectionOpen] = useState(false);
   const [localLorebookWriteEnabled, setLocalLorebookWriteEnabled] = useState(false);
   const [localWritableLorebookId, setLocalWritableLorebookId] = useState("");
+  const [localLorebookReadBehindMessages, setLocalLorebookReadBehindMessages] = useState(0);
   const [localMusicProvider, setLocalMusicProvider] = useState<MusicProvider>("spotify");
   const [localCustomMusicSource, setLocalCustomMusicSource] = useState<CustomMusicSource>("game-assets");
   const [localCustomMusicFolder, setLocalCustomMusicFolder] = useState("music");
@@ -827,6 +835,7 @@ export function AgentEditor() {
         settings.lorebookWriteEnabled === true || enabledTools.includes(LOREBOOK_WRITE_TOOL_NAME),
       );
       setLocalWritableLorebookId(writableLorebookId);
+      setLocalLorebookReadBehindMessages(normalizeLorebookReadBehindMessages(settings.lorebookReadBehindMessages));
       setLocalMusicProvider(normalizeMusicProvider(settings));
       setLocalCustomMusicSource(normalizeCustomMusicSource(settings));
       setLocalCustomMusicFolder(
@@ -938,6 +947,7 @@ export function AgentEditor() {
       setLocalIncludeParallelResults(false);
       setLocalLorebookWriteEnabled(false);
       setLocalWritableLorebookId("");
+      setLocalLorebookReadBehindMessages(0);
       setLocalMusicProvider(normalizeMusicProvider(defaultSettings));
       setLocalCustomMusicSource(normalizeCustomMusicSource(defaultSettings));
       setLocalCustomMusicFolder(
@@ -992,6 +1002,7 @@ export function AgentEditor() {
       setLocalIncludeParallelResults(false);
       setLocalLorebookWriteEnabled(false);
       setLocalWritableLorebookId("");
+      setLocalLorebookReadBehindMessages(0);
       setLocalMusicProvider("spotify");
       setLocalCustomMusicSource("game-assets");
       setLocalCustomMusicFolder("music");
@@ -1282,7 +1293,12 @@ export function AgentEditor() {
           : {}),
         enabledTools: isMusicAgent && localMusicProvider !== "spotify" ? [] : effectiveEnabledTools,
         ...(lorebookWriterEnabled
-          ? { lorebookWriteEnabled: true, writableLorebookId, writableLorebookIds: [writableLorebookId] }
+          ? {
+              lorebookWriteEnabled: true,
+              writableLorebookId,
+              writableLorebookIds: [writableLorebookId],
+              lorebookReadBehindMessages: localLorebookReadBehindMessages,
+            }
           : {}),
         ...(localSpotifyClientId ? { spotifyClientId: localSpotifyClientId } : {}),
         ...(isKnowledgeRetrievalAgent ||
@@ -1377,6 +1393,7 @@ export function AgentEditor() {
     localEnabledTools,
     localLorebookWriteEnabled,
     localWritableLorebookId,
+    localLorebookReadBehindMessages,
     localMusicProvider,
     localCustomMusicSource,
     localCustomMusicFolder,
@@ -1481,7 +1498,12 @@ export function AgentEditor() {
         : {}),
       enabledTools: exportingMusicAgent && localMusicProvider !== "spotify" ? [] : effectiveEnabledTools,
       ...(lorebookWriterEnabled
-        ? { lorebookWriteEnabled: true, writableLorebookId, writableLorebookIds: [writableLorebookId] }
+        ? {
+            lorebookWriteEnabled: true,
+            writableLorebookId,
+            writableLorebookIds: [writableLorebookId],
+            lorebookReadBehindMessages: localLorebookReadBehindMessages,
+          }
         : {}),
       ...(localSpotifyClientId ? { spotifyClientId: localSpotifyClientId } : {}),
       ...(isKnowledgeRetrievalAgent ||
@@ -2137,6 +2159,28 @@ export function AgentEditor() {
                     </p>
                   )}
                 </div>
+
+                <label className="flex min-w-0 flex-col gap-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
+                  <span className="font-medium text-[var(--foreground)]">
+                    {localizeUi("ui.chat.agentaddsetupfields.readBehind")}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={MAX_LOREBOOK_READ_BEHIND_MESSAGES}
+                    step={1}
+                    value={localLorebookReadBehindMessages}
+                    disabled={!localLorebookWriteEnabled || localCustomCapabilities.edit_lorebooks !== true}
+                    onChange={(event) => {
+                      setLocalLorebookReadBehindMessages(normalizeLorebookReadBehindMessages(event.target.value));
+                      markDirty();
+                    }}
+                    className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm text-[var(--foreground)] ring-1 ring-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                  />
+                  <span className="text-[0.625rem] leading-relaxed">
+                    {localizeUi("ui.agents.agenteditor.customLorebookReadBehindDescription")}
+                  </span>
+                </label>
               </div>
             </FieldGroup>
           )}

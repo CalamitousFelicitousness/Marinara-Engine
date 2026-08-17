@@ -6,7 +6,7 @@
   "author": "Marianna",
   "license": "AGPL-3.0",
   "type": "module",
-  "packageManager": "pnpm@10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e",
+  "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24 <27",
     "pnpm": "10.33.2 || >=10.34.5"
@@ -113,26 +113,5 @@
     "adm-zip": "^0.6.0",
     "esbuild": "^0.28.1",
     "prettier": "^3.8.3"
-  },
-  "pnpm": {
-    "overrides": {
-      "@babel/core": "7.29.6",
-      "@babel/plugin-transform-modules-systemjs": "7.29.4",
-      "@hono/node-server": "2.0.10",
-      "@modelcontextprotocol/sdk": "1.30.0",
-      "adm-zip@0.5.17": "0.6.0",
-      "body-parser": "2.3.0",
-      "brace-expansion@5.0.5": "5.0.9",
-      "fast-uri@3.1.0": "3.1.5",
-      "hono": "4.12.34",
-      "ip-address": "10.3.1",
-      "js-yaml": "4.3.1",
-      "nanoid@3.3.12": "3.3.18",
-      "postcss": "8.5.23",
-      "protobufjs": "7.6.5",
-      "qs": "6.15.2",
-      "sharp@0.34.5": "0.35.3",
-      "ws": "8.21.0"
-    }
   }
 }

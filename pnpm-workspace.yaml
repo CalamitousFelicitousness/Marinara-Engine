@@ -19,17 +19,45 @@ confirmModulesPurge: false
 blockExoticSubdeps: true
 
 # Native/build dependencies permitted to run install scripts.
+# pnpm 11 replaced onlyBuiltDependencies with the allowBuilds map. The list is
+# retained so a transitional pnpm 10 launcher still permits the same four
+# packages; keep the two in sync until the pnpm 10 range leaves `engines`.
 onlyBuiltDependencies:
   - esbuild
   - sharp
   - onnxruntime-node
   - protobufjs
 
-# Dependency version pins applied across the workspace.
+allowBuilds:
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+
+# Dependency version pins applied across the workspace. pnpm 11 no longer reads
+# package.json#pnpm, so every override must live here or it is silently dropped.
 overrides:
+  "@anthropic-ai/sdk": "0.93.0"
+  "@babel/core": "7.29.6"
+  "@babel/plugin-transform-modules-systemjs": "7.29.4"
+  "@hono/node-server": "2.0.10"
+  "@modelcontextprotocol/sdk": "1.30.0"
+  "adm-zip@0.5.17": "0.6.0"
+  body-parser: "2.3.0"
+  brace-expansion: "5.0.9"
+  "brace-expansion@5.0.5": "5.0.9"
+  "fast-uri@3.1.0": "3.1.5"
+  hono: "4.12.34"
+  ip-address: "10.3.1"
+  js-yaml: "4.3.1"
+  "nanoid@3.3.12": "3.3.18"
   onnxruntime-common: "1.24.3"
   onnxruntime-node: "1.24.3"
   onnxruntime-web: "1.24.3"
-  protobufjs: "7.5.5"
-  brace-expansion: "5.0.9"
-  "@anthropic-ai/sdk": "0.93.0"
+  postcss: "8.5.23"
+  # 7.6.5 supersedes the earlier 7.5.5 pin (chore: patch production
+  # dependencies for v2.4.0). Do not reintroduce 7.5.5.
+  protobufjs: "7.6.5"
+  qs: "6.15.2"
+  "sharp@0.34.5": "0.35.3"
+  ws: "8.21.0"

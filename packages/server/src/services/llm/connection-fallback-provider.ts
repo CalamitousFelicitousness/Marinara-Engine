@@ -1,6 +1,7 @@
 import type { ChatCompletionResult, ChatMessage, ChatOptions, LLMUsage } from "./base-provider.js";
 import { BaseLLMProvider } from "./base-provider.js";
 import { createLLMProvider } from "./provider-registry.js";
+import { withRateLimitAwareProvider } from "./rate-limit-aware-provider.js";
 import { mergeCustomParameters, parseStoredGenerationParameters } from "../../routes/generate/generate-route-utils.js";
 import { logger } from "../../lib/logger.js";
 import { notifyGenerationFallback, type GenerationFallbackNotifier } from "../generation/fallback-notification.js";
@@ -370,23 +371,34 @@ export function withConnectionFallbackProvider({
   const { primaryMode, fallbackMode, settle } = splitConnectionAttemptAcrossFallback(admissionMode);
   if (!isFallbackConnectionUsable(fallbackConnection, primaryConnectionId, fallbackBaseUrl)) {
     // No fallback exists, so the primary is the whole logical attempt and owns its own outcome.
-    return withConnectionAdmissionProvider(primary, primaryConnectionId, admissionMode);
+    // Rate-limit-aware wraps outside admission so a 429 pauses/retries this connection here too —
+    // the main chat/agent path builds `primary` without a connectionId, so it is added here.
+    return withRateLimitAwareProvider(
+      withConnectionAdmissionProvider(primary, primaryConnectionId, admissionMode),
+      primaryConnectionId,
+    );
   }
-  const admittedPrimary = withConnectionAdmissionProvider(primary, primaryConnectionId, primaryMode);
-  const fallback = withConnectionAdmissionProvider(
-    createLLMProvider(
-      fallbackConnection.provider,
-      fallbackBaseUrl,
-      fallbackConnection.apiKey,
-      fallbackConnection.maxContext,
-      fallbackConnection.openrouterProvider,
-      fallbackConnection.maxTokensOverride,
-      isEnabled(fallbackConnection.claudeFastMode),
-      isEnabled(fallbackConnection.treatAsLocalEndpoint),
-      fallbackConnection.defaultParameters,
+  const admittedPrimary = withRateLimitAwareProvider(
+    withConnectionAdmissionProvider(primary, primaryConnectionId, primaryMode),
+    primaryConnectionId,
+  );
+  const fallback = withRateLimitAwareProvider(
+    withConnectionAdmissionProvider(
+      createLLMProvider(
+        fallbackConnection.provider,
+        fallbackBaseUrl,
+        fallbackConnection.apiKey,
+        fallbackConnection.maxContext,
+        fallbackConnection.openrouterProvider,
+        fallbackConnection.maxTokensOverride,
+        isEnabled(fallbackConnection.claudeFastMode),
+        isEnabled(fallbackConnection.treatAsLocalEndpoint),
+        fallbackConnection.defaultParameters,
+      ),
+      fallbackConnection.id,
+      fallbackMode,
     ),
     fallbackConnection.id,
-    fallbackMode,
   );
   return new ConnectionFallbackProvider(
     admittedPrimary,

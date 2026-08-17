@@ -5,6 +5,7 @@ import { createHash, createSign } from "crypto";
 import {
   BaseLLMProvider,
   llmFetch,
+  llmHttpErrorFromResponse,
   sanitizeApiError,
   type ChatCompletionResult,
   type ChatMessage,
@@ -629,7 +630,7 @@ export class GoogleProvider extends BaseLLMProvider {
     if (!response.ok) {
       const errorText = await readDecodedText();
       const label = this.providerKind === "google_vertex" ? "Vertex AI Gemini API" : "Gemini API";
-      throw new Error(`${label} error ${response.status}: ${sanitizeApiError(errorText)}`);
+      throw llmHttpErrorFromResponse(`${label} error ${response.status}: ${sanitizeApiError(errorText)}`, response);
     }
 
     const json = JSON.parse(await readDecodedText()) as GeminiResponsePayload;
@@ -790,7 +791,7 @@ export class GoogleProvider extends BaseLLMProvider {
     if (!response.ok) {
       const errorText = await readDecodedText();
       const label = this.providerKind === "google_vertex" ? "Vertex AI Gemini API" : "Gemini API";
-      throw new Error(`${label} error ${response.status}: ${sanitizeApiError(errorText)}`);
+      throw llmHttpErrorFromResponse(`${label} error ${response.status}: ${sanitizeApiError(errorText)}`, response);
     }
 
     // ── Non-streaming path (also used when thinking is enabled) ──
@@ -979,7 +980,10 @@ export class GoogleProvider extends BaseLLMProvider {
 
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        throw new Error(`${label} batch embedding request failed (${response.status}): ${sanitizeApiError(body)}`);
+        throw llmHttpErrorFromResponse(
+          `${label} batch embedding request failed (${response.status}): ${sanitizeApiError(body)}`,
+          response,
+        );
       }
       return parseGeminiBatchEmbeddingResponse((await response.json()) as GeminiEmbeddingPayload, texts.length);
     }
@@ -1000,7 +1004,10 @@ export class GoogleProvider extends BaseLLMProvider {
 
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        throw new Error(`${label} embedding request failed (${response.status}): ${sanitizeApiError(body)}`);
+        throw llmHttpErrorFromResponse(
+          `${label} embedding request failed (${response.status}): ${sanitizeApiError(body)}`,
+          response,
+        );
       }
       embeddings.push(parseGeminiEmbeddingResponse((await response.json()) as GeminiEmbeddingPayload));
     }

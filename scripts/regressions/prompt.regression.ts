@@ -8728,6 +8728,10 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const context = makeRegressionAgentContext({
         authorNotes: "AUTHOR_NOTES_STAY_ATTACHED",
         activatedLorebookEntries: [{ id: "lore-entry", content: "MAIN_GENERATION_LOREBOOK_MATCH" }],
+        vectorContext: {
+          recalledMemories: ["RECALLED_MEMORY_STAYS_ATTACHED"],
+          semanticLorebookEntries: [{ id: "semantic-lore-entry", content: "SEMANTIC_MAIN_GENERATION_LOREBOOK_MATCH" }],
+        },
       });
 
       const disabled = applyTrackerLorebookContextPolicy({
@@ -8737,6 +8741,8 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         attachLorebooksToTrackers: false,
       });
       assert.deepEqual(disabled.activatedLorebookEntries, []);
+      assert.deepEqual(disabled.vectorContext?.semanticLorebookEntries, []);
+      assert.deepEqual(disabled.vectorContext?.recalledMemories, ["RECALLED_MEMORY_STAYS_ATTACHED"]);
       assert.equal(disabled.authorNotes, "AUTHOR_NOTES_STAY_ATTACHED");
 
       const enabled = applyTrackerLorebookContextPolicy({
@@ -8767,6 +8773,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.match(retryRouteSource, /applyTrackerLorebookContextPolicy\(/u);
       assert.match(retryRouteSource, /chatMeta\?\.attachLorebooksToTrackers === true/u);
+      assert.match(retryRouteSource, /getTrackerAgentTypes\(\)/u);
 
       const chatSettingsSource = readFileSync(
         new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),

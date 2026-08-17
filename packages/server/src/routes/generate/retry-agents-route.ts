@@ -80,6 +80,7 @@ import { injectMemoryRecallContext } from "../../services/generation/memory-reca
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
+  getTrackerAgentTypes,
 } from "../../services/generation/tracker-agent-context.js";
 import { resolveMemoryRecallEmbeddingSource } from "../../services/memory-recall-embedding.js";
 import {
@@ -2068,9 +2069,7 @@ async function executeRetryBatches(
   const retryAgents = mergeRetryPairedBuiltInRewriteAgents(resolvedAgents);
   const effectiveChatMode: ChatMode = chatMode ?? (agentContext.chatMode as ChatMode);
   const attachLorebooksToTrackers = effectiveChatMode === "roleplay" && chatMeta?.attachLorebooksToTrackers === true;
-  const trackerAgentTypes = new Set(
-    BUILT_IN_AGENTS.filter((agent) => agent.category === "tracker").map((agent) => agent.id),
-  );
+  const trackerAgentTypes = getTrackerAgentTypes();
   const providerModelGroups = new Map<
     string,
     { agents: ResolvedRetryAgent[]; provider: any; model: string; context: AgentContext; maxParallelJobs: number }

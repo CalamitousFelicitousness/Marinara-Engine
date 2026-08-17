@@ -1,4 +1,8 @@
-import type { AgentContext, ChatMode } from "@marinara-engine/shared";
+import { BUILT_IN_AGENTS, type AgentContext, type ChatMode } from "@marinara-engine/shared";
+
+export function getTrackerAgentTypes(): Set<string> {
+  return new Set(BUILT_IN_AGENTS.filter((agent) => agent.category === "tracker").map((agent) => agent.id));
+}
 
 export function applyTrackerLorebookContextPolicy(args: {
   context: AgentContext;
@@ -6,16 +10,26 @@ export function applyTrackerLorebookContextPolicy(args: {
   isTracker: boolean;
   attachLorebooksToTrackers: boolean;
 }): AgentContext {
-  if (
-    args.chatMode !== "roleplay" ||
-    !args.isTracker ||
-    args.attachLorebooksToTrackers ||
-    !args.context.activatedLorebookEntries?.length
-  ) {
+  if (args.chatMode !== "roleplay" || !args.isTracker || args.attachLorebooksToTrackers) {
     return args.context;
   }
 
-  return { ...args.context, activatedLorebookEntries: [] };
+  const hasActivatedEntries = Boolean(args.context.activatedLorebookEntries?.length);
+  const hasSemanticEntries = Boolean(args.context.vectorContext?.semanticLorebookEntries.length);
+  if (!hasActivatedEntries && !hasSemanticEntries) return args.context;
+
+  return {
+    ...args.context,
+    activatedLorebookEntries: [],
+    ...(hasSemanticEntries && args.context.vectorContext
+      ? {
+          vectorContext: {
+            ...args.context.vectorContext,
+            semanticLorebookEntries: [],
+          },
+        }
+      : {}),
+  };
 }
 
 export function appendTrackerLorebookBatchContextKey(

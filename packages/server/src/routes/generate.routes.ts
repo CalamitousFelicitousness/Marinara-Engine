@@ -538,6 +538,7 @@ import { shouldSkipAgentByMessageInterval } from "../services/generation/agent-c
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
+  getTrackerAgentTypes,
 } from "../services/generation/tracker-agent-context.js";
 import {
   createAgentEventDispatcher,
@@ -4432,9 +4433,7 @@ export async function generateRoutes(app: FastifyInstance) {
         let pipelineAgents = resolvedAgents.filter(
           (a) => !textRewriteAgentIds.has(a.id) && a.type !== "lorebook-keeper",
         );
-        const trackerAgentTypes = new Set(
-          BUILT_IN_AGENTS.filter((agent) => agent.category === "tracker").map((agent) => agent.id),
-        );
+        const trackerAgentTypes = getTrackerAgentTypes();
         const attachLorebooksToTrackers = chatMode === "roleplay" && chatMeta.attachLorebooksToTrackers === true;
 
         // Manual tracker agents are stripped from the automatic pipeline — the

@@ -45,6 +45,7 @@ import {
   testSecondaryKeys,
   type AgentContext,
   type ChatMLMessage,
+  type MacroContext,
   DEFAULT_AGENT_PROMPT_TEMPLATE_ID,
   DEFAULT_CONVERSATION_PROMPT,
   getDefaultAgentPrompt,
@@ -784,11 +785,16 @@ import {
 import { fitMessagesForModelAccess } from "../../packages/server/src/services/generation/model-access-policy.js";
 import {
   assemblePrompt,
+  appendFallbackChatSummaryToSystemPrompt,
   resolveChoiceVariableValue,
   resolvePromptMessageMacros,
   scopePromptMacroContextToCharacter,
   type AssemblerInput,
 } from "../../packages/server/src/services/prompt/index.js";
+import {
+  appendTrackerLorebookBatchContextKey,
+  applyTrackerLorebookContextPolicy,
+} from "../../packages/server/src/services/generation/tracker-agent-context.js";
 import {
   createCustomToolArgumentsValidator,
   executeToolCalls,
@@ -8686,6 +8692,88 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         true,
       );
       assert.equal(result.messages[1]?.contextKind, "history");
+    },
+  },
+  {
+    name: "preset-less roleplay summary creates a leading system block before history",
+    run() {
+      const history: ChatMLMessage[] = [
+        { role: "user", content: "Where are we?", contextKind: "history" },
+        { role: "assistant", content: "At the harbor.", contextKind: "history" },
+      ];
+      const result = appendFallbackChatSummaryToSystemPrompt(
+        history,
+        "Mari and Dottore reached the harbor.",
+        "xml",
+        {} as MacroContext,
+      );
+
+      assert.equal(result[0]?.role, "system");
+      assert.equal(result[0]?.contextKind, "prompt");
+      assert.match(result[0]?.content ?? "", /<chat_summary>/u);
+      assert.match(result[0]?.content ?? "", /Mari and Dottore reached the harbor\./u);
+      assert.deepEqual(result.slice(1), history);
+
+      const generateRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(generateRouteSource, /chatMode === "roleplay" && !resolvedPreset/u);
+      assert.match(generateRouteSource, /appendFallbackChatSummaryToSystemPrompt\(/u);
+    },
+  },
+  {
+    name: "roleplay tracker lorebook context is opt-in and keeps author notes",
+    run() {
+      const context = makeRegressionAgentContext({
+        authorNotes: "AUTHOR_NOTES_STAY_ATTACHED",
+        activatedLorebookEntries: [{ id: "lore-entry", content: "MAIN_GENERATION_LOREBOOK_MATCH" }],
+      });
+
+      const disabled = applyTrackerLorebookContextPolicy({
+        context,
+        chatMode: "roleplay",
+        isTracker: true,
+        attachLorebooksToTrackers: false,
+      });
+      assert.deepEqual(disabled.activatedLorebookEntries, []);
+      assert.equal(disabled.authorNotes, "AUTHOR_NOTES_STAY_ATTACHED");
+
+      const enabled = applyTrackerLorebookContextPolicy({
+        context,
+        chatMode: "roleplay",
+        isTracker: true,
+        attachLorebooksToTrackers: true,
+      });
+      assert.equal(enabled, context);
+      assert.deepEqual(enabled.activatedLorebookEntries, context.activatedLorebookEntries);
+
+      const nonTracker = applyTrackerLorebookContextPolicy({
+        context,
+        chatMode: "roleplay",
+        isTracker: false,
+        attachLorebooksToTrackers: false,
+      });
+      assert.equal(nonTracker, context);
+      assert.equal(appendTrackerLorebookBatchContextKey(undefined, false), "tracker-lorebooks-off");
+      assert.equal(
+        appendTrackerLorebookBatchContextKey("message:previous", true),
+        "message:previous|tracker-lorebooks-on",
+      );
+
+      const retryRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/generate/retry-agents-route.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(retryRouteSource, /applyTrackerLorebookContextPolicy\(/u);
+      assert.match(retryRouteSource, /chatMeta\?\.attachLorebooksToTrackers === true/u);
+
+      const chatSettingsSource = readFileSync(
+        new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
+        "utf8",
+      );
+      assert.match(chatSettingsSource, /metadata\.enableAgents && isRoleplayMode && activeTrackerAgents\.length > 0/u);
+      assert.match(chatSettingsSource, /ui\.chat\.chatsettingsdrawer\.attachLorebooksToTrackers/u);
     },
   },
   {

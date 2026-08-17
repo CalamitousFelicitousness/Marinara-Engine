@@ -2774,6 +2774,8 @@
   "ui.chat.chatsettingsdrawer.allCustomAgentsAreActiveConfigureThemBelowThe": "All custom agents are active. Configure them below the other agent menus.",
   "ui.chat.chatsettingsdrawer.allCustomAgentsAreAlreadyAttachedEnableAgentsTo": "All custom agents are already attached. Enable Agents to configure or run them.",
   "ui.chat.chatsettingsdrawer.allManual": "All manual",
+  "ui.chat.chatsettingsdrawer.attachLorebooksToTrackers": "Attach Lorebooks to Trackers",
+  "ui.chat.chatsettingsdrawer.attachLorebooksToTrackersDescription": "Include the lorebook entries activated for the main response in every Tracker agent prompt.",
   "ui.chat.chatsettingsdrawer.allowCharacterDms": "Allow character DMs",
   "ui.chat.chatsettingsdrawer.allowModelsToInteractWithYouThroughInstalledCommands": "Allow models to interact with you through installed commands, including schedules, scenes, media, reactions, and games.",
   "ui.chat.chatsettingsdrawer.allowNoodleReferences": "Allow Noodle references",

@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Storage: Agent Configs, Runs & Memory
 // ──────────────────────────────────────────────
-import { eq, and, desc, notInArray } from "../../db/file-query.js";
+import { eq, ne, and, desc, notInArray } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { agentConfigs, agentRuns, agentMemory } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -327,12 +327,23 @@ export function createAgentsStorage(db: DB) {
     },
 
     /** Get the most recent successful run of an agent type in a given chat. */
-    async getLastSuccessfulRunByType(agentType: string, chatId: string) {
+    async getLastSuccessfulRunByType(
+      agentType: string,
+      chatId: string,
+      options: { excludeMessageId?: string | null } = {},
+    ) {
       const rows = await db
         .select()
         .from(agentRuns)
         .innerJoin(agentConfigs, eq(agentRuns.agentConfigId, agentConfigs.id))
-        .where(and(eq(agentConfigs.type, agentType), eq(agentRuns.chatId, chatId), eq(agentRuns.success, "true")))
+        .where(
+          and(
+            eq(agentConfigs.type, agentType),
+            eq(agentRuns.chatId, chatId),
+            eq(agentRuns.success, "true"),
+            options.excludeMessageId ? ne(agentRuns.messageId, options.excludeMessageId) : undefined,
+          ),
+        )
         .orderBy(desc(agentRuns.createdAt))
         .limit(1);
       return rows[0]?.agent_runs ?? null;

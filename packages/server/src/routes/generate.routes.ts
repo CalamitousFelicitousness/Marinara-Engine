@@ -525,6 +525,7 @@ import {
 } from "../services/generation/character-prompt-context.js";
 import { injectSceneContextMessages } from "../services/generation/scene-context-runtime.js";
 import { injectCommittedTrackerContext } from "../services/generation/committed-tracker-context.js";
+import { normalizeBeholderState } from "../services/agents/beholder-state.js";
 import { injectGameGmPromptRuntime } from "../services/generation/game-gm-prompt-runtime.js";
 import { mergeConversationCharacterMemories } from "../services/generation/conversation-memory-context.js";
 import { injectMemoryRecallContext } from "../services/generation/memory-recall-context.js";
@@ -3734,6 +3735,18 @@ export async function generateRoutes(app: FastifyInstance) {
           signal: abortController.signal,
         };
 
+        const latestBeholderState =
+          chatEnableAgents && chatActiveAgentIds.includes("beholder")
+            ? normalizeBeholderState(
+                (
+                  await agentsStore.getLastSuccessfulRunByType("beholder", input.chatId, {
+                    excludeMessageId: input.regenerateMessageId,
+                  })
+                )?.resultData,
+              )
+            : null;
+        if (latestBeholderState) agentContext.memory._beholderState = latestBeholderState;
+
         if (personaId) {
           agentContext.memory._personaId = personaId;
           agentContext.memory._personaAvatarPath =
@@ -4250,6 +4263,7 @@ export async function generateRoutes(app: FastifyInstance) {
           chatEnableAgents,
           activeAgentIds: chatActiveAgentIds,
           latestGameState,
+          beholderState: latestBeholderState,
           chatMetadata: chatMeta,
           wrapFormat,
           dedupeLastMessageWrappers,

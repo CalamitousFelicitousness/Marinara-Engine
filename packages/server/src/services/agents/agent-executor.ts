@@ -41,6 +41,7 @@ import { sanitizePromptLeaf } from "../prompt/prompt-escaping.js";
 import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 import { normalizeCyoaChoiceOutput } from "./cyoa-choice-normalization.js";
 import { getAssetManifest } from "../game/asset-manifest.service.js";
+import { formatBeholderStateForPrompt, normalizeBeholderState } from "./beholder-state.js";
 
 const MAX_AGENT_CONTEXT_MESSAGES = 200;
 const EXPRESSION_AGENT_RECENT_CONTEXT_MESSAGES = 2;
@@ -1645,6 +1646,7 @@ function shouldRunAgentIndividually(config: Pick<AgentExecConfig, "type" | "sett
   // must not be merged into unrelated batched agent requests.
   return (
     config.type === "illustrator" ||
+    config.type === "beholder" ||
     customAgentHasCapability(config.settings, "trigger_image_generation") ||
     config.type === "lorebook-keeper" ||
     resolveAgentResultType(config) === "text_rewrite" ||
@@ -2597,6 +2599,15 @@ function buildAgentExtras(
     }
   }
 
+  if (agentTypes.includes("beholder")) {
+    const state = normalizeBeholderState(context.memory._beholderState);
+    if (state) {
+      parts.push(`<previous_beholder_state>`);
+      parts.push(escapeXml(formatBeholderStateForPrompt(state)));
+      parts.push(`</previous_beholder_state>`);
+    }
+  }
+
   if (sources.trackerData && context.gameState) {
     parts.push(`<current_game_state>`);
     parts.push(JSON.stringify(compactGameStateForAgentContext(context.gameState, agentTypes)));
@@ -2885,6 +2896,7 @@ const AGENT_RESULT_TYPE_MAP: Record<string, AgentResultType> = {
   haptic: "haptic_command",
   cyoa: "cyoa_choices",
   "about-me-keeper": "about_me_update",
+  beholder: "context_injection",
 };
 
 const AGENT_RESULT_TYPES = new Set<AgentResultType>(AGENT_RESULT_TYPE_VALUES);
@@ -2931,6 +2943,7 @@ const JSON_AGENTS = new Set([
   "spotify",
   "haptic",
   "cyoa",
+  "beholder",
 ]);
 
 /**

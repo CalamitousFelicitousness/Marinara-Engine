@@ -266,7 +266,9 @@ import {
   executeAgentBatch,
   formatAgentMainResponseForPrompt,
   renderAgentPromptTemplate,
+  resolveAgentResultType,
 } from "../../packages/server/src/services/agents/agent-executor.js";
+import { normalizeBeholderState } from "../../packages/server/src/services/agents/beholder-state.js";
 import {
   CLEAN_HTML_FIND_REGEX,
   CLEAN_HTML_ID,
@@ -10152,6 +10154,72 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.match(inventoryPromptBlock ?? "", /Currencies:\n- Silver coin x6/);
       assert.match(inventoryPromptBlock ?? "", /Equipped:\n- Family heirloom longsword/);
       assert.match(inventoryPromptBlock ?? "", /Inventory:\n- Scavenged axe x2/);
+
+      const beholderState = normalizeBeholderState({
+        characters: [
+          {
+            name: "Mira<script>",
+            species: "human",
+            body: {
+              left_hand: {
+                holding: { item: "silver key", damage: "pristine" },
+                wounds: [{ text: "shallow cut", severity: "minor", bleeding: true }],
+              },
+              invented_slot: { bare: true },
+            },
+          },
+        ],
+      });
+      assert.ok(beholderState);
+      assert.equal(beholderState.characters[0]?.name, "Mirascript");
+      assert.equal("invented_slot" in (beholderState.characters[0]?.body ?? {}), false);
+
+      const beholderPromptBlock = buildCommittedTrackerContextBlock({
+        chatEnableAgents: true,
+        activeAgentIds: ["beholder"],
+        latestGameState: null,
+        beholderState,
+        chatMetadata: {},
+        wrapFormat: "markdown",
+      });
+      assert.match(beholderPromptBlock ?? "", /## Physical State/u);
+      assert.match(beholderPromptBlock ?? "", /left hand: holding: silver key/u);
+      assert.match(beholderPromptBlock ?? "", /shallow cut \(minor, bleeding\)/u);
+      assert.equal(resolveAgentResultType({ type: "beholder", settings: {} }), "context_injection");
+    },
+  },
+  {
+    name: "Beholder receives its prior snapshot and parses structured state",
+    async run() {
+      const { calls, provider } = makeCapturingProvider(
+        `{"characters":[{"name":"Mira","body":{"left_hand":{"holding":{"item":"silver key","damage":"pristine"}}}}]}`,
+      );
+      const config = makeRegressionAgentConfig({
+        id: "builtin:beholder",
+        type: "beholder",
+        name: "Beholder",
+        promptTemplate: "Return the complete physical state as JSON.",
+        settings: { resultType: "context_injection" },
+      });
+      const context = makeRegressionAgentContext({
+        mainResponse: "Mira keeps hold of the silver key.",
+        memory: {
+          _beholderState: {
+            characters: [
+              {
+                name: "Mira",
+                body: { left_hand: { holding: { item: "silver key", damage: "pristine" } } },
+              },
+            ],
+          },
+        },
+      });
+      const result = await executeAgent(config as any, context, provider as any, "regression-model");
+      const system = calls[0]?.[0]?.content ?? "";
+      assert.match(system, /<previous_beholder_state>/u);
+      assert.match(system, /holding: silver key/u);
+      assert.equal(result.success, true);
+      assert.deepEqual((result.data as any)?.characters?.[0]?.name, "Mira");
     },
   },
   {

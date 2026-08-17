@@ -311,6 +311,7 @@ const InlineLorebookEntriesEditor = lazy(() =>
   })),
 );
 const StoryboardChatSettingsPanel = lazy(() => import("./StoryboardChatSettingsPanel"));
+const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel"));
 
 interface ChatSettingsDrawerProps {
   chat: Chat;
@@ -8676,6 +8677,7 @@ export function ChatSettingsDrawer({
                                           id={
                                             agent.id === "hierarchical-maps" ||
                                             agent.id === "long-term-memory" ||
+                                            agent.id === "beholder" ||
                                             agent.id === STORYBOARD_AGENT_ID
                                               ? getAgentSettingsMenuId(chat.id, agent.id)
                                               : undefined
@@ -8683,6 +8685,7 @@ export function ChatSettingsDrawer({
                                           tabIndex={
                                             agent.id === "hierarchical-maps" ||
                                             agent.id === "long-term-memory" ||
+                                            agent.id === "beholder" ||
                                             agent.id === STORYBOARD_AGENT_ID
                                               ? -1
                                               : undefined
@@ -8804,6 +8807,18 @@ export function ChatSettingsDrawer({
                                                 metadata={metadata as Record<string, unknown>}
                                                 onClose={onClose}
                                                 ownerMode="roleplay"
+                                              />
+                                            </Suspense>
+                                          )}
+                                          {agent.id === "beholder" && (
+                                            <Suspense fallback={null}>
+                                              <BeholderChatSettingsPanel
+                                                chatId={chat.id}
+                                                onOpenAgentSettings={() => {
+                                                  void requestClose().then((closed) => {
+                                                    if (closed) useUIStore.getState().openAgentDetail("beholder");
+                                                  });
+                                                }}
                                               />
                                             </Suspense>
                                           )}

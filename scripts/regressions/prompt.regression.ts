@@ -290,7 +290,11 @@ import {
   mergeAdjacentMessages,
   squashLeadingSystemMessages,
 } from "../../packages/server/src/services/prompt/merger.js";
-import type { ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
+import {
+  runParallelAgents,
+  runPreGenerationAgents,
+  type ResolvedAgent,
+} from "../../packages/server/src/services/agents/agent-pipeline.js";
 import { loadGameVideoPrompt } from "../../packages/server/src/services/video/game-video-prompt.js";
 import {
   resolveComfyUiVideoWorkflowPlaceholders,
@@ -8718,8 +8722,47 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
         "utf8",
       );
-      assert.match(generateRouteSource, /chatMode === "roleplay" && !resolvedPreset/u);
-      assert.match(generateRouteSource, /appendFallbackChatSummaryToSystemPrompt\(/u);
+      const fallbackBranchStart = generateRouteSource.indexOf('if (chatMode === "roleplay" && !resolvedPreset) {');
+      const fallbackBranchEnd = generateRouteSource.indexOf("\n        }", fallbackBranchStart);
+      assert.notEqual(fallbackBranchStart, -1);
+      assert.notEqual(fallbackBranchEnd, -1);
+      assert.match(
+        generateRouteSource.slice(fallbackBranchStart, fallbackBranchEnd),
+        /appendFallbackChatSummaryToSystemPrompt\(/u,
+      );
+    },
+  },
+  {
+    name: "automatic agent phases keep distinct request contexts in separate batches",
+    async run() {
+      for (const phase of ["pre_generation", "parallel"] as const) {
+        const capture = makeCapturingProvider("Context checked.");
+        const agents = ["tracker-lorebooks-off", "tracker-lorebooks-on"].map(
+          (batchContextKey, index) =>
+            ({
+              ...makeRegressionAgentConfig({
+                id: `custom:${phase}-${index}`,
+                type: `context-reader-${index}`,
+                name: `Context Reader ${index}`,
+                isCustomAgent: true,
+                phase,
+                promptTemplate: "Check the supplied context.",
+                settings: { resultType: "context_injection" },
+              }),
+              provider: capture.provider,
+              model: "regression-model",
+              batchContextKey,
+            }) as ResolvedAgent,
+        );
+
+        if (phase === "pre_generation") {
+          await runPreGenerationAgents(agents, makeRegressionAgentContext());
+        } else {
+          await runParallelAgents(agents, makeRegressionAgentContext());
+        }
+
+        assert.equal(capture.calls.length, 2, `${phase} agents with different contexts must not share a batch`);
+      }
     },
   },
   {
@@ -8792,8 +8835,24 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
         "utf8",
       );
-      assert.match(chatSettingsSource, /metadata\.enableAgents && isRoleplayMode && activeTrackerAgents\.length > 0/u);
-      assert.match(chatSettingsSource, /ui\.chat\.chatsettingsdrawer\.attachLorebooksToTrackers/u);
+      const trackerControlsComment = chatSettingsSource.indexOf(
+        "{/* Manual trackers run only in roleplay-style chats. */}",
+      );
+      const trackerControlsStart = chatSettingsSource.indexOf(
+        "{metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (",
+        trackerControlsComment,
+      );
+      const trackerControlsEnd = chatSettingsSource.indexOf(
+        "{metadata.enableAgents && isRoleplayMode && activeTrackerAgents.length > 0 && (",
+        trackerControlsStart + 1,
+      );
+      assert.notEqual(trackerControlsComment, -1);
+      assert.notEqual(trackerControlsStart, -1);
+      assert.notEqual(trackerControlsEnd, -1);
+      assert.match(
+        chatSettingsSource.slice(trackerControlsStart, trackerControlsEnd),
+        /ui\.chat\.chatsettingsdrawer\.attachLorebooksToTrackers/u,
+      );
     },
   },
   {

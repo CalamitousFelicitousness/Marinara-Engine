@@ -77,7 +77,10 @@ import {
   resolveConnectionImageQuality,
 } from "../../services/image/image-generation-defaults.js";
 import { injectMemoryRecallContext } from "../../services/generation/memory-recall-context.js";
-import { applyTrackerLorebookContextPolicy } from "../../services/generation/tracker-agent-context.js";
+import {
+  appendTrackerLorebookBatchContextKey,
+  applyTrackerLorebookContextPolicy,
+} from "../../services/generation/tracker-agent-context.js";
 import { resolveMemoryRecallEmbeddingSource } from "../../services/memory-recall-embedding.js";
 import {
   loadImageGenerationUserSettings,
@@ -2091,7 +2094,7 @@ async function executeRetryBatches(
         : "default";
     const contextKind =
       effectiveChatMode === "roleplay" && isTracker
-        ? `${baseContextKind}:${attachLorebooksToTrackers ? "tracker-lorebooks-on" : "tracker-lorebooks-off"}`
+        ? appendTrackerLorebookBatchContextKey(baseContextKind, attachLorebooksToTrackers)
         : baseContextKind;
     const key = `${retryProviderKey(entry.agentProvider)}::${entry.agentModel}::${contextKind}::${getAgentBatchLane(entry.resolved)}`;
     if (!providerModelGroups.has(key)) {

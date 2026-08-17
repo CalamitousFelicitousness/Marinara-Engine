@@ -2587,6 +2587,7 @@ export function ConnectionEditor() {
               <div className="flex items-center gap-3">
                 <DraftNumberInput
                   value={localMaxRequestsPerMinute ?? 0}
+                  ariaLabel={localizeUi("ui.connections.connectioneditor.maxRequestsPerMinute")}
                   min={0}
                   max={600}
                   selectOnFocus

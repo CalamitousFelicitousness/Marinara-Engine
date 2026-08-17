@@ -57,32 +57,32 @@ function backoffMs(attempt: number, retryAfterMs: number | undefined): number {
   return Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_CAP_MS);
 }
 
-/** Reserve this request's proactive-throttle slot, waiting if the connection is over its cap. */
-async function acquireThrottleSlot(
-  connectionId: string,
-  context: RetryContext,
-): Promise<void> {
+/**
+ * Reserve this request's proactive-throttle slot. Returns the pacing delay to await when the
+ * connection is over its cap, or `undefined` when no wait is needed. Returning `undefined`
+ * synchronously (the common, unthrottled path) is deliberate: it lets the caller invoke the wrapped
+ * provider in the SAME microtask, so the inner admission slot is still acquired synchronously —
+ * awaiting an already-resolved value here would yield a tick and briefly open the concurrency gate.
+ */
+function reserveThrottleSlot(connectionId: string, context: RetryContext): Promise<void> | undefined {
   const maxRpm = getConnectionRateLimit(connectionId);
-  if (!maxRpm || maxRpm <= 0) return;
+  if (!maxRpm || maxRpm <= 0) return undefined;
   const minIntervalMs = Math.ceil(60_000 / maxRpm);
   const now = Date.now();
   const earliest = Math.max(now, nextAllowedAt.get(connectionId) ?? 0);
   const reserved = earliest + minIntervalMs;
   nextAllowedAt.set(connectionId, reserved);
   const waitMs = earliest - now;
-  if (waitMs > 0) {
-    context.onRateLimitPause?.({ attempt: 0, delayMs: waitMs, reason: "throttle" });
-    try {
-      await abortableDelay(waitMs, context.signal);
-    } catch (error) {
-      // Aborted mid-wait: hand our reservation back if we are still the tail so a cancelled
-      // request does not inject phantom pacing delay into the requests queued behind it.
-      if (nextAllowedAt.get(connectionId) === reserved) {
-        nextAllowedAt.set(connectionId, earliest);
-      }
-      throw error;
+  if (waitMs <= 0) return undefined;
+  context.onRateLimitPause?.({ attempt: 0, delayMs: waitMs, reason: "throttle" });
+  return abortableDelay(waitMs, context.signal).catch((error) => {
+    // Aborted mid-wait: hand our reservation back if we are still the tail so a cancelled
+    // request does not inject phantom pacing delay into the requests queued behind it.
+    if (nextAllowedAt.get(connectionId) === reserved) {
+      nextAllowedAt.set(connectionId, earliest);
     }
-  }
+    throw error;
+  });
 }
 
 export class RateLimitAwareProvider extends BaseLLMProvider {
@@ -107,7 +107,8 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
   }
 
   async *chat(messages: ChatMessage[], options: ChatOptions): AsyncGenerator<string, LLMUsage | void, unknown> {
-    await acquireThrottleSlot(this.connectionId, options);
+    const throttleWait = reserveThrottleSlot(this.connectionId, options);
+    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
       let yieldedAny = false;
       const iterator = this.provider.chat(messages, options);
@@ -141,7 +142,8 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
   }
 
   async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
-    await acquireThrottleSlot(this.connectionId, options);
+    const throttleWait = reserveThrottleSlot(this.connectionId, options);
+    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await this.provider.chatComplete(messages, options);
@@ -156,7 +158,8 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
 
   async embed(texts: string[], model: string, signal?: AbortSignal): Promise<number[][]> {
     const context: RetryContext = { signal };
-    await acquireThrottleSlot(this.connectionId, context);
+    const throttleWait = reserveThrottleSlot(this.connectionId, context);
+    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await this.provider.embed(texts, model, signal);

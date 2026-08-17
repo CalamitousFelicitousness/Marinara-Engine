@@ -4336,7 +4336,7 @@
   "ui.connections.connectioneditor.maxOutputTokensOverride": "Max Output Tokens Override",
   "ui.connections.connectioneditor.maxParallelAgentJobs": "Max Parallel Agent Jobs",
   "ui.connections.connectioneditor.maxRequestsPerMinute": "Max Requests Per Minute",
-  "ui.connections.connectioneditor.maxRequestsPerMinuteHelp": "Cap outbound requests per minute to this connection so a rate-limited proxy (e.g. OpenRouter) is not exceeded. Professor Mari paces her tool calls to fit, and a rate-limit response pauses and resumes automatically. Leave blank for unlimited.",
+  "ui.connections.connectioneditor.maxRequestsPerMinuteHelp": "Cap outbound requests per minute to this connection so a rate-limited proxy (e.g. OpenRouter) is not exceeded. Professor Mari paces her tool calls to fit, and a rate-limit response pauses and resumes automatically. Set to 0 for unlimited.",
   "ui.connections.connectioneditor.messagesBackFromTheNewestTurn": "Messages back from the newest turn.",
   "ui.connections.connectioneditor.model": "Model",
   "ui.connections.connectioneditor.model_1d06a0d": "model",

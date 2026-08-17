@@ -107,9 +107,12 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
   }
 
   async *chat(messages: ChatMessage[], options: ChatOptions): AsyncGenerator<string, LLMUsage | void, unknown> {
-    const throttleWait = reserveThrottleSlot(this.connectionId, options);
-    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
+      // Reserve a throttle slot per attempt, since each retry is a fresh outbound request. When
+      // unthrottled this returns undefined synchronously, so the first attempt still starts the
+      // wrapped provider in the same microtask (keeping admission-slot acquisition synchronous).
+      const throttleWait = reserveThrottleSlot(this.connectionId, options);
+      if (throttleWait) await throttleWait;
       let yieldedAny = false;
       const iterator = this.provider.chat(messages, options);
       try {
@@ -137,9 +140,9 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
   }
 
   async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
-    const throttleWait = reserveThrottleSlot(this.connectionId, options);
-    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
+      const throttleWait = reserveThrottleSlot(this.connectionId, options);
+      if (throttleWait) await throttleWait;
       try {
         return await this.provider.chatComplete(messages, options);
       } catch (error) {
@@ -153,9 +156,9 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
 
   async embed(texts: string[], model: string, signal?: AbortSignal): Promise<number[][]> {
     const context: RetryContext = { signal };
-    const throttleWait = reserveThrottleSlot(this.connectionId, context);
-    if (throttleWait) await throttleWait;
     for (let attempt = 0; ; attempt += 1) {
+      const throttleWait = reserveThrottleSlot(this.connectionId, context);
+      if (throttleWait) await throttleWait;
       try {
         return await this.provider.embed(texts, model, signal);
       } catch (error) {

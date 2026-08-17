@@ -426,7 +426,6 @@ export function createConnectionsStorage(db: DB) {
       }
       if (data.maxRequestsPerMinute !== undefined) {
         updateFields.maxRequestsPerMinute = data.maxRequestsPerMinute;
-        setConnectionRateLimit(id, data.maxRequestsPerMinute ?? null);
       }
       if (data.claudeFastMode !== undefined) {
         updateFields.claudeFastMode = String(data.claudeFastMode);
@@ -510,6 +509,11 @@ export function createConnectionsStorage(db: DB) {
         }
         await tx.update(apiConnections).set(updateFields).where(eq(apiConnections.id, id));
       });
+      // Sync the throttle registry only after the write commits, so a failed update never installs
+      // an unpersisted cap.
+      if (data.maxRequestsPerMinute !== undefined) {
+        setConnectionRateLimit(id, data.maxRequestsPerMinute ?? null);
+      }
       return this.getById(id);
     },
 
@@ -584,11 +588,12 @@ export function createConnectionsStorage(db: DB) {
     },
 
     async remove(id: string) {
-      clearConnectionRateLimit(id);
       const cleanup = await db.transaction(async (tx) => {
         await tx.delete(apiConnections).where(eq(apiConnections.id, id));
         return sweepDanglingConnectionReferences(tx, id);
       });
+      // Clear the throttle registry only after the delete commits.
+      clearConnectionRateLimit(id);
       const totalCleaned = cleanup.chatsUpdated + cleanup.agentsUpdated + cleanup.connectionsUpdated;
       if (totalCleaned > 0) {
         logger.info(

@@ -2242,7 +2242,7 @@ export class ProfessorMariWorkspaceService {
             continue;
           }
           const content =
-            "Professor Mari returned an empty response twice. Please try again; the request and any completed workspace steps remain in this chat.";
+            "Professor Mari kept returning an empty response. Please try again; the request and any completed workspace steps remain in this chat.";
           assistantText = appendVisibleText(assistantText, content);
           appendTraceStatus(workspaceTrace, content);
           args.onEvent({ type: "status", data: { content, kind: "retry", level: "warning" } });

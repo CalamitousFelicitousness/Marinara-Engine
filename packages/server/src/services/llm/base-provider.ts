@@ -812,7 +812,7 @@ export abstract class BaseLLMProvider {
     });
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`Embedding request failed (${res.status}): ${sanitizeApiError(body)}`);
+      throw llmHttpErrorFromResponse(`Embedding request failed (${res.status}): ${sanitizeApiError(body)}`, res);
     }
     const json = await res.json();
     return parseEmbeddingResponse(json);

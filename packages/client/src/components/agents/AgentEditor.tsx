@@ -411,7 +411,7 @@ const CUSTOM_AGENT_RESULT_TYPE_OPTIONS: Array<{
     id: "lorebook_update",
     label: "Lorebook Update",
     description: 'Expects JSON with an "updates" array to create or update lorebook entries.',
-    requiredCapability: "edit_lorebooks",
+    requiredAnyCapability: ["edit_lorebooks", "create_lorebooks"],
   },
   {
     id: "character_tracker_update",
@@ -1214,6 +1214,12 @@ export function AgentEditor() {
     const writableLorebookId = localWritableLorebookId.trim();
     const lorebookWriterEnabled =
       isEditingCustomAgent && localLorebookWriteEnabled && customCapabilities.edit_lorebooks === true;
+    const lorebookReadBehindEnabled =
+      isEditingCustomAgent &&
+      savedPhase === "post_processing" &&
+      (lorebookWriterEnabled ||
+        (localResultType === "lorebook_update" &&
+          (customCapabilities.edit_lorebooks === true || customCapabilities.create_lorebooks === true)));
     if (lorebookWriterEnabled && !writableLorebookId) {
       setSaveError("Select a target lorebook before enabling lorebook writing for this agent.");
       return;
@@ -1297,9 +1303,9 @@ export function AgentEditor() {
               lorebookWriteEnabled: true,
               writableLorebookId,
               writableLorebookIds: [writableLorebookId],
-              lorebookReadBehindMessages: localLorebookReadBehindMessages,
             }
           : {}),
+        ...(lorebookReadBehindEnabled ? { lorebookReadBehindMessages: localLorebookReadBehindMessages } : {}),
         ...(localSpotifyClientId ? { spotifyClientId: localSpotifyClientId } : {}),
         ...(isKnowledgeRetrievalAgent ||
         isKnowledgeRouterAgent ||
@@ -1459,6 +1465,12 @@ export function AgentEditor() {
     const writableLorebookId = localWritableLorebookId.trim();
     const lorebookWriterEnabled =
       isEditingCustomAgent && localLorebookWriteEnabled && customCapabilities.edit_lorebooks === true;
+    const lorebookReadBehindEnabled =
+      isEditingCustomAgent &&
+      savedPhase === "post_processing" &&
+      (lorebookWriterEnabled ||
+        (localResultType === "lorebook_update" &&
+          (customCapabilities.edit_lorebooks === true || customCapabilities.create_lorebooks === true)));
     const effectiveEnabledTools = Array.from(
       new Set(
         lorebookWriterEnabled
@@ -1502,9 +1514,9 @@ export function AgentEditor() {
             lorebookWriteEnabled: true,
             writableLorebookId,
             writableLorebookIds: [writableLorebookId],
-            lorebookReadBehindMessages: localLorebookReadBehindMessages,
           }
         : {}),
+      ...(lorebookReadBehindEnabled ? { lorebookReadBehindMessages: localLorebookReadBehindMessages } : {}),
       ...(localSpotifyClientId ? { spotifyClientId: localSpotifyClientId } : {}),
       ...(isKnowledgeRetrievalAgent ||
       isKnowledgeRouterAgent ||
@@ -1715,6 +1727,11 @@ export function AgentEditor() {
       ? "post_processing"
       : normalizedLocalPhase;
   const showTurnDataAccess = (isCustomAgent || isNewCustomAgent) && effectivePhase === "post_processing";
+  const canConfigureLorebookReadBehind =
+    effectivePhase === "post_processing" &&
+    ((localLorebookWriteEnabled && localCustomCapabilities.edit_lorebooks === true) ||
+      (localResultType === "lorebook_update" &&
+        (localCustomCapabilities.edit_lorebooks === true || localCustomCapabilities.create_lorebooks === true)));
   const visibleBuiltInTools = useMemo(
     () =>
       BUILT_IN_TOOLS.filter(
@@ -2170,7 +2187,7 @@ export function AgentEditor() {
                     max={MAX_LOREBOOK_READ_BEHIND_MESSAGES}
                     step={1}
                     value={localLorebookReadBehindMessages}
-                    disabled={!localLorebookWriteEnabled || localCustomCapabilities.edit_lorebooks !== true}
+                    disabled={!canConfigureLorebookReadBehind}
                     onChange={(event) => {
                       setLocalLorebookReadBehindMessages(normalizeLorebookReadBehindMessages(event.target.value));
                       markDirty();

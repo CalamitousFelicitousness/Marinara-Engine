@@ -131,12 +131,15 @@ import {
 } from "./generate-route-utils.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  customAgentUsesLorebookReadBehind,
+  customLorebookReadBehindRunKey,
   getCustomLorebookReadBehindMessages,
   getLorebookKeeperBackfillTargets,
   getLorebookKeeperSettings,
   loadLorebookKeeperExistingEntries,
   persistLorebookKeeperUpdates,
   resolveLorebookKeeperTarget,
+  tryClaimCustomLorebookReadBehindRun,
 } from "./lorebook-keeper-utils.js";
 import {
   agentWriteApprovalRequired,
@@ -3580,7 +3583,7 @@ async function applyRetryResultEffects(args: {
   }
 }
 
-export async function registerRetryAgentsRoute(app: FastifyInstance) {
+export async function registerRetryAgentsRoute(app: FastifyInstance, activeCustomLorebookReadBehindRuns: Set<string>) {
   const chats = createChatsStorage(app.db);
   const conns = createConnectionsStorage(app.db);
   const chars = createCharactersStorage(app.db);
@@ -3667,6 +3670,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
     // retry tab does not leak upstream provider requests to completion.
     const abortController = new AbortController();
     const generationId = randomUUID();
+    const customLorebookReadBehindRunKeys = new Set<string>();
     let clientDisconnected = false;
     const stopSseKeepalive = startSseKeepalive(reply);
     const onClientClose = () => {
@@ -3983,18 +3987,17 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
       const nonLorebookAgents = resolvedAgents.filter((entry) => {
         if (entry.resolved.type === "lorebook-keeper") return false;
         const readBehindMessages = getCustomLorebookReadBehindMessages(entry.resolved.settings);
-        const usesCustomLorebookReadBehind =
-          entry.resolved.phase === "post_processing" &&
-          entry.resolved.isCustomAgent === true &&
-          entry.resolved.settings.lorebookWriteEnabled === true &&
-          customAgentHasCapability(entry.resolved.settings, "edit_lorebooks") &&
-          readBehindMessages > 0;
+        const usesCustomLorebookReadBehind = customAgentUsesLorebookReadBehind(entry.resolved);
         if (!usesCustomLorebookReadBehind) return true;
 
         const target = getLorebookKeeperBackfillTargets(recentMessages, readBehindMessages, null).at(-1);
         if (!target) return false;
         const context = buildHistoricalLorebookKeeperContext(agentContext, recentMessages, target.id);
         if (!context) return false;
+        const runKey = customLorebookReadBehindRunKey(chatId, entry.resolved.id, target.id);
+        if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) return false;
+        customLorebookReadBehindRunKeys.add(runKey);
+        entry.resolved.batchContextKey = `message:${target.id}`;
         customLorebookReadBehindTargets.set(entry.resolved.id, { context, messageId: target.id });
         return true;
       });
@@ -4267,6 +4270,9 @@ export async function registerRetryAgentsRoute(app: FastifyInstance) {
           : "Agent retry failed";
       sendSseEvent(reply, { type: "error", data: message });
     } finally {
+      for (const runKey of customLorebookReadBehindRunKeys) {
+        activeCustomLorebookReadBehindRuns.delete(runKey);
+      }
       stopSseKeepalive();
       reply.raw.off("close", onClientClose);
       if (!clientDisconnected && isSseReplyWritable(reply)) {

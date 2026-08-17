@@ -344,12 +344,15 @@ import {
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  customAgentUsesLorebookReadBehind,
+  customLorebookReadBehindRunKey,
   getCustomLorebookReadBehindMessages,
   getLorebookKeeperAutomaticTarget,
   getLorebookKeeperSettings,
   loadLorebookKeeperExistingEntries,
   persistLorebookKeeperUpdates,
   resolveLorebookKeeperTarget,
+  tryClaimCustomLorebookReadBehindRun,
 } from "./generate/lorebook-keeper-utils.js";
 import { registerDryRunRoute } from "./generate/dry-run-route.js";
 import { registerRawRoute } from "./generate/raw-route.js";
@@ -4459,12 +4462,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const eligiblePipelineAgents: typeof pipelineAgents = [];
         for (const agent of pipelineAgents) {
           const readBehindMessages = getCustomLorebookReadBehindMessages(agent.settings);
-          const usesCustomLorebookReadBehind =
-            agent.phase === "post_processing" &&
-            agent.isCustomAgent === true &&
-            agent.settings.lorebookWriteEnabled === true &&
-            customAgentHasCapability(agent.settings, "edit_lorebooks") &&
-            readBehindMessages > 0;
+          const usesCustomLorebookReadBehind = customAgentUsesLorebookReadBehind(agent);
           if (!usesCustomLorebookReadBehind) {
             eligiblePipelineAgents.push(agent);
             continue;
@@ -4472,11 +4470,21 @@ export async function generateRoutes(app: FastifyInstance) {
 
           const target = getLorebookKeeperAutomaticTarget(lorebookKeeperMessages, readBehindMessages);
           if (!target) continue;
-          const runKey = `${input.chatId}:${agent.id}:${target.id}`;
-          if (
-            activeCustomLorebookReadBehindRuns.has(runKey) ||
-            (await agentsStore.hasSuccessfulRunForMessage(agent.id, input.chatId, target.id))
-          ) {
+          const context = buildHistoricalLorebookKeeperContext(agentContext, lorebookKeeperMessages, target.id);
+          if (!context) continue;
+          const runKey = customLorebookReadBehindRunKey(input.chatId, agent.id, target.id);
+          if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) {
+            logger.debug(
+              "[agents] Skipping custom lorebook read-behind agent %s for in-flight message %s",
+              agent.type,
+              target.id,
+            );
+            continue;
+          }
+          customLorebookReadBehindRunKeys.add(runKey);
+          if (await agentsStore.hasSuccessfulRunForMessage(agent.id, input.chatId, target.id)) {
+            activeCustomLorebookReadBehindRuns.delete(runKey);
+            customLorebookReadBehindRunKeys.delete(runKey);
             logger.debug(
               "[agents] Skipping custom lorebook read-behind agent %s for already processed message %s",
               agent.type,
@@ -4484,11 +4492,7 @@ export async function generateRoutes(app: FastifyInstance) {
             );
             continue;
           }
-          const context = buildHistoricalLorebookKeeperContext(agentContext, lorebookKeeperMessages, target.id);
-          if (!context) continue;
-
-          activeCustomLorebookReadBehindRuns.add(runKey);
-          customLorebookReadBehindRunKeys.add(runKey);
+          agent.batchContextKey = `message:${target.id}`;
           customLorebookReadBehindTargets.set(agent.id, { context, messageId: target.id });
           eligiblePipelineAgents.push(agent);
         }
@@ -10199,5 +10203,5 @@ export async function generateRoutes(app: FastifyInstance) {
 
   await registerDryRunRoute(app);
   await registerRawRoute(app);
-  await registerRetryAgentsRoute(app);
+  await registerRetryAgentsRoute(app, activeCustomLorebookReadBehindRuns);
 }

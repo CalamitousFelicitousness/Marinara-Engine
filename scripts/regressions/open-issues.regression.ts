@@ -202,9 +202,12 @@ import {
 } from "../../packages/server/src/routes/generate/agent-write-approval.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  customAgentUsesLorebookReadBehind,
+  customLorebookReadBehindRunKey,
   getCustomLorebookReadBehindMessages,
   getLorebookKeeperAutomaticTarget,
   mergeLorebookKeeperUpdateContent,
+  tryClaimCustomLorebookReadBehindRun,
 } from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
 import { runImageGenerationRequest } from "../../packages/server/src/services/image/image-generation-queue.js";
 import {
@@ -1578,7 +1581,9 @@ try {
   assert.equal(activePersonaReferenceContext.references[referencedPersona.id], "Mari");
   assert.equal(activePersonaReferenceContext.content, "");
 
-  const knownPersonaIds = new Set(Array.from({ length: 8 }, (_, index) => `KnownPersona${String(index).padStart(9, "0")}`));
+  const knownPersonaIds = new Set(
+    Array.from({ length: 8 }, (_, index) => `KnownPersona${String(index).padStart(9, "0")}`),
+  );
   const newPersonaId = "NewPersona00000000001";
   assert.deepEqual(
     extractPersonaReferenceIds(
@@ -2050,8 +2055,16 @@ try {
   assert.equal(professorMariParamEntry.probability, 25, "create must persist an embedded entry's probability");
   assert.equal(professorMariParamEntry.sticky, 6, "create must persist an embedded entry's timing field");
   assert.equal(professorMariParamEntry.groupWeight, 8, "create must persist an embedded entry's groupWeight");
-  assert.equal(professorMariParamEntry.excludeRecursion, true, "create must persist an embedded entry's recursion flag");
-  assert.equal(professorMariParamEntry.characterFilterMode, "include", "create must persist an embedded entry's filter mode");
+  assert.equal(
+    professorMariParamEntry.excludeRecursion,
+    true,
+    "create must persist an embedded entry's recursion flag",
+  );
+  assert.equal(
+    professorMariParamEntry.characterFilterMode,
+    "include",
+    "create must persist an embedded entry's filter mode",
+  );
   assert.deepEqual(
     professorMariParamEntry.characterFilterIds,
     ["char-embedded"],
@@ -2107,7 +2120,11 @@ try {
     },
     apply: true,
   });
-  assert.equal(professorMariSettingsUpdate.ok, true, `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`);
+  assert.equal(
+    professorMariSettingsUpdate.ok,
+    true,
+    `settings updateEntry must succeed: ${JSON.stringify(professorMariSettingsUpdate)}`,
+  );
   const professorMariSettingsEntry = (await lorebookStorage.listEntries(professorMariParamLorebookId))[0];
   assert.ok(professorMariSettingsEntry);
   assert.equal(professorMariSettingsEntry.probability, 100, "probability is clamped to 0-100");
@@ -2374,9 +2391,7 @@ try {
       undefined,
       "whole-lorebook delete clears the embedded lorebook pointer",
     );
-    const wholeDeleteApproval = mariDb
-      .getPendingApprovals()
-      .find((approval) => !pendingBeforeDelete.has(approval.id));
+    const wholeDeleteApproval = mariDb.getPendingApprovals().find((approval) => !pendingBeforeDelete.has(approval.id));
     assert.ok(wholeDeleteApproval, "whole-lorebook delete produced a reviewable approval");
     const restoredWholeDelete = await mariDb.restoreAppliedReview(wholeDeleteApproval.id);
     assert.ok(restoredWholeDelete && "history" in restoredWholeDelete, "whole-lorebook Restore must succeed");
@@ -2385,11 +2400,7 @@ try {
       character_book?: { entries?: unknown[] };
       extensions?: { importMetadata?: { embeddedLorebook?: { lorebookId?: string } } };
     };
-    assert.deepEqual(
-      restoredHostData.character_book?.entries,
-      [],
-      "Restore re-embeds even an empty character book",
-    );
+    assert.deepEqual(restoredHostData.character_book?.entries, [], "Restore re-embeds even an empty character book");
     assert.equal(
       restoredHostData.extensions?.importMetadata?.embeddedLorebook?.lorebookId,
       embeddedSyncLorebook.id,
@@ -2454,11 +2465,7 @@ try {
       rejectLorebookRow && "outcome" in rejectLorebookRow && rejectLorebookRow.outcome === "invalid_selection",
       "rejecting a non-lorebook_entries row is refused",
     );
-    assert.equal(
-      (await lorebookStorage.listEntries(rejectLorebookId)).length,
-      3,
-      "a refused reject reverts nothing",
-    );
+    assert.equal((await lorebookStorage.listEntries(rejectLorebookId)).length, 3, "a refused reject reverts nothing");
 
     // Reject only Entry B: it is removed, A and C stay, the lorebook stays, the card shrinks.
     const rejectB = await mariDb.rejectRows(rejectApproval.id, [
@@ -3848,6 +3855,44 @@ assert.equal(
   ];
   assert.equal(getCustomLorebookReadBehindMessages({ lorebookReadBehindMessages: "2" }), 2);
   assert.equal(getCustomLorebookReadBehindMessages({ lorebookReadBehindMessages: 101 }), 100);
+  assert.equal(
+    customAgentUsesLorebookReadBehind({
+      phase: "post_processing",
+      isCustomAgent: true,
+      settings: {
+        resultType: "lorebook_update",
+        lorebookReadBehindMessages: 1,
+        customCapabilities: { create_lorebooks: true },
+        customAgentPermissionsExplicit: true,
+      },
+    }),
+    true,
+    "create-only lorebook update agents must support Read Behind",
+  );
+  assert.equal(
+    customAgentUsesLorebookReadBehind({
+      phase: "post_processing",
+      isCustomAgent: true,
+      settings: {
+        lorebookWriteEnabled: true,
+        lorebookReadBehindMessages: 1,
+        customCapabilities: { edit_lorebooks: true },
+        customAgentPermissionsExplicit: true,
+      },
+    }),
+    true,
+    "custom lorebook entry writers must support Read Behind",
+  );
+  const activeRuns = new Set<string>();
+  const runKey = customLorebookReadBehindRunKey("chat-1", "agent-1", "assistant-1");
+  assert.equal(tryClaimCustomLorebookReadBehindRun(activeRuns, runKey), true);
+  assert.equal(
+    tryClaimCustomLorebookReadBehindRun(activeRuns, runKey),
+    false,
+    "an in-flight historical message must only be claimed once",
+  );
+  activeRuns.delete(runKey);
+  assert.equal(tryClaimCustomLorebookReadBehindRun(activeRuns, runKey), true);
   const target = getLorebookKeeperAutomaticTarget(messages, 1);
   assert.equal(target?.id, "assistant-2");
   const context = buildHistoricalLorebookKeeperContext(
@@ -5239,6 +5284,11 @@ assert.match(
   agentEditorSource,
   /lorebookReadBehindMessages:\s*localLorebookReadBehindMessages/u,
   "Custom lorebook writer settings must persist Read Behind",
+);
+assert.match(
+  agentEditorSource,
+  /requiredAnyCapability:\s*\["edit_lorebooks",\s*"create_lorebooks"\]/u,
+  "Lorebook Update must be configurable by create-only custom lorebook agents",
 );
 assert.match(
   chatSettingsDrawerSource,
@@ -8765,8 +8815,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     createdAt: "2026-08-12T08:00:00.000Z",
   } satisfies GameState;
   assert.deepEqual(
-    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>)
-      .worldCustomFields,
+    (AGENT_SUITE_TRACKER_SLICES["world-state"]!.getValue(gameState) as Record<string, unknown>).worldCustomFields,
     gameState.worldCustomFields,
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.getValue(gameState), {
@@ -8787,10 +8836,9 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     },
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
-  assert.deepEqual(
-    AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }),
-    { error: "World custom fields must be a JSON array" },
-  );
+  assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
+    error: "World custom fields must be a JSON array",
+  });
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
     { personaStats: [] },
@@ -8812,7 +8860,15 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "a row without a name must be reported, naming the group it came from",
   );
   assert.match(
-    String((inventorySlice.buildPatch(gameState, { currencies: [], equipped: [], inventory: [{ name: "Rope", qty: 0 }] }) as { error?: string }).error),
+    String(
+      (
+        inventorySlice.buildPatch(gameState, {
+          currencies: [],
+          equipped: [],
+          inventory: [{ name: "Rope", qty: 0 }],
+        }) as { error?: string }
+      ).error,
+    ),
     /qty/iu,
     "a quantity below 1 must be reported rather than silently clamped",
   );
@@ -8870,8 +8926,11 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
   assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
   assert.equal(
-    (settingsDrawerSource.match(/packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu) ?? [])
-      .length,
+    (
+      settingsDrawerSource.match(
+        /packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu,
+      ) ?? []
+    ).length,
     3,
     "Long-Term Memory must use the same un-nested Agent Settings surface in every chat mode",
   );
@@ -8944,7 +9003,10 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     join(REPOSITORY_ROOT, "packages/server/src/routes/generate.routes.ts"),
     "utf8",
   );
-  assert.match(generateRouteSource, /chatMode === "roleplay" && assistantMessageReadySent\) releaseActiveGeneration\(\)/u);
+  assert.match(
+    generateRouteSource,
+    /chatMode === "roleplay" && assistantMessageReadySent\) releaseActiveGeneration\(\)/u,
+  );
   assert.match(
     generateRouteSource,
     /const targetSwipeIndex =[\s\S]{0,300}lastSavedMsg[\s\S]{0,300}activeSwipeIndex/u,
@@ -8956,15 +9018,12 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "An old agent run must not retarget itself from a newly active swipe",
   );
 
-  const generateHookSource = readFileSync(
-    join(REPOSITORY_ROOT, "packages/client/src/hooks/use-generate.ts"),
-    "utf8",
+  const generateHookSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/hooks/use-generate.ts"), "utf8");
+  const agentStoreSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/stores/agent.store.ts"), "utf8");
+  assert.match(
+    generateHookSource,
+    /case "assistant_message_ready":[\s\S]{0,1600}setAbortController\(params\.chatId, null\)/u,
   );
-  const agentStoreSource = readFileSync(
-    join(REPOSITORY_ROOT, "packages/client/src/stores/agent.store.ts"),
-    "utf8",
-  );
-  assert.match(generateHookSource, /case "assistant_message_ready":[\s\S]{0,1600}setAbortController\(params\.chatId, null\)/u);
   assert.match(generateHookSource, /setProcessingRun\(agentProcessingRunId, false, params\.chatId\)/u);
   assert.match(agentStoreSource, /processingRunIdsByChat/u);
 
@@ -8989,10 +9048,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(perfDiagnosticsSource, /PerformanceObserver\.supportedEntryTypes\?\.includes\("longtask"\)/u);
 
-  const backupRoutesSource = readFileSync(
-    join(REPOSITORY_ROOT, "packages/server/src/routes/backup.routes.ts"),
-    "utf8",
-  );
+  const backupRoutesSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/routes/backup.routes.ts"), "utf8");
   const settingsPanelSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/client/src/components/panels/SettingsPanel.tsx"),
     "utf8",

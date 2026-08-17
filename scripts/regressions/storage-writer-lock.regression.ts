@@ -123,6 +123,20 @@ try {
           JSON.stringify({
             ...leaseTemplate,
             version: 1,
+            pid: process.pid,
+            hostId: "legacy-fingerprint-before-network-change",
+            token: "legacy-macos-live-token",
+          }),
+        );
+        await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
+        rmSync(leasePath(dir), { recursive: true });
+
+        mkdirSync(leasePath(dir));
+        writeFileSync(
+          ownerPath(dir),
+          JSON.stringify({
+            ...leaseTemplate,
+            version: 1,
             pid: await exitedPid(),
             hostId: "legacy-fingerprint-before-network-change",
             token: "legacy-macos-stale-token",

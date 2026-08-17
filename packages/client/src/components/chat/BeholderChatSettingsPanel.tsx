@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Eye, Loader2, Settings2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -36,7 +36,7 @@ export default function BeholderChatSettingsPanel({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const queryClient = useQueryClient();
-  const queryKey = ["beholder-state", chatId] as const;
+  const queryKey = useMemo(() => ["beholder-state", chatId] as const, [chatId]);
   const stateQuery = useQuery({
     queryKey,
     queryFn: () => api.get<BeholderStateResponse>(`/agents/beholder-state/${encodeURIComponent(chatId)}`),
@@ -46,13 +46,15 @@ export default function BeholderChatSettingsPanel({
   useEffect(() => {
     const handleGenerationComplete = (event: Event) => {
       const detail = (event as CustomEvent<{ chatId?: string }>).detail;
-      if (detail?.chatId === chatId) void queryClient.invalidateQueries({ queryKey: ["beholder-state", chatId] });
+      if (detail?.chatId === chatId) void queryClient.invalidateQueries({ queryKey });
     };
     window.addEventListener("marinara:generation-complete", handleGenerationComplete);
     return () => window.removeEventListener("marinara:generation-complete", handleGenerationComplete);
-  }, [chatId, queryClient]);
+  }, [chatId, queryClient, queryKey]);
 
   const characters = stateQuery.data?.state.characters ?? [];
+  const damageLabel = (damage: Damage) => localizeUi(`ui.chat.beholder.damage.${damage}`);
+  const severityLabel = (severity: WoundSeverity) => localizeUi(`ui.chat.beholder.severity.${severity}`);
 
   return (
     <div className="mt-2 space-y-2 border-t border-[var(--border)] pt-2.5">
@@ -117,7 +119,12 @@ export default function BeholderChatSettingsPanel({
                       ...(slot.bare ? [localizeUi("ui.chat.beholder.bare")] : []),
                       ...(slot.worn ?? []).map((item) =>
                         localizeUi("ui.chat.beholder.wearingValue", {
-                          value: [item.color, item.material, item.item, item.damage !== "pristine" ? item.damage : null]
+                          value: [
+                            item.color,
+                            item.material,
+                            item.item,
+                            item.damage !== "pristine" ? damageLabel(item.damage) : null,
+                          ]
                             .filter(Boolean)
                             .join(" "),
                         }),
@@ -126,7 +133,7 @@ export default function BeholderChatSettingsPanel({
                         ? [
                             localizeUi("ui.chat.beholder.holdingValue", {
                               value: `${slot.holding.item}${
-                                slot.holding.damage !== "pristine" ? ` (${slot.holding.damage})` : ""
+                                slot.holding.damage !== "pristine" ? ` (${damageLabel(slot.holding.damage)})` : ""
                               }`,
                             }),
                           ]
@@ -134,7 +141,7 @@ export default function BeholderChatSettingsPanel({
                       ...(slot.wounds ?? []).map((wound) =>
                         localizeUi("ui.chat.beholder.woundValue", {
                           value: wound.text,
-                          severity: wound.severity,
+                          severity: severityLabel(wound.severity),
                           bleeding: wound.bleeding ? localizeUi("ui.chat.beholder.bleedingSuffix") : "",
                         }),
                       ),

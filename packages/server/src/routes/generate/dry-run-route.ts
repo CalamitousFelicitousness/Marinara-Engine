@@ -99,7 +99,7 @@ import { buildGenerationPromptPresetCandidates, type PromptPresetCandidateSource
 import { CONVERSATION_NO_REPEAT_INSTRUCTION } from "./conversation-prompt-formatting.js";
 import { createGameStateStorage, type GameStateVisibleAnchor } from "../../services/storage/game-state.storage.js";
 import { buildCommittedTrackerContextBlock } from "../../services/generation/committed-tracker-context.js";
-import { normalizeBeholderState } from "../../services/agents/beholder-state.js";
+import { loadPriorBeholderState } from "../../services/agents/beholder-state.js";
 import { logger } from "../../lib/logger.js";
 import { resolveGameGmPromptTemplate } from "../../services/generation/game-gm-prompt-runtime.js";
 
@@ -610,16 +610,14 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       typeof body.regenerateMessageId === "string" && body.regenerateMessageId.trim()
         ? body.regenerateMessageId.trim()
         : null;
-    const dryRunBeholderState =
-      dryRunChatEnableAgents && dryRunActiveAgentIds.includes("beholder")
-        ? normalizeBeholderState(
-            (
-              await createAgentsStorage(app.db).getLastSuccessfulRunByType("beholder", chatId, {
-                excludeMessageId: regenerateMessageId,
-              })
-            )?.resultData,
-          )
-        : null;
+    const dryRunBeholderState = await loadPriorBeholderState({
+      agentsStore: createAgentsStorage(app.db),
+      chatId,
+      chatMode,
+      activeAgentIds: dryRunActiveAgentIds,
+      chatEnableAgents: dryRunChatEnableAgents,
+      excludeMessageId: regenerateMessageId,
+    });
     const ownerSpatialProjection = await resolveOwnerSpatialProjection(
       chatId,
       regenerateMessageId ? { beforeMessageId: regenerateMessageId } : {},

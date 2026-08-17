@@ -2049,6 +2049,7 @@ export function ChatSettingsDrawer({
   const mapsAgent = availableAgents.find((agent) => agent.id === mapsPackage?.id);
   const ltmAgent = availableAgents.find((agent) => agent.id === ltmPackage?.id);
   const storyboardAgent = availableAgents.find((agent) => agent.id === STORYBOARD_AGENT_ID);
+  const beholderAgent = availableAgents.find((agent) => agent.id === "beholder");
   const [pendingAgentMenuTargetId, setPendingAgentMenuTargetId] = useState<string | null>(null);
   const roleplayAgentMenuLinks = useMemo(() => {
     if (!metadata.enableAgents || !isRoleplayMode || isGame) return [];
@@ -2087,6 +2088,7 @@ export function ChatSettingsDrawer({
     if (storyboardAgent) {
       addLink(STORYBOARD_AGENT_ID, activeAgentIds.includes(STORYBOARD_AGENT_ID), storyboardAgent.name);
     }
+    if (beholderAgent) addLink("beholder", activeAgentIds.includes("beholder"), beholderAgent.name);
     if (mapsAgent && mapsPackage) addLink(mapsPackage.id, mapsPackageEnabledForChat, mapsAgent.name);
     if (activeCustomAgents.length > 0) {
       links.push({
@@ -2101,6 +2103,7 @@ export function ChatSettingsDrawer({
   }, [
     activeCustomAgents,
     activeAgentIds,
+    beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
     chat.id,

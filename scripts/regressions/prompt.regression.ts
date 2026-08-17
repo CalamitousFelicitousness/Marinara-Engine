@@ -268,7 +268,10 @@ import {
   renderAgentPromptTemplate,
   resolveAgentResultType,
 } from "../../packages/server/src/services/agents/agent-executor.js";
-import { normalizeBeholderState } from "../../packages/server/src/services/agents/beholder-state.js";
+import {
+  loadPriorBeholderState,
+  normalizeBeholderState,
+} from "../../packages/server/src/services/agents/beholder-state.js";
 import {
   CLEAN_HTML_FIND_REGEX,
   CLEAN_HTML_ID,
@@ -9972,11 +9975,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "equipped",
         [{ name: "Short axe" }],
       );
-      assert.deepEqual(
-        equipMove.inventoryTrackerEquipped,
-        [{ name: "Short axe" }],
-        "the edited group must be written",
-      );
+      assert.deepEqual(equipMove.inventoryTrackerEquipped, [{ name: "Short axe" }], "the edited group must be written");
       assert.deepEqual(
         equipMove.inventoryTrackerInventory,
         [{ name: "Waterskin" }],
@@ -10191,6 +10190,38 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
   {
     name: "Beholder receives its prior snapshot and parses structured state",
     async run() {
+      let stateReads = 0;
+      const priorState = await loadPriorBeholderState({
+        agentsStore: {
+          async getLastSuccessfulRunByType() {
+            stateReads += 1;
+            return { resultData: `{"characters":[{"name":"Mira","body":{}}]}` };
+          },
+        },
+        chatId: "roleplay-chat",
+        chatMode: "roleplay",
+        activeAgentIds: ["beholder"],
+        chatEnableAgents: true,
+      });
+      assert.equal(priorState?.characters[0]?.name, "Mira");
+      assert.equal(stateReads, 1);
+      assert.equal(
+        await loadPriorBeholderState({
+          agentsStore: {
+            async getLastSuccessfulRunByType() {
+              stateReads += 1;
+              return null;
+            },
+          },
+          chatId: "conversation-chat",
+          chatMode: "conversation",
+          activeAgentIds: ["beholder"],
+          chatEnableAgents: true,
+        }),
+        null,
+      );
+      assert.equal(stateReads, 1);
+
       const { calls, provider } = makeCapturingProvider(
         `{"characters":[{"name":"Mira","body":{"left_hand":{"holding":{"item":"silver key","damage":"pristine"}}}}]}`,
       );

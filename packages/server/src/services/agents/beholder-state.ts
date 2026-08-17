@@ -1,3 +1,5 @@
+import { logger } from "../../lib/logger.js";
+
 export const BEHOLDER_BODY_SLOTS = [
   "head",
   "face",
@@ -73,6 +75,14 @@ const WOUND_SEVERITY_VALUES = new Set<BeholderWoundSeverity>(["minor", "serious"
 const MAX_CHARACTERS = 64;
 const MAX_WORN_ITEMS_PER_SLOT = 12;
 const MAX_WOUNDS_PER_SLOT = 12;
+
+type BeholderAgentsStore = {
+  getLastSuccessfulRunByType(
+    agentType: string,
+    chatId: string,
+    options?: { excludeMessageId?: string | null },
+  ): Promise<{ resultData?: unknown } | null>;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -189,6 +199,29 @@ export function normalizeBeholderState(value: unknown): BeholderState | null {
   }
 
   return { characters };
+}
+
+/** Load optional prior state without allowing tracker history failures to block generation. */
+export async function loadPriorBeholderState(args: {
+  agentsStore: BeholderAgentsStore;
+  chatId: string;
+  chatMode: string;
+  activeAgentIds: Iterable<string>;
+  chatEnableAgents: boolean;
+  excludeMessageId?: string | null;
+}): Promise<BeholderState | null> {
+  if (!args.chatEnableAgents || args.chatMode !== "roleplay" || !new Set(args.activeAgentIds).has("beholder")) {
+    return null;
+  }
+  try {
+    const run = await args.agentsStore.getLastSuccessfulRunByType("beholder", args.chatId, {
+      excludeMessageId: args.excludeMessageId,
+    });
+    return normalizeBeholderState(run?.resultData);
+  } catch (err) {
+    logger.warn(err, "[beholder] Failed to load prior physical-state snapshot for chat %s", args.chatId);
+    return null;
+  }
 }
 
 export function formatBeholderStateForPrompt(state: BeholderState): string {

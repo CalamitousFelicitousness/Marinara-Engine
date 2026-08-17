@@ -62,7 +62,7 @@ import {
 import { cardPromptText } from "../../services/prompt/card-text.js";
 import { getAssetManifest } from "../../services/game/asset-manifest.service.js";
 import { createAgentsStorage } from "../../services/storage/agents.storage.js";
-import { normalizeBeholderState } from "../../services/agents/beholder-state.js";
+import { loadPriorBeholderState } from "../../services/agents/beholder-state.js";
 import { getCustomAgentImportPolicy } from "../../services/agents/custom-agent-import-policy.service.js";
 import { createCharactersStorage } from "../../services/storage/characters.storage.js";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
@@ -959,16 +959,15 @@ async function buildRetryAgentContext(args: {
     memory: {},
   };
 
-  if (resolvedAgentTypes.has("beholder")) {
-    const previousState = normalizeBeholderState(
-      (
-        await createAgentsStorage(db).getLastSuccessfulRunByType("beholder", chatId, {
-          excludeMessageId: typeof lastAssistant?.id === "string" ? lastAssistant.id : null,
-        })
-      )?.resultData,
-    );
-    if (previousState) agentContext.memory._beholderState = previousState;
-  }
+  const previousBeholderState = await loadPriorBeholderState({
+    agentsStore: createAgentsStorage(db),
+    chatId,
+    chatMode,
+    activeAgentIds: resolvedAgentTypes,
+    chatEnableAgents: isChatAgentsEnabled(chatMeta),
+    excludeMessageId: typeof lastAssistant?.id === "string" ? lastAssistant.id : null,
+  });
+  if (previousBeholderState) agentContext.memory._beholderState = previousBeholderState;
 
   const gameImageStylePrompt = getGameImageStylePrompt(chat, chatMeta);
   if (gameImageStylePrompt) {
@@ -2598,7 +2597,12 @@ async function applyRetryResultEffects(args: {
 
     // Keep message.extra.contextInjections in sync when retrying agents that emit injectable text,
     // so regenerate/swipe replays the edited or re-run snippet instead of stale cache.
-    if (retryMessageId && result.success && (result.type === "context_injection" || result.type === "director_event")) {
+    if (
+      retryMessageId &&
+      result.success &&
+      result.agentType !== "beholder" &&
+      (result.type === "context_injection" || result.type === "director_event")
+    ) {
       const text =
         typeof result.data === "string"
           ? result.data

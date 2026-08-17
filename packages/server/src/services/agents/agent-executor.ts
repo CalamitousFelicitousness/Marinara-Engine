@@ -2601,7 +2601,7 @@ function buildAgentExtras(
 
   if (agentTypes.includes("beholder")) {
     const state = normalizeBeholderState(context.memory._beholderState);
-    if (state) {
+    if (state && state.characters.length > 0) {
       parts.push(`<previous_beholder_state>`);
       parts.push(escapeXml(formatBeholderStateForPrompt(state)));
       parts.push(`</previous_beholder_state>`);

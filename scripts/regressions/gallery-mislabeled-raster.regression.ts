@@ -19,6 +19,16 @@ assert.notEqual(mislabeled, null, "WebP bytes named .png must validate");
 assert.equal(mislabeled?.mimeType, "image/webp", "Content-Type must reflect detected format");
 assert.equal(mislabeled?.isSvg, false);
 
+// AVIF detection must also use bytes rather than the filename extension.
+const avifBytes = Buffer.concat([
+  Buffer.from([0x00, 0x00, 0x00, 0x18]),
+  Buffer.from("ftypavif", "ascii"),
+  Buffer.alloc(4),
+  Buffer.from("avifmif1", "ascii"),
+]);
+const mislabeledAvif = validateImageAssetBuffer(avifBytes, "post-image.png");
+assert.equal(mislabeledAvif?.mimeType, "image/avif", "AVIF bytes named .png must validate as image/avif");
+
 // A correctly-labeled PNG still serves as image/png.
 const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const png = validateImageAssetBuffer(pngBytes, "avatar.png");

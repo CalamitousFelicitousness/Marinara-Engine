@@ -10221,6 +10221,22 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         null,
       );
       assert.equal(stateReads, 1);
+      assert.equal(
+        await loadPriorBeholderState({
+          agentsStore: {
+            async getLastSuccessfulRunByType() {
+              stateReads += 1;
+              return null;
+            },
+          },
+          chatId: "roleplay-chat-no-prior-run",
+          chatMode: "roleplay",
+          activeAgentIds: ["beholder"],
+          chatEnableAgents: true,
+        }),
+        null,
+      );
+      assert.equal(stateReads, 2);
 
       const { calls, provider } = makeCapturingProvider(
         `{"characters":[{"name":"Mira","body":{"left_hand":{"holding":{"item":"silver key","damage":"pristine"}}}}]}`,

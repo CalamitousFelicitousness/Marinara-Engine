@@ -123,12 +123,7 @@ export class RateLimitAwareProvider extends BaseLLMProvider {
       } catch (error) {
         // Once tokens have reached the consumer the stream cannot be replayed, so only a
         // pre-first-token rate limit is retryable; anything else propagates.
-        if (
-          yieldedAny ||
-          !isRateLimitError(error) ||
-          attempt >= MAX_RATE_LIMIT_RETRIES ||
-          options.signal?.aborted
-        ) {
+        if (yieldedAny || !isRateLimitError(error) || attempt >= MAX_RATE_LIMIT_RETRIES || options.signal?.aborted) {
           throw error;
         }
         await this.pauseForRetry(options, attempt, error.retryAfterMs);

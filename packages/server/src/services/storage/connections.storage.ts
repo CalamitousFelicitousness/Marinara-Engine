@@ -8,10 +8,7 @@ import { newId, now } from "../../utils/id-generator.js";
 import { encryptApiKey, decryptApiKey } from "../../utils/crypto.js";
 import type { CreateConnectionInput } from "@marinara-engine/shared";
 import { sweepDanglingConnectionReferences } from "./connection-reference-cleanup.js";
-import {
-  clearConnectionRateLimit,
-  setConnectionRateLimit,
-} from "../llm/connection-rate-limit-registry.js";
+import { clearConnectionRateLimit, setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { logger } from "../../lib/logger.js";
 
 type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "language";

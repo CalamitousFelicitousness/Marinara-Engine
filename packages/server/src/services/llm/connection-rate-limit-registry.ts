@@ -10,15 +10,8 @@
 const limits = new Map<string, number>();
 
 /** Record (or clear, for null/0/invalid) a connection's requests-per-minute cap. */
-export function setConnectionRateLimit(
-  connectionId: string,
-  maxRequestsPerMinute: number | null | undefined,
-): void {
-  if (
-    typeof maxRequestsPerMinute === "number" &&
-    Number.isFinite(maxRequestsPerMinute) &&
-    maxRequestsPerMinute > 0
-  ) {
+export function setConnectionRateLimit(connectionId: string, maxRequestsPerMinute: number | null | undefined): void {
+  if (typeof maxRequestsPerMinute === "number" && Number.isFinite(maxRequestsPerMinute) && maxRequestsPerMinute > 0) {
     limits.set(connectionId, Math.floor(maxRequestsPerMinute));
   } else {
     limits.delete(connectionId);

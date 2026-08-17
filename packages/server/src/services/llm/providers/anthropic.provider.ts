@@ -442,7 +442,10 @@ export class AnthropicProvider extends BaseLLMProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw llmHttpErrorFromResponse(`Anthropic API error ${response.status}: ${sanitizeApiError(errorText)}`, response);
+      throw llmHttpErrorFromResponse(
+        `Anthropic API error ${response.status}: ${sanitizeApiError(errorText)}`,
+        response,
+      );
     }
 
     const json = (await response.json()) as AnthropicMessageResponse;
@@ -625,7 +628,10 @@ export class AnthropicProvider extends BaseLLMProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw llmHttpErrorFromResponse(`Anthropic API error ${response.status}: ${sanitizeApiError(errorText)}`, response);
+      throw llmHttpErrorFromResponse(
+        `Anthropic API error ${response.status}: ${sanitizeApiError(errorText)}`,
+        response,
+      );
     }
 
     if (!options.stream) {

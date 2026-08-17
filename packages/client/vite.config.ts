@@ -3,7 +3,22 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "path";
+
+// Mirror the server's PORT resolution (config/runtime-config.ts reads the
+// repo-root .env) so a standalone `pnpm dev:client` proxies /api to the port the
+// server actually binds instead of the 7860 default. Must run before the
+// constants below read process.env. loadEnvFile leaves existing environment
+// values untouched, so an explicit PORT still wins.
+const REPO_ENV_FILE = process.env.MARINARA_ENV_FILE?.trim() || path.resolve(__dirname, "../../.env");
+if (existsSync(REPO_ENV_FILE)) {
+  try {
+    process.loadEnvFile(REPO_ENV_FILE);
+  } catch {
+    // The server reports malformed .env content; never block the dev server on it.
+  }
+}
 
 const ENABLE_SOURCE_MAPS = process.env.VITE_ENABLE_SOURCEMAP === "true";
 const PWA_DISABLED = Boolean(process.env.SKIP_PWA);

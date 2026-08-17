@@ -1,7 +1,28 @@
 import { spawn, spawnSync } from "node:child_process";
-import { basename } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getWorkspaceInstallProblems } from "./check-workspace-install.mjs";
 import { resolveDevSharedBuildScript } from "./dev-shared-build.mjs";
+
+// The server resolves PORT from the repo-root .env (config/runtime-config.ts),
+// so the readiness probe below has to read the same file or it polls a port
+// nothing is listening on and fails after the full timeout. Children inherit
+// this environment, which also keeps the client's /api proxy target aligned.
+// loadEnvFile never overwrites a value already in the environment, so an
+// explicit `PORT=... pnpm dev` still wins over the file.
+function loadRepoEnvFile() {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const envFile = process.env.MARINARA_ENV_FILE?.trim() || resolve(repoRoot, ".env");
+  if (!existsSync(envFile)) return;
+  try {
+    process.loadEnvFile(envFile);
+  } catch {
+    // Malformed .env content is the server's problem to report, not the dev runner's.
+  }
+}
+
+loadRepoEnvFile();
 
 function parseIntegerEnv(name, fallback) {
   const raw = process.env[name];

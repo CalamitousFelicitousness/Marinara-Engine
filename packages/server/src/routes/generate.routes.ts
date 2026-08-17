@@ -4349,16 +4349,24 @@ export async function generateRoutes(app: FastifyInstance) {
             },
           };
         };
+        const customLorebookReadBehindTargets = new Map<
+          string,
+          { context: AgentContext; messageId: string; swipeIndex: number }
+        >();
         const { sendAgentEvent: sendRawAgentEvent, sendAgentResultEvent: sendRawAgentResultEvent } =
           createAgentEventDispatcher({
             resolvedAgents: agentEventResolvedAgents,
             sendEvent: (payload) => sendSseEvent(reply, payload),
-            getOwnership: () => ({
-              chatId: input.chatId,
-              messageId: typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null,
-              swipeIndex: lastSavedSwipeIndex,
-              generationId,
-            }),
+            getOwnership: (result) => {
+              const historicalTarget = customLorebookReadBehindTargets.get(result.agentId);
+              return {
+                chatId: input.chatId,
+                messageId:
+                  historicalTarget?.messageId ?? (typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null),
+                swipeIndex: historicalTarget?.swipeIndex ?? lastSavedSwipeIndex,
+                generationId,
+              };
+            },
           });
         const sendAgentEvent = (result: AgentResult, options?: { finalized?: boolean }) => {
           const nextResult = markLorebookResultForApproval(result);
@@ -4458,7 +4466,6 @@ export async function generateRoutes(app: FastifyInstance) {
           agentContext,
           emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
         });
-        const customLorebookReadBehindTargets = new Map<string, { context: AgentContext; messageId: string }>();
         const eligiblePipelineAgents: typeof pipelineAgents = [];
         for (const agent of pipelineAgents) {
           const readBehindMessages = getCustomLorebookReadBehindMessages(agent.settings);
@@ -4493,7 +4500,11 @@ export async function generateRoutes(app: FastifyInstance) {
             continue;
           }
           agent.batchContextKey = `message:${target.id}`;
-          customLorebookReadBehindTargets.set(agent.id, { context, messageId: target.id });
+          customLorebookReadBehindTargets.set(agent.id, {
+            context,
+            messageId: target.id,
+            swipeIndex: typeof target.activeSwipeIndex === "number" ? target.activeSwipeIndex : 0,
+          });
           eligiblePipelineAgents.push(agent);
         }
         pipelineAgents = eligiblePipelineAgents;

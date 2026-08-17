@@ -2072,7 +2072,7 @@ async function executeRetryBatches(
       preGenerationContext && entry.resolved.phase === "pre_generation" ? preGenerationContext : agentContext;
     const context = customLorebookReadBehindContexts.get(entry.resolved.id) ?? phaseContext;
     const contextKind = customLorebookReadBehindContexts.has(entry.resolved.id)
-      ? `read-behind:${entry.resolved.id}`
+      ? `read-behind:${entry.resolved.batchContextKey ?? entry.resolved.id}`
       : context === preGenerationContext
         ? "pre_generation"
         : "default";
@@ -3983,7 +3983,10 @@ export async function registerRetryAgentsRoute(app: FastifyInstance, activeCusto
         throw new Error(forceScopeError);
       }
       const lorebookKeeperAgent = resolvedAgents.find((entry) => entry.resolved.type === "lorebook-keeper") ?? null;
-      const customLorebookReadBehindTargets = new Map<string, { context: AgentContext; messageId: string }>();
+      const customLorebookReadBehindTargets = new Map<
+        string,
+        { context: AgentContext; messageId: string; swipeIndex: number }
+      >();
       const nonLorebookAgents = resolvedAgents.filter((entry) => {
         if (entry.resolved.type === "lorebook-keeper") return false;
         const readBehindMessages = getCustomLorebookReadBehindMessages(entry.resolved.settings);
@@ -3998,7 +4001,10 @@ export async function registerRetryAgentsRoute(app: FastifyInstance, activeCusto
         if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) return false;
         customLorebookReadBehindRunKeys.add(runKey);
         entry.resolved.batchContextKey = `message:${target.id}`;
-        customLorebookReadBehindTargets.set(entry.resolved.id, { context, messageId: target.id });
+        customLorebookReadBehindTargets.set(entry.resolved.id, {
+          context,
+          ...resolveLorebookKeeperRetryAnchor(target),
+        });
         return true;
       });
       if (
@@ -4167,6 +4173,7 @@ export async function registerRetryAgentsRoute(app: FastifyInstance, activeCusto
       for (const result of results) {
         if (!customAgentCanEmitRetryResult(result, resolvedAgents)) continue;
         const cfg = resolvedAgents.find((entry) => entry.resolved.type === result.agentType)?.cfg;
+        const historicalTarget = customLorebookReadBehindTargets.get(result.agentId);
         sendSseEvent(reply, {
           type: "agent_result",
           data: {
@@ -4179,8 +4186,8 @@ export async function registerRetryAgentsRoute(app: FastifyInstance, activeCusto
             error: result.error,
             durationMs: result.durationMs,
             chatId,
-            messageId: retryMessageId || null,
-            swipeIndex: retryMessageId ? retrySwipeIndex : null,
+            messageId: historicalTarget?.messageId ?? (retryMessageId || null),
+            swipeIndex: historicalTarget?.swipeIndex ?? (retryMessageId ? retrySwipeIndex : null),
             generationId,
           },
         });

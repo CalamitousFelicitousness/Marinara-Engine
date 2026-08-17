@@ -38,10 +38,14 @@ const immutableAgentOwnership = {
   swipeIndex: 1,
   generationId: "generation-one",
 };
+let ownershipResultAgentId: string | null = null;
 createAgentEventDispatcher({
   resolvedAgents: [],
   sendEvent: (payload) => dispatchedAgentEvents.push(payload),
-  getOwnership: () => immutableAgentOwnership,
+  getOwnership: (result) => {
+    ownershipResultAgentId = result.agentId;
+    return immutableAgentOwnership;
+  },
 }).sendAgentResultEvent({
   agentId: "quest",
   agentType: "quest",
@@ -52,6 +56,7 @@ createAgentEventDispatcher({
   success: true,
   error: null,
 });
+assert.equal(ownershipResultAgentId, "quest", "agent event ownership may be resolved from the individual result");
 assert.deepEqual(
   (dispatchedAgentEvents[0]?.data as Record<string, unknown> | undefined) ?? {},
   {

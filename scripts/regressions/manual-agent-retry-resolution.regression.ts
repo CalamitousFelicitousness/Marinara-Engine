@@ -77,6 +77,16 @@ const retryRouteSource = readFileSync(
   new URL("../../packages/server/src/routes/generate/retry-agents-route.ts", import.meta.url),
   "utf8",
 );
+assert.match(
+  retryRouteSource,
+  /`read-behind:\$\{entry\.resolved\.batchContextKey \?\? entry\.resolved\.id\}`/u,
+  "custom lorebook retries targeting the same historical message remain batchable",
+);
+assert.match(
+  retryRouteSource,
+  /messageId:\s*historicalTarget\?\.messageId[\s\S]*swipeIndex:\s*historicalTarget\?\.swipeIndex/u,
+  "custom lorebook retry events must identify their historical message and swipe",
+);
 const toolRuntimeSource = readFileSync(
   new URL("../../packages/server/src/services/generation/tool-resolution-runtime.ts", import.meta.url),
   "utf8",
@@ -615,7 +625,11 @@ assert.equal(
   "a tool-free YouTube Music DJ must not load custom or built-in tool definitions",
 );
 assert.equal(youtubeToolFreeRuntime.toolDefs, undefined);
-assert.equal(youtubeMusicDjWithoutTools.toolContext, undefined, "a tool-free YouTube Music DJ must not receive tool context");
+assert.equal(
+  youtubeMusicDjWithoutTools.toolContext,
+  undefined,
+  "a tool-free YouTube Music DJ must not receive tool context",
+);
 
 const disabledSpotifyAgent = makeAgent("spotify-disabled", "spotify", { enabledTools: [] });
 let disabledSpotifyCredentialReads = 0;
@@ -766,7 +780,11 @@ try {
   globalThis.fetch = originalFetch;
 }
 assert.deepEqual(unexpectedSpotifyRequests, [], "Spotify boundary requests must stay inside the expected fake API");
-assert.deepEqual(spotifyBoundaryViolations, [], "Spotify play requests must preserve the approved single-track payload");
+assert.deepEqual(
+  spotifyBoundaryViolations,
+  [],
+  "Spotify play requests must preserve the approved single-track payload",
+);
 assert.deepEqual(
   spotifyBoundaryEvents,
   [

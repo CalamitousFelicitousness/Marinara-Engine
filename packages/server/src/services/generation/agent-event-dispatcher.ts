@@ -20,7 +20,7 @@ export function createAgentEventDispatcher({
 }: {
   resolvedAgents: ResolvedAgent[];
   sendEvent(payload: Record<string, unknown>): void;
-  getOwnership?: () => AgentResultOwnership;
+  getOwnership?: (result: AgentResult) => AgentResultOwnership;
 }) {
   const sendAgentResultEvent = (result: AgentResult) => {
     sendEvent({
@@ -33,7 +33,7 @@ export function createAgentEventDispatcher({
         success: result.success,
         error: result.error,
         durationMs: result.durationMs,
-        ...(getOwnership?.() ?? {}),
+        ...(getOwnership?.(result) ?? {}),
       },
     });
   };

@@ -536,6 +536,20 @@ function resultTypeAllowedByCapabilities(
   return true;
 }
 
+function customLorebookReadBehindEnabled(
+  phase: AgentPhase,
+  lorebookWriterEnabled: boolean,
+  resultType: CustomAgentResultType,
+  capabilities: CustomAgentCapabilityMap,
+): boolean {
+  return (
+    phase === "post_processing" &&
+    (lorebookWriterEnabled ||
+      (resultType === "lorebook_update" &&
+        (capabilities.edit_lorebooks === true || capabilities.create_lorebooks === true)))
+  );
+}
+
 function createPromptOptionId(name: string, existingIds: Set<string>): string {
   const base =
     name
@@ -1216,10 +1230,7 @@ export function AgentEditor() {
       isEditingCustomAgent && localLorebookWriteEnabled && customCapabilities.edit_lorebooks === true;
     const lorebookReadBehindEnabled =
       isEditingCustomAgent &&
-      savedPhase === "post_processing" &&
-      (lorebookWriterEnabled ||
-        (localResultType === "lorebook_update" &&
-          (customCapabilities.edit_lorebooks === true || customCapabilities.create_lorebooks === true)));
+      customLorebookReadBehindEnabled(savedPhase, lorebookWriterEnabled, localResultType, customCapabilities);
     if (lorebookWriterEnabled && !writableLorebookId) {
       setSaveError("Select a target lorebook before enabling lorebook writing for this agent.");
       return;
@@ -1467,10 +1478,7 @@ export function AgentEditor() {
       isEditingCustomAgent && localLorebookWriteEnabled && customCapabilities.edit_lorebooks === true;
     const lorebookReadBehindEnabled =
       isEditingCustomAgent &&
-      savedPhase === "post_processing" &&
-      (lorebookWriterEnabled ||
-        (localResultType === "lorebook_update" &&
-          (customCapabilities.edit_lorebooks === true || customCapabilities.create_lorebooks === true)));
+      customLorebookReadBehindEnabled(savedPhase, lorebookWriterEnabled, localResultType, customCapabilities);
     const effectiveEnabledTools = Array.from(
       new Set(
         lorebookWriterEnabled
@@ -1727,11 +1735,12 @@ export function AgentEditor() {
       ? "post_processing"
       : normalizedLocalPhase;
   const showTurnDataAccess = (isCustomAgent || isNewCustomAgent) && effectivePhase === "post_processing";
-  const canConfigureLorebookReadBehind =
-    effectivePhase === "post_processing" &&
-    ((localLorebookWriteEnabled && localCustomCapabilities.edit_lorebooks === true) ||
-      (localResultType === "lorebook_update" &&
-        (localCustomCapabilities.edit_lorebooks === true || localCustomCapabilities.create_lorebooks === true)));
+  const canConfigureLorebookReadBehind = customLorebookReadBehindEnabled(
+    effectivePhase,
+    localLorebookWriteEnabled && localCustomCapabilities.edit_lorebooks === true,
+    localResultType,
+    localCustomCapabilities,
+  );
   const visibleBuiltInTools = useMemo(
     () =>
       BUILT_IN_TOOLS.filter(

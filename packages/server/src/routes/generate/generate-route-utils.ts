@@ -58,6 +58,7 @@ export type SimpleMessage = {
   images?: string[];
   files?: Array<{ type: string; data: string; filename?: string }>;
   contextKind?: "prompt" | "history" | "injection";
+  providerMetadata?: Record<string, unknown>;
 };
 export type SpeakerPrefixMessage = SimpleMessage & {
   characterId?: string | null;
@@ -66,6 +67,24 @@ export type SpeakerPrefixMessage = SimpleMessage & {
   providerMetadata?: Record<string, unknown>;
 };
 export type StoredGenerationParameters = Partial<GenerationParameters>;
+
+export function hasProviderMessagePayload(message: {
+  content: string;
+  images?: unknown[];
+  files?: unknown[];
+  providerMetadata?: Record<string, unknown>;
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+}): boolean {
+  return (
+    !!message.content.trim() ||
+    !!message.images?.length ||
+    !!message.files?.length ||
+    Object.keys(message.providerMetadata ?? {}).length > 0 ||
+    !!message.tool_calls?.length ||
+    !!message.tool_call_id
+  );
+}
 
 /**
  * Preserve the route-layer export while sharing the same Persona policy with
@@ -956,6 +975,8 @@ export function appendGenerationTailMessages(
   messages: SimpleMessage[],
   options: {
     assistantPrefill: string;
+    assistantReasoningPrefill: string;
+    supportsAssistantReasoningPrefill: boolean;
     followUpIteration: number;
     impersonate: boolean;
     isGoogleProvider: boolean;
@@ -970,13 +991,29 @@ export function appendGenerationTailMessages(
     !options.impersonate && options.isGoogleProvider && !!options.regenerateUserMessage;
   const assistantPrefill = options.assistantPrefill.trim();
   const shouldAppendAssistantPrefill = !options.impersonate && !!assistantPrefill;
+  const assistantReasoningPrefill = options.assistantReasoningPrefill.trim();
+  const shouldAppendReasoningPrefill =
+    !options.impersonate && options.supportsAssistantReasoningPrefill && !!assistantReasoningPrefill;
+  const shouldAppendAssistantMessage =
+    !options.impersonate && (shouldAppendAssistantPrefill || shouldAppendReasoningPrefill);
 
-  if (shouldAppendAssistantPrefill) {
+  if (shouldAppendAssistantMessage) {
     // Strip the trailing edge: Anthropic's Messages API rejects a final assistant
     // message ending in whitespace (HTTP 400), which surfaces to users as a refusal.
     // A prefill ending in "\n" or a space is common. The user-facing prefill is
     // rendered separately, so only what is sent to the API is trimmed.
-    messages.push({ role: "assistant", content: options.assistantPrefill.trimEnd() });
+    messages.push({
+      role: "assistant",
+      content: shouldAppendAssistantPrefill ? options.assistantPrefill.trimEnd() : "",
+      ...(shouldAppendReasoningPrefill
+        ? {
+            providerMetadata: {
+              reasoning_content: options.assistantReasoningPrefill.trimEnd(),
+              partial: true,
+            },
+          }
+        : {}),
+    });
   }
 
   if (shouldAppendGoogleUserRegeneration) {
@@ -1222,6 +1259,9 @@ export function parseStoredGenerationParameters(raw: unknown): StoredGenerationP
     out.serviceTier = source.serviceTier as StoredGenerationParameters["serviceTier"];
   }
   if (typeof source.assistantPrefill === "string") out.assistantPrefill = source.assistantPrefill;
+  if (typeof source.assistantReasoningPrefill === "string") {
+    out.assistantReasoningPrefill = source.assistantReasoningPrefill;
+  }
   if (Array.isArray(source.customThinkingTags)) {
     out.customThinkingTags = normalizeThinkingTagPairs(source.customThinkingTags);
   }

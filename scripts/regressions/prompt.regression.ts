@@ -59,6 +59,7 @@ import {
   normalizeGameStoryboardKeyframeCount,
   parseDeferredConditionalPayload,
   resolveDeferredCharacterMacros,
+  resolveCharacterScopedMacros,
   selectConditionalPayloadBranch,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
   normalizeInventoryTrackerRows,
@@ -2709,6 +2710,36 @@ const cases: RegressionCase[] = [
         resolveMacros(`I went with {{${unknownId}}}.`, context),
         `I went with {{${unknownId}}}.`,
         "Unknown IDs must remain visible instead of resolving through a colliding variable",
+      );
+    },
+  },
+  {
+    name: "persona ID macros resolve exact card references without matching unknown IDs",
+    run() {
+      const referencedId = "P1StGXR8_Z5jdHi6B-myT";
+      const unknownId = "Q1StGXR8_Z5jdHi6B-myT";
+      const context = {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: {},
+        personaReferences: { [referencedId]: "Professor Mari" },
+      };
+
+      assert.equal(resolveMacros(`I consulted {{persona-${referencedId}}}.`, context), "I consulted Professor Mari.");
+      assert.equal(
+        resolveMacros(`I consulted {{persona-${unknownId}}}.`, context),
+        `I consulted {{persona-${unknownId}}}.`,
+        "Unknown Persona IDs must remain visible",
+      );
+      assert.equal(
+        resolveCharacterScopedMacros(
+          `{{#if {{persona-${referencedId}}} == "Professor Mari"}}known{{else}}unknown{{/if}}`,
+          { name: "Dottore" },
+          0,
+          context,
+        ),
+        "known",
       );
     },
   },

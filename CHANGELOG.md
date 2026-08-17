@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Persona cards can now be referenced by copied ID with `{{persona-21-character-card-ID}}`, resolving the card name in place and adding its authored fields and eligible attached lorebook context to the prompt (#5171).
 - Added **Assistant Reasoning Prefill** alongside the existing visible assistant prefill: compatible OpenAI-style endpoints can now continue hidden reasoning from `reasoning_content` on a partial assistant message, while visible-only prefills keep their existing request shape.
 
 - Game music is now context-bound (#5161): instead of generating a throwaway 30-second clip from a fresh mood prompt nearly every turn, each map area and each encounter tier (common, miniboss, boss, special — classified by the encounter generator) gets ONE persistent instrumental composition (default 2 minutes), generated lazily on first visit or first encounter into the game-assets music library under `music/area/<slug>/` and `music/tier/<tier>/`, where the Game Assets panel can audition, rename, or replace it like any other track. Deterministic scoring now always selects music — tier track in combat, area track elsewhere, the bundled state library as the floor — and keeps the current track while it still fits, so music changes when the context changes, never mid-scene. The scene analyzer no longer writes free-text music prompts (on-demand sound effects are unchanged).

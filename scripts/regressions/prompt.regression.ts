@@ -8745,6 +8745,19 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.deepEqual(disabled.vectorContext?.recalledMemories, ["RECALLED_MEMORY_STAYS_ATTACHED"]);
       assert.equal(disabled.authorNotes, "AUTHOR_NOTES_STAY_ATTACHED");
 
+      const legacyContext = makeRegressionAgentContext({
+        vectorContext: { recalledMemories: ["LEGACY_RECALLED_MEMORY"] } as AgentContext["vectorContext"],
+      });
+      assert.equal(
+        applyTrackerLorebookContextPolicy({
+          context: legacyContext,
+          chatMode: "roleplay",
+          isTracker: true,
+          attachLorebooksToTrackers: false,
+        }),
+        legacyContext,
+      );
+
       const enabled = applyTrackerLorebookContextPolicy({
         context,
         chatMode: "roleplay",

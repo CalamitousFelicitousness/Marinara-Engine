@@ -15,7 +15,7 @@ export function applyTrackerLorebookContextPolicy(args: {
   }
 
   const hasActivatedEntries = Boolean(args.context.activatedLorebookEntries?.length);
-  const hasSemanticEntries = Boolean(args.context.vectorContext?.semanticLorebookEntries.length);
+  const hasSemanticEntries = Boolean(args.context.vectorContext?.semanticLorebookEntries?.length);
   if (!hasActivatedEntries && !hasSemanticEntries) return args.context;
 
   return {

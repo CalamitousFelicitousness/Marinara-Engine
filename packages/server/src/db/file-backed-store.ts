@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve, sep } from "node:path";
 import { hostname, networkInterfaces } from "node:os";
@@ -92,7 +93,7 @@ type TableSnapshotManifest = {
 };
 
 type StorageWriterLeaseRecord = {
-  version: 1;
+  version: 1 | 2;
   pid: number;
   hostId: string | null;
   hostname: string;
@@ -1042,7 +1043,7 @@ function writerLeaseOwnerPath(path: string) {
 }
 
 const CURRENT_HOSTNAME = hostname();
-const CURRENT_HOST_ID = (() => {
+const CURRENT_LEGACY_HOST_ID = (() => {
   const machineId = ["/etc/machine-id", "/var/lib/dbus/machine-id"].flatMap((path) => {
     try {
       return [readFileSync(path, "utf8").trim()];
@@ -1060,6 +1061,72 @@ const CURRENT_HOST_ID = (() => {
     .update([CURRENT_HOSTNAME, machineId ?? "", ...macs].join("\n"))
     .digest("hex");
 })();
+
+function readStableMachineId() {
+  if (process.platform === "darwin") {
+    try {
+      const output = execFileSync("/usr/sbin/ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1_000,
+        maxBuffer: 64 * 1024,
+      });
+      return output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (process.platform === "win32") {
+    try {
+      const executable = process.env.SystemRoot ? join(process.env.SystemRoot, "System32", "reg.exe") : "reg.exe";
+      const output = execFileSync(
+        executable,
+        ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 1_000,
+          maxBuffer: 64 * 1024,
+        },
+      );
+      return output.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i)?.[1]?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  return (
+    ["/etc/machine-id", "/var/lib/dbus/machine-id"].flatMap((path) => {
+      try {
+        return [readFileSync(path, "utf8").trim()];
+      } catch {
+        return [];
+      }
+    })[0] ?? null
+  );
+}
+
+const CURRENT_HOST_ID = (() => {
+  const machineId = readStableMachineId();
+  if (!machineId) return null;
+  return createHash("sha256")
+    .update(`marinara-writer-lease-v2\n${process.platform}\n${machineId.toLowerCase()}`)
+    .digest("hex");
+})();
+
+function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord) {
+  if (record.version === 2) {
+    return Boolean(CURRENT_HOST_ID && record.hostId === CURRENT_HOST_ID);
+  }
+  if (CURRENT_LEGACY_HOST_ID && record.hostId === CURRENT_LEGACY_HOST_ID) return true;
+
+  // Version 1 used every visible MAC address in its fingerprint. On macOS,
+  // VPN and virtual interfaces can change that list between launches. The
+  // hostname fallback is intentionally limited to legacy macOS leases; v2
+  // leases always require the stable platform UUID above.
+  return process.platform === "darwin" && record.hostname === CURRENT_HOSTNAME;
+}
 
 class WriterLeasePendingError extends Error {}
 
@@ -1085,7 +1152,7 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
   try {
     const record = JSON.parse(raw) as StorageWriterLeaseRecord;
     if (
-      record.version !== 1 ||
+      (record.version !== 1 && record.version !== 2) ||
       !Number.isSafeInteger(record.pid) ||
       record.pid <= 0 ||
       (record.hostId !== null && typeof record.hostId !== "string") ||
@@ -1432,7 +1499,7 @@ class FileTableStore {
         mkdirSync(path, { mode: PRIVATE_DIRECTORY_MODE });
         created = true;
         const record: StorageWriterLeaseRecord = {
-          version: 1,
+          version: 2,
           pid: process.pid,
           hostId: CURRENT_HOST_ID,
           hostname: CURRENT_HOSTNAME,
@@ -1468,9 +1535,7 @@ class FileTableStore {
         }
         throw err;
       }
-      const sameHost =
-        Boolean(CURRENT_HOST_ID && existing.record.hostId === CURRENT_HOST_ID) ||
-        isTermuxPrivateHomeStorage(this.rootDir);
+      const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
       if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
         throw new StorageWriterLeaseError(
           `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +

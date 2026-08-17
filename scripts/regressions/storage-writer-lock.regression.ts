@@ -14,7 +14,7 @@ import { appSettings, lorebookEntries, lorebooks } from "../../packages/server/s
 import { getMariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
 
 type LeaseRecord = {
-  version: 1;
+  version: 1 | 2;
   pid: number;
   hostId: string | null;
   hostname: string;
@@ -61,6 +61,7 @@ try {
     const dir = useTempStorage("writer-lock");
     const db = await createFileNativeDB();
     const leaseTemplate = readJson<LeaseRecord>(ownerPath(dir));
+    assert.equal(leaseTemplate.version, 2, "new leases use the stable host-identity format");
     await assert.rejects(
       createFileNativeDB(),
       (error: unknown) =>
@@ -107,6 +108,59 @@ try {
       const afterCrash = await createFileNativeDB();
       assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "stale-owner-token");
       await afterCrash._fileStore.close();
+    }
+
+    if (process.platform !== "win32") {
+      // Legacy macOS leases fingerprinted every visible network interface.
+      // A changed VPN/virtual-interface set must not strand a dead same-host
+      // lease, while v2 leases still require the stable machine identity.
+      const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+      try {
+        Object.defineProperty(process, "platform", { ...platformDescriptor, value: "darwin" });
+        mkdirSync(leasePath(dir));
+        writeFileSync(
+          ownerPath(dir),
+          JSON.stringify({
+            ...leaseTemplate,
+            version: 1,
+            pid: process.pid,
+            hostId: "legacy-fingerprint-before-network-change",
+            token: "legacy-macos-live-token",
+          }),
+        );
+        await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
+        rmSync(leasePath(dir), { recursive: true });
+
+        mkdirSync(leasePath(dir));
+        writeFileSync(
+          ownerPath(dir),
+          JSON.stringify({
+            ...leaseTemplate,
+            version: 1,
+            pid: await exitedPid(),
+            hostId: "legacy-fingerprint-before-network-change",
+            token: "legacy-macos-stale-token",
+          }),
+        );
+        const afterNetworkChange = await createFileNativeDB();
+        assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "legacy-macos-stale-token");
+        await afterNetworkChange._fileStore.close();
+
+        mkdirSync(leasePath(dir));
+        writeFileSync(
+          ownerPath(dir),
+          JSON.stringify({
+            ...leaseTemplate,
+            pid: await exitedPid(),
+            hostId: "stable-id-from-another-machine",
+            token: "foreign-v2-token",
+          }),
+        );
+        await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
+        rmSync(leasePath(dir), { recursive: true });
+      } finally {
+        Object.defineProperty(process, "platform", platformDescriptor);
+      }
     }
 
     // Windows cannot faithfully simulate Android's POSIX permission semantics;

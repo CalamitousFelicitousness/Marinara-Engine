@@ -466,7 +466,7 @@ export type MariWorkspacePromptEvent =
         | string
         | {
             content: string;
-            kind?: "compaction_start" | "compaction_end" | "output_limit" | "retry" | "info";
+            kind?: "compaction_start" | "compaction_end" | "output_limit" | "retry" | "info" | "rate_limited";
             level?: "info" | "warning" | "error";
             reason?: string;
           };

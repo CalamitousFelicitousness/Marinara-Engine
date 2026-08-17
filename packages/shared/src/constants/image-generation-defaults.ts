@@ -359,10 +359,7 @@ function normalizeNovelAiDefaults(rawDefaults: unknown): NovelAiDefaults {
       raw.dynamicResolutionBySubjectCount,
       DEFAULT_NOVELAI_DEFAULTS.dynamicResolutionBySubjectCount,
     ),
-    styleReferenceImage: readNullableString(
-      raw.styleReferenceImage,
-      DEFAULT_NOVELAI_DEFAULTS.styleReferenceImage,
-    ),
+    styleReferenceImage: readNullableString(raw.styleReferenceImage, DEFAULT_NOVELAI_DEFAULTS.styleReferenceImage),
     styleReferenceStrength: readNumber(
       raw.styleReferenceStrength,
       DEFAULT_NOVELAI_DEFAULTS.styleReferenceStrength,

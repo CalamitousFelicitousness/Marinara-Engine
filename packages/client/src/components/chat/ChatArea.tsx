@@ -2510,11 +2510,7 @@ export const ChatArea = memo(function ChatArea() {
     [characterMap],
   );
   const speakTTSAutoplayMessage = useCallback(
-    async (
-      lastMsg: TTSAutoplayMessage,
-      targetChatId: string,
-      generationAtStart: TTSGenerationSnapshot | null,
-    ) => {
+    async (lastMsg: TTSAutoplayMessage, targetChatId: string, generationAtStart: TTSGenerationSnapshot | null) => {
       if (useChatStore.getState().activeChatId !== targetChatId) return;
 
       const cfg = ttsConfigRef.current;

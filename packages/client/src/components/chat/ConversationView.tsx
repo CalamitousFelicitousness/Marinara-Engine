@@ -436,14 +436,15 @@ export function ConversationView({
   );
   const callCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
   const activeAgentIds = chatMeta.activeAgentIds;
-  const enabledConversationCapabilities = chatMeta.enableAgents === true
-    ? installedCapabilities.filter((item) => {
-        if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
-        if (item.manifest.kind.includes("conversation-calls")) return false;
-        const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
-        return activeAgentIds.includes(item.id) || contributedAgentIds.some((id) => activeAgentIds.includes(id));
-      })
-    : [];
+  const enabledConversationCapabilities =
+    chatMeta.enableAgents === true
+      ? installedCapabilities.filter((item) => {
+          if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
+          if (item.manifest.kind.includes("conversation-calls")) return false;
+          const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
+          return activeAgentIds.includes(item.id) || contributedAgentIds.some((id) => activeAgentIds.includes(id));
+        })
+      : [];
   const conversationToolbarPackages = enabledConversationCapabilities.filter((item) =>
     item.manifest.contributions?.slots?.includes("conversation-toolbar"),
   );

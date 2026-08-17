@@ -1753,11 +1753,7 @@ const gameSetupConfigSchema = z.object({
   personaId: z.string().nullable().optional(),
   /** Installed package that provides this game's experience. Same shape the manifest allows for an id,
    *  since this is matched against one to mount the surface. */
-  gameExperienceId: z
-    .string()
-    .regex(GAME_EXPERIENCE_ID_PATTERN)
-    .max(GAME_EXPERIENCE_ID_MAX_CHARS)
-    .optional(),
+  gameExperienceId: z.string().regex(GAME_EXPERIENCE_ID_PATTERN).max(GAME_EXPERIENCE_ID_MAX_CHARS).optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
     .record(z.string().max(120), z.unknown())
@@ -10068,7 +10064,8 @@ export async function gameRoutes(app: FastifyInstance) {
     // resolution. A brand-new swipe/anchor with no row of its own falls back to
     // the latest committed save — the world continues rather than resetting.
     const row = await storage.getForGeneration(req.params.chatId, { visibleAnchor: anchor, gameType });
-    if (!row) return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
+    if (!row)
+      return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
 
     let state: unknown = null;
     try {
@@ -10101,62 +10098,63 @@ export async function gameRoutes(app: FastifyInstance) {
     "/:chatId/experience-state",
     { bodyLimit: MAX_EXPERIENCE_STATE_CHARS * 6 + 16_384 },
     async (req, reply) => {
-    const body = z
-      .object({
-        state: z.unknown(),
-        schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
-        // Experience saves are player-confirmed world state, not mid-turn
-        // provisional snapshots, so they default to committed (regen fallback
-        // eligible) unlike turn-game rows.
-        committed: z.boolean().default(true),
-      })
-      .parse(req.body ?? {});
-    const serialized = JSON.stringify(body.state);
-    if (serialized === undefined) {
-      return reply.code(422).send({ error: "state must be a JSON-serializable value" });
-    }
-    if (serialized.length > MAX_EXPERIENCE_STATE_CHARS) {
-      return reply.code(422).send({
-        error: `state must serialize to at most ${MAX_EXPERIENCE_STATE_CHARS} characters`,
-      });
-    }
+      const body = z
+        .object({
+          state: z.unknown(),
+          schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
+          // Experience saves are player-confirmed world state, not mid-turn
+          // provisional snapshots, so they default to committed (regen fallback
+          // eligible) unlike turn-game rows.
+          committed: z.boolean().default(true),
+        })
+        .parse(req.body ?? {});
+      const serialized = JSON.stringify(body.state);
+      if (serialized === undefined) {
+        return reply.code(422).send({ error: "state must be a JSON-serializable value" });
+      }
+      if (serialized.length > MAX_EXPERIENCE_STATE_CHARS) {
+        return reply.code(422).send({
+          error: `state must serialize to at most ${MAX_EXPERIENCE_STATE_CHARS} characters`,
+        });
+      }
 
-    const chats = createChatsStorage(app.db);
-    const chat = await chats.getById(req.params.chatId);
-    if (!chat) return reply.code(404).send({ error: "Chat not found" });
-    const gameType = resolveExperienceStateGameType(chat);
-    if (!gameType) {
-      return reply.code(409).send({
-        error: "This chat has no game-surface Experience, so it cannot store experience state",
-      });
-    }
+      const chats = createChatsStorage(app.db);
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.code(404).send({ error: "Chat not found" });
+      const gameType = resolveExperienceStateGameType(chat);
+      if (!gameType) {
+        return reply.code(409).send({
+          error: "This chat has no game-surface Experience, so it cannot store experience state",
+        });
+      }
 
-    // Anchor to the currently-visible message ("" live anchor before the first
-    // one exists, like a turn-game's opening deal). storage.create replaces any
-    // prior row of this gameType for the SAME anchor and inserts a fresh row
-    // otherwise, so each narration turn keeps its own snapshot — the history
-    // swipe-back rewind recovers. Checkpoint restore does NOT depend on these
-    // rows: checkpoints capture the state blob by value at create time. Older
-    // anchors beyond the newest EXPERIENCE_STATE_KEEP_ANCHORS are pruned so a
-    // long campaign cannot balloon the chat's sharded table (every save
-    // re-serializes the chat's whole game_engine_state shard).
-    return withExperienceStateWriteLock(req.params.chatId, async () => {
-      const messages = await chats.listMessages(req.params.chatId);
-      const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
-      const storage = createGameEngineStateStorage(app.db);
-      const id = await storage.create({
-        chatId: req.params.chatId,
-        messageId: anchor.messageId,
-        swipeIndex: anchor.swipeIndex,
-        gameType,
-        schemaVersion: body.schemaVersion,
-        state: serialized,
-        committed: body.committed,
+      // Anchor to the currently-visible message ("" live anchor before the first
+      // one exists, like a turn-game's opening deal). storage.create replaces any
+      // prior row of this gameType for the SAME anchor and inserts a fresh row
+      // otherwise, so each narration turn keeps its own snapshot — the history
+      // swipe-back rewind recovers. Checkpoint restore does NOT depend on these
+      // rows: checkpoints capture the state blob by value at create time. Older
+      // anchors beyond the newest EXPERIENCE_STATE_KEEP_ANCHORS are pruned so a
+      // long campaign cannot balloon the chat's sharded table (every save
+      // re-serializes the chat's whole game_engine_state shard).
+      return withExperienceStateWriteLock(req.params.chatId, async () => {
+        const messages = await chats.listMessages(req.params.chatId);
+        const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
+        const storage = createGameEngineStateStorage(app.db);
+        const id = await storage.create({
+          chatId: req.params.chatId,
+          messageId: anchor.messageId,
+          swipeIndex: anchor.swipeIndex,
+          gameType,
+          schemaVersion: body.schemaVersion,
+          state: serialized,
+          committed: body.committed,
+        });
+        await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
+        return { ok: true, id, anchor };
       });
-      await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
-      return { ok: true, id, anchor };
-    });
-  });
+    },
+  );
 
   // ── POST /game/:chatId/experience-generation (#5135) ──
   // One host-run, bounded, non-streaming structured-output call for the chat's
@@ -13753,7 +13751,11 @@ export async function gameRoutes(app: FastifyInstance) {
       } catch (err) {
         // Corrupt capture: fall through to the legacy re-lookup below rather than
         // silently leaving the game on its post-checkpoint state.
-        logger.error(err, "Unparseable checkpoint engineStateData for chat %s; using the legacy restore lookup", input.chatId);
+        logger.error(
+          err,
+          "Unparseable checkpoint engineStateData for chat %s; using the legacy restore lookup",
+          input.chatId,
+        );
         return [];
       }
     })();

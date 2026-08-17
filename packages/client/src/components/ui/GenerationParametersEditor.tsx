@@ -280,7 +280,9 @@ export function GenerationParametersFields({
         />
         <ParamInput
           label={localizeUi("ui.ui.generationparametersfields.topP")}
-          help={localizeUi("ui.ui.generationparametersfields.nucleusSamplingOnlyConsidersTokensWhoseCumulativeProbabilityReaches")}
+          help={localizeUi(
+            "ui.ui.generationparametersfields.nucleusSamplingOnlyConsidersTokensWhoseCumulativeProbabilityReaches",
+          )}
           value={value.topP}
           onChange={(nextValue) => set("topP", nextValue)}
           sendEnabled={isSendEnabled("topP")}
@@ -348,7 +350,9 @@ export function GenerationParametersFields({
       )}
       <div className="space-y-2">
         <div>
-          <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.generationparametersfields.assistantPrefill")}<HelpTooltip
+          <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+            {localizeUi("ui.ui.generationparametersfields.assistantPrefill")}
+            <HelpTooltip
               text={localizeUi("ui.ui.generationparametersfields.optionalAssistantRoleTextAppendedAfterTheFinalUser")}
               size="0.625rem"
             />
@@ -389,8 +393,12 @@ export function GenerationParametersFields({
         />
         {showOpenRouterServiceTier && (
           <div>
-            <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.generationparametersfields.openrouterServiceTier")}<HelpTooltip
-                text={localizeUi("ui.ui.generationparametersfields.optionalOpenrouterRoutingTierDefaultSendsNoServiceTier")}
+            <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+              {localizeUi("ui.ui.generationparametersfields.openrouterServiceTier")}
+              <HelpTooltip
+                text={localizeUi(
+                  "ui.ui.generationparametersfields.optionalOpenrouterRoutingTierDefaultSendsNoServiceTier",
+                )}
                 size="0.625rem"
               />
             </span>
@@ -405,7 +413,7 @@ export function GenerationParametersFields({
                     value.serviceTier === tier ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
                   )}
                 >
-                  {tier ? tier.charAt(0).toUpperCase() + tier.slice(1) :localizeUi("ui.noodle.noodlehome.default")}
+                  {tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : localizeUi("ui.noodle.noodlehome.default")}
                 </button>
               ))}
             </div>
@@ -452,7 +460,9 @@ export function GenerationParametersFields({
                   value.verbosity === level ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
                 )}
               >
-                {level ? level.charAt(0).toUpperCase() + level.slice(1) :localizeUi("ui.game.gamesurfacecomponent.none")}
+                {level
+                  ? level.charAt(0).toUpperCase() + level.slice(1)
+                  : localizeUi("ui.game.gamesurfacecomponent.none")}
               </button>
             ))}
           </div>
@@ -495,7 +505,9 @@ function ThinkingTagsInput({
 
   return (
     <div>
-      <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.thinkingtagsinput.thinkingTags")}<HelpTooltip
+      <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+        {localizeUi("ui.ui.thinkingtagsinput.thinkingTags")}
+        <HelpTooltip
           text={localizeUi("ui.ui.thinkingtagsinput.thinkingMarksTheHiddenReasoningSlotAndWillBe")}
           size="0.625rem"
         />
@@ -519,12 +531,19 @@ function ThinkingTagsInput({
         rows={2}
         spellCheck={false}
         className={PARAM_TEXTAREA_CLASS}
-        placeholder={focused ? "" :localizeUi("ui.ui.thinkingtagsinput.thinkingValue1Thinking", { value1: THINKING_TAG_CONTENT_PLACEHOLDER })}
+        placeholder={
+          focused
+            ? ""
+            : localizeUi("ui.ui.thinkingtagsinput.thinkingValue1Thinking", { value1: THINKING_TAG_CONTENT_PLACEHOLDER })
+        }
       />
       {error ? (
         <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>
       ) : (
-        <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">{localizeUi("ui.ui.thinkingtagsinput.oneWrapperPerLine")} {THINKING_TAG_CONTENT_PLACEHOLDER} {localizeUi("ui.ui.thinkingtagsinput.willBeReplacedByAnyContentBetweenTheSpecified")}</p>
+        <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.ui.thinkingtagsinput.oneWrapperPerLine")} {THINKING_TAG_CONTENT_PLACEHOLDER}{" "}
+          {localizeUi("ui.ui.thinkingtagsinput.willBeReplacedByAnyContentBetweenTheSpecified")}
+        </p>
       )}
     </div>
   );
@@ -597,7 +616,9 @@ function CustomParametersInput({
 
   return (
     <div>
-      <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">{localizeUi("ui.ui.customparametersinput.customParameters")}<HelpTooltip
+      <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+        {localizeUi("ui.ui.customparametersinput.customParameters")}
+        <HelpTooltip
           text={localizeUi("ui.ui.customparametersinput.optionalRawJsonObjectMergedIntoTheProviderRequest")}
           size="0.625rem"
         />
@@ -622,12 +643,14 @@ function CustomParametersInput({
         spellCheck={false}
         aria-invalid={error ? true : undefined}
         className={PARAM_TEXTAREA_CLASS}
-        placeholder={focused ? "" :localizeUi("ui.ui.customparametersinput.reasoningEffortHigh")}
+        placeholder={focused ? "" : localizeUi("ui.ui.customparametersinput.reasoningEffortHigh")}
       />
       {error ? (
         <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>
       ) : (
-        <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">{localizeUi("ui.ui.customparametersinput.acceptsStringsNumbersBooleansNullArraysAndNestedObjects")}</p>
+        <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/70">
+          {localizeUi("ui.ui.customparametersinput.acceptsStringsNumbersBooleansNullArraysAndNestedObjects")}
+        </p>
       )}
     </div>
   );
@@ -735,7 +758,11 @@ function ParameterHeader({
         onChange={onSendChange}
         labelPosition="start"
         className="!gap-0 !rounded-md !p-0 hover:!bg-transparent"
-        title={sendEnabled ?localizeUi("ui.ui.parameterheader.thisParameterIsSentToTheModel") :localizeUi("ui.ui.parameterheader.thisParameterIsNotSentToTheModel")}
+        title={
+          sendEnabled
+            ? localizeUi("ui.ui.parameterheader.thisParameterIsSentToTheModel")
+            : localizeUi("ui.ui.parameterheader.thisParameterIsNotSentToTheModel")
+        }
       />
     </div>
   );

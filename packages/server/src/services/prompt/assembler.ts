@@ -482,8 +482,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
     if (!discoveredReferences) return;
 
-    const resolveReferenceMacros = (value: string) =>
-      resolveMacrosForPreview(value, macroCtx, deferNameMacroOptions);
+    const resolveReferenceMacros = (value: string) => resolveMacrosForPreview(value, macroCtx, deferNameMacroOptions);
     result.worldInfoBefore = resolveReferenceMacros(result.worldInfoBefore);
     result.worldInfoAfter = resolveReferenceMacros(result.worldInfoAfter);
     result.depthEntries = result.depthEntries.map((entry) => ({

@@ -79,9 +79,7 @@ export function applyGoogleFunctionCallingMode(
   toolChoice: ChatOptions["toolChoice"],
 ): void {
   const toolConfig = isRecord(body.toolConfig) ? body.toolConfig : {};
-  const functionCallingConfig = isRecord(toolConfig.functionCallingConfig)
-    ? toolConfig.functionCallingConfig
-    : {};
+  const functionCallingConfig = isRecord(toolConfig.functionCallingConfig) ? toolConfig.functionCallingConfig : {};
   body.toolConfig = {
     ...toolConfig,
     functionCallingConfig: {

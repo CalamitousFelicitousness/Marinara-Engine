@@ -1,10 +1,7 @@
 import type { ChatCompletionResult, ChatMessage, ChatOptions, LLMUsage } from "./base-provider.js";
 import { BaseLLMProvider } from "./base-provider.js";
 import { createLLMProvider } from "./provider-registry.js";
-import {
-  mergeCustomParameters,
-  parseStoredGenerationParameters,
-} from "../../routes/generate/generate-route-utils.js";
+import { mergeCustomParameters, parseStoredGenerationParameters } from "../../routes/generate/generate-route-utils.js";
 import { logger } from "../../lib/logger.js";
 import { notifyGenerationFallback, type GenerationFallbackNotifier } from "../generation/fallback-notification.js";
 import {
@@ -33,9 +30,7 @@ export type FallbackConnection = {
   treatAsLocalEndpoint?: string | boolean | null;
 };
 
-export type GenerationProviderOrigin =
-  | { kind: "primary" }
-  | { kind: "fallback"; provider: string; model: string };
+export type GenerationProviderOrigin = { kind: "primary" } | { kind: "fallback"; provider: string; model: string };
 
 type ConnectionFallbackProviderArgs = {
   primary: BaseLLMProvider;
@@ -272,7 +267,8 @@ export class ConnectionFallbackProvider extends BaseLLMProvider {
       }
       await this.logFallback(new Error("Primary provider returned an empty completion"));
     } catch (error) {
-      if (emittedUsableOutput || isAbortFailure(error, options.signal) || isConnectionAdmissionFailure(error)) throw error;
+      if (emittedUsableOutput || isAbortFailure(error, options.signal) || isConnectionAdmissionFailure(error))
+        throw error;
       await this.logFallback(error);
     }
     options.signal?.throwIfAborted();

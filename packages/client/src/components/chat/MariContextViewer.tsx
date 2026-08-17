@@ -75,7 +75,9 @@ export function MariContextViewer({ open, onClose, workspaceChatId }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-[var(--foreground)]">{item.label}</p>
                     <p className="text-xs text-[var(--muted-foreground)]">
-                      {localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryTokenEstimate", { count: item.tokenEstimate })}
+                      {localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryTokenEstimate", {
+                        count: item.tokenEstimate,
+                      })}
                     </p>
                   </div>
                   <button

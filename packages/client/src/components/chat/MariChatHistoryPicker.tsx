@@ -110,7 +110,11 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
   }, [characters]);
 
   const chatCharacterNames = useCallback(
-    (chat: Chat): string => chat.characterIds.map((id) => characterNameById.get(id) ?? "").filter(Boolean).join(", "),
+    (chat: Chat): string =>
+      chat.characterIds
+        .map((id) => characterNameById.get(id) ?? "")
+        .filter(Boolean)
+        .join(", "),
     [characterNameById],
   );
 
@@ -125,23 +129,26 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
       .sort((a, b) => String(recency(b)).localeCompare(String(recency(a))));
   }, [chats, search, chatCharacterNames]);
 
-  const selectChat = useCallback(async (chat: Chat) => {
-    setSelected(chat);
-    setMessages(null);
-    setLoadingMessages(true);
-    const token = (requestTokenRef.current += 1);
-    try {
-      const rows = await api.get<Message[]>(`/chats/${chat.id}/messages`);
-      if (requestTokenRef.current !== token) return; // superseded by a newer selection, Back, or close
-      setMessages(rows);
-    } catch {
-      if (requestTokenRef.current !== token) return;
-      toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLoadFailed"));
-      setMessages([]);
-    } finally {
-      if (requestTokenRef.current === token) setLoadingMessages(false);
-    }
-  }, [localizeUi]);
+  const selectChat = useCallback(
+    async (chat: Chat) => {
+      setSelected(chat);
+      setMessages(null);
+      setLoadingMessages(true);
+      const token = (requestTokenRef.current += 1);
+      try {
+        const rows = await api.get<Message[]>(`/chats/${chat.id}/messages`);
+        if (requestTokenRef.current !== token) return; // superseded by a newer selection, Back, or close
+        setMessages(rows);
+      } catch {
+        if (requestTokenRef.current !== token) return;
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryLoadFailed"));
+        setMessages([]);
+      } finally {
+        if (requestTokenRef.current === token) setLoadingMessages(false);
+      }
+    },
+    [localizeUi],
+  );
 
   const visible = useMemo(() => (messages ? visibleMessages(messages) : []), [messages]);
   const total = visible.length;
@@ -164,7 +171,7 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
         message.role === "user"
           ? "User"
           : message.characterId
-            ? characterNameById.get(message.characterId) ?? "Character"
+            ? (characterNameById.get(message.characterId) ?? "Character")
             : "Narrator",
       content: typeof message.content === "string" ? message.content : String(message.content ?? ""),
       at: message.createdAt,
@@ -204,7 +211,18 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
     } catch {
       toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryAttachFailed"));
     }
-  }, [selected, selectedRows.length, overCap, addContext, workspaceChatId, modeLabel, contentJson, tokenEstimate, localizeUi, onClose]);
+  }, [
+    selected,
+    selectedRows.length,
+    overCap,
+    addContext,
+    workspaceChatId,
+    modeLabel,
+    contentJson,
+    tokenEstimate,
+    localizeUi,
+    onClose,
+  ]);
 
   if (!open) return null;
 
@@ -365,10 +383,14 @@ export function MariChatHistoryPicker({ open, onClose, workspaceChatId }: Props)
                 </div>
                 <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
                   <span>
-                    {localizeUi("ui.chat.homeprofessormarichat.attachChatHistorySelectedCount", { count: selectedRows.length })}
+                    {localizeUi("ui.chat.homeprofessormarichat.attachChatHistorySelectedCount", {
+                      count: selectedRows.length,
+                    })}
                   </span>
                   <span className={cn(overCap && "font-semibold text-[var(--destructive)]")}>
-                    {localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryTokenEstimate", { count: tokenEstimate })}
+                    {localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryTokenEstimate", {
+                      count: tokenEstimate,
+                    })}
                   </span>
                 </div>
                 {overCap && (

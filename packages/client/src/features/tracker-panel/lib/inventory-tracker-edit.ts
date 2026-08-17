@@ -41,8 +41,7 @@ export function buildInventoryTrackerEditPatch(
 ): Partial<InventoryTrackerPatch> {
   const normalized = normalizeInventoryTrackerRows(rows);
 
-  const currencies =
-    group === "currencies" ? normalized : (currentPlayerStats?.inventoryTrackerCurrencies ?? []);
+  const currencies = group === "currencies" ? normalized : (currentPlayerStats?.inventoryTrackerCurrencies ?? []);
   const equipped = group === "equipped" ? normalized : (currentPlayerStats?.inventoryTrackerEquipped ?? []);
   const carried = group === "inventory" ? normalized : (currentPlayerStats?.inventoryTrackerInventory ?? []);
 

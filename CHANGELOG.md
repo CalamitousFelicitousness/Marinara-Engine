@@ -39,6 +39,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Character avatar uploads now reject path-like character IDs before constructing their storage filename, keeping uploaded files confined to the avatar directory even when a malformed route parameter is supplied (#5181).
 - The Inventory Tracker section now appears for installs whose synced UI settings were saved before the section existed. The cross-device settings blob overwrote the locally migrated panel order on every load, and `trackerPanelSectionOrder` was the one tracker preference that blob never re-normalized on the way in, so the section stayed invisible until the panel was reordered by hand. Ingest now normalizes both the section order and the collapsed-section map and writes the corrected value back, so the stale order does not survive to re-arrive on another device. Any tracker section added in future would have hit the same gap.
 - Inventory Tracker entries edited by hand now get the same treatment as agent output. Tracker Panel and HUD edits wrote rows straight to state, skipping name trimming, duplicate merging, the quantity clamp, and the rule that keeps equipped gear out of carried inventory — so a value the agent could never emit could still be typed in. Equipping a carried item now moves it in a single write instead of leaving it in both lists, and the same rules are enforced on the server, which previously accepted any `playerStats` payload unchecked.
 - The Agent Suite JSON editor now reports malformed Inventory Tracker rows instead of accepting them. It only checked that the three keys were arrays, so a row without a name was stored as-is; validating first also avoids silently normalizing a hand-written group down to an empty list.
@@ -91,6 +92,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Project validation now checks the maintained TypeScript and TSX source tree with Prettier before linting and building, so formatting drift is rejected by the same `pnpm check` command used in pull-request CI (#5181).
 - The Inventory Tracker panel now flows its entries as wrapping pills across the full panel width, with the quantity shown as `×N` only when it is above one. The previous layout split the panel into three fixed columns and reserved a quantity cell on every row, so at the widest setting each column was around 95 px and item names truncated — while a group holding two rows sat mostly empty. The panel also establishes its own container context, so it now lays out identically in the docked sidebar and the HUD popover instead of differing between them (#5125).
 
 ## [2.4.3]

@@ -122,9 +122,7 @@ export function HomeCreditsModal({ open, onClose }: { open: boolean; onClose: ()
             <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
               {t("home.credits.contributors")}
             </h3>
-            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              {t("home.credits.contributorsDescription")}
-            </p>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">{t("home.credits.contributorsDescription")}</p>
           </div>
           <div className="grid max-h-[18rem] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
             {CONTRIBUTORS.map((contributor) => (

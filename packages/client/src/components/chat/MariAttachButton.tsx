@@ -109,7 +109,9 @@ export function MariAttachButton({
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
           >
             <Layers size="0.875rem" className="shrink-0 text-[var(--muted-foreground)]" />
-            <span className="min-w-0 flex-1 truncate">{localizeUi("ui.chat.homeprofessormarichat.attachMenuViewContext")}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {localizeUi("ui.chat.homeprofessormarichat.attachMenuViewContext")}
+            </span>
             {attachedContextCount > 0 && (
               <span className="shrink-0 rounded-full bg-[var(--primary)]/15 px-1.5 py-0.5 text-[0.625rem] font-semibold text-[var(--primary)]">
                 {attachedContextCount}

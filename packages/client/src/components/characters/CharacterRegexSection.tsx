@@ -101,7 +101,9 @@ function serializeRegexScript(script: RegexScriptRow) {
     placement: parseStringArray(script.placement),
     flags: script.flags,
     promptOnly: parseBooleanValue(script.promptOnly, false),
-    applyMode: isRegexApplyMode(script.applyMode) ? script.applyMode : readRegexApplyMode(script as unknown as Record<string, unknown>),
+    applyMode: isRegexApplyMode(script.applyMode)
+      ? script.applyMode
+      : readRegexApplyMode(script as unknown as Record<string, unknown>),
     targetPromptPresetIds: parseStringArray(script.targetPromptPresetIds),
     order: script.order,
     minDepth: script.minDepth,
@@ -208,9 +210,11 @@ export function CharacterRegexSection({
     async (id: string, options?: { defaultCharacterIds?: string[] }) => {
       if (editorDirty) {
         const proceed = await showConfirmDialog({
-          title:localizeUi("ui.characters.characterregexsection.unsavedChanges"),
-          message:localizeUi("ui.characters.characterregexsection.thisCharacterHasUnsavedChangesOpeningTheRegexEditor"),
-          confirmLabel:localizeUi("ui.characters.characterregexsection.discardContinue"),
+          title: localizeUi("ui.characters.characterregexsection.unsavedChanges"),
+          message: localizeUi(
+            "ui.characters.characterregexsection.thisCharacterHasUnsavedChangesOpeningTheRegexEditor",
+          ),
+          confirmLabel: localizeUi("ui.characters.characterregexsection.discardContinue"),
           tone: "destructive",
         });
         if (!proceed) return;
@@ -247,7 +251,12 @@ export function CharacterRegexSection({
       },
       `${safeName}-regexes.json`,
     );
-    toast.success(localizeUi("ui.characters.characterregexsection.exportedValue1RegexValue2", { value1: scopedScripts.length, value2: scopedScripts.length === 1 ? "" :localizeUi("ui.lorebooks.lorebookeditor.es") }));
+    toast.success(
+      localizeUi("ui.characters.characterregexsection.exportedValue1RegexValue2", {
+        value1: scopedScripts.length,
+        value2: scopedScripts.length === 1 ? "" : localizeUi("ui.lorebooks.lorebookeditor.es"),
+      }),
+    );
   }, [scopedScripts, characterName, localizeUi]);
 
   const handleImport = useCallback(
@@ -325,9 +334,9 @@ export function CharacterRegexSection({
     async (script: RegexScriptRow) => {
       if (
         await showConfirmDialog({
-          title:localizeUi("ui.characters.characterregexsection.deleteRegex_80a90f1"),
-          message:localizeUi("ui.characters.characterregexsection.deleteValue1", { value1: script.name }),
-          confirmLabel:localizeUi("lorebook.editor.batch.delete"),
+          title: localizeUi("ui.characters.characterregexsection.deleteRegex_80a90f1"),
+          message: localizeUi("ui.characters.characterregexsection.deleteValue1", { value1: script.name }),
+          confirmLabel: localizeUi("lorebook.editor.batch.delete"),
           tone: "destructive",
         })
       ) {
@@ -341,7 +350,9 @@ export function CharacterRegexSection({
     <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold">
-          <Regex size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />{localizeUi("ui.characters.characterregexsection.regexScripts")}</span>
+          <Regex size="0.875rem" className="mari-chrome-accent-icon mari-accent-animated" />
+          {localizeUi("ui.characters.characterregexsection.regexScripts")}
+        </span>
         {characterId && (
           <div className="flex items-center gap-1">
             <button
@@ -372,17 +383,23 @@ export function CharacterRegexSection({
         )}
       </div>
 
-      <p className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.characters.characterregexsection.findReplacePatternsScopedToThisCharacterTheyStay")}</p>
+      <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+        {localizeUi("ui.characters.characterregexsection.findReplacePatternsScopedToThisCharacterTheyStay")}
+      </p>
 
       {!characterId ? (
-        <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">{localizeUi("ui.characters.characterregexsection.saveThisCharacterFirstToAddScopedRegexScripts")}</p>
+        <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.characters.characterregexsection.saveThisCharacterFirstToAddScopedRegexScripts")}
+        </p>
       ) : (
         <>
           {importError && <div className="text-xs text-red-500">{importError}</div>}
           {importWarning && <div className="text-xs text-amber-500">{importWarning}</div>}
           {importSuccess && <div className="text-xs text-green-500">{importSuccess}</div>}
           {scopedScripts.length === 0 ? (
-            <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">{localizeUi("ui.characters.characterregexsection.noRegexScriptsForThisCharacterYet")}</p>
+            <p className="py-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+              {localizeUi("ui.characters.characterregexsection.noRegexScriptsForThisCharacterYet")}
+            </p>
           ) : (
             <div className="space-y-1">
               {scopedScripts.map((script) => {
@@ -409,7 +426,9 @@ export function CharacterRegexSection({
                             key={placement}
                             className="rounded bg-[var(--secondary)] px-1 py-0.5 text-[0.5rem] text-[var(--muted-foreground)]"
                           >
-                            {placement === "ai_output" ?localizeUi("ui.characters.characterregexsection.ai") :localizeUi("ui.characters.advancedtab.user")}
+                            {placement === "ai_output"
+                              ? localizeUi("ui.characters.characterregexsection.ai")
+                              : localizeUi("ui.characters.advancedtab.user")}
                           </span>
                         ))}
                         <span className="max-w-[6.25rem] truncate font-mono text-[0.5625rem] text-[var(--muted-foreground)]">
@@ -419,7 +438,11 @@ export function CharacterRegexSection({
                     </button>
                     <SettingsSwitch
                       ariaLabel={enabled ? "Disable regex" : "Enable regex"}
-                      title={enabled ?localizeUi("ui.characters.characterregexsection.disableRegex") :localizeUi("ui.characters.characterregexsection.enableRegex")}
+                      title={
+                        enabled
+                          ? localizeUi("ui.characters.characterregexsection.disableRegex")
+                          : localizeUi("ui.characters.characterregexsection.enableRegex")
+                      }
                       checked={enabled}
                       onChange={(checked) => updateRegex.mutate({ id: script.id, enabled: checked })}
                       className="mt-0.5 shrink-0 p-0 hover:bg-transparent"

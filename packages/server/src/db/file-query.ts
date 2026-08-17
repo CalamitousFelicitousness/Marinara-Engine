@@ -13,7 +13,12 @@ export type FileCondition =
     }
   | { readonly kind: "file-membership"; readonly operator: "in" | "not-in"; value: QueryValue; values: QueryValue[] }
   | { readonly kind: "file-null-check"; readonly operator: "is-null" | "is-not-null"; value: QueryValue }
-  | { readonly kind: "file-pattern"; readonly value: QueryValue; readonly pattern: QueryValue; readonly negate?: boolean }
+  | {
+      readonly kind: "file-pattern";
+      readonly value: QueryValue;
+      readonly pattern: QueryValue;
+      readonly negate?: boolean;
+    }
   | { readonly kind: "file-string-nonblank"; readonly value: QueryValue }
   | { readonly kind: "file-json-flags-not-true"; readonly value: QueryValue; readonly flags: string[] }
   | { readonly kind: "file-logical"; readonly operator: "and" | "or"; conditions: FileCondition[] };
@@ -95,9 +100,7 @@ export function isFileCondition(value: unknown): value is FileCondition {
     "file-string-nonblank",
     "file-json-flags-not-true",
     "file-logical",
-  ].includes(
-    String((value as { kind?: unknown }).kind),
-  );
+  ].includes(String((value as { kind?: unknown }).kind));
 }
 
 export function isFileOrdering(value: unknown): value is FileOrdering {

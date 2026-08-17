@@ -99,9 +99,7 @@ export async function pruneAutoCheckpoints(db: DB, chatId: string, protectId?: s
     if (bucket.length <= MAX_AUTO_CHECKPOINTS_PER_TRIGGER) continue;
     // Newest first. createdAt is an ISO-8601 string (lexical order == chronological); id is a
     // deterministic tiebreak for the rare same-millisecond collision.
-    bucket.sort((a, b) =>
-      a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
-    );
+    bucket.sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
     // Retain exactly MAX rows, but always keep protectId — the row create() just inserted. A
     // same-millisecond createdAt tie can sort that fresh row out of the newest MAX by the id
     // tiebreak even though it is by definition the newest, so keep it plus the newest others up

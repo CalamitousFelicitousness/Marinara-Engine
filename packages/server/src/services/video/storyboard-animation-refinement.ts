@@ -1,7 +1,4 @@
-import {
-  normalizeAgentPromptTemplateOptions,
-  type StoryboardAnimationSuitability,
-} from "@marinara-engine/shared";
+import { normalizeAgentPromptTemplateOptions, type StoryboardAnimationSuitability } from "@marinara-engine/shared";
 import type { ChatMessage } from "../llm/base-provider.js";
 import { renderTemplate } from "../prompt-overrides/index.js";
 import { compactVideoPromptText } from "./prompt-context.js";

@@ -294,10 +294,7 @@ interface ChatState {
   setShouldOpenSettings: (v: boolean) => void;
   setShouldOpenWizard: (v: boolean) => void;
   setShouldOpenWizardInShortcutMode: (v: boolean) => void;
-  setPendingNewChatMode: (
-    mode: ChatMode | null,
-    origin?: "home" | "sidebar" | null,
-  ) => void;
+  setPendingNewChatMode: (mode: ChatMode | null, origin?: "home" | "sidebar" | null) => void;
   setInputDraft: (chatId: string, text: string) => void;
   clearInputDraft: (chatId: string) => void;
   setPendingSpatialTransition: (chatId: string, draft: PendingSpatialTransitionDraft) => void;

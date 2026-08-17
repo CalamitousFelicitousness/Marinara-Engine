@@ -434,6 +434,10 @@ export function postProcessSceneResult(raw: SceneAnalysis, ctx: PostProcessConte
 
 function sanitizeGeneratedAudioPrompt(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const prompt = value.replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+  const prompt = value
+    .replace(/[\u0000-\u001f<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
   return prompt && prompt.toLowerCase() !== "null" ? prompt : null;
 }

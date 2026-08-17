@@ -711,11 +711,7 @@ function ActiveContextLinksButton({
                 role="menu"
                 data-chat-floating-panel
                 data-component="RoleplayActiveContextPanel"
-                className={cn(
-                  NEUTRAL_PANEL_SHELL,
-                  NEUTRAL_PANEL_SCROLL_AREA,
-                  "fixed z-[9999] overflow-y-auto p-2",
-                )}
+                className={cn(NEUTRAL_PANEL_SHELL, NEUTRAL_PANEL_SCROLL_AREA, "fixed z-[9999] overflow-y-auto p-2")}
                 style={{
                   top: mobileFrame.top,
                   left: mobileFrame.left,
@@ -1052,11 +1048,7 @@ function AuthorNotesButton({
             createPortal(
               <div
                 ref={panelRef}
-                className={cn(
-                  NEUTRAL_PANEL_SHELL,
-                  NEUTRAL_PANEL_SCROLL_AREA,
-                  "fixed z-[9999] overflow-y-auto p-3",
-                )}
+                className={cn(NEUTRAL_PANEL_SHELL, NEUTRAL_PANEL_SCROLL_AREA, "fixed z-[9999] overflow-y-auto p-3")}
                 style={{
                   top: mobileFrame.top,
                   left: mobileFrame.left,
@@ -1360,13 +1352,13 @@ export function ChatRoleplaySurface({
   const activeAgentIds = chatMeta.activeAgentIds;
   const enabledConversationCapabilities =
     chatMeta.enableAgents === true
-    ? installedCapabilities.filter((item) => {
-        if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
-        if (item.manifest.kind.includes("conversation-calls")) return false;
-        const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
-        return activeAgentIds.includes(item.id) || contributedAgentIds.some((id) => activeAgentIds.includes(id));
-      })
-    : [];
+      ? installedCapabilities.filter((item) => {
+          if (item.status !== "active" || !item.manifest.entrypoints.client) return false;
+          if (item.manifest.kind.includes("conversation-calls")) return false;
+          const contributedAgentIds = item.manifest.contributions?.agentDetail?.agentIds ?? [];
+          return activeAgentIds.includes(item.id) || contributedAgentIds.some((id) => activeAgentIds.includes(id));
+        })
+      : [];
   const conversationToolbarPackages = enabledConversationCapabilities.filter((item) =>
     item.manifest.contributions?.slots?.includes("conversation-toolbar"),
   );

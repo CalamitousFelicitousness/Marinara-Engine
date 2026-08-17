@@ -388,7 +388,10 @@ export const api = {
         try {
           const json = JSON.parse(text) as Record<string, unknown>;
           payload = json;
-          detail = (typeof json.error === "string" && json.error) || (typeof json.message === "string" && json.message) || text.slice(0, 200);
+          detail =
+            (typeof json.error === "string" && json.error) ||
+            (typeof json.message === "string" && json.message) ||
+            text.slice(0, 200);
         } catch {
           detail = text.slice(0, 200) || detail;
         }

@@ -78,10 +78,7 @@ export function ChatGalleryDrawer({
 }: ChatGalleryDrawerProps) {
   const { t: localizeUi } = useUiTranslation();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const chatMetadata = useMemo(
-    () => parseChatMetadata(chat.metadata) as GalleryChatMetadata,
-    [chat.metadata],
-  );
+  const chatMetadata = useMemo(() => parseChatMetadata(chat.metadata) as GalleryChatMetadata, [chat.metadata]);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(open);
   const { data: capabilityAgents = [] } = useCapabilityAgentRegistry(open);
   const { data: agentConfigs = [] } = useAgentConfigs(open);
@@ -98,8 +95,7 @@ export function ChatGalleryDrawer({
       ? conversationSelfiesEnabled
       : chat.mode === "game"
         ? chatMetadata.enableSpriteGeneration === true
-        : chatMetadata.enableAgents === true &&
-          chatMetadata.activeAgentIds?.includes("illustrator");
+        : chatMetadata.enableAgents === true && chatMetadata.activeAgentIds?.includes("illustrator");
   const illustratorAvailable = illustratorInstalled && illustratorEnabledForChat;
   const customImageAgents = useMemo(() => {
     if (chatMetadata.enableAgents !== true || !onIllustrateWithAgent) return [];
@@ -166,8 +162,15 @@ export function ChatGalleryDrawer({
         {/* Header */}
         <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
           <h3 className={NEUTRAL_PANEL_TITLE}>
-            <Image size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />{localizeUi("chat.toolbar.gallery")}</h3>
-          <button type="button" onClick={onClose} aria-label={localizeUi("ui.chat.chatgallerydrawer.closeGallery")} className={NEUTRAL_PANEL_CLOSE_BUTTON}>
+            <Image size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
+            {localizeUi("chat.toolbar.gallery")}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={localizeUi("ui.chat.chatgallerydrawer.closeGallery")}
+            className={NEUTRAL_PANEL_CLOSE_BUTTON}
+          >
             <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
           </button>
         </div>

@@ -72,8 +72,7 @@ function updateStepTimeout(baseMs: number): number {
 }
 const MANUAL_PNPM_COMMAND = `corepack pnpm@${DEFAULT_PNPM_DESCRIPTOR}`;
 const DOCKER_IMAGE = "ghcr.io/pasta-devs/marinara-engine";
-const MANUAL_GIT_UPDATE_COMMAND =
-  `git fetch origin +refs/heads/main:refs/remotes/origin/main && (git merge --ff-only origin/main || git checkout --detach origin/main) && ${MANUAL_PNPM_COMMAND} --config.trustPolicy=off --config.confirmModulesPurge=false install --force --frozen-lockfile && ${MANUAL_PNPM_COMMAND} --filter @marinara-engine/shared build && ${MANUAL_PNPM_COMMAND} --filter @marinara-engine/server --filter @marinara-engine/client --parallel run build && ${MANUAL_PNPM_COMMAND} start`;
+const MANUAL_GIT_UPDATE_COMMAND = `git fetch origin +refs/heads/main:refs/remotes/origin/main && (git merge --ff-only origin/main || git checkout --detach origin/main) && ${MANUAL_PNPM_COMMAND} --config.trustPolicy=off --config.confirmModulesPurge=false install --force --frozen-lockfile && ${MANUAL_PNPM_COMMAND} --filter @marinara-engine/shared build && ${MANUAL_PNPM_COMMAND} --filter @marinara-engine/server --filter @marinara-engine/client --parallel run build && ${MANUAL_PNPM_COMMAND} start`;
 const DOCKER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
 const ANDROID_APK_NOTICE =
   "> [!IMPORTANT]\n" +
@@ -354,7 +353,11 @@ async function checkTargetStorageFormat(
   return { compatible: targetFormat >= onDiskFormat, verified: true, onDiskFormat, targetFormat };
 }
 
-async function checkoutOrCreateUpdateBranch(root: string, channel: UpdateChannelInfo, targetHead: string): Promise<void> {
+async function checkoutOrCreateUpdateBranch(
+  root: string,
+  channel: UpdateChannelInfo,
+  targetHead: string,
+): Promise<void> {
   const branchRef = `refs/heads/${channel.branch}`;
   const branchExists = await gitCommandSucceeds(root, ["show-ref", "--verify", "--quiet", branchRef]);
   if (branchExists) {
@@ -401,7 +404,9 @@ async function createUpdateStash(root: string): Promise<UpdateStash | null> {
     return { oid, marker };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Git created update stash marker ${marker}, but its immutable recovery commit could not be found: ${message}`);
+    throw new Error(
+      `Git created update stash marker ${marker}, but its immutable recovery commit could not be found: ${message}`,
+    );
   }
 }
 

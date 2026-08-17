@@ -75,7 +75,8 @@ async function resolveCharacterName(
     if (row?.data) {
       try {
         const data = JSON.parse(row.data) as Record<string, unknown>;
-        const name = readTrimmedString(data.name) ?? readTrimmedString(data.character_name) ?? readTrimmedString(data.displayName);
+        const name =
+          readTrimmedString(data.name) ?? readTrimmedString(data.character_name) ?? readTrimmedString(data.displayName);
         if (name) return name;
       } catch {
         // fall through to comment/fallback below
@@ -208,18 +209,14 @@ async function resolveTurnGameAnchor(db: DB, chatId: string): Promise<GameEngine
  * snapshot and skip the message scan (used where rewind is irrelevant, e.g. the
  * "is a game active" check and the live bot loop).
  */
-async function loadGame(
-  db: DB,
-  chatId: string,
-  anchor?: GameEngineVisibleAnchor | null,
-): Promise<LoadedGame | null> {
+async function loadGame(db: DB, chatId: string, anchor?: GameEngineVisibleAnchor | null): Promise<LoadedGame | null> {
   const storage = createGameEngineStateStorage(db);
   // Fast path: a chat with no game pays nothing extra (no message scan).
   const latest = await storage.getLatest(chatId, TURN_GAME_SCOPE);
   if (!latest) return null;
   const resolved = anchor === undefined ? await resolveTurnGameAnchor(db, chatId) : anchor;
   const row = resolved
-    ? (await storage.getForGeneration(chatId, { visibleAnchor: resolved, gameType: TURN_GAME_SCOPE })) ?? latest
+    ? ((await storage.getForGeneration(chatId, { visibleAnchor: resolved, gameType: TURN_GAME_SCOPE })) ?? latest)
     : latest;
   const engine = getTurnGameEngine(row.gameType);
   if (!engine) {

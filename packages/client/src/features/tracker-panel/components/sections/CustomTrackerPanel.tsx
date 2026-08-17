@@ -50,7 +50,8 @@ function CustomFieldList({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { fieldLocks, lockMode, onToggleFieldLock, onUpdateFieldLocks } = useTrackerLockContext();
-  if (fields.length === 0 && !onUpdate) return <EmptySection>{localizeUi("ui.trackerPanel.customfieldlist.noCustomStatsTracked")}</EmptySection>;
+  if (fields.length === 0 && !onUpdate)
+    return <EmptySection>{localizeUi("ui.trackerPanel.customfieldlist.noCustomStatsTracked")}</EmptySection>;
   const readableValues = trackerPanelSizeProfile !== "compact";
   const useFieldColumns = shouldUseCustomFieldColumns(fields, trackerPanelSizeProfile);
   const updateField = (index: number, updated: CustomTrackerField) => {
@@ -107,8 +108,7 @@ function CustomFieldList({
                 key={`${field.name}-${index}`}
                 className={cn(
                   "group/field relative grid min-h-7 grid-cols-[minmax(5.5rem,0.42fr)_minmax(0,1fr)] items-center gap-2 border-b border-[var(--border)]/28 px-1 py-1 text-[0.6875rem] leading-[0.875rem] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]",
-                  trackerPanelSizeProfile !== "compact" &&
-                    "grid-cols-[5.5rem_minmax(0,1fr)]",
+                  trackerPanelSizeProfile !== "compact" && "grid-cols-[5.5rem_minmax(0,1fr)]",
                   allowWrap && "leading-[0.95rem]",
                   useFieldColumns &&
                     index % 2 === 0 &&
@@ -185,7 +185,9 @@ function CustomFieldList({
                       onClick={() => removeField(index)}
                       className="flex h-4 w-4 items-center justify-center rounded-full bg-[var(--background)]/85 text-[var(--destructive)] shadow-sm ring-1 ring-[var(--border)]/70 backdrop-blur-sm transition-all hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-[var(--border)] active:scale-90"
                       title={localizeUi("ui.trackerPanel.customfieldlist.removeField")}
-                      aria-label={localizeUi("ui.trackerPanel.charactertrackercard.removeValue1", { value1: visibleText(field.name, "field") })}
+                      aria-label={localizeUi("ui.trackerPanel.charactertrackercard.removeValue1", {
+                        value1: visibleText(field.name, "field"),
+                      })}
                     >
                       <X size="0.5625rem" />
                     </button>

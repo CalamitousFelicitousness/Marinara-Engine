@@ -557,8 +557,7 @@ export function createConnectionsStorage(db: DB) {
       // before its provider changed.
       return rows
         .filter(
-          (r: any) =>
-            r.provider !== "audio" && r.provider !== "image_generation" && r.provider !== "video_generation",
+          (r: any) => r.provider !== "audio" && r.provider !== "image_generation" && r.provider !== "video_generation",
         )
         .map((r: any) => ({ ...r, apiKey: decryptApiKey(r.apiKeyEncrypted) }));
     },

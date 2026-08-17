@@ -804,9 +804,7 @@ function enforceRoleplayInventoryTrackerExclusivity(
   const equipped = Array.isArray(patchedEquipped)
     ? patchedEquipped
     : (currentPlayerStats.inventoryTrackerEquipped ?? []);
-  const carried = Array.isArray(patchedCarried)
-    ? patchedCarried
-    : (currentPlayerStats.inventoryTrackerInventory ?? []);
+  const carried = Array.isArray(patchedCarried) ? patchedCarried : (currentPlayerStats.inventoryTrackerInventory ?? []);
   const deduped = excludeInventoryTrackerCarriedDuplicates(carried, currencies, equipped);
   if (deduped.length !== carried.length) playerStatsPatch.inventoryTrackerInventory = deduped;
 }

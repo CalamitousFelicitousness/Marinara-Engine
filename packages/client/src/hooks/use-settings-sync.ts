@@ -223,7 +223,9 @@ export function useSettingsSync() {
                   staleSyncedShape = true;
                 } else if (
                   parsed.settings.trackerPanelSectionOrder.length !== normalizedOrder.length ||
-                  normalizedOrder.some((section, index) => parsed.settings.trackerPanelSectionOrder?.[index] !== section)
+                  normalizedOrder.some(
+                    (section, index) => parsed.settings.trackerPanelSectionOrder?.[index] !== section,
+                  )
                 ) {
                   staleSyncedShape = true;
                 }

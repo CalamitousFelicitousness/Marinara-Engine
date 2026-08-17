@@ -4005,11 +4005,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             if (gameEngineStore) {
               // One anchor can hold a row per gameType writer (a turn-game AND an
               // Experience, #5102) — branching must copy every one, not limit(1).
-              const engineSnapshots = await gameEngineStore.listByChatAndMessage(
-                req.params.id,
-                srcMsg.id,
-                swipeIndex,
-              );
+              const engineSnapshots = await gameEngineStore.listByChatAndMessage(req.params.id, srcMsg.id, swipeIndex);
               // Reads are newest-first; replay oldest-first so the source-effective row wins dedupe.
               for (const engineSnapshot of engineSnapshots.reverse()) {
                 await copyEngineSnapshot(engineSnapshot, branchedMsgId, swipeIndex);

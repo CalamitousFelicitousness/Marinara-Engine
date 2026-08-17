@@ -840,7 +840,9 @@ export async function collectCharacterPostHistoryEntries(
     }).trim();
 
     if (content) {
-      const label = multiCharacter ? `${data.name ?? "Character"} post-history instructions` : "post-history instructions";
+      const label = multiCharacter
+        ? `${data.name ?? "Character"} post-history instructions`
+        : "post-history instructions";
       entries.push({
         content: wrapContent(sanitizePromptLeaf(content, wrapFormat), label, wrapFormat),
         role: "user",
@@ -873,9 +875,7 @@ export function resolveCharacterAdvancedPromptIds(
   const resolved = new Set(characterIds.filter((id) => id && !id.startsWith("npc:")));
   if (chatMode !== "game") return [...resolved];
 
-  const partyIds = Array.isArray(chatMetadata.gamePartyCharacterIds)
-    ? chatMetadata.gamePartyCharacterIds
-    : [];
+  const partyIds = Array.isArray(chatMetadata.gamePartyCharacterIds) ? chatMetadata.gamePartyCharacterIds : [];
   for (const id of partyIds) {
     if (typeof id === "string" && id && !id.startsWith("npc:")) resolved.add(id);
   }

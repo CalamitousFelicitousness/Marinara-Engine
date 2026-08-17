@@ -317,9 +317,7 @@ export const capabilityCatalogSchema = z
  *  manifest key this Engine's strict schemas do not know yet) cannot fail the
  *  whole document, and `.strip()` (not strict, not passthrough) so newer
  *  TOP-LEVEL fields neither reject the envelope nor leak into the result. */
-const capabilityCatalogEnvelopeSchema = capabilityCatalogSchema
-  .extend({ packages: z.array(z.unknown()) })
-  .strip();
+const capabilityCatalogEnvelopeSchema = capabilityCatalogSchema.extend({ packages: z.array(z.unknown()) }).strip();
 
 export type CapabilityCatalogParseResult = {
   catalog: z.infer<typeof capabilityCatalogSchema>;

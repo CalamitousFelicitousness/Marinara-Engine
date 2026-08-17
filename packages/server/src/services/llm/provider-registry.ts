@@ -138,7 +138,13 @@ export function createLLMProvider(
       );
       break;
     case "google":
-      resolved = new GoogleProvider(baseUrl, apiKey, normalizedMaxContext, openrouterProvider, normalizedMaxTokensOverride);
+      resolved = new GoogleProvider(
+        baseUrl,
+        apiKey,
+        normalizedMaxContext,
+        openrouterProvider,
+        normalizedMaxTokensOverride,
+      );
       break;
     case "google_vertex":
       resolved = new GoogleProvider(

@@ -115,7 +115,10 @@ function releaseGlobalPermit(): void {
   pumpGlobalPermitWaiters();
 }
 
-async function acquireGlobalPermit(signal?: AbortSignal, priority: MediaGenerationPriority = "foreground"): Promise<() => void> {
+async function acquireGlobalPermit(
+  signal?: AbortSignal,
+  priority: MediaGenerationPriority = "foreground",
+): Promise<() => void> {
   // Re-entrant call under a held permit (invariant 3): the parent's permit
   // covers this work; a no-op release keeps the caller's finally harmless.
   if (heldMediaPermit.getStore()) return () => undefined;

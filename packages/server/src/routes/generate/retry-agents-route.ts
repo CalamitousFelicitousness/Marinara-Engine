@@ -609,10 +609,10 @@ export function resolveRetryAgentContextPolicy(resolvedAgents: readonly Resolved
   return { contextSize, customAgentVectorAccessEnabled, musicPlayerSource };
 }
 
-export function resolveLorebookKeeperRetryAnchor(target: {
-  id: string;
-  activeSwipeIndex?: number | null;
-}): { messageId: string; swipeIndex: number } {
+export function resolveLorebookKeeperRetryAnchor(target: { id: string; activeSwipeIndex?: number | null }): {
+  messageId: string;
+  swipeIndex: number;
+} {
   return { messageId: target.id, swipeIndex: target.activeSwipeIndex ?? 0 };
 }
 

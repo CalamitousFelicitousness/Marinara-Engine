@@ -344,11 +344,15 @@ import {
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  customAgentUsesLorebookReadBehind,
+  customLorebookReadBehindRunKey,
+  getCustomLorebookReadBehindMessages,
   getLorebookKeeperAutomaticTarget,
   getLorebookKeeperSettings,
   loadLorebookKeeperExistingEntries,
   persistLorebookKeeperUpdates,
   resolveLorebookKeeperTarget,
+  tryClaimCustomLorebookReadBehindRun,
 } from "./generate/lorebook-keeper-utils.js";
 import { registerDryRunRoute } from "./generate/dry-run-route.js";
 import { registerRawRoute } from "./generate/raw-route.js";
@@ -773,6 +777,7 @@ export async function generateRoutes(app: FastifyInstance) {
    */
   const encryptedReasoningCache = new Map<string, unknown[]>();
   const activeGenerations = new Map<string, { abortController: AbortController; backendUrl: string | null }>();
+  const activeCustomLorebookReadBehindRuns = new Set<string>();
 
   /**
    * POST /api/generate
@@ -901,6 +906,7 @@ export async function generateRoutes(app: FastifyInstance) {
     // window where two requests for the same chat could both pass the guard.
     const abortController = new AbortController();
     const generationId = randomUUID();
+    const customLorebookReadBehindRunKeys = new Set<string>();
     activeGenerations.set(input.chatId, { abortController, backendUrl: null });
     const releaseActiveGeneration = () => {
       if (activeGenerations.get(input.chatId)?.abortController === abortController) {
@@ -4343,16 +4349,24 @@ export async function generateRoutes(app: FastifyInstance) {
             },
           };
         };
+        const customLorebookReadBehindTargets = new Map<
+          string,
+          { context: AgentContext; messageId: string; swipeIndex: number }
+        >();
         const { sendAgentEvent: sendRawAgentEvent, sendAgentResultEvent: sendRawAgentResultEvent } =
           createAgentEventDispatcher({
             resolvedAgents: agentEventResolvedAgents,
             sendEvent: (payload) => sendSseEvent(reply, payload),
-            getOwnership: () => ({
-              chatId: input.chatId,
-              messageId: typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null,
-              swipeIndex: lastSavedSwipeIndex,
-              generationId,
-            }),
+            getOwnership: (result) => {
+              const historicalTarget = customLorebookReadBehindTargets.get(result.agentId);
+              return {
+                chatId: input.chatId,
+                messageId:
+                  historicalTarget?.messageId ?? (typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null),
+                swipeIndex: historicalTarget?.swipeIndex ?? lastSavedSwipeIndex,
+                generationId,
+              };
+            },
           });
         const sendAgentEvent = (result: AgentResult, options?: { finalized?: boolean }) => {
           const nextResult = markLorebookResultForApproval(result);
@@ -4452,6 +4466,48 @@ export async function generateRoutes(app: FastifyInstance) {
           agentContext,
           emitMetadataPatch: (patch) => sendSseEvent(reply, { type: "metadata_patch", data: patch }),
         });
+        const eligiblePipelineAgents: typeof pipelineAgents = [];
+        for (const agent of pipelineAgents) {
+          const readBehindMessages = getCustomLorebookReadBehindMessages(agent.settings);
+          const usesCustomLorebookReadBehind = customAgentUsesLorebookReadBehind(agent);
+          if (!usesCustomLorebookReadBehind) {
+            eligiblePipelineAgents.push(agent);
+            continue;
+          }
+
+          const target = getLorebookKeeperAutomaticTarget(lorebookKeeperMessages, readBehindMessages);
+          if (!target) continue;
+          const context = buildHistoricalLorebookKeeperContext(agentContext, lorebookKeeperMessages, target.id);
+          if (!context) continue;
+          const runKey = customLorebookReadBehindRunKey(input.chatId, agent.id, target.id);
+          if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) {
+            logger.debug(
+              "[agents] Skipping custom lorebook read-behind agent %s for in-flight message %s",
+              agent.type,
+              target.id,
+            );
+            continue;
+          }
+          customLorebookReadBehindRunKeys.add(runKey);
+          if (await agentsStore.hasSuccessfulRunForMessage(agent.id, input.chatId, target.id)) {
+            activeCustomLorebookReadBehindRuns.delete(runKey);
+            customLorebookReadBehindRunKeys.delete(runKey);
+            logger.debug(
+              "[agents] Skipping custom lorebook read-behind agent %s for already processed message %s",
+              agent.type,
+              target.id,
+            );
+            continue;
+          }
+          agent.batchContextKey = `message:${target.id}`;
+          customLorebookReadBehindTargets.set(agent.id, {
+            context,
+            messageId: target.id,
+            swipeIndex: typeof target.activeSwipeIndex === "number" ? target.activeSwipeIndex : 0,
+          });
+          eligiblePipelineAgents.push(agent);
+        }
+        pipelineAgents = eligiblePipelineAgents;
         if (enableChatTools && toolDefs && toolDefs.length > 0 && conn.treatAsLocalEndpoint === "true") {
           const toolLines = toolDefs.map(
             (t) =>
@@ -4463,16 +4519,14 @@ export async function generateRoutes(app: FastifyInstance) {
         // Pre-generation prompt-patch agents read the assembled prompt here; this is overwritten
         // with the fitted provider prompt before each main model call.
         agentContext.memory._mainPromptPreview = promptPreviewForAgents(finalMessages);
-        const resolveImagePromptAgentContext = async (
-          agent: AgentExecConfig,
-          context: AgentContext,
-        ): Promise<AgentContext> => {
+        const resolveAgentContext = async (agent: AgentExecConfig, context: AgentContext): Promise<AgentContext> => {
+          const resolvedContext = customLorebookReadBehindTargets.get(agent.id)?.context ?? context;
           const isImagePromptAgent =
             agent.type === "illustrator" ||
             (agent.isCustomAgent === true && customAgentHasCapability(agent.settings, "trigger_image_generation"));
-          if (!isImagePromptAgent) return context;
+          if (!isImagePromptAgent) return resolvedContext;
 
-          const memory = { ...context.memory };
+          const memory = { ...resolvedContext.memory };
           delete memory._imagePromptInstructions;
           const imageConnectionId =
             agent.type === "illustrator"
@@ -4484,13 +4538,13 @@ export async function generateRoutes(app: FastifyInstance) {
           imageConnection ??= await connections.getDefaultForImageGeneration();
           const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
-          return { ...context, memory };
+          return { ...resolvedContext, memory };
         };
         const pipeline = createAgentPipeline(
           pipelineAgents,
           agentContext,
           sendAgentEventAfterMainStream,
-          resolveImagePromptAgentContext,
+          resolveAgentContext,
         );
         let directorSecretPlotResults: AgentResult[] = [];
         let directorSecretPlotArcForPrompt: unknown = directorSecretPlotMemory.overarchingArc;
@@ -7890,7 +7944,7 @@ export async function generateRoutes(app: FastifyInstance) {
                       historicalLorebookTarget.id,
                     ) ?? phaseRetryContext)
                   : phaseRetryContext;
-                const resolvedRetryContext = await resolveImagePromptAgentContext(agentCfg, retryCtx);
+                const resolvedRetryContext = await resolveAgentContext(agentCfg, retryCtx);
                 const retried = await executeAgent(
                   agentCfg,
                   resolvedRetryContext,
@@ -7992,7 +8046,7 @@ export async function generateRoutes(app: FastifyInstance) {
             const resultMessageId =
               result.agentType === "lorebook-keeper" && lorebookKeeperProcessedMessageId
                 ? lorebookKeeperProcessedMessageId
-                : messageId;
+                : (customLorebookReadBehindTargets.get(result.agentId)?.messageId ?? messageId);
 
             // Validate background agent result — reject hallucinated filenames
             if (
@@ -10096,6 +10150,9 @@ export async function generateRoutes(app: FastifyInstance) {
           : "Generation failed";
       sendSseEvent(reply, { type: "error", data: message });
     } finally {
+      for (const runKey of customLorebookReadBehindRunKeys) {
+        activeCustomLorebookReadBehindRuns.delete(runKey);
+      }
       if (conversationGenerationStartedAt != null && !conversationAssistantSaved) {
         clearGenerationInProgress(input.chatId, conversationGenerationStartedAt);
       }
@@ -10157,5 +10214,5 @@ export async function generateRoutes(app: FastifyInstance) {
 
   await registerDryRunRoute(app);
   await registerRawRoute(app);
-  await registerRetryAgentsRoute(app);
+  await registerRetryAgentsRoute(app, activeCustomLorebookReadBehindRuns);
 }

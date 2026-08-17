@@ -100,6 +100,7 @@ const ALLOWED_GALLERY_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", 
 const ALLOWED_GALLERY_VIDEO_EXTS = new Set([".mp4", ".webm", ".mov"]);
 const CHARACTER_CARD_PNG_KEYWORDS = new Set(["chara", "ccv3"]);
 const CUSTOM_NAME_RE = /^[a-z0-9_]{1,32}$/;
+const PATH_SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CUSTOM_KIND_MAX_DIMENSION = {
   emoji: 256,
   sticker: 512,
@@ -1963,7 +1964,8 @@ export async function charactersRoutes(app: FastifyInstance) {
   // ── Avatar Upload ──
 
   app.post<{ Params: { id: string } }>("/:id/avatar", async (req, reply) => {
-    const { id } = req.params;
+    const id = PATH_SAFE_ID_RE.exec(req.params.id)?.[0];
+    if (!id) return reply.status(400).send({ error: "Invalid character ID" });
     const char = await storage.getById(id);
     if (!char) return reply.status(404).send({ error: "Character not found" });
 

@@ -311,6 +311,7 @@ const InlineLorebookEntriesEditor = lazy(() =>
   })),
 );
 const StoryboardChatSettingsPanel = lazy(() => import("./StoryboardChatSettingsPanel"));
+const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel"));
 
 interface ChatSettingsDrawerProps {
   chat: Chat;
@@ -2048,6 +2049,7 @@ export function ChatSettingsDrawer({
   const mapsAgent = availableAgents.find((agent) => agent.id === mapsPackage?.id);
   const ltmAgent = availableAgents.find((agent) => agent.id === ltmPackage?.id);
   const storyboardAgent = availableAgents.find((agent) => agent.id === STORYBOARD_AGENT_ID);
+  const beholderAgent = availableAgents.find((agent) => agent.id === "beholder");
   const [pendingAgentMenuTargetId, setPendingAgentMenuTargetId] = useState<string | null>(null);
   const roleplayAgentMenuLinks = useMemo(() => {
     if (!metadata.enableAgents || !isRoleplayMode || isGame) return [];
@@ -2086,6 +2088,7 @@ export function ChatSettingsDrawer({
     if (storyboardAgent) {
       addLink(STORYBOARD_AGENT_ID, activeAgentIds.includes(STORYBOARD_AGENT_ID), storyboardAgent.name);
     }
+    if (beholderAgent) addLink("beholder", activeAgentIds.includes("beholder"), beholderAgent.name);
     if (mapsAgent && mapsPackage) addLink(mapsPackage.id, mapsPackageEnabledForChat, mapsAgent.name);
     if (activeCustomAgents.length > 0) {
       links.push({
@@ -2100,6 +2103,7 @@ export function ChatSettingsDrawer({
   }, [
     activeCustomAgents,
     activeAgentIds,
+    beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
     chat.id,
@@ -8676,6 +8680,7 @@ export function ChatSettingsDrawer({
                                           id={
                                             agent.id === "hierarchical-maps" ||
                                             agent.id === "long-term-memory" ||
+                                            agent.id === "beholder" ||
                                             agent.id === STORYBOARD_AGENT_ID
                                               ? getAgentSettingsMenuId(chat.id, agent.id)
                                               : undefined
@@ -8683,6 +8688,7 @@ export function ChatSettingsDrawer({
                                           tabIndex={
                                             agent.id === "hierarchical-maps" ||
                                             agent.id === "long-term-memory" ||
+                                            agent.id === "beholder" ||
                                             agent.id === STORYBOARD_AGENT_ID
                                               ? -1
                                               : undefined
@@ -8804,6 +8810,18 @@ export function ChatSettingsDrawer({
                                                 metadata={metadata as Record<string, unknown>}
                                                 onClose={onClose}
                                                 ownerMode="roleplay"
+                                              />
+                                            </Suspense>
+                                          )}
+                                          {agent.id === "beholder" && (
+                                            <Suspense fallback={null}>
+                                              <BeholderChatSettingsPanel
+                                                chatId={chat.id}
+                                                onOpenAgentSettings={() => {
+                                                  void requestClose().then((closed) => {
+                                                    if (closed) useUIStore.getState().openAgentDetail("beholder");
+                                                  });
+                                                }}
                                               />
                                             </Suspense>
                                           )}

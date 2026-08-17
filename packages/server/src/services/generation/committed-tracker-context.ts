@@ -1,4 +1,5 @@
 import { compactQuestProgressForContext, formatCustomTrackerFieldForPrompt } from "@marinara-engine/shared";
+import { formatBeholderStateForPrompt, normalizeBeholderState } from "../agents/beholder-state.js";
 import { wrapContent } from "../prompt/format-engine.js";
 
 type WrapFormat = "xml" | "markdown" | "none";
@@ -152,6 +153,7 @@ export function buildCommittedTrackerContextBlock(args: {
   chatEnableAgents: boolean;
   activeAgentIds: string[];
   latestGameState: GameStateSnapshotLike | null | undefined;
+  beholderState?: unknown;
   chatMetadata: Record<string, unknown>;
   wrapFormat: WrapFormat;
 }): string | null {
@@ -164,11 +166,19 @@ export function buildCommittedTrackerContextBlock(args: {
   const hasQuest = active.has("quest");
   const hasCustomTracker = active.has("custom-tracker");
   const hasInventoryTracker = active.has("inventory-tracker");
-  if (!hasWorldState && !hasCharTracker && !hasPersonaStats && !hasQuest && !hasCustomTracker && !hasInventoryTracker)
+  const hasBeholder = active.has("beholder");
+  if (
+    !hasWorldState &&
+    !hasCharTracker &&
+    !hasPersonaStats &&
+    !hasQuest &&
+    !hasCustomTracker &&
+    !hasInventoryTracker &&
+    !hasBeholder
+  )
     return null;
 
-  const snap = args.latestGameState ?? undefined;
-  if (!snap) return null;
+  const snap = args.latestGameState ?? {};
 
   const trackerParts: string[] = [];
 
@@ -258,6 +268,13 @@ export function buildCommittedTrackerContextBlock(args: {
     }
   }
 
+  if (hasBeholder) {
+    const beholderState = normalizeBeholderState(args.beholderState);
+    if (beholderState && beholderState.characters.length > 0) {
+      trackerParts.push(wrapContent(formatBeholderStateForPrompt(beholderState), "Physical State", args.wrapFormat));
+    }
+  }
+
   const playerNotes =
     typeof args.chatMetadata.gamePlayerNotes === "string" ? args.chatMetadata.gamePlayerNotes.trim() : "";
   if (playerNotes) {
@@ -284,6 +301,7 @@ export function injectCommittedTrackerContext(args: {
   chatEnableAgents: boolean;
   activeAgentIds: string[];
   latestGameState: GameStateSnapshotLike | null | undefined;
+  beholderState?: unknown;
   chatMetadata: Record<string, unknown>;
   wrapFormat: WrapFormat;
   dedupeLastMessageWrappers(messages: PromptMessage[]): void;
@@ -293,6 +311,7 @@ export function injectCommittedTrackerContext(args: {
     chatEnableAgents: args.chatEnableAgents,
     activeAgentIds: args.activeAgentIds,
     latestGameState: args.latestGameState,
+    beholderState: args.beholderState,
     chatMetadata: args.chatMetadata,
     wrapFormat: args.wrapFormat,
   });

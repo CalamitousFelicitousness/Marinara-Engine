@@ -58,6 +58,7 @@ import {
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
+import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createGameStateStorage, type GameStateVisibleAnchor } from "../services/storage/game-state.storage.js";
 import {
@@ -120,6 +121,7 @@ import {
 import { applyRegexScriptsToPromptMessages } from "../services/regex/regex-application.js";
 import { npcAvatarSlug, sanitizeGameNpcAvatarUrls } from "../services/game/npc-avatar-utils.js";
 import { buildCommittedTrackerContextBlock } from "../services/generation/committed-tracker-context.js";
+import { normalizeBeholderState } from "../services/agents/beholder-state.js";
 import { parseLorebookWriteApprovalText } from "./generate/agent-write-approval.js";
 import { persistLorebookKeeperUpdates } from "./generate/lorebook-keeper-utils.js";
 import {
@@ -352,7 +354,8 @@ async function loadLatestChatGameSnapshot(
 
 function formatPeekTrackerContextBlock(args: {
   wrapFormat: TrackerWrapFormat;
-  snap: typeof gameStateSnapshots.$inferSelect;
+  snap: typeof gameStateSnapshots.$inferSelect | null;
+  beholderState?: unknown;
   chatMeta: Record<string, unknown>;
   chatEnableAgents: boolean;
   activeAgentIds: string[];
@@ -361,6 +364,7 @@ function formatPeekTrackerContextBlock(args: {
     chatEnableAgents: args.chatEnableAgents,
     activeAgentIds: args.activeAgentIds,
     latestGameState: args.snap,
+    beholderState: args.beholderState,
     chatMetadata: args.chatMeta,
     wrapFormat: args.wrapFormat,
   });
@@ -3088,13 +3092,21 @@ export async function chatsRoutes(app: FastifyInstance) {
             impersonateBlockAgents: false,
           });
           if (chatEnableAgents && activeAgentIds.length > 0) {
-            const snap = projectGameSnapshotLocation(
-              await loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
-              ownerSpatialProjection,
-            );
-            const contextBlock = snap
-              ? formatPeekTrackerContextBlock({ wrapFormat, snap, chatMeta, chatEnableAgents, activeAgentIds })
-              : null;
+            const [gameSnapshot, beholderRun] = await Promise.all([
+              loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
+              activeAgentIds.includes("beholder")
+                ? createAgentsStorage(app.db).getLastSuccessfulRunByType("beholder", req.params.id)
+                : Promise.resolve(null),
+            ]);
+            const snap = projectGameSnapshotLocation(gameSnapshot, ownerSpatialProjection);
+            const contextBlock = formatPeekTrackerContextBlock({
+              wrapFormat,
+              snap,
+              beholderState: normalizeBeholderState(beholderRun?.resultData),
+              chatMeta,
+              chatEnableAgents,
+              activeAgentIds,
+            });
 
             if (contextBlock) {
               assembled.messages.splice(findTrackerContextInsertIndex(assembled.messages), 0, {

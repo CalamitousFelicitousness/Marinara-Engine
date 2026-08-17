@@ -119,12 +119,18 @@ function seamScore(data: Uint8Array, width: number, height: number, axis: "x" | 
 }
 
 export async function pixelizeImage(input: Buffer, options: PixelizeOptions): Promise<PixelizeResult> {
-  if (!Number.isInteger(options.targetWidth) || options.targetWidth < 1 || options.targetWidth > PIXELIZE_MAX_OUTPUT_DIMENSION) {
+  if (
+    !Number.isInteger(options.targetWidth) ||
+    options.targetWidth < 1 ||
+    options.targetWidth > PIXELIZE_MAX_OUTPUT_DIMENSION
+  ) {
     throw new PixelizeInputError(`targetWidth must be an integer between 1 and ${PIXELIZE_MAX_OUTPUT_DIMENSION}`);
   }
   if (
     options.targetHeight !== undefined &&
-    (!Number.isInteger(options.targetHeight) || options.targetHeight < 1 || options.targetHeight > PIXELIZE_MAX_OUTPUT_DIMENSION)
+    (!Number.isInteger(options.targetHeight) ||
+      options.targetHeight < 1 ||
+      options.targetHeight > PIXELIZE_MAX_OUTPUT_DIMENSION)
   ) {
     throw new PixelizeInputError(`targetHeight must be an integer between 1 and ${PIXELIZE_MAX_OUTPUT_DIMENSION}`);
   }

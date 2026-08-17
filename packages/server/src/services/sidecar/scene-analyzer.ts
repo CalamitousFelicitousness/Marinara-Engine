@@ -354,7 +354,9 @@ export function buildSceneAnalyzerUserPrompt(
     ``,
     `RULES:`,
     `- Use ONLY the exact tags listed in the template below for asset-backed fields. If backgrounds:generated:<short-location-slug> is listed, replace <short-location-slug> with a short concrete location slug.${
-      generateSoundEffects ? " Generated sound-effect prompts are the only exception: describe the requested sound plainly." : ""
+      generateSoundEffects
+        ? " Generated sound-effect prompts are the only exception: describe the requested sound plainly."
+        : ""
     }`,
     `- Expressions and widget updates are handled by the GM model. Do NOT include them in your output.`,
     ...(useSpotifyMusic

@@ -49,9 +49,7 @@ export function llmFetch(
     maxResponseBytes: 50 * 1024 * 1024,
     agentOptions:
       init?.agentOptions ??
-      (requestTimeoutMs
-        ? { bodyTimeout: requestTimeoutMs, headersTimeout: requestTimeoutMs }
-        : llmAgentOptions()),
+      (requestTimeoutMs ? { bodyTimeout: requestTimeoutMs, headersTimeout: requestTimeoutMs } : llmAgentOptions()),
     bufferResponse,
     decodeCompressedResponse: init?.decodeCompressedResponse ?? bufferResponse,
   });

@@ -98,12 +98,7 @@ function parseGenerationParameters(value: unknown): Partial<GenerationParameters
   return parsed.data;
 }
 
-function requireString(
-  record: Record<string, unknown>,
-  key: string,
-  label: string,
-  maxLength = 50_000,
-): string {
+function requireString(record: Record<string, unknown>, key: string, label: string, maxLength = 50_000): string {
   const value = record[key];
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`This file is missing a valid ${label}.`);

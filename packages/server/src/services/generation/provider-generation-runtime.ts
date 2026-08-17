@@ -230,9 +230,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     args.fallbackBaseUrl ?? "",
   );
   const fallbackSupportsAssistantReasoningPrefill = Boolean(
-    hasUsableFallback &&
-      args.fallbackConnection &&
-      supportsAssistantReasoningPrefill(args.fallbackConnection.provider),
+    hasUsableFallback && args.fallbackConnection && supportsAssistantReasoningPrefill(args.fallbackConnection.provider),
   );
   const provider = withConnectionFallbackProvider({
     primary: primaryProvider,

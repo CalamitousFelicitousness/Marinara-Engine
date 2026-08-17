@@ -74,7 +74,11 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
           roleplayInventoryTrackerRowLockPrefix(group, previous, index),
           // Remap from the stored form of the name, not the raw keystrokes — storage
           // trims and collapses whitespace, so an un-normalized key would orphan the lock.
-          roleplayInventoryTrackerRowLockPrefix(group, { ...row, name: normalizeInventoryTrackerName(row.name) }, index),
+          roleplayInventoryTrackerRowLockPrefix(
+            group,
+            { ...row, name: normalizeInventoryTrackerName(row.name) },
+            index,
+          ),
         ),
       );
     }
@@ -133,7 +137,9 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
               {nameLocked && LOCK_GLYPH}
               <InlineEdit
                 value={row.name}
-                onSave={(name) => updateRow(index, { ...row, name: name || localizeUi("ui.trackerPanel.inventoryTracker.item") })}
+                onSave={(name) =>
+                  updateRow(index, { ...row, name: name || localizeUi("ui.trackerPanel.inventoryTracker.item") })
+                }
                 placeholder={localizeUi("ui.trackerPanel.inventoryTracker.item")}
                 className={cn("min-w-0 px-0.5 text-[0.625rem] font-medium", LOCK_SURFACE_RESET)}
                 title={row.name}

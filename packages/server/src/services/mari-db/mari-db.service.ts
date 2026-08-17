@@ -4759,7 +4759,13 @@ export class MariDbService {
   getPendingChangeRaw(
     id: string,
     index: number,
-  ): { table: string; id: string; action: MariDbRowChange["action"]; beforeRaw: Row | null; afterRaw: Row | null } | null {
+  ): {
+    table: string;
+    id: string;
+    action: MariDbRowChange["action"];
+    beforeRaw: Row | null;
+    afterRaw: Row | null;
+  } | null {
     this.ensurePendingHydrated();
     if (!Number.isInteger(index) || index < 0 || index >= PREVIEW_LIMIT) return null;
     const change = this.pending.get(id)?.plan.changes[index];
@@ -4928,7 +4934,13 @@ export class MariDbService {
     id: string,
     selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
   ): Promise<
-    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | {
+        approval: MariDbPendingApproval | null;
+        history: MariDbHistoryEntry;
+        rejected: number;
+        remaining: number;
+        completed: boolean;
+      }
     | { outcome: "state_changed"; error: string }
     | { outcome: "invalid_selection"; error: string }
     | null
@@ -4941,7 +4953,13 @@ export class MariDbService {
     id: string,
     selections: Array<{ index: number; table: string; id: string; action: MariDbRowChange["action"] }>,
   ): Promise<
-    | { approval: MariDbPendingApproval | null; history: MariDbHistoryEntry; rejected: number; remaining: number; completed: boolean }
+    | {
+        approval: MariDbPendingApproval | null;
+        history: MariDbHistoryEntry;
+        rejected: number;
+        remaining: number;
+        completed: boolean;
+      }
     | { outcome: "state_changed"; error: string }
     | { outcome: "invalid_selection"; error: string }
     | null
@@ -5002,14 +5020,14 @@ export class MariDbService {
       // dangling reference AFTER restoreChanges has committed (leaving the bad row + an unhandled
       // error), so refuse it up front.
       if (change.action === "delete") {
-        const parentLorebookId =
-          typeof change.beforeRaw?.lorebookId === "string" ? change.beforeRaw.lorebookId : null;
+        const parentLorebookId = typeof change.beforeRaw?.lorebookId === "string" ? change.beforeRaw.lorebookId : null;
         const parentLive =
           parentLorebookId !== null && (await this.getRawById(getMeta("lorebooks"), parentLorebookId)) !== null;
         if (!parentLive) {
           return {
             outcome: "invalid_selection",
-            error: "This entry's lorebook was also removed, so it can't be restored on its own. Use Restore to revert the whole change.",
+            error:
+              "This entry's lorebook was also removed, so it can't be restored on its own. Use Restore to revert the whole change.",
           };
         }
       }

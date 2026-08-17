@@ -429,7 +429,12 @@ async function searchSpotifyTracks(
       // Pagination multiplies the transient-failure surface; a later page
       // dying must not discard the usable results already collected.
       if (items.length > 0) {
-        logger.warn(error, "Spotify search page at offset %d failed; returning %d partial results", offset, items.length);
+        logger.warn(
+          error,
+          "Spotify search page at offset %d failed; returning %d partial results",
+          offset,
+          items.length,
+        );
         break;
       }
       throw error;

@@ -33,9 +33,7 @@ export function detectBrowserGpu(): string {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
     if (!context) return "Unavailable";
-    const debugInfo = context.getExtension("WEBGL_debug_renderer_info") as
-      | { UNMASKED_RENDERER_WEBGL: number }
-      | null;
+    const debugInfo = context.getExtension("WEBGL_debug_renderer_info") as { UNMASKED_RENDERER_WEBGL: number } | null;
     const renderer = debugInfo
       ? context.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
       : context.getParameter(context.RENDERER);

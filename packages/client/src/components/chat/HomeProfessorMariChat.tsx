@@ -1888,7 +1888,10 @@ function DatabaseWorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
-  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
+  onRejectRows?: (
+    id: string,
+    rows: Array<{ index: number; table: string; id: string; action: string }>,
+  ) => Promise<boolean>;
   onRenderPrompt?: (
     id: string,
     row: { index: number; table: string; id: string; action: string },
@@ -2034,7 +2037,9 @@ function DatabaseWorkspaceApprovalCard({
           </span>
         </div>
         {viewMode === "raw" && approval.diffTruncated && (
-          <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}</p>
+          <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.chat.databaseworkspaceapprovalcard.thisPreviewMayNotShowEveryAffectedRow")}
+          </p>
         )}
         {viewMode === "easy" && (
           <MariEditEasyViewer
@@ -2102,8 +2107,12 @@ function DatabaseWorkspaceApprovalCard({
         {viewMode === "raw" && insertedRows.length > 0 && (
           <div className="mt-2 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 p-2 text-[0.6875rem] text-[var(--foreground)]">
             <div className="flex items-center gap-1.5 font-semibold text-[var(--primary)]">
-              <Sparkles size="0.75rem" />{localizeUi("ui.chat.databaseworkspaceapprovalcard.mariCreatedNewItems")}</div>
-            <p className="mt-1 text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.keepSavesThemToYourLibraryRestoreRemovesEverything")}</p>
+              <Sparkles size="0.75rem" />
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.mariCreatedNewItems")}
+            </div>
+            <p className="mt-1 text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.databaseworkspaceapprovalcard.keepSavesThemToYourLibraryRestoreRemovesEverything")}
+            </p>
             <div className="mt-2 space-y-2">
               {insertedRows.slice(0, 3).map((change) => (
                 <details key={`${change.table}:${change.id}`} className="rounded-md bg-[var(--background)]/80 p-2">
@@ -2116,7 +2125,9 @@ function DatabaseWorkspaceApprovalCard({
                 </details>
               ))}
               {insertedRows.length > 3 && (
-                <p className="text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.databaseworkspaceapprovalcard.moreNewItemsAreHiddenInThisPreview")}</p>
+                <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.chat.databaseworkspaceapprovalcard.moreNewItemsAreHiddenInThisPreview")}
+                </p>
               )}
             </div>
           </div>
@@ -2354,7 +2365,10 @@ function WorkspaceApprovalCard({
   onKeep: (id: string) => void;
   onKeepEnable?: (id: string) => void;
   onRestore: (id: string) => void;
-  onRejectRows?: (id: string, rows: Array<{ index: number; table: string; id: string; action: string }>) => Promise<boolean>;
+  onRejectRows?: (
+    id: string,
+    rows: Array<{ index: number; table: string; id: string; action: string }>,
+  ) => Promise<boolean>;
   onRenderPrompt?: (
     id: string,
     row: { index: number; table: string; id: string; action: string },
@@ -2418,7 +2432,13 @@ function compareMariPanelItems(
 
 const MARI_PANEL_SORT_OPTIONS: MariPanelSortMode[] = ["az", "za", "newest", "oldest"];
 
-function MariPanelSortSelect({ value, onChange }: { value: MariPanelSortMode; onChange: (mode: MariPanelSortMode) => void }) {
+function MariPanelSortSelect({
+  value,
+  onChange,
+}: {
+  value: MariPanelSortMode;
+  onChange: (mode: MariPanelSortMode) => void;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const labels: Record<MariPanelSortMode, string> = {
     az: localizeUi("ui.chat.homeprofessormarichat.sortAToZ"),
@@ -2501,7 +2521,9 @@ function ProfessorMariSkillsMenu({
     // Re-add the open (selected) row BEFORE sorting so it lands in its correct sorted position,
     // not appended out of order at the end.
     const candidates =
-      selectedSkill && !filtered.some((skill) => skill.id === selectedSkill.id) ? [...filtered, selectedSkill] : filtered;
+      selectedSkill && !filtered.some((skill) => skill.id === selectedSkill.id)
+        ? [...filtered, selectedSkill]
+        : filtered;
     return [...candidates].sort((a, b) => compareMariPanelItems(a, b, sortMode));
   }, [filtered, sortMode, selectedSkill]);
   // Keep the open editor in view when its row moves (selection change, or a rename that re-sorts it).
@@ -2669,7 +2691,10 @@ function ProfessorMariSkillsMenu({
                     </span>
                   </div>
                   {active && (
-                    <div ref={active ? activeEditorRef : undefined} className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
+                    <div
+                      ref={active ? activeEditorRef : undefined}
+                      className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5"
+                    >
                       <label className="block text-[0.6875rem] font-semibold text-[var(--muted-foreground)]">
                         {localizeUi("ui.characters.metadatatab.name")}
                         <input
@@ -2865,7 +2890,13 @@ function ProfessorMariMemoriesMenu({
           <FileUp size="0.78rem" />
           {localizeUi("ui.characters.characterclipcard.upload")}
         </button>
-        <input ref={fileInputRef} type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={onFileChange} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".md,.txt,text/markdown,text/plain"
+          className="hidden"
+          onChange={onFileChange}
+        />
       </div>
 
       {hasMemories && (
@@ -2940,7 +2971,9 @@ function ProfessorMariMemoriesMenu({
                         )}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[0.75rem] font-semibold text-[var(--foreground)]">{memory.name}</span>
+                        <span className="block truncate text-[0.75rem] font-semibold text-[var(--foreground)]">
+                          {memory.name}
+                        </span>
                         {memory.description && (
                           <span className="mt-0.5 hidden truncate text-[0.65rem] text-[var(--muted-foreground)] md:block">
                             {memory.description}
@@ -2956,7 +2989,9 @@ function ProfessorMariMemoriesMenu({
                             : localizeUi("ui.chat.professormarimemoriesmenu.enableMemory")
                         }
                         title={
-                          memory.enabled ? localizeUi("ui.noodle.noodlehome.enabled") : localizeUi("ui.agents.agenteditor.disabled")
+                          memory.enabled
+                            ? localizeUi("ui.noodle.noodlehome.enabled")
+                            : localizeUi("ui.agents.agenteditor.disabled")
                         }
                         checked={memory.enabled}
                         onChange={() => onToggleEnabled(memory)}
@@ -2966,7 +3001,10 @@ function ProfessorMariMemoriesMenu({
                     </span>
                   </div>
                   {active && (
-                    <div ref={active ? activeEditorRef : undefined} className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5">
+                    <div
+                      ref={active ? activeEditorRef : undefined}
+                      className="space-y-2 border-t border-[var(--border)]/50 px-2.5 py-2.5"
+                    >
                       {!memory.enabled && (
                         <div className="rounded-md border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5 text-[0.65rem] text-amber-200">
                           {localizeUi("ui.chat.professormarimemoriesmenu.disabledHint")}
@@ -3949,7 +3987,16 @@ export function HomeProfessorMariChat({
     if (chatHistoryOpen) await loadChatHistory();
     await qc.invalidateQueries({ queryKey: chatKeys.messages(chat.id) });
     toast.success(localizeUi("ui.chat.homeprofessormarichat.professorMariSPreviousChatWasSaved"));
-  }, [chatHistoryOpen, clearMariChips, effectiveConnectionId, loadChatHistory, qc, setActiveChatId, setDraft, localizeUi]);
+  }, [
+    chatHistoryOpen,
+    clearMariChips,
+    effectiveConnectionId,
+    loadChatHistory,
+    qc,
+    setActiveChatId,
+    setDraft,
+    localizeUi,
+  ]);
 
   const guidedPlan = professorMariSuggestionsEnabled && mariPlanChatId === chatId ? mariPlan : null;
   const guidedPlanStep = guidedPlan ? (guidedPlan[mariPlanCursor] ?? null) : null;
@@ -4303,7 +4350,10 @@ export function HomeProfessorMariChat({
   );
 
   const handleNewMemory = useCallback(() => {
-    void createMemory({ name: "New memory", content: "Describe a preference or instruction for Professor Mari." }).catch((error) => {
+    void createMemory({
+      name: "New memory",
+      content: "Describe a preference or instruction for Professor Mari.",
+    }).catch((error) => {
       console.error("[Professor Mari] Failed to create memory", error);
       toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotAddThatMemory"));
     });
@@ -4326,7 +4376,10 @@ export function HomeProfessorMariChat({
         toast.error(localizeUi("ui.chat.homeprofessormarichat.thatMemoryFileIsTooLarge"));
         return;
       }
-      const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+      const baseName = file.name
+        .replace(/\.[^.]+$/, "")
+        .replace(/[-_]+/g, " ")
+        .trim();
       void file
         .text()
         .then((content) => {
@@ -4630,7 +4683,6 @@ export function HomeProfessorMariChat({
             name: displayName,
           });
         }
-
       } catch (error) {
         console.error("[Professor Mari] Failed to prepare attachment", error);
         toast.error(localizeUi("ui.chat.homeprofessormarichat.professorMariCouldNotAttachThatFile"), {
@@ -5039,8 +5091,16 @@ export function HomeProfessorMariChat({
   // correctly from whichever composer (floating or docked) is active. Gated on a live chatId.
   const attachModals = chatId ? (
     <>
-      <MariChatHistoryPicker open={historyPickerOpen} workspaceChatId={chatId} onClose={() => setHistoryPickerOpen(false)} />
-      <MariContextViewer open={contextViewerOpen} workspaceChatId={chatId} onClose={() => setContextViewerOpen(false)} />
+      <MariChatHistoryPicker
+        open={historyPickerOpen}
+        workspaceChatId={chatId}
+        onClose={() => setHistoryPickerOpen(false)}
+      />
+      <MariContextViewer
+        open={contextViewerOpen}
+        workspaceChatId={chatId}
+        onClose={() => setContextViewerOpen(false)}
+      />
     </>
   ) : null;
 
@@ -5214,9 +5274,7 @@ export function HomeProfessorMariChat({
             }}
             onKeyDown={(event) => {
               const shouldSend =
-                event.key === "Enter" &&
-                !event.shiftKey &&
-                (enterToSend || event.metaKey || event.ctrlKey);
+                event.key === "Enter" && !event.shiftKey && (enterToSend || event.metaKey || event.ctrlKey);
               if (shouldSend) {
                 event.preventDefault();
                 void handleSubmit();

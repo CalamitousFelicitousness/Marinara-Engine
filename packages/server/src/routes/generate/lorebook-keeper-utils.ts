@@ -343,8 +343,15 @@ export async function persistLorebookKeeperUpdates(args: {
   updates: Array<Record<string, unknown>>;
   revectorizeEntry?: (entry: LorebookEntry) => Promise<void>;
 }): Promise<string | null> {
-  const { lorebooksStore, chatId, chatName, preferredTargetLorebookId, writableLorebookIds, updates, revectorizeEntry } =
-    args;
+  const {
+    lorebooksStore,
+    chatId,
+    chatName,
+    preferredTargetLorebookId,
+    writableLorebookIds,
+    updates,
+    revectorizeEntry,
+  } = args;
 
   let targetLorebookId = preferredTargetLorebookId ?? writableLorebookIds?.[0] ?? null;
   if (!targetLorebookId) {

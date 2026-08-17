@@ -97,7 +97,16 @@ Baseline validation:
 pnpm check
 ```
 
-This runs the Impeccable project-context guard, workspace lint/type checks, and the production build.
+This runs the Impeccable project-context guard, localization checks, Prettier verification, workspace lint/type checks, and the production build.
+
+Run the individual formatting and lint checks while iterating:
+
+```bash
+pnpm format:check
+pnpm lint
+```
+
+Use `pnpm format` to apply Prettier to the maintained TypeScript and TSX source scope.
 
 Useful follow-up checks:
 

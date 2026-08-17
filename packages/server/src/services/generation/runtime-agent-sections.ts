@@ -23,9 +23,7 @@ const NON_REVIEWABLE_WRITER_AGENT_TYPES = new Set(["director", "knowledge-retrie
 export function isReviewableWriterAgentType(agentType: string): boolean {
   const agent = BUILT_IN_AGENTS.find((entry) => entry.id === agentType);
   return (
-    agent?.category === "writer" &&
-    agent.phase === "pre_generation" &&
-    !NON_REVIEWABLE_WRITER_AGENT_TYPES.has(agent.id)
+    agent?.category === "writer" && agent.phase === "pre_generation" && !NON_REVIEWABLE_WRITER_AGENT_TYPES.has(agent.id)
   );
 }
 

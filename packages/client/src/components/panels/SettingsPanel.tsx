@@ -7911,7 +7911,7 @@ function AdvancedSettings() {
           </div>
 
           {selectedUpdateChannel?.warning && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[0.6875rem] text-amber-700 ring-1 ring-amber-500/30 dark:text-amber-200">
+            <div className="flex items-start gap-1.5 rounded-lg bg-[var(--primary)]/10 px-2.5 py-2 text-[0.6875rem] text-[var(--primary)] ring-1 ring-[var(--primary)]/30">
               <AlertTriangle size="0.8125rem" className="mt-0.5 shrink-0" />
               <span>{selectedUpdateChannel.warning}</span>
             </div>

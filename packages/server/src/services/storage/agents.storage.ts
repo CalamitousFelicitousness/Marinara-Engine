@@ -390,7 +390,10 @@ export function createAgentsStorage(db: DB) {
           and(
             eq(agentRuns.chatId, chatId),
             eq(agentRuns.success, "true"),
-            notInArray(agentConfigs.type, BUILT_IN_AGENTS.map((agent) => agent.id)),
+            notInArray(
+              agentConfigs.type,
+              BUILT_IN_AGENTS.map((agent) => agent.id),
+            ),
           ),
         )
         .orderBy(desc(agentRuns.createdAt))

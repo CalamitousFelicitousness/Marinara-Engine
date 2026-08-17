@@ -58,9 +58,9 @@ export function getChatFloatingPanelDesktopRight(anchor: ChatToolbarFloatingPane
 
 function readChatToolbarPanelAction(target: EventTarget | null): ChatToolbarPanelAction | null {
   if (!(target instanceof Element)) return null;
-  const value = target.closest(`[${CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE}]`)?.getAttribute(
-    CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE,
-  );
+  const value = target
+    .closest(`[${CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE}]`)
+    ?.getAttribute(CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE);
   return value === "gallery" || value === "search" || value === "settings" || value === "summary" ? value : null;
 }
 
@@ -88,7 +88,10 @@ export function readChatToolbarFloatingPanelAnchor(trigger: HTMLElement | null):
     if (!overflowMenu) return null;
     const menuRect = overflowMenu.getBoundingClientRect();
     const minimumPanelWidth = Math.min(160, Math.max(96, window.innerWidth - CHAT_FLOATING_PANEL_PADDING * 2));
-    const rightEdge = Math.max(CHAT_FLOATING_PANEL_PADDING + minimumPanelWidth, menuRect.left - CHAT_FLOATING_PANEL_PADDING);
+    const rightEdge = Math.max(
+      CHAT_FLOATING_PANEL_PADDING + minimumPanelWidth,
+      menuRect.left - CHAT_FLOATING_PANEL_PADDING,
+    );
     return {
       right: Math.max(CHAT_FLOATING_PANEL_PADDING, window.innerWidth - rightEdge),
       rightInset: 0,

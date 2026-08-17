@@ -380,7 +380,9 @@ export const sidecarRoutes: FastifyPluginAsync = async (app) => {
   }>("/download", async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Sidecar model download" })) return;
     if (isInferenceBusy()) {
-      return reply.status(409).send({ error: "Cannot download or switch sidecar models while inference is in progress" });
+      return reply
+        .status(409)
+        .send({ error: "Cannot download or switch sidecar models while inference is in progress" });
     }
     const { quantization } = z.object({ quantization: quantizationSchema }).parse(req.body);
     await handleDownloadSse(reply, async () => {
@@ -395,7 +397,9 @@ export const sidecarRoutes: FastifyPluginAsync = async (app) => {
   }>("/download/custom", async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Sidecar custom model download" })) return;
     if (isInferenceBusy()) {
-      return reply.status(409).send({ error: "Cannot download or switch sidecar models while inference is in progress" });
+      return reply
+        .status(409)
+        .send({ error: "Cannot download or switch sidecar models while inference is in progress" });
     }
     const body = z
       .object({
@@ -482,7 +486,11 @@ export const sidecarRoutes: FastifyPluginAsync = async (app) => {
         debugLog("[debug/game/scene-analysis:sidecar] user prompt:\n%s", userPrompt);
       }
 
-      const raw = await analyzeScene(systemPrompt, userPrompt, createResponseAbortSignal(reply, "Sidecar scene analysis"));
+      const raw = await analyzeScene(
+        systemPrompt,
+        userPrompt,
+        createResponseAbortSignal(reply, "Sidecar scene analysis"),
+      );
       if (debugLogsEnabled) {
         debugLog("[debug/game/scene-analysis:sidecar] parsed model response:\n%s", JSON.stringify(raw, null, 2));
       }

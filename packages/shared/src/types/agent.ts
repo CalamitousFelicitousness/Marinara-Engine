@@ -792,11 +792,7 @@ export function mergeBuiltInAgentSettings(agentType: string, settings: unknown):
   for (const key of promptTemplateCollectionKeys) {
     const obsoleteIds =
       key === "promptTemplates" ? (OBSOLETE_BUILT_IN_PROMPT_TEMPLATE_IDS[agentType] ?? new Set<string>()) : undefined;
-    const promptTemplates = mergeBuiltInPromptTemplateCollection(
-      defaults[key],
-      normalizedSettings[key],
-      obsoleteIds,
-    );
+    const promptTemplates = mergeBuiltInPromptTemplateCollection(defaults[key], normalizedSettings[key], obsoleteIds);
     if (promptTemplates.length) {
       merged[key] = promptTemplates;
     } else {

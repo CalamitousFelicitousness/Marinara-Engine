@@ -2637,33 +2637,36 @@ function GameSurfaceComponent({
     }
   }, [assetManifest?.assets]);
   const gameAudioConnectionId = gameAudioConnection ? (gameAudioConnection.id as string) : undefined;
-  const generateGameAudioAsset = useCallback(async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
-    const category = kind === "sfx" ? "sfx" : "music";
-    if (prompt.startsWith(`${category}:generated:`)) return prompt;
-    try {
-      const generated = await withTimeout(
-        (signal) =>
-          api.post<{ tag: string; path: string }>(
-            "/tts/game-audio",
-            { kind, prompt, ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}) },
-            { signal },
-          ),
-        GAME_AUDIO_GENERATION_TIMEOUT_MS,
-      );
-      generatedAudioAssetsRef.current[generated.tag] = {
-        tag: generated.tag,
-        category,
-        subcategory: "generated",
-        name: generated.tag.split(":").at(-1) ?? generated.tag,
-        path: generated.path,
-        ext: ".mp3",
-      };
-      return generated.tag;
-    } catch (error) {
-      console.warn(`[game-audio] Failed to generate ${kind}:`, error);
-      return null;
-    }
-  }, [gameAudioConnectionId]);
+  const generateGameAudioAsset = useCallback(
+    async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
+      const category = kind === "sfx" ? "sfx" : "music";
+      if (prompt.startsWith(`${category}:generated:`)) return prompt;
+      try {
+        const generated = await withTimeout(
+          (signal) =>
+            api.post<{ tag: string; path: string }>(
+              "/tts/game-audio",
+              { kind, prompt, ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}) },
+              { signal },
+            ),
+          GAME_AUDIO_GENERATION_TIMEOUT_MS,
+        );
+        generatedAudioAssetsRef.current[generated.tag] = {
+          tag: generated.tag,
+          category,
+          subcategory: "generated",
+          name: generated.tag.split(":").at(-1) ?? generated.tag,
+          path: generated.path,
+          ext: ".mp3",
+        };
+        return generated.tag;
+      } catch (error) {
+        console.warn(`[game-audio] Failed to generate ${kind}:`, error);
+        return null;
+      }
+    },
+    [gameAudioConnectionId],
+  );
   // SFX only since #5161: music is never a per-turn generation prompt anymore —
   // scoring picks from the library (context tracks included), and the library
   // fills lazily via ensureContextMusicTrack.
@@ -4628,7 +4631,9 @@ function GameSurfaceComponent({
     setCombatMusicTier(
       normalizeMusicEnemyTier(snapshot.musicTier ?? null) ??
         normalizeMusicEnemyTier(
-          typeof chatMeta.gameSceneMusic === "string" ? /^music:tier:([a-z]+):/.exec(chatMeta.gameSceneMusic)?.[1] : null,
+          typeof chatMeta.gameSceneMusic === "string"
+            ? /^music:tier:([a-z]+):/.exec(chatMeta.gameSceneMusic)?.[1]
+            : null,
         ) ??
         "common",
     );
@@ -8594,7 +8599,9 @@ function GameSurfaceComponent({
           // request passes notify=false and renders its own feedback from combatError, so a failed
           // package request must not surface an Engine toast over the package's UI. #5094.
           if (notify) {
-            toast.error(localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }));
+            toast.error(
+              localizeUi("ui.game.gamesurfacecomponent.value1UseTheCombatButtonToRetry", { value1: message }),
+            );
           }
         })
         .finally(() => {

@@ -90,6 +90,8 @@ export const apiConnections = fileTable("api_connections", {
   maxTokensOverride: integer("max_tokens_override"),
   /** Maximum number of agent LLM jobs Marinara may run at once for this connection. */
   maxParallelJobs: integer("max_parallel_jobs").notNull().default(1),
+  /** Optional cap on outbound requests per minute to this connection (null = unlimited). */
+  maxRequestsPerMinute: integer("max_requests_per_minute"),
   /** Treat as a local/custom endpoint for Professor Mari JSON tool fallback behavior. */
   treatAsLocalEndpoint: text("treat_as_local_endpoint").notNull().default("false"),
   /**

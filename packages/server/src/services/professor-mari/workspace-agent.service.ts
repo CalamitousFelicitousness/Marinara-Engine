@@ -16,6 +16,7 @@ import type {
 } from "../llm/base-provider.js";
 import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
+import { setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../llm/local-sidecar.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createMariInstructionsStorage } from "../storage/mari-instructions.storage.js";
@@ -166,6 +167,11 @@ const RUNTIME_API_KEY = "local-marinara-runtime";
 const SESSION_ID = "professor-mari-workspace";
 const MAX_COMMAND_ROUNDS = 12;
 const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
+// Local sidecar / small models fumble the JSON command protocol more often, so they get a larger
+// formatting-repair budget before Mari gives up. These repair rounds also do not count against the
+// task's command-round budget (see the `round -= 1` exemptions), so a few bad frames cannot starve
+// the actual work.
+const MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR = 6;
 const MAX_VERIFICATION_REPAIR_ROUNDS = 2;
 const MAX_REPEATED_COMMAND_FAILURES = 3;
 const MAX_HISTORY_MESSAGES = 40;
@@ -2146,14 +2152,34 @@ export class ProfessorMariWorkspaceService {
       await this.ensureMariCliShim();
       const provider = createProviderForConnection(connection);
       const messages = await this.buildPromptMessages(args.chatId, connection);
-      const baseOptions = this.baseChatOptions(connection, controller.signal, (delta) => {
-        thinkingText += delta;
-        appendTraceThinking(workspaceTrace, delta);
-        args.onEvent({ type: "thinking", data: delta });
-      });
+      const baseOptions: ChatOptions = {
+        ...this.baseChatOptions(connection, controller.signal, (delta) => {
+          thinkingText += delta;
+          appendTraceThinking(workspaceTrace, delta);
+          args.onEvent({ type: "thinking", data: delta });
+        }),
+        onRateLimitPause: ({ delayMs, reason }) => {
+          const seconds = Math.max(1, Math.round(delayMs / 1000));
+          const content =
+            reason === "throttle"
+              ? `Pacing requests to stay under this connection's rate limit — continuing in ${seconds}s…`
+              : `Paused for the proxy rate limit — resuming in ${seconds}s…`;
+          appendTraceStatus(workspaceTrace, content);
+          args.onEvent({ type: "status", data: { content, kind: "rate_limited", level: "info" } });
+        },
+      };
+      const maxProtocolRepairRounds = isLocalSidecarConnection(connection)
+        ? MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR
+        : MAX_PROTOCOL_REPAIR_ROUNDS;
       const repeatedFailureCounts = new Map<string, number>();
       let protocolRepairRounds = 0;
       let verificationRepairRounds = 0;
+      // protocolRepairRounds resets on every productive round, so a model that alternates malformed
+      // and good frames could otherwise refund the round budget indefinitely. Cap the TOTAL refunds
+      // for the whole task so repeated formatting stumbles cannot drive unbounded requests; past the
+      // cap, repairs count against the normal command-round budget and the loop terminates.
+      let formattingRepairRefunds = 0;
+      const maxFormattingRepairRefunds = MAX_COMMAND_ROUNDS;
       const debugOverrideEnabled = args.debugMode === true || isDebugAgentsEnabled();
       const debugLog = debugOverrideEnabled
         ? (message: string, ...values: unknown[]) => logDebugOverride(true, message, ...values)
@@ -2199,7 +2225,7 @@ export class ProfessorMariWorkspaceService {
         }
         if (isEmptyCompletedAction(action)) {
           protocolRepairRounds += 1;
-          if (protocolRepairRounds <= MAX_PROTOCOL_REPAIR_ROUNDS) {
+          if (protocolRepairRounds <= maxProtocolRepairRounds) {
             messages.push({ role: "assistant", content: action.assistantHistoryContent });
             messages.push({
               role: "user",
@@ -2207,6 +2233,12 @@ export class ProfessorMariWorkspaceService {
                 "Your previous response was empty. Continue the task now. Return commands when work remains, or put a concise user-visible result in say before setting stop to true.",
               contextKind: "history",
             });
+            // A formatting stumble should not consume a productive command round — but only while
+            // under the absolute refund budget, so repeated stumbles cannot run unbounded.
+            if (formattingRepairRefunds < maxFormattingRepairRefunds) {
+              formattingRepairRefunds += 1;
+              round -= 1;
+            }
             continue;
           }
           const content =
@@ -2243,7 +2275,7 @@ export class ProfessorMariWorkspaceService {
         if (action.commands.length === 0 && !action.stop) {
           if (!action.protocolValid) {
             protocolRepairRounds += 1;
-            if (protocolRepairRounds > MAX_PROTOCOL_REPAIR_ROUNDS) {
+            if (protocolRepairRounds > maxProtocolRepairRounds) {
               const content =
                 "Professor Mari kept returning plain text instead of the required JSON command object, so I stopped before burning more requests. Ask her to continue and she can pick up from the saved trace.";
               assistantText = appendVisibleText(assistantText, content);
@@ -2251,6 +2283,12 @@ export class ProfessorMariWorkspaceService {
               args.onEvent({ type: "status", data: { content, kind: "info", level: "warning" } });
               for (const chunk of chunkText(content)) args.onEvent({ type: "token", data: chunk });
               break;
+            }
+            // A protocol-formatting repair should not consume a productive command round — but only
+            // while under the absolute refund budget, so repeated stumbles cannot run unbounded.
+            if (formattingRepairRefunds < maxFormattingRepairRefunds) {
+              formattingRepairRefunds += 1;
+              round -= 1;
             }
           } else {
             protocolRepairRounds = 0;
@@ -2401,6 +2439,30 @@ export class ProfessorMariWorkspaceService {
         }
       } else {
         this.lastError = err instanceof Error ? err.message : String(err);
+        // Persist whatever completed rounds produced before this failure — e.g. a proxy rate limit
+        // that outlasted the retries — so the user does not lose the work and can ask Mari to
+        // continue from the saved trace instead of re-running the whole request.
+        const hadPartialWorkspaceState =
+          assistantText.trim().length > 0 || thinkingText.trim().length > 0 || workspaceTrace.length > 0;
+        if (hadPartialWorkspaceState) {
+          // persistAssistantMessage attaches the trace/thinking to the visible text and no-ops on
+          // empty text, so when Mari failed before producing any `say` (the exact rate-limit-mid-
+          // task case), seed a placeholder — otherwise the completed steps are still lost.
+          if (!assistantText.trim()) {
+            assistantText = appendVisibleText(
+              assistantText,
+              "Professor Mari's workspace run stopped on an error after saving the completed steps. Ask her to continue from the saved trace.",
+            );
+          }
+          try {
+            await persistAssistantMessage();
+          } catch (saveErr) {
+            logger.error(
+              saveErr instanceof Error ? saveErr : new Error(String(saveErr)),
+              "[Professor Mari] Failed to persist partial workspace response after error",
+            );
+          }
+        }
         throw err;
       }
     } finally {
@@ -3253,6 +3315,9 @@ ${sections.join("\n\n")}
     if (!fallback) {
       return sidecarModelService.getConfiguredModelRef() ? this.buildLocalSidecarConnection() : null;
     }
+    // This raw decrypt bypasses the storage layer's read-path sync, so refresh the throttle
+    // registry here — otherwise Mari's proactive per-connection pacing no-ops on a cold registry.
+    setConnectionRateLimit(fallback.id, fallback.maxRequestsPerMinute ?? null);
     return { ...fallback, apiKey: decryptApiKey(fallback.apiKeyEncrypted) };
   }
 

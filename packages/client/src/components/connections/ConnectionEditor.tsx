@@ -339,6 +339,7 @@ export function ConnectionEditor() {
   const [localModel, setLocalModel] = useState("");
   const [localMaxContext, setLocalMaxContext] = useState(128000);
   const [localMaxParallelJobs, setLocalMaxParallelJobs] = useState(DEFAULT_MAX_PARALLEL_JOBS);
+  const [localMaxRequestsPerMinute, setLocalMaxRequestsPerMinute] = useState<number | null>(null);
   const [localEnableCaching, setLocalEnableCaching] = useState(false);
   const [localAnthropicExtendedCacheTtl, setLocalAnthropicExtendedCacheTtl] = useState(false);
   const [localCachingAtDepth, setLocalCachingAtDepth] = useState(DEFAULT_CACHING_AT_DEPTH);
@@ -436,6 +437,9 @@ export function ConnectionEditor() {
     setLocalModel(normalizeGrokCliEditorModel(provider, (c.model as string) ?? ""));
     setLocalMaxContext(normalizeConnectionMaxContext(provider, c.maxContext));
     setLocalMaxParallelJobs(normalizeMaxParallelJobs(c.maxParallelJobs));
+    setLocalMaxRequestsPerMinute(
+      typeof c.maxRequestsPerMinute === "number" && c.maxRequestsPerMinute > 0 ? c.maxRequestsPerMinute : null,
+    );
     setLocalEnableCaching(c.enableCaching === "true" || c.enableCaching === true);
     setLocalAnthropicExtendedCacheTtl(c.anthropicExtendedCacheTtl === "true" || c.anthropicExtendedCacheTtl === true);
     setLocalCachingAtDepth(normalizeCachingAtDepth(c.cachingAtDepth));
@@ -780,6 +784,7 @@ export function ConnectionEditor() {
       model: normalizedModel,
       maxContext: localMaxContext,
       maxParallelJobs: localMaxParallelJobs,
+      maxRequestsPerMinute: localMaxRequestsPerMinute,
       enableCaching: localEnableCaching,
       anthropicExtendedCacheTtl:
         localProvider === "anthropic" && localEnableCaching ? localAnthropicExtendedCacheTtl : false,
@@ -894,6 +899,7 @@ export function ConnectionEditor() {
     localModel,
     localMaxContext,
     localMaxParallelJobs,
+    localMaxRequestsPerMinute,
     localEnableCaching,
     localAnthropicExtendedCacheTtl,
     localCachingAtDepth,
@@ -1008,6 +1014,7 @@ export function ConnectionEditor() {
       maxContext: localMaxContext,
       maxTokensOverride: localMaxTokensOverride ?? null,
       maxParallelJobs: localMaxParallelJobs,
+      maxRequestsPerMinute: localMaxRequestsPerMinute,
       treatAsLocalEndpoint: canTreatAsLocalEndpoint ? localTreatAsLocalEndpoint : false,
       promptPresetId: !isMediaProvider ? localPromptPresetId || null : null,
       defaultParameters,
@@ -1051,6 +1058,7 @@ export function ConnectionEditor() {
     localMaxContext,
     localMaxTokensOverride,
     localMaxParallelJobs,
+    localMaxRequestsPerMinute,
     localTreatAsLocalEndpoint,
     localPromptPresetId,
     localDefaultParametersEnabled,
@@ -2416,6 +2424,38 @@ export function ConnectionEditor() {
                 </span>
               </div>
               <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.connections.connectioneditor.agentBatchesForTheSameConnectionCanBeSplit")}</p>
+            </FieldGroup>
+          )}
+
+          {/* ── Rate Limit (requests per minute) ── */}
+          {!isMediaGenerationProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.maxRequestsPerMinute")}
+              icon={
+                <SlidersHorizontal size="0.875rem" className="text-[var(--marinara-chat-chrome-button-text-active)]" />
+              }
+              help={localizeUi("ui.connections.connectioneditor.maxRequestsPerMinuteHelp")}
+            >
+              <div className="flex items-center gap-3">
+                <DraftNumberInput
+                  value={localMaxRequestsPerMinute ?? 0}
+                  min={0}
+                  max={600}
+                  selectOnFocus
+                  onCommit={(nextValue) => {
+                    setLocalMaxRequestsPerMinute(nextValue > 0 ? Math.floor(nextValue) : null);
+                    markDirty();
+                  }}
+                  className="w-24 rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                />
+                <span className="text-xs text-[var(--muted-foreground)]">
+                  {localMaxRequestsPerMinute === null
+                    ? localizeUi("ui.connections.connectioneditor.requestsPerMinuteUnlimited")
+                    : localizeUi("ui.connections.connectioneditor.value1RequestsPerMinute", {
+                        value1: localMaxRequestsPerMinute,
+                      })}
+                </span>
+              </div>
             </FieldGroup>
           )}
 

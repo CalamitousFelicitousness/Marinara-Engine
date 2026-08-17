@@ -14,6 +14,7 @@ export type ConnectionTransferRow = {
   maxContext?: unknown;
   maxTokensOverride?: unknown;
   maxParallelJobs?: unknown;
+  maxRequestsPerMinute?: unknown;
   promptPresetId?: unknown;
   defaultParameters?: unknown;
   enableCaching?: unknown;
@@ -53,6 +54,7 @@ export type SafeConnectionExport = {
   maxContext: number;
   maxTokensOverride: number | null;
   maxParallelJobs: number;
+  maxRequestsPerMinute: number | null;
   promptPresetId: string | null;
   defaultParameters: Record<string, unknown> | null;
   enableCaching: boolean;
@@ -159,6 +161,7 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       promptPresetId: null,
       maxTokensOverride: asNullablePositiveInteger(value.maxTokensOverride),
       maxParallelJobs: asBoundedPositiveInteger(value.maxParallelJobs, 1, MAX_PARALLEL_JOBS),
+      maxRequestsPerMinute: asNullableBoundedPositiveInteger(value.maxRequestsPerMinute, 600),
       treatAsLocalEndpoint: asBoolean(value.treatAsLocalEndpoint),
       claudeFastMode: asBoolean(value.claudeFastMode),
     },
@@ -179,6 +182,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     maxContext: asPositiveInteger(connection.maxContext, 128000),
     maxTokensOverride: asNullablePositiveInteger(connection.maxTokensOverride),
     maxParallelJobs: asPositiveInteger(connection.maxParallelJobs, 1),
+    maxRequestsPerMinute: asNullablePositiveInteger(connection.maxRequestsPerMinute),
     promptPresetId: asNullableString(connection.promptPresetId),
     defaultParameters: parseDefaultParameters(connection.defaultParameters),
     enableCaching: asBoolean(connection.enableCaching),
@@ -306,4 +310,9 @@ function asNullablePositiveInteger(value: unknown) {
   const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   if (!Number.isFinite(numberValue)) return null;
   return Math.max(1, Math.round(numberValue));
+}
+
+function asNullableBoundedPositiveInteger(value: unknown, max: number) {
+  const parsed = asNullablePositiveInteger(value);
+  return parsed === null ? null : Math.min(max, parsed);
 }

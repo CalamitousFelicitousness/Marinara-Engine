@@ -10099,7 +10099,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     await expect
       .poll(() => characterScroll.evaluate((element) => element.scrollHeight > element.clientHeight))
       .toBe(true);
-    const characterLibraryButton = rightPanel.getByRole("button", { name: "Open Characters Library" });
+    const characterLibraryButton = rightPanel.getByRole("button", { name: "Open Library", exact: true });
     const characterButtonBox = await characterLibraryButton.boundingBox();
     expect(characterButtonBox).not.toBeNull();
     await expect(characterScroll).toHaveCSS("scrollbar-gutter", /stable/u);
@@ -10110,7 +10110,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     await expect
       .poll(() => personaScroll.evaluate((element) => element.scrollHeight <= element.clientHeight))
       .toBe(true);
-    const personaLibraryButton = rightPanel.getByRole("button", { name: "Open Personas Library" });
+    const personaLibraryButton = rightPanel.getByRole("button", { name: "Open Library", exact: true });
     const personaButtonBox = await personaLibraryButton.boundingBox();
     expect(personaButtonBox).not.toBeNull();
     await expect(personaScroll).toHaveCSS("scrollbar-gutter", /stable/u);
@@ -10252,7 +10252,7 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
   });
   await page.goto("/");
   await page.locator('[data-tour="panel-characters"]').click();
-  await page.getByRole("button", { name: "Open Characters Library" }).click();
+  await page.getByRole("button", { name: "Open Library", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Browse your characters" })).toBeVisible();
   await expect(
     page.locator('[data-component="CharacterLibraryView"]').getByPlaceholder('Search characters or -tag:"tag name"'),

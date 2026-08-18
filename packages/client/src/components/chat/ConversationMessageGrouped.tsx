@@ -93,6 +93,7 @@ export function ConversationMessageGrouped({
     resolveReactorName,
     onPickSegmentReaction,
     onToggleReactionEntry,
+    onRemoveCharacterReaction,
     onToggleSelect,
     isBubbleStyle,
   } = ctx;
@@ -213,6 +214,7 @@ export function ConversationMessageGrouped({
                 reactions={segReactions}
                 resolveReactorName={resolveReactorName}
                 onToggle={onToggleReactionEntry}
+                onRemoveCharacter={onRemoveCharacterReaction}
               />
             ) : null;
 

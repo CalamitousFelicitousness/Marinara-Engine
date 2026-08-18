@@ -380,7 +380,8 @@ function resolveVideoConnection(connection: VideoGenerationConnection) {
         : rawServiceHint;
   const isXaiVideo = source === "xai" || serviceHint === "xai";
   const isGoogleVeoVideo = source === "google_veo" || serviceHint === "google_veo";
-  const isOpenRouterVideo = source === "openrouter" || serviceHint === "openrouter";
+  const isNanoGptVideo = source === "nanogpt";
+  const isOpenRouterVideo = !isNanoGptVideo && (source === "openrouter" || serviceHint === "openrouter");
   const isAtlasVideo = source === "atlas" || serviceHint === "atlas";
   const isSeedanceVideo = source === "seedance" || serviceHint === "seedance";
   const isSwarmUiVideo = source === "swarmui" || serviceHint === "swarmui";
@@ -394,45 +395,51 @@ function resolveVideoConnection(connection: VideoGenerationConnection) {
         ? "https://api.x.ai/v1"
         : isGoogleVeoVideo
           ? "https://generativelanguage.googleapis.com/v1beta"
-          : isOpenRouterVideo
-            ? "https://openrouter.ai/api/v1"
-            : isAtlasVideo
-              ? "https://api.atlascloud.ai/api/v1"
-              : isSeedanceVideo
-                ? "https://api.seedance2.ai"
-                : isSwarmUiVideo
-                  ? "http://127.0.0.1:7801"
-                  : isComfyUiVideo
-                    ? "http://127.0.0.1:8188"
-                    : "https://generativelanguage.googleapis.com/v1beta"),
+          : isNanoGptVideo
+            ? "https://nano-gpt.com/api"
+            : isOpenRouterVideo
+              ? "https://openrouter.ai/api/v1"
+              : isAtlasVideo
+                ? "https://api.atlascloud.ai/api/v1"
+                : isSeedanceVideo
+                  ? "https://api.seedance2.ai"
+                  : isSwarmUiVideo
+                    ? "http://127.0.0.1:7801"
+                    : isComfyUiVideo
+                      ? "http://127.0.0.1:8188"
+                      : "https://generativelanguage.googleapis.com/v1beta"),
     model:
       connection.model ||
       (isXaiVideo
         ? "grok-imagine-video-1.5"
         : isGoogleVeoVideo
           ? "veo-3.1-generate-preview"
-          : isOpenRouterVideo
-            ? "google/veo-3.1"
-            : isAtlasVideo
-              ? "google/veo3.1/text-to-video"
-              : isSeedanceVideo
-                ? "seedance-2-0"
-                : isComfyUiVideo
-                  ? ""
-                  : "gemini-omni-flash-preview"),
+          : isNanoGptVideo
+            ? ""
+            : isOpenRouterVideo
+              ? "google/veo-3.1"
+              : isAtlasVideo
+                ? "google/veo3.1/text-to-video"
+                : isSeedanceVideo
+                  ? "seedance-2-0"
+                  : isComfyUiVideo
+                    ? ""
+                    : "gemini-omni-flash-preview"),
     resolution: isXaiVideo
       ? videoDefaults.xai.resolution
       : isGoogleVeoVideo
         ? videoDefaults.googleVeo.resolution
-        : isOpenRouterVideo
+        : isNanoGptVideo
           ? videoDefaults.openrouter.resolution
-          : isAtlasVideo
-            ? videoDefaults.atlas.resolution
-            : isSeedanceVideo
-              ? videoDefaults.seedance.resolution
-              : isComfyUiVideo
-                ? videoDefaults.comfyui.resolution
-                : undefined,
+          : isOpenRouterVideo
+            ? videoDefaults.openrouter.resolution
+            : isAtlasVideo
+              ? videoDefaults.atlas.resolution
+              : isSeedanceVideo
+                ? videoDefaults.seedance.resolution
+                : isComfyUiVideo
+                  ? videoDefaults.comfyui.resolution
+                  : undefined,
     comfyWorkflow: connection.comfyuiWorkflow || undefined,
     comfyLoras: isComfyUiVideo ? videoDefaults.comfyui.loras : [],
     comfyFps: isComfyUiVideo ? videoDefaults.comfyui.fps : undefined,

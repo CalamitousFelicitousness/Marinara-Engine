@@ -40,6 +40,9 @@ function resolveBuildCommit() {
 const BUILD_COMMIT = resolveBuildCommit();
 
 function manualChunks(id: string) {
+  if (id.endsWith("/components/game/game-narration-format.ts")) return "game-narration-format";
+  if (id.endsWith("/components/game/GameNarrationVisuals.tsx")) return "game-narration-visuals";
+  if (id.endsWith("/lib/game-tag-parser.ts")) return "game-tag-parser";
   if (!id.includes("node_modules")) return undefined;
 
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
@@ -86,16 +89,9 @@ function bundleBudget(): Plugin {
         );
       }
 
-      // 520 kB, raised from 500 in #5209. GameSurface had grown to 499.05 kB on its
-      // own — under a kilobyte of headroom — so the cap was going to stop the next
-      // feature to touch it whichever one that turned out to be.
-      //
-      // Splitting was tried first and does not help: giving GameNarration its own
-      // chunk drops GameSurface to 375 kB but produces a 578 kB narration chunk,
-      // because GameNarration.tsx is ~300 kB of source by itself. No chunk boundary
-      // gets that under 500; only decomposing the component would, which is real work
-      // and does not belong in a feature PR. Tracked separately.
-      const oversizedChunks = chunks.filter((chunk) => chunk.sizeKb > 520);
+      // Keep lazy feature chunks below Vite's 500 kB warning line. Game narration's
+      // reusable HTML formatter has its own boundary so GameSurface does not absorb it.
+      const oversizedChunks = chunks.filter((chunk) => chunk.sizeKb > 500);
       if (oversizedChunks.length > 0) {
         this.error(
           `Chunk size warning budget exceeded: ${oversizedChunks
@@ -179,6 +175,8 @@ export default defineConfig({
     outDir: "dist",
     target: "es2020",
     cssTarget: "safari14",
+    // Vite reports decimal kB; 512 kB matches the bundle plugin's enforced 500 KiB ceiling.
+    chunkSizeWarningLimit: 512,
     sourcemap: ENABLE_SOURCE_MAPS,
     rollupOptions: {
       output: {

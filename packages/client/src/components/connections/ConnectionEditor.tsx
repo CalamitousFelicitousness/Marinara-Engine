@@ -161,6 +161,7 @@ const VIDEO_REFERENCE_UPLOAD_EXPIRY_OPTIONS: Array<{ value: VideoReferenceUpload
 
 function videoSourceToDefaultsService(value: string | null | undefined): VideoDefaultsService {
   if (value === "swarmui") return "comfyui";
+  if (value === "nanogpt") return "openrouter";
   return value === "xai" ||
     value === "openrouter" ||
     value === "atlas" ||
@@ -185,6 +186,7 @@ function videoSelectionToDefaultsService(
 
 function videoSourceToProviderOption(value: string | null | undefined): string {
   if (value?.trim() === "swarmui") return "swarmui";
+  if (value?.trim() === "nanogpt") return "nanogpt";
   const service = videoSourceToDefaultsService(value);
   return service === "gemini_omni" || service === "google_veo" ? "google_ai_studio" : service;
 }
@@ -202,6 +204,7 @@ function videoProviderServiceForModel(
 }
 
 function defaultVideoModelForService(value: string | null | undefined): string {
+  if (value === "nanogpt") return "";
   return DEFAULT_VIDEO_MODELS[videoSourceToDefaultsService(value)];
 }
 
@@ -648,7 +651,9 @@ export function ConnectionEditor() {
             : localProvider === "video_generation" && selectedVideoDefaultsService === "xai"
               ? API_KEY_LINKS.xai
               : localProvider === "video_generation" && selectedVideoDefaultsService === "openrouter"
-                ? API_KEY_LINKS.openrouter
+                ? selectedVideoProvider === "nanogpt"
+                  ? API_KEY_LINKS.nanogpt
+                  : API_KEY_LINKS.openrouter
                 : localProvider === "video_generation" && selectedVideoDefaultsService === "seedance"
                   ? { label: "Open Seedance API docs", url: "https://seedance2.ai/api-docs" }
                   : localProvider === "video_generation" &&
@@ -686,8 +691,9 @@ export function ConnectionEditor() {
 
   // Model list for current provider
   const providerModels = useMemo(() => {
+    if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
     return MODEL_LISTS[localProvider] ?? [];
-  }, [localProvider]);
+  }, [localProvider, selectedVideoProvider]);
 
   // Merge known models with remote models (remote first, deduped)
   const allModels = useMemo(() => {
@@ -2466,6 +2472,7 @@ export function ConnectionEditor() {
           {localProvider === "video_generation" && localVideoDefaults && (
             <VideoGenerationDefaultsPanel
               value={localVideoDefaults}
+              source={selectedVideoProvider}
               remoteLoras={remoteLoras}
               expanded={videoDefaultsExpanded}
               onExpandedChange={setVideoDefaultsExpanded}
@@ -3978,6 +3985,7 @@ function TextSetting({
 
 function VideoGenerationDefaultsPanel({
   value,
+  source,
   remoteLoras,
   expanded,
   onExpandedChange,
@@ -3985,6 +3993,7 @@ function VideoGenerationDefaultsPanel({
   onReset,
 }: {
   value: VideoGenerationDefaultsProfile;
+  source: string;
   remoteLoras: RemoteConnectionModel[];
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -3993,6 +4002,7 @@ function VideoGenerationDefaultsPanel({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
+  const isNanoGpt = source === "nanogpt";
   const service =
     value.service === "xai" ||
     value.service === "openrouter" ||
@@ -4022,7 +4032,9 @@ function VideoGenerationDefaultsPanel({
       : service === "google_veo"
         ? "Google AI Studio Veo"
         : service === "openrouter"
-          ? "OpenRouter Video"
+          ? isNanoGpt
+            ? "NanoGPT"
+            : "OpenRouter Video"
           : service === "atlas"
             ? t("connections.mediaSources.atlas.name")
             : service === "seedance"
@@ -4093,9 +4105,13 @@ function VideoGenerationDefaultsPanel({
                 "ui.connections.videogenerationdefaultspanel.connectionScopedDefaultsForGoogleAiStudioVeoVideo",
               )
             : service === "openrouter"
-              ? localizeUi(
-                  "ui.connections.videogenerationdefaultspanel.connectionScopedDefaultsForOpenrouterAsynchronousVideoGeneration",
-                )
+              ? isNanoGpt
+                ? localizeUi(
+                    "ui.connections.videogenerationdefaultspanel.connectionScopedDefaultsForNanogptAsynchronousVideoGeneration",
+                  )
+                : localizeUi(
+                    "ui.connections.videogenerationdefaultspanel.connectionScopedDefaultsForOpenrouterAsynchronousVideoGeneration",
+                  )
               : service === "atlas"
                 ? t("connections.mediaSources.atlas.videoDefaultsHelp")
                 : service === "seedance"
@@ -4289,7 +4305,9 @@ function VideoGenerationDefaultsPanel({
                                 "ui.connections.videogenerationdefaultspanel.comfyuiReceivesDimensionsDurationFpsAndFrameCount",
                               )
                             : localizeUi(
-                                "ui.connections.videogenerationdefaultspanel.theseValuesAreSentToOpenrouterSAsynchronousVideos",
+                                isNanoGpt
+                                  ? "ui.connections.videogenerationdefaultspanel.theseValuesAreSentToNanogptSAsynchronousVideoApi"
+                                  : "ui.connections.videogenerationdefaultspanel.theseValuesAreSentToOpenrouterSAsynchronousVideos",
                               )}
                 </p>
               </>

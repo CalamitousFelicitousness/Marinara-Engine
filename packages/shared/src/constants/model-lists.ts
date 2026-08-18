@@ -620,6 +620,13 @@ export const VIDEO_GENERATION_SOURCES: VideoGenSource[] = [
     requiresApiKey: true,
   },
   {
+    id: "nanogpt",
+    name: "NanoGPT",
+    description: "Video generation models discovered from NanoGPT's asynchronous Video API.",
+    defaultBaseUrl: "https://nano-gpt.com/api",
+    requiresApiKey: true,
+  },
+  {
     id: "atlas",
     name: "Atlas Cloud",
     description: "Atlas Cloud image and video models through its asynchronous media API.",
@@ -923,6 +930,7 @@ export function inferVideoSource(model: string, baseUrl: string): string {
   if (m === "comfyui" || u.includes(":8188") || u.includes("comfyui")) return "comfyui";
   if (m === "atlas" || u.includes("atlascloud.ai")) return "atlas";
   if (m === "seedance" || m.startsWith("seedance-") || u.includes("seedance2.ai")) return "seedance";
+  if (m === "nanogpt" || u.includes("nano-gpt.com")) return "nanogpt";
   if (m === "openrouter" || u.includes("openrouter.ai")) return "openrouter";
   if (m.includes("/") && (m.includes("veo") || m.includes("wan"))) return "openrouter";
   if (m === "google_veo" || m === "veo" || /^veo-[\d.]+/.test(m)) return "google_veo";

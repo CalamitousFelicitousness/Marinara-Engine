@@ -16,7 +16,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import DOMPurify from "dompurify";
 import {
   AlertTriangle,
   MessageCircle,
@@ -42,24 +41,14 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import type { AvatarCrop } from "@marinara-engine/shared";
-import { cn, copyToClipboard, getAvatarCropStyle } from "../../lib/utils";
+import { cn, copyToClipboard } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { findNamedMapValue } from "../../lib/game-character-name-match";
 import type { GameSegmentEdit } from "../../lib/game-segment-edits";
-import {
-  escapeStandaloneGameNarrationAngleLines,
-  hasVisibleGameNarrationText,
-  parseGmTags,
-  stripGmTagsKeepReadables,
-} from "../../lib/game-tag-parser";
+import { hasVisibleGameNarrationText, parseGmTags, stripGmTagsKeepReadables } from "../../lib/game-tag-parser";
 import { audioManager } from "../../lib/game-audio";
 import { normalizeSpriteExpressionKey, resolveSpriteExpression } from "../../lib/sprite-expression-match";
-import {
-  DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE,
-  HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE,
-  stripSurroundingDialogueQuotes,
-} from "../../lib/dialogue-quotes";
+import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "../../lib/dialogue-quotes";
 import type { SpriteInfo } from "../../hooks/use-characters";
 import { useTranslate } from "../../hooks/use-translate";
 import { useTTSConfig } from "../../hooks/use-tts";
@@ -95,26 +84,18 @@ import {
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "../chat/message-selection-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { formatNarration } from "./game-narration-format";
+import {
+  CroppedAvatar,
+  ExpressionReaction,
+  PartyOverlayBox,
+  nameColorStyle,
+  type SpeakerAvatarInfo,
+} from "./GameNarrationVisuals";
+
+export { formatNarration } from "./game-narration-format";
 
 const GamePeekPromptButton = lazy(() => import("./GamePeekPromptButton"));
-
-/** Build inline style for a color that may be a plain color or a CSS gradient. */
-function nameColorStyle(color?: string): CSSProperties | undefined {
-  if (!color) return undefined;
-  if (color.includes("gradient(")) {
-    return {
-      backgroundImage: color,
-      backgroundRepeat: "no-repeat",
-      backgroundSize: "100% 100%",
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      backgroundClip: "text",
-      color: "transparent",
-      display: "inline-block",
-    };
-  }
-  return { color };
-}
 
 const GAME_TTS_EMOTIONS = [
   "neutral",
@@ -251,13 +232,6 @@ function narrationSegmentAnchorKey(segment: NarrationSegment): string {
   if (segment.sourceMessageId) return `${segment.sourceMessageId}:${segment.id}`;
   return segment.id;
 }
-
-type SpeakerAvatarInfo = {
-  url: string;
-  crop?: AvatarCrop | null;
-  nameColor?: string;
-  dialogueColor?: string;
-};
 
 type GameSegmentVoiceEntry =
   | { status: "loading"; speaker?: string; tone?: string; voice?: string; chunks: string[] }
@@ -5992,208 +5966,6 @@ export function GameNarration({
   );
 }
 
-function CroppedAvatar({
-  src,
-  alt,
-  crop,
-  className,
-  onLoadError,
-}: {
-  src: string;
-  alt: string;
-  crop?: AvatarCrop | null;
-  className?: string;
-  onLoadError?: () => void;
-}) {
-  return (
-    <div className={cn("relative overflow-hidden", className)}>
-      <img
-        src={src}
-        alt={alt}
-        className="h-full w-full object-cover"
-        style={getAvatarCropStyle(crop)}
-        onError={onLoadError}
-      />
-    </div>
-  );
-}
-
-function PartyOverlayBox({
-  line,
-  avatar,
-  color,
-  nameColor,
-  voiceControl,
-  translation,
-}: {
-  line: PartyDialogueLine;
-  avatar: SpeakerAvatarInfo | null;
-  color?: string;
-  nameColor?: string;
-  voiceControl?: ReactNode;
-  translation?: ReactNode;
-}) {
-  const styleByType: Record<string, { border: string; bg: string; icon: string; labelColor: string }> = {
-    side: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
-    extra: { border: "border-white/15", bg: "bg-black/75", icon: "💬", labelColor: "text-white/85" },
-    thought: { border: "border-purple-400/20", bg: "bg-purple-950/70", icon: "💭", labelColor: "text-purple-200/80" },
-    whisper: {
-      border: "border-[var(--marinara-chat-chrome-button-border)]",
-      bg: "bg-[var(--marinara-chat-chrome-panel-bg)]",
-      icon: "🤫",
-      labelColor: "text-[var(--marinara-chat-chrome-panel-text)]",
-    },
-  };
-  const style = styleByType[line.type] ?? styleByType.side!;
-
-  return (
-    <div
-      className={cn(
-        // Inert theming hook for the aside box. `data-line-type` exposes the variant so a theme can tint
-        // thought and whisper differently without depending on the utility classes below.
-        "experience-side-line isolate flex w-fit min-w-0 max-w-full transform-gpu items-start gap-2 rounded-xl border bg-clip-padding px-3 py-2 sm:max-w-[75%]",
-        (line.type === "side" || line.type === "extra") && "shadow-[0_16px_38px_rgba(0,0,0,0.45)]",
-        style.border,
-        style.bg,
-      )}
-      data-line-type={line.type}
-    >
-      {avatar ? (
-        <CroppedAvatar
-          src={avatar.url}
-          alt={line.character}
-          crop={avatar.crop}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15"
-        />
-      ) : (
-        <img
-          src="/npc-silhouette.svg"
-          alt={line.character}
-          className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-white/15 object-cover"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="text-[0.5625rem]">{style.icon}</span>
-          <span
-            className={cn("min-w-0 truncate text-[0.6875rem] font-semibold", style.labelColor)}
-            style={nameColorStyle(nameColor ?? color)}
-          >
-            {line.character}
-          </span>
-          {line.type === "whisper" && line.target && (
-            <span className="min-w-0 truncate text-[0.5625rem] text-white/40">→ {line.target}</span>
-          )}
-          {voiceControl}
-        </div>
-        <div className="mt-0.5 min-w-0">
-          <p
-            className={cn(
-              "text-xs leading-relaxed text-white/75 whitespace-normal break-words [overflow-wrap:anywhere]",
-              line.type === "thought" && "italic opacity-80",
-              line.type === "whisper" && "italic",
-            )}
-            style={(line.type === "side" || line.type === "extra") && color ? { color } : undefined}
-            dangerouslySetInnerHTML={{
-              __html: formatNarration(line.content, false),
-            }}
-          />
-          {translation}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Anime-style expression reaction indicators ──
-
-type ExpressionReactionEffect =
-  | "pop"
-  | "anger"
-  | "sparkle"
-  | "heart"
-  | "tear"
-  | "stress"
-  | "thought"
-  | "focus"
-  | "sleep";
-
-const EXPRESSION_REACTIONS: Record<string, { symbol: string; color: string; effect: ExpressionReactionEffect }> = {
-  // Anger / frustration
-  angry: { symbol: "❗", color: "text-red-400", effect: "anger" },
-  furious: { symbol: "‼️", color: "text-red-500", effect: "anger" },
-  annoyed: { symbol: "💢", color: "text-red-400", effect: "anger" },
-  irritated: { symbol: "💢", color: "text-orange-400", effect: "anger" },
-
-  // Confusion / surprise
-  confused: { symbol: "❓", color: "text-yellow-300", effect: "pop" },
-  surprised: { symbol: "❗", color: "text-yellow-300", effect: "pop" },
-  shocked: { symbol: "‼️", color: "text-yellow-400", effect: "pop" },
-
-  // Joy / amusement
-  happy: { symbol: "✨", color: "text-amber-300", effect: "sparkle" },
-  amused: { symbol: "✨", color: "text-amber-300", effect: "sparkle" },
-  delighted: { symbol: "✨", color: "text-yellow-300", effect: "sparkle" },
-  mischievous: { symbol: "😈", color: "text-purple-300", effect: "pop" },
-
-  // Affection
-  flirty: { symbol: "💗", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
-  tender: { symbol: "💕", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
-  loving: { symbol: "💕", color: "text-[var(--marinara-chat-chrome-panel-text)]", effect: "heart" },
-
-  // Sadness
-  sad: { symbol: "💧", color: "text-blue-300", effect: "tear" },
-  crying: { symbol: "💧", color: "text-blue-400", effect: "tear" },
-
-  // Fear / worry
-  scared: { symbol: "💦", color: "text-sky-300", effect: "stress" },
-  worried: { symbol: "💦", color: "text-sky-300", effect: "stress" },
-  nervous: { symbol: "💦", color: "text-sky-300", effect: "stress" },
-
-  // Thinking
-  thinking: { symbol: "💭", color: "text-white/70", effect: "thought" },
-
-  // Smug / confident
-  smirk: { symbol: "✧", color: "text-amber-300", effect: "sparkle" },
-  smug: { symbol: "✧", color: "text-amber-400", effect: "sparkle" },
-  determined: { symbol: "🔥", color: "text-orange-400", effect: "focus" },
-  battle_stance: { symbol: "⚔️", color: "text-orange-300", effect: "focus" },
-
-  // Cold / dismissive
-  cold: { symbol: "❄️", color: "text-sky-300", effect: "sparkle" },
-  disgusted: { symbol: "💢", color: "text-green-400", effect: "anger" },
-  deadpan: { symbol: "…", color: "text-white/40", effect: "pop" },
-  eye_roll: { symbol: "…", color: "text-white/40", effect: "pop" },
-  bored: { symbol: "💤", color: "text-white/40", effect: "sleep" },
-};
-
-function ExpressionReaction({ expression }: { expression?: string }) {
-  if (!expression) return null;
-  const key = expression.toLowerCase().replace(/[_\s-]/g, "_");
-  const reaction = EXPRESSION_REACTIONS[key];
-  if (!reaction) return null;
-
-  return (
-    <div
-      className={cn(
-        "game-expression-reaction absolute -right-1 -top-1 sm:-right-2 sm:-top-2",
-        `game-expression-reaction--${reaction.effect}`,
-        reaction.color,
-      )}
-    >
-      <span className="game-expression-reaction__halo" />
-      <span className="game-expression-reaction__symbol">{reaction.symbol}</span>
-      {reaction.effect === "thought" && (
-        <>
-          <span className="game-expression-reaction__bubble game-expression-reaction__bubble--one" />
-          <span className="game-expression-reaction__bubble game-expression-reaction__bubble--two" />
-        </>
-      )}
-      {reaction.effect === "tear" && <span className="game-expression-reaction__drop" />}
-    </div>
-  );
-}
-
 /** Split PascalCase/camelCase identifiers into space-separated words.
  *  "FatuiAgent" → "Fatui Agent", "darkKnight" → "dark Knight"
  *  Already-spaced names pass through unchanged. */
@@ -6674,175 +6446,4 @@ function splitInlineDialogue(
   }
 
   return result;
-}
-
-function commandBadge(className: string, label: string, detail?: string): string {
-  return `<span class="inline-flex max-w-full flex-wrap items-center gap-1 rounded px-1.5 py-0.5 text-xs ${className}">${label}${
-    detail ? ` <span class="opacity-75">${detail}</span>` : ""
-  }</span>`;
-}
-
-function parseCommandAttributes(source: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^,\s]+))/g;
-  let match: RegExpExecArray | null;
-  while ((match = attrRe.exec(source)) !== null) {
-    attrs[match[1]!] = match[2] ?? match[3] ?? match[4] ?? "";
-  }
-  return attrs;
-}
-
-function formatSignedNumber(value: string): string {
-  const numeric = Number(value.trim());
-  if (!Number.isFinite(numeric)) return value.trim();
-  return numeric > 0 ? `+${numeric}` : String(numeric);
-}
-
-export function formatNarration(content: string, boldDialogue = true): string {
-  let html = escapeStandaloneGameNarrationAngleLines(content)
-    .replace(/\[combat_result]\s*([\s\S]*?)\s*\[\/combat_result]/gi, (_match, recap: string) => {
-      const cleaned = recap.trim();
-      return `${commandBadge("bg-red-500/15 text-red-200 ring-1 ring-red-400/20", "⚔ Combat Result")}${
-        cleaned ? `\n${cleaned}` : ""
-      }`;
-    })
-    .replace(
-      /\[dice:\s*((?:\d+)?d\d+(?:[+-]\d+)?)\s*=\s*(-?\d+)(?:\s*\([^\]]+\))?\]/gi,
-      (_match, notation: string, total: string) =>
-        commandBadge("bg-white/10 text-white/60 font-mono", "🎲", `${notation} → ${total}`),
-    )
-    .replace(/\[qte_bonus:\s*(-?\d+)\]/gi, (_match, bonus: string) =>
-      commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", "⏱ QTE Bonus", formatSignedNumber(bonus)),
-    )
-    .replace(/\[qte_result:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      const status = attrs.status === "fail" ? "Fail" : attrs.status === "success" ? "Success" : "Result";
-      const modifier = attrs.modifier ? formatSignedNumber(attrs.modifier) : "";
-      return commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", `⏱ QTE ${status}`, modifier);
-    })
-    .replace(/\[skill_check:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      const skill = attrs.skill || "Skill";
-      const dc = attrs.dc ? `DC ${attrs.dc}` : "";
-      const total = attrs.total ? `total ${attrs.total}` : "";
-      const result = attrs.result ? attrs.result.replace(/_/g, " ") : "";
-      return commandBadge(
-        "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20",
-        "🎯 Skill Check",
-        [skill, dc, total, result].filter(Boolean).join(" · "),
-      );
-    })
-    .replace(/\[combat:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-red-500/15 text-red-200 ring-1 ring-red-400/20",
-        "⚔ Combat",
-        attrs.enemies || rawAttrs.trim(),
-      );
-    })
-    .replace(/\[status:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      const modifier = attrs.modifier ? `${attrs.stat || "modifier"} ${formatSignedNumber(attrs.modifier)}` : "";
-      const turns = attrs.turns || attrs.duration ? `${attrs.turns || attrs.duration} turns` : "";
-      return commandBadge(
-        "bg-[var(--destructive)]/15 text-[var(--destructive)] ring-1 ring-[var(--destructive)]/20",
-        "✦ Status",
-        [attrs.effect || attrs.name || "Effect", attrs.target ? `on ${attrs.target}` : "", turns, modifier]
-          .filter(Boolean)
-          .join(" · "),
-      );
-    })
-    .replace(/\[element_attack:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/20",
-        "✦ Element",
-        [attrs.element, attrs.target ? `on ${attrs.target}` : ""].filter(Boolean).join(" · ") || rawAttrs.trim(),
-      );
-    })
-    .replace(/\[qte:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge("bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20", "⏱ QTE", body.trim()),
-    )
-    .replace(/\[choices:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge("bg-indigo-500/15 text-indigo-200 ring-1 ring-indigo-400/20", "☑ Choices", body.trim()),
-    )
-    .replace(/\[inventory:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-lime-500/15 text-lime-200 ring-1 ring-lime-400/20",
-        "🎒 Inventory",
-        [attrs.action, attrs.item].filter(Boolean).join(": "),
-      );
-    })
-    .replace(/\[map_update:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-sky-500/15 text-sky-200 ring-1 ring-sky-400/20",
-        "🗺 Map",
-        attrs.new_location || rawAttrs.trim(),
-      );
-    })
-    .replace(/\[reputation:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)] ring-1 ring-[var(--marinara-chat-chrome-button-border)]",
-        "◆ Reputation",
-        [attrs.npc, attrs.action].filter(Boolean).join(": "),
-      );
-    })
-    .replace(/\[party_change:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/20",
-        "👥 Party",
-        [attrs.change, attrs.character].filter(Boolean).join(": "),
-      );
-    })
-    .replace(/\[party_add:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/20",
-        "👥 Party",
-        attrs.character || rawAttrs.trim(),
-      );
-    })
-    .replace(/\[session_end:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge("bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/20", "🏁 Session End", attrs.reason);
-    })
-    .replace(/\[(music|sfx|bg|ambient):\s*([^\]]+)\]/gi, (_match, kind: string, body: string) =>
-      commandBadge("bg-slate-500/15 text-slate-200 ring-1 ring-slate-400/20", kind.toUpperCase(), body.trim()),
-    )
-    .replace(/\[direction:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge("bg-zinc-500/15 text-zinc-200 ring-1 ring-zinc-400/20", "Direction", body.trim()),
-    )
-    .replace(/\[widget:\s*([^\]]+)\]/gi, (_match, body: string) =>
-      commandBadge("bg-teal-500/15 text-teal-200 ring-1 ring-teal-400/20", "Widget", body.trim()),
-    )
-    .replace(/\[dialogue:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
-      const attrs = parseCommandAttributes(rawAttrs);
-      return commandBadge(
-        "bg-blue-500/15 text-blue-200 ring-1 ring-blue-400/20",
-        "Dialogue",
-        attrs.npc || rawAttrs.trim(),
-      );
-    })
-    .replace(/\[state:\s*(\w+)\]/gi, (_match, state: string) =>
-      commandBadge("bg-sky-500/20 text-sky-300", "⚡ State", state),
-    )
-    .replace(/(^|\n)[ \t]*-#(?:[ \t]+([^\n]*))?(?=\n|$)/g, '$1<small class="mari-md-subtext">$2</small>')
-    .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
-    .replace(/__(.+?)__/gs, '<u class="mari-md-underline">$1</u>')
-    .replace(/\*(.+?)\*/gs, "<em>$1</em>")
-    .replace(/\n/g, "<br />");
-
-  if (boldDialogue) {
-    const narrationQuoteRe = new RegExp(`(?<![=\\w])(?:${HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE})`, "g");
-    html = html.replace(narrationQuoteRe, (match) => `<strong>${match}</strong>`);
-  }
-
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ["strong", "em", "u", "small", "br", "span"],
-    ALLOWED_ATTR: ["class"],
-  });
 }

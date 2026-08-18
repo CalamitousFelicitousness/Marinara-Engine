@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Added NanoGPT as a Video Generation connection with live model discovery, text- and image-to-video requests, asynchronous status polling, connection tests, and Game/sprite generation support (#5218).
 - The Game Mode narration box can now be collapsed to a slim handle, so the scene art, map, or running Experience behind it is visible without leaving the game. The choice is a saved preference that persists across chats and sessions, and the readability scrim and stacked segment log fold away with it. The box reopens itself whenever your text input is on screen, so it can never leave you unable to take your turn; anything else it is holding — narration still to read, a generation that failed, a combat that could not start — raises an indicator on the handle instead, one click from reading it. Capability API 1.13 lets a game-surface Experience request a temporary collapse for a cutscene without touching your saved preference (#5209).
 - Character and Persona cards now start at version `1.0`, automatically increase their version when saved edits change the card, and provide an enabled-by-default switch that can pause automatic versioning and revision snapshots without deleting existing history (#5202).
 - Beholder's Roleplay host now sends the active Persona and a name-keyed current-state object on every call, accepts both delta responses and legacy full snapshots, and safely merges deltas into the last valid full state before saving it (#5204).
@@ -46,6 +47,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Character-created Conversation reactions can now be removed directly by clicking their chip on desktop or long-pressing it on mobile, without discarding the user's own matching reaction (#5216).
 - Character example dialogue now falls back into the Character Info marker when a prompt preset has no dedicated Dialogue Examples marker; presets that include a disabled Dialogue Examples marker continue to omit it intentionally.
 - Preserved Long-Term Memory recall in Roleplay chats when a custom preset's agent marker cannot be matched, using a logged fallback injection instead of silently dropping the selected memories.
 - Roleplay speaker extraction now prints the connection's raw response when debug mode is enabled, supplies the current reply's character as the fallback for ambiguous lines, and lets harmless label formatting such as `Maukie:` or `Maukie [chuckle]` resolve to the character's assigned voice instead of Random NPC Voice (#5210).
@@ -108,6 +110,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- Split Game narration formatting, visual helpers, and tag parsing into focused chunks, reducing the main GameSurface chunk below the restored 500 KiB budget (#5215).
 - Coding-agent contributors now follow a Ponytail-inspired minimalism ladder that favors reuse, platform capabilities, and the smallest correct implementation without weakening safety or validation requirements (#5186).
 - Project validation now checks the maintained TypeScript and TSX source tree with Prettier before linting and building, so formatting drift is rejected by the same `pnpm check` command used in pull-request CI (#5181).
 - The Inventory Tracker panel now flows its entries as wrapping pills across the full panel width, with the quantity shown as `×N` only when it is above one. The previous layout split the panel into three fixed columns and reserved a quantity cell on every row, so at the widest setting each column was around 95 px and item names truncated — while a group holding two rows sat mostly empty. The panel also establishes its own container context, so it now lays out identically in the docked sidebar and the HUD popover instead of differing between them (#5125).

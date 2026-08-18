@@ -175,6 +175,8 @@ export interface MessageRenderContext {
   onPickSegmentReaction?: (target: ReactionSegmentTarget, emoji: string, imageUrl: string | null) => void;
   /** Toggle the user's membership in an existing reaction entry (segment-aware chip click). */
   onToggleReactionEntry: (reaction: MessageReaction) => void;
+  /** Remove character membership from an existing reaction entry. */
+  onRemoveCharacterReaction: (reaction: MessageReaction) => void;
   // style
   messageTextStyle: CSSProperties;
   // bubble-specific (ignored by Line/Grouped)

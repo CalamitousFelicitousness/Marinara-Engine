@@ -28,6 +28,10 @@ import {
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { parseBuildMeta, resolveBuildBranch } from "../../packages/server/src/config/build-info.js";
 import { createSerializedMutationQueue } from "../../packages/client/src/lib/serialized-mutation-queue.js";
+import {
+  CUSTOM_AGENT_RESULT_EXAMPLES,
+  CUSTOM_AGENT_RESULT_TYPE_IDS,
+} from "../../packages/client/src/lib/custom-agent-result-examples.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
 import { validateCharacterGalleryReferences } from "../../packages/server/src/routes/characters.routes.js";
 import {
@@ -207,6 +211,8 @@ import {
   getCustomLorebookReadBehindMessages,
   getLorebookKeeperAutomaticTarget,
   mergeLorebookKeeperUpdateContent,
+  persistLorebookKeeperUpdates,
+  readLorebookKeeperUpdateOrder,
   tryClaimCustomLorebookReadBehindRun,
 } from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
 import { runImageGenerationRequest } from "../../packages/server/src/services/image/image-generation-queue.js";
@@ -3890,6 +3896,108 @@ assert.equal(orLogicLorebookEntry.selectiveLogic, "or");
     ],
     "An inline delimiter mention must not switch legacy approval text into explicit mode",
   );
+}
+
+// Issue #5225 — optional integer order survives automatic and approval-gated writes.
+{
+  for (const resultType of CUSTOM_AGENT_RESULT_TYPE_IDS) {
+    const example = CUSTOM_AGENT_RESULT_EXAMPLES[resultType];
+    assert.ok(example.value.trim(), `${resultType} must expose a non-empty custom-agent response example`);
+    if (example.format === "json") {
+      const parsed = JSON.parse(example.value);
+      assert.ok(parsed && typeof parsed === "object" && !Array.isArray(parsed));
+    }
+  }
+  const lorebookResultExample = JSON.parse(CUSTOM_AGENT_RESULT_EXAMPLES.lorebook_update.value);
+  assert.equal(lorebookResultExample.updates[0]?.order, 200);
+  const agentEditorSource = readFileSync(
+    join(REPOSITORY_ROOT, "packages/client/src/components/agents/AgentEditor.tsx"),
+    "utf8",
+  );
+  assert.match(
+    agentEditorSource,
+    /const customResultExample = CUSTOM_AGENT_RESULT_EXAMPLES\[localResultType\]/u,
+    "The prompt preview must select the response example for the active result type",
+  );
+  assert.match(
+    agentEditorSource,
+    /isCustomAgent \|\| isNewCustomAgent[\s\S]{0,160}customPromptPlaceholder/u,
+    "The custom-agent prompt placeholder must follow the selected result type's response example",
+  );
+
+  assert.equal(readLorebookKeeperUpdateOrder({ order: 200 }), 200);
+  assert.equal(readLorebookKeeperUpdateOrder({ entry: { order: -10 } }), -10);
+  assert.equal(readLorebookKeeperUpdateOrder({ order: "200" }), undefined);
+  assert.equal(readLorebookKeeperUpdateOrder({ order: 1.5 }), undefined);
+  assert.equal(readLorebookKeeperUpdateOrder({ order: Number.MAX_SAFE_INTEGER + 1 }), undefined);
+
+  const approvalText = formatLorebookWriteApprovalText([
+    {
+      name: "Ordered Memory",
+      keys: ["memory"],
+      tag: "event",
+      order: 200,
+      content: "A durable memory.",
+    },
+  ]);
+  assert.match(approvalText, /\nOrder: 200\n/u);
+  assert.deepEqual(parseLorebookWriteApprovalText(approvalText), [
+    {
+      action: "append",
+      name: "Ordered Memory",
+      keys: ["memory"],
+      tag: "event",
+      order: 200,
+      content: "A durable memory.",
+    },
+  ]);
+  assert.equal(
+    parseLorebookWriteApprovalText(
+      ["### Signed Order", "Keys: signed", "Tag:", "Order: +200", "", "Keep the sign."].join("\n"),
+    )[0]?.order,
+    200,
+    "Approval edits must accept an explicit leading plus sign on integer orders",
+  );
+
+  const updatedEntries: Array<{ id: string; changes: Record<string, unknown> }> = [];
+  const createdEntries: Array<Record<string, unknown>> = [];
+  const lorebooksStore = {
+    listEntries: async () => [
+      {
+        id: "existing-entry",
+        name: "Existing Memory",
+        content: "Existing fact.",
+        keys: ["existing"],
+        tag: "event",
+        locked: false,
+        order: 100,
+      },
+    ],
+    updateEntry: async (id: string, changes: Record<string, unknown>) => {
+      updatedEntries.push({ id, changes });
+      return { id, name: "Existing Memory", ...changes };
+    },
+    createEntry: async (input: Record<string, unknown>) => {
+      createdEntries.push(input);
+      return { id: `created-${createdEntries.length}`, ...input };
+    },
+  };
+  await persistLorebookKeeperUpdates({
+    lorebooksStore: lorebooksStore as any,
+    chatId: "chat-5225",
+    chatName: "Order proof",
+    preferredTargetLorebookId: "lorebook-5225",
+    writableLorebookIds: ["lorebook-5225"],
+    updates: [
+      { entryName: "Existing Memory", newFacts: ["New fact."], order: 200 },
+      { entryName: "New Memory", content: "Created fact.", order: 300 },
+      { entryName: "Default Memory", content: "Uses storage default.", order: "400" },
+    ],
+  });
+  assert.equal(updatedEntries[0]?.id, "existing-entry");
+  assert.equal(updatedEntries[0]?.changes.order, 200);
+  assert.equal(createdEntries[0]?.order, 300);
+  assert.equal(Object.hasOwn(createdEntries[1] ?? {}, "order"), false);
 }
 
 assert.equal(

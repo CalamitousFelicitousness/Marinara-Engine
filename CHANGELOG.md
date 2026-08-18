@@ -47,6 +47,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Game Mode no longer replaces a matching Character-library portrait when recovering a missing scene background or retrying a failed portrait load (#4746).
 - Character-created Conversation reactions can now be removed directly by clicking their chip on desktop or long-pressing it on mobile, without discarding the user's own matching reaction (#5216).
 - Character example dialogue now falls back into the Character Info marker when a prompt preset has no dedicated Dialogue Examples marker; presets that include a disabled Dialogue Examples marker continue to omit it intentionally.
 - Preserved Long-Term Memory recall in Roleplay chats when a custom preset's agent marker cannot be matched, using a logged fallback injection instead of silently dropping the selected memories.

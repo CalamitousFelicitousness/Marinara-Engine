@@ -8,6 +8,7 @@ import {
 import { USER_REACTOR, removeCharacterReaction } from "../../packages/client/src/lib/reactions.js";
 import {
   buildNanoGptVideoUrl,
+  normalizeVideoService,
   parseNanoGptVideoModels,
 } from "../../packages/server/src/services/video/video-generation.js";
 
@@ -28,6 +29,7 @@ assert.strictEqual(removeCharacterReaction([userReaction], userReaction)[0], use
 const nanoGptSource = VIDEO_GENERATION_SOURCES.find((source) => source.id === "nanogpt");
 assert.ok(nanoGptSource);
 assert.equal(nanoGptSource.defaultBaseUrl, "https://nano-gpt.com/api");
+assert.equal(normalizeVideoService("nano-gpt"), "nanogpt");
 assert.equal(inferVideoSource("", "https://nano-gpt.com/api"), "nanogpt");
 assert.notEqual(inferVideoSource("", "https://nano-gpt.com.example/api"), "nanogpt");
 assert.equal(inferImageSource("", "https://nano-gpt.com/api/v1"), "nanogpt");

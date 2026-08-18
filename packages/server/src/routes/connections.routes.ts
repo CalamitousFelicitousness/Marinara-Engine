@@ -47,7 +47,11 @@ import {
   safeFetch,
 } from "../utils/security.js";
 import { DATA_DIR } from "../utils/data-dir.js";
-import { buildNanoGptVideoUrl, fetchNanoGptVideoModels } from "../services/video/video-generation.js";
+import {
+  buildNanoGptVideoUrl,
+  fetchNanoGptVideoModels,
+  normalizeVideoService,
+} from "../services/video/video-generation.js";
 
 const CONNECTION_TEST_ERROR_PREVIEW_CHARS = 2000;
 const CONNECTION_IMAGES_DIR = join(DATA_DIR, "connections", "images");
@@ -1241,9 +1245,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
       : createDefaultVideoGenerationProfile();
     const inferredVideoSource = resolveVideoGenerationSource(conn as any, conn.baseUrl || "");
     const explicitVideoSource = conn.videoGenerationSource || conn.videoService || "";
-    const videoSource =
-      explicitVideoSource || (inferredVideoSource !== "gemini_omni" ? inferredVideoSource : defaults.service);
-    const rawVideoServiceHint = conn.videoService || videoSource;
+    const videoSource = normalizeVideoService(
+      explicitVideoSource || (inferredVideoSource !== "gemini_omni" ? inferredVideoSource : defaults.service),
+    );
+    const rawVideoServiceHint = normalizeVideoService(conn.videoService || videoSource);
     const videoServiceHint =
       videoSource === "swarmui"
         ? "swarmui"

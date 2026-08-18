@@ -292,7 +292,7 @@ export async function removeSavedVideoFromDisk(filePath: string): Promise<void> 
   });
 }
 
-function normalizeVideoService(value: string): string {
+export function normalizeVideoService(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (
     !normalized ||

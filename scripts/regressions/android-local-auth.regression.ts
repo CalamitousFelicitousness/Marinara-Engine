@@ -294,25 +294,46 @@ try {
   );
 
   const apkWorkflowSource = readFileSync(resolve(repositoryRoot, ".github/workflows/build-apk.yml"), "utf8");
+  const getWorkflowStep = (name: string): string => {
+    const marker = `      - name: ${name}\n`;
+    const start = apkWorkflowSource.indexOf(marker);
+    assert.notEqual(start, -1, `APK workflow must contain the ${name} step`);
+    const next = apkWorkflowSource.indexOf("\n      - name:", start + marker.length);
+    return apkWorkflowSource.slice(start, next === -1 ? undefined : next);
+  };
+  const checkoutStepSource = getWorkflowStep("Checkout");
+  const locateStepSource = getWorkflowStep("Locate APK");
+  const releaseUploadStepSource = getWorkflowStep("Attach APK to release");
+
   assert.match(
-    apkWorkflowSource,
+    locateStepSource,
     /DOWNLOAD_NAME="marinara-engine-android\.apk"[\s\S]*download_apk=android\/\$\{DOWNLOAD_NAME\}/u,
     "tagged releases must expose a stable filename for the one-click latest APK link",
   );
   assert.match(
-    apkWorkflowSource,
-    /STABLE_APK: \$\{\{ steps\.locate\.outputs\.download_apk \}\}[\s\S]*gh release upload "\$TAG"[\s\S]*"\$VERSIONED_APK"[\s\S]*"\$STABLE_APK"/u,
+    releaseUploadStepSource,
+    /VERSIONED_APK: \$\{\{ steps\.locate\.outputs\.apk \}\}[\s\S]*STABLE_APK: \$\{\{ steps\.locate\.outputs\.download_apk \}\}[\s\S]*gh release upload "\$TAG"[\s\S]*"\$VERSIONED_APK"[\s\S]*"\$STABLE_APK"/u,
     "release artifact paths must reach the shell through quoted environment variables",
   );
   assert.match(
-    apkWorkflowSource,
-    /persist-credentials: false/u,
+    checkoutStepSource,
+    /uses: actions\/checkout@[\s\S]*with:[\s\S]*persist-credentials: false/u,
     "the write-capable workflow token must not persist into the checked-out repository",
   );
+
+  const versionGuardMatch = locateStepSource.match(/if \[\[ ! "\$VERSION" =~ (\^[^\n]+) \]\]; then/u);
+  assert.ok(versionGuardMatch, "the Locate APK step must validate package.json.version before using it");
+  const versionPattern = new RegExp(versionGuardMatch[1]!);
+  for (const validVersion of ["2.4.3", "2.4.3-rc.1", "2.4.3+android.1"]) {
+    assert.match(validVersion, versionPattern, `the release guard must accept ${validVersion}`);
+  }
+  for (const invalidVersion of ["2.4", "2.4.3.apk", '2.4.3"; touch injected; #']) {
+    assert.doesNotMatch(invalidVersion, versionPattern, `the release guard must reject ${invalidVersion}`);
+  }
   assert.match(
-    apkWorkflowSource,
-    /package\.json version must use X\.Y\.Z semantic-version format/u,
-    "the package version must be validated before it becomes an artifact path or step output",
+    locateStepSource,
+    /RELEASE_TAG: \$\{\{ steps\.release_tag\.outputs\.tag \}\}[\s\S]*\[ -n "\$RELEASE_TAG" \] && \[ "\$\{RELEASE_TAG#v\}" != "\$VERSION" \][\s\S]*exit 1[\s\S]*OUT_NAME=/u,
+    "a release tag must match package.json.version before the APK is named or uploaded",
   );
 
   const wrapperProperties = readFileSync(

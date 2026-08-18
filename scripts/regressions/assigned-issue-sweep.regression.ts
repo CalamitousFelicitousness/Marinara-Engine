@@ -279,12 +279,12 @@ assert.match(
   "the React Markdown path renders Discord-style subtext as a semantic small block",
 );
 
-const gameNarrationSource = readFileSync(
-  join(repositoryRoot, "packages/client/src/components/game/GameNarration.tsx"),
+const gameNarrationFormatSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/game/game-narration-format.ts"),
   "utf8",
 );
-assert.match(gameNarrationSource, /mari-md-underline/u, "Game chat narration retains underline markup");
-assert.match(gameNarrationSource, /mari-md-subtext/u, "Game chat narration retains Discord-style subtext markup");
+assert.match(gameNarrationFormatSource, /mari-md-underline/u, "Game chat narration retains underline markup");
+assert.match(gameNarrationFormatSource, /mari-md-subtext/u, "Game chat narration retains Discord-style subtext markup");
 
 const mergedSettings = mergeUndatedSyncedSettings({ accentColor: "local", homeGreetingEnabled: true } as never, {
   accentColor: "server",

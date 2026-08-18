@@ -234,12 +234,28 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
   const announcement = page.getByRole("dialog", { name: "What's New?" });
   await expect(announcement).toBeVisible();
   await expect(announcement.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
-  await expect(announcement.getByRole("heading", { name: "Wlecome to Marinara Engine's v2.4.3 Beta!" })).toBeVisible();
+  await expect(announcement.getByRole("heading", { name: "The new version is here!" })).toBeVisible();
   await expect
     .poll(() => announcement.locator("[data-release-copy]").allTextContents())
-    .toEqual(["Wlecome to Marinara Engine's v2.4.3 Beta!"]);
-  await expect(announcement.locator("[data-release-story]")).toHaveCount(0);
-  await expect(announcement.locator("[data-release-media-kind]")).toHaveCount(0);
+    .toEqual([
+      "The new version is here!",
+      "This update is smaller, mostly focusing on stabilization, bug fixes, and QoL updates. We also improved installation methods and prepared a groundwork for new, exciting agents soon to come.",
+      "One agent that is already fully ready is a proper Inventory Tracker! Be sure to add it if you like keeping an eye out on your items.",
+      "The entire list of what was added or changes is, as always, available here:",
+      "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.3",
+      "Thank you all for your continuous support and cheers. I hope you've been treating your Professor Mari well.",
+    ]);
+  await expect(announcement.locator("[data-release-story]")).toHaveAttribute("data-release-story", APP_VERSION);
+  const releaseImages = announcement.locator('[data-release-media-kind="image"]');
+  await expect(releaseImages).toHaveCount(2);
+  await expect(releaseImages.nth(0)).toHaveAttribute("src", "https://i.imgur.com/EhkASR2.png");
+  await expect(releaseImages.nth(1)).toHaveAttribute("src", "https://i.imgur.com/AmhEOED.png");
+  await expect(
+    announcement.getByRole("link", {
+      name: "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.3",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.3");
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))
@@ -10089,7 +10105,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     await expect
       .poll(() => characterScroll.evaluate((element) => element.scrollHeight > element.clientHeight))
       .toBe(true);
-    const characterLibraryButton = rightPanel.getByRole("button", { name: "Open Characters Library" });
+    const characterLibraryButton = rightPanel.getByRole("button", { name: "Open Library", exact: true });
     const characterButtonBox = await characterLibraryButton.boundingBox();
     expect(characterButtonBox).not.toBeNull();
     await expect(characterScroll).toHaveCSS("scrollbar-gutter", /stable/u);
@@ -10100,7 +10116,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     await expect
       .poll(() => personaScroll.evaluate((element) => element.scrollHeight <= element.clientHeight))
       .toBe(true);
-    const personaLibraryButton = rightPanel.getByRole("button", { name: "Open Personas Library" });
+    const personaLibraryButton = rightPanel.getByRole("button", { name: "Open Library", exact: true });
     const personaButtonBox = await personaLibraryButton.boundingBox();
     expect(personaButtonBox).not.toBeNull();
     await expect(personaScroll).toHaveCSS("scrollbar-gutter", /stable/u);
@@ -10242,7 +10258,7 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
   });
   await page.goto("/");
   await page.locator('[data-tour="panel-characters"]').click();
-  await page.getByRole("button", { name: "Open Characters Library" }).click();
+  await page.getByRole("button", { name: "Open Library", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Browse your characters" })).toBeVisible();
   await expect(
     page.locator('[data-component="CharacterLibraryView"]').getByPlaceholder('Search characters or -tag:"tag name"'),

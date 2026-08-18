@@ -291,11 +291,17 @@ The Android app is a small shell around Termux. Termux is a Linux terminal app f
 3. If Android asks to run commands in Termux, grant it.
 4. Wait for the launcher to finish and start the server, then return to the app.
 
+The normal APK path never asks you to paste a Marinara secret. The app generates its private localhost credential, provisions it in Termux, and signs in automatically. Android's app-install and Termux permission dialogs are still required system prompts. Do not add `null`, `http://null`, or the APK's secret to `CSRF_TRUSTED_ORIGINS`; none is a valid or necessary Android setup step.
+
 Also confirm the app and Termux use the same port. The default is `7860`. If you built the app with a different port, set the matching `PORT` in the Termux `.env` too.
 
 ### Android localhost opens the login page or returns 401/503
 
-APK-managed Termux installs protect localhost with a private per-install secret. The Android app authenticates automatically. In another browser on the same phone, open `/android-login` and paste the value shown by this Termux command:
+APK-managed Termux installs protect localhost with a private per-install secret. The Android app authenticates automatically and should not display this login page during setup. If the login page appears inside the Marinara Engine app, install the [latest APK](https://github.com/Pasta-Devs/Marinara-Engine/releases/latest/download/marinara-engine-android.apk), tap **Install / Start Marinara** again, and return to the app when Termux finishes.
+
+An error naming origin `null` means an older APK/server pair let Android's opaque WebView origin reach the general CSRF gate before the private handshake. Editing `.env` cannot fix that: literal `null` is deliberately ignored, and trusting an opaque origin globally would weaken every unsafe API route. Update the APK and Engine instead; current Android login routes verify their own one-time proof or per-install secret while `null` remains rejected everywhere else.
+
+Only a separate browser on the same phone needs manual local-browser authentication. In that browser, open `/android-login` and paste the value shown by this Termux command:
 
 ```bash
 cat ~/.marinara-engine/android-secret

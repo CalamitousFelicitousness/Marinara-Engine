@@ -93,16 +93,21 @@ jobs:
           fi
           VERSION=$(node -p "require('../package.json').version")
           OUT_NAME="marinara-engine-${VERSION}-android-termux-bootstrap.apk"
+          DOWNLOAD_NAME="marinara-engine-android.apk"
           cp "$APK_PATH" "$OUT_NAME"
+          cp "$APK_PATH" "$DOWNLOAD_NAME"
           echo "apk=android/${OUT_NAME}" >> "$GITHUB_OUTPUT"
+          echo "download_apk=android/${DOWNLOAD_NAME}" >> "$GITHUB_OUTPUT"
           echo "name=${OUT_NAME}" >> "$GITHUB_OUTPUT"
-          ls -la "$OUT_NAME"
+          ls -la "$OUT_NAME" "$DOWNLOAD_NAME"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.locate.outputs.name }}
-          path: ${{ steps.locate.outputs.apk }}
+          path: |
+            ${{ steps.locate.outputs.apk }}
+            ${{ steps.locate.outputs.download_apk }}
 
       - name: Ensure release APK notice
         if: steps.release_tag.outputs.tag != ''
@@ -138,4 +143,7 @@ jobs:
             fi
             sleep 10
           done
-          gh release upload "$TAG" "${{ steps.locate.outputs.apk }}" --clobber
+          gh release upload "$TAG" \
+            "${{ steps.locate.outputs.apk }}" \
+            "${{ steps.locate.outputs.download_apk }}" \
+            --clobber

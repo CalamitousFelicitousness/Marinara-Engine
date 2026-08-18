@@ -47,7 +47,7 @@ import {
   safeFetch,
 } from "../utils/security.js";
 import { DATA_DIR } from "../utils/data-dir.js";
-import { fetchNanoGptVideoModels } from "../services/video/video-generation.js";
+import { buildNanoGptVideoUrl, fetchNanoGptVideoModels } from "../services/video/video-generation.js";
 
 const CONNECTION_TEST_ERROR_PREVIEW_CHARS = 2000;
 const CONNECTION_IMAGES_DIR = join(DATA_DIR, "connections", "images");
@@ -167,6 +167,19 @@ function resolveVideoGenerationSource(conn: Record<string, unknown>, baseUrl: st
   const serviceHint = typeof conn.videoService === "string" ? conn.videoService : "";
   const model = typeof conn.model === "string" ? conn.model : "";
   return inferVideoSource(explicitSource || serviceHint || model, baseUrl);
+}
+
+function nanoGptVideoConnectionError(conn: Record<string, unknown>): string | null {
+  if (conn.provider !== "video_generation") return null;
+  const baseUrl =
+    typeof conn.baseUrl === "string" && conn.baseUrl.trim() ? conn.baseUrl : DEFAULT_NANOGPT_VIDEO_BASE_URL;
+  if (resolveVideoGenerationSource(conn, baseUrl) !== "nanogpt") return null;
+  try {
+    buildNanoGptVideoUrl(baseUrl, "generate-video");
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Invalid NanoGPT video endpoint";
+  }
 }
 
 // Returns the model-name options a ComfyUI loader node exposes through
@@ -395,15 +408,21 @@ export async function connectionsRoutes(app: FastifyInstance) {
     return maskConnection(conn);
   });
 
-  app.post("/", async (req) => {
+  app.post("/", async (req, reply) => {
     const input = createConnectionSchema.parse(req.body);
+    const validationError = nanoGptVideoConnectionError(input);
+    if (validationError) return reply.status(400).send({ error: validationError });
     const created = await storage.create(input);
     resetMemoryRecallVectorizerCache();
     return maskConnection(created);
   });
 
-  app.patch<{ Params: { id: string } }>("/:id", async (req) => {
+  app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const data = createConnectionSchema.partial().parse(req.body);
+    const current = await storage.getById(req.params.id);
+    if (!current) return reply.status(404).send({ error: "Connection not found" });
+    const validationError = nanoGptVideoConnectionError({ ...current, ...data });
+    if (validationError) return reply.status(400).send({ error: validationError });
     const updated = await storage.update(req.params.id, data);
     resetMemoryRecallVectorizerCache();
     return maskConnection(updated);

@@ -6,7 +6,7 @@
 // OUTSIDE the card-CSS message container so a character's bubble theme can't
 // restyle it. Conversation mode only.
 // ──────────────────────────────────────────────
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MessageReaction } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
@@ -71,15 +71,20 @@ function ReactionPill({
   const pointerTypeRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
+  const onRemoveCharacterRef = useRef(onRemoveCharacter);
 
-  const clearLongPress = () => {
+  useEffect(() => {
+    onRemoveCharacterRef.current = onRemoveCharacter;
+  }, [onRemoveCharacter]);
+
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-  };
+  }, []);
 
-  useEffect(() => clearLongPress, []);
+  useEffect(() => clearLongPress, [clearLongPress]);
 
   // Position the tooltip centered above the chip, before paint (no flicker).
   useLayoutEffect(() => {
@@ -114,13 +119,17 @@ function ReactionPill({
           pointerTypeRef.current = null;
         }}
         onPointerDown={(event) => {
+          suppressClickRef.current = false;
           pointerTypeRef.current = event.pointerType;
           if (event.pointerType !== "touch" || !hasCharacterReaction) return;
           clearLongPress();
           longPressTimerRef.current = window.setTimeout(() => {
             suppressClickRef.current = true;
-            onRemoveCharacter();
+            onRemoveCharacterRef.current();
           }, 500);
+        }}
+        onKeyDown={() => {
+          suppressClickRef.current = false;
         }}
         onPointerUp={clearLongPress}
         onPointerCancel={clearLongPress}

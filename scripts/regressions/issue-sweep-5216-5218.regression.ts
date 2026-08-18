@@ -36,6 +36,10 @@ assert.equal(
   buildNanoGptVideoUrl("https://nano-gpt.com/api/v1", "generate-video"),
   "https://nano-gpt.com/api/generate-video",
 );
+assert.throws(
+  () => buildNanoGptVideoUrl("https://nano-gpt.com.example/api", "generate-video"),
+  /official nano-gpt\.com HTTPS endpoint/,
+);
 
 assert.deepEqual(
   parseNanoGptVideoModels({

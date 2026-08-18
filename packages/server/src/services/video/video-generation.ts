@@ -1198,7 +1198,7 @@ async function generateNanoGptVideo(
   if (request.referenceImage) body.imageDataUrl = referenceImageToDataUri(request.referenceImage);
   const debugBody = request.referenceImage ? { ...body, imageDataUrl: "[redacted reference image]" } : body;
   logDebugOverride(
-    request.debugMode === true,
+    request.debugMode === true || isDebugAgentsEnabled(),
     "[video-gen/nanogpt] final request payload:\n%s",
     JSON.stringify(debugBody, null, 2),
   );
@@ -1541,12 +1541,17 @@ export function buildNanoGptVideoUrl(baseUrl: string, path: string): string {
   const raw = (baseUrl || fallback).trim().replace(/\/+$/, "") || fallback;
   try {
     const url = new URL(raw);
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (url.protocol !== "https:" || (hostname !== "nano-gpt.com" && !hostname.endsWith(".nano-gpt.com"))) {
+      throw new Error("NanoGPT video connections must use an official nano-gpt.com HTTPS endpoint");
+    }
     const root = url.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
     url.pathname = `${root}/${path.replace(/^\/+/, "")}`;
     url.search = "";
     url.hash = "";
     return url.toString();
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("NanoGPT video connections")) throw error;
     throw new Error(`Invalid NanoGPT base URL: ${baseUrl}`);
   }
 }

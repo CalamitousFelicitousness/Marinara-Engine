@@ -89,7 +89,7 @@ function bundleBudget(): Plugin {
         );
       }
 
-      // Keep lazy feature chunks below Vite's 500 kB warning line. Game narration's
+      // Keep lazy feature chunks below the 500 KiB bundle limit. Game narration's
       // reusable HTML formatter has its own boundary so GameSurface does not absorb it.
       const oversizedChunks = chunks.filter((chunk) => chunk.sizeKb > 500);
       if (oversizedChunks.length > 0) {

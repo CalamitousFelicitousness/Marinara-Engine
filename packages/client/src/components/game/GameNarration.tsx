@@ -93,8 +93,6 @@ import {
   type SpeakerAvatarInfo,
 } from "./GameNarrationVisuals";
 
-export { formatNarration } from "./game-narration-format";
-
 const GamePeekPromptButton = lazy(() => import("./GamePeekPromptButton"));
 
 const GAME_TTS_EMOTIONS = [

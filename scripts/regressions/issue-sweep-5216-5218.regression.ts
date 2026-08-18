@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import type { MessageReaction } from "../../packages/shared/src/types/chat.js";
-import { VIDEO_GENERATION_SOURCES, inferVideoSource } from "../../packages/shared/src/constants/model-lists.js";
+import {
+  VIDEO_GENERATION_SOURCES,
+  inferImageSource,
+  inferVideoSource,
+} from "../../packages/shared/src/constants/model-lists.js";
 import { USER_REACTOR, removeCharacterReaction } from "../../packages/client/src/lib/reactions.js";
 import {
   buildNanoGptVideoUrl,
@@ -26,6 +30,8 @@ assert.ok(nanoGptSource);
 assert.equal(nanoGptSource.defaultBaseUrl, "https://nano-gpt.com/api");
 assert.equal(inferVideoSource("", "https://nano-gpt.com/api"), "nanogpt");
 assert.notEqual(inferVideoSource("", "https://nano-gpt.com.example/api"), "nanogpt");
+assert.equal(inferImageSource("", "https://nano-gpt.com/api/v1"), "nanogpt");
+assert.notEqual(inferImageSource("", "https://attacker-nano-gpt.com.example/api"), "nanogpt");
 assert.equal(
   buildNanoGptVideoUrl("https://nano-gpt.com/api/v1", "generate-video"),
   "https://nano-gpt.com/api/generate-video",

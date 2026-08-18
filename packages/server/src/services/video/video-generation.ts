@@ -1196,10 +1196,11 @@ async function generateNanoGptVideo(
   };
   if (request.resolution) body.resolution = request.resolution;
   if (request.referenceImage) body.imageDataUrl = referenceImageToDataUri(request.referenceImage);
+  const debugBody = request.referenceImage ? { ...body, imageDataUrl: "[redacted reference image]" } : body;
   logDebugOverride(
     request.debugMode === true,
     "[video-gen/nanogpt] final request payload:\n%s",
-    JSON.stringify(body, null, 2),
+    JSON.stringify(debugBody, null, 2),
   );
 
   const started = await safeFetch(buildNanoGptVideoUrl(baseUrl, "generate-video"), {

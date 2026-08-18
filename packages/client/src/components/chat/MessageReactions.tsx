@@ -108,8 +108,9 @@ function ReactionPill({
             suppressClickRef.current = false;
             return;
           }
-          if (pointerTypeRef.current === "mouse" && hasCharacterReaction) onRemoveCharacter();
-          else onToggle();
+          if (hasCharacterReaction && (pointerTypeRef.current === "mouse" || event.detail === 0)) {
+            onRemoveCharacter();
+          } else onToggle();
           pointerTypeRef.current = null;
         }}
         onPointerDown={(event) => {

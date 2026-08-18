@@ -954,6 +954,12 @@ export function inferVideoSource(model: string, baseUrl: string): string {
 export function inferImageSource(model: string, baseUrl: string): string {
   const m = model.toLowerCase();
   const u = baseUrl.toLowerCase();
+  let hostname = "";
+  try {
+    hostname = new URL(baseUrl).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    // Keep inference best-effort for incomplete custom URLs while they are edited.
+  }
   if (
     m === "openai" ||
     m === "stability" ||
@@ -977,7 +983,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
     return m;
   }
   if (m === "drawthings") return "automatic1111";
-  if (u.includes("nano-gpt.com")) return "nanogpt";
+  if (hostname === "nano-gpt.com" || hostname.endsWith(".nano-gpt.com")) return "nanogpt";
   if (u.includes("openrouter.ai")) return "openrouter";
   if (u.includes("api.x.ai") || u.includes("x.ai")) return "xai";
   if (u.includes("venice.ai")) return "venice";

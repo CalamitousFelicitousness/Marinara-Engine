@@ -301,8 +301,18 @@ try {
   );
   assert.match(
     apkWorkflowSource,
-    /gh release upload[\s\S]*steps\.locate\.outputs\.download_apk/u,
-    "the stable APK filename must be attached to the GitHub release",
+    /STABLE_APK: \$\{\{ steps\.locate\.outputs\.download_apk \}\}[\s\S]*gh release upload "\$TAG"[\s\S]*"\$VERSIONED_APK"[\s\S]*"\$STABLE_APK"/u,
+    "release artifact paths must reach the shell through quoted environment variables",
+  );
+  assert.match(
+    apkWorkflowSource,
+    /persist-credentials: false/u,
+    "the write-capable workflow token must not persist into the checked-out repository",
+  );
+  assert.match(
+    apkWorkflowSource,
+    /package\.json version must use X\.Y\.Z semantic-version format/u,
+    "the package version must be validated before it becomes an artifact path or step output",
   );
 
   const wrapperProperties = readFileSync(

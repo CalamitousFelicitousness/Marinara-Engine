@@ -44,6 +44,7 @@ import { parseChatMetadata } from "../../lib/chat-display";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
 import {
   findRetargetableUserReaction,
+  removeCharacterReaction,
   reactionTargetOf,
   splitReactionsBySegment,
   toggleReaction,
@@ -513,6 +514,11 @@ export const ConversationMessage = memo(function ConversationMessage({
     [handleToggleReaction],
   );
 
+  const handleRemoveCharacterReaction = useCallback(
+    (reaction: MessageReaction) => applyReactions(removeCharacterReaction(reactions, reaction)),
+    [applyReactions, reactions],
+  );
+
   // ── Speaker-segment parsing (for grouped / group-in-bubble) ──
   // Built as a pair in one pass: CharInfo carries no id, and grouped segments
   // need the speaker's id to resolve portable card://self gallery refs.
@@ -900,6 +906,7 @@ export const ConversationMessage = memo(function ConversationMessage({
     resolveReactorName,
     onPickSegmentReaction: handlePickSegmentReaction,
     onToggleReactionEntry: handleToggleReactionEntry,
+    onRemoveCharacterReaction: handleRemoveCharacterReaction,
     messageTextStyle,
     isBubbleStyle,
     bubbleGroupPosition,
@@ -925,6 +932,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           reactions={messageReactions}
           resolveReactorName={resolveReactorName}
           onToggle={handleToggleReactionEntry}
+          onRemoveCharacter={handleRemoveCharacterReaction}
         />
       </div>
     ) : null;

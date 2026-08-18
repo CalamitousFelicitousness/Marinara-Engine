@@ -91,6 +91,25 @@ export function toggleReaction(
   return next;
 }
 
+/** Remove every character from one reaction entry while preserving the user's reaction, if present. */
+export function removeCharacterReaction(
+  reactions: MessageReaction[] | null | undefined,
+  reaction: MessageReaction,
+): MessageReaction[] {
+  const current = reactions ?? [];
+  const index = current.findIndex((entry) => matchesIdentity(entry, reaction.emoji, reactionTargetOf(reaction)));
+  if (index === -1) return current;
+
+  const entry = current[index]!;
+  const nextBy = entry.by.filter((reactor) => reactor === USER_REACTOR);
+  if (nextBy.length === entry.by.length) return current;
+  if (nextBy.length === 0) return current.filter((_, entryIndex) => entryIndex !== index);
+
+  const next = [...current];
+  next[index] = { ...entry, by: nextBy };
+  return next;
+}
+
 /**
  * Split a message's reactions into per-segment lists (index-aligned with the
  * grouped segments) and the whole-message remainder. A segment-keyed reaction only

@@ -167,7 +167,8 @@ import {
   type MusicEnemyTier,
   scoreAmbient,
 } from "@marinara-engine/shared";
-import { GameNarration, formatNarration } from "./GameNarration";
+import { GameNarration } from "./GameNarration";
+import { formatNarration } from "./game-narration-format";
 import { GameInput } from "./GameInput";
 import { GameMapPanel, MobileMapButton } from "./GameMap";
 import { GamePartyBar } from "./GamePartyBar";

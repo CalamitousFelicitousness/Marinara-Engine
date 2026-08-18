@@ -926,11 +926,19 @@ const AUDIO_GEN_MODELS: KnownModel[] = [
 export function inferVideoSource(model: string, baseUrl: string): string {
   const m = model.toLowerCase();
   const u = baseUrl.toLowerCase();
+  let hostname = "";
+  try {
+    hostname = new URL(baseUrl).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    // Keep inference best-effort for incomplete custom URLs while they are edited.
+  }
   if (m === "swarmui" || u.includes(":7801") || u.includes("swarmui")) return "swarmui";
   if (m === "comfyui" || u.includes(":8188") || u.includes("comfyui")) return "comfyui";
   if (m === "atlas" || u.includes("atlascloud.ai")) return "atlas";
   if (m === "seedance" || m.startsWith("seedance-") || u.includes("seedance2.ai")) return "seedance";
-  if (m === "nanogpt" || u.includes("nano-gpt.com")) return "nanogpt";
+  if (m === "nanogpt" || hostname === "nano-gpt.com" || hostname.endsWith(".nano-gpt.com")) {
+    return "nanogpt";
+  }
   if (m === "openrouter" || u.includes("openrouter.ai")) return "openrouter";
   if (m.includes("/") && (m.includes("veo") || m.includes("wan"))) return "openrouter";
   if (m === "google_veo" || m === "veo" || /^veo-[\d.]+/.test(m)) return "google_veo";

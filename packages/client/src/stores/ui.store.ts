@@ -37,7 +37,8 @@ export type ChatModeShortcut = "conversation" | "roleplay" | "game";
 export const CHARACTER_LIBRARY_SORT_OPTIONS = ["name-asc", "name-desc", "newest", "oldest", "favorites"] as const;
 export type CharacterLibrarySort = (typeof CHARACTER_LIBRARY_SORT_OPTIONS)[number];
 export type CardLibraryKind = "characters" | "personas";
-export const MOBILE_SHELL_MEDIA_QUERY = "(max-width: 767px), (max-width: 1366px) and (any-pointer: coarse)";
+export const MOBILE_SHELL_MEDIA_QUERY =
+  "(max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse)";
 export const CHARACTER_PANEL_FAVORITE_FILTER_OPTIONS = ["all", "favorites", "non-favorites"] as const;
 export type CharacterPanelFavoriteFilter = (typeof CHARACTER_PANEL_FAVORITE_FILTER_OPTIONS)[number];
 export const LOREBOOK_PANEL_CATEGORY_OPTIONS = [
@@ -74,7 +75,7 @@ export type TrackerTemperatureUnit = (typeof TRACKER_TEMPERATURE_UNITS)[number];
 export const QUICK_REPLIES_SETTINGS_CONTROL_ID = "quick-replies" as const;
 export const TRACKER_PANEL_SIZE_PROFILES = ["compact", "standard", "expanded"] as const;
 export type TrackerPanelSizeProfile = (typeof TRACKER_PANEL_SIZE_PROFILES)[number];
-export type TrackerDataPanelSection = "world" | "persona" | "characters" | "quests" | "custom";
+export type TrackerDataPanelSection = "world" | "persona" | "characters" | "inventory" | "quests" | "custom";
 export type TrackerPanelCollapsedSections = Partial<Record<TrackerDataPanelSection, boolean>>;
 export type TrackerPanelSectionOrder = TrackerDataPanelSection[];
 export type EchoChamberSide = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -243,6 +244,7 @@ export const TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
   "world",
   "persona",
   "characters",
+  "inventory",
   "quests",
   "custom",
 ];
@@ -390,7 +392,7 @@ export function normalizeTrackerPanelSizeProfile(value: unknown, legacyWidth?: u
   return "standard";
 }
 
-function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCollapsedSections {
+export function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCollapsedSections {
   const raw = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   const collapsed: TrackerPanelCollapsedSections = {};
   for (const section of TRACKER_DATA_PANEL_SECTIONS) {
@@ -399,7 +401,7 @@ function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCol
   return collapsed;
 }
 
-function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelSectionOrder {
+export function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelSectionOrder {
   const order: TrackerPanelSectionOrder = [];
   const seen = new Set<TrackerDataPanelSection>();
   const raw = Array.isArray(value) ? value : [];
@@ -689,6 +691,12 @@ interface UIState {
   gameMiddleMouseNav: boolean;
   /** Game mode dialogue layout: classic VN box or a VN box with a scrollable segment history above it. */
   gameDialogueDisplayMode: GameDialogueDisplayMode;
+  /**
+   * Game mode narration box collapsed to its handle, so the scene, map or Experience behind it
+   * is visible. The player's standing preference — the box still opens itself whenever it holds
+   * something they must act on (a turn to type, a segment to advance).
+   */
+  gameNarrationCollapsed: boolean;
   /**
    * Chat-list row banners. "hover" (default) paints the active and hovered rows; touch
    * devices have no hover, so there it means the active row only. "always" paints every
@@ -1028,6 +1036,7 @@ interface UIState {
   setGameInstantTextReveal: (v: boolean) => void;
   setGameMiddleMouseNav: (v: boolean) => void;
   setGameDialogueDisplayMode: (v: GameDialogueDisplayMode) => void;
+  setGameNarrationCollapsed: (v: boolean) => void;
   setChatListBackgrounds: (v: ChatListBackgroundMode) => void;
   setGameTextSpeed: (v: number) => void;
   setGameAutoPlayDelay: (v: number) => void;
@@ -1236,6 +1245,7 @@ export function pickSyncedSettings(state: UIState) {
     gameInstantTextReveal: state.gameInstantTextReveal,
     gameMiddleMouseNav: state.gameMiddleMouseNav,
     gameDialogueDisplayMode: state.gameDialogueDisplayMode,
+    gameNarrationCollapsed: state.gameNarrationCollapsed,
     chatListBackgrounds: state.chatListBackgrounds,
     gameTextSpeed: state.gameTextSpeed,
     gameAutoPlayDelay: state.gameAutoPlayDelay,
@@ -1441,6 +1451,7 @@ export const useUIStore = create<UIState>()(
       gameInstantTextReveal: false,
       gameMiddleMouseNav: false,
       gameDialogueDisplayMode: "classic" as GameDialogueDisplayMode,
+      gameNarrationCollapsed: false,
       chatListBackgrounds: "hover" as ChatListBackgroundMode,
       gameTextSpeed: 50,
       gameAutoPlayDelay: 3000,
@@ -2185,6 +2196,7 @@ export const useUIStore = create<UIState>()(
       setGameInstantTextReveal: (v) => set({ gameInstantTextReveal: v }),
       setGameMiddleMouseNav: (v) => set({ gameMiddleMouseNav: v }),
       setGameDialogueDisplayMode: (v) => set({ gameDialogueDisplayMode: v }),
+      setGameNarrationCollapsed: (v) => set({ gameNarrationCollapsed: v }),
       setChatListBackgrounds: (v) => set({ chatListBackgrounds: v }),
       setGameTextSpeed: (v) => set({ gameTextSpeed: Math.max(1, Math.min(100, v)) }),
       setGameAutoPlayDelay: (v) => set({ gameAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
@@ -2379,6 +2391,7 @@ export const useUIStore = create<UIState>()(
           roleplayNarratorAvatarCycling: true,
           roleplaySpriteScale: 1,
           gameDialogueDisplayMode: "classic" as GameDialogueDisplayMode,
+          gameNarrationCollapsed: false,
           chatListBackgrounds: "hover" as ChatListBackgroundMode,
           gameAvatarScale: 1,
           gameFullBodySpriteScale: 1.35,
@@ -2501,7 +2514,12 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      version: 93,
+      // v93 -> v94: add the Inventory tracker-panel section. The bump matters:
+      // `migrate` re-normalizes `trackerPanelSectionOrder`, and it only runs when
+      // the persisted version changes. Without it an existing user's saved order
+      // never gains "inventory" and the section stays invisible until they
+      // reorder the panel by hand.
+      version: 94,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -3161,6 +3179,7 @@ export const useUIStore = create<UIState>()(
         gameInstantTextReveal: state.gameInstantTextReveal,
         gameMiddleMouseNav: state.gameMiddleMouseNav,
         gameDialogueDisplayMode: state.gameDialogueDisplayMode,
+        gameNarrationCollapsed: state.gameNarrationCollapsed,
         chatListBackgrounds: state.chatListBackgrounds,
         gameTextSpeed: state.gameTextSpeed,
         gameAutoPlayDelay: state.gameAutoPlayDelay,

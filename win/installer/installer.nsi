@@ -32,7 +32,10 @@ ${StrTrimNewLines}
 !define NODE_SHA256 "feffb8e5cb5ac47f793666636d496ef3e975be82c84c4da5d20e6aa8fa4eb806"
 !define RELEASE_TAG "v2.4.4"
 !ifndef RELEASE_COMMIT
-!define RELEASE_COMMIT ""
+!error "RELEASE_COMMIT must pin the exact release commit"
+!endif
+!if "${RELEASE_COMMIT}" == ""
+!error "RELEASE_COMMIT must not be empty"
 !endif
 
 Name "${APP_NAME}"
@@ -476,8 +479,7 @@ Please restart your computer and run this installer again."
       Abort
     ${EndIf}
 
-    ${If} "${RELEASE_COMMIT}" != ""
-    ${AndIf} $3 != "${RELEASE_COMMIT}"
+    ${If} $3 != "${RELEASE_COMMIT}"
       ${If} $5 == "1"
         nsExec::ExecToLog 'git stash apply -q'
         Pop $1
@@ -662,8 +664,7 @@ ${APP_URL}"
       MessageBox MB_OK|MB_ICONSTOP "Downloaded release ${RELEASE_TAG} resolved to an empty commit.$\r$\n$\r$\nInstallation was stopped before publishing files."
       Abort
     ${EndIf}
-    ${If} "${RELEASE_COMMIT}" != ""
-    ${AndIf} $2 != "${RELEASE_COMMIT}"
+    ${If} $2 != "${RELEASE_COMMIT}"
       ${If} $CLONE_DIR_CREATED == "1"
         RMDir /r "$CLONE_DIR"
       ${EndIf}

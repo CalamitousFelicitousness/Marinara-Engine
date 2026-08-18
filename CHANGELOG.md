@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows installer sources now refuse to download or install a release unless they were built or invoked with its exact commit pin, preserving the existing verified path used by official release executables.
+
 ## [2.4.3]
 
 ### Added

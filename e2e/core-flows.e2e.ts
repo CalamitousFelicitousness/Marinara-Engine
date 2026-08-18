@@ -250,6 +250,12 @@ test("What's New opens once for each Marinara Engine version", async ({ page }) 
   await expect(releaseImages).toHaveCount(2);
   await expect(releaseImages.nth(0)).toHaveAttribute("src", "https://i.imgur.com/EhkASR2.png");
   await expect(releaseImages.nth(1)).toHaveAttribute("src", "https://i.imgur.com/AmhEOED.png");
+  await expect(
+    announcement.getByRole("link", {
+      name: "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.3",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.4.3");
   const announcementScrollArea = announcement.locator('[data-component="WhatsNewModal"]').locator("..");
   await expect
     .poll(() => announcementScrollArea.evaluate((element) => getComputedStyle(element).overflowY))

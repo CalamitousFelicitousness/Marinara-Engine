@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+## [2.4.3]
+
 ### Added
 
 - Lorebook Update agents can now optionally assign an integer injection order when creating or updating entries. Omitting it keeps the existing/default order, and approval review preserves the value through editing and commit. When creating a custom agent, the prompt editor now previews the complete response shape for the selected result type, including optional fields (#5225).
@@ -18,22 +20,16 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Echo Chamber now exposes an editable message delay in its Agents editor, and extensions can update the same `messageDelaySeconds` agent setting instead of relying on hardcoded reveal timing (#5177).
 - Persona cards can now be referenced by copied ID with `{{persona-21-character-card-ID}}`, resolving the card name in place and adding its authored fields and eligible attached lorebook context to the prompt (#5171).
 - Added **Assistant Reasoning Prefill** alongside the existing visible assistant prefill: compatible OpenAI-style endpoints can now continue hidden reasoning from `reasoning_content` on a partial assistant message, while visible-only prefills keep their existing request shape.
-
 - Game music is now context-bound (#5161): instead of generating a throwaway 30-second clip from a fresh mood prompt nearly every turn, each map area and each encounter tier (common, miniboss, boss, special — classified by the encounter generator) gets ONE persistent instrumental composition (default 2 minutes), generated lazily on first visit or first encounter into the game-assets music library under `music/area/<slug>/` and `music/tier/<tier>/`, where the Game Assets panel can audition, rename, or replace it like any other track. Deterministic scoring now always selects music — tier track in combat, area track elsewhere, the bundled state library as the floor — and keeps the current track while it still fits, so music changes when the context changes, never mid-scene. The scene analyzer no longer writes free-text music prompts (on-demand sound effects are unchanged).
-
 - Added first-class Audio connections: a new "Audio" provider type in Settings → Connections carries the speech backend (ElevenLabs, OpenAI-compatible, PocketTTS, xAI Voice), base URL, API key, model, default voice, and per-connection Game sound-effects / music capability toggles, with category-scoped default and fallback selection like image and video connections. TTS speech, voice/model discovery, and Game Mode audio generation now resolve through the audio connection (explicit pick → category default → fallback), the Game Setup wizard gains an audio-connection picker with per-game sound-effect and music toggles that gray out when no capable connection exists, and a one-time boot migration turns an already-configured legacy TTS settings blob into an equivalent default audio connection — the blob keeps serving playback knobs (speed, stability, extractor settings) and remains the fallback for setups without audio connections, a blob whose master TTS toggle was off migrates to no connection at all, and default-resolution keeps honoring that master toggle (only an explicitly requested connection bypasses it), so an upgrade never re-enables TTS on its own and existing installs keep working unchanged (#5146; docs follow-up: #5156).
-
 - Added capability API 1.12: spatial transition capability events (`spatial_transition_committed`, `spatial_transition_rejected`, and the `spatial_context_refresh` nudge) are now also addressed to the game-owning Experience package, so an Experience that sent a travel command learns the outcome the moment the host does instead of inferring it from later state reads. Transitions rejected on either silent HTTP path — the pre-stream owner-turn commit or the standalone REST commit, previously plain HTTP errors with no event at all, a gap that affected World Maps too — now synthesize a `spatial_transition_rejected` event carrying the error code, and only on definitive evidence: inconclusive failures (a network error that may have lost a successful commit) deliver the untyped refresh nudge instead of a fabricated verdict (#5143).
-
 - Added a host-run structured generation call for game-surface Experiences: `POST /api/game/:chatId/experience-generation` runs one bounded, non-streaming JSON call on the chat's GM connection with package-supplied instructions and an optional JSON schema (forwarded as provider-native structured output where supported), gated on the chat's stamped Experience, rate-limited in the one-shot-call class, serialized per chat, and answering truncation with an actionable error before the tolerant parser can repair a cut-off reply into a silently incomplete document (#5135).
 - Consolidated local regression commands around the filesystem-discovered Node lane: `pnpm regression` and `pnpm regression:node` now collect all 121 Node regressions with one shared build, `pnpm regression:ui` owns the separate Playwright lane with `pnpm smoke:ui` retained as a compatibility alias, and `pnpm test` checks the installer layout before the Node-only lane. Retained focused commands use exact runner filters, and 61 package-script aliases were removed without deleting regression files (#5132).
-
 - Grouped 31 clear-owner Launcher, Mari, Professor Mari, and Noodle regressions into domain directories while preserving all 121 automatically discovered files and stable focused commands. The move also ensures three file-backed regression fixtures close their databases before removing owned temporary storage (#5132).
-
 - Every image and video generation path now runs under a process-wide concurrency ceiling — default 4, configurable with `MARINARA_MEDIA_GENERATION_CONCURRENCY` (`0` disables it) — enforced inside the generators themselves, so while the ceiling is enabled a batch can no longer stampede a local ComfyUI/SwarmUI GPU or fan out unbounded requests against a paid provider (setting the limit to `0` opts out and restores the old unbounded behavior). Batch/automatic work never occupies the last slot ahead of interactive requests, waits are bounded by default (`MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS`; `0` waits indefinitely) so saturation fails loudly instead of hanging, and fallback-connection retries reuse the original request's slot (#5097).
 - Added host-owned `GET`/`PUT /api/game/:chatId/experience-state` routes so a game-surface Experience package can store its world state in the engine's per-message `game_engine_state` table instead of chat metadata: saves are scoped to the chat's stamped Experience (`experience:<id>` rows — invisible to turn-games, protected from turn-game start/resign wipes, and never able to shadow an active turn-game), anchored to the visible message so swiping or branching back to an earlier narration rewinds the world (a brand-new swipe continues from the latest save until the Experience writes one of its own), bounded per save, and pruned to the newest 100 anchors per chat (#5102).
 - Game checkpoints now capture every active engine-state blob (turn-games and Experiences) by value when the checkpoint is created and restore from that copy, replacing the timestamp re-lookup that silently restored stale or no state for any game that rewrites a single anchor in place — including in-place turn games like Tic-Tac-Toe and Rock-Paper-Scissors (#5102).
-- Added a dedicated Roleplay Inventory Tracker integration with separate currency, equipped, and carried-item lists; compact quantities; editable HUD and Tracker Panel grids; per-cell locks; retry support; and committed prompt context (#5105, Pasta-Devs/Marinara-Agents#361).
+- Added Inventory Tracker as an official downloadable Roleplay Agent, with separate currency, equipped, and carried-item lists; compact quantities; editable HUD and Tracker Panel grids; per-cell locks; retry support; and committed prompt context (#5105, Pasta-Devs/Marinara-Agents#361).
 - Added `POST /api/sprites/pixelize`: deterministic pixel-art post-processing for AI-generated images — nearest-kernel downscale to a target cell size, palette quantization against a supplied ramp, binary alpha, and a wrap-around seam score reporting tileability — so probabilistic model output can sit beside authored pixel art; identical input always produces identical bytes (#5096).
 - Character sprite-sheet generation accepts an optional `styleProfileId` so a bake can target a specific image style profile instead of always compiling against the user's active one; an absent field keeps today's resolution exactly, and unknown ids degrade the same way the gallery path degrades (#5095).
 - Added capability API 1.11 Experience combat seam: `game-surface` packages receive `combatActive` (true the instant the built-in combat UI mounts, unlike the lagging narrative scene state), the effective `combatStyle`, and `requestCombat()` — which routes into the same encounter-generation pass as the manual Start Combat button, minus the confirm dialog; packages still cannot supply combatants or combat state (#5094).
@@ -45,6 +41,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Added an optional Roleplay speaker extractor for TTS autoplay that uses a dedicated connection to queue narration and exact dialogue with assigned character voices, stable Random NPC Voices fallbacks, and optional emotion cues.
 - Added an on-demand Advanced Settings storage optimizer that scans for old, unreferenced avatar images and deletes them only after an explicit confirmation (#5039).
 - Roleplay now releases Swipe, Continue, and the composer as soon as a reply is durably saved while its non-rewriting post-processing agents finish against that exact message and swipe in the background; overlapping runs keep independent progress state (#5155).
+- Added the official v2.4.3 What's New message to the Home experience, including the Inventory Tracker overview and screenshots.
+- Added `{{addnumvar::name::value}}` for numeric variable addition without changing `{{addvar}}` string concatenation (#5024).
+- Added a Personal Extension authoring guide with importable Browser and Server examples, package/API references, lifecycle guidance, and troubleshooting (#5026).
 
 ### Fixed
 
@@ -75,7 +74,6 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Large manual backups now prepare as a short-lived server job before Safari opens the completed ZIP stream, avoiding long idle download requests that Safari could terminate (#5164).
 - The Termux launcher now preserves timestamped server logs across Android process restarts and documents Android battery-optimization exclusions, making otherwise silent host-level terminations diagnosable (#5154).
 - Game Mode's Spotify Music DJ no longer fails deterministically for the artist and generic-search sources on apps subject to Spotify's February 2026 `GET /search` limit reduction (Development Mode apps, capped at 10 results per request; Extended Quota Mode apps kept the old behavior): the candidate pool's default of 50 was passed straight through, producing a 400 on every request for affected apps. Search now paginates in pages of 10 up to the requested pool size — safe under both quota modes — and a transient failure on a later page returns the results already collected instead of discarding them (#5163).
-
 - Professor Mari now wires up the preset variables she creates: her authoring guidance and worked example make her drop a variable's `{{variableName}}` macro into a prompt section, so a choice block she adds actually changes the assembled prompt instead of leaving the user a picker that does nothing (#5080).
 - Preserved omitted Inventory Tracker groups, kept equipped items out of carried inventory after lock merging and name normalization, clamped oversized quantities, and migrated existing Tracker Panel layouts to show the new section (#5125).
 - Kept launcher update snapshots small by excluding downloaded model caches and sidecar runtimes, while continuing to preserve user content and recovery backups (#5124).
@@ -110,6 +108,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Restored persona creation through Professor Mari by supplying the persona reference-image default expected by storage validation (#5033).
 - Kept supported placement settings when importing character-scoped SillyTavern regexes that also contain unsupported placements, with a warning for the ignored values (#5036).
 - Capped game auto-checkpoints to the newest five per trigger type (session start/end, combat start/end, and the rest) so a long campaign no longer duplicates every captured tracker, map, and engine-state snapshot into unbounded memory and ever-larger checkpoint shard rewrites; your own manual checkpoints are never pruned (#5110).
+- Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
+- Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
+- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
+- Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
+- Presented iPad sidebars as full-width overlays in landscape as well as portrait by widening the mobile-shell breakpoint to cover newer iPad Pro 13" widths and requiring a touch-only pointer, so sidebars are no longer cramped on landscape iPads while hybrid touch laptops keep their desktop layout (#5034).
 
 ### Changed
 
@@ -117,28 +120,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Coding-agent contributors now follow a Ponytail-inspired minimalism ladder that favors reuse, platform capabilities, and the smallest correct implementation without weakening safety or validation requirements (#5186).
 - Project validation now checks the maintained TypeScript and TSX source tree with Prettier before linting and building, so formatting drift is rejected by the same `pnpm check` command used in pull-request CI (#5181).
 - The Inventory Tracker panel now flows its entries as wrapping pills across the full panel width, with the quantity shown as `×N` only when it is above one. The previous layout split the panel into three fixed columns and reserved a quantity cell on every row, so at the widest setting each column was around 95 px and item names truncated — while a group holding two rows sat mostly empty. The panel also establishes its own container context, so it now lays out identically in the docked sidebar and the HUD popover instead of differing between them (#5125).
-
-## [2.4.3]
-
-### Added
-
-- Added the one-time v2.4.3 beta What's New message to the Home experience.
-- Added `{{addnumvar::name::value}}` for numeric variable addition without changing `{{addvar}}` string concatenation (#5024).
-- Added a Personal Extension authoring guide with importable Browser and Server examples, package/API references, lifecycle guidance, and troubleshooting (#5026).
-
-### Changed
-
-- Advanced the staging version identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, and release references. Android now uses `versionName` `2.4.3` with `versionCode` `44`.
-- Kept README's stable-release pointer tied to the latest published tag instead of rewriting it during staging version preparation.
+- Advanced the stable release identity to v2.4.3 across the Engine, Home page, PWA manifest, Windows installer, Android bootstrap metadata, update checks, README, and release references. Android uses `versionName` `2.4.3` with `versionCode` `44` so it updates over every previously published APK.
 - Removed the shared 1 MiB JavaScript field limit from Browser and Server Personal Extensions while preserving their separate archive, CSS, storage, request, and sandbox boundaries (#5025).
-
-### Fixed
-
-- Kept the caret at the chosen insertion point when typing quotes or apostrophes in expanded Character and Persona text editors (#4656).
-- Prevented multiple Marinara processes from silently overwriting a shared local data directory; stale diagnostic counts are repaired without hiding stored rows (#5013).
-- Let Termux recover its app-private storage lease after an Android restart instead of blocking launch on an exited process (#5029).
-- Omitted runtime Agent prompt sections when their Agent produced no output (#5023).
-- Presented iPad sidebars as full-width overlays in landscape as well as portrait by widening the mobile-shell breakpoint to cover newer iPad Pro 13" widths and requiring a touch-only pointer, so sidebars are no longer cramped on landscape iPads while hybrid touch laptops keep their desktop layout (#5034).
 
 ## [2.4.2]
 

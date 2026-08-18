@@ -3496,11 +3496,9 @@ export function HomeProfessorMariChat({
   // #5073: attaching chat history needs a Mari workspace chat to attach TO; create one if the user
   // hasn't sent a message yet, then open the picker (the picker itself is gated on a live chatId).
   const handleOpenHistoryPicker = useCallback(async () => {
-    let id = activeChatIdRef.current;
-    if (!id) {
+    if (!activeChatIdRef.current) {
       try {
-        const chat = await ensureProfessorMariChat(effectiveConnectionId);
-        id = chat.id;
+        await ensureProfessorMariChat(effectiveConnectionId);
       } catch {
         toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryNeedsChat"));
         return;
@@ -3512,11 +3510,9 @@ export function HomeProfessorMariChat({
   // The Context Viewer is gated on a live chatId too (attachModals), so ensure one before opening —
   // otherwise the menu item would be a silent no-op when the user hasn't sent a message yet.
   const handleOpenContextViewer = useCallback(async () => {
-    let id = activeChatIdRef.current;
-    if (!id) {
+    if (!activeChatIdRef.current) {
       try {
-        const chat = await ensureProfessorMariChat(effectiveConnectionId);
-        id = chat.id;
+        await ensureProfessorMariChat(effectiveConnectionId);
       } catch {
         toast.error(localizeUi("ui.chat.homeprofessormarichat.attachChatHistoryNeedsChat"));
         return;

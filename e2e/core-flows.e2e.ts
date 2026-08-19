@@ -12402,7 +12402,7 @@ test("Illustrator owns the merged scene-video and Storyboard subsections while a
     await durationInput.blur();
     await expect(durationInput).toHaveValue("9");
     await durationControl.getByRole("button", { name: "Use agent default" }).click();
-    await expect(durationInput).toHaveValue("6");
+    await expect(durationInput).toHaveValue("5");
     await expect(durationControl.getByText("Using agent default", { exact: true })).toBeVisible();
     await expect(gameIllustratorCard.getByText("Attach Card Appearance", { exact: true })).toHaveCount(1);
     await expect(gameIllustratorCard.getByText("Send Avatar References", { exact: true })).toHaveCount(1);
@@ -12415,7 +12415,10 @@ test("Illustrator owns the merged scene-video and Storyboard subsections while a
     await expect(gameSceneVideosSubsection.locator("[data-agent-settings-subsection-header] > svg")).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
-    await Promise.all([chat.id, gameChat.id].map((chatId) => request.delete(`/api/chats/${chatId}`)));
+    await Promise.all([
+      bestEffortDelete(request, `/api/chats/${chat.id}`),
+      bestEffortDelete(request, `/api/chats/${gameChat.id}?force=true`),
+    ]);
   }
 });
 

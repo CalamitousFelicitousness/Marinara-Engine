@@ -227,7 +227,11 @@ function mergeWounds(current: BeholderWound[] | undefined, updates: BeholderWoun
       merged[existingIndex] = wound;
     }
   }
-  return merged;
+  // Bound the slot here rather than leaving it to normalizeSlotState, which keeps
+  // the FIRST entries and would therefore discard exactly the wounds this merge
+  // just appended. Overflow policy: drop the oldest wounds so freshly reported
+  // injuries always survive.
+  return merged.length > MAX_WOUNDS_PER_SLOT ? merged.slice(-MAX_WOUNDS_PER_SLOT) : merged;
 }
 
 function mergeSlotDelta(

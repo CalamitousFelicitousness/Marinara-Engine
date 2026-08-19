@@ -355,7 +355,7 @@ export async function prepareConversationPromptHistory(args: {
   }
 
   const allKeyDetails = collectConversationKeyDetails({
-    daySummaries,
+    daySummaries: allDaySummaries,
     weekSummaries: allWeekSummaries,
     dayToWeek,
     parseDateKey,

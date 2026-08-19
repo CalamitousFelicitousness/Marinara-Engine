@@ -11138,11 +11138,69 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       );
       assert.match(
         workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "yes",
+            arguments: {
+              action: "character.create",
+              character: { name: "Dottore Copy" },
+              apply: true,
+            },
+          },
+          {
+            directUserText: "Yes.",
+            previousAssistantText: "Do you want me to save the changes to Dottore's existing character?",
+          },
+        ) ?? "",
+        /immediately preceding visible proposal/iu,
+        "an existing-character update proposal must not authorize character creation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
           { ...explicitCommand, authorization: "I authorize the change" },
           { directUserText: "I authorize the change, delete Dottore's character." },
         ) ?? "",
         /authorizes delete, not update/iu,
         "generic authorization must not let a delete request authorize an update command",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "write-mismatch",
+            name: "write",
+            authorization: "I authorize the change",
+            arguments: { path: "notes.txt", content: "replacement" },
+          },
+          { directUserText: "I authorize the change, delete notes.txt." },
+        ) ?? "",
+        /authorizes delete, not update/iu,
+        "generic authorization must bind write commands to the requested operation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "edit-mismatch",
+            name: "edit",
+            authorization: "I authorize the change",
+            arguments: { path: "notes.txt", oldText: "before", newText: "after" },
+          },
+          { directUserText: "I authorize the change, delete notes.txt." },
+        ) ?? "",
+        /authorizes delete, not update/iu,
+        "generic authorization must bind edit commands to the requested operation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "bash-mismatch",
+            name: "bash",
+            authorization: "I authorize the change",
+            arguments: { command: "mkdir generated" },
+          },
+          { directUserText: "I authorize the change, write an update to the config file." },
+        ) ?? "",
+        /authorizes update, not create/iu,
+        "generic authorization must bind mutating bash commands to the requested operation",
       );
       assert.equal(
         workspaceMutationAuthorizationIssue(

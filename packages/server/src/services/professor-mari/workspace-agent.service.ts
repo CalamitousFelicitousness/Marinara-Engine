@@ -1662,7 +1662,8 @@ const SHORT_MUTATION_CONFIRMATION =
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
 const EXPLICIT_MUTATION_CATEGORY_PATTERNS: Record<WorkspaceMutationCategory, RegExp> = {
   create: /\b(?:create|import)\b/iu,
-  update: /\b(?:edit|enable|disable|link|modify|rename|replace|reword|tweak|unlink|update)\b/iu,
+  update:
+    /\b(?:apply|edit|enable|disable|link|modify|patch|rename|replace|reword|save(?:\s+(?:the|these|those))?\s+changes?|set|tweak|unlink|update|write)\b/iu,
   delete: /\b(?:delete|erase|forget|uninstall)\b/iu,
   move: /\b(?:move|relocate)\b/iu,
   copy: /\b(?:clone|copy|duplicate)\b/iu,
@@ -1766,7 +1767,7 @@ export function workspaceMutationAuthorizationIssue(
       previousAssistantText &&
       visibleTextRequestsUserApproval(previousAssistantText) &&
       MUTATION_INTENT_PATTERNS[category].test(previousAssistantText) &&
-      (command.name !== "app_data" || previousCategories.length === 0 || previousCategories.includes(category))
+      previousCategories.includes(category)
     ) {
       return null;
     }
@@ -1780,7 +1781,7 @@ export function workspaceMutationAuthorizationIssue(
   if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope)) {
     return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
   }
-  if (command.name === "app_data" && GENERIC_MUTATION_AUTHORIZATION.test(authorization)) {
+  if (GENERIC_MUTATION_AUTHORIZATION.test(authorization)) {
     const explicitCategories = explicitlyRequestedMutationCategories(directUserText);
     if (explicitCategories.length > 0 && !explicitCategories.includes(category)) {
       return `Mutation blocked before execution: the active user message authorizes ${explicitCategories.join(" and ")}, not ${category}.`;

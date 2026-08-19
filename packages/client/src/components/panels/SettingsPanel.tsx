@@ -7706,7 +7706,7 @@ function AdvancedSettings() {
     releaseTag?: string;
     dockerImage?: string;
     dockerImageTag?: string;
-    dockerLiteImageTag?: string;
+    dockerLiteImageTag?: string | null;
     installType: "git" | "docker" | "standalone";
     serverPlatform?: "windows" | "macos" | "linux" | "android-termux" | "unknown";
     clientPlatform?: "ios" | "android" | "desktop" | "unknown";
@@ -7935,15 +7935,19 @@ function AdvancedSettings() {
             <div className="flex flex-col gap-2 rounded-lg bg-[var(--secondary)] p-2.5 ring-1 ring-[var(--border)]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">
-                  {updateCheck.data.versionUpdate
-                    ? localizeUi("ui.panels.advancedsettings.vValue1Available", {
-                        value1: updateCheck.data.latestVersion,
+                  {updateCheck.data.channelSwitch
+                    ? localizeUi("ui.panels.advancedsettings.switchToValue1", {
+                        value1: updateCheck.data.channelLabel,
                       })
-                    : localizeUi("ui.panels.advancedsettings.value1CommitValue2BehindValue3", {
-                        value1: commitsBehind,
-                        value2: commitsBehind !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : "",
-                        value3: updateCheck.data.targetRef ?? localizeUi("ui.panels.advancedsettings.originMain"),
-                      })}
+                    : updateCheck.data.versionUpdate
+                      ? localizeUi("ui.panels.advancedsettings.vValue1Available", {
+                          value1: updateCheck.data.latestVersion,
+                        })
+                      : localizeUi("ui.panels.advancedsettings.value1CommitValue2BehindValue3", {
+                          value1: commitsBehind,
+                          value2: commitsBehind !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : "",
+                          value3: updateCheck.data.targetRef ?? localizeUi("ui.panels.advancedsettings.originMain"),
+                        })}
                 </span>
                 {updateCheck.data.versionUpdate && (
                   <a

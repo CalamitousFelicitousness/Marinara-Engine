@@ -16261,35 +16261,211 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile shell smoke only runs in the mobile project.");
 
   const errors = collectUnexpectedErrors(page);
+  await page.route("**/api/capability-packages/installed", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
   await page.goto("/");
 
-  await page.locator('[data-tour="sidebar-toggle"]').click();
+  const topbar = page.locator('[data-component="TopBar"]');
+  const homeButton = topbar.getByTitle("Home");
+  const chatsButton = topbar.locator('[data-tour="sidebar-toggle"]');
+  const homeBounds = await homeButton.boundingBox();
+  const chatsBounds = await chatsButton.boundingBox();
+  expect(homeBounds).not.toBeNull();
+  expect(chatsBounds).not.toBeNull();
+  const mobileActionOrder = [
+    "home",
+    "chats",
+    "characters",
+    "personas",
+    "lorebooks",
+    "presets",
+    "connections",
+    "agents",
+    "settings",
+  ];
+  const mobileActionOffsets = await Promise.all(
+    mobileActionOrder.map(async (key) =>
+      Math.round((await topbar.locator(`[data-topbar-hover-key="${key}"]`).boundingBox())?.x ?? -1),
+    ),
+  );
+  expect(mobileActionOffsets.every((offset) => offset >= 0)).toBe(true);
+  expect(new Set(mobileActionOffsets).size).toBe(mobileActionOrder.length);
+  expect(mobileActionOffsets).toEqual([...mobileActionOffsets].sort((left, right) => left - right));
+  const homeIconBounds = await homeButton.locator("svg").boundingBox();
+  const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
+  expect(homeIconBounds).not.toBeNull();
+  expect(chatsIconBounds).not.toBeNull();
+  expect(homeIconBounds!.width).toBeGreaterThan(chatsIconBounds!.width);
+
+  const musicDjButton = page.getByRole("button", { name: "Open Music DJ download prompt" });
+  await expect(musicDjButton).toBeVisible();
+  const bookmarksBounds = await page.getByRole("navigation", { name: "Home bookmarks" }).boundingBox();
+  const initialMusicDjBounds = await musicDjButton.boundingBox();
+  expect(bookmarksBounds).not.toBeNull();
+  expect(initialMusicDjBounds).not.toBeNull();
+  const musicDjOverlapsBookmarks =
+    initialMusicDjBounds!.x < bookmarksBounds!.x + bookmarksBounds!.width &&
+    initialMusicDjBounds!.x + initialMusicDjBounds!.width > bookmarksBounds!.x &&
+    initialMusicDjBounds!.y < bookmarksBounds!.y + bookmarksBounds!.height &&
+    initialMusicDjBounds!.y + initialMusicDjBounds!.height > bookmarksBounds!.y;
+  expect(musicDjOverlapsBookmarks).toBe(false);
+  const initialMusicDjPosition = await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts");
+    return useUIStore.getState().spotifyMobileWidgetPosition;
+  });
+  await musicDjButton.dispatchEvent("pointerdown", {
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: initialMusicDjBounds!.x + 24,
+    clientY: initialMusicDjBounds!.y + 24,
+  });
+  await musicDjButton.dispatchEvent("pointermove", {
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: initialMusicDjBounds!.x + 88,
+    clientY: initialMusicDjBounds!.y + 88,
+  });
+  await musicDjButton.dispatchEvent("pointerup", {
+    pointerId: 1,
+    pointerType: "touch",
+    clientX: initialMusicDjBounds!.x + 88,
+    clientY: initialMusicDjBounds!.y + 88,
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts");
+        return useUIStore.getState().spotifyMobileWidgetPosition.x;
+      }),
+    )
+    .toBeGreaterThan(initialMusicDjPosition.x + 32);
+
+  await chatsButton.click();
   await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
   await expect(page.locator('[data-component="ChatSidebar"]')).toBeVisible();
+  await expect(homeButton).toHaveAttribute("aria-pressed", "false");
+  await expect(chatsButton).toHaveAttribute("aria-pressed", "true");
   const mobileChatSidebar = page.locator('[data-component="ChatSidebarPanel"]');
+  await expect.poll(async () => (await mobileChatSidebar.boundingBox())?.x ?? Number.POSITIVE_INFINITY).toBeLessThan(1);
+  await mobileChatSidebar.evaluate((element) => element.setAttribute("data-e2e-mobile-shell", "preserved"));
+
+  await page.locator('[data-tour="panel-characters"]').click();
+  const swappedRightPanel = page.locator('[data-component="RightPanelMobile"]');
+  await expect(swappedRightPanel).toBeVisible();
+  await expect(swappedRightPanel).toHaveAttribute("data-e2e-mobile-shell", "preserved");
+  await expect(homeButton).toHaveAttribute("aria-pressed", "false");
+  const charactersUnderline = topbar.locator('[data-component="CharactersTopbarUnderline"]');
+  await expect(charactersUnderline).toBeVisible();
+  await expect
+    .poll(() =>
+      charactersUnderline.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim(),
+      ),
+    )
+    .toBe("#f472b6");
+
+  await chatsButton.click();
+  await expect(mobileChatSidebar).toBeVisible();
+  await expect(mobileChatSidebar).toHaveAttribute("data-e2e-mobile-shell", "preserved");
   const openMobileSidebarX = (await mobileChatSidebar.boundingBox())?.x ?? 0;
-  await page.locator('[data-tour="sidebar-toggle"]').click();
-  await expect(mobileChatSidebar).toHaveClass(/mari-shell-panel-exit-left/);
+  await homeButton.click();
   expect((await mobileChatSidebar.boundingBox())?.width ?? 0).toBeGreaterThan(
     (await page.evaluate(() => innerWidth)) * 0.9,
   );
   await expect
     .poll(async () => (await mobileChatSidebar.boundingBox())?.x ?? Number.POSITIVE_INFINITY)
-    .toBeLessThan(openMobileSidebarX - 8);
-  await expect(mobileChatSidebar).toHaveAttribute("aria-hidden", "true");
+    .toBeGreaterThan(openMobileSidebarX + 8);
+  await expect(mobileChatSidebar).toHaveCount(0);
+  await expect(homeButton).toHaveAttribute("aria-pressed", "true");
 
-  await page.locator('[data-tour="sidebar-toggle"]').click();
-  await expect(page.locator('[data-component="ChatSidebar"]')).toBeVisible();
-
-  await page.locator('[data-tour="panel-characters"]').click();
-  await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
-  await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
-
-  await page.locator('[data-tour="panel-settings"]').click();
-  await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
-  await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
+  for (const panel of ["characters", "personas", "lorebooks", "presets", "connections", "agents", "settings"]) {
+    await page.locator(`[data-tour="panel-${panel}"]`).click();
+    await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
+    await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
+    await expect(homeButton).toHaveAttribute("aria-pressed", "false");
+    await homeButton.click();
+    await expect(page.locator('[data-component="RightPanelMobile"]')).toHaveCount(0);
+    await expect(homeButton).toHaveAttribute("aria-pressed", "true");
+  }
 
   expect(errors).toEqual([]);
+});
+
+test("Characters topbar underline uses the Characters pink", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-tour="panel-characters"]').click();
+
+  const underline = page.locator('[data-component="CharactersTopbarUnderline"]');
+  await expect(underline).toBeVisible();
+  await expect
+    .poll(() =>
+      underline.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim(),
+      ),
+    )
+    .toBe("#f472b6");
+});
+
+test("mobile Docker update checks offer the selected staging image", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Mobile Docker channel regression.");
+
+  await page.route("**/api/updates/check?channel=staging", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        currentVersion: APP_VERSION,
+        currentCommit: "stable123456",
+        currentBuild: `${APP_VERSION}+stable123456`,
+        channel: "staging",
+        channelLabel: "Staging/UAT",
+        currentBranch: `v${APP_VERSION}`,
+        channels: [
+          { id: "stable", label: "Latest Stable", branch: "main", targetRef: "origin/main", warning: null },
+          {
+            id: "staging",
+            label: "Staging/UAT",
+            branch: "staging",
+            targetRef: "origin/staging",
+            warning: "Staging builds are pre-release tester builds. Back up your app data before applying them.",
+          },
+        ],
+        targetRef: "origin/staging",
+        targetCommit: null,
+        latestVersion: APP_VERSION,
+        updateAvailable: true,
+        channelSwitch: true,
+        versionUpdate: false,
+        commitsBehind: 0,
+        releaseUrl: `https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v${APP_VERSION}`,
+        releaseNotes: "",
+        publishedAt: "",
+        dockerImage: "ghcr.io/pasta-devs/marinara-engine",
+        dockerImageTag: "ghcr.io/pasta-devs/marinara-engine:staging",
+        dockerLiteImageTag: null,
+        installType: "docker",
+        serverPlatform: "linux",
+        clientPlatform: "android",
+        applyAvailable: false,
+        updatesApplyEnabled: false,
+        applyUnavailableReason: "container-install",
+        manualUpdateCommand: "docker compose pull && docker compose up -d",
+        manualUpdateHint:
+          "Set the Compose image to ghcr.io/pasta-devs/marinara-engine:staging, then pull it and restart the container. Use a separate data volume for staging.",
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.locator('[data-tour="panel-settings"]').click();
+  await page.getByRole("tab", { name: "Advanced" }).click();
+  await page.getByLabel("Release Channel").selectOption("staging");
+  await page.getByRole("button", { name: "Check for Updates" }).click();
+
+  await expect(page.getByText("Switch to Staging/UAT", { exact: true })).toBeVisible();
+  await expect(page.getByText("ghcr.io/pasta-devs/marinara-engine:staging", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Set the Compose image to .*:staging, then pull it and restart the container\./)).toBeVisible();
+  await expect(page.getByText(/latest Staging\/UAT target/)).toHaveCount(0);
 });
 
 test("coarse-pointer iPad widths use full-screen side panels", async ({ page }, testInfo) => {

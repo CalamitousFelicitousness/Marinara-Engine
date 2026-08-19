@@ -133,7 +133,11 @@ import {
   isBundledGameAssetFolderPath,
   isBundledGameAssetPath,
 } from "../../packages/server/src/services/game/native-game-assets.js";
-import { isGitUpdateApplyAllowed } from "../../packages/server/src/services/updates/update-apply-policy.js";
+import {
+  isGitUpdateApplyAllowed,
+  isUpdateChannelSwitch,
+  resolveDockerChannelImageTags,
+} from "../../packages/server/src/services/updates/update-apply-policy.js";
 import { parseNoodleAvatarCrop } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { sanitizeExampleDialoguePromptLeaf } from "../../packages/server/src/services/prompt/prompt-escaping.js";
 import {
@@ -1027,6 +1031,20 @@ assert.match(
   /gitInstall \? await getCurrentBranch\(root\)\.catch\(\(\) => null\) : getBuildBranch\(\)/u,
 );
 assert.match(updatesRouteSource, /const currentChannel = await getUpdateChannelForCheckout\(root, currentBranch\)/u);
+assert.equal(isUpdateChannelSwitch("docker", "stable", "staging"), true);
+assert.equal(isUpdateChannelSwitch("docker", "staging", "staging"), false);
+assert.equal(isUpdateChannelSwitch("git", "stable", "staging"), true);
+assert.equal(isUpdateChannelSwitch("standalone", "stable", "staging"), false);
+assert.deepEqual(resolveDockerChannelImageTags("ghcr.io/pasta-devs/marinara-engine", "2.4.3", "stable"), {
+  dockerImage: "ghcr.io/pasta-devs/marinara-engine",
+  dockerImageTag: "ghcr.io/pasta-devs/marinara-engine:2.4.3",
+  dockerLiteImageTag: "ghcr.io/pasta-devs/marinara-engine:2.4.3-lite",
+});
+assert.deepEqual(resolveDockerChannelImageTags("ghcr.io/pasta-devs/marinara-engine", "2.4.3", "staging"), {
+  dockerImage: "ghcr.io/pasta-devs/marinara-engine",
+  dockerImageTag: "ghcr.io/pasta-devs/marinara-engine:staging",
+  dockerLiteImageTag: null,
+});
 for (const dockerfile of ["Dockerfile", "Dockerfile.lite"]) {
   const dockerSource = readFileSync(join(REPOSITORY_ROOT, dockerfile), "utf8");
   assert.match(dockerSource, /^ARG BUILD_BRANCH$/mu, `${dockerfile} must accept the source ref as build metadata`);

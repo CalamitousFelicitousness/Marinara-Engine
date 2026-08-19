@@ -92,7 +92,9 @@ export function TopBar() {
   const localize = useLocalizedUiText();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel);
+  const closeRightPanel = useUIStore((s) => s.closeRightPanel);
   const rightPanel = useUIStore((s) => s.rightPanel);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -143,8 +145,10 @@ export function TopBar() {
       Boolean(personaDetailId) ||
       (characterLibraryOpen && cardLibraryKind === "personas"),
   };
+  const isMobileOverlayActive = isMobileTopbarNavigation() && (sidebarOpen || rightPanelOpen);
   const isHomeActive =
     !activeChatId &&
+    !isMobileOverlayActive &&
     !characterDetailId &&
     !lorebookDetailId &&
     !presetDetailId &&
@@ -176,6 +180,15 @@ export function TopBar() {
     },
     [prepareMobileTopbarNavigation, toggleRightPanel],
   );
+
+  const handleHomeClick = useCallback(() => {
+    window.dispatchEvent(new Event("marinara:home-professor-mari-close"));
+    setActiveChatId(null);
+    closeAllDetails();
+    if (!isMobileTopbarNavigation()) return;
+    setSidebarOpen(false);
+    closeRightPanel();
+  }, [closeAllDetails, closeRightPanel, setActiveChatId, setSidebarOpen]);
 
   const handleTopbarPointerOver = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType !== "mouse") return;
@@ -269,6 +282,7 @@ export function TopBar() {
         >
           <button
             onClick={handleSidebarClick}
+            aria-pressed={sidebarOpen}
             data-tour="sidebar-toggle"
             data-topbar-hover-key="chats"
             className={cn(
@@ -304,11 +318,8 @@ export function TopBar() {
           </button>
 
           <button
-            onClick={() => {
-              window.dispatchEvent(new Event("marinara:home-professor-mari-close"));
-              setActiveChatId(null);
-              closeAllDetails();
-            }}
+            onClick={handleHomeClick}
+            aria-pressed={isHomeActive}
             data-topbar-hover-key="home"
             className={cn(
               TOPBAR_BUTTON_CLASS,
@@ -348,6 +359,7 @@ export function TopBar() {
       >
         <button
           onClick={() => handleRightPanelClick("characters")}
+          aria-pressed={isCharactersPanelActive}
           data-tour="panel-characters"
           data-topbar-hover-key="characters"
           className={cn(
@@ -364,7 +376,10 @@ export function TopBar() {
         >
           <Users size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
           {isCharactersPanelActive && (
-            <span className="mari-topbar-active-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
+            <span
+              data-component="CharactersTopbarUnderline"
+              className="mari-panel-gradient-surface mari-panel-gradient--characters absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full"
+            />
           )}
         </button>
 
@@ -375,6 +390,7 @@ export function TopBar() {
             <button
               key={panel}
               onClick={() => handleRightPanelClick(panel)}
+              aria-pressed={isActive}
               data-tour={`panel-${panel}`}
               data-topbar-hover-key={panel}
               className={cn(

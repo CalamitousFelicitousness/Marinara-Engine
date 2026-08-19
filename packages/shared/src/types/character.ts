@@ -232,7 +232,6 @@ export interface PersonaCardSnapshot {
   trackerCardColors: string;
   personaStats: string;
   tags: string;
-  nameAliases: string;
   savedStatusOptions: string;
   /** Conversation mode ONLY fields (convoBehavior stored as a JSON string). */
   convoDisplayName: string;

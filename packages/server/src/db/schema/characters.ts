@@ -89,8 +89,6 @@ export const personas = fileTable("personas", {
   aboutMe: text("about_me").notNull().default(""),
   /** Conversation mode ONLY: behavior directive + insertion strategy (JSON, empty = unset) */
   convoBehavior: text("convo_behavior").notNull().default(""),
-  /** Alternative names/nicknames colored with this persona's nameColor (JSON array of strings) */
-  nameAliases: text("name_aliases").notNull().default("[]"),
   /** Pre-computed semantic embedding (JSON float[]), null until vectorized (#4768) */
   embedding: text("embedding"),
   createdAt: text("created_at").notNull(),

@@ -170,7 +170,6 @@ export type PersonaStorageWriteFields = Pick<
   | "tags"
   | "savedStatusOptions"
   | "convoDisplayName"
-  | "nameAliases"
   | "aboutMe"
   | "convoBehavior"
 >;
@@ -298,7 +297,6 @@ function buildPersonaSnapshot(persona: PersonaStorageRow): PersonaCardSnapshot {
     convoDisplayName: persona.convoDisplayName ?? "",
     aboutMe: persona.aboutMe ?? "",
     convoBehavior: persona.convoBehavior ?? "",
-    nameAliases: persona.nameAliases ?? "[]",
   };
 }
 
@@ -340,7 +338,6 @@ function normalizePersonaSnapshot(data: PersonaCardSnapshot): PersonaCardSnapsho
     convoDisplayName: data.convoDisplayName ?? "",
     aboutMe: data.aboutMe ?? "",
     convoBehavior: data.convoBehavior ?? "",
-    nameAliases: data.nameAliases ?? "[]",
   };
 }
 

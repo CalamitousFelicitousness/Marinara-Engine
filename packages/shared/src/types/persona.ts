@@ -49,8 +49,6 @@ export interface Persona {
   personaStats?: PersonaStatsConfig;
   /** Tags for organizing personas */
   tags: string[];
-  /** Alternative names/nicknames colored with this persona's nameColor in chat prose. */
-  nameAliases?: string[];
   /** Saved Conversation mode activity/status text options for this persona */
   savedStatusOptions: string[];
   /** Conversation mode ONLY: display name shown as the user's sender label in Convo. */

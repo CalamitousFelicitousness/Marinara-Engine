@@ -1584,7 +1584,7 @@ function visibleTextRequestsUserApproval(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ");
   return (
     /\b(say|reply|tell me)\b.{0,40}\b(apply it|apply|approve|approved|go ahead|yes|save it)\b/.test(normalized) ||
-    /\b(do you want me|should i|want me to)\b.{0,80}\b(apply|save|edit|update|patch|change|write|set|create|delete|remove|move|install)\b/.test(
+    /\b(do you want me|should i|want me to)\b.{0,80}\b(apply|save|edit|update|patch|change|fix|write|set|create|delete|remove|move|install)\b/.test(
       normalized,
     ) ||
     /\b(need|waiting for|wait for)\b.{0,40}\b(approval|confirmation|permission)\b/.test(normalized) ||
@@ -1660,11 +1660,13 @@ const MUTATION_DENIAL =
 const SHORT_MUTATION_CONFIRMATION =
   /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?)[,.!\s]*$/iu;
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
+const GENERIC_MUTATION_AUTHORIZATION_CLAUSE =
+  /\b(?:i\s+)?(?:authori[sz]e|approve|grant\s+permission)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?\b[,.!;:\s-]*/iu;
 const EXPLICIT_MUTATION_CATEGORY_PATTERNS: Record<WorkspaceMutationCategory, RegExp> = {
-  create: /\b(?:create|import)\b/iu,
+  create: /\b(?:create|generate|import)\b/iu,
   update:
-    /\b(?:apply|edit|enable|disable|link|modify|patch|rename|replace|reword|save(?:\s+(?:the|these|those))?\s+changes?|set|tweak|unlink|update|write)\b/iu,
-  delete: /\b(?:delete|erase|forget|uninstall)\b/iu,
+    /\b(?:address|adjust|apply|assign|change|edit|enable|disable|ensure|fix|handle|implement|link|modify|patch|rename|replace|reword|save(?:\s+(?:(?:this|that)\s+change|(?:the|these|those)\s+changes?|changes?))|set|tweak|unlink|update|write)\b/iu,
+  delete: /\b(?:delete|erase|forget|remove|uninstall)\b/iu,
   move: /\b(?:move|relocate)\b/iu,
   copy: /\b(?:clone|copy|duplicate)\b/iu,
   install: /\b(?:install|upgrade)\b/iu,
@@ -1774,17 +1776,25 @@ export function workspaceMutationAuthorizationIssue(
     return "Mutation blocked before execution: a short confirmation must answer the immediately preceding visible proposal for the same kind of change.";
   }
 
-  if (INFORMATIONAL_REQUEST_START.test(directUserText) && !DIRECT_MUTATION_AFTER_INFORMATION.test(directUserText)) {
+  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorization);
+  const authorizationScope = genericAuthorization
+    ? directUserText.replace(GENERIC_MUTATION_AUTHORIZATION_CLAUSE, "").trim()
+    : authorization;
+  if (
+    INFORMATIONAL_REQUEST_START.test(authorizationScope) &&
+    !DIRECT_MUTATION_AFTER_INFORMATION.test(authorizationScope)
+  ) {
     return "Mutation blocked before execution: informational and how-to requests do not authorize workspace changes.";
   }
-  const authorizationScope = GENERIC_MUTATION_AUTHORIZATION.test(authorization) ? directUserText : authorization;
   if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope)) {
     return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
   }
-  if (GENERIC_MUTATION_AUTHORIZATION.test(authorization)) {
-    const explicitCategories = explicitlyRequestedMutationCategories(directUserText);
-    if (explicitCategories.length > 0 && !explicitCategories.includes(category)) {
-      return `Mutation blocked before execution: the active user message authorizes ${explicitCategories.join(" and ")}, not ${category}.`;
+  if (genericAuthorization) {
+    const explicitCategories = explicitlyRequestedMutationCategories(authorizationScope);
+    if (explicitCategories.length !== 1 || explicitCategories[0] !== category) {
+      const requestedCategories =
+        explicitCategories.length > 0 ? explicitCategories.join(" and ") : "no single explicit operation";
+      return `Mutation blocked before execution: the active user message authorizes ${requestedCategories}, not ${category}.`;
     }
   }
 

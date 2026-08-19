@@ -11087,6 +11087,19 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         ),
         null,
       );
+      for (const proposal of [
+        "Do you want me to fix Dottore's appearance?",
+        "Do you want me to save this change to Dottore's appearance?",
+      ]) {
+        assert.equal(
+          workspaceMutationAuthorizationIssue(
+            { ...explicitCommand, authorization: "yes" },
+            { directUserText: "Yes.", previousAssistantText: proposal },
+          ),
+          null,
+          `the confirmation should retain the update category from: ${proposal}`,
+        );
+      }
       assert.equal(
         workspaceMutationAuthorizationIssue(
           { ...explicitCommand, authorization: "I authorize the change" },
@@ -11162,6 +11175,42 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         ) ?? "",
         /authorizes delete, not update/iu,
         "generic authorization must not let a delete request authorize an update command",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          { directUserText: "I authorize the change, generate a new character." },
+        ) ?? "",
+        /authorizes create, not update/iu,
+        "generic authorization must bind an unrelated generate clause to creation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          { directUserText: "I authorize the change, make Dottore better." },
+        ) ?? "",
+        /no single explicit operation/iu,
+        "generic authorization must reject an unclassified operation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          { directUserText: "I authorize the change, create and update Dottore's character." },
+        ) ?? "",
+        /authorizes create and update, not update/iu,
+        "generic authorization must reject multiple operation categories",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "I authorize the change",
+            arguments: { action: "character.delete", characterId: "dottore-id", apply: true },
+          },
+          { directUserText: "I authorize the change, explain how to delete Dottore's character." },
+        ) ?? "",
+        /informational and how-to/iu,
+        "a generic authorization clause must not turn informational deletion guidance into permission",
       );
       assert.match(
         workspaceMutationAuthorizationIssue(

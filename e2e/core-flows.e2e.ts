@@ -12997,7 +12997,8 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
   try {
     await page.goto("/");
     await page.getByRole("button", { name: "Ask Professor Mari", exact: true }).click();
-    await expect(page.locator('[data-component="HomeProfessorMariChat.Window"]')).toBeVisible();
+    const professorWindow = page.locator('[data-component="HomeProfessorMariChat.Window"]');
+    await expect(professorWindow).toBeVisible();
 
     if (testInfo.project.name.includes("mobile")) {
       await page.locator('[data-tour="sidebar-toggle"]').click();
@@ -13018,7 +13019,17 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
       await page.getByRole("button", { name: "Close Professor Mari chat" }).last().click();
       await expect(page.getByRole("button", { name: "Open Professor Mari chat" })).toBeVisible();
     } else {
-      await expect(page.getByRole("button", { name: "Dismiss Professor Mari floating chat" })).toBeVisible();
+      const dismissProfessorMari = page.getByRole("button", { name: "Dismiss Professor Mari floating chat" });
+      await expect(dismissProfessorMari).toBeVisible();
+      await expect(dismissProfessorMari).toHaveClass(/mari-editor-action/u);
+      const [buttonBox, iconBox] = await Promise.all([
+        dismissProfessorMari.boundingBox(),
+        dismissProfessorMari.locator("svg").boundingBox(),
+      ]);
+      expect(buttonBox?.width).toBeGreaterThanOrEqual(36);
+      expect(buttonBox?.height).toBeGreaterThanOrEqual(36);
+      expect(iconBox?.width).toBeGreaterThanOrEqual(18);
+      expect(iconBox?.height).toBeGreaterThanOrEqual(18);
       await expect(page.getByPlaceholder("Ask Professor Mari")).toBeVisible();
     }
 
@@ -13035,17 +13046,32 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
   const messageContent = `Professor Mari suggestion stability ${Date.now()}`;
-  const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
-    data: {
-      role: "assistant",
-      characterId: "__professor_mari__",
-      content: messageContent,
-    },
-  });
-  expect(messageResponse.ok()).toBeTruthy();
-  const message = (await messageResponse.json()) as { id: string };
+  const createdMessageIds: string[] = [];
 
   try {
+    const userMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+      data: {
+        role: "user",
+        content: `Professor Mari chrome color request ${Date.now()}`,
+      },
+    });
+    const userMessage = (await userMessageResponse.json().catch(() => null)) as { id?: unknown } | null;
+    if (typeof userMessage?.id === "string") createdMessageIds.push(userMessage.id);
+    expect(userMessageResponse.ok()).toBeTruthy();
+    expect(userMessage?.id).toEqual(expect.any(String));
+
+    const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+      data: {
+        role: "assistant",
+        characterId: "__professor_mari__",
+        content: messageContent,
+      },
+    });
+    const message = (await messageResponse.json().catch(() => null)) as { id?: unknown } | null;
+    if (typeof message?.id === "string") createdMessageIds.push(message.id);
+    expect(messageResponse.ok()).toBeTruthy();
+    expect(message?.id).toEqual(expect.any(String));
+
     await page.goto("/");
     await page.evaluate(async () => {
       const [{ useAgentStore }, { useUIStore }] = await Promise.all([
@@ -13055,6 +13081,7 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
       useAgentStore.getState().clearMariChips();
       useAgentStore.getState().clearMariPlan();
       useUIStore.getState().setProfessorMariSuggestionsEnabled(true);
+      useUIStore.getState().setChatChromeTextColor("#14b8a6");
     });
 
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
@@ -13064,8 +13091,21 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
     const suggestions = window.getByRole("group", { name: "Suggested replies" });
     await expect(suggestions).toBeVisible();
     await expect(suggestions.getByRole("button", { name: "Create a character" })).toBeVisible();
+    const configuredChromeTextColor = await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim(),
+    );
+    const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
+    expect(configuredChromeTextColor).toBe("#14b8a6");
+    await expect(window.getByText("You", { exact: true }).last()).toHaveCSS("color", chromeMutedColor);
+    await expect(window.getByRole("button", { name: "Edit Message" }).last()).toHaveCSS("color", chromeMutedColor);
+    await expect(window.getByText("Suggestions only. Pick one, or type your own.", { exact: true })).toHaveCSS(
+      "color",
+      chromeMutedColor,
+    );
   } finally {
-    await bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${message.id}`);
+    await Promise.all(
+      createdMessageIds.map((id) => bestEffortDelete(page.request, `/api/chats/${chat.id}/messages/${id}`)),
+    );
   }
 });
 
@@ -13129,19 +13169,30 @@ test("Professor Mari shows the latest context budget when token usage is enabled
     await page.goto("/");
     await page.evaluate(async () => {
       const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
-        useUIStore: { getState: () => { setShowTokenUsage: (value: boolean) => void } };
+        useUIStore: {
+          getState: () => {
+            setChatChromeTextColor: (value: string) => void;
+            setShowTokenUsage: (value: boolean) => void;
+          };
+        };
       };
+      useUIStore.getState().setChatChromeTextColor("#14b8a6");
       useUIStore.getState().setShowTokenUsage(true);
     });
-    await page
-      .locator('[data-component="HomeProfessorMariChat.MariPanel"]')
-      .getByRole("button", { name: "Ask Professor Mari" })
-      .click();
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
 
     const window = page.locator('[data-component="HomeProfessorMariChat.Window"]');
     const budget = window.locator('[data-component="HomeProfessorMariChat.ContextBudget"]');
+    const configuredChromeTextColor = await page.evaluate(() =>
+      document.documentElement.style.getPropertyValue("--marinara-chat-chrome-text").trim(),
+    );
+    const chromeMutedColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-muted");
+    const chromeTextColor = await readCssVariableColor(page, "--marinara-chat-chrome-panel-text");
+    expect(configuredChromeTextColor).toBe("#14b8a6");
     await expect(budget).toContainText("Context");
     await expect(budget).toContainText("12.3k / 128k tokens");
+    await expect(budget.getByText("Context", { exact: true })).toHaveCSS("color", chromeMutedColor);
+    await expect(budget.getByText("12.3k / 128k tokens", { exact: true })).toHaveCSS("color", chromeTextColor);
     await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12345");
     await expect(budget.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "128000");
   } finally {

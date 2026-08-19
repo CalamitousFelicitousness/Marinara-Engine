@@ -473,6 +473,123 @@ try {
   );
 }
 
+// A locally hosted OpenAI-compatible server (llama.cpp / Ollama / vLLM / LM Studio)
+// is reached through the "custom" provider kind. Disabling reasoning there has to
+// arrive as BOTH reasoning_effort and chat_template_kwargs.enable_thinking:
+// llama.cpp only skips the thinking pass for the latter, while reasoning_format
+// alone would merely hide the thinking and still pay for the tokens.
+let localReasoningRequestBody: Record<string, unknown> | null = null;
+const localReasoningServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  localReasoningRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => localReasoningServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = localReasoningServer.address();
+  assert.ok(address && typeof address === "object");
+  const localProvider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+
+  await localProvider.chatComplete([{ role: "user", content: "no thinking please" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal(
+    localReasoningRequestBody.reasoning_effort,
+    "none",
+    "local endpoints must receive an explicit reasoning disable",
+  );
+  assert.deepEqual(
+    localReasoningRequestBody.chat_template_kwargs,
+    { enable_thinking: false },
+    "llama.cpp needs enable_thinking=false to actually skip the thinking pass",
+  );
+
+  // Graded levels stay gated for off-catalog models: llama.cpp accepts them but
+  // treats every non-"none" value identically to sending nothing.
+  localReasoningRequestBody = null;
+  await localProvider.chatComplete([{ role: "user", content: "think hard" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "high",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal("reasoning_effort" in localReasoningRequestBody, false);
+  assert.equal("chat_template_kwargs" in localReasoningRequestBody, false);
+
+  // The parameter's own send-switch still wins over everything.
+  localReasoningRequestBody = null;
+  await localProvider.chatComplete([{ role: "user", content: "provider default" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: false },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal("reasoning_effort" in localReasoningRequestBody, false);
+  assert.equal("chat_template_kwargs" in localReasoningRequestBody, false);
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    localReasoningServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+// The enable_thinking addition is a local-endpoint carve-out. A remote custom
+// endpoint keeps the previous behaviour: reasoning_effort only, no template kwargs.
+let remoteReasoningRequestBody: Record<string, unknown> | null = null;
+const remoteReasoningServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  remoteReasoningRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => remoteReasoningServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = remoteReasoningServer.address();
+  assert.ok(address && typeof address === "object");
+  const remoteProvider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  // Force the local check to fail while keeping the loopback transport.
+  Object.defineProperty(remoteProvider, "isLocalInferenceEndpoint", { value: () => false });
+  await remoteProvider.chatComplete([{ role: "user", content: "no thinking please" }], {
+    model: "some-remote-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.ok(remoteReasoningRequestBody);
+  assert.equal(remoteReasoningRequestBody.reasoning_effort, "none");
+  assert.equal(
+    "chat_template_kwargs" in remoteReasoningRequestBody,
+    false,
+    "enable_thinking must stay a local-endpoint carve-out",
+  );
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    remoteReasoningServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
 assert.deepEqual(
   resolveStoredChatOptions(
     JSON.stringify({

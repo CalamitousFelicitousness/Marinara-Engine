@@ -24,6 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
+import { isPrivateNetworkIp } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters } from "./glm-request-compat.js";
 
 /**
@@ -702,6 +703,24 @@ export class OpenAIProvider extends BaseLLMProvider {
     return reasoningEffort === "none";
   }
 
+  /**
+   * True when baseUrl points at an inference server running on this machine or
+   * this LAN (llama.cpp, Ollama, vLLM, LM Studio). Such servers expose
+   * arbitrary model names that never match the OpenAI/xAI catalog patterns the
+   * reasoning gates rely on, so without this the user's explicit "reasoning
+   * off" choice is silently discarded before it reaches the request body.
+   */
+  private isLocalInferenceEndpoint(): boolean {
+    try {
+      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+      if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
+      return isPrivateNetworkIp(hostname);
+    } catch {
+      return false;
+    }
+  }
+
   private supportsOpenAIReasoningDisable(model: string): boolean {
     const normalized = model.toLowerCase().replace(/^openai\//, "");
     if (normalized.includes("-pro")) return false;
@@ -806,6 +825,20 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (this.isGenericCustomProvider()) {
       if (this.hasExplicitReasoningDisable(options.reasoningEffort)) {
         body.reasoning_effort = "none";
+        // Locally hosted servers (llama.cpp, Ollama, vLLM, LM Studio) drive
+        // thinking from the chat template, and not every template reads
+        // reasoning_effort. enable_thinking=false is what actually skips the
+        // thinking pass; reasoning_format would only hide thinking the model
+        // has already spent tokens producing.
+        if (this.isLocalInferenceEndpoint()) {
+          const templateOptions =
+            body.chat_template_kwargs &&
+            typeof body.chat_template_kwargs === "object" &&
+            !Array.isArray(body.chat_template_kwargs)
+              ? (body.chat_template_kwargs as Record<string, unknown>)
+              : {};
+          body.chat_template_kwargs = { ...templateOptions, enable_thinking: false };
+        }
       } else if (this.shouldSendReasoningEffort(options.model, options.reasoningEffort)) {
         body.reasoning_effort = options.reasoningEffort;
       }

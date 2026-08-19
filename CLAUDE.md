@@ -73,9 +73,11 @@ Check `package.json` for a named alias first — most lanes have one (`pnpm regr
 
 ```bash
 pnpm smoke:ui                                 # desktop-chromium + mobile-chromium
-pnpm smoke:ui -- --project=desktop-chromium   # one project
-pnpm smoke:ui -- --grep "chat"                # one test by title
+pnpm smoke:ui --project=desktop-chromium      # one project
+pnpm smoke:ui --grep "chat"                   # one test by title
 ```
+
+Pass Playwright flags **without** a `--` separator. pnpm forwards a literal `--` into the command, and Playwright reads everything after it as positional file filters, so `pnpm smoke:ui -- --grep "chat"` silently ignores the filter and runs the whole suite. Scripts that parse argv themselves (`version:sync`, `release:notes`) tolerate the separator and keep it below.
 
 Specs live in `e2e/*.e2e.ts`. The run starts its own isolated servers (defaults: 5178/7971 desktop, 5179/7972 mobile) and clears `.tmp/playwright-data`. It never reuses a dev server, so free those ports first.
 

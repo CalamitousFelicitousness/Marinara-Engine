@@ -15712,7 +15712,8 @@ test("renamed Roleplay branches use their display name in the Chats sidebar and 
     await search.fill("First Kiss");
     await expect(chatRow).toBeVisible();
   } finally {
-    await request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+    const cleanupResponse = await request.delete(`/api/chats/${chat.id}?force=true`);
+    expect(cleanupResponse.ok(), await cleanupResponse.text()).toBeTruthy();
   }
 });
 

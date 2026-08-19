@@ -783,6 +783,7 @@ import { scanForActivatedEntries } from "../../packages/server/src/services/lore
 import { processActivatedEntries } from "../../packages/server/src/services/lorebook/prompt-injector.js";
 import {
   parseAssistantWorkspaceAction,
+  professorMariWorkspaceResponseFormat,
   resolveWorkspaceMutationVerification,
   workspaceMutationAuthorizationIssue,
   workspaceActionNeedsVerification,
@@ -10821,6 +10822,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
   {
     name: "Professor Mari recovers malformed small-model app-data calls",
     run() {
+      assert.deepEqual(professorMariWorkspaceResponseFormat("openrouter"), { type: "json_object" });
+      assert.equal(professorMariWorkspaceResponseFormat("anthropic"), undefined);
+
       const missingEnvelopeClosers = parseAssistantWorkspaceAction(
         '{"say":"","commands":[{"name":"app_data","arguments":{"action":"character.create","data":{"name":"Stheno Test"},"apply":true}}',
       );
@@ -11086,6 +11090,47 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           },
         ),
         null,
+      );
+
+      const splitAuthorization = "I authorize you to split and modify the lorebook entries.";
+      for (const action of ["lorebook.addEntry", "lorebook.updateEntry"]) {
+        assert.equal(
+          workspaceMutationAuthorizationIssue(
+            {
+              id: `split-${action}`,
+              name: "app_data",
+              authorization: splitAuthorization,
+              arguments: { action, lorebookId: "book-id", entryId: "entry-id", apply: true },
+            },
+            { directUserText: splitAuthorization },
+          ),
+          null,
+          `lorebook splitting must authorize ${action}`,
+        );
+      }
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "split-delete-entry",
+            name: "app_data",
+            authorization: splitAuthorization,
+            arguments: { action: "lorebook.deleteEntry", entryId: "entry-id", apply: true },
+          },
+          { directUserText: splitAuthorization },
+        ) ?? "",
+        /delete operation/iu,
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            id: "split-create-character",
+            name: "app_data",
+            authorization: splitAuthorization,
+            arguments: { action: "character.create", data: { name: "Unrelated" }, apply: true },
+          },
+          { directUserText: splitAuthorization },
+        ) ?? "",
+        /create operation/iu,
       );
       for (const proposal of [
         "Do you want me to fix Dottore's appearance?",

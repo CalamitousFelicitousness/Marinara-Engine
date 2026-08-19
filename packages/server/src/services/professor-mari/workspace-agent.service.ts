@@ -194,6 +194,10 @@ const SKIPPED_DIRS = new Set([
   ".gradle",
 ]);
 
+export function professorMariWorkspaceResponseFormat(provider: string): ChatOptions["responseFormat"] | undefined {
+  return provider === "openrouter" ? { type: "json_object" } : undefined;
+}
+
 export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "character.list",
   "character.get",
@@ -1746,6 +1750,19 @@ function explicitlyNamedMutationEntities(text: string): Set<string> {
   return entities;
 }
 
+function authorizesLorebookEntrySplit(
+  text: string,
+  entity: string | null,
+  category: WorkspaceMutationCategory,
+): boolean {
+  return (
+    entity === "lorebook" &&
+    (category === "create" || category === "update") &&
+    /\bsplit\b/iu.test(text) &&
+    /\blorebooks?(?:\s+entries?)?\b/iu.test(text)
+  );
+}
+
 export function workspaceMutationAuthorizationIssue(
   command: WorkspaceCommandCall,
   context: { directUserText: string; previousAssistantText?: string | null },
@@ -1762,6 +1779,7 @@ export function workspaceMutationAuthorizationIssue(
   }
 
   const category = workspaceMutationCategory(command);
+  const commandEntity = appDataMutationEntity(command);
   if (SHORT_MUTATION_CONFIRMATION.test(directUserText)) {
     const previousAssistantText = normalizeAuthorizationText(context.previousAssistantText ?? "");
     const previousCategories = explicitlyRequestedMutationCategories(previousAssistantText);
@@ -1780,25 +1798,26 @@ export function workspaceMutationAuthorizationIssue(
   const authorizationScope = genericAuthorization
     ? directUserText.replace(GENERIC_MUTATION_AUTHORIZATION_CLAUSE, "").trim()
     : authorization;
+  const lorebookEntrySplit = authorizesLorebookEntrySplit(authorizationScope, commandEntity, category);
   if (
     INFORMATIONAL_REQUEST_START.test(authorizationScope) &&
     !DIRECT_MUTATION_AFTER_INFORMATION.test(authorizationScope)
   ) {
     return "Mutation blocked before execution: informational and how-to requests do not authorize workspace changes.";
   }
-  if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope)) {
+  if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope) && !lorebookEntrySplit) {
     return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
   }
   if (genericAuthorization) {
     const explicitCategories = explicitlyRequestedMutationCategories(authorizationScope);
-    if (explicitCategories.length !== 1 || explicitCategories[0] !== category) {
+    const splitOnlyAddsTheImpliedCreate = lorebookEntrySplit && explicitCategories.every((entry) => entry === "update");
+    if (!splitOnlyAddsTheImpliedCreate && (explicitCategories.length !== 1 || explicitCategories[0] !== category)) {
       const requestedCategories =
         explicitCategories.length > 0 ? explicitCategories.join(" and ") : "no single explicit operation";
       return `Mutation blocked before execution: the active user message authorizes ${requestedCategories}, not ${category}.`;
     }
   }
 
-  const commandEntity = appDataMutationEntity(command);
   const namedEntities = explicitlyNamedMutationEntities(authorizationScope);
   if (commandEntity && namedEntities.size > 0 && !namedEntities.has(commandEntity)) {
     return `Mutation blocked before execution: the user named ${Array.from(namedEntities).join(", ")}, not ${commandEntity}.`;
@@ -2639,6 +2658,7 @@ ${sections.join("\n\n")}
       cachingAtDepth: connection.cachingAtDepth ?? 5,
       serviceTier: normalizeServiceTier(defaultParameters?.serviceTier),
       openrouterProvider: connection.openrouterProvider,
+      responseFormat: professorMariWorkspaceResponseFormat(connection.provider),
       customParameters: mergeCustomParameters(customParameters, null),
       enabledParameters: normalizeGenerationParameterSendMap(defaultParameters?.enabledParameters),
       reasoningEffort,

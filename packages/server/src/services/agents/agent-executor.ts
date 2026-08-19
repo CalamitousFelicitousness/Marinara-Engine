@@ -762,6 +762,8 @@ export async function executeAgent(
       messages: debugMessages(messages),
     });
 
+    const reasoningOverride = jsonAgentReasoningOverride(config);
+
     let responseText = "";
     const result = await provider.chatComplete(messages, {
       model,
@@ -772,6 +774,7 @@ export async function executeAgent(
       cachingAtDepth: config.cachingAtDepth,
       customParameters,
       enabledParameters: config.enabledParameters,
+      ...reasoningOverride,
       suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       onToken: streamResponses
@@ -820,6 +823,7 @@ export async function executeAgent(
         cachingAtDepth: config.cachingAtDepth,
         customParameters,
         enabledParameters: config.enabledParameters,
+        ...reasoningOverride,
         suppressModelParameters: config.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
@@ -2927,6 +2931,29 @@ export function resolveAgentResultType(config: Pick<AgentExecConfig, "type" | "s
     return configured as AgentResultType;
   }
   return AGENT_RESULT_TYPE_MAP[config.type] ?? "context_injection";
+}
+
+/**
+ * Agents whose output has to parse as JSON gain nothing from a visible
+ * thinking pass — the reasoning is discarded, never injected. On local models
+ * it actively breaks them: a reasoning model can spend its entire completion
+ * budget thinking and return empty content, which fails the JSON parse and
+ * triggers a second, equally wasteful retry. Observed on Gemma-4 12B backing
+ * prose-guardian: two calls, finish_reason "length", 4096 completion tokens
+ * each, empty content both times, ~273s for a turn that should take seconds.
+ *
+ * Ask for reasoning off, unless the agent's own connection deliberately turned
+ * that parameter's send-switch off (in which case the provider default stands).
+ */
+function jsonAgentReasoningOverride(
+  config: Pick<AgentExecConfig, "type" | "settings" | "enabledParameters">,
+): { reasoningEffort?: "none"; enabledParameters?: Record<string, boolean> } {
+  if (!agentResponseIsJson(config)) return {};
+  if (config.enabledParameters?.reasoningEffort === false) return {};
+  return {
+    reasoningEffort: "none",
+    enabledParameters: { ...(config.enabledParameters ?? {}), reasoningEffort: true },
+  };
 }
 
 function agentResponseIsJson(config: Pick<AgentExecConfig, "type" | "settings">): boolean {

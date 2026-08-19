@@ -4595,6 +4595,7 @@ export function ChatSettingsDrawer({
 
           <div style={{ order: CHAT_SETTINGS_ORDER.chatName }}>
             <ChatNameSection
+              chatId={chat.id}
               chatName={chat.name}
               editingName={editingName}
               nameValue={nameVal}
@@ -8971,6 +8972,27 @@ export function ChatSettingsDrawer({
                   </div>
                   <Pencil size="0.875rem" className="shrink-0 text-[var(--muted-foreground)]" />
                 </button>
+
+                {import.meta.env.VITE_MARINARA_LITE !== "true" && (
+                  <SettingsSwitch
+                    label={localizeUi("ui.chat.chatsettingsdrawer.semanticSummaryRetrieval")}
+                    description={localizeUi(
+                      "ui.chat.chatsettingsdrawer.keepRecentSummariesInContextAndRetrieveOnlyRelevantOlder",
+                    )}
+                    checked={metadata.semanticSummaryRetrievalEnabled === true}
+                    onChange={(semanticSummaryRetrievalEnabled) =>
+                      updateMeta.mutate({ id: chat.id, semanticSummaryRetrievalEnabled })
+                    }
+                    labelPosition="start"
+                    className={cn(
+                      "justify-between rounded-lg px-3 py-2.5 text-left",
+                      metadata.semanticSummaryRetrievalEnabled === true
+                        ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                        : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
+                    )}
+                    labelClassName="text-xs font-medium"
+                  />
+                )}
 
                 <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/35 p-2.5">
                   <div className="space-y-1.5">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Code2, Pencil, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Code2, Pencil, RefreshCw, Sparkles, Square, Trash2, X } from "lucide-react";
 import { BUILT_IN_AGENTS, type Message } from "@marinara-engine/shared";
+import { toast } from "sonner";
 import { useUpdateAgentRunData, type AgentConfigRow, type AgentRunRow } from "../../hooks/use-agents";
 import {
   formatAgentFailureDetail,
@@ -36,6 +37,7 @@ interface RoleplayHUDActionsMenuProps {
   clearGameState: () => void;
   onRetriggerTrackers?: () => void;
   onRetryFailedAgents?: () => void;
+  onStopAgents?: () => Promise<void>;
   failedAgentTypes?: string[];
   failedAgentFailures?: AgentFailure[];
   onClose: () => void;
@@ -57,6 +59,7 @@ export function RoleplayHUDActionsMenu({
   clearGameState,
   onRetriggerTrackers,
   onRetryFailedAgents,
+  onStopAgents,
   failedAgentTypes,
   failedAgentFailures,
   onClose,
@@ -64,6 +67,7 @@ export function RoleplayHUDActionsMenu({
 }: RoleplayHUDActionsMenuProps) {
   const { t: localizeUi } = useUiTranslation();
   const [tab, setTab] = useState<AgentsMenuTab>("activity");
+  const [stoppingAgents, setStoppingAgents] = useState(false);
   const uniqueAgentCount = new Set(thoughtBubbles.map((bubble) => bubble.agentId)).size;
   const latestActiveCustomRuns = useMemo(
     () => getLatestActiveCustomRuns(customAgentRuns, agentConfigs ?? [], enabledAgentTypes),
@@ -110,7 +114,8 @@ export function RoleplayHUDActionsMenu({
   );
   const failureCount = displayedFailures.length;
   const showRetryFailedAction = !!onRetryFailedAgents && failureCount > 0;
-  const showFooterActions = showTrackerActions || showRetryFailedAction;
+  const showStopAgentsAction = isAgentProcessing && !!onStopAgents;
+  const showFooterActions = showTrackerActions || showRetryFailedAction || showStopAgentsAction;
 
   useEffect(() => {
     if (!showInjectionsTab && tab === "injections") {
@@ -247,6 +252,27 @@ export function RoleplayHUDActionsMenu({
 
       {showFooterActions && (
         <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+          {showStopAgentsAction && (
+            <button
+              onClick={async () => {
+                setStoppingAgents(true);
+                try {
+                  await onStopAgents();
+                } catch {
+                  toast.error(localizeUi("ui.chat.roleplayhudactionsmenu.couldNotStopAgents"));
+                } finally {
+                  setStoppingAgents(false);
+                }
+              }}
+              disabled={stoppingAgents}
+              className="flex w-full items-center gap-2 px-3 py-2 text-[0.625rem] font-medium text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 disabled:opacity-50"
+            >
+              <Square size="0.6875rem" fill="currentColor" />
+              {stoppingAgents
+                ? localizeUi("ui.chat.roleplayhudactionsmenu.stoppingAgents")
+                : localizeUi("ui.chat.roleplayhudactionsmenu.stopAgents")}
+            </button>
+          )}
           {showRetryFailedAction && displayedFailures.length > 0 && (
             <div className="space-y-1.5 px-3 py-2">
               <div className="flex items-center gap-1.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-amber-300/90">

@@ -643,6 +643,7 @@ import {
 import {
   prepareConversationPromptHistory,
   resolveConversationMembershipHistoryEvent,
+  selectConversationSummariesForPrompt,
 } from "../../packages/server/src/routes/generate/conversation-history-runtime.js";
 import { formatConversationGroupOutputFormat } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
 import {
@@ -4279,6 +4280,38 @@ const cases: RegressionCase[] = [
           height: 720,
         }),
         { node: { inputs: { global_prompt: ordinaryRequest.prompt, local_prompts: "" } } },
+      );
+
+      const referenceWorkflow = {
+        node: {
+          inputs: {
+            base64: "%reference_image%",
+            base64Slot1: "%reference_image_01%",
+            base64Slot4: "%reference_image_04%",
+            filename: "%reference_image_name%",
+            filenameSlot2: "%reference_image_name_02%",
+          },
+        },
+      };
+      assert.deepEqual(
+        resolveComfyUiVideoWorkflowPlaceholders(referenceWorkflow, ordinaryRequest, {
+          seed: 321,
+          width: 1280,
+          height: 720,
+          referenceImageBase64: "cG5n",
+          referenceImageName: "reference.png",
+        }),
+        {
+          node: {
+            inputs: {
+              base64: "cG5n",
+              base64Slot1: "cG5n",
+              base64Slot4: "cG5n",
+              filename: "reference.png",
+              filenameSlot2: "reference.png",
+            },
+          },
+        },
       );
 
       const legacyWorkflow = {
@@ -9550,6 +9583,53 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
+    name: "Conversation semantic summaries keep recent weeks and retrieve relevant older context",
+    async run() {
+      const weekSummaries = {
+        "01.06.2026": { summary: "The user hid a silver key under the observatory stairs.", keyDetails: [] },
+        "08.06.2026": { summary: "They compared several tea blends in the kitchen.", keyDetails: [] },
+        "15.06.2026": { summary: "They planned a quiet weekend at home.", keyDetails: [] },
+        "22.06.2026": { summary: "They repaired the laboratory window.", keyDetails: [] },
+      };
+      const embeddingSource = {
+        label: "semantic-summary regression embedder",
+        async embed(texts: string[], _signal?: AbortSignal, inputType?: "document" | "query") {
+          if (inputType === "query") {
+            return texts.map((_, index) =>
+              index === 0 ? [1, 0] : index === 1 ? [0, 1] : index === 2 ? [0, -1] : [-1, 0],
+            );
+          }
+          return texts.map((text) => (text.includes("silver key") ? [1, 0] : [0, 1]));
+        },
+      };
+
+      const selected = await selectConversationSummariesForPrompt({
+        daySummaries: {},
+        weekSummaries,
+        query: "Where did I leave the silver key?",
+        enabled: true,
+        vectorizerAvailable: true,
+        embeddingOptions: { embeddingSource },
+      });
+      assert.deepEqual(Object.keys(selected.weekSummaries), ["01.06.2026", "15.06.2026", "22.06.2026"]);
+      assert.equal(selected.semanticApplied, true);
+
+      const unavailable = await selectConversationSummariesForPrompt({
+        daySummaries: {},
+        weekSummaries,
+        query: "Where did I leave the silver key?",
+        enabled: true,
+        vectorizerAvailable: false,
+      });
+      assert.deepEqual(
+        unavailable.weekSummaries,
+        weekSummaries,
+        "missing embeddings must preserve full summary context",
+      );
+      assert.equal(unavailable.semanticApplied, false);
+    },
+  },
+  {
     name: "default Conversation identity wording is safe for DMs and groups",
     run() {
       assert.match(
@@ -11002,6 +11082,36 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           },
         ),
         null,
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          {
+            directUserText: "I authorize the change, update Dottore's character appearance to a white coat.",
+          },
+        ),
+        null,
+        "a generic authorization excerpt should use the rest of the same direct user message for operation scope",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "I authorize the change",
+            arguments: { action: "character.update", characterId: "dottore-id", patch: { appearance: "Changed" } },
+          },
+          { directUserText: "I authorize the change, update this lorebook." },
+        ) ?? "",
+        /not character/iu,
+        "generic authorization must retain the direct request's entity boundary",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          { directUserText: "I authorize the change." },
+        ) ?? "",
+        /immediately preceding visible proposal/iu,
+        "standalone generic authorization still requires the immediately preceding matching proposal",
       );
       assert.equal(
         workspaceMutationAuthorizationIssue(

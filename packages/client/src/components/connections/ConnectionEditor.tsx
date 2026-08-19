@@ -570,11 +570,10 @@ export function ConnectionEditor() {
             { token: "%length_s%", label: "%length_s%", critical: false },
             { token: "%fps%", label: "%fps%", critical: false },
             { token: "%duration_seconds%", label: "%duration_seconds%", critical: false },
-            {
-              token: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
-              label: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
-              critical: false,
-            },
+            { token: "%reference_image%", label: "%reference_image%", critical: false },
+            ...(!isSwarmUiVideoWorkflow
+              ? [{ token: "%reference_image_name%", label: "%reference_image_name%", critical: false }]
+              : []),
           ]
         : [
             { token: "%prompt%", label: "%prompt%", critical: true },
@@ -589,8 +588,12 @@ export function ConnectionEditor() {
     const hasReferenceImage = /%reference_image(?:_0[1-4])?%/.test(wf);
     const hasReferenceImageName = /%reference_image_name(?:_0[1-4])?%/.test(wf);
     const missing = KNOWN_SUBS.filter(({ token }) => {
-      if (token === "%reference_image%" && hasReferenceImageName) return false;
-      if (token === "%reference_image_name%" && hasReferenceImage) return false;
+      if (
+        (token === "%reference_image%" || token === "%reference_image_name%") &&
+        (hasReferenceImage || hasReferenceImageName)
+      ) {
+        return false;
+      }
       return !wf.includes(token);
     });
     return { parseError: false as const, missing };

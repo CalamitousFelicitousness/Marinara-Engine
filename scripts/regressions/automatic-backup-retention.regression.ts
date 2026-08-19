@@ -211,6 +211,23 @@ try {
     await cleanupStagedProfileAssets(zip64Restore);
   }
 
+  const manyEntriesSource = join(zipFixtureRoot, "empty-entry.json");
+  const manyEntriesArchive = join(zipFixtureRoot, "many-entries.zip");
+  await writeFile(manyEntriesSource, "");
+  await writeStoredBackupArchiveForRegression(
+    manyEntriesArchive,
+    Array.from({ length: 8_193 }, (_, index) => ({
+      entryName: `storage/entries/${String(index).padStart(4, "0")}.json`,
+      filePath: manyEntriesSource,
+      size: 0,
+    })),
+  );
+  assert.equal(
+    (await inspectStoredBackupArchiveForRegression(manyEntriesArchive)).entries.length,
+    8_193,
+    "profile archives must not fail at the former artificial 8,192-entry ceiling",
+  );
+
   const retainedSource = join(zipFixtureRoot, "retained.gif");
   const missingSource = join(zipFixtureRoot, "missing.gif");
   const partialArchive = join(zipFixtureRoot, "partial.zip");

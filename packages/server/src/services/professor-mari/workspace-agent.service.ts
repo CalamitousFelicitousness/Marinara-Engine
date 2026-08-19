@@ -1658,7 +1658,8 @@ const DIRECT_MUTATION_AFTER_INFORMATION =
 const MUTATION_DENIAL =
   /\b(?:do\s+not|don't|never|no\s+changes?|read[- ]only|without\s+(?:changing|editing|saving|writing))\b/iu;
 const SHORT_MUTATION_CONFIRMATION =
-  /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change)[.!\s]*$/iu;
+  /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|the\s+change|these\s+changes))?)[.!\s]*$/iu;
+const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
 
 function normalizeAuthorizationText(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
@@ -1759,12 +1760,13 @@ export function workspaceMutationAuthorizationIssue(
   if (INFORMATIONAL_REQUEST_START.test(directUserText) && !DIRECT_MUTATION_AFTER_INFORMATION.test(directUserText)) {
     return "Mutation blocked before execution: informational and how-to requests do not authorize workspace changes.";
   }
-  if (!MUTATION_INTENT_PATTERNS[category].test(authorization)) {
+  const authorizationScope = GENERIC_MUTATION_AUTHORIZATION.test(authorization) ? directUserText : authorization;
+  if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope)) {
     return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
   }
 
   const commandEntity = appDataMutationEntity(command);
-  const namedEntities = explicitlyNamedMutationEntities(authorization);
+  const namedEntities = explicitlyNamedMutationEntities(authorizationScope);
   if (commandEntity && namedEntities.size > 0 && !namedEntities.has(commandEntity)) {
     return `Mutation blocked before execution: the user named ${Array.from(namedEntities).join(", ")}, not ${commandEntity}.`;
   }

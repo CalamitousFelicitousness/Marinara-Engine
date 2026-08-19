@@ -674,6 +674,8 @@ export interface ChatMetadata {
   daySummaries?: Record<string, DaySummaryEntry>;
   /** Per-week consolidated conversation summaries (key: Monday "DD.MM.YYYY"). */
   weekSummaries?: Record<string, WeekSummaryEntry>;
+  /** Keep recent conversation summaries in-context and retrieve only relevant older weeks with embeddings. */
+  semanticSummaryRetrievalEnabled?: boolean;
   /**
    * Hour of day (0-11, local time) at which a conversation "day" rolls over for
    * summarization. Messages sent before this hour are filed under the previous

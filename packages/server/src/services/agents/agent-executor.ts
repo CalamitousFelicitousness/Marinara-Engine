@@ -44,6 +44,7 @@ import { getAssetManifest } from "../game/asset-manifest.service.js";
 import {
   BEHOLDER_PASS_LANES,
   formatBeholderRequestContext,
+  isBeholderLaneResponse,
   mergeBeholderLaneDeltas,
   parseBeholderLanePrompts,
   resolveBeholderStateResponse,
@@ -1007,8 +1008,8 @@ async function executeBeholderLanePasses(args: {
     // parseError marker instead of throwing, and treating that as a usable
     // lane would let five broken replies look like a clean no-change turn.
     const laneData = parseAgentResponse(config, outcome.value.laneText).data;
-    if (shouldFailInvalidJsonResult(config, laneData)) {
-      logger.warn("[agent] %s pass %s returned unparseable output; skipping lane", config.type, lane);
+    if (shouldFailInvalidJsonResult(config, laneData) || !isBeholderLaneResponse(laneData)) {
+      logger.warn("[agent] %s pass %s did not answer in the extraction contract; skipping lane", config.type, lane);
       continue;
     }
     laneResponses.push(laneData);

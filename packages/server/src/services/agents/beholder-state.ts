@@ -288,6 +288,20 @@ export function parseBeholderLanePrompts(template: unknown): Record<BeholderPass
   return BEHOLDER_PASS_LANES.every((lane) => prompts[lane]) ? (prompts as Record<BeholderPassLane, string>) : null;
 }
 
+/**
+ * True when a lane answered in the extraction contract: either `{changed:
+ * false}` or `{changed: true, delta: {...}}`. Anything else — an empty object,
+ * a bare array, a chat reply that happened to be valid JSON — is not a usable
+ * answer, and accepting it would let a lane that said nothing count towards the
+ * all-lanes-failed guard.
+ */
+export function isBeholderLaneResponse(value: unknown): boolean {
+  const parsed = parseMaybeJson(value);
+  if (!isRecord(parsed)) return false;
+  if (parsed.changed === false) return true;
+  return parsed.changed === true && isRecord(parsed.delta);
+}
+
 function mergeLaneSlot(target: Record<string, unknown>, incoming: Record<string, unknown>): void {
   for (const [field, value] of Object.entries(incoming)) {
     if (field === "worn_remove" && Array.isArray(target.worn_remove) && Array.isArray(value)) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   BEHOLDER_PASS_LANES,
+  isBeholderLaneResponse,
   mergeBeholderLaneDeltas,
   parseBeholderLanePrompts,
   resolveBeholderStateResponse,
@@ -52,6 +53,17 @@ assert.equal(
   null,
   "A template repeating one heading while dropping another must not parse",
 );
+
+// Only a lane answering in the extraction contract counts as an answer: a lane
+// that returns valid JSON of the wrong shape must not stand in for a real reply.
+assert.equal(isBeholderLaneResponse({ changed: false }), true);
+assert.equal(isBeholderLaneResponse({ changed: true, delta: { self: {} } }), true);
+assert.equal(isBeholderLaneResponse('{"changed": false}'), true);
+assert.equal(isBeholderLaneResponse({}), false, "An empty object is not an answer");
+assert.equal(isBeholderLaneResponse({ changed: true }), false, "changed:true without a delta is not an answer");
+assert.equal(isBeholderLaneResponse([]), false);
+assert.equal(isBeholderLaneResponse("not json"), false);
+assert.equal(isBeholderLaneResponse(null), false);
 
 // Every lane reporting no change must produce a no-op, not a spurious update.
 const quiet = mergeBeholderLaneDeltas([{ changed: false }, { changed: false }, '{"changed": false}']);

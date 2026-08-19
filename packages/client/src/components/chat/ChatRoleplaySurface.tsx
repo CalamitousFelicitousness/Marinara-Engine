@@ -2302,7 +2302,7 @@ export function ChatRoleplaySurface({
                   buttonClassName="border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--marinara-chat-chrome-button-bg-active)] text-[var(--marinara-chat-chrome-button-text-active)] hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] hover:text-[var(--marinara-chat-chrome-button-text-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
                 />
 
-                {!isStreaming && <CyoaChoices messages={visibleMessages} />}
+                {!isStreaming && <CyoaChoices messages={messages} />}
 
                 {hasLiveStream && !regenerateMessageId && (
                   <StreamingIndicator

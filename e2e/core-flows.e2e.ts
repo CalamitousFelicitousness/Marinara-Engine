@@ -4536,6 +4536,62 @@ test("mobile transcript swipes navigate Conversation and Roleplay alternatives",
   }
 });
 
+test("goto keeps stale CYOA choices out of the chat tail", async ({ page, request }) => {
+  const staleChoiceText = `Wait for the stale path ${Date.now()}`;
+  const transcript = [
+    JSON.stringify({ user_name: "You", character_name: "Guide", chat_metadata: {} }),
+    ...Array.from({ length: 81 }, (_, index) =>
+      JSON.stringify({
+        name: "Guide",
+        is_user: false,
+        mes: `Imported assistant message ${index + 1}`,
+        extra:
+          index === 79
+            ? { cyoaChoices: [{ label: "Wait", text: staleChoiceText }] }
+            : {},
+      }),
+    ),
+  ].join("\n");
+  const importResponse = await request.post("/api/import/st-chat", {
+    multipart: {
+      file: {
+        name: `cyoa-goto-tail-${Date.now()}.jsonl`,
+        mimeType: "application/jsonl",
+        buffer: Buffer.from(transcript),
+      },
+      mode: "roleplay",
+    },
+  });
+  expect(importResponse.ok(), await importResponse.text()).toBeTruthy();
+  const imported = (await importResponse.json()) as { chatId: string };
+
+  try {
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+      localStorage.setItem(
+        "marinara-engine-ui",
+        JSON.stringify({
+          state: { hasCompletedOnboarding: true, messagesPerPage: 100, sidebarOpen: false, rightPanelOpen: false },
+          version: 87,
+        }),
+      );
+    }, imported.chatId);
+    await page.goto("/");
+
+    const staleChoice = page.getByText(staleChoiceText, { exact: true });
+    await expect(page.getByText("Imported assistant message 81", { exact: true })).toBeVisible();
+    await expect(staleChoice).toHaveCount(0);
+
+    const composer = page.locator("textarea.mari-chat-input-textarea");
+    await composer.fill("/goto 1");
+    await page.locator("button.mari-chat-send-btn").click();
+    await expect(page.getByText("Imported assistant message 1", { exact: true })).toBeVisible();
+    await expect(staleChoice).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/chats/${imported.chatId}?force=true`).catch(() => undefined);
+  }
+});
+
 test("typographic quotes do not pull the Roleplay caret behind later text", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Roleplay quote caret behavior is covered on desktop.");
 

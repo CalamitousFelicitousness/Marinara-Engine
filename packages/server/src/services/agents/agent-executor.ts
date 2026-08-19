@@ -41,7 +41,14 @@ import { sanitizePromptLeaf } from "../prompt/prompt-escaping.js";
 import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
 import { normalizeCyoaChoiceOutput } from "./cyoa-choice-normalization.js";
 import { getAssetManifest } from "../game/asset-manifest.service.js";
-import { formatBeholderRequestContext, resolveBeholderStateResponse } from "./beholder-state.js";
+import {
+  BEHOLDER_PASS_LANES,
+  formatBeholderRequestContext,
+  mergeBeholderLaneDeltas,
+  parseBeholderLanePrompts,
+  resolveBeholderStateResponse,
+  type BeholderPassLane,
+} from "./beholder-state.js";
 
 const MAX_AGENT_CONTEXT_MESSAGES = 200;
 const EXPRESSION_AGENT_RECENT_CONTEXT_MESSAGES = 2;
@@ -749,6 +756,25 @@ export async function executeAgent(
       );
     }
 
+    // A per-pass Beholder template asks one narrow question per call, which is
+    // what a locally hosted per-lane extractor was trained on. Single-prompt
+    // templates parse to null and keep the one-call path below.
+    const lanePrompts = config.type === "beholder" ? parseBeholderLanePrompts(template) : null;
+    if (lanePrompts) {
+      return await executeBeholderLanePasses({
+        config,
+        context,
+        provider,
+        model,
+        lanePrompts,
+        temperature,
+        maxTokens,
+        streamResponses,
+        customParameters,
+        startTime,
+      });
+    }
+
     // Call LLM (streaming to avoid proxy timeouts, no tools)
     logger.info(`[agent] ${config.type} (${config.name}) — ${model}`);
     for (const msg of messages) {
@@ -880,6 +906,119 @@ export async function executeAgent(
     });
     return makeError(config, extractErrorMessage(err), startTime);
   }
+}
+
+/**
+ * Run one Beholder extraction as five narrow passes and union the results.
+ *
+ * A locally hosted Beholder model is trained per lane: it answers about worn
+ * items, wounds, held items, species, or bare/missing flags one at a time, so
+ * asking for the whole state in a single call is off-distribution for it. Each
+ * lane gets the same user message with its own system prompt; the lanes own
+ * disjoint slot fields, so their deltas union cleanly into the single
+ * `{changed, delta}` payload the rest of the pipeline already understands.
+ *
+ * A lane that fails or returns nothing is skipped rather than failing the turn —
+ * losing one lane is better than discarding the four that succeeded.
+ */
+async function executeBeholderLanePasses(args: {
+  config: AgentExecConfig;
+  context: AgentContext;
+  provider: BaseLLMProvider;
+  model: string;
+  lanePrompts: Record<BeholderPassLane, string>;
+  temperature: number | undefined;
+  maxTokens: number;
+  streamResponses: boolean;
+  customParameters: Record<string, unknown> | undefined;
+  startTime: number;
+}): Promise<AgentResult> {
+  const { config, context, provider, model, lanePrompts, temperature, maxTokens, streamResponses, startTime } = args;
+
+  logger.info(`[agent] ${config.type} (${config.name}) — ${model} — ${BEHOLDER_PASS_LANES.length} passes`);
+
+  const settled = await Promise.allSettled(
+    BEHOLDER_PASS_LANES.map(async (lane) => {
+      const messages = buildStandardAgentMessages(config, lanePrompts[lane], context);
+      emitAgentDebug(context, {
+        stage: "request",
+        ...agentDebugBase(config, model, temperature, maxTokens),
+        messageCount: messages.length,
+        messages: debugMessages(messages),
+      });
+
+      let laneText = "";
+      const result = await provider.chatComplete(messages, {
+        model,
+        temperature,
+        maxTokens,
+        enableCaching: config.enableCaching,
+        anthropicExtendedCacheTtl: config.anthropicExtendedCacheTtl,
+        cachingAtDepth: config.cachingAtDepth,
+        customParameters: args.customParameters,
+        enabledParameters: config.enabledParameters,
+        suppressModelParameters: config.suppressModelParameters,
+        stream: streamResponses,
+        onToken: streamResponses
+          ? (chunk) => {
+              laneText += chunk;
+            }
+          : undefined,
+        signal: agentCallSignal(context.signal),
+      });
+      if (!laneText && result.content) laneText = result.content;
+      laneText = laneText.trim();
+      logger.debug(`[agent] ${config.type} [${lane}] raw response: ${laneText.slice(0, 500)}`);
+      emitAgentDebug(context, {
+        stage: "response",
+        ...agentDebugBase(config, model, temperature, maxTokens),
+        messageCount: messages.length,
+        durationMs: Date.now() - startTime,
+        finishReason: result.finishReason,
+        ...debugUsage(result.usage),
+        ...responseDebugFields(laneText),
+      });
+      return { laneText, tokens: result.usage?.totalTokens ?? 0 };
+    }),
+  );
+
+  const laneResponses: unknown[] = [];
+  let totalTokens = 0;
+  for (const [index, outcome] of settled.entries()) {
+    if (outcome.status === "fulfilled") {
+      // Reuse the shared JSON extraction so a fenced or chatty lane reply is
+      // handled exactly like a single-call response.
+      laneResponses.push(parseAgentResponse(config, outcome.value.laneText).data);
+      totalTokens += outcome.value.tokens;
+    } else {
+      logger.warn(
+        "[agent] %s pass %s failed: %s",
+        config.type,
+        BEHOLDER_PASS_LANES[index],
+        extractErrorMessage(outcome.reason),
+      );
+    }
+  }
+
+  if (laneResponses.length === 0) {
+    return makeError(config, "Every Beholder extraction pass failed", startTime);
+  }
+
+  const merged = mergeBeholderLaneDeltas(laneResponses);
+  logger.info(
+    `[agent] ${config.type} done (${laneResponses.length}/${BEHOLDER_PASS_LANES.length} passes, changed=${merged.changed}, ${Date.now() - startTime}ms)`,
+  );
+  const structured = resolveStructuredAgentResult(config, context, merged);
+  return {
+    agentId: config.id,
+    agentType: config.type,
+    type: resolveAgentResultType(config),
+    data: structured.data,
+    tokensUsed: totalTokens,
+    durationMs: Date.now() - startTime,
+    success: structured.valid,
+    error: structured.error ?? null,
+  };
 }
 
 /**

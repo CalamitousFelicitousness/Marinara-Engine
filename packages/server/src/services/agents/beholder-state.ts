@@ -248,6 +248,103 @@ function mergeWounds(current: BeholderWound[] | undefined, updates: BeholderWoun
   return merged.filter((_, index) => !dropped.has(index));
 }
 
+/**
+ * The lanes a per-pass Beholder extractor answers one at a time. The local
+ * Beholder model is trained per-lane, so it is prompted once per entry here and
+ * the five narrow deltas are unioned back into a single delta.
+ */
+export const BEHOLDER_PASS_LANES = ["worn", "wounds", "holding", "species", "flags"] as const;
+
+export type BeholderPassLane = (typeof BEHOLDER_PASS_LANES)[number];
+
+const LANE_HEADING = /^[ \t]*\[(worn|wounds|holding|species|flags)\][ \t]*$/gmu;
+
+/**
+ * Split a multi-pass prompt template into its per-lane system prompts. The
+ * template marks each section with a `[lane]` heading on its own line. Returns
+ * null unless every lane is present with a non-empty body, so a normal
+ * single-prompt template falls through to the one-call path untouched.
+ */
+export function parseBeholderLanePrompts(template: unknown): Record<BeholderPassLane, string> | null {
+  if (typeof template !== "string" || !template.includes("[")) return null;
+
+  const headings: Array<{ lane: BeholderPassLane; start: number; end: number }> = [];
+  LANE_HEADING.lastIndex = 0;
+  for (let match = LANE_HEADING.exec(template); match; match = LANE_HEADING.exec(template)) {
+    headings.push({
+      lane: match[1] as BeholderPassLane,
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  if (headings.length !== BEHOLDER_PASS_LANES.length) return null;
+
+  const prompts: Partial<Record<BeholderPassLane, string>> = {};
+  for (const [index, heading] of headings.entries()) {
+    const body = template.slice(heading.end, headings[index + 1]?.start ?? template.length).trim();
+    if (!body || prompts[heading.lane]) return null;
+    prompts[heading.lane] = body;
+  }
+  return BEHOLDER_PASS_LANES.every((lane) => prompts[lane]) ? (prompts as Record<BeholderPassLane, string>) : null;
+}
+
+function mergeLaneSlot(target: Record<string, unknown>, incoming: Record<string, unknown>): void {
+  for (const [field, value] of Object.entries(incoming)) {
+    if (field === "worn_remove" && Array.isArray(target.worn_remove) && Array.isArray(value)) {
+      target.worn_remove = [...target.worn_remove, ...value];
+      continue;
+    }
+    target[field] = value;
+  }
+}
+
+/**
+ * Union the per-lane deltas into one delta payload. Each lane owns a disjoint
+ * set of slot fields (worn, wounds, holding, species, bare/missing), so the
+ * union is field-level and conflict-free; `changed` is true when any lane
+ * reported a change.
+ */
+export function mergeBeholderLaneDeltas(responses: readonly unknown[]): {
+  changed: boolean;
+  delta: Record<string, unknown>;
+} {
+  const delta: Record<string, unknown> = {};
+  let changed = false;
+
+  for (const response of responses) {
+    const parsed = parseMaybeJson(response);
+    if (!isRecord(parsed) || parsed.changed !== true || !isRecord(parsed.delta)) continue;
+
+    for (const [charName, rawCharacter] of Object.entries(parsed.delta)) {
+      if (!isRecord(rawCharacter)) continue;
+      const character = (isRecord(delta[charName]) ? delta[charName] : {}) as Record<string, unknown>;
+
+      if (typeof rawCharacter.species === "string" && rawCharacter.species.trim()) {
+        character.species = rawCharacter.species;
+        changed = true;
+      }
+
+      if (isRecord(rawCharacter.body)) {
+        const body = (isRecord(character.body) ? character.body : {}) as Record<string, unknown>;
+        for (const [slotName, rawSlot] of Object.entries(rawCharacter.body)) {
+          if (!isRecord(rawSlot)) continue;
+          const slot = (isRecord(body[slotName]) ? body[slotName] : {}) as Record<string, unknown>;
+          mergeLaneSlot(slot, rawSlot);
+          body[slotName] = slot;
+          // The species lane emits empty exotic-slot stubs ({"tail": {}}) as an
+          // anatomy hint; those carry no state and must not count as a change.
+          if (Object.keys(rawSlot).length > 0) changed = true;
+        }
+        character.body = body;
+      }
+
+      delta[charName] = character;
+    }
+  }
+
+  return { changed, delta };
+}
+
 function mergeSlotDelta(
   current: BeholderSlotState | undefined,
   rawDelta: unknown,
@@ -283,6 +380,24 @@ function mergeSlotDelta(
         next.worn = mergeWornItems(next.worn, wornUpdates);
         used = true;
       }
+    }
+  }
+
+  // `worn_remove` names the garments coming off a slot. The single-prompt path
+  // never emits it (it clears a slot with `worn: []`), but the per-lane worn
+  // pass uses it for partial takeoff, so subtract by the same identity.
+  if (Array.isArray(rawDelta.worn_remove) && next.worn?.length) {
+    const removals = new Set(
+      rawDelta.worn_remove
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim().toLocaleLowerCase("en-US"))
+        .filter((entry) => entry.length > 0),
+    );
+    if (removals.size > 0) {
+      const kept = next.worn.filter((item) => !removals.has(wornItemIdentity(item)));
+      if (kept.length > 0) next.worn = kept;
+      else delete next.worn;
+      used = true;
     }
   }
 

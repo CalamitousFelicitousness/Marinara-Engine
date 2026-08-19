@@ -10236,7 +10236,7 @@ export async function generateRoutes(app: FastifyInstance) {
    * waiting until the server-side generation has finished saving.
    */
   app.get<{ Params: { chatId: string } }>("/status/:chatId", async (req) => ({
-    active: activeGenerations.has(req.params.chatId),
+    active: activeGenerations.has(req.params.chatId) || (activeAgentRuns.get(req.params.chatId)?.size ?? 0) > 0,
   }));
 
   /**
@@ -10259,18 +10259,15 @@ export async function generateRoutes(app: FastifyInstance) {
 
     // An agent tail may overlap a newer reply on the same backend. Its scoped
     // AbortSignal is safe; a backend-wide abort endpoint is not.
-    if (body.agentsOnly !== true) {
-      const backendUrls = new Set(targets.map((target) => target.backendUrl).filter((url): url is string => !!url));
-      for (const backendUrl of backendUrls) {
-        const backendRoot = backendUrl.replace(/\/v1\/?$/, "");
-        const abortUrl = backendRoot + "/api/extra/abort";
-        logger.info("[abort] Sending abort to backend: %s", abortUrl);
-        try {
-          await fetch(abortUrl, { method: "POST", signal: AbortSignal.timeout(5000) });
-          logger.info("[abort] Backend abort sent successfully");
-        } catch (err) {
-          logger.warn(err, "[abort] Backend abort failed");
-        }
+    if (body.agentsOnly !== true && activeGeneration?.backendUrl) {
+      const backendRoot = activeGeneration.backendUrl.replace(/\/v1\/?$/, "");
+      const abortUrl = backendRoot + "/api/extra/abort";
+      logger.info("[abort] Sending abort to backend: %s", abortUrl);
+      try {
+        await fetch(abortUrl, { method: "POST", signal: AbortSignal.timeout(5000) });
+        logger.info("[abort] Backend abort sent successfully");
+      } catch (err) {
+        logger.warn(err, "[abort] Backend abort failed");
       }
     }
 

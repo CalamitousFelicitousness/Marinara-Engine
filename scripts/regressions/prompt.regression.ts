@@ -4287,6 +4287,8 @@ const cases: RegressionCase[] = [
           inputs: {
             base64: "%reference_image%",
             base64Slot1: "%reference_image_01%",
+            base64Slot2: "%reference_image_02%",
+            base64Slot3: "%reference_image_03%",
             base64Slot4: "%reference_image_04%",
             filename: "%reference_image_name%",
             filenameSlot2: "%reference_image_name_02%",
@@ -4306,6 +4308,8 @@ const cases: RegressionCase[] = [
             inputs: {
               base64: "cG5n",
               base64Slot1: "cG5n",
+              base64Slot2: "cG5n",
+              base64Slot3: "cG5n",
               base64Slot4: "cG5n",
               filename: "reference.png",
               filenameSlot2: "reference.png",
@@ -11112,6 +11116,33 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         ) ?? "",
         /immediately preceding visible proposal/iu,
         "standalone generic authorization still requires the immediately preceding matching proposal",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I approve this change" },
+          { directUserText: "I approve this change." },
+        ) ?? "",
+        /immediately preceding visible proposal/iu,
+        "compound standalone approval must not bypass the preceding-proposal check",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize that change" },
+          {
+            directUserText: "I authorize that change,",
+            previousAssistantText: "Do you want me to delete Dottore's character?",
+          },
+        ) ?? "",
+        /immediately preceding visible proposal/iu,
+        "compound approval must reject a proposal for a different operation",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          { ...explicitCommand, authorization: "I authorize the change" },
+          { directUserText: "I authorize the change, delete Dottore's character." },
+        ) ?? "",
+        /authorizes delete, not update/iu,
+        "generic authorization must not let a delete request authorize an update command",
       );
       assert.equal(
         workspaceMutationAuthorizationIssue(

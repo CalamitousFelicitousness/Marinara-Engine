@@ -678,7 +678,16 @@ async function generateComfyUiVideo(baseUrl: string, request: VideoGenerationReq
         : { width: 1280, height: 720 };
   const dimensions = request.aspectRatio === "9:16" ? { width: landscape.height, height: landscape.width } : landscape;
   let referenceImageName: string | undefined;
-  if (request.referenceImage && /%reference_image_name(?:_0[1-4])?%/.test(workflowText)) {
+  const referenceImageNamePlaceholders = [
+    "%reference_image_name%",
+    ...Array.from({ length: COMFYUI_MAX_REFERENCE_IMAGES }, (_, index) =>
+      numberedComfyReferencePlaceholder("reference_image_name", index),
+    ),
+  ];
+  if (
+    request.referenceImage &&
+    referenceImageNamePlaceholders.some((placeholder) => workflowText.includes(placeholder))
+  ) {
     referenceImageName = await uploadComfyUiVideoReference(base, request.referenceImage, request.signal);
   }
   const resolvedWorkflow = resolveComfyUiVideoWorkflowPlaceholders(workflow, request, {

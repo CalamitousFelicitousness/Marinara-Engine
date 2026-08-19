@@ -140,6 +140,8 @@ const PROFILE_IMPORT_MEMORY_WARNING_BYTES = 512 * 1024 * 1024;
 const PROFILE_EXPORT_JSON_TOO_LARGE_CODE = "PROFILE_EXPORT_JSON_TOO_LARGE";
 const AUTOMATIC_BACKUP_SETTINGS_KEY = "automatic_backup";
 const AUTOMATIC_BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const AUTOMATIC_BACKUP_OMISSION_HISTORY_LIMIT = 1_000;
+const AUTOMATIC_BACKUP_OMISSION_HISTORY_BYTES = 256 * 1024;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP64_EOCD_SIGNATURE = 0x06064b50;
 const ZIP64_EOCD_LOCATOR_SIGNATURE = 0x07064b50;
@@ -164,6 +166,21 @@ type AutomaticBackupSettings = {
   lastOmittedEntries: string[];
 };
 
+export function limitAutomaticBackupOmissionHistory(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const entries: string[] = [];
+  let bytes = 0;
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const entryBytes = Buffer.byteLength(entry, "utf8");
+    if (bytes + entryBytes > AUTOMATIC_BACKUP_OMISSION_HISTORY_BYTES) break;
+    entries.push(entry);
+    bytes += entryBytes;
+    if (entries.length >= AUTOMATIC_BACKUP_OMISSION_HISTORY_LIMIT) break;
+  }
+  return entries;
+}
+
 function normalizeAutomaticBackupSettings(value: unknown): AutomaticBackupSettings {
   const candidate = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const frequency: AutomaticBackupFrequency =
@@ -174,9 +191,7 @@ function normalizeAutomaticBackupSettings(value: unknown): AutomaticBackupSettin
     retentionCount: normalizeAutomaticBackupRetentionCount(candidate.retentionCount),
     lastBackupAt: typeof candidate.lastBackupAt === "string" ? candidate.lastBackupAt : null,
     lastError: typeof candidate.lastError === "string" ? candidate.lastError : null,
-    lastOmittedEntries: Array.isArray(candidate.lastOmittedEntries)
-      ? candidate.lastOmittedEntries.filter((entry): entry is string => typeof entry === "string")
-      : [],
+    lastOmittedEntries: limitAutomaticBackupOmissionHistory(candidate.lastOmittedEntries),
   };
 }
 
@@ -3237,7 +3252,13 @@ export async function backupRoutes(app: FastifyInstance) {
     }
   };
   const saveAutomaticBackupSettings = (settings: AutomaticBackupSettings) =>
-    automaticBackupStorage.set(AUTOMATIC_BACKUP_SETTINGS_KEY, JSON.stringify(settings));
+    automaticBackupStorage.set(
+      AUTOMATIC_BACKUP_SETTINGS_KEY,
+      JSON.stringify({
+        ...settings,
+        lastOmittedEntries: limitAutomaticBackupOmissionHistory(settings.lastOmittedEntries),
+      }),
+    );
   const automaticBackupResponse = async (settings: AutomaticBackupSettings) => ({
     ...settings,
     nextBackupAt: automaticBackupNextAt(settings),

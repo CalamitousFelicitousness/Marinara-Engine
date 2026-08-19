@@ -1658,8 +1658,22 @@ const DIRECT_MUTATION_AFTER_INFORMATION =
 const MUTATION_DENIAL =
   /\b(?:do\s+not|don't|never|no\s+changes?|read[- ]only|without\s+(?:changing|editing|saving|writing))\b/iu;
 const SHORT_MUTATION_CONFIRMATION =
-  /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|the\s+change|these\s+changes))?)[.!\s]*$/iu;
+  /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?)[,.!\s]*$/iu;
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
+const EXPLICIT_MUTATION_CATEGORY_PATTERNS: Record<WorkspaceMutationCategory, RegExp> = {
+  create: /\b(?:create|import)\b/iu,
+  update: /\b(?:edit|enable|disable|link|modify|rename|replace|reword|tweak|unlink|update)\b/iu,
+  delete: /\b(?:delete|erase|forget|uninstall)\b/iu,
+  move: /\b(?:move|relocate)\b/iu,
+  copy: /\b(?:clone|copy|duplicate)\b/iu,
+  install: /\b(?:install|upgrade)\b/iu,
+};
+
+function explicitlyRequestedMutationCategories(text: string): WorkspaceMutationCategory[] {
+  return (Object.entries(EXPLICIT_MUTATION_CATEGORY_PATTERNS) as Array<[WorkspaceMutationCategory, RegExp]>)
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([category]) => category);
+}
 
 function normalizeAuthorizationText(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
@@ -1747,10 +1761,12 @@ export function workspaceMutationAuthorizationIssue(
   const category = workspaceMutationCategory(command);
   if (SHORT_MUTATION_CONFIRMATION.test(directUserText)) {
     const previousAssistantText = normalizeAuthorizationText(context.previousAssistantText ?? "");
+    const previousCategories = explicitlyRequestedMutationCategories(previousAssistantText);
     if (
       previousAssistantText &&
       visibleTextRequestsUserApproval(previousAssistantText) &&
-      MUTATION_INTENT_PATTERNS[category].test(previousAssistantText)
+      MUTATION_INTENT_PATTERNS[category].test(previousAssistantText) &&
+      (command.name !== "app_data" || previousCategories.length === 0 || previousCategories.includes(category))
     ) {
       return null;
     }
@@ -1763,6 +1779,12 @@ export function workspaceMutationAuthorizationIssue(
   const authorizationScope = GENERIC_MUTATION_AUTHORIZATION.test(authorization) ? directUserText : authorization;
   if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope)) {
     return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
+  }
+  if (command.name === "app_data" && GENERIC_MUTATION_AUTHORIZATION.test(authorization)) {
+    const explicitCategories = explicitlyRequestedMutationCategories(directUserText);
+    if (explicitCategories.length > 0 && !explicitCategories.includes(category)) {
+      return `Mutation blocked before execution: the active user message authorizes ${explicitCategories.join(" and ")}, not ${category}.`;
+    }
   }
 
   const commandEntity = appDataMutationEntity(command);

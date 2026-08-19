@@ -748,6 +748,8 @@ interface UIState {
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
   boldDialogue: boolean;
+  /** When true, character names and aliases are colored in chat prose using the character's nameColor. */
+  colorInlineNames: boolean;
   /** Preferred quote style applied to AI output and user input. */
   quoteFormat: QuoteFormat;
   /** When true, common LaTeX symbol commands render as plain Unicode symbols in chat text. */
@@ -1070,6 +1072,7 @@ interface UIState {
   setIncludeReasoningInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
+  setColorInlineNames: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
   setTrimIncompleteModelOutput: (v: boolean) => void;
@@ -1283,6 +1286,7 @@ export function pickSyncedSettings(state: UIState) {
     includeReasoningInExports: state.includeReasoningInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
+    colorInlineNames: state.colorInlineNames,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
@@ -1489,6 +1493,7 @@ export const useUIStore = create<UIState>()(
       includeReasoningInExports: false,
       messagesPerPage: 20,
       boldDialogue: true,
+      colorInlineNames: false,
       quoteFormat: "straight" as QuoteFormat,
       convertLatexSymbols: true,
       trimIncompleteModelOutput: false,
@@ -2276,6 +2281,7 @@ export const useUIStore = create<UIState>()(
       setIncludeReasoningInExports: (v) => set({ includeReasoningInExports: v }),
       setMessagesPerPage: (n) => set({ messagesPerPage: n }),
       setBoldDialogue: (v) => set({ boldDialogue: v }),
+      setColorInlineNames: (v) => set({ colorInlineNames: v }),
       setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
       setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
       setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
@@ -3227,6 +3233,7 @@ export const useUIStore = create<UIState>()(
         includeReasoningInExports: state.includeReasoningInExports,
         messagesPerPage: state.messagesPerPage,
         boldDialogue: state.boldDialogue,
+        colorInlineNames: state.colorInlineNames,
         quoteFormat: state.quoteFormat,
         convertLatexSymbols: state.convertLatexSymbols,
         trimIncompleteModelOutput: state.trimIncompleteModelOutput,

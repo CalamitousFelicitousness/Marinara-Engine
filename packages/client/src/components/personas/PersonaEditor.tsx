@@ -85,6 +85,7 @@ import { api, formatFirstApiValidationIssue } from "../../lib/api-client";
 import { downloadSpriteFile } from "../../lib/sprite-download";
 import { downloadUrlToDevice } from "../../lib/file-download";
 import { parseTrackerCardColorConfig, serializeTrackerCardColorConfig } from "../../lib/tracker-card-colors";
+import { NameAliasesSection } from "../ui/NameAliasesSection";
 import {
   getStatNameOccurrence,
   remapStatIconAssignments,
@@ -238,6 +239,7 @@ interface PersonaFormData {
    *  May be the current source-relative shape, the legacy zoom+offset shape (held
    *  through until the user re-edits via the cropper), or null when unset. */
   avatarCrop: AvatarCrop | null;
+  nameAliases: string[];
 }
 
 function appendNewTags(existingTags: string[], rawInput: string) {
@@ -346,6 +348,7 @@ function personaFormFromPersona(persona: Persona): PersonaFormData {
     // malformed is silently dropped so the editor falls back to defaults instead
     // of producing NaN transforms or an off-screen overlay.
     avatarCrop: normalizeAvatarCrop(persona.avatarCrop),
+    nameAliases: persona.nameAliases ?? []
   };
 }
 
@@ -1248,6 +1251,7 @@ function createCharacterDataFromPersona(formData: PersonaFormData): CharacterDat
       convoDisplayName: formData.convoDisplayName || undefined,
       aboutMe: formData.aboutMe || undefined,
       ...(formData.convoBehavior?.instruction?.trim() ? { convoBehavior: formData.convoBehavior } : {}),
+      ...(formData.nameAliases.length > 0 ? { nameAliases: formData.nameAliases } : {}),
       ...(rpgStats ? { rpgStats } : {}),
     },
   };
@@ -3134,6 +3138,12 @@ function PersonaColorsTab({
         label={localizeUi("ui.personas.personacolorstab.messageBoxColor")}
         helpText="Background color for your persona's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
       />
+      {/* Name Aliases */}
+      <NameAliasesSection
+        aliases={formData.nameAliases}
+        onChange={(next) => updateField("nameAliases", next)}
+        nameColor={formData.nameColor}
+      />
     </div>
   );
 }
@@ -3927,6 +3937,7 @@ const PERSONA_VERSION_COMPARE_FIELDS: Array<{ key: keyof PersonaCardSnapshot; la
   { key: "nameColor", label: "Name Color" },
   { key: "dialogueColor", label: "Dialogue Color" },
   { key: "boxColor", label: "Box Color" },
+  { key: "nameAliases", label: "Name Aliases" },
   { key: "personaStats", label: "Persona Stats" },
   { key: "tags", label: "Tags" },
   { key: "savedStatusOptions", label: "Saved Status Options" },
@@ -3952,6 +3963,7 @@ function buildCurrentPersonaSnapshot(formData: PersonaFormData): PersonaCardSnap
     nameColor: formData.nameColor,
     dialogueColor: formData.dialogueColor,
     boxColor: formData.boxColor,
+    nameAliases: JSON.stringify(formData.nameAliases),
     trackerCardColors: serializeTrackerCardColorConfig(formData.trackerCardColors),
     personaStats: formData.personaStats ? JSON.stringify(formData.personaStats) : "",
     tags: JSON.stringify(formData.tags),
@@ -3969,13 +3981,14 @@ function formatPersonaVersionValue(data: PersonaCardSnapshot, key: keyof Persona
   const value = data[key];
   if (typeof value !== "string") return "";
   if (!value.trim()) return "";
-  if (key === "avatarCrop" || key === "trackerCardColors" || key === "personaStats" || key === "tags") {
+  if (key === "avatarCrop" || key === "trackerCardColors" || key === "personaStats" || key === "tags" || key === "nameAliases") {
     try {
       return JSON.stringify(JSON.parse(value), null, 2);
     } catch {
       return value;
     }
   }
+  
   return value;
 }
 

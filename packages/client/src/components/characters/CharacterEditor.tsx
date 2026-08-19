@@ -73,6 +73,7 @@ import { CallClipGenerationModal } from "../ui/CallClipGenerationModal";
 import { ImageUploadDropzone } from "../ui/ImageUploadDropzone";
 import { CustomEmojiTagButton } from "../ui/CustomEmojiTagButton";
 import { CharacterRegexSection } from "./CharacterRegexSection";
+import { NameAliasesSection } from "../ui/NameAliasesSection";
 import {
   ArrowDown,
   ArrowLeft,
@@ -5119,6 +5120,7 @@ function ColorsTab({
   const nameColor = (formData.extensions.nameColor as string) ?? "";
   const dialogueColor = (formData.extensions.dialogueColor as string) ?? "";
   const boxColor = (formData.extensions.boxColor as string) ?? "";
+  const nameAliases = (formData.extensions.nameAliases as string[] | undefined) ?? [];
   const [extracting, setExtracting] = useState(false);
 
   const handleExtract = async () => {
@@ -5241,6 +5243,12 @@ function ColorsTab({
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
         helpText="Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
+      />
+      {/* Name Aliases */}
+      <NameAliasesSection
+        aliases={nameAliases}
+        onChange={(next) => updateExtension("nameAliases", next)}
+        nameColor={nameColor}
       />
     </div>
   );

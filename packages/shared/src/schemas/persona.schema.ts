@@ -280,6 +280,7 @@ const personaFields = {
   trackerCardColors: trackerCardColorConfigSchema.optional(),
   personaStats: personaStatsSchema.nullable().optional(),
   tags: z.array(z.string()).optional(),
+  nameAliases: z.array(z.string()).optional(),
   savedStatusOptions: z.array(z.string()).optional(),
   convoDisplayName: z.string().optional(),
   aboutMe: z.string().optional(),

@@ -3360,6 +3360,8 @@ function GeneralSettings() {
   const setMessagesPerPage = useUIStore((s) => s.setMessagesPerPage);
   const boldDialogue = useUIStore((s) => s.boldDialogue);
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
+  const colorInlineNames = useUIStore((s) => s.colorInlineNames);
+  const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
@@ -3685,6 +3687,13 @@ function GeneralSettings() {
             checked={boldDialogue ?? true}
             onChange={setBoldDialogue}
             help={localizeUi("settings.controls.boldDialogue.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("color-inline-names")}
+            label={localizeUi("settings.controls.colorInlineNames.label")}
+            checked={colorInlineNames ?? false}
+            onChange={setColorInlineNames}
+            help={localizeUi("settings.controls.colorInlineNames.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("convert-latex-symbols")}

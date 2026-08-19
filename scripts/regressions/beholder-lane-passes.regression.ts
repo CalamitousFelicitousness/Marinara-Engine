@@ -47,6 +47,11 @@ assert.equal(
   null,
   "A lane with an empty body must not be treated as a usable pass",
 );
+assert.equal(
+  parseBeholderLanePrompts(template.replace("[species]", "[worn]")),
+  null,
+  "A template repeating one heading while dropping another must not parse",
+);
 
 // Every lane reporting no change must produce a no-op, not a spurious update.
 const quiet = mergeBeholderLaneDeltas([{ changed: false }, { changed: false }, '{"changed": false}']);
@@ -78,6 +83,17 @@ assert.equal(self.body.left_foot.bare, true);
 // A lane that only carries empty exotic-slot stubs must not count as a change.
 const stubsOnly = mergeBeholderLaneDeltas([{ changed: true, delta: { self: { body: { tail: {} } } } }]);
 assert.equal(stubsOnly.changed, false, "Empty anatomy stubs alone are not a state change");
+
+// Two lane responses naming removals on the same slot concatenate rather than overwrite.
+const removals = mergeBeholderLaneDeltas([
+  { changed: true, delta: { self: { body: { chest: { worn_remove: ["coat"] } } } } },
+  { changed: true, delta: { self: { body: { chest: { worn_remove: ["shirt"] } } } } },
+]);
+assert.deepEqual(
+  (removals.delta.self as { body: Record<string, { worn_remove?: string[] }> }).body.chest.worn_remove,
+  ["coat", "shirt"],
+  "worn_remove arrays concatenate across lane responses instead of replacing",
+);
 
 // End to end: the unioned delta resolves against prior state through the normal path.
 const prior = {
@@ -117,3 +133,13 @@ assert.deepEqual(
   ["shirt"],
   "worn_remove drops the named garment by identity and keeps the others",
 );
+
+// A removal naming a garment that is not on the slot is still a handled turn,
+// not an "unusable delta" error — the slot already matches what was asked.
+const alreadyOff = resolveBeholderStateResponse(
+  { changed: true, delta: { Rissha: { body: { left_foot: { worn_remove: ["boot"] } } } } },
+  dressed,
+  "Rissha",
+);
+assert.equal(alreadyOff.valid, true, "A no-op removal must not invalidate the turn");
+assert.equal(alreadyOff.error, undefined);

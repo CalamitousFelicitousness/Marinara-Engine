@@ -937,9 +937,19 @@ async function executeBeholderLanePasses(args: {
 
   logger.info(`[agent] ${config.type} (${config.name}) — ${model} — ${BEHOLDER_PASS_LANES.length} passes`);
 
-  const settled = await Promise.allSettled(
-    BEHOLDER_PASS_LANES.map(async (lane) => {
+  // Bounded dispatch, not Promise.all: each lane's timeout budget starts when
+  // agentCallSignal builds it, so launching all five at once would let a lane
+  // queued behind a rate limit burn its budget before the provider starts work.
+  const settled = await settleAgentJobsWithConcurrencyLimit(
+    [...BEHOLDER_PASS_LANES],
+    AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
+    async (lane) => {
       const messages = buildStandardAgentMessages(config, lanePrompts[lane], context);
+      logger.debug(`[agent] ═══ ${config.type} [${lane}] PROMPT ═══`);
+      for (const msg of messages) {
+        logger.debug(`[agent] [${msg.role}] ${msg.content}`);
+      }
+      logger.debug(`[agent] ═══ END ${lane} PROMPT — temperature=${temperature} maxTokens=${maxTokens} ═══\n`);
       emitAgentDebug(context, {
         stage: "request",
         ...agentDebugBase(config, model, temperature, maxTokens),
@@ -979,29 +989,33 @@ async function executeBeholderLanePasses(args: {
         ...responseDebugFields(laneText),
       });
       return { laneText, tokens: result.usage?.totalTokens ?? 0 };
-    }),
+    },
   );
 
   const laneResponses: unknown[] = [];
   let totalTokens = 0;
   for (const [index, outcome] of settled.entries()) {
-    if (outcome.status === "fulfilled") {
-      // Reuse the shared JSON extraction so a fenced or chatty lane reply is
-      // handled exactly like a single-call response.
-      laneResponses.push(parseAgentResponse(config, outcome.value.laneText).data);
-      totalTokens += outcome.value.tokens;
-    } else {
-      logger.warn(
-        "[agent] %s pass %s failed: %s",
-        config.type,
-        BEHOLDER_PASS_LANES[index],
-        extractErrorMessage(outcome.reason),
-      );
+    const lane = BEHOLDER_PASS_LANES[index];
+    if (outcome.status !== "fulfilled") {
+      logger.warn("[agent] %s pass %s failed: %s", config.type, lane, extractErrorMessage(outcome.reason));
+      continue;
     }
+    totalTokens += outcome.value.tokens;
+    // Reuse the shared JSON extraction so a fenced or chatty lane reply is
+    // handled exactly like a single-call response. Unparseable output is
+    // reported rather than counted: parseAgentResponse hands back a
+    // parseError marker instead of throwing, and treating that as a usable
+    // lane would let five broken replies look like a clean no-change turn.
+    const laneData = parseAgentResponse(config, outcome.value.laneText).data;
+    if (shouldFailInvalidJsonResult(config, laneData)) {
+      logger.warn("[agent] %s pass %s returned unparseable output; skipping lane", config.type, lane);
+      continue;
+    }
+    laneResponses.push(laneData);
   }
 
   if (laneResponses.length === 0) {
-    return makeError(config, "Every Beholder extraction pass failed", startTime);
+    return makeError(config, "Every Beholder extraction pass failed or returned unusable output", startTime);
   }
 
   const merged = mergeBeholderLaneDeltas(laneResponses);

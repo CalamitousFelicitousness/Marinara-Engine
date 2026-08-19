@@ -386,7 +386,7 @@ function mergeSlotDelta(
   // `worn_remove` names the garments coming off a slot. The single-prompt path
   // never emits it (it clears a slot with `worn: []`), but the per-lane worn
   // pass uses it for partial takeoff, so subtract by the same identity.
-  if (Array.isArray(rawDelta.worn_remove) && next.worn?.length) {
+  if (Array.isArray(rawDelta.worn_remove)) {
     const removals = new Set(
       rawDelta.worn_remove
         .filter((entry): entry is string => typeof entry === "string")
@@ -394,9 +394,14 @@ function mergeSlotDelta(
         .filter((entry) => entry.length > 0),
     );
     if (removals.size > 0) {
-      const kept = next.worn.filter((item) => !removals.has(wornItemIdentity(item)));
-      if (kept.length > 0) next.worn = kept;
-      else delete next.worn;
+      // A removal that matches nothing still counts as a handled instruction:
+      // the slot is already in the requested state, and treating it as unused
+      // would make a lone "took the coat off" turn look like an empty delta.
+      if (next.worn?.length) {
+        const kept = next.worn.filter((item) => !removals.has(wornItemIdentity(item)));
+        if (kept.length > 0) next.worn = kept;
+        else delete next.worn;
+      }
       used = true;
     }
   }

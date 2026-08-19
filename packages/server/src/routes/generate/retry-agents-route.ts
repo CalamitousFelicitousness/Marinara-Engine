@@ -60,6 +60,8 @@ import {
 import { cardPromptText } from "../../services/prompt/card-text.js";
 import { getAssetManifest } from "../../services/game/asset-manifest.service.js";
 import { createAgentsStorage } from "../../services/storage/agents.storage.js";
+import { createAuthorNotePresetsStorage } from "../../services/storage/author-note-presets.storage.js";
+import { collectAuthorNoteEntries, toAuthorNotesContextText } from "../../services/prompt/author-notes.js";
 import { getCustomAgentImportPolicy } from "../../services/agents/custom-agent-import-policy.service.js";
 import { createCharactersStorage } from "../../services/storage/characters.storage.js";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
@@ -928,10 +930,13 @@ async function buildRetryAgentContext(args: {
         : null,
     writableLorebookIds: null,
     chatSummary: resolveRoleplayChatSummary(chatMode, chatMeta),
-    authorNotes:
-      typeof chatMeta.authorNotes === "string" && chatMeta.authorNotes.trim()
-        ? resolveMacros(chatMeta.authorNotes, promptMacroContext, { trimResult: false }).trim()
-        : null,
+    authorNotes: toAuthorNotesContextText(
+      collectAuthorNoteEntries(
+        chatMeta,
+        await createAuthorNotePresetsStorage(args.db).list(),
+        (raw) => resolveMacros(raw, promptMacroContext, { trimResult: false }),
+      ),
+    ),
     activatedLorebookEntries,
     ...(customAgentVectorAccessEnabled
       ? {

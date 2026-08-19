@@ -283,6 +283,18 @@ export interface ChatMetadata {
    * `summaryPopoverSettings.hideSummarisedMessages` preference.
    */
   hideSummarisedMessages?: boolean;
+  /**
+   * Chat-local author's note, injected as a system message every generation.
+   * Always active when non-empty. Not part of the preset library.
+   */
+  authorNotes?: string;
+  /** Depth for `authorNotes`. 0 = after the latest message. Default 4. */
+  authorNotesDepth?: number;
+  /**
+   * Preset ids switched on for this chat. Each injects at its own depth
+   * alongside `authorNotes`. Unresolvable ids are ignored at assembly.
+   */
+  activeAuthorNotePresetIds?: string[];
   /** Custom tags for organisation */
   tags: string[];
   /** Whether agents are enabled for this chat */

@@ -20,6 +20,7 @@ export * from "./checkpoints.js";
 export * from "./game-scene-videos.js";
 export * from "./game-storyboards.js";
 export * from "./regex-scripts.js";
+export * from "./author-note-presets.js";
 export * from "./gallery.js";
 export * from "./custom-emojis.js";
 export * from "./custom-stickers.js";

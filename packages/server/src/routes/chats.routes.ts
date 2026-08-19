@@ -1103,6 +1103,17 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
       incoming.discordWebhookUrl = url;
     }
+    if (incoming.activeAuthorNotePresetIds !== undefined) {
+      if (
+        !Array.isArray(incoming.activeAuthorNotePresetIds) ||
+        !incoming.activeAuthorNotePresetIds.every((id) => typeof id === "string")
+      ) {
+        return reply.status(400).send({ error: "activeAuthorNotePresetIds must be an array of strings" });
+      }
+      // Not checked against the preset library: deleting a preset leaves stale
+      // ids by design, and prompt assembly drops unresolvable ids.
+      incoming.activeAuthorNotePresetIds = Array.from(new Set(incoming.activeAuthorNotePresetIds as string[]));
+    }
     if (incoming.inactiveCharacterIds !== undefined) {
       if (
         !Array.isArray(incoming.inactiveCharacterIds) ||

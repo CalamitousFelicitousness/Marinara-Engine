@@ -91,6 +91,12 @@ import { createGameStateStorage } from "../services/storage/game-state.storage.j
 import { createCustomToolsStorage } from "../services/storage/custom-tools.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
+import { createAuthorNotePresetsStorage } from "../services/storage/author-note-presets.storage.js";
+import {
+  collectAuthorNoteEntries,
+  toAuthorNoteDepthEntries,
+  toAuthorNotesContextText,
+} from "../services/prompt/author-notes.js";
 import { createCustomEmojisStorage } from "../services/storage/custom-emojis.storage.js";
 import { createCustomStickersStorage } from "../services/storage/custom-stickers.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
@@ -747,6 +753,7 @@ export async function generateRoutes(app: FastifyInstance) {
   const customToolsStore = createCustomToolsStorage(app.db);
   const lorebooksStore = createLorebooksStorage(app.db);
   const regexScriptsStore = createRegexScriptsStorage(app.db);
+  const authorNotePresetsStore = createAuthorNotePresetsStorage(app.db);
   const customEmojisStore = createCustomEmojisStorage(app.db);
   const customStickersStore = createCustomStickersStorage(app.db);
   const characterGallery = createCharacterGalleryStorage(app.db);
@@ -2766,19 +2773,21 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         // ── Author's Notes injection ──
-        const authorNotesRaw = (chatMeta.authorNotes as string | undefined)?.trim();
-        const authorNotes = authorNotesRaw
-          ? resolveMacros(
-              authorNotesRaw,
+        // Chat-local note plus active presets, each at its own depth.
+        const authorNoteEntries = collectAuthorNoteEntries(
+          chatMeta,
+          await authorNotePresetsStore.list(),
+          (raw) =>
+            resolveMacros(
+              raw,
               promptMacroContext,
               deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
-            ).trim()
-          : "";
-        if (authorNotes) {
-          const authorNotesDepth = (chatMeta.authorNotesDepth as number) ?? 4;
-          finalMessages = injectAtDepth(finalMessages, [
-            { content: authorNotes, role: "system", depth: authorNotesDepth },
-          ]);
+            ),
+        );
+        // Agents get the same notes flattened to one block.
+        const authorNotes = toAuthorNotesContextText(authorNoteEntries) ?? "";
+        if (authorNoteEntries.length > 0) {
+          finalMessages = injectAtDepth(finalMessages, toAuthorNoteDepthEntries(authorNoteEntries));
         }
 
         // Skip OOC injection entirely for scene chats — scenes are self-contained

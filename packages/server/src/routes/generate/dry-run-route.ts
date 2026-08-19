@@ -16,6 +16,8 @@ import { createConnectionsStorage } from "../../services/storage/connections.sto
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { createCharactersStorage } from "../../services/storage/characters.storage.js";
 import { createRegexScriptsStorage } from "../../services/storage/regex-scripts.storage.js";
+import { createAuthorNotePresetsStorage } from "../../services/storage/author-note-presets.storage.js";
+import { collectAuthorNoteEntries, toAuthorNoteDepthEntries } from "../../services/prompt/author-notes.js";
 import {
   injectOwnerSpatialPrompt,
   projectGameSnapshotLocation,
@@ -421,6 +423,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
   const presets = createPromptsStorage(app.db);
   const chars = createCharactersStorage(app.db);
   const regexScriptsStore = createRegexScriptsStorage(app.db);
+  const authorNotePresetsStore = createAuthorNotePresetsStorage(app.db);
 
   // Track active dry-runs so extensions can abort in-flight requests.
   // Keyed by runId to avoid colliding with normal /generate's chatId-keyed map.
@@ -1474,22 +1477,19 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       }
     }
 
-    const authorNotesRaw = typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes.trim() : "";
-    const authorNotes = authorNotesRaw
-      ? resolveMacros(
-          authorNotesRaw,
+    // Chat-local note plus active presets, each at its own depth.
+    const authorNoteEntries = collectAuthorNoteEntries(
+      chatMeta,
+      await authorNotePresetsStore.list(),
+      (raw) =>
+        resolveMacros(
+          raw,
           promptMacroContext,
           deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
-        ).trim()
-      : "";
-    if (authorNotes) {
-      const authorNotesDepth =
-        typeof chatMeta.authorNotesDepth === "number" && Number.isFinite(chatMeta.authorNotesDepth)
-          ? Math.max(0, Math.floor(chatMeta.authorNotesDepth))
-          : 4;
-      finalMessages = injectAtDepth(finalMessages as any, [
-        { content: authorNotes, role: "system", depth: authorNotesDepth },
-      ]) as any;
+        ),
+    );
+    if (authorNoteEntries.length > 0) {
+      finalMessages = injectAtDepth(finalMessages as any, toAuthorNoteDepthEntries(authorNoteEntries)) as any;
     }
 
     // Optional injection: tracker context (read-only snapshot)

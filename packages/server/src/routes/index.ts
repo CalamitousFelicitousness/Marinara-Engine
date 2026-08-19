@@ -16,6 +16,7 @@ import { avatarsRoutes } from "./avatars.routes.js";
 import { spritesRoutes } from "./sprites.routes.js";
 import { adminRoutes } from "./admin.routes.js";
 import { regexScriptsRoutes } from "./regex-scripts.routes.js";
+import { authorNotePresetsRoutes } from "./author-note-presets.routes.js";
 import { customEmojisRoutes } from "./custom-emojis.routes.js";
 import { customStickersRoutes } from "./custom-stickers.routes.js";
 import { encounterRoutes } from "./encounter.routes.js";
@@ -80,6 +81,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(spritesRoutes, { prefix: "/api/sprites" });
   await app.register(adminRoutes, { prefix: "/api/admin" });
   await app.register(regexScriptsRoutes, { prefix: "/api/regex-scripts" });
+  await app.register(authorNotePresetsRoutes, { prefix: "/api/author-note-presets" });
   await app.register(customEmojisRoutes, { prefix: "/api/custom-emojis" });
   await app.register(customStickersRoutes, { prefix: "/api/custom-stickers" });
   await app.register(encounterRoutes, { prefix: "/api/encounter" });

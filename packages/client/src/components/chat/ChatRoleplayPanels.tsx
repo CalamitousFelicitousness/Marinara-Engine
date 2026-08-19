@@ -3,15 +3,24 @@ import type { TFunction } from "i18next";
 import {
   AlertTriangle,
   BookOpen,
+  Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   MapPin,
   PenLine,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
+import {
+  useAuthorNotePresets,
+  useCreateAuthorNotePreset,
+  useDeleteAuthorNotePreset,
+  useUpdateAuthorNotePreset,
+} from "../../hooks/use-author-note-presets";
 import { type BudgetSkippedLorebookEntry, useActiveLorebookEntries } from "../../hooks/use-lorebooks";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
@@ -364,6 +373,22 @@ export function ActiveLorebookEntriesPanel({
   );
 }
 
+type AuthorNoteEditTarget = { kind: "chat" } | { kind: "preset"; id: string };
+
+const AUTHOR_NOTE_DEFAULT_DEPTH = 4;
+
+function readActivePresetIds(chatMeta: Record<string, any>): string[] {
+  const raw = chatMeta.activeAuthorNotePresetIds;
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+}
+
+/** Name from the note body, so saving needs no modal. */
+function derivePresetName(content: string, fallback: string): string {
+  const firstLine = content.trim().split("\n", 1)[0]?.trim() ?? "";
+  if (!firstLine) return fallback;
+  return firstLine.length > 60 ? `${firstLine.slice(0, 57)}…` : firstLine;
+}
+
 export function AuthorNotesPanel({
   chatId,
   chatMeta,
@@ -374,61 +399,176 @@ export function AuthorNotesPanel({
   onClose: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const [notes, setNotes] = useState((chatMeta.authorNotes as string) ?? "");
-  const [depthStr, setDepthStr] = useState(String((chatMeta.authorNotesDepth as number) ?? 4));
   const updateMeta = useUpdateChatMetadata();
+  const { data: presets = [] } = useAuthorNotePresets();
+  const createPreset = useCreateAuthorNotePreset();
+  const updatePreset = useUpdateAuthorNotePreset();
+  const deletePreset = useDeleteAuthorNotePreset();
 
-  const initialBaseline = {
+  const chatNoteBaseline = {
     notes: (chatMeta.authorNotes as string) ?? "",
-    depth: (chatMeta.authorNotesDepth as number) ?? 4,
+    depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
   };
-  const latestByChatRef = useRef(new Map<string, { notes: string; depthStr: string }>([[chatId, { notes, depthStr }]]));
-  latestByChatRef.current.set(chatId, { notes, depthStr });
-  const baselineByChatRef = useRef(new Map<string, { notes: string; depth: number }>([[chatId, initialBaseline]]));
-  const mutateRef = useRef(updateMeta.mutate);
-  mutateRef.current = updateMeta.mutate;
 
-  useEffect(() => {
-    const nextBaseline = {
-      notes: (chatMeta.authorNotes as string) ?? "",
-      depth: (chatMeta.authorNotesDepth as number) ?? 4,
-    };
-    setNotes(nextBaseline.notes);
-    setDepthStr(String(nextBaseline.depth));
-    baselineByChatRef.current.set(chatId, nextBaseline);
-    latestByChatRef.current.set(chatId, { notes: nextBaseline.notes, depthStr: String(nextBaseline.depth) });
-  }, [chatId, chatMeta.authorNotes, chatMeta.authorNotesDepth]);
+  const [target, setTarget] = useState<AuthorNoteEditTarget>({ kind: "chat" });
+  const [notes, setNotes] = useState(chatNoteBaseline.notes);
+  const [depthStr, setDepthStr] = useState(String(chatNoteBaseline.depth));
+  const [presetName, setPresetName] = useState("");
 
-  // Outside-click closes the popover via mousedown, which unmounts the
-  // textarea before its onBlur (the only save trigger) can fire. Flush
-  // the pending edit from the unmount cleanup so typed content survives.
-  useEffect(() => {
-    const capturedChatId = chatId;
-    const latestByChat = latestByChatRef.current;
-    const baselineByChat = baselineByChatRef.current;
-    const snapshot = latestByChat.get(capturedChatId) ?? { notes: "", depthStr: "4" };
-    const baselineSnapshot = baselineByChat.get(capturedChatId) ?? { notes: "", depth: 4 };
-    return () => {
-      const { notes: n, depthStr: d } = latestByChat.get(capturedChatId) ?? snapshot;
-      const nextDepth = Math.max(0, parseInt(d, 10) || 0);
-      const base = baselineByChat.get(capturedChatId) ?? baselineSnapshot;
-      if (n !== base.notes || nextDepth !== base.depth) {
-        mutateRef.current({ id: capturedChatId, authorNotes: n, authorNotesDepth: nextDepth });
+  const activeIds = readActivePresetIds(chatMeta);
+  const activeIdSet = new Set(activeIds);
+
+  // Refs mirror live state so the unmount flush reads final values without
+  // re-subscribing per keystroke.
+  const liveRef = useRef({ target, notes, depthStr, presetName });
+  liveRef.current = { target, notes, depthStr, presetName };
+  const baselineRef = useRef({ notes: chatNoteBaseline.notes, depth: chatNoteBaseline.depth, name: "" });
+  const mutateMetaRef = useRef(updateMeta.mutate);
+  mutateMetaRef.current = updateMeta.mutate;
+  const mutatePresetRef = useRef(updatePreset.mutate);
+  mutatePresetRef.current = updatePreset.mutate;
+
+  const parseDepth = (raw: string) => Math.max(0, parseInt(raw, 10) || 0);
+
+  // Persist the editor to its current target. Ref-based, so it is safe to call
+  // from an unmount cleanup.
+  const flush = (chatIdForFlush: string) => {
+    const live = liveRef.current;
+    const base = baselineRef.current;
+    const depth = parseDepth(live.depthStr);
+    if (live.target.kind === "chat") {
+      if (live.notes !== base.notes || depth !== base.depth) {
+        mutateMetaRef.current({ id: chatIdForFlush, authorNotes: live.notes, authorNotesDepth: depth });
+        baselineRef.current = { ...base, notes: live.notes, depth };
       }
-      latestByChat.delete(capturedChatId);
-      baselineByChat.delete(capturedChatId);
+      return;
+    }
+    const name = live.presetName.trim();
+    if (live.notes !== base.notes || depth !== base.depth || name !== base.name) {
+      mutatePresetRef.current({
+        id: live.target.id,
+        content: live.notes,
+        depth,
+        ...(name ? { name } : {}),
+      });
+      baselineRef.current = { notes: live.notes, depth, name };
+    }
+  };
+
+  // Chat switch: abandon any open preset, load the new chat's note.
+  // Loads here rather than in the sync effect below: on the render where chatId
+  // changes, state has not flushed, so that effect's ref guard still sees the
+  // old preset open and bails, stranding preset text in a box aimed at the new
+  // chat.
+  useEffect(() => {
+    const next = {
+      notes: (chatMeta.authorNotes as string) ?? "",
+      depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
     };
+    setTarget({ kind: "chat" });
+    setPresetName("");
+    setNotes(next.notes);
+    setDepthStr(String(next.depth));
+    baselineRef.current = { notes: next.notes, depth: next.depth, name: "" };
+    // Let the sync effect below see the reset in this same pass.
+    liveRef.current = { ...liveRef.current, target: { kind: "chat" }, presetName: "" };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
-  const depth = parseInt(depthStr, 10) || 0;
-  const handleSave = () => {
-    updateMeta.mutate({ id: chatId, authorNotes: notes, authorNotesDepth: depth });
+  // Reload the chat-local note when edited elsewhere. Skipped while a preset is
+  // open, so a metadata round-trip cannot overwrite preset text in the editor.
+  useEffect(() => {
+    if (liveRef.current.target.kind !== "chat") return;
+    const next = {
+      notes: (chatMeta.authorNotes as string) ?? "",
+      depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
+    };
+    setNotes(next.notes);
+    setDepthStr(String(next.depth));
+    baselineRef.current = { notes: next.notes, depth: next.depth, name: "" };
+  }, [chatId, chatMeta.authorNotes, chatMeta.authorNotesDepth]);
+
+  // Outside-click closes the popover via mousedown, which unmounts the textarea
+  // before its onBlur (the only save trigger) can fire. Flush the pending edit
+  // from the unmount cleanup so typed content survives.
+  useEffect(() => {
+    const capturedChatId = chatId;
+    return () => flush(capturedChatId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  const openTarget = (next: AuthorNoteEditTarget) => {
+    flush(chatId);
+    if (next.kind === "chat") {
+      const base = {
+        notes: (chatMeta.authorNotes as string) ?? "",
+        depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
+      };
+      setNotes(base.notes);
+      setDepthStr(String(base.depth));
+      setPresetName("");
+      baselineRef.current = { notes: base.notes, depth: base.depth, name: "" };
+      setTarget(next);
+      return;
+    }
+    const preset = presets.find((candidate) => candidate.id === next.id);
+    if (!preset) return;
+    setNotes(preset.content);
+    setDepthStr(String(preset.depth));
+    setPresetName(preset.name);
+    baselineRef.current = { notes: preset.content, depth: preset.depth, name: preset.name };
+    setTarget(next);
   };
+
+  const toggleActive = (presetId: string) => {
+    const next = activeIdSet.has(presetId) ? activeIds.filter((id) => id !== presetId) : [...activeIds, presetId];
+    updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: next });
+  };
+
+  const handleSaveAsPreset = () => {
+    const content = notes.trim();
+    if (!content) return;
+    const name = derivePresetName(content, localizeUi("ui.chat.authornotespanel.untitledPreset"));
+    createPreset.mutate(
+      { name, content, depth: parseDepth(depthStr) },
+      {
+        onSuccess: (created) => {
+          if (!created) return;
+          // Switch on immediately and clear the chat box, or the same text
+          // injects twice.
+          updateMeta.mutate({
+            id: chatId,
+            authorNotes: "",
+            activeAuthorNotePresetIds: [...activeIds, created.id],
+          });
+          setNotes("");
+          baselineRef.current = { ...baselineRef.current, notes: "" };
+        },
+      },
+    );
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    if (target.kind === "preset" && target.id === presetId) {
+      // Drop the editor's claim before the preset disappears, or the unmount
+      // flush writes its content back against a dead id.
+      baselineRef.current = { notes, depth: parseDepth(depthStr), name: presetName };
+      openTarget({ kind: "chat" });
+    }
+    deletePreset.mutate(presetId);
+    if (activeIdSet.has(presetId)) {
+      updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: activeIds.filter((id) => id !== presetId) });
+    }
+  };
+
+  const editingPreset = target.kind === "preset" ? presets.find((p) => p.id === target.id) : undefined;
+  const saveCurrent = () => flush(chatId);
 
   return (
     <>
       <h3 className={cn(ROLEPLAY_POPOVER_TITLE, "mb-2")}>
-        <PenLine size="0.75rem" />{localizeUi("ui.chat.authornotespanel.authorSNotes")}
+        <PenLine size="0.75rem" />
+        {localizeUi("ui.chat.authornotespanel.authorSNotes")}
         <button
           type="button"
           onClick={onClose}
@@ -438,13 +578,39 @@ export function AuthorNotesPanel({
           <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
         </button>
       </h3>
-      <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-2")}>{localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}</p>
+      <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-2")}>
+        {localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}
+      </p>
+
+      {target.kind === "preset" && (
+        <div className="mb-2 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => openTarget({ kind: "chat" })}
+            aria-label={localizeUi("ui.chat.authornotespanel.backToChatNote")}
+            title={localizeUi("ui.chat.authornotespanel.backToChatNote")}
+            className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--secondary)] p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            <ChevronLeft size="0.75rem" />
+          </button>
+          <input
+            type="text"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            onBlur={saveCurrent}
+            aria-label={localizeUi("ui.chat.authornotespanel.presetName")}
+            placeholder={localizeUi("ui.chat.authornotespanel.presetName")}
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] outline-none transition-colors focus:ring-2 focus:ring-[var(--ring)]"
+          />
+        </div>
+      )}
+
       <MacroTextarea
         value={notes}
         onChange={setNotes}
-        onBlur={handleSave}
-        onExpandedClose={handleSave}
-        title={localizeUi("ui.chat.authornotespanel.authorSNotes")}
+        onBlur={saveCurrent}
+        onExpandedClose={saveCurrent}
+        title={editingPreset ? editingPreset.name : localizeUi("ui.chat.authornotespanel.authorSNotes")}
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
         ariaLabel={localizeUi("ui.chat.authornotespanel.authorSNotes")}
@@ -452,21 +618,109 @@ export function AuthorNotesPanel({
         className="resize-none px-2.5 py-2 text-xs leading-relaxed"
       />
       <div className="mt-2 flex items-center gap-2">
-        <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.authornotespanel.injectionDepth")}</span>
+        <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.chat.authornotespanel.injectionDepth")}
+        </span>
         <input
           type="text"
           inputMode="numeric"
           value={depthStr}
           onChange={(e) => setDepthStr(e.target.value.replace(/[^0-9]/g, ""))}
           onBlur={() => {
-            const nextDepth = Math.max(0, parseInt(depthStr, 10) || 0);
-            setDepthStr(String(nextDepth));
-            updateMeta.mutate({ id: chatId, authorNotes: notes, authorNotesDepth: nextDepth });
+            setDepthStr(String(parseDepth(depthStr)));
+            saveCurrent();
           }}
           className="w-14 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-center text-[0.625rem] text-[var(--foreground)] outline-none transition-colors [appearance:textfield] focus:ring-2 focus:ring-[var(--ring)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
+        {target.kind === "chat" && (
+          <button
+            type="button"
+            onClick={handleSaveAsPreset}
+            disabled={!notes.trim() || createPreset.isPending}
+            className="ml-auto shrink-0 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {localizeUi("ui.chat.authornotespanel.saveAsPreset")}
+          </button>
+        )}
       </div>
-      <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">{localizeUi("ui.chat.authornotespanel.depth0AfterTheLatestMessage4FourMessages")}</p>
+      <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
+        {localizeUi("ui.chat.authornotespanel.depth0AfterTheLatestMessage4FourMessages")}
+      </p>
+
+      <div className="mt-3 border-t border-[var(--border)] pt-2">
+        <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-1.5")}>
+          {localizeUi("ui.chat.authornotespanel.presetsInjectedAlongsideTheNoteAbove")}
+        </p>
+        {presets.length === 0 ? (
+          <p className="py-1 text-[0.625rem] text-[var(--muted-foreground)]/60">
+            {localizeUi("ui.chat.authornotespanel.noPresetsSavedYet")}
+          </p>
+        ) : (
+          <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+            {presets.map((preset) => {
+              const isActive = activeIdSet.has(preset.id);
+              const isEditing = target.kind === "preset" && target.id === preset.id;
+              const toggleLabel = localizeUi(
+                isActive
+                  ? "ui.chat.authornotespanel.deactivatePreset"
+                  : "ui.chat.authornotespanel.activatePreset",
+                { name: preset.name },
+              );
+              return (
+                <li
+                  key={preset.id}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border px-1.5 py-1 transition-colors",
+                    isEditing
+                      ? "border-[var(--ring)] bg-[var(--accent)]"
+                      : "border-[var(--border)] bg-[var(--secondary)]",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isActive}
+                    onClick={() => toggleActive(preset.id)}
+                    aria-label={toggleLabel}
+                    title={toggleLabel}
+                    className={cn(
+                      "flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
+                      isActive
+                        ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
+                        : "border-[var(--border)] text-transparent hover:border-[var(--ring)]",
+                    )}
+                  >
+                    <Check size="0.625rem" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openTarget({ kind: "preset", id: preset.id })}
+                    title={localizeUi("ui.chat.authornotespanel.editPresetInTheBoxAbove")}
+                    className="min-w-0 flex-1 truncate text-left text-[0.6875rem] text-[var(--foreground)] transition-colors hover:text-[var(--primary)]"
+                  >
+                    {preset.name}
+                  </button>
+                  <span
+                    title={localizeUi("ui.chat.authornotespanel.injectionDepth")}
+                    className="shrink-0 rounded bg-[var(--background)] px-1 text-[0.5625rem] text-[var(--muted-foreground)]"
+                  >
+                    {localizeUi("ui.chat.authornotespanel.depthBadge", { depth: preset.depth })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePreset(preset.id)}
+                    aria-label={localizeUi("ui.chat.authornotespanel.deletePreset", { name: preset.name })}
+                    title={localizeUi("ui.chat.authornotespanel.deletePreset", { name: preset.name })}
+                    className="shrink-0 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-red-400"
+                  >
+                    <Trash2 size="0.625rem" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </>
   );
 }

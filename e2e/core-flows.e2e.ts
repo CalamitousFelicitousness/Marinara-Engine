@@ -605,6 +605,64 @@ test("default dialogue color fills only cards without their own dialogue color",
   }
 });
 
+test("merged narrator hides speaker tags when every character uses the default dialogue color", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Merged speaker color fallback is covered on desktop.");
+
+  const characterIds: string[] = [];
+  let chatId = "";
+  try {
+    for (const name of ["Default Speaker Alpha", "Default Speaker Beta"]) {
+      const response = await page.request.post("/api/characters", { data: { data: { name } } });
+      expect(response.ok()).toBeTruthy();
+      characterIds.push(((await response.json()) as { id: string }).id);
+    }
+
+    const chatResponse = await page.request.post("/api/chats", {
+      data: { name: "Merged Speaker Fallback Smoke", mode: "roleplay", characterIds },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    chatId = ((await chatResponse.json()) as { id: string }).id;
+
+    const metadataResponse = await page.request.patch(`/api/chats/${chatId}/metadata`, {
+      data: { groupChatMode: "merged" },
+    });
+    expect(metadataResponse.ok()).toBeTruthy();
+
+    const messageResponse = await page.request.post(`/api/chats/${chatId}/messages`, {
+      data: {
+        role: "assistant",
+        content:
+          '<speaker="Default Speaker Alpha">"Use the fallback."</speaker> <speaker="Default Speaker Beta">"Keep tags hidden."</speaker>',
+      },
+    });
+    expect(messageResponse.ok()).toBeTruthy();
+    const message = (await messageResponse.json()) as { id: string };
+
+    await page.addInitScript((activeChatId) => {
+      localStorage.setItem("marinara-active-chat-id", activeChatId);
+      const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{}}') as {
+        state?: Record<string, unknown>;
+      };
+      persisted.state = { ...(persisted.state ?? {}), defaultDialogueColor: "#d946ef" };
+      localStorage.setItem("marinara-engine-ui", JSON.stringify(persisted));
+    }, chatId);
+    await page.goto("/");
+
+    const content = page.locator(`[data-message-id="${message.id}"] .mari-message-content`).first();
+    await expect(content).not.toContainText("<speaker=");
+    await expect(content).toContainText('"Use the fallback." "Keep tags hidden."');
+    await expect(content.locator("strong")).toHaveCount(2);
+    for (const dialogue of await content.locator("strong").all()) {
+      await expect(dialogue).toHaveCSS("color", "rgb(217, 70, 239)");
+    }
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    await Promise.all(characterIds.map((id) => page.request.delete(`/api/characters/${id}`).catch(() => undefined)));
+  }
+});
+
 test("roleplay hides contentless user anchors without hiding visible payloads", async ({ page }) => {
   const chatResponse = await page.request.post("/api/chats", {
     data: { name: "Spatial-only Message Visibility Smoke", mode: "roleplay", characterIds: [] },

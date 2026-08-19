@@ -645,9 +645,24 @@ function debugUsage(usage?: LLMUsage): Partial<AgentCallDebugEvent> {
 }
 
 function emitAgentDebug(context: AgentContext, event: AgentCallDebugEvent): void {
-  if ((event.stage === "response" || event.stage === "retry_response") && typeof event.response === "string") {
+  const debugOverrideEnabled = Boolean(context.agentDebug) || isDebugAgentsEnabled();
+  if ((event.stage === "request" || event.stage === "retry_request") && event.messages) {
+    const prompt = event.messages
+      .map((message) => `[${message.role}${message.name ? `:${message.name}` : ""}] ${message.content}`)
+      .join("\n\n");
+    const tools = event.tools?.length ? `\navailable tools: ${event.tools.join(", ")}` : "";
     logDebugOverride(
-      Boolean(context.agentDebug) || isDebugAgentsEnabled(),
+      debugOverrideEnabled,
+      "[agent-debug] %s %s request%s:\n%s%s",
+      event.agentType,
+      event.stage === "retry_request" ? "retry" : "provider",
+      event.round ? ` (round ${event.round})` : "",
+      prompt,
+      tools,
+    );
+  } else if ((event.stage === "response" || event.stage === "retry_response") && typeof event.response === "string") {
+    logDebugOverride(
+      debugOverrideEnabled,
       "[agent-debug] %s %s response (%d chars):\n%s",
       event.agentType,
       event.stage === "retry_response" ? "retry" : "raw",

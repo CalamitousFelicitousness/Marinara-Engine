@@ -728,6 +728,7 @@ export async function executeAgent(
     );
     const streamResponses = context.streaming !== false;
     const customParameters = agentCustomParameters(config);
+    const reasoningOverride = jsonAgentReasoningOverride(config);
 
     // If tools are available, use the tool call loop.
     // `await` so a rethrow from the tool loop is caught by this function's
@@ -743,6 +744,7 @@ export async function executeAgent(
         temperature,
         maxTokens,
         toolContext,
+        reasoningOverride,
         streamResponses,
         startTime,
         context,
@@ -761,8 +763,6 @@ export async function executeAgent(
       messageCount: messages.length,
       messages: debugMessages(messages),
     });
-
-    const reasoningOverride = jsonAgentReasoningOverride(config);
 
     let responseText = "";
     const result = await provider.chatComplete(messages, {
@@ -898,6 +898,7 @@ async function executeAgentWithTools(
   temperature: number | undefined,
   maxTokens: number,
   toolContext: AgentToolContext,
+  reasoningOverride: JsonReasoningOverride,
   streamResponses: boolean,
   startTime: number,
   context: AgentContext,
@@ -931,6 +932,7 @@ async function executeAgentWithTools(
       cachingAtDepth: config.cachingAtDepth,
       customParameters,
       enabledParameters: config.enabledParameters,
+      ...reasoningOverride,
       suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       tools: toolContext.tools,
@@ -1022,6 +1024,7 @@ async function executeAgentWithTools(
     cachingAtDepth: config.cachingAtDepth,
     customParameters,
     enabledParameters: config.enabledParameters,
+    ...reasoningOverride,
     suppressModelParameters: config.suppressModelParameters,
     stream: streamResponses,
     signal: nextCallSignal(),
@@ -1172,6 +1175,7 @@ export async function executeAgentBatch(
   const perAgentTokens = configs.map((c) => normalizeAgentMaxTokens(c.settings.maxTokens));
   const temperature = resolveAgentTemperature(configs[0]!);
   const customParameters = agentCustomParameters(configs[0]!);
+  const reasoningOverride = jsonResponseReasoningOverride(configs[0]!.enabledParameters);
   const enableCaching = configs[0]!.enableCaching;
   const anthropicExtendedCacheTtl = configs[0]!.anthropicExtendedCacheTtl;
   const cachingAtDepth = configs[0]!.cachingAtDepth;
@@ -1251,6 +1255,7 @@ export async function executeAgentBatch(
         cachingAtDepth,
         customParameters,
         enabledParameters: configs[0]!.enabledParameters,
+        ...reasoningOverride,
         suppressModelParameters: configs[0]!.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
@@ -2945,15 +2950,26 @@ export function resolveAgentResultType(config: Pick<AgentExecConfig, "type" | "s
  * Ask for reasoning off, unless the agent's own connection deliberately turned
  * that parameter's send-switch off (in which case the provider default stands).
  */
-function jsonAgentReasoningOverride(
-  config: Pick<AgentExecConfig, "type" | "settings" | "enabledParameters">,
-): { reasoningEffort?: "none"; enabledParameters?: Record<string, boolean> } {
-  if (!agentResponseIsJson(config)) return {};
-  if (config.enabledParameters?.reasoningEffort === false) return {};
+type JsonReasoningOverride = {
+  reasoningEffort?: "none";
+  enabledParameters?: GenerationParameterSendMap;
+};
+
+function jsonResponseReasoningOverride(
+  enabledParameters: GenerationParameterSendMap | undefined,
+): JsonReasoningOverride {
+  if (enabledParameters?.reasoningEffort === false) return {};
   return {
     reasoningEffort: "none",
-    enabledParameters: { ...(config.enabledParameters ?? {}), reasoningEffort: true },
+    enabledParameters: { ...(enabledParameters ?? {}), reasoningEffort: true },
   };
+}
+
+function jsonAgentReasoningOverride(
+  config: Pick<AgentExecConfig, "type" | "settings" | "enabledParameters">,
+): JsonReasoningOverride {
+  if (!agentResponseIsJson(config)) return {};
+  return jsonResponseReasoningOverride(config.enabledParameters);
 }
 
 function agentResponseIsJson(config: Pick<AgentExecConfig, "type" | "settings">): boolean {

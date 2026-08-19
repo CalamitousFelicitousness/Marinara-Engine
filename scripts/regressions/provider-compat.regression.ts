@@ -309,10 +309,9 @@ try {
 
   assert.equal(supportsAssistantReasoningPrefill("custom"), true);
   assert.equal(supportsAssistantReasoningPrefill("grok_subscription"), false);
-  assert.deepEqual(
-    buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }),
-    [{ role: "user", content: "Continue." }],
-  );
+  assert.deepEqual(buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }), [
+    { role: "user", content: "Continue." },
+  ]);
   assert.deepEqual(
     buildPrefillMessages("Visible", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }),
     [
@@ -549,6 +548,48 @@ try {
 
 // The enable_thinking addition is a local-endpoint carve-out. A remote custom
 // endpoint keeps the previous behaviour: reasoning_effort only, no template kwargs.
+for (const localBaseUrl of [
+  "http://host.docker.internal:11434/v1",
+  "http://host.containers.internal:11434/v1",
+  "http://ollama:11434/v1",
+]) {
+  const localHostnameProvider = new OpenAIProvider(localBaseUrl, "test", undefined, undefined, undefined, "custom");
+  assert.equal(
+    (
+      localHostnameProvider as unknown as {
+        isLocalInferenceEndpoint(): boolean;
+      }
+    ).isLocalInferenceEndpoint(),
+    true,
+    `${localBaseUrl} should be recognized as a local inference endpoint`,
+  );
+}
+
+const previousTrustedPrivateNetworks = process.env.TRUSTED_PRIVATE_NETWORKS;
+process.env.TRUSTED_PRIVATE_NETWORKS = "10.0.0.0/8";
+try {
+  const privateAddressProvider = new OpenAIProvider(
+    "http://192.168.50.2:11434/v1",
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  assert.equal(
+    (
+      privateAddressProvider as unknown as {
+        isLocalInferenceEndpoint(): boolean;
+      }
+    ).isLocalInferenceEndpoint(),
+    true,
+    "inference endpoint detection must not depend on the authentication trust-list override",
+  );
+} finally {
+  if (previousTrustedPrivateNetworks === undefined) delete process.env.TRUSTED_PRIVATE_NETWORKS;
+  else process.env.TRUSTED_PRIVATE_NETWORKS = previousTrustedPrivateNetworks;
+}
+
 let remoteReasoningRequestBody: Record<string, unknown> | null = null;
 const remoteReasoningServer = createServer(async (request, response) => {
   const chunks: Buffer[] = [];

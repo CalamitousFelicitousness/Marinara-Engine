@@ -24,7 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
-import { isPrivateNetworkIp } from "../../../middleware/ip-allowlist.js";
+import { isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters } from "./glm-request-compat.js";
 
 /**
@@ -712,10 +712,12 @@ export class OpenAIProvider extends BaseLLMProvider {
    */
   private isLocalInferenceEndpoint(): boolean {
     try {
-      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
       if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
       if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
-      return isPrivateNetworkIp(hostname);
+      if (hostname === "host.docker.internal" || hostname === "host.containers.internal") return true;
+      if (!hostname.includes(".") || hostname.endsWith(".internal")) return true;
+      return isNonRoutableNetworkIp(hostname);
     } catch {
       return false;
     }

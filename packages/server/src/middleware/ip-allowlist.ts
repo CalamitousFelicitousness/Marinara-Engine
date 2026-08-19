@@ -409,6 +409,12 @@ export function isLoopbackIp(ip: string): boolean {
   return false;
 }
 
+/** True when the IP belongs to the built-in private/non-routable ranges, independent of auth configuration. */
+export function isNonRoutableNetworkIp(ip: string): boolean {
+  const bytes = ipToBytes(ip);
+  return Boolean(bytes && DEFAULT_PRIVATE_NETWORK_CIDRS.some((cidr) => matchesCIDR(bytes, cidr)));
+}
+
 /**
  * True if the given IP belongs to a trusted private / non-routable range.
  * Defaults to RFC 1918, CGNAT, link-local, and IPv6 ULA — but the operator

@@ -222,6 +222,10 @@ export function RoleplayHUD({
     api.delete(`/agents/runs/${chatId}`).catch(() => {});
     resetAgentStore();
   }, [chatId, setGameState, resetAgentStore]);
+  const stopAgents = useCallback(
+    () => api.post("/generate/abort", { chatId, agentsOnly: true }).then(() => undefined),
+    [chatId],
+  );
 
   const date = gameState?.date ?? null;
   const time = gameState?.time ?? null;
@@ -316,6 +320,7 @@ export function RoleplayHUD({
           clearGameState={clearGameState}
           onRetriggerTrackers={onRetriggerTrackers}
           onRetryFailedAgents={onRetryFailedAgents}
+          onStopAgents={stopAgents}
           failedAgentTypes={failedAgentTypes}
           failedAgentFailures={failedAgentFailures}
           showInjectionsTab={showInjectionsTab}
@@ -569,6 +574,7 @@ interface ActionsGroupProps {
   clearGameState: () => void;
   onRetriggerTrackers?: () => void;
   onRetryFailedAgents?: () => void;
+  onStopAgents?: () => Promise<void>;
   failedAgentTypes: string[];
   failedAgentFailures: AgentFailure[];
   showInjectionsTab?: boolean;
@@ -589,6 +595,7 @@ function ActionsGroup({
   clearGameState,
   onRetriggerTrackers,
   onRetryFailedAgents,
+  onStopAgents,
   failedAgentTypes,
   failedAgentFailures,
   showInjectionsTab,
@@ -692,6 +699,7 @@ function ActionsGroup({
             clearGameState={clearGameState}
             onRetriggerTrackers={onRetriggerTrackers}
             onRetryFailedAgents={onRetryFailedAgents}
+            onStopAgents={onStopAgents}
             failedAgentTypes={failedAgentTypes}
             failedAgentFailures={failedAgentFailures}
             onClose={() => setAgentsOpen(false)}

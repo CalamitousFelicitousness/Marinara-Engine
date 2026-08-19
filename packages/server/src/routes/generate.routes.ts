@@ -782,7 +782,9 @@ export async function generateRoutes(app: FastifyInstance) {
    * These are replayed on the next turn so the model can continue its reasoning chain.
    */
   const encryptedReasoningCache = new Map<string, unknown[]>();
-  const activeGenerations = new Map<string, { abortController: AbortController; backendUrl: string | null }>();
+  type ActiveGeneration = { abortController: AbortController; backendUrl: string | null };
+  const activeGenerations = new Map<string, ActiveGeneration>();
+  const activeAgentRuns = new Map<string, Set<ActiveGeneration>>();
   const activeCustomLorebookReadBehindRuns = new Set<string>();
 
   /**
@@ -913,11 +915,24 @@ export async function generateRoutes(app: FastifyInstance) {
     const abortController = new AbortController();
     const generationId = randomUUID();
     const customLorebookReadBehindRunKeys = new Set<string>();
-    activeGenerations.set(input.chatId, { abortController, backendUrl: null });
+    const activeGenerationRecord: ActiveGeneration = { abortController, backendUrl: null };
+    activeGenerations.set(input.chatId, activeGenerationRecord);
     const releaseActiveGeneration = () => {
       if (activeGenerations.get(input.chatId)?.abortController === abortController) {
         activeGenerations.delete(input.chatId);
       }
+    };
+    const moveToActiveAgentRuns = () => {
+      releaseActiveGeneration();
+      const runs = activeAgentRuns.get(input.chatId) ?? new Set<ActiveGeneration>();
+      runs.add(activeGenerationRecord);
+      activeAgentRuns.set(input.chatId, runs);
+    };
+    const releaseActiveAgentRun = () => {
+      const runs = activeAgentRuns.get(input.chatId);
+      if (!runs) return;
+      runs.delete(activeGenerationRecord);
+      if (runs.size === 0) activeAgentRuns.delete(input.chatId);
     };
     const releaseActiveGenerationAndRethrow = (err: unknown): never => {
       releaseActiveGeneration();
@@ -2392,6 +2407,11 @@ export async function generateRoutes(app: FastifyInstance) {
             baseUrl,
             fallbackConnection: conversationSummaryFallback,
             fallbackBaseUrl: conversationSummaryFallback ? resolveBaseUrl(conversationSummaryFallback) : "",
+            summaryEmbeddingOptions: {
+              embeddingSource: memoryRecallEmbeddingSource,
+              signal: abortController.signal,
+            },
+            summaryVectorizerAvailable: memoryRecallVectorizerAvailable,
           });
           finalMessages = preparedHistory.finalMessages;
 
@@ -7523,7 +7543,7 @@ export async function generateRoutes(app: FastifyInstance) {
           await sendAssistantMessageReady(currentIterationSavedMsg);
           // Roleplay post-processing is anchored to the saved message/swipe
           // below, so it no longer needs to hold the chat-wide generation slot.
-          if (chatMode === "roleplay" && assistantMessageReadySent) releaseActiveGeneration();
+          if (chatMode === "roleplay" && assistantMessageReadySent) moveToActiveAgentRuns();
         }
 
         // ────────────────────────────────────────
@@ -9790,7 +9810,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // persisted edit (or no-op result) before releasing TTS.
         if (activatedTextRewriteRunAgents.length > 0) {
           await sendAssistantMessageReady();
-          if (chatMode === "roleplay" && assistantMessageReadySent) releaseActiveGeneration();
+          if (chatMode === "roleplay" && assistantMessageReadySent) moveToActiveAgentRuns();
         }
 
         if (!recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {
@@ -10199,6 +10219,7 @@ export async function generateRoutes(app: FastifyInstance) {
       stopSseKeepalive();
       reply.raw.off("close", onClose);
       releaseActiveGeneration();
+      releaseActiveAgentRun();
       if (!clientDisconnected && isSseReplyWritable(reply)) {
         reply.raw.end();
       }
@@ -10215,7 +10236,7 @@ export async function generateRoutes(app: FastifyInstance) {
    * waiting until the server-side generation has finished saving.
    */
   app.get<{ Params: { chatId: string } }>("/status/:chatId", async (req) => ({
-    active: activeGenerations.has(req.params.chatId),
+    active: activeGenerations.has(req.params.chatId) || (activeAgentRuns.get(req.params.chatId)?.size ?? 0) > 0,
   }));
 
   /**
@@ -10223,19 +10244,23 @@ export async function generateRoutes(app: FastifyInstance) {
    * Explicitly abort an in-progress generation for a given chat.
    */
   app.post("/abort", async (req, reply) => {
-    const body = req.body as { chatId?: string };
+    const body = req.body as { chatId?: string; agentsOnly?: boolean };
     const chatId = body?.chatId;
     if (!chatId) return reply.status(400).send({ error: "chatId is required" });
 
-    const gen = activeGenerations.get(chatId);
-    if (!gen) return reply.send({ aborted: false, reason: "No active generation for this chat" });
+    const agentRuns = [...(activeAgentRuns.get(chatId) ?? [])];
+    const activeGeneration = activeGenerations.get(chatId);
+    const targets =
+      body.agentsOnly === true ? agentRuns : [...(activeGeneration ? [activeGeneration] : []), ...agentRuns];
+    if (targets.length === 0) return reply.send({ aborted: false, reason: "No active generation for this chat" });
 
-    logger.info("[abort] Explicit abort requested for chat: %s", chatId);
-    gen.abortController.abort();
+    logger.info("[abort] Explicit abort requested for %d run(s) in chat: %s", targets.length, chatId);
+    for (const target of targets) target.abortController.abort();
 
-    // Send abort to backend (KoboldCPP etc.)
-    if (gen.backendUrl) {
-      const backendRoot = gen.backendUrl.replace(/\/v1\/?$/, "");
+    // An agent tail may overlap a newer reply on the same backend. Its scoped
+    // AbortSignal is safe; a backend-wide abort endpoint is not.
+    if (body.agentsOnly !== true && activeGeneration?.backendUrl) {
+      const backendRoot = activeGeneration.backendUrl.replace(/\/v1\/?$/, "");
       const abortUrl = backendRoot + "/api/extra/abort";
       logger.info("[abort] Sending abort to backend: %s", abortUrl);
       try {
@@ -10249,7 +10274,7 @@ export async function generateRoutes(app: FastifyInstance) {
     // Keep the entry registered until the generation route reaches its
     // identity-checked finally block. Deleting here opens a same-chat race where
     // a replacement request can register before the aborted request has unwound.
-    return reply.send({ aborted: true });
+    return reply.send({ aborted: true, count: targets.length });
   });
 
   await registerDryRunRoute(app);

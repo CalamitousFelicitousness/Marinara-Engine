@@ -11646,6 +11646,60 @@ test("Conversation Chat Settings can attach and retain custom agents", async ({ 
   }
 });
 
+test("Chat Settings exposes the chat ID and persists semantic summary retrieval", async ({
+  context,
+  page,
+  request,
+}, testInfo) => {
+  const chatResponse = await request.post("/api/chats", {
+    data: { name: "Chat ID and Semantic Summary Smoke", mode: "conversation", characterIds: [] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+
+  const openSettings = async () => {
+    if (testInfo.project.name.includes("mobile")) {
+      await page.getByRole("button", { name: "More options", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
+    await expect(page.locator(".mari-chat-settings-drawer")).toBeVisible();
+  };
+  const readSemanticSetting = async () => {
+    const response = await request.get(`/api/chats/${chat.id}`);
+    const current = (await response.json()) as { metadata?: unknown };
+    const metadata =
+      typeof current.metadata === "string"
+        ? (JSON.parse(current.metadata) as Record<string, unknown>)
+        : ((current.metadata ?? {}) as Record<string, unknown>);
+    return metadata.semanticSummaryRetrievalEnabled;
+  };
+
+  try {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.goto("/");
+    await openSettings();
+
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const chatNameSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: "Chat Name" });
+    await chatNameSection.click();
+    await expect(drawer.getByText(chat.id, { exact: true })).toBeVisible();
+    await drawer.getByRole("button", { name: "Copy chat ID", exact: true }).click();
+    await expect(page.getByText("Chat ID copied.", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(chat.id);
+
+    const summarySection = drawer.locator('[data-chat-settings-section="conversation-automatic-summarization"]');
+    await summarySection.locator(':scope > [role="button"]').click();
+    const semanticSwitch = summarySection.getByRole("checkbox", { name: /^Semantic summary retrieval/u });
+    await expect(semanticSwitch).not.toBeChecked();
+    await semanticSwitch.locator("xpath=following-sibling::label[1]").click();
+    await expect.poll(readSemanticSetting).toBe(true);
+    await expect(semanticSwitch).toBeChecked();
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
 test("Conversation Chat Settings exposes and persists Long-Term Memory activation", async ({
   page,
   request,

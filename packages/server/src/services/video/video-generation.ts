@@ -7,6 +7,10 @@ import { logger, logDebugOverride } from "../../lib/logger.js";
 import { assertInsideDir, safeFetch } from "../../utils/security.js";
 import { notifyGenerationFallback, type GenerationFallbackNotifier } from "../generation/fallback-notification.js";
 import { runMediaGenerationRequest } from "../image/image-generation-queue.js";
+import {
+  COMFYUI_MAX_REFERENCE_IMAGES,
+  numberedComfyReferencePlaceholder,
+} from "../image/comfyui-reference-placeholders.js";
 import { buildAtlasCloudVideoRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import { buildComfyUiLoraWorkflowReplacements, type ComfyUiLoraSetting } from "@marinara-engine/shared";
 
@@ -411,8 +415,18 @@ export function resolveComfyUiVideoWorkflowPlaceholders(
   };
   Object.assign(replacements, buildComfyUiLoraWorkflowReplacements(request.comfyLoras));
   if (request.model?.trim()) replacements["%model%"] = request.model.trim();
-  if (runtime.referenceImageName) replacements["%reference_image_name%"] = runtime.referenceImageName;
-  if (runtime.referenceImageBase64) replacements["%reference_image%"] = runtime.referenceImageBase64;
+  if (runtime.referenceImageName) {
+    replacements["%reference_image_name%"] = runtime.referenceImageName;
+    for (let index = 0; index < COMFYUI_MAX_REFERENCE_IMAGES; index += 1) {
+      replacements[numberedComfyReferencePlaceholder("reference_image_name", index)] = runtime.referenceImageName;
+    }
+  }
+  if (runtime.referenceImageBase64) {
+    replacements["%reference_image%"] = runtime.referenceImageBase64;
+    for (let index = 0; index < COMFYUI_MAX_REFERENCE_IMAGES; index += 1) {
+      replacements[numberedComfyReferencePlaceholder("reference_image", index)] = runtime.referenceImageBase64;
+    }
+  }
   return replaceComfyUiVideoPlaceholders(workflow, replacements);
 }
 
@@ -664,7 +678,16 @@ async function generateComfyUiVideo(baseUrl: string, request: VideoGenerationReq
         : { width: 1280, height: 720 };
   const dimensions = request.aspectRatio === "9:16" ? { width: landscape.height, height: landscape.width } : landscape;
   let referenceImageName: string | undefined;
-  if (request.referenceImage && workflowText.includes("%reference_image_name%")) {
+  const referenceImageNamePlaceholders = [
+    "%reference_image_name%",
+    ...Array.from({ length: COMFYUI_MAX_REFERENCE_IMAGES }, (_, index) =>
+      numberedComfyReferencePlaceholder("reference_image_name", index),
+    ),
+  ];
+  if (
+    request.referenceImage &&
+    referenceImageNamePlaceholders.some((placeholder) => workflowText.includes(placeholder))
+  ) {
     referenceImageName = await uploadComfyUiVideoReference(base, request.referenceImage, request.signal);
   }
   const resolvedWorkflow = resolveComfyUiVideoWorkflowPlaceholders(workflow, request, {
@@ -672,6 +695,7 @@ async function generateComfyUiVideo(baseUrl: string, request: VideoGenerationReq
     width: dimensions.width,
     height: dimensions.height,
     referenceImageName,
+    referenceImageBase64: request.referenceImage ? stripDataUrl(request.referenceImage.base64) : undefined,
   });
   if (["%global_prompt%", "%local_prompts%", "%segment_lengths%"].some((value) => workflowText.includes(value))) {
     const ltxDirectorPrompt = resolveLtxDirectorPromptInput(request);

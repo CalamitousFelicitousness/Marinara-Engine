@@ -217,21 +217,35 @@ function woundIdentity(wound: BeholderWound): string {
 function mergeWounds(current: BeholderWound[] | undefined, updates: BeholderWound[]): BeholderWound[] {
   const merged = [...(current ?? [])];
   const indexes = new Map(merged.map((wound, index) => [woundIdentity(wound), index]));
+  const touched = new Set<number>();
   for (const wound of updates) {
     const identity = woundIdentity(wound);
     const existingIndex = indexes.get(identity);
     if (existingIndex === undefined) {
       indexes.set(identity, merged.length);
+      touched.add(merged.length);
       merged.push(wound);
     } else {
       merged[existingIndex] = wound;
+      touched.add(existingIndex);
     }
   }
+  if (merged.length <= MAX_WOUNDS_PER_SLOT) return merged;
+
   // Bound the slot here rather than leaving it to normalizeSlotState, which keeps
   // the FIRST entries and would therefore discard exactly the wounds this merge
-  // just appended. Overflow policy: drop the oldest wounds so freshly reported
-  // injuries always survive.
-  return merged.length > MAX_WOUNDS_PER_SLOT ? merged.slice(-MAX_WOUNDS_PER_SLOT) : merged;
+  // just appended. Overflow policy: drop the oldest wounds this delta did not
+  // touch, so both newly added and freshly re-described injuries survive.
+  const overflow = merged.length - MAX_WOUNDS_PER_SLOT;
+  const dropped = new Set<number>();
+  for (let index = 0; index < merged.length && dropped.size < overflow; index += 1) {
+    if (!touched.has(index)) dropped.add(index);
+  }
+  // Every remaining entry was touched by this delta: fall back to dropping the oldest.
+  for (let index = 0; index < merged.length && dropped.size < overflow; index += 1) {
+    dropped.add(index);
+  }
+  return merged.filter((_, index) => !dropped.has(index));
 }
 
 function mergeSlotDelta(

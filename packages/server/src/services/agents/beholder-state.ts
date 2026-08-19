@@ -210,6 +210,26 @@ function mergeWornItems(current: BeholderWornItem[] | undefined, updates: Behold
   return merged;
 }
 
+function woundIdentity(wound: BeholderWound): string {
+  return wound.text.trim().toLocaleLowerCase("en-US");
+}
+
+function mergeWounds(current: BeholderWound[] | undefined, updates: BeholderWound[]): BeholderWound[] {
+  const merged = [...(current ?? [])];
+  const indexes = new Map(merged.map((wound, index) => [woundIdentity(wound), index]));
+  for (const wound of updates) {
+    const identity = woundIdentity(wound);
+    const existingIndex = indexes.get(identity);
+    if (existingIndex === undefined) {
+      indexes.set(identity, merged.length);
+      merged.push(wound);
+    } else {
+      merged[existingIndex] = wound;
+    }
+  }
+  return merged;
+}
+
 function mergeSlotDelta(
   current: BeholderSlotState | undefined,
   rawDelta: unknown,
@@ -271,9 +291,12 @@ function mergeSlotDelta(
         .map(normalizeWound)
         .filter((wound) => wound !== null);
       if (wounds.length > 0) {
-        // Wound arrays are authoritative for a changed slot: the protocol has
-        // no stable wound identity, so a non-empty delta replaces the list.
-        next.wounds = wounds;
+        // Merge wounds by identity (the injury text), mirroring worn. The delta
+        // prompt emits ONLY the wounds that changed this turn, so replacing the
+        // list would drop co-located wounds the delta didn't re-mention — e.g. a
+        // fresh "broken nose" on the head would erase an existing "fractured
+        // skull". `wounds: []` still clears the slot wholesale (handled above).
+        next.wounds = mergeWounds(next.wounds, wounds);
         used = true;
       }
     }

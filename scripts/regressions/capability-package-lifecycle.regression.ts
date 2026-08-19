@@ -1053,7 +1053,11 @@ try {
       browserTabAsset?.file,
       join(packagesRoot, "versions", agentSuite.id, agentSuite.version, "suite-tab.png"),
     );
-    assert.equal(browserTabAsset?.data?.toString("utf8"), "x", "Every serve must hand back the exact bytes it hashed");
+    assert.equal(
+      browserTabAsset?.data?.toString("utf8"),
+      "x",
+      "Every serve must hand back the exact bytes it hashed",
+    );
     const repeatAsset = await capabilityPackageManager.packageAsset(agentSuite.id, "suite-tab.png");
     assert.deepEqual(repeatAsset, browserTabAsset, "Repeated resolution must be deterministic");
     assert.equal(

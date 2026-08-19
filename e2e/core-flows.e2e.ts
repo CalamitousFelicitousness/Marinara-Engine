@@ -4570,7 +4570,10 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
       localStorage.setItem("marinara-active-chat-id", chatId);
       localStorage.setItem(
         "marinara-engine-ui",
-        JSON.stringify({ state: { hasCompletedOnboarding: true, messagesPerPage: 100 }, version: 87 }),
+        JSON.stringify({
+          state: { hasCompletedOnboarding: true, messagesPerPage: 100, sidebarOpen: false, rightPanelOpen: false },
+          version: 87,
+        }),
       );
     }, imported.chatId);
     await page.goto("/");
@@ -4581,7 +4584,7 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
 
     const composer = page.locator("textarea.mari-chat-input-textarea");
     await composer.fill("/goto 1");
-    await composer.press("Enter");
+    await page.locator("button.mari-chat-send-btn").click();
     await expect(page.getByText("Imported assistant message 1", { exact: true })).toBeVisible();
     await expect(staleChoice).toHaveCount(0);
   } finally {

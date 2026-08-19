@@ -1438,6 +1438,21 @@ try {
   assert.equal(rollbackChatBefore.name, "Capability persistence rollback fixture");
   assert.deepEqual(rollbackChatBefore.characterIds, []);
   assert.equal(rollbackChatBefore.connectionId, null);
+  const namedBranchChat = await chatsStore.create({
+    name: "Capability branch parent fallback",
+    mode: "roleplay",
+    characterIds: [],
+  });
+  assert.ok(namedBranchChat);
+  await chatsStore.patchMetadata(namedBranchChat.id, {
+    branchName: "NPC_First Kiss",
+    branchParentChatId: rollbackChat.id,
+  });
+  const capabilityBranchChat = await persistence.getChat(namedBranchChat.id);
+  assert.ok(capabilityBranchChat);
+  assert.equal(capabilityBranchChat.name, "NPC_First Kiss");
+  assert.equal(capabilityBranchChat.branch?.title, "NPC_First Kiss");
+  assert.equal(capabilityBranchChat.branch?.parentChatId, rollbackChat.id);
   const gameStates = createGameStateStorage(db);
   const gameStateBase = {
     chatId: rollbackChat.id,

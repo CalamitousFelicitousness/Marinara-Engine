@@ -24,6 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
+import { isLoopbackIp, isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters } from "./glm-request-compat.js";
 
 /**
@@ -702,6 +703,49 @@ export class OpenAIProvider extends BaseLLMProvider {
     return reasoningEffort === "none";
   }
 
+  /**
+   * True when baseUrl points at an inference server running on this machine or
+   * this LAN (llama.cpp, Ollama, vLLM, LM Studio). Such servers expose
+   * arbitrary model names that never match the OpenAI/xAI catalog patterns the
+   * reasoning gates rely on, so without this the user's explicit "reasoning
+   * off" choice is silently discarded before it reaches the request body.
+   */
+  private isLocalInferenceEndpoint(): boolean {
+    try {
+      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
+      if (hostname === "localhost" || isLoopbackIp(hostname)) return true;
+      if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
+      if (hostname === "host.docker.internal" || hostname === "host.containers.internal") return true;
+      if (!hostname.includes(".") || hostname.endsWith(".internal")) return true;
+      return isNonRoutableNetworkIp(hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  private enforceLocalInferenceThinkingDisable(
+    body: Record<string, unknown>,
+    options: ChatOptions,
+    suppressModelParameters: boolean,
+  ): void {
+    if (
+      suppressModelParameters ||
+      !this.isGenericCustomProvider() ||
+      !this.shouldSendParameter(options, "reasoningEffort") ||
+      !this.hasExplicitReasoningDisable(options.reasoningEffort) ||
+      !this.isLocalInferenceEndpoint()
+    ) {
+      return;
+    }
+    const templateOptions =
+      body.chat_template_kwargs &&
+      typeof body.chat_template_kwargs === "object" &&
+      !Array.isArray(body.chat_template_kwargs)
+        ? (body.chat_template_kwargs as Record<string, unknown>)
+        : {};
+    body.chat_template_kwargs = { ...templateOptions, enable_thinking: false };
+  }
+
   private supportsOpenAIReasoningDisable(model: string): boolean {
     const normalized = model.toLowerCase().replace(/^openai\//, "");
     if (normalized.includes("-pro")) return false;
@@ -1174,6 +1218,9 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    // Local chat templates may ignore reasoning_effort. Apply this after custom
+    // parameters so an explicit Reasoning Effort: Off choice remains authoritative.
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(
@@ -1459,6 +1506,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(

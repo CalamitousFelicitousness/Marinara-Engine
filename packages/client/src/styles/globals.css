@@ -5783,12 +5783,8 @@ strong {
     height: clamp(13px, 3.9vw, 17px);
   }
 
-  .mari-topbar-action[data-topbar-hover-key="home"] {
+  .mari-topbar-left-controls .mari-topbar-action {
     order: 1;
-  }
-
-  .mari-topbar-action[data-topbar-hover-key="chats"] {
-    order: 2;
   }
 
   .mari-topbar-action[data-topbar-hover-key="characters"] {

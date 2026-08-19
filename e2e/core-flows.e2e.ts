@@ -16292,6 +16292,12 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   expect(mobileActionOffsets.every((offset) => offset >= 0)).toBe(true);
   expect(new Set(mobileActionOffsets).size).toBe(mobileActionOrder.length);
   expect(mobileActionOffsets).toEqual([...mobileActionOffsets].sort((left, right) => left - right));
+  const mobileDomActionOrder = await topbar.locator("[data-topbar-hover-key]").evaluateAll((elements) =>
+    elements
+      .map((element) => (element as HTMLElement).dataset.topbarHoverKey)
+      .filter((key): key is string => Boolean(key)),
+  );
+  expect(mobileDomActionOrder.slice(0, mobileActionOrder.length)).toEqual(mobileActionOrder);
   const homeIconBounds = await homeButton.locator("svg").boundingBox();
   const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
   expect(homeIconBounds).not.toBeNull();
@@ -16482,6 +16488,11 @@ test("coarse-pointer iPad widths use full-screen side panels", async ({ page }, 
   const panelBounds = await mobilePanel.boundingBox();
   expect(panelBounds).not.toBeNull();
   expect(panelBounds!.width).toBeGreaterThanOrEqual(1023);
+  const homeButton = page.locator('[data-component="TopBar"]').getByTitle("Home");
+  await expect(homeButton).toHaveAttribute("aria-pressed", "false");
+  await homeButton.click();
+  await expect(mobilePanel).toHaveCount(0);
+  await expect(homeButton).toHaveAttribute("aria-pressed", "true");
 });
 
 test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, request }, testInfo) => {

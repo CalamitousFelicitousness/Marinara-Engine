@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useUIStore } from "../../stores/ui.store";
+import { MOBILE_SHELL_MEDIA_QUERY, useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
 import { cn } from "../../lib/utils";
 import { SpotifyMiniPlayer } from "../spotify/SpotifyMiniPlayer";
@@ -85,7 +85,7 @@ const TOPBAR_ACCENT_ICON_CLASS = "mari-topbar-accent-icon mari-accent-animated";
 const CHAT_TOPBAR_GRADIENT_ID = "mari-topbar-chats-gradient";
 
 function isMobileTopbarNavigation() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  return typeof window !== "undefined" && window.matchMedia(MOBILE_SHELL_MEDIA_QUERY).matches;
 }
 
 export function TopBar() {
@@ -119,6 +119,7 @@ export function TopBar() {
   const [spotifyDesktopViewport, setSpotifyDesktopViewport] = useState(false);
   const [spotifyUseFloatingFallback, setSpotifyUseFloatingFallback] = useState(false);
   const [hoveredTopbarKey, setHoveredTopbarKey] = useState<string | null>(null);
+  const [mobileTopbarNavigation, setMobileTopbarNavigation] = useState(isMobileTopbarNavigation);
   const { data: installedCapabilities = [], isLoading: installedCapabilitiesLoading } =
     useInstalledCapabilityPackages();
   const musicDjInstalled = installedCapabilities.some(
@@ -145,7 +146,7 @@ export function TopBar() {
       Boolean(personaDetailId) ||
       (characterLibraryOpen && cardLibraryKind === "personas"),
   };
-  const isMobileOverlayActive = isMobileTopbarNavigation() && (sidebarOpen || rightPanelOpen);
+  const isMobileOverlayActive = mobileTopbarNavigation && (sidebarOpen || rightPanelOpen);
   const isHomeActive =
     !activeChatId &&
     !isMobileOverlayActive &&
@@ -202,6 +203,14 @@ export function TopBar() {
   };
 
   const clearTopbarHover = useCallback(() => setHoveredTopbarKey(null), []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_SHELL_MEDIA_QUERY);
+    const syncMobileNavigation = () => setMobileTopbarNavigation(mediaQuery.matches);
+    syncMobileNavigation();
+    mediaQuery.addEventListener("change", syncMobileNavigation);
+    return () => mediaQuery.removeEventListener("change", syncMobileNavigation);
+  }, []);
 
   useEffect(() => {
     const header = headerRef.current;
@@ -263,6 +272,64 @@ export function TopBar() {
     };
   }, [clearTopbarHover]);
 
+  const chatsButton = (
+    <button
+      key="chats"
+      onClick={handleSidebarClick}
+      aria-pressed={sidebarOpen}
+      data-tour="sidebar-toggle"
+      data-topbar-hover-key="chats"
+      className={cn(
+        TOPBAR_BUTTON_CLASS,
+        sidebarOpen
+          ? cn(TOPBAR_ACTIVE_BUTTON_CLASS, "mari-topbar-chat-gradient-icon")
+          : cn(
+              "mari-topbar-chat-gradient-hover text-[var(--muted-foreground)]",
+              isTopbarHovered("chats") && cn(TOPBAR_FORCE_HOVER_CLASS, "mari-topbar-chat-gradient-icon"),
+            ),
+      )}
+      title={localize("Chats")}
+    >
+      <MessageSquareText size={15} className={TOPBAR_ACCENT_ICON_CLASS}>
+        <defs>
+          <linearGradient id={CHAT_TOPBAR_GRADIENT_ID} x1="2" x2="18" y1="3" y2="18" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="var(--mari-logo-cyan)" />
+            <stop offset="48%" stopColor="var(--mari-logo-orange)" />
+            <stop offset="100%" stopColor="var(--mari-logo-pink)" />
+          </linearGradient>
+        </defs>
+      </MessageSquareText>
+      {sidebarOpen && (
+        <span className="mari-topbar-chat-gradient-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
+      )}
+    </button>
+  );
+
+  const homeButton = (
+    <button
+      key="home"
+      onClick={handleHomeClick}
+      aria-pressed={isHomeActive}
+      data-topbar-hover-key="home"
+      className={cn(
+        TOPBAR_BUTTON_CLASS,
+        isHomeActive
+          ? TOPBAR_ACTIVE_BUTTON_CLASS
+          : cn(
+              "text-[var(--muted-foreground)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
+              isTopbarHovered("home") &&
+                cn(TOPBAR_FORCE_HOVER_CLASS, "text-[var(--marinara-chat-chrome-button-text-hover)]"),
+            ),
+      )}
+      title={localize("Home")}
+    >
+      <Home size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
+      {isHomeActive && (
+        <span className="mari-topbar-active-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
+      )}
+    </button>
+  );
+
   return (
     <header
       ref={headerRef}
@@ -280,64 +347,7 @@ export function TopBar() {
           ref={leftControlsRef}
           className="mari-topbar-left-controls mari-rgb-icon-scope flex shrink-0 items-center gap-2"
         >
-          <button
-            onClick={handleSidebarClick}
-            aria-pressed={sidebarOpen}
-            data-tour="sidebar-toggle"
-            data-topbar-hover-key="chats"
-            className={cn(
-              TOPBAR_BUTTON_CLASS,
-              sidebarOpen
-                ? cn(TOPBAR_ACTIVE_BUTTON_CLASS, "mari-topbar-chat-gradient-icon")
-                : cn(
-                    "mari-topbar-chat-gradient-hover text-[var(--muted-foreground)]",
-                    isTopbarHovered("chats") && cn(TOPBAR_FORCE_HOVER_CLASS, "mari-topbar-chat-gradient-icon"),
-                  ),
-            )}
-            title={localize("Chats")}
-          >
-            <MessageSquareText size={15} className={TOPBAR_ACCENT_ICON_CLASS}>
-              <defs>
-                <linearGradient
-                  id={CHAT_TOPBAR_GRADIENT_ID}
-                  x1="2"
-                  x2="18"
-                  y1="3"
-                  y2="18"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0%" stopColor="var(--mari-logo-cyan)" />
-                  <stop offset="48%" stopColor="var(--mari-logo-orange)" />
-                  <stop offset="100%" stopColor="var(--mari-logo-pink)" />
-                </linearGradient>
-              </defs>
-            </MessageSquareText>
-            {sidebarOpen && (
-              <span className="mari-topbar-chat-gradient-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
-            )}
-          </button>
-
-          <button
-            onClick={handleHomeClick}
-            aria-pressed={isHomeActive}
-            data-topbar-hover-key="home"
-            className={cn(
-              TOPBAR_BUTTON_CLASS,
-              isHomeActive
-                ? TOPBAR_ACTIVE_BUTTON_CLASS
-                : cn(
-                    "text-[var(--muted-foreground)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
-                    isTopbarHovered("home") &&
-                      cn(TOPBAR_FORCE_HOVER_CLASS, "text-[var(--marinara-chat-chrome-button-text-hover)]"),
-                  ),
-            )}
-            title={localize("Home")}
-          >
-            <Home size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
-            {isHomeActive && (
-              <span className="mari-topbar-active-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
-            )}
-          </button>
+          {mobileTopbarNavigation ? [homeButton, chatsButton] : [chatsButton, homeButton]}
         </div>
         {showMusicDjUnavailablePlayer ? (
           <MusicDjUnavailablePlayer floating={spotifyUseFloatingFallback} />

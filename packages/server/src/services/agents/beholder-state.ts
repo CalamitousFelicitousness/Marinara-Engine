@@ -210,6 +210,44 @@ function mergeWornItems(current: BeholderWornItem[] | undefined, updates: Behold
   return merged;
 }
 
+function woundIdentity(wound: BeholderWound): string {
+  return wound.text.trim().toLocaleLowerCase("en-US");
+}
+
+function mergeWounds(current: BeholderWound[] | undefined, updates: BeholderWound[]): BeholderWound[] {
+  const merged = [...(current ?? [])];
+  const indexes = new Map(merged.map((wound, index) => [woundIdentity(wound), index]));
+  const touched = new Set<number>();
+  for (const wound of updates) {
+    const identity = woundIdentity(wound);
+    const existingIndex = indexes.get(identity);
+    if (existingIndex === undefined) {
+      indexes.set(identity, merged.length);
+      touched.add(merged.length);
+      merged.push(wound);
+    } else {
+      merged[existingIndex] = wound;
+      touched.add(existingIndex);
+    }
+  }
+  if (merged.length <= MAX_WOUNDS_PER_SLOT) return merged;
+
+  // Bound the slot here rather than leaving it to normalizeSlotState, which keeps
+  // the FIRST entries and would therefore discard exactly the wounds this merge
+  // just appended. Overflow policy: drop the oldest wounds this delta did not
+  // touch, so both newly added and freshly re-described injuries survive.
+  const overflow = merged.length - MAX_WOUNDS_PER_SLOT;
+  const dropped = new Set<number>();
+  for (let index = 0; index < merged.length && dropped.size < overflow; index += 1) {
+    if (!touched.has(index)) dropped.add(index);
+  }
+  // Every remaining entry was touched by this delta: fall back to dropping the oldest.
+  for (let index = 0; index < merged.length && dropped.size < overflow; index += 1) {
+    dropped.add(index);
+  }
+  return merged.filter((_, index) => !dropped.has(index));
+}
+
 function mergeSlotDelta(
   current: BeholderSlotState | undefined,
   rawDelta: unknown,
@@ -271,9 +309,12 @@ function mergeSlotDelta(
         .map(normalizeWound)
         .filter((wound) => wound !== null);
       if (wounds.length > 0) {
-        // Wound arrays are authoritative for a changed slot: the protocol has
-        // no stable wound identity, so a non-empty delta replaces the list.
-        next.wounds = wounds;
+        // Merge wounds by identity (the injury text), mirroring worn. The delta
+        // prompt emits ONLY the wounds that changed this turn, so replacing the
+        // list would drop co-located wounds the delta didn't re-mention — e.g. a
+        // fresh "broken nose" on the head would erase an existing "fractured
+        // skull". `wounds: []` still clears the slot wholesale (handled above).
+        next.wounds = mergeWounds(next.wounds, wounds);
         used = true;
       }
     }

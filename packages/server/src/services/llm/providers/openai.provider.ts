@@ -24,7 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
-import { isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
+import { isLoopbackIp, isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters } from "./glm-request-compat.js";
 
 /**
@@ -713,7 +713,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   private isLocalInferenceEndpoint(): boolean {
     try {
       const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
-      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+      if (hostname === "localhost" || isLoopbackIp(hostname)) return true;
       if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
       if (hostname === "host.docker.internal" || hostname === "host.containers.internal") return true;
       if (!hostname.includes(".") || hostname.endsWith(".internal")) return true;
@@ -721,6 +721,29 @@ export class OpenAIProvider extends BaseLLMProvider {
     } catch {
       return false;
     }
+  }
+
+  private enforceLocalInferenceThinkingDisable(
+    body: Record<string, unknown>,
+    options: ChatOptions,
+    suppressModelParameters: boolean,
+  ): void {
+    if (
+      suppressModelParameters ||
+      !this.isGenericCustomProvider() ||
+      !this.shouldSendParameter(options, "reasoningEffort") ||
+      !this.hasExplicitReasoningDisable(options.reasoningEffort) ||
+      !this.isLocalInferenceEndpoint()
+    ) {
+      return;
+    }
+    const templateOptions =
+      body.chat_template_kwargs &&
+      typeof body.chat_template_kwargs === "object" &&
+      !Array.isArray(body.chat_template_kwargs)
+        ? (body.chat_template_kwargs as Record<string, unknown>)
+        : {};
+    body.chat_template_kwargs = { ...templateOptions, enable_thinking: false };
   }
 
   private supportsOpenAIReasoningDisable(model: string): boolean {
@@ -827,20 +850,6 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (this.isGenericCustomProvider()) {
       if (this.hasExplicitReasoningDisable(options.reasoningEffort)) {
         body.reasoning_effort = "none";
-        // Locally hosted servers (llama.cpp, Ollama, vLLM, LM Studio) drive
-        // thinking from the chat template, and not every template reads
-        // reasoning_effort. enable_thinking=false is what actually skips the
-        // thinking pass; reasoning_format would only hide thinking the model
-        // has already spent tokens producing.
-        if (this.isLocalInferenceEndpoint()) {
-          const templateOptions =
-            body.chat_template_kwargs &&
-            typeof body.chat_template_kwargs === "object" &&
-            !Array.isArray(body.chat_template_kwargs)
-              ? (body.chat_template_kwargs as Record<string, unknown>)
-              : {};
-          body.chat_template_kwargs = { ...templateOptions, enable_thinking: false };
-        }
       } else if (this.shouldSendReasoningEffort(options.model, options.reasoningEffort)) {
         body.reasoning_effort = options.reasoningEffort;
       }
@@ -1209,6 +1218,9 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    // Local chat templates may ignore reasoning_effort. Apply this after custom
+    // parameters so an explicit Reasoning Effort: Off choice remains authoritative.
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(
@@ -1494,6 +1506,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(

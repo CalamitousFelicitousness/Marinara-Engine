@@ -134,7 +134,7 @@ function matchesCIDR(ipBytes: number[], cidr: CIDREntry): boolean {
 }
 
 // ── Loopback CIDRs (always allowed) ──
-const LOOPBACK_CIDRS: CIDREntry[] = [parseCIDR("127.0.0.1")!, parseCIDR("::1")!];
+const LOOPBACK_CIDRS: CIDREntry[] = [parseCIDR("127.0.0.0/8")!, parseCIDR("::1")!];
 
 // ── Specific interface CIDRs used by the Tailscale / Docker bypass ──
 // Tailscale assigns Tailnet peer IPs from the CGNAT block 100.64.0.0/10.

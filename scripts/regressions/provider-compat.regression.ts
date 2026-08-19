@@ -503,6 +503,7 @@ try {
     stream: false,
     reasoningEffort: "none",
     enabledParameters: { reasoningEffort: true },
+    customParameters: { chat_template_kwargs: { enable_thinking: true, use_jinja: true } },
   });
   assert.ok(localReasoningRequestBody);
   assert.equal(
@@ -512,8 +513,8 @@ try {
   );
   assert.deepEqual(
     localReasoningRequestBody.chat_template_kwargs,
-    { enable_thinking: false },
-    "llama.cpp needs enable_thinking=false to actually skip the thinking pass",
+    { enable_thinking: false, use_jinja: true },
+    "llama.cpp needs enable_thinking=false to win over custom parameters while preserving sibling options",
   );
 
   // Graded levels stay gated for off-catalog models: llama.cpp accepts them but
@@ -552,6 +553,7 @@ for (const localBaseUrl of [
   "http://host.docker.internal:11434/v1",
   "http://host.containers.internal:11434/v1",
   "http://ollama:11434/v1",
+  "http://127.0.0.2:11434/v1",
 ]) {
   const localHostnameProvider = new OpenAIProvider(localBaseUrl, "test", undefined, undefined, undefined, "custom");
   assert.equal(

@@ -1436,6 +1436,120 @@ function colorNamesSkippingQuotes(
 }
 
 /**
+ * Color character names in React nodes, skipping any name inside a
+ * dialogue-colored span (which represents quoted text in the markdown path).
+ * Creates proper React <span> elements with style objects.
+ */
+function colorNamesInNodes(
+  nodes: ReactNode | ReactNode[],
+  nameColorMap: Map<string, string>,
+  textShadow?: string,
+): ReactNode | ReactNode[] {
+  if (!nodes || nameColorMap.size === 0) return nodes;
+  const names = Array.from(nameColorMap.keys());
+  if (names.length === 0) return nodes;
+  const escaped = names
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .sort((a, b) => b.length - a.length);
+  const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+  const isCodeNode = (node: ReactNode): boolean => {
+    if (node && typeof node === "object" && "props" in node) {
+      const tagName = (node as React.ReactElement).type;
+      return tagName === "code" || tagName === "pre";
+    }
+    return false;
+  };
+
+  // Check if a node is a dialogue-colored context (skip names inside it)
+  const isColoredContext = (node: ReactNode): boolean => {
+    if (!node || typeof node !== "object" || !("props" in node)) return false;
+    const element = node as React.ReactElement;
+    const props = element.props as Record<string, unknown>;
+    if ("data-spk" in props) return true;
+    if (props.style && typeof props.style === "object") {
+      const style = props.style as Record<string, unknown>;
+      if ("color" in style || "WebkitTextFillColor" in style) return true;
+    }
+    if (element.type === "font") return true;
+    return false;
+  };
+
+  const processString = (str: string, nodeIdx: number): ReactNode => {
+    if (!str || str.length === 0) return str;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let k = 0;
+    nameRegex.lastIndex = 0;
+    while ((match = nameRegex.exec(str)) !== null) {
+      if (match.index > lastIndex) parts.push(str.slice(lastIndex, match.index));
+      const matchedName = match[0];
+      const color = nameColorMap.get(matchedName.toLowerCase());
+      if (color) {
+        if (isGradientNameColor(color)) {
+          const style: React.CSSProperties = {
+            ...gradientNameColorStyle(color),
+            display: "inline",
+            fontWeight: 700,
+            WebkitTextStroke: "0px",
+            paintOrder: "fill",
+            textShadow: "none",
+            ...(textShadow ? { filter: `drop-shadow(${textShadow})` } : {}),
+          };
+          parts.push(
+            <span key={`name-color-${nodeIdx}-${k++}`} style={style}>
+              {matchedName}
+            </span>,
+          );
+        } else {
+          const style: React.CSSProperties = {
+            color,
+            WebkitTextFillColor: color,
+            fontWeight: 700,
+          };
+          parts.push(
+            <span key={`name-color-${nodeIdx}-${k++}`} style={style}>
+              {matchedName}
+            </span>,
+          );
+        }
+      } else {
+        parts.push(matchedName);
+      }
+      lastIndex = match.index + matchedName.length;
+    }
+    if (parts.length === 0) return str;
+    if (lastIndex < str.length) parts.push(str.slice(lastIndex));
+    return parts;
+  };
+
+  const processNode = (node: ReactNode, idx: number): ReactNode => {
+    if (node === null || node === undefined || typeof node === "boolean") return node;
+    if (typeof node === "string") return processString(node, idx);
+    if (typeof node === "number") return node;
+    if (isCodeNode(node) || isColoredContext(node)) return node;
+
+    if (node && typeof node === "object" && "props" in node) {
+      const element = node as React.ReactElement;
+      const props = element.props as Record<string, unknown>;
+      if (props.children !== undefined) {
+        const children = Array.isArray(props.children)
+          ? props.children.map((c: ReactNode, i: number) => processNode(c, i))
+          : processNode(props.children as ReactNode, 0);
+        return { ...element, props: { ...props, children } };
+      }
+    }
+    return node;
+  };
+
+  if (Array.isArray(nodes)) {
+    return nodes.map((n, i) => processNode(n, i));
+  }
+  return processNode(nodes, 0);
+}
+
+/**
  * Render message content, handling both plain text with dialogue highlighting
  * and HTML blocks that should be rendered as actual HTML.
  */
@@ -1459,20 +1573,21 @@ function renderContent(
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
   const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
 
-  // Apply inline name coloring before dialogue highlighting — skips names inside quotes
+  const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
+  const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
+
   const withNameColors = nameColorMap && nameColorMap.size > 0
     ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow)
     : normalized;
 
-  // Strip speaker tags before HTML detection (they aren't real HTML)
-  const withoutSpeakerTags = withNameColors.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
-
-  if (!HTML_TAG_RE.test(withoutSpeakerTags)) {
-    // renderWithHeadings handles headings, *** and --- horizontal rules,
-    // and delegates the rest to speaker-tag / dialogue rendering.
-    return renderMarkdownBlocks(withNameColors, (seg, _kp) =>
+  if (!isHtmlPath) {
+    const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),
     );
+    if (nameColorMap && nameColorMap.size > 0) {
+      return colorNamesInNodes(markdownResult, nameColorMap, textShadow);
+    }
+    return markdownResult;
   }
 
   // For HTML content, replace speaker tags with color-annotated spans (preserves per-character colors)

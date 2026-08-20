@@ -5490,6 +5490,10 @@ const chatSetupWizardSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatSetupWizard.tsx", import.meta.url),
   "utf8",
 );
+const setupGenerationParametersStart = chatSetupWizardSource.indexOf("function SetupGenerationParametersPanel");
+const chatSetupWizardEnd = chatSetupWizardSource.indexOf("export function ChatSetupWizard");
+assert.ok(setupGenerationParametersStart >= 0 && chatSetupWizardEnd > setupGenerationParametersStart);
+const setupGenerationParametersSource = chatSetupWizardSource.slice(setupGenerationParametersStart, chatSetupWizardEnd);
 const convoProfileFieldsSource = readFileSync(
   new URL("../../packages/client/src/components/characters/ConvoProfileFields.tsx", import.meta.url),
   "utf8",
@@ -5835,10 +5839,7 @@ assert.match(
   "Persona versioning must use the shared aligned settings switch",
 );
 assert.match(
-  chatSetupWizardSource.slice(
-    chatSetupWizardSource.indexOf("function SetupGenerationParametersPanel"),
-    chatSetupWizardSource.indexOf("export function ChatSetupWizard"),
-  ),
+  setupGenerationParametersSource,
   /className="flex min-w-0 w-full items-center justify-between gap-3 text-left"[\s\S]*className="min-w-0 flex-1"[\s\S]*"h-5 w-9 shrink-0 rounded-full/u,
   "The New Chat parameter toggle must stay within its card when Android enlarges text",
 );

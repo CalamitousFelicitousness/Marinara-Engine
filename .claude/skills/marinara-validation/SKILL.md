@@ -256,10 +256,12 @@ so `git stash push` passes (verified 2026-08-20). The old advice to spell it
 `git stash -u -m "message"` is obsolete.
 
 What still trips the guard is its fallback scan: a command that is unparseable,
-or that combines a shell-exec word with the literal words `git` and `push`
-anywhere in the raw text — including inside a heredoc body. Writing a doc file
-via `cat > x.md <<'EOF'` whose body contains a ` ```bash ` fence and the phrase
-"git push" is blocked. Use the Write tool for such files instead of a heredoc.
+or one where a shell-exec or interpreter word survives outside heredoc bodies
+while `git` and `push` appear anywhere in the raw text. Since 2026-08-20 the
+guard strips heredoc bodies precisely (quote-aware, immune to conflict-marker
+fakes), so writing a doc file via `cat > x.md <<'EOF'` with a ` ```bash ` fence
+and the phrase "git push" in the body passes. It also blocks `gh` subcommands
+outside a read-verb allowlist, so `gh pr create` and friends are user-run only.
 
 ## Local guards
 

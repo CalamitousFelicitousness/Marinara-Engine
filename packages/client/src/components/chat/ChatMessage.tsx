@@ -1204,6 +1204,137 @@ function extractChatStyleBlocks(html: string): { html: string; css: string } {
   return { html: withoutStyles, css: cssBlocks.join("\n") };
 }
 /**
+ * Extract the brightest solid color from a gradient string.
+ * Handles formats like: gradient(linear-gradient(90deg, #ff6b6b, #4ecdc4))
+ * Parses all color stops, converts to RGB, and picks the one with highest
+ * perceived luminance (0.299*R + 0.587*G + 0.114*B).
+ * Falls back to a sensible default if extraction fails.
+ */
+function extractSolidColorFromGradient(gradientStr: string): string {
+  // Extract the inner gradient content
+  const inner = gradientStr.replace(/^gradient\(\s*/i, "").replace(/\s*\)$/i, "");
+
+  // Collect ALL color values from the gradient string
+  const colors: string[] = [];
+
+  // Hex colors (#rgb, #rrggbb, #rrggbbaa)
+  const hexMatches = inner.match(/#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g);
+  if (hexMatches) colors.push(...hexMatches);
+
+  // rgb/rgba colors
+  const rgbMatches = inner.match(/rgba?\([^)]+\)/gi);
+  if (rgbMatches) colors.push(...rgbMatches);
+
+  // hsl/hsla colors
+  const hslMatches = inner.match(/hsla?\([^)]+\)/gi);
+  if (hslMatches) colors.push(...hslMatches);
+
+  // Named CSS colors (extended list)
+  const namedMatches = inner.match(/\b(red|blue|green|yellow|purple|orange|pink|cyan|magenta|white|black|gray|grey|brown|navy|teal|lime|gold|crimson|salmon|coral|turquoise|indigo|violet|silver|maroon|olive|aqua|fuchsia|azure|beige|chocolate|lavender|plum|orchid|tan|wheat|ivory|seashell|snow|linen|khaki|goldenrod|darkred|darkblue|darkgreen|lightblue|lightgreen|lightcoral|lightpink|lightsalmon|lightseagreen|skyblue|steelblue|royalblue|midnightblue|dodgerblue|deepskyblue|cornflowerblue|mediumslateblue|slateblue|darkslateblue|mediumpurple|rebeccapurple|darkorchid|darkviolet|mediumorchid|thistle|orchid|violet|indigo|darkmagenta|mediumvioletred|palevioletred|hotpink|deeppink|lightpink|pink|palegoldenrod|lemonchiffon|lightyellow|lightgoldenrodyellow)\b/gi);
+  if (namedMatches) colors.push(...namedMatches);
+
+  if (colors.length === 0) return "#4ecdc4";
+
+  // Convert any color string to {r, g, b}
+  const toRgb = (color: string): { r: number; g: number; b: number } | null => {
+    // Hex
+    if (color.startsWith("#")) {
+      let hex = color.slice(1);
+      if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+      if (hex.length === 4) hex = hex.slice(0, 3).split("").map((c) => c + c).join("");
+      if (hex.length >= 6) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+        };
+      }
+      return null;
+    }
+
+    // rgb/rgba
+    const rgbMatch = color.match(/rgba?\(([^)]+)\)/i);
+    if (rgbMatch) {
+      const parts = rgbMatch[1].split(",").map((p) => parseFloat(p.trim()));
+      if (parts.length >= 3) {
+        return { r: parts[0], g: parts[1], b: parts[2] };
+      }
+      return null;
+    }
+
+    // hsl/hsla
+    const hslMatch = color.match(/hsla?\(([^)]+)\)/i);
+    if (hslMatch) {
+      const parts = hslMatch[1].split(",").map((p) => parseFloat(p.trim().replace("%", "")));
+      if (parts.length >= 3) {
+        const h = parts[0] / 360;
+        const s = parts[1] / 100;
+        const l = parts[2] / 100;
+        const hue2rgb = (p: number, q: number, t: number) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return {
+          r: Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+          g: Math.round(hue2rgb(p, q, h) * 255),
+          b: Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+        };
+      }
+      return null;
+    }
+
+    // Named colors — use a canvas or a lookup table
+    // For simplicity, use the browser's color parser via a temporary element
+    if (typeof document !== "undefined") {
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = color;
+        const computed = ctx.fillStyle;
+        if (computed.startsWith("#")) {
+          return toRgb(computed);
+        }
+        if (computed.startsWith("rgb")) {
+          return toRgb(computed);
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Calculate perceived luminance: 0.299*R + 0.587*G + 0.114*B
+  const luminance = (rgb: { r: number; g: number; b: number }) =>
+    0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+
+  // Find the brightest color
+  let bestColor = colors[0];
+  let bestLuminance = -1;
+
+  for (const color of colors) {
+    const rgb = toRgb(color);
+    if (!rgb) continue;
+    const lum = luminance(rgb);
+    if (lum > bestLuminance) {
+      bestLuminance = lum;
+      bestColor = color;
+    }
+  }
+
+  // Return the brightest color, normalized to hex if it was rgb/hsl
+  const bestRgb = toRgb(bestColor);
+  if (bestRgb) {
+    return `#${bestRgb.r.toString(16).padStart(2, "0")}${bestRgb.g.toString(16).padStart(2, "0")}${bestRgb.b.toString(16).padStart(2, "0")}`;
+  }
+
+  return bestColor;
+}
+/**
  * Color character names in text, skipping any name that appears inside
  * quotation marks (dialogue). Works on raw text before dialogue highlighting.
  * Supports gradient colors via background-clip and bold weight.
@@ -1279,7 +1410,7 @@ function colorNamesSkippingQuotes(
             const styleStr = Object.entries(style)
               .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}:${v}`)
               .join(";");
-            result.push(`<span style="${styleStr};font-weight:700">${matchedName}</span>`);
+            result.push(`<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill">${matchedName}</span>`);
           } else {
             result.push(`<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`);
           }
@@ -1571,6 +1702,7 @@ export const ChatMessage = memo(function ChatMessage({
     showMessageNumbers,
     boldDialogue,
     colorInlineNames,
+    disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
     ttsLineVolume,
@@ -1593,6 +1725,7 @@ export const ChatMessage = memo(function ChatMessage({
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
       colorInlineNames: s.colorInlineNames,
+      disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
       ttsLineVolume: s.ttsLineVolume,
@@ -2307,16 +2440,20 @@ export const ChatMessage = memo(function ChatMessage({
     characterMap.forEach((char) => {
       const color = char.nameColor;
       if (!color) return;
-      map.set(char.name.toLowerCase(), color);
-      if (char.convoDisplayName) map.set(char.convoDisplayName.toLowerCase(), color);
+      // If gradients are disabled, extract the first solid color from gradient strings
+      const effectiveColor = disableInlineNameGradients && isGradientNameColor(color)
+        ? extractSolidColorFromGradient(color)
+        : color;
+      map.set(char.name.toLowerCase(), effectiveColor);
+      if (char.convoDisplayName) map.set(char.convoDisplayName.toLowerCase(), effectiveColor);
       if (char.nameAliases) {
         for (const alias of char.nameAliases) {
-          map.set(alias.toLowerCase(), color);
+          map.set(alias.toLowerCase(), effectiveColor);
         }
       }
     });
     return map.size > 0 ? map : null;
-  }, [colorInlineNames, characterMap]);
+  }, [colorInlineNames, characterMap, disableInlineNameGradients]);
 
   // Build speaker → dialogueColor map for group chat speaker tag coloring
   const speakerColorMap = useMemo(() => {

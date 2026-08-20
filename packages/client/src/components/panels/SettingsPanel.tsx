@@ -3362,6 +3362,8 @@ function GeneralSettings() {
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
   const colorInlineNames = useUIStore((s) => s.colorInlineNames);
   const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
+  const disableInlineNameGradients = useUIStore((s) => s.disableInlineNameGradients);
+  const setDisableInlineNameGradients = useUIStore((s) => s.setDisableInlineNameGradients);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
@@ -3689,20 +3691,28 @@ function GeneralSettings() {
             help={localizeUi("settings.controls.boldDialogue.help")}
           />
           <ToggleSetting
-            anchorId={getSettingsControlAnchorId("color-inline-names")}
-            label={localizeUi("settings.controls.colorInlineNames.label")}
-            checked={colorInlineNames ?? false}
-            onChange={setColorInlineNames}
-            help={localizeUi("settings.controls.colorInlineNames.help")}
-          />
-          <ToggleSetting
             anchorId={getSettingsControlAnchorId("convert-latex-symbols")}
             label={localizeUi("settings.controls.convertLatex.label")}
             checked={convertLatexSymbols}
             onChange={setConvertLatexSymbols}
             help={localizeUi("ui.panels.generalsettings.turnsCommonModelWrittenLatexCommandsLikeRightarrowNeq")}
           />
-
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("color-inline-names")}
+            label={localizeUi("settings.controls.colorInlineNames.label")}
+            checked={colorInlineNames ?? false}
+            onChange={setColorInlineNames}
+            help={localizeUi("settings.controls.colorInlineNames.help")}
+          />
+          {colorInlineNames && (
+            <ToggleSetting
+              anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
+              label={localizeUi("settings.controls.disableInlineNameGradients.label")}
+              checked={disableInlineNameGradients ?? false}
+              onChange={setDisableInlineNameGradients}
+              help={localizeUi("settings.controls.disableInlineNameGradients.help")}
+            />
+          )}
           <div
             id={getSettingsControlAnchorId("quote-style")}
             className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--secondary)]/50"

@@ -5529,6 +5529,10 @@ const androidMainActivitySource = readFileSync(
   new URL("../../android/app/src/main/java/com/marinara/engine/MainActivity.java", import.meta.url),
   "utf8",
 );
+const configureWebViewStart = androidMainActivitySource.indexOf("private void configureWebView()");
+const configureWebViewEnd = androidMainActivitySource.indexOf("private void tryConnect()", configureWebViewStart);
+assert.ok(configureWebViewStart >= 0 && configureWebViewEnd > configureWebViewStart);
+const configureWebViewSource = androidMainActivitySource.slice(configureWebViewStart, configureWebViewEnd);
 const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
@@ -5816,7 +5820,7 @@ assert.match(
 );
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
-  androidMainActivitySource,
+  configureWebViewSource,
   /settings\.setTextZoom\(100\);/u,
   "The Android wrapper must not inherit oversized WebView text zoom",
 );
@@ -5831,7 +5835,10 @@ assert.match(
   "Persona versioning must use the shared aligned settings switch",
 );
 assert.match(
-  chatSetupWizardSource,
+  chatSetupWizardSource.slice(
+    chatSetupWizardSource.indexOf("function SetupGenerationParametersPanel"),
+    chatSetupWizardSource.indexOf("export function ChatSetupWizard"),
+  ),
   /className="flex min-w-0 w-full items-center justify-between gap-3 text-left"[\s\S]*className="min-w-0 flex-1"[\s\S]*"h-5 w-9 shrink-0 rounded-full/u,
   "The New Chat parameter toggle must stay within its card when Android enlarges text",
 );

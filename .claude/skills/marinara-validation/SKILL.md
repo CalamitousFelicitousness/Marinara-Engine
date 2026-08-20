@@ -139,8 +139,11 @@ at the same durations every run:
 
 - `Character favorite tags and stars inherit the configured accent color` (~1.0m)
 - `Character Chat actions reuse mode selection and seed the chosen setup wizard` (~2.1m)
+- `Professor Mari history opens a loaded chat at its newest message` (both projects,
+  60s timeout each) — waits forever for the `Ask Professor Mari` button inside
+  `[data-component="HomeProfessorMariChat.MariPanel"]`
 
-Both are `locator.click: Test timeout exceeded`.
+All are `locator.click: Test timeout exceeded`.
 
 If you see these, they are not yours. If you see *other* failures and need to
 know whether your change caused them, the ladder is:

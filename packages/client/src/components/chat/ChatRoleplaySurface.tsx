@@ -957,6 +957,10 @@ function AuthorNotesButton({
       const target = e.target as Node;
       if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
       if (target instanceof Element && target.closest("[data-macro-modal]")) return;
+      // App dialogs (the preset name prompt, the discard guard) portal outside
+      // this panel and sit above it. Clicking one is not an outside click, or
+      // the panel unmounts under the dialog its own handler opened.
+      if (target instanceof Element && target.closest("[data-chat-floating-panel]")) return;
       // On mobile, the virtual keyboard opening can synthesise a pointer/mouse
       // event outside the panel that would otherwise close it mid-edit; don't
       // dismiss while a field inside the panel is focused. Mobile-only: on desktop

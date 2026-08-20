@@ -22,6 +22,8 @@ import {
   useUpdateAuthorNotePreset,
 } from "../../hooks/use-author-note-presets";
 import { type BudgetSkippedLorebookEntry, useActiveLorebookEntries } from "../../hooks/use-lorebooks";
+import { toast } from "sonner";
+import { showChoiceDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import {
@@ -375,14 +377,73 @@ export function ActiveLorebookEntriesPanel({
 
 type AuthorNoteEditTarget = { kind: "chat" } | { kind: "preset"; id: string };
 
+/** Editor contents as last written to the server. `name` is unused for the chat note. */
+type AuthorNoteBaseline = { notes: string; depth: number; name: string };
+
+/** Everything the editor holds for one chat, saved or not. */
+type AuthorNoteDraft = {
+  target: AuthorNoteEditTarget;
+  notes: string;
+  depthStr: string;
+  presetName: string;
+  baseline: AuthorNoteBaseline;
+};
+
 const AUTHOR_NOTE_DEFAULT_DEPTH = 4;
+
+// Unsaved editor state, parked by chat id across popover unmount.
+// The popover unmounts on outside click, Escape, and toolbar toggle. Autosave
+// made that lossless; explicit save does not, so the draft is held here rather
+// than written. Never reaches the server: a reload drops it, like any unsaved edit.
+const authorNoteDrafts = new Map<string, AuthorNoteDraft>();
 
 function readActivePresetIds(chatMeta: Record<string, any>): string[] {
   const raw = chatMeta.activeAuthorNotePresetIds;
   return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
 }
 
-/** Name from the note body, so saving needs no modal. */
+function parseAuthorNoteDepth(raw: string): number {
+  return Math.max(0, parseInt(raw, 10) || 0);
+}
+
+function readChatNoteBaseline(chatMeta: Record<string, any>): AuthorNoteBaseline {
+  return {
+    notes: (chatMeta.authorNotes as string) ?? "",
+    depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
+    name: "",
+  };
+}
+
+function chatNoteDraft(chatMeta: Record<string, any>): AuthorNoteDraft {
+  const baseline = readChatNoteBaseline(chatMeta);
+  return {
+    target: { kind: "chat" },
+    notes: baseline.notes,
+    depthStr: String(baseline.depth),
+    presetName: "",
+    baseline,
+  };
+}
+
+/**
+ * Drives the Save button, the "(edited)" marker, and the discard prompt.
+ *
+ * Compares parsed depth, not the raw field, so "04" is not an edit. A preset
+ * rename counts; the chat note has no name to rename.
+ */
+function isAuthorNoteDraftDirty(draft: AuthorNoteDraft): boolean {
+  return (
+    draft.notes !== draft.baseline.notes ||
+    parseAuthorNoteDepth(draft.depthStr) !== draft.baseline.depth ||
+    (draft.target.kind === "preset" && draft.presetName.trim() !== draft.baseline.name)
+  );
+}
+
+function isSameAuthorNoteTarget(left: AuthorNoteEditTarget, right: AuthorNoteEditTarget): boolean {
+  return left.kind === "chat" ? right.kind === "chat" : right.kind === "preset" && left.id === right.id;
+}
+
+/** Default offered in the name prompt, so naming a preset is usually one keypress. */
 function derivePresetName(content: string, fallback: string): string {
   const firstLine = content.trim().split("\n", 1)[0]?.trim() ?? "";
   if (!firstLine) return fallback;
@@ -405,119 +466,107 @@ export function AuthorNotesPanel({
   const updatePreset = useUpdateAuthorNotePreset();
   const deletePreset = useDeleteAuthorNotePreset();
 
-  const chatNoteBaseline = {
-    notes: (chatMeta.authorNotes as string) ?? "",
-    depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
-  };
-
-  const [target, setTarget] = useState<AuthorNoteEditTarget>({ kind: "chat" });
-  const [notes, setNotes] = useState(chatNoteBaseline.notes);
-  const [depthStr, setDepthStr] = useState(String(chatNoteBaseline.depth));
-  const [presetName, setPresetName] = useState("");
+  // Mounted with key={chatId} at both call sites, so switching chats remounts
+  // and re-reads the parked draft. Nothing here handles chatId changing in place.
+  const [draft, setDraft] = useState<AuthorNoteDraft>(
+    () => authorNoteDrafts.get(chatId) ?? chatNoteDraft(chatMeta),
+  );
+  const { target, notes, depthStr, presetName, baseline } = draft;
+  const dirty = isAuthorNoteDraftDirty(draft);
+  const savePending = updateMeta.isPending || updatePreset.isPending;
 
   const activeIds = readActivePresetIds(chatMeta);
   const activeIdSet = new Set(activeIds);
 
-  // Refs mirror live state so the unmount flush reads final values without
-  // re-subscribing per keystroke.
-  const liveRef = useRef({ target, notes, depthStr, presetName });
-  liveRef.current = { target, notes, depthStr, presetName };
-  const baselineRef = useRef({ notes: chatNoteBaseline.notes, depth: chatNoteBaseline.depth, name: "" });
-  const mutateMetaRef = useRef(updateMeta.mutate);
-  mutateMetaRef.current = updateMeta.mutate;
-  const mutatePresetRef = useRef(updatePreset.mutate);
-  mutatePresetRef.current = updatePreset.mutate;
+  const patchDraft = (patch: Partial<AuthorNoteDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
-  const parseDepth = (raw: string) => Math.max(0, parseInt(raw, 10) || 0);
-
-  // Persist the editor to its current target. Ref-based, so it is safe to call
-  // from an unmount cleanup.
-  const flush = (chatIdForFlush: string) => {
-    const live = liveRef.current;
-    const base = baselineRef.current;
-    const depth = parseDepth(live.depthStr);
-    if (live.target.kind === "chat") {
-      if (live.notes !== base.notes || depth !== base.depth) {
-        mutateMetaRef.current({ id: chatIdForFlush, authorNotes: live.notes, authorNotesDepth: depth });
-        baselineRef.current = { ...base, notes: live.notes, depth };
-      }
-      return;
-    }
-    const name = live.presetName.trim();
-    if (live.notes !== base.notes || depth !== base.depth || name !== base.name) {
-      mutatePresetRef.current({
-        id: live.target.id,
-        content: live.notes,
-        depth,
-        ...(name ? { name } : {}),
-      });
-      baselineRef.current = { notes: live.notes, depth, name };
-    }
-  };
-
-  // Chat switch: abandon any open preset, load the new chat's note.
-  // Loads here rather than in the sync effect below: on the render where chatId
-  // changes, state has not flushed, so that effect's ref guard still sees the
-  // old preset open and bails, stranding preset text in a box aimed at the new
-  // chat.
+  // Park the draft on unmount so an outside click cannot destroy typed text.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
-    const next = {
-      notes: (chatMeta.authorNotes as string) ?? "",
-      depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
+    return () => {
+      const live = draftRef.current;
+      if (isAuthorNoteDraftDirty(live)) authorNoteDrafts.set(chatId, live);
+      else authorNoteDrafts.delete(chatId);
     };
-    setTarget({ kind: "chat" });
-    setPresetName("");
-    setNotes(next.notes);
-    setDepthStr(String(next.depth));
-    baselineRef.current = { notes: next.notes, depth: next.depth, name: "" };
-    // Let the sync effect below see the reset in this same pass.
-    liveRef.current = { ...liveRef.current, target: { kind: "chat" }, presetName: "" };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   // Reload the chat-local note when edited elsewhere. Skipped while a preset is
-  // open, so a metadata round-trip cannot overwrite preset text in the editor.
+  // open or the editor is dirty, so a background refetch cannot overwrite
+  // unsaved text.
   useEffect(() => {
-    if (liveRef.current.target.kind !== "chat") return;
-    const next = {
-      notes: (chatMeta.authorNotes as string) ?? "",
-      depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
-    };
-    setNotes(next.notes);
-    setDepthStr(String(next.depth));
-    baselineRef.current = { notes: next.notes, depth: next.depth, name: "" };
-  }, [chatId, chatMeta.authorNotes, chatMeta.authorNotesDepth]);
-
-  // Outside-click closes the popover via mousedown, which unmounts the textarea
-  // before its onBlur (the only save trigger) can fire. Flush the pending edit
-  // from the unmount cleanup so typed content survives.
-  useEffect(() => {
-    const capturedChatId = chatId;
-    return () => flush(capturedChatId);
+    setDraft((current) => {
+      if (current.target.kind !== "chat" || isAuthorNoteDraftDirty(current)) return current;
+      const next = readChatNoteBaseline(chatMeta);
+      if (next.notes === current.baseline.notes && next.depth === current.baseline.depth) return current;
+      return { ...current, notes: next.notes, depthStr: String(next.depth), baseline: next };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatMeta.authorNotes, chatMeta.authorNotesDepth]);
 
-  const openTarget = (next: AuthorNoteEditTarget) => {
-    flush(chatId);
+  const editingPreset = target.kind === "preset" ? presets.find((p) => p.id === target.id) : undefined;
+  const editorLabel =
+    target.kind === "preset"
+      ? baseline.name || localizeUi("ui.chat.authornotespanel.untitledPreset")
+      : localizeUi("ui.chat.authornotespanel.thisChatsNote");
+
+  // Awaited, so the dialog's Save option can hold the switch until the write
+  // lands. Baseline moves only on success, so a failed write stays "(edited)".
+  const saveDraft = async (): Promise<boolean> => {
+    const depth = parseAuthorNoteDepth(depthStr);
+    try {
+      if (target.kind === "chat") {
+        await updateMeta.mutateAsync({ id: chatId, authorNotes: notes, authorNotesDepth: depth });
+        patchDraft({ baseline: { notes, depth, name: "" } });
+        return true;
+      }
+      // A preset always keeps a name; blanking the field reverts to the saved one.
+      const name = presetName.trim() || baseline.name;
+      if (name !== presetName) patchDraft({ presetName: name });
+      await updatePreset.mutateAsync({ id: target.id, content: notes, depth, name });
+      patchDraft({ baseline: { notes, depth, name } });
+      return true;
+    } catch {
+      // Nothing else reports this: no global mutation error handler, and the
+      // editor deliberately keeps the text rather than reverting.
+      toast.error(localizeUi("ui.chat.authornotespanel.saveFailed"));
+      return false;
+    }
+  };
+
+  /** Save / Discard / Keep editing before abandoning edits. False = stay put. */
+  const resolveUnsavedEdits = async (): Promise<boolean> => {
+    if (!isAuthorNoteDraftDirty(draftRef.current)) return true;
+    const choice = await showChoiceDialog({
+      title: localizeUi("ui.chat.authornotespanel.unsavedChangesTitle"),
+      message: localizeUi("ui.chat.authornotespanel.unsavedChangesPrompt", { name: editorLabel }),
+      choices: [
+        { key: "save", label: localizeUi("ui.chat.authornotespanel.saveAndSwitch") },
+        { key: "discard", label: localizeUi("ui.chat.authornotespanel.discardChanges"), tone: "destructive" },
+      ],
+      cancelLabel: localizeUi("ui.chat.authornotespanel.keepEditing"),
+    });
+    // A failed save keeps the editor where it is, with the text still marked.
+    if (choice === "save") return saveDraft();
+    return choice === "discard";
+  };
+
+  const openTarget = async (next: AuthorNoteEditTarget) => {
+    if (isSameAuthorNoteTarget(next, target)) return;
+    if (!(await resolveUnsavedEdits())) return;
     if (next.kind === "chat") {
-      const base = {
-        notes: (chatMeta.authorNotes as string) ?? "",
-        depth: (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH,
-      };
-      setNotes(base.notes);
-      setDepthStr(String(base.depth));
-      setPresetName("");
-      baselineRef.current = { notes: base.notes, depth: base.depth, name: "" };
-      setTarget(next);
+      setDraft(chatNoteDraft(chatMeta));
       return;
     }
     const preset = presets.find((candidate) => candidate.id === next.id);
     if (!preset) return;
-    setNotes(preset.content);
-    setDepthStr(String(preset.depth));
-    setPresetName(preset.name);
-    baselineRef.current = { notes: preset.content, depth: preset.depth, name: preset.name };
-    setTarget(next);
+    setDraft({
+      target: next,
+      notes: preset.content,
+      depthStr: String(preset.depth),
+      presetName: preset.name,
+      baseline: { notes: preset.content, depth: preset.depth, name: preset.name },
+    });
   };
 
   const toggleActive = (presetId: string) => {
@@ -525,12 +574,20 @@ export function AuthorNotesPanel({
     updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: next });
   };
 
-  const handleSaveAsPreset = () => {
+  const handleSaveAsPreset = async () => {
     const content = notes.trim();
     if (!content) return;
-    const name = derivePresetName(content, localizeUi("ui.chat.authornotespanel.untitledPreset"));
+    const entered = await showPromptDialog({
+      title: localizeUi("ui.chat.authornotespanel.namePresetTitle"),
+      message: localizeUi("ui.chat.authornotespanel.namePresetPrompt"),
+      defaultValue: derivePresetName(content, localizeUi("ui.chat.authornotespanel.untitledPreset")),
+      placeholder: localizeUi("ui.chat.authornotespanel.presetName"),
+      confirmLabel: localizeUi("ui.chat.authornotespanel.savePreset"),
+    });
+    const name = entered?.trim();
+    if (!name) return;
     createPreset.mutate(
-      { name, content, depth: parseDepth(depthStr) },
+      { name, content, depth: parseAuthorNoteDepth(depthStr) },
       {
         onSuccess: (created) => {
           if (!created) return;
@@ -541,28 +598,29 @@ export function AuthorNotesPanel({
             authorNotes: "",
             activeAuthorNotePresetIds: [...activeIds, created.id],
           });
-          setNotes("");
-          baselineRef.current = { ...baselineRef.current, notes: "" };
+          // Depth was saved onto the preset, not the chat, so the emptied chat
+          // note keeps the depth already stored for it.
+          const depth = (chatMeta.authorNotesDepth as number) ?? AUTHOR_NOTE_DEFAULT_DEPTH;
+          setDraft({
+            target: { kind: "chat" },
+            notes: "",
+            depthStr: String(depth),
+            presetName: "",
+            baseline: { notes: "", depth, name: "" },
+          });
         },
       },
     );
   };
 
   const handleDeletePreset = (presetId: string) => {
-    if (target.kind === "preset" && target.id === presetId) {
-      // Drop the editor's claim before the preset disappears, or the unmount
-      // flush writes its content back against a dead id.
-      baselineRef.current = { notes, depth: parseDepth(depthStr), name: presetName };
-      openTarget({ kind: "chat" });
-    }
+    // Deleting the open preset drops its edits with it — the delete is explicit.
+    if (target.kind === "preset" && target.id === presetId) setDraft(chatNoteDraft(chatMeta));
     deletePreset.mutate(presetId);
     if (activeIdSet.has(presetId)) {
       updateMeta.mutate({ id: chatId, activeAuthorNotePresetIds: activeIds.filter((id) => id !== presetId) });
     }
   };
-
-  const editingPreset = target.kind === "preset" ? presets.find((p) => p.id === target.id) : undefined;
-  const saveCurrent = () => flush(chatId);
 
   return (
     <>
@@ -586,7 +644,7 @@ export function AuthorNotesPanel({
         <div className="mb-2 flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => openTarget({ kind: "chat" })}
+            onClick={() => void openTarget({ kind: "chat" })}
             aria-label={localizeUi("ui.chat.authornotespanel.backToChatNote")}
             title={localizeUi("ui.chat.authornotespanel.backToChatNote")}
             className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--secondary)] p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
@@ -596,8 +654,7 @@ export function AuthorNotesPanel({
           <input
             type="text"
             value={presetName}
-            onChange={(e) => setPresetName(e.target.value)}
-            onBlur={saveCurrent}
+            onChange={(e) => patchDraft({ presetName: e.target.value })}
             aria-label={localizeUi("ui.chat.authornotespanel.presetName")}
             placeholder={localizeUi("ui.chat.authornotespanel.presetName")}
             className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-[0.6875rem] text-[var(--foreground)] outline-none transition-colors focus:ring-2 focus:ring-[var(--ring)]"
@@ -607,9 +664,7 @@ export function AuthorNotesPanel({
 
       <MacroTextarea
         value={notes}
-        onChange={setNotes}
-        onBlur={saveCurrent}
-        onExpandedClose={saveCurrent}
+        onChange={(value) => patchDraft({ notes: value })}
         title={editingPreset ? editingPreset.name : localizeUi("ui.chat.authornotespanel.authorSNotes")}
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
@@ -625,27 +680,40 @@ export function AuthorNotesPanel({
           type="text"
           inputMode="numeric"
           value={depthStr}
-          onChange={(e) => setDepthStr(e.target.value.replace(/[^0-9]/g, ""))}
-          onBlur={() => {
-            setDepthStr(String(parseDepth(depthStr)));
-            saveCurrent();
-          }}
+          onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
+          onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
           className="w-14 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-center text-[0.625rem] text-[var(--foreground)] outline-none transition-colors [appearance:textfield] focus:ring-2 focus:ring-[var(--ring)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
-        {target.kind === "chat" && (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {dirty && (
+            <span className="text-[0.625rem] italic text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.authornotespanel.editedMarker")}
+            </span>
+          )}
           <button
             type="button"
-            onClick={handleSaveAsPreset}
-            disabled={!notes.trim() || createPreset.isPending}
-            className="ml-auto shrink-0 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void saveDraft()}
+            disabled={!dirty || savePending}
+            className="rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {localizeUi("ui.chat.authornotespanel.saveAsPreset")}
+            {localizeUi("ui.chat.authornotespanel.save")}
           </button>
-        )}
+        </div>
       </div>
       <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
         {localizeUi("ui.chat.authornotespanel.depth0AfterTheLatestMessage4FourMessages")}
       </p>
+
+      {target.kind === "chat" && (
+        <button
+          type="button"
+          onClick={() => void handleSaveAsPreset()}
+          disabled={!notes.trim() || createPreset.isPending}
+          className="mt-2 w-full rounded-md border border-dashed border-[var(--border)] px-2 py-1 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--ring)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {localizeUi("ui.chat.authornotespanel.saveAsPreset")}
+        </button>
+      )}
 
       <div className="mt-3 border-t border-[var(--border)] pt-2">
         <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-1.5")}>
@@ -694,12 +762,17 @@ export function AuthorNotesPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => openTarget({ kind: "preset", id: preset.id })}
+                    onClick={() => void openTarget({ kind: "preset", id: preset.id })}
                     title={localizeUi("ui.chat.authornotespanel.editPresetInTheBoxAbove")}
                     className="min-w-0 flex-1 truncate text-left text-[0.6875rem] text-[var(--foreground)] transition-colors hover:text-[var(--primary)]"
                   >
                     {preset.name}
                   </button>
+                  {isEditing && dirty && (
+                    <span className="shrink-0 text-[0.5625rem] italic text-[var(--muted-foreground)]">
+                      {localizeUi("ui.chat.authornotespanel.editedMarker")}
+                    </span>
+                  )}
                   <span
                     title={localizeUi("ui.chat.authornotespanel.injectionDepth")}
                     className="shrink-0 rounded bg-[var(--background)] px-1 text-[0.5625rem] text-[var(--muted-foreground)]"

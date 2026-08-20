@@ -1148,19 +1148,128 @@ test("Author's Notes keeps its expand and full macro guide inside the field", as
     await expandedEditor.locator("textarea").fill(savedNotes);
     await expandedEditor.getByRole("button", { name: "Close expanded editor", exact: true }).click();
     await expect(panel).toBeVisible();
-    await expect
-      .poll(async () => {
-        const storedResponse = await request.get(`/api/chats/${chat.id}`);
-        const stored = (await storedResponse.json()) as { metadata: string | Record<string, unknown> };
-        const metadata =
-          typeof stored.metadata === "string"
-            ? (JSON.parse(stored.metadata) as Record<string, unknown>)
-            : stored.metadata;
-        return metadata.authorNotes;
-      })
-      .toBe(savedNotes);
+
+    // Saving is explicit: nothing persists until Save is pressed.
+    const readStoredNotes = async () => {
+      const storedResponse = await request.get(`/api/chats/${chat.id}`);
+      const stored = (await storedResponse.json()) as { metadata: string | Record<string, unknown> };
+      const metadata =
+        typeof stored.metadata === "string"
+          ? (JSON.parse(stored.metadata) as Record<string, unknown>)
+          : stored.metadata;
+      return metadata.authorNotes;
+    };
+    await expect(panel.getByText("(edited)")).toBeVisible();
+    expect(await readStoredNotes()).toBeUndefined();
+
+    await panel.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(readStoredNotes).toBe(savedNotes);
+    await expect(panel.getByText("(edited)")).toHaveCount(0);
+
+    // An edit after saving stays local until Save is pressed again.
+    await panel.getByRole("textbox", { name: "Author's Notes", exact: true }).fill("unsaved edit");
+    await expect(panel.getByText("(edited)")).toBeVisible();
+    await expect.poll(readStoredNotes).toBe(savedNotes);
   } finally {
     await request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
+  }
+});
+
+test("Author's Notes presets name on save and guard unsaved edits", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Preset editing is covered on desktop.");
+
+  const suffix = Date.now().toString(36);
+  const presetName = `Preset Smoke ${suffix}`;
+  const chatResponse = await request.post("/api/chats", {
+    data: { name: `Author Notes Preset Smoke ${suffix}`, mode: "roleplay", characterIds: [] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+
+  const readPreset = async () => {
+    const listed = await request.get("/api/author-note-presets");
+    const all = (await listed.json()) as Array<{ id: string; name: string; content: string }>;
+    return all.find((entry) => entry.name === presetName);
+  };
+
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Author's Notes", exact: true }).filter({ visible: true }).click();
+    const heading = page.locator("h3").filter({ hasText: "Author's Notes" });
+    await expect(heading).toBeVisible();
+    const panel = heading.locator("..");
+    const noteField = panel.getByRole("textbox", { name: "Author's Notes", exact: true });
+    const saveButton = panel.getByRole("button", { name: "Save", exact: true });
+
+    // Saving a new preset asks for the name rather than deriving one.
+    await noteField.fill("Keep the tone dry.");
+    await panel.getByRole("button", { name: "Save as preset", exact: true }).click();
+    const nameDialog = page.getByRole("dialog", { name: "Name this preset" });
+    await expect(nameDialog).toBeVisible();
+    await nameDialog.getByPlaceholder("Preset name").fill(presetName);
+    await nameDialog.getByRole("button", { name: "Save preset", exact: true }).click();
+    await expect(nameDialog).toHaveCount(0);
+
+    // The new preset is switched on and the chat box is emptied, so the same
+    // text cannot inject twice.
+    const presetRow = panel.locator("li").filter({ hasText: presetName });
+    await expect(presetRow).toBeVisible();
+    await expect(presetRow.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+    await expect(noteField).toHaveValue("");
+    expect((await readPreset())?.content).toBe("Keep the tone dry.");
+
+    // Editing a preset marks it, and marks its row in the list.
+    await presetRow.getByRole("button", { name: presetName, exact: true }).click();
+    await expect(noteField).toHaveValue("Keep the tone dry.");
+    await expect(saveButton).toBeDisabled();
+    await noteField.fill("Keep the tone damp.");
+    await expect(saveButton).toBeEnabled();
+    await expect(presetRow.getByText("(edited)")).toBeVisible();
+
+    // Leaving with unsaved edits offers save, discard, or staying put.
+    const backButton = panel.getByRole("button", { name: "Back to this chat's note", exact: true });
+    const guardDialog = page.getByRole("dialog", { name: "Unsaved changes" });
+    await backButton.click();
+    await expect(guardDialog).toBeVisible();
+    await guardDialog.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await expect(guardDialog).toHaveCount(0);
+    await expect(noteField).toHaveValue("Keep the tone damp.");
+    expect((await readPreset())?.content).toBe("Keep the tone dry.");
+
+    // Discarding drops the edit and leaves the stored preset untouched.
+    await backButton.click();
+    await expect(guardDialog).toBeVisible();
+    await guardDialog.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(guardDialog).toHaveCount(0);
+    await expect(backButton).toHaveCount(0);
+    expect((await readPreset())?.content).toBe("Keep the tone dry.");
+
+    // Saving from the guard commits the edit and then leaves.
+    await presetRow.getByRole("button", { name: presetName, exact: true }).click();
+    await noteField.fill("Keep the tone damp.");
+    await backButton.click();
+    await expect(guardDialog).toBeVisible();
+    await guardDialog.getByRole("button", { name: "Save and switch", exact: true }).click();
+    await expect(guardDialog).toHaveCount(0);
+    await expect(backButton).toHaveCount(0);
+    await expect(presetRow.getByText("(edited)")).toHaveCount(0);
+    await expect.poll(async () => (await readPreset())?.content).toBe("Keep the tone damp.");
+
+    // The Save button commits without leaving the preset.
+    await presetRow.getByRole("button", { name: presetName, exact: true }).click();
+    await noteField.fill("Keep the tone bone dry.");
+    await saveButton.click();
+    await expect(saveButton).toBeDisabled();
+    await expect(presetRow.getByText("(edited)")).toHaveCount(0);
+    await expect(backButton).toBeVisible();
+    await expect.poll(async () => (await readPreset())?.content).toBe("Keep the tone bone dry.");
+  } finally {
+    const stray = await readPreset();
+    await Promise.allSettled([
+      request.delete(`/api/chats/${chat.id}?force=true`),
+      ...(stray ? [request.delete(`/api/author-note-presets/${stray.id}`)] : []),
+    ]);
   }
 });
 

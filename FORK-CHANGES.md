@@ -32,8 +32,16 @@ style note can sit deep in the history while an urgent plot beat sits at depth 0
 notes share a depth, presets come first in library order and the chat-local note comes last,
 so the ad-hoc note sits closest to the model's turn and wins a contradiction by recency. The
 chat-local note is unchanged and still always-active, so existing chats need no migration.
-Clicking a preset loads it into the panel's text box for editing; a note typed into the box
-can be promoted with **Save as preset**.
+Clicking a preset loads it into the panel's text box for editing.
+
+Saving is explicit: the box never writes on blur, on close, or on switching away. A changed
+note is marked `(edited)` beside **Save** and on its row in the list. Leaving it for another
+preset raises a three-way guard — **Save and switch**, **Discard**, or **Keep editing** — and a
+failed save keeps the editor where it is with the text still marked, since there is no global
+mutation error handler. Promoting a typed note with **Save as preset** prompts for the name
+rather than deriving one from the first line. Unsaved text survives the popover closing: the
+draft is parked in memory per chat, never written, so an outside click cannot destroy it, and
+a reload drops it like any unsaved edit.
 
 Patches to upstream files: `packages/shared/src/types/chat.ts` (`ChatMetadata` gains the three
 fields — note that `authorNotes` and `authorNotesDepth` were previously read via untyped casts
@@ -41,8 +49,15 @@ and declared nowhere), `packages/server/src/routes/generate.routes.ts`,
 `packages/server/src/routes/generate/dry-run-route.ts`,
 `packages/server/src/routes/generate/retry-agents-route.ts`,
 `packages/server/src/routes/chats.routes.ts`, `packages/server/src/db/file-backed-store.ts`
-(table registration only — no `STORAGE_VERSION` bump, since new tables are additive), and
-`packages/client/src/components/chat/ChatRoleplayPanels.tsx`.
+(table registration only — no `STORAGE_VERSION` bump, since new tables are additive),
+`packages/client/src/components/chat/ChatRoleplayPanels.tsx`,
+`packages/client/src/components/chat/ChatRoleplaySurface.tsx`, and `e2e/core-flows.e2e.ts`.
+
+The `ChatRoleplaySurface.tsx` patch is one guard: the Author's Notes popover's outside-click
+handler now ignores clicks inside `[data-chat-floating-panel]`. It already exempted
+`[data-macro-modal]`; app dialogs portal outside the popover, so without this the panel
+unmounted underneath the name prompt and the discard guard it had just opened. Same guard
+`ChatGalleryDrawer` and `ChatSettingsDrawer` already carry.
 
 Those three generation routes each re-derived the note and re-hardcoded the default depth of
 `4` independently. They now share `packages/server/src/services/prompt/author-notes.ts`, and

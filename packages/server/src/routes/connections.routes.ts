@@ -279,10 +279,11 @@ export function buildConnectionTestCatalogUrl(
   modelsEndpoint = "/models",
   audioSource?: string | null,
 ): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
   if (provider === "audio" && (audioSource || "elevenlabs") === "elevenlabs") {
-    return `${baseUrl.replace(/\/v\d+$/, "")}/v1/models`;
+    return `${normalizedBaseUrl.replace(/\/v\d+$/, "")}/v1/models`;
   }
-  return `${baseUrl}${modelsEndpoint}`;
+  return `${normalizedBaseUrl}${modelsEndpoint}`;
 }
 
 function normalizeConnectionTestBaseUrl(baseUrl: string, provider: string): string {

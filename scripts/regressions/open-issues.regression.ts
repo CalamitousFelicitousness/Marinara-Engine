@@ -3733,14 +3733,14 @@ const googleModelsPageUrl = buildGoogleModelsPageUrl(
   "next page/token",
 );
 assert.equal(
-  buildConnectionTestCatalogUrl("https://api.elevenlabs.io", "audio", "/models", "elevenlabs"),
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/", "audio", "/models", "elevenlabs"),
   "https://api.elevenlabs.io/v1/models",
-  "ElevenLabs audio connection tests must use the versioned models endpoint",
+  "ElevenLabs audio connection tests must normalize a trailing slash and use the versioned models endpoint",
 );
 assert.equal(
-  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/v1", "audio", "/models", "elevenlabs"),
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/v1/", "audio", "/models", "elevenlabs"),
   "https://api.elevenlabs.io/v1/models",
-  "An explicitly versioned ElevenLabs URL must not duplicate the API version",
+  "An explicitly versioned ElevenLabs URL with a trailing slash must not duplicate the API version",
 );
 assert.equal(
   buildConnectionTestCatalogUrl("https://api.openai.com/v1", "audio", "/models", "openai"),

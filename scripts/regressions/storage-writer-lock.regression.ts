@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { closeDB, getDB } from "../../packages/server/src/db/connection.js";
 import {
   createFileNativeDB,
@@ -12,6 +13,7 @@ import {
 } from "../../packages/server/src/db/file-backed-store.js";
 import { appSettings, lorebookEntries, lorebooks } from "../../packages/server/src/db/schema/index.js";
 import { getMariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
+import { resolvePnpmRunner } from "../pnpm-runner.mjs";
 
 type LeaseRecord = {
   version: 1 | 2;
@@ -24,6 +26,7 @@ type LeaseRecord = {
 
 const previousStorageDir = process.env.FILE_STORAGE_DIR;
 const tempDirs: string[] = [];
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function useTempStorage(label: string) {
   const dir = mkdtempSync(join(tmpdir(), `marinara-${label}-`));
@@ -54,6 +57,36 @@ async function exitedPid() {
   return child.pid!;
 }
 
+async function waitForExit(child: ReturnType<typeof spawn>, timeoutMs = 15_000) {
+  return new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Development watcher ${child.pid ?? "unknown"} did not exit`)),
+      timeoutMs,
+    );
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      resolveExit({ code, signal });
+    });
+  });
+}
+
+function forceStopProcessTree(child: ReturnType<typeof spawn>) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill("SIGKILL");
+  }
+}
+
 try {
   // The ordinary lorebook path remains durable, while a second live writer
   // for the exact same root fails before loading or mutating any data.
@@ -70,6 +103,41 @@ try {
         error.message.includes(dir),
       "a second live writer is rejected with owner and data-directory details",
     );
+
+    const pnpmRunner = resolvePnpmRunner();
+    const watcher = spawn(
+      pnpmRunner.command,
+      [...pnpmRunner.args, "--filter", "@marinara-engine/server", "dev"],
+      {
+        cwd: repositoryRoot,
+        env: {
+          ...process.env,
+          FILE_STORAGE_DIR: dir,
+          MARINARA_ENV_FILE: join(dir, ".watcher.env"),
+          NODE_ENV: "production",
+          PORT: String(20_000 + (process.pid % 10_000)),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        detached: process.platform !== "win32",
+      },
+    );
+    let watcherOutput = "";
+    watcher.stdout?.on("data", (chunk) => {
+      watcherOutput += chunk.toString();
+    });
+    watcher.stderr?.on("data", (chunk) => {
+      watcherOutput += chunk.toString();
+    });
+    try {
+      await waitForExit(watcher);
+      assert.match(watcherOutput, /--marinara-dev-watch/u, "the competing process must use the guarded dev watcher");
+      assert.match(watcherOutput, /StorageWriterLeaseError/u, "the watcher must exit because it lost the writer lease");
+      assert.equal(existsSync(leasePath(dir)), true, "the healthy writer keeps its lease after rejecting the watcher");
+      assert.equal(readJson<LeaseRecord>(ownerPath(dir)).pid, process.pid, "the healthy writer remains the lease owner");
+    } finally {
+      forceStopProcessTree(watcher);
+    }
 
     const timestamp = "2026-08-14T00:00:00.000Z";
     await db

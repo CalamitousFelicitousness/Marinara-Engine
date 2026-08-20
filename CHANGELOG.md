@@ -14,6 +14,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Development server watchers now exit after losing the file-storage writer lease, preventing abandoned sessions from retrying forever and repeatedly reporting `StorageWriterLeaseError` (#5312).
 - Forced Agent retries such as Echo Chamber now stop from Roleplay's Agents menu, whose Stop Agents action also matches the neutral styling of neighboring actions (#5299).
 - Desktop Mari now changes tabs after finding a requested destination when reduced ambient animations and effects are enabled (#5301).
 - Game branches now restore Journal entries and generated HUD lists, such as Clues, to the selected story point instead of carrying future branch information (#5287).

@@ -10,13 +10,7 @@ interface NameAliasesSectionProps {
   nameColor?: string;
 }
 
-function NameAliasInput({
-  existing,
-  onAdd,
-}: {
-  existing: string[];
-  onAdd: (aliases: string[]) => void;
-}) {
+function NameAliasInput({ existing, onAdd }: { existing: string[]; onAdd: (aliases: string[]) => void }) {
   const { t: localizeUi } = useTranslation();
   const [value, setValue] = useState("");
 
@@ -81,7 +75,7 @@ export function NameAliasesSection({ aliases, onChange, nameColor }: NameAliases
             "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.5rem] font-semibold ring-1",
             colorInlineNames
               ? "bg-emerald-400/15 text-emerald-500 ring-emerald-400/20"
-              : "bg-[var(--muted)] text-[var(--muted-foreground)] ring-[var(--border)]"
+              : "bg-[var(--muted)] text-[var(--muted-foreground)] ring-[var(--border)]",
           )}
           title={
             colorInlineNames
@@ -92,7 +86,7 @@ export function NameAliasesSection({ aliases, onChange, nameColor }: NameAliases
           <span
             className={cn(
               "inline-block h-1.5 w-1.5 rounded-full",
-              colorInlineNames ? "bg-emerald-400" : "bg-[var(--muted-foreground)]"
+              colorInlineNames ? "bg-emerald-400" : "bg-[var(--muted-foreground)]",
             )}
           />
           {colorInlineNames

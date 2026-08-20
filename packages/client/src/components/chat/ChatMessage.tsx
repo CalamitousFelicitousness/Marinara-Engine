@@ -1230,7 +1230,9 @@ function extractSolidColorFromGradient(gradientStr: string): string {
   if (hslMatches) colors.push(...hslMatches);
 
   // Named CSS colors (extended list)
-  const namedMatches = inner.match(/\b(red|blue|green|yellow|purple|orange|pink|cyan|magenta|white|black|gray|grey|brown|navy|teal|lime|gold|crimson|salmon|coral|turquoise|indigo|violet|silver|maroon|olive|aqua|fuchsia|azure|beige|chocolate|lavender|plum|orchid|tan|wheat|ivory|seashell|snow|linen|khaki|goldenrod|darkred|darkblue|darkgreen|lightblue|lightgreen|lightcoral|lightpink|lightsalmon|lightseagreen|skyblue|steelblue|royalblue|midnightblue|dodgerblue|deepskyblue|cornflowerblue|mediumslateblue|slateblue|darkslateblue|mediumpurple|rebeccapurple|darkorchid|darkviolet|mediumorchid|thistle|orchid|violet|indigo|darkmagenta|mediumvioletred|palevioletred|hotpink|deeppink|lightpink|pink|palegoldenrod|lemonchiffon|lightyellow|lightgoldenrodyellow)\b/gi);
+  const namedMatches = inner.match(
+    /\b(red|blue|green|yellow|purple|orange|pink|cyan|magenta|white|black|gray|grey|brown|navy|teal|lime|gold|crimson|salmon|coral|turquoise|indigo|violet|silver|maroon|olive|aqua|fuchsia|azure|beige|chocolate|lavender|plum|orchid|tan|wheat|ivory|seashell|snow|linen|khaki|goldenrod|darkred|darkblue|darkgreen|lightblue|lightgreen|lightcoral|lightpink|lightsalmon|lightseagreen|skyblue|steelblue|royalblue|midnightblue|dodgerblue|deepskyblue|cornflowerblue|mediumslateblue|slateblue|darkslateblue|mediumpurple|rebeccapurple|darkorchid|darkviolet|mediumorchid|thistle|orchid|violet|indigo|darkmagenta|mediumvioletred|palevioletred|hotpink|deeppink|lightpink|pink|palegoldenrod|lemonchiffon|lightyellow|lightgoldenrodyellow)\b/gi,
+  );
   if (namedMatches) colors.push(...namedMatches);
 
   if (colors.length === 0) return "#4ecdc4";
@@ -1240,8 +1242,17 @@ function extractSolidColorFromGradient(gradientStr: string): string {
     // Hex
     if (color.startsWith("#")) {
       let hex = color.slice(1);
-      if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
-      if (hex.length === 4) hex = hex.slice(0, 3).split("").map((c) => c + c).join("");
+      if (hex.length === 3)
+        hex = hex
+          .split("")
+          .map((c) => c + c)
+          .join("");
+      if (hex.length === 4)
+        hex = hex
+          .slice(0, 3)
+          .split("")
+          .map((c) => c + c)
+          .join("");
       if (hex.length >= 6) {
         return {
           r: parseInt(hex.slice(0, 2), 16),
@@ -1309,8 +1320,7 @@ function extractSolidColorFromGradient(gradientStr: string): string {
   };
 
   // Calculate perceived luminance: 0.299*R + 0.587*G + 0.114*B
-  const luminance = (rgb: { r: number; g: number; b: number }) =>
-    0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+  const luminance = (rgb: { r: number; g: number; b: number }) => 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
 
   // Find the brightest color
   let bestColor = colors[0];
@@ -1339,22 +1349,16 @@ function extractSolidColorFromGradient(gradientStr: string): string {
  * quotation marks (dialogue). Works on raw text before dialogue highlighting.
  * Supports gradient colors via background-clip and bold weight.
  */
-function colorNamesSkippingQuotes(
-  text: string,
-  nameColorMap: Map<string, string>,
-  textShadow?: string,
-): string {
+function colorNamesSkippingQuotes(text: string, nameColorMap: Map<string, string>, textShadow?: string): string {
   if (!text || nameColorMap.size === 0) return text;
   const names = Array.from(nameColorMap.keys());
   if (names.length === 0) return text;
-  const escaped = names
-    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .sort((a, b) => b.length - a.length);
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).sort((a, b) => b.length - a.length);
   const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
 
   // Quote pairs to track: straight, curly, guillemet, Japanese corner brackets
-  const openQuotes = ["\"", "\u201C", "\u00AB", "\u300C", "\u300E"];
-  const closeQuotes = ["\"", "\u201D", "\u00BB", "\u300D", "\u300F"];
+  const openQuotes = ['"', "\u201C", "\u00AB", "\u300C", "\u300E"];
+  const closeQuotes = ['"', "\u201D", "\u00BB", "\u300D", "\u300F"];
 
   const result: string[] = [];
   let lastIndex = 0;
@@ -1377,9 +1381,10 @@ function colorNamesSkippingQuotes(
       }
     } else {
       // Check for the matching close quote (or any close quote for straight quotes)
-      const closeIdx = activeQuoteIdx === 0
-        ? closeQuotes.indexOf(char, 0) // straight quotes — either direction matches
-        : closeQuotes.indexOf(char, activeQuoteIdx);
+      const closeIdx =
+        activeQuoteIdx === 0
+          ? closeQuotes.indexOf(char, 0) // straight quotes — either direction matches
+          : closeQuotes.indexOf(char, activeQuoteIdx);
       if (closeIdx >= 0 && (activeQuoteIdx === 0 || closeIdx === activeQuoteIdx)) {
         inQuotes = false;
         activeQuoteIdx = -1;
@@ -1412,9 +1417,13 @@ function colorNamesSkippingQuotes(
               .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}:${v}`)
               .join(";");
             const dropShadow = textShadow ? `;text-shadow:none;filter:drop-shadow(${textShadow})` : ";text-shadow:none";
-            result.push(`<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill${dropShadow}">${matchedName}</span>`);
+            result.push(
+              `<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill${dropShadow}">${matchedName}</span>`,
+            );
           } else {
-            result.push(`<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`);
+            result.push(
+              `<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`,
+            );
           }
         } else {
           result.push(matchedName);
@@ -1448,9 +1457,7 @@ function colorNamesInNodes(
   if (!nodes || nameColorMap.size === 0) return nodes;
   const names = Array.from(nameColorMap.keys());
   if (names.length === 0) return nodes;
-  const escaped = names
-    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .sort((a, b) => b.length - a.length);
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).sort((a, b) => b.length - a.length);
   const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
 
   const isCodeNode = (node: ReactNode): boolean => {
@@ -1563,7 +1570,7 @@ function renderContent(
   selfCharacterId?: string | null,
   galleryIndex?: ChatGalleryIndex | null,
   nameColorMap?: Map<string, string> | null,
-  textShadow?: string
+  textShadow?: string,
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1572,13 +1579,14 @@ function renderContent(
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
   const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
-
+  
+  // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
+  
   const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
 
-  const withNameColors = nameColorMap && nameColorMap.size > 0
-    ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow)
-    : normalized;
+  const withNameColors =
+    nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
 
   if (!isHtmlPath) {
     const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
@@ -1859,9 +1867,7 @@ export const ChatMessage = memo(function ChatMessage({
         : {},
     [textStrokeWidth, textStrokeColor],
   );
-  const textShadowStr = textStrokeWidth > 0
-    ? `0px 0px ${textStrokeWidth}px ${textStrokeColor}`
-    : "";
+  const textShadowStr = textStrokeWidth > 0 ? `0px 0px ${textStrokeWidth}px ${textStrokeColor}` : "";
   const messageTextStyle = useMemo<React.CSSProperties>(
     () => ({
       fontSize: chatFontSize,
@@ -2554,8 +2560,6 @@ export const ChatMessage = memo(function ChatMessage({
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
-  
-  
   const nameColorMap = useMemo(() => {
     if (!colorInlineNames || !characterMap) return null;
     const map = new Map<string, string>();
@@ -2563,9 +2567,8 @@ export const ChatMessage = memo(function ChatMessage({
       const color = char.nameColor;
       if (!color) return;
       // If gradients are disabled, extract the first solid color from gradient strings
-      const effectiveColor = disableInlineNameGradients && isGradientNameColor(color)
-        ? extractSolidColorFromGradient(color)
-        : color;
+      const effectiveColor =
+        disableInlineNameGradients && isGradientNameColor(color) ? extractSolidColorFromGradient(color) : color;
       map.set(char.name.toLowerCase(), effectiveColor);
       if (char.convoDisplayName) map.set(char.convoDisplayName.toLowerCase(), effectiveColor);
       if (char.nameAliases) {
@@ -2718,7 +2721,18 @@ export const ChatMessage = memo(function ChatMessage({
       nameColorMap,
       textShadowStr,
     );
-  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex, nameColorMap, textShadowStr]);
+  }, [
+    text,
+    dialogueColor,
+    speakerColorMap,
+    boldDialogue,
+    htmlScopeClass,
+    quoteFormat,
+    selfCharacterId,
+    galleryIndex,
+    nameColorMap,
+    textShadowStr,
+  ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
       renderContent(
@@ -2733,7 +2747,17 @@ export const ChatMessage = memo(function ChatMessage({
         nameColorMap,
         textShadowStr,
       ),
-    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap, nameColorMap, textShadowStr],
+    [
+      boldDialogue,
+      dialogueColor,
+      galleryIndex,
+      htmlScopeClass,
+      quoteFormat,
+      selfCharacterId,
+      speakerColorMap,
+      nameColorMap,
+      textShadowStr,
+    ],
   );
 
   // Translated text is rendered through the same markdown pipeline as the

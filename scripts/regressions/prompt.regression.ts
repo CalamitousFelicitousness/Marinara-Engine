@@ -11071,6 +11071,13 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         null,
         "a pronoun later in a concrete mutation request must not turn it into a vague confirmation",
       );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Fix this outfit to be red for the wedding scene.",
+        }),
+        null,
+        "a concrete scope after a demonstrative target must not be treated as a standalone confirmation",
+      );
 
       assert.match(
         workspaceMutationAuthorizationIssue(

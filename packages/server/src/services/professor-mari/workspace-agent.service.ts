@@ -1664,7 +1664,7 @@ const MUTATION_DENIAL =
 const SHORT_MUTATION_CONFIRMATION =
   /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?)[,.!\s]*$/iu;
 const VAGUE_MUTATION_CONFIRMATION =
-  /^(?:(?:yes|yeah|yep|sure|ok(?:ay)?)[,.!\s]+)?(?:please\s+)?(?:just\s+)?(?:(?:go\s+ahead\s+and\s+)?(?:apply|change|do|edit|fix|handle|update)\s+(?:anything|everything|her|him|his|it|its|problem|something|stuff|that|their|them|these|things?|this|those|whatever))\b/iu;
+  /^(?:(?:yes|yeah|yep|sure|ok(?:ay)?)[,.!\s]+)?(?:please\s+)?(?:just\s+)?(?:(?:go\s+ahead\s+and\s+)?(?:apply|change|do|edit|fix|handle|update)\s+(?:anything|everything|her|him|his|it|its|problem|something|stuff|that|their|them|these|things?|this|those|whatever))(?:(?:\s+for\s+me)|(?:,\s*|\s+)i\s+trust\s+you(?:\s+completely)?|\s+however\s+you\s+(?:think\s+is\s+best|see\s+fit|want)|\s+is\s+broken|\s+needs\s+to\s+be\s+done)?[,.!\s]*$/iu;
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
 const GENERIC_MUTATION_AUTHORIZATION_CLAUSE =
   /\b(?:i\s+)?(?:authori[sz]e|approve|grant\s+permission)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?\b[,.!;:\s-]*/iu;

@@ -798,11 +798,17 @@ class GameAudioManager {
     const audio = this.sfxPool[this.sfxIndex % SFX_POOL_SIZE]!;
     this.sfxIndex++;
     let remainingPlays = Number.isFinite(loopCount) ? Math.max(1, Math.min(5, Math.floor(loopCount))) : 1;
-    audio.onerror = () => {
+    const playProceduralFallback = () => {
+      if (remainingPlays <= 0) return;
+      const fallbackPlays = remainingPlays;
+      remainingPlays = 0;
       audio.onerror = null;
       audio.onended = null;
-      this.playProceduralSfx(tag);
+      for (let index = 0; index < fallbackPlays; index++) {
+        setTimeout(() => this.playProceduralSfx(tag), index * 350);
+      }
     };
+    audio.onerror = playProceduralFallback;
     audio.onended = () => {
       remainingPlays -= 1;
       if (remainingPlays <= 0) {
@@ -811,8 +817,7 @@ class GameAudioManager {
       }
       audio.currentTime = 0;
       audio.play().catch(() => {
-        audio.onended = null;
-        this.playProceduralSfx(tag);
+        playProceduralFallback();
       });
     };
     audio.src = url;
@@ -820,7 +825,7 @@ class GameAudioManager {
     audio.muted = false;
     audio.currentTime = 0;
     audio.play().catch(() => {
-      this.playProceduralSfx(tag);
+      playProceduralFallback();
     });
   }
 

@@ -5881,6 +5881,11 @@ assert.match(
   "Game rerolls must reset narration when the saved swipe changes on the same message",
 );
 assert.match(gameAudioSource, /audio\.onended = \(\) => \{[\s\S]*remainingPlays -= 1/u);
+assert.match(
+  gameAudioSource,
+  /const fallbackPlays = remainingPlays;[\s\S]*remainingPlays = 0;[\s\S]*index < fallbackPlays[\s\S]*index \* 350/u,
+  "Procedural SFX fallback must preserve the bounded number of remaining sequential plays",
+);
 assert.match(gameSurfaceSource, /audioManager\.playSfx\(resolved, assetMap, fx\.sfxLoopCount\)/u);
 assert.match(
   choiceSelectionModalSource,
@@ -8607,6 +8612,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   const prompt = buildSceneAnalyzerUserPrompt("Boots cross the wet stones.", undefined, generatedAudioContext);
   assert.match(prompt, /short sound description/u);
   assert.match(prompt, /"sfxLoopCount": <1-5>/u);
+  assert.doesNotMatch(prompt, /"(?:sfxLoopCount|directions|background)"[^\n]*\/\//u);
   // #5161: music free-text prompts are retired — even with generateMusic on,
   // the analyzer is asked for genre/intensity hints, never a music prompt.
   assert.doesNotMatch(prompt, /concise instrumental scene music prompt/u);

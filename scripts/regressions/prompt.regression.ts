@@ -11051,6 +11051,13 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
         null,
       );
+      assert.match(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Yes, please fix this for me.",
+        }) ?? "",
+        /immediately preceding visible proposal/iu,
+        "a vague mutation confirmation must not authorize the model-selected target by itself",
+      );
 
       assert.match(
         workspaceMutationAuthorizationIssue(

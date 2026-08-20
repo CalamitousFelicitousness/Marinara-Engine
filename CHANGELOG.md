@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Custom pre-generation agents can now opt in to choose the active characters for the current Conversation or Roleplay reply, keeping unused character cards out of that turn's prompt (#5310).
 - Lorebook Keeper can now route entries to exact writable lorebook names or configured aliases, auto-create missing category books, and preserve the selected destination through write approval while keeping one-book behavior unchanged when no target is returned (Pasta-Devs/Marinara-Agents#439).
 - File-native storage now shards every registered table by its stable owner or primary key, so routine saves no longer rewrite any global table monolith; upgrades preserve the previous files and retain the existing crash, corruption, and downgrade recovery safeguards (#5302).
 - Chat Settings now shows the current chat ID with a one-click copy action, making exact chats easy to reference in Professor Mari and other tools (#5235).

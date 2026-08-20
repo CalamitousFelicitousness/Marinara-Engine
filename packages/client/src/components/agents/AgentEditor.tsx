@@ -306,6 +306,11 @@ const CUSTOM_AGENT_CAPABILITY_META: Array<{
     label: "Main prompt edits",
     description: "Allow prompt patch output to edit the prompt sent to the main generation model.",
   },
+  {
+    id: "manage_chat_characters",
+    label: "settings.agentImports.capabilities.manage_chat_characters.label",
+    description: "settings.agentImports.capabilities.manage_chat_characters.description",
+  },
 ];
 
 const CUSTOM_AGENT_CONTEXT_SOURCE_META: Array<{
@@ -433,6 +438,12 @@ const CUSTOM_AGENT_RESULT_TYPE_OPTIONS: Array<{
     requiredCapability: "edit_main_prompt",
   },
   {
+    id: "character_activity_update",
+    label: "settings.agentImports.results.character_activity_update.label",
+    description: "settings.agentImports.results.character_activity_update.description",
+    requiredCapability: "manage_chat_characters",
+  },
+  {
     id: "frontend_theme_update",
     label: "Frontend Style",
     description: 'Expects JSON with "css" for a temporary frontend styling effect.',
@@ -492,6 +503,17 @@ function normalizeCustomResultType(value: unknown): CustomAgentResultType {
   return CUSTOM_AGENT_RESULT_TYPE_OPTIONS.some((option) => option.id === value)
     ? (value as CustomAgentResultType)
     : "context_injection";
+}
+
+function resolveCustomAgentPhase(
+  phase: AgentPhase,
+  resultType: CustomAgentResultType,
+  isCustomAgent: boolean,
+): AgentPhase {
+  if (!isCustomAgent) return phase;
+  if (resultType === "text_rewrite") return "post_processing";
+  if (resultType === "character_activity_update") return "pre_generation";
+  return phase;
 }
 
 function customCapabilityMapFromLocal(capabilities: CustomAgentCapabilityMap): CustomAgentCapabilityMap {
@@ -1186,7 +1208,7 @@ export function AgentEditor() {
     setSaveError(null);
     const isEditingCustomAgent = isCustomAgent || isNewCustomAgent;
     const agentType = dbConfig?.type ?? builtIn?.id ?? agentDetailId;
-    const selectedPhase = isEditingCustomAgent && localResultType === "text_rewrite" ? "post_processing" : localPhase;
+    const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
     const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
@@ -1434,7 +1456,7 @@ export function AgentEditor() {
     if (!agentDetailId) return;
     const isEditingCustomAgent = isCustomAgent || isNewCustomAgent;
     const agentType = dbConfig?.type ?? builtIn?.id ?? createCustomAgentType(localName);
-    const selectedPhase = isEditingCustomAgent && localResultType === "text_rewrite" ? "post_processing" : localPhase;
+    const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
     const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
@@ -1707,10 +1729,11 @@ export function AgentEditor() {
   );
   const normalizedLocalPhase = normalizeAgentPhaseForType(currentAgentType, localPhase);
   const phaseMeta = PHASE_META[normalizedLocalPhase];
-  const effectivePhase =
-    (isCustomAgent || isNewCustomAgent) && localResultType === "text_rewrite"
-      ? "post_processing"
-      : normalizedLocalPhase;
+  const effectivePhase = resolveCustomAgentPhase(
+    normalizedLocalPhase,
+    localResultType,
+    isCustomAgent || isNewCustomAgent,
+  );
   const showTurnDataAccess = (isCustomAgent || isNewCustomAgent) && effectivePhase === "post_processing";
   const canConfigureLorebookReadBehind = customLorebookReadBehindEnabled(
     effectivePhase,
@@ -2059,7 +2082,9 @@ export function AgentEditor() {
                         if (!isAllowed) return;
                         setLocalResultType(option.id);
                         if (option.id === "text_rewrite") setLocalPhase("post_processing");
-                        if (option.id === "prompt_patch") setLocalPhase("pre_generation");
+                        if (option.id === "prompt_patch" || option.id === "character_activity_update") {
+                          setLocalPhase("pre_generation");
+                        }
                         markDirty();
                       }}
                       className={cn(
@@ -2082,6 +2107,15 @@ export function AgentEditor() {
                   {localizeUi("ui.agents.agenteditor.textRewriteAgentsAlwaysSaveAsPostProcessingTheir")}{" "}
                   <code className="rounded bg-black/20 px-1 py-0.5">
                     {'{"editedText":"...","changes":[{"description":"..."}]}'}
+                  </code>
+                  .
+                </p>
+              )}
+              {localResultType === "character_activity_update" && (
+                <p className="mt-2 rounded-lg bg-[var(--secondary)] px-3 py-2 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
+                  {localizeUi("ui.agents.agenteditor.characterActivityAgentsAlwaysRunBeforeGenerationReturn")}{" "}
+                  <code className="rounded bg-[var(--background)] px-1 py-0.5">
+                    {'{"activeCharacterIds":["character-id"]}'}
                   </code>
                   .
                 </p>

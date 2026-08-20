@@ -1969,6 +1969,24 @@ function buildCustomAgentCapabilityBlock(config: AgentExecConfig, context: Agent
     }
   }
 
+  if (capabilities.manage_chat_characters) {
+    const chatCharacters = context.chatCharacters ?? [];
+    parts.push(
+      context.chatMode === "conversation" || context.chatMode === "roleplay"
+        ? `Chat character activity control is enabled. For Character Activity output, return {"activeCharacterIds":["exact-character-id"]}. Select at least one ID from <chat_characters>; that selection controls the current main reply.`
+        : `Chat character activity control is unavailable in this chat mode.`,
+    );
+    if (chatCharacters.length > 0) {
+      parts.push("<chat_characters>");
+      for (const character of chatCharacters) {
+        parts.push(
+          `<character id="${escapeXml(character.id)}" active="${character.active ? "true" : "false"}">${escapeXml(character.name)}</character>`,
+        );
+      }
+      parts.push("</chat_characters>");
+    }
+  }
+
   if (capabilities.access_vectors) {
     const contextSources = getAgentContextSources(config);
     const vectorContextAvailable =

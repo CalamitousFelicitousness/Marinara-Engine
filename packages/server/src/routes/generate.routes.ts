@@ -28,6 +28,7 @@ import {
   isAgentAvailableInChatMode,
   isAgentConfigDeleted,
   isExternallyImportedAgent,
+  normalizeAgentPhaseValue,
   normalizeAgentPromptTemplateSelectionMap,
   normalizeManualTrackerAgentTypes,
   normalizeThinkingTagPairs,
@@ -264,6 +265,7 @@ import {
   normalizePromptWrapFormat,
   parseExtra,
   parseJsonField,
+  parseStoredGenerationParameters,
   parseGameStateRow,
   parseSnapshotPlayerStats,
   isRoleplaySummaryMode,
@@ -271,6 +273,7 @@ import {
   prefixGroupIndividualHistorySpeakers,
   readPersonaSnapshotName,
   resolveActiveCharacterIds,
+  resolveCharacterActivityUpdate,
   resolveActivePersonaCandidate,
   resolveBaseUrl,
   resolveGroupGenerationMode,
@@ -284,6 +287,7 @@ import {
   resolveVisibleGameStateAnchor,
   resolveKnowledgeSourceLorebookIds,
   shouldPreferLatestVisibleGameState,
+  shouldRunCharacterActivityAgents,
   shouldAbortOnPassiveGenerationDisconnect,
   shouldEnableAgentsForGeneration,
   shouldInjectIdentityFallback,
@@ -518,7 +522,7 @@ import {
   promptPreviewForAgents,
   resolveCustomWritableLorebookIds,
 } from "../services/generation/agent-prompt-runtime.js";
-import { resolveAgentPipelineAgents } from "../services/generation/agent-resolution.js";
+import { resolveAgentPipelineAgents, resolveEffectiveAgentSettings } from "../services/generation/agent-resolution.js";
 import { createReplyFallbackNotifier } from "./generate/fallback-notification.js";
 import {
   resolveGenerationTools,
@@ -1417,6 +1421,91 @@ export async function generateRoutes(app: FastifyInstance) {
         chatMessages = chatMessages.slice(-contextMessageLimit);
       }
 
+      // Agent activation is request-scoped. Resolve the configured set once so
+      // character routers can run before prompt assembly and every later pass
+      // uses the same visible Agent list.
+      logger.info("[generate] chatId=%s, chatMode=%s", input.chatId, chatMode);
+      const activeMusicPlayerSource =
+        input.musicPlayerEnabled === false
+          ? null
+          : input.musicPlayerSource === "youtube" || input.musicPlayerSource === "custom"
+            ? input.musicPlayerSource
+            : "spotify";
+      const chatEnableAgents = shouldEnableAgentsForGeneration({
+        chatEnableAgents: chatMeta.enableAgents === true,
+        impersonate: input.impersonate,
+        impersonateBlockAgents: input.impersonateBlockAgents,
+      });
+      const persistedChatActiveAgentIds: string[] = Array.isArray(chatMeta.activeAgentIds)
+        ? (chatMeta.activeAgentIds as string[])
+        : [];
+      const gameMusicDjEnabled =
+        chatMode === "game" &&
+        (chatMeta.gameUseMusicDj === true ||
+          chatMeta.gameUseSpotifyMusic === true ||
+          persistedChatActiveAgentIds.includes("youtube"));
+      const gameSpotifyMusicEnabled = gameMusicDjEnabled && activeMusicPlayerSource === "spotify";
+      const normalizedPersistedChatActiveAgentIds = persistedChatActiveAgentIds.map((agentId) =>
+        agentId === "youtube" ? "spotify" : agentId,
+      );
+      if (gameMusicDjEnabled && !normalizedPersistedChatActiveAgentIds.includes("spotify")) {
+        normalizedPersistedChatActiveAgentIds.push("spotify");
+      }
+      const rawChatActiveAgentIds: string[] = filterGameInternalAgentIds(
+        chatMode,
+        normalizedPersistedChatActiveAgentIds,
+      )
+        .filter((agentId) => isAgentAvailableInChatMode(chatMode, agentId))
+        .filter((agentId) => !(gameSpotifyMusicEnabled && agentId === "spotify"));
+      const customAgentImportsEnabled = (await getCustomAgentImportPolicy(app.db)).enabled;
+      const allConfiguredPromptAgents =
+        chatEnableAgents && rawChatActiveAgentIds.length > 0 ? await agentsStore.list() : [];
+      const skippedImportedPromptAgents = customAgentImportsEnabled
+        ? []
+        : allConfiguredPromptAgents.filter((agent) => isExternallyImportedAgent(agent.type, agent.settings));
+      if (skippedImportedPromptAgents.length > 0) {
+        logger.debug(
+          "[agents] Skipping %d externally imported Agent configurations because custom imports are disabled",
+          skippedImportedPromptAgents.length,
+        );
+      }
+      const configuredPromptAgents = allConfiguredPromptAgents.filter(
+        (agent) => !isExternallyImportedAgent(agent.type, agent.settings) || customAgentImportsEnabled,
+      );
+      const deletedBuiltInAgentTypes = new Set(
+        configuredPromptAgents
+          .filter((agent) => BUILT_IN_AGENTS.some((builtIn) => builtIn.id === agent.type))
+          .filter((agent) => isAgentConfigDeleted(agent.settings))
+          .map((agent) => agent.type as string),
+      );
+      const chatActiveAgentIds = rawChatActiveAgentIds.filter((agentId) => !deletedBuiltInAgentTypes.has(agentId));
+      const agentPromptTemplateSelections = normalizeAgentPromptTemplateSelectionMap(chatMeta.agentPromptTemplateIds);
+      const hasPerChatAgentList = chatActiveAgentIds.length > 0;
+      const perChatAgentSet = new Set(chatActiveAgentIds);
+      const characterActivityConfig = (agent: (typeof configuredPromptAgents)[number]): boolean => {
+        if (BUILT_IN_AGENTS.some((builtIn) => builtIn.id === agent.type)) return false;
+        if (normalizeAgentPhaseValue(agent.phase) !== "pre_generation") return false;
+        const settings = resolveEffectiveAgentSettings({
+          agentType: agent.type,
+          settings: agent.settings,
+          activeMusicPlayerSource,
+          chatMetadata: chatMeta,
+        });
+        return (
+          settings.resultType === "character_activity_update" &&
+          customAgentHasCapability(settings, "manage_chat_characters")
+        );
+      };
+      const activeAgentOrder = new Map(chatActiveAgentIds.map((agentId, index) => [agentId, index]));
+      const characterActivityAgentConfigs = configuredPromptAgents
+        .filter(characterActivityConfig)
+        .sort(
+          (left, right) =>
+            (activeAgentOrder.get(left.type) ?? Number.MAX_SAFE_INTEGER) -
+            (activeAgentOrder.get(right.type) ?? Number.MAX_SAFE_INTEGER),
+        );
+      const pipelineConfiguredPromptAgents = configuredPromptAgents.filter((agent) => !characterActivityConfig(agent));
+
       const isGoogleProvider = conn.provider === "google" || conn.provider === "google_vertex";
       const persistPromptAttachmentCaptions = async (
         messageId: string | null,
@@ -1520,15 +1609,12 @@ export async function generateRoutes(app: FastifyInstance) {
       }
 
       const allCharacterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
+      let characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
         mode: chatMode,
         allowEmpty: true,
       });
       const isHomeProfessorMariAssistantChat =
         chatMeta.internalAssistant === PROFESSOR_MARI_INTERNAL_CHAT_MARKER && characterIds.includes(PROFESSOR_MARI_ID);
-      if (allCharacterIds.length > 0 && characterIds.length === 0 && chatMode !== "game") {
-        throw new Error("All characters in this chat are disabled. Enable at least one character before generating.");
-      }
 
       // Resolve Persona — explicit selection always wins, while only
       // Conversation may fall back to the globally active Persona.
@@ -1620,6 +1706,241 @@ export async function generateRoutes(app: FastifyInstance) {
         presetDefaultChoices: resolvedPresetDefaultChoices,
         chatPresetChoices: (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
       });
+
+      const eligibleCharacterActivityConfigs: typeof characterActivityAgentConfigs = [];
+      if (
+        shouldRunCharacterActivityAgents({
+          mode: chatMode,
+          impersonate: input.impersonate,
+          regenerateMessageId: input.regenerateMessageId,
+          continueMessageId: input.continueMessageId,
+        })
+      ) {
+        for (const config of characterActivityAgentConfigs) {
+          if (!perChatAgentSet.has(config.type)) continue;
+          const settings = resolveEffectiveAgentSettings({
+            agentType: config.type,
+            settings: config.settings,
+            activeMusicPlayerSource,
+            chatMetadata: chatMeta,
+          });
+          const activation = matchCustomAgentActivation(settings, chatMessages);
+          if (activation.configured && !activation.matched) continue;
+
+          const runInterval = Number(settings.runInterval ?? 0);
+          if (
+            Number.isFinite(runInterval) &&
+            runInterval > 1 &&
+            (await shouldSkipAgentByMessageInterval({
+              agentsStore,
+              chatId: input.chatId,
+              agentType: config.type,
+              settings,
+              fallbackInterval: runInterval,
+              messages: allChatMessages,
+              countUpcomingAssistantMessage: false,
+            }))
+          ) {
+            continue;
+          }
+          eligibleCharacterActivityConfigs.push(config);
+        }
+      }
+
+      if (eligibleCharacterActivityConfigs.length > 0) {
+        sendProgress("agents");
+        const storedParameters = parseStoredGenerationParameters(conn.defaultParameters);
+        const routingModelPolicy = resolveModelAccessPolicy({
+          provider: conn.provider,
+          model: conn.model,
+          maxContext: conn.maxContext,
+        });
+        const routingKnownModel = findKnownModel(conn.provider as APIProvider, conn.model.trim());
+        const routingChatProvider = withConnectionFallbackProvider({
+          primary: createLLMProvider(
+            conn.provider,
+            baseUrl,
+            conn.apiKey,
+            conn.maxContext,
+            conn.openrouterProvider,
+            conn.maxTokensOverride,
+            conn.claudeFastMode === "true",
+            conn.treatAsLocalEndpoint === "true",
+            conn.defaultParameters,
+          ),
+          primaryConnectionId: connId ?? conn.id,
+          fallbackConnection: mainFallbackConnection,
+          fallbackBaseUrl: mainFallbackBaseUrl,
+          category: "main",
+          onFallback,
+        });
+        const routingAgentTypes = new Set(eligibleCharacterActivityConfigs.map((config) => config.type));
+        const { resolvedAgents: characterActivityAgents, agentConnectionWarnings } = await resolveAgentPipelineAgents({
+          connections,
+          configuredAgents: eligibleCharacterActivityConfigs,
+          chatId: input.chatId,
+          chatEnableAgents,
+          hasPerChatAgentList: true,
+          perChatAgentSet: routingAgentTypes,
+          agentPromptTemplateSelections,
+          chatProvider: routingChatProvider,
+          chatConnectionId: connId ?? conn.id,
+          chatModel: conn.model,
+          chatCustomParameters: storedParameters?.customParameters ?? {},
+          chatTemperature: storedParameters?.temperature,
+          chatEnabledParameters: storedParameters?.enabledParameters,
+          chatSuppressModelParameters: routingModelPolicy.suppressModelParameters,
+          chatMaxOutputTokens:
+            routingKnownModel?.maxOutput && routingKnownModel.maxOutput > 0
+              ? Math.floor(routingKnownModel.maxOutput)
+              : null,
+          chatMaxParallelJobs: Number(conn.maxParallelJobs) || 1,
+          chatEnableCaching: conn.enableCaching === "true",
+          chatAnthropicExtendedCacheTtl: conn.anthropicExtendedCacheTtl === "true",
+          chatCachingAtDepth: conn.cachingAtDepth ?? 5,
+          activeMusicPlayerSource,
+          chatMetadata: chatMeta,
+          onFallback,
+          resolveBaseUrl,
+        });
+
+        for (const warning of agentConnectionWarnings) {
+          sendSseEvent(reply, { type: "agent_warning", data: warning });
+        }
+
+        if (characterActivityAgents.length > 0) {
+          const routingCharacterInfo = await loadCharacterPromptInfo({
+            chars,
+            characterIds: allCharacterIds,
+            chatMode,
+          });
+          const characterInfoById = new Map(routingCharacterInfo.map((character) => [character.id, character]));
+          const activeCharacterSet = new Set(characterIds);
+          const routingContextSize = Math.max(
+            ...characterActivityAgents.map((agent) => normalizeAgentContextSize(agent.settings.contextSize)),
+          );
+          const routingContext: AgentContext = {
+            chatId: input.chatId,
+            chatMode,
+            wrapFormat: normalizePromptWrapFormat(resolvedPreset?.wrapFormat),
+            recentMessages: chatMessages.slice(-routingContextSize).map((message: any) => ({
+              id: typeof message.id === "string" ? message.id : undefined,
+              role: message.role as string,
+              content: conversationPromptHistoryContent(message, chatMode),
+              characterId:
+                typeof message.characterId === "string" && message.characterId ? message.characterId : undefined,
+            })),
+            mainResponse: null,
+            gameState: null,
+            characters: routingCharacterInfo,
+            chatCharacters: allCharacterIds.map((id) => ({
+              id,
+              name: characterInfoById.get(id)?.name ?? id,
+              active: activeCharacterSet.has(id),
+            })),
+            persona:
+              personaName !== "User"
+                ? {
+                    name: personaName,
+                    description: personaDescription,
+                    personality: personaFields.personality,
+                    backstory: personaFields.backstory,
+                    appearance: personaFields.appearance,
+                    scenario: personaFields.scenario,
+                  }
+                : null,
+            memory: {},
+            writableLorebookIds: null,
+            chatSummary: null,
+            authorNotes: typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : null,
+            streaming: input.streaming,
+            ...(requestDebug
+              ? {
+                  agentDebug: (event: AgentCallDebugEvent) => {
+                    sendSseEvent(reply, { type: "agent_debug", data: event });
+                  },
+                }
+              : {}),
+            signal: abortController.signal,
+          };
+          const latestUserMessage = [...allChatMessages].reverse().find((message: any) => message.role === "user");
+          const routingEvents = createAgentEventDispatcher({
+            resolvedAgents: characterActivityAgents,
+            sendEvent: (payload) => sendSseEvent(reply, payload),
+            getOwnership: () => ({
+              chatId: input.chatId,
+              messageId: typeof latestUserMessage?.id === "string" ? latestUserMessage.id : null,
+              swipeIndex: null,
+              generationId,
+            }),
+          });
+          sendSseEvent(reply, { type: "agent_start", data: { phase: "pre_generation" } });
+          const routingPipeline = createAgentPipeline(
+            characterActivityAgents,
+            routingContext,
+            routingEvents.sendAgentEvent,
+          );
+          await routingPipeline.preGenerate();
+
+          let selectedActivity: ReturnType<typeof resolveCharacterActivityUpdate> = null;
+          let selectedByAgent: ResolvedAgent | null = null;
+          for (const agent of characterActivityAgents) {
+            const result = routingPipeline.results.find((candidate) => candidate.agentId === agent.id);
+            if (!result?.success || result.type !== "character_activity_update") continue;
+            if (!customAgentHasCapability(agent.settings, "manage_chat_characters")) continue;
+            const activity = resolveCharacterActivityUpdate(result.data, allCharacterIds);
+            if (!activity) {
+              logger.warn("[custom-agent] Ignoring invalid character activity output from %s", agent.type);
+              continue;
+            }
+            selectedActivity = activity;
+            selectedByAgent = agent;
+          }
+
+          if (typeof latestUserMessage?.id === "string") {
+            for (const result of routingPipeline.results) {
+              try {
+                await agentsStore.saveRun({
+                  agentConfigId: result.agentId,
+                  chatId: input.chatId,
+                  messageId: latestUserMessage.id,
+                  result,
+                });
+              } catch {
+                // Cadence bookkeeping must not block the main response.
+              }
+            }
+          }
+
+          if (selectedActivity) {
+            characterIds = selectedActivity.activeCharacterIds;
+            const updatedChat = await chats.patchMetadata(
+              input.chatId,
+              (current) => ({
+                ...current,
+                inactiveCharacterIds: selectedActivity!.inactiveCharacterIds,
+              }),
+              { touchUpdatedAt: false },
+            );
+            if (updatedChat) chatMeta = parseExtra(updatedChat.metadata) as Record<string, unknown>;
+            sendSseEvent(reply, {
+              type: "metadata_patch",
+              data: { inactiveCharacterIds: selectedActivity.inactiveCharacterIds },
+            });
+            logger.info(
+              "[custom-agent] %s selected %d of %d active chat character(s)",
+              selectedByAgent?.type ?? "character activity agent",
+              selectedActivity.activeCharacterIds.length,
+              allCharacterIds.length,
+            );
+          }
+        }
+      }
+
+      if (allCharacterIds.length > 0 && characterIds.length === 0 && chatMode !== "game") {
+        throw new Error("All characters in this chat are disabled. Enable at least one character before generating.");
+      }
+
       let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
       const getGroupHistoryCharacterNamesById = () => {
         groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
@@ -1759,66 +2080,6 @@ export async function generateRoutes(app: FastifyInstance) {
         const { suppressModelParameters, connectionMaxContext } = modelAccessPolicy;
         let effectiveMaxContext = modelAccessPolicy.effectiveMaxContext;
 
-        // Determine whether agents are enabled for this chat (needed by assembler + agent pipeline).
-        // Mode policy filters which agents may run for Conversation, Roleplay, and Game chats.
-        logger.info("[generate] chatId=%s, chatMode=%s", input.chatId, chatMode);
-        const activeMusicPlayerSource =
-          input.musicPlayerEnabled === false
-            ? null
-            : input.musicPlayerSource === "youtube" || input.musicPlayerSource === "custom"
-              ? input.musicPlayerSource
-              : "spotify";
-        const chatEnableAgents = shouldEnableAgentsForGeneration({
-          chatEnableAgents: chatMeta.enableAgents === true,
-          impersonate: input.impersonate,
-          impersonateBlockAgents: input.impersonateBlockAgents,
-        });
-        const persistedChatActiveAgentIds: string[] = Array.isArray(chatMeta.activeAgentIds)
-          ? (chatMeta.activeAgentIds as string[])
-          : [];
-        const gameMusicDjEnabled =
-          chatMode === "game" &&
-          (chatMeta.gameUseMusicDj === true ||
-            chatMeta.gameUseSpotifyMusic === true ||
-            persistedChatActiveAgentIds.includes("youtube"));
-        const gameSpotifyMusicEnabled = gameMusicDjEnabled && activeMusicPlayerSource === "spotify";
-        const normalizedPersistedChatActiveAgentIds = persistedChatActiveAgentIds.map((agentId) =>
-          agentId === "youtube" ? "spotify" : agentId,
-        );
-        if (gameMusicDjEnabled && !normalizedPersistedChatActiveAgentIds.includes("spotify")) {
-          normalizedPersistedChatActiveAgentIds.push("spotify");
-        }
-        const rawChatActiveAgentIds: string[] = filterGameInternalAgentIds(
-          chatMode,
-          normalizedPersistedChatActiveAgentIds,
-        )
-          .filter((agentId) => isAgentAvailableInChatMode(chatMode, agentId))
-          .filter((agentId) => !(gameSpotifyMusicEnabled && agentId === "spotify"));
-        const customAgentImportsEnabled = (await getCustomAgentImportPolicy(app.db)).enabled;
-        const allConfiguredPromptAgents =
-          chatEnableAgents && rawChatActiveAgentIds.length > 0 ? await agentsStore.list() : [];
-        const skippedImportedPromptAgents = customAgentImportsEnabled
-          ? []
-          : allConfiguredPromptAgents.filter((agent) => isExternallyImportedAgent(agent.type, agent.settings));
-        if (skippedImportedPromptAgents.length > 0) {
-          logger.debug(
-            "[agents] Skipping %d externally imported Agent configurations because custom imports are disabled",
-            skippedImportedPromptAgents.length,
-          );
-        }
-        const configuredPromptAgents = allConfiguredPromptAgents.filter(
-          (agent) => !isExternallyImportedAgent(agent.type, agent.settings) || customAgentImportsEnabled,
-        );
-        const deletedBuiltInAgentTypes = new Set(
-          configuredPromptAgents
-            .filter((agent) => BUILT_IN_AGENTS.some((builtIn) => builtIn.id === agent.type))
-            .filter((agent) => isAgentConfigDeleted(agent.settings))
-            .map((agent) => agent.type as string),
-        );
-        const chatActiveAgentIds = rawChatActiveAgentIds.filter((agentId) => !deletedBuiltInAgentTypes.has(agentId));
-        const agentPromptTemplateSelections = normalizeAgentPromptTemplateSelectionMap(chatMeta.agentPromptTemplateIds);
-        const hasPerChatAgentList = chatActiveAgentIds.length > 0;
-        const perChatAgentSet = new Set(chatActiveAgentIds);
         const activeChatSummary = await resolveRoleplayChatSummaryForPrompt({
           chatMode,
           chatMetadata: chatMeta,
@@ -1834,7 +2095,7 @@ export async function generateRoutes(app: FastifyInstance) {
           enableAgents: chatEnableAgents,
           activeAgentIds: chatActiveAgentIds,
           chatMode,
-          configuredAgents: configuredPromptAgents.map((agent) => ({
+          configuredAgents: pipelineConfiguredPromptAgents.map((agent) => ({
             type: agent.type,
             phase: agent.phase,
             settings: agent.settings,
@@ -2987,7 +3248,7 @@ export async function generateRoutes(app: FastifyInstance) {
             : null;
         const { enabledConfigs, resolvedAgents, agentConnectionWarnings } = await resolveAgentPipelineAgents({
           connections,
-          configuredAgents: configuredPromptAgents,
+          configuredAgents: pipelineConfiguredPromptAgents,
           chatId: input.chatId,
           chatEnableAgents,
           hasPerChatAgentList,
@@ -3856,7 +4117,9 @@ export async function generateRoutes(app: FastifyInstance) {
         }
 
         const illustratorAgentForInterval = resolvedAgents.find((a) => a.type === "illustrator");
-        const storyboardAgentConfig = configuredPromptAgents.find((agent) => agent.type === STORYBOARD_AGENT_ID);
+        const storyboardAgentConfig = pipelineConfiguredPromptAgents.find(
+          (agent) => agent.type === STORYBOARD_AGENT_ID,
+        );
         const storyboardAgentSettings = normalizeStoryboardAgentSettings(
           mergeBuiltInAgentSettings(STORYBOARD_AGENT_ID, storyboardAgentConfig?.settings),
         );

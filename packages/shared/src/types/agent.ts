@@ -63,6 +63,7 @@ export const AGENT_RESULT_TYPE_VALUES = [
   "game_map_update",
   "game_state_transition",
   "prompt_patch",
+  "character_activity_update",
   "frontend_theme_update",
   "about_me_update",
 ] as const;
@@ -377,6 +378,12 @@ export interface AgentContext {
     avatarCrop?: unknown;
     rpgStats?: import("./character.js").RPGStatsConfig;
   }>;
+  /** Every character attached to the chat, with only the data needed for activity routing. */
+  chatCharacters?: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+  }>;
   /** Latest known tracker entries, including recurring characters that are currently absent. */
   characterTrackerHistory?: import("./game-state.js").PresentCharacter[];
   /** User persona info */
@@ -548,6 +555,7 @@ export const CUSTOM_AGENT_CAPABILITY_IDS = [
   "trigger_image_generation",
   "access_vectors",
   "edit_main_prompt",
+  "manage_chat_characters",
 ] as const;
 
 export type CustomAgentCapability = (typeof CUSTOM_AGENT_CAPABILITY_IDS)[number];
@@ -624,6 +632,7 @@ const CUSTOM_AGENT_RESULT_CAPABILITY: Partial<Record<AgentResultType, CustomAgen
   game_state_update: "edit_trackers",
   image_prompt: "trigger_image_generation",
   prompt_patch: "edit_main_prompt",
+  character_activity_update: "manage_chat_characters",
   frontend_theme_update: "change_frontend_styling",
   background_change: "change_backgrounds",
   sprite_change: "change_sprites",

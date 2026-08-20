@@ -11,6 +11,7 @@ export const CUSTOM_AGENT_RESULT_TYPE_IDS = [
   "game_state_update",
   "image_prompt",
   "prompt_patch",
+  "character_activity_update",
   "frontend_theme_update",
   "background_change",
   "sprite_change",
@@ -114,6 +115,9 @@ export const CUSTOM_AGENT_RESULT_EXAMPLES: Record<CustomAgentResultType, CustomA
         content: "Prompt content to apply",
       },
     ],
+  }),
+  character_activity_update: jsonExample({
+    activeCharacterIds: ["Exact attached character ID"],
   }),
   frontend_theme_update: jsonExample({
     css: ".chat-surface { filter: saturate(1.1); }",

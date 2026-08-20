@@ -1023,6 +1023,43 @@ export function resolveActiveCharacterIds(
   return characterIds;
 }
 
+export function resolveCharacterActivityUpdate(
+  data: unknown,
+  chatCharacterIds: string[],
+): { activeCharacterIds: string[]; inactiveCharacterIds: string[] } | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const requestedIds = (data as Record<string, unknown>).activeCharacterIds;
+  if (!Array.isArray(requestedIds) || requestedIds.length === 0) return null;
+
+  const allowedIds = new Set(chatCharacterIds);
+  const selectedIds = new Set<string>();
+  for (const id of requestedIds) {
+    if (typeof id !== "string" || !allowedIds.has(id)) return null;
+    selectedIds.add(id);
+  }
+
+  const activeCharacterIds = chatCharacterIds.filter((id) => selectedIds.has(id));
+  if (activeCharacterIds.length === 0) return null;
+  return {
+    activeCharacterIds,
+    inactiveCharacterIds: chatCharacterIds.filter((id) => !selectedIds.has(id)),
+  };
+}
+
+export function shouldRunCharacterActivityAgents(options: {
+  mode: string;
+  impersonate: boolean;
+  regenerateMessageId?: string | null;
+  continueMessageId?: string | null;
+}): boolean {
+  return (
+    (options.mode === "conversation" || options.mode === "roleplay") &&
+    !options.impersonate &&
+    !options.regenerateMessageId &&
+    !options.continueMessageId
+  );
+}
+
 export type GroupGenerationMode = "merged" | "individual";
 
 /** Resolve the stored generation mode for every group-capable chat mode. */

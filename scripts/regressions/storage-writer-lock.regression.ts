@@ -114,6 +114,7 @@ try {
           ...process.env,
           FILE_STORAGE_DIR: dir,
           MARINARA_ENV_FILE: join(dir, ".watcher.env"),
+          NODE_ENV: "production",
           PORT: String(20_000 + (process.pid % 10_000)),
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -131,6 +132,7 @@ try {
     try {
       await waitForExit(watcher);
       assert.match(watcherOutput, /--marinara-dev-watch/u, "the competing process must use the guarded dev watcher");
+      assert.match(watcherOutput, /StorageWriterLeaseError/u, "the watcher must exit because it lost the writer lease");
       assert.equal(existsSync(leasePath(dir)), true, "the healthy writer keeps its lease after rejecting the watcher");
       assert.equal(readJson<LeaseRecord>(ownerPath(dir)).pid, process.pid, "the healthy writer remains the lease owner");
     } finally {

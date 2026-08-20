@@ -39,10 +39,7 @@ function readActivePresetIds(chatMeta: AuthorNoteChatMeta): string[] {
  * `resolve` is caller-supplied: generation paths defer character macros
  * mid-stream, the agent path resolves eagerly without trimming.
  */
-function collectChatLocalNote(
-  chatMeta: AuthorNoteChatMeta,
-  resolve: (raw: string) => string,
-): AuthorNoteEntry | null {
+function collectChatLocalNote(chatMeta: AuthorNoteChatMeta, resolve: (raw: string) => string): AuthorNoteEntry | null {
   const raw = typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes.trim() : "";
   if (!raw) return null;
   const content = resolve(raw).trim();

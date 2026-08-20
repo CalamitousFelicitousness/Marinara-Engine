@@ -495,9 +495,7 @@ export function AuthorNotesPanel({
 
   // Mounted with key={chatId} at both call sites, so switching chats remounts
   // and re-reads the parked draft. Nothing here handles chatId changing in place.
-  const [draft, setDraft] = useState<AuthorNoteDraft>(
-    () => authorNoteDrafts.get(chatId) ?? chatNoteDraft(chatMeta),
-  );
+  const [draft, setDraft] = useState<AuthorNoteDraft>(() => authorNoteDrafts.get(chatId) ?? chatNoteDraft(chatMeta));
   const { target, notes, depthStr, presetName, baseline } = draft;
   const dirty = isAuthorNoteDraftDirty(draft);
   const savePending = updateMeta.isPending || updatePreset.isPending;
@@ -756,9 +754,7 @@ export function AuthorNotesPanel({
               const isActive = activeIdSet.has(preset.id);
               const isEditing = target.kind === "preset" && target.id === preset.id;
               const toggleLabel = localizeUi(
-                isActive
-                  ? "ui.chat.authornotespanel.deactivatePreset"
-                  : "ui.chat.authornotespanel.activatePreset",
+                isActive ? "ui.chat.authornotespanel.deactivatePreset" : "ui.chat.authornotespanel.activatePreset",
                 { name: preset.name },
               );
               return (

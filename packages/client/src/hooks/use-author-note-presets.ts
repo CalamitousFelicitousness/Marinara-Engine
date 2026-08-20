@@ -41,8 +41,7 @@ export function useUpdateAuthorNotePreset() {
 export function useReorderAuthorNotePresets() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (presetIds: string[]) =>
-      api.put<AuthorNotePreset[]>("/author-note-presets/reorder", { presetIds }),
+    mutationFn: (presetIds: string[]) => api.put<AuthorNotePreset[]>("/author-note-presets/reorder", { presetIds }),
     onSuccess: (presets) => {
       qc.setQueryData(authorNotePresetKeys.all, presets);
       qc.invalidateQueries({ queryKey: authorNotePresetKeys.all });

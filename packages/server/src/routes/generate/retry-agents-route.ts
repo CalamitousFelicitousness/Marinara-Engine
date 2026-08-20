@@ -1012,10 +1012,8 @@ async function buildRetryAgentContext(args: {
     writableLorebookIds: null,
     chatSummary: activeChatSummary,
     authorNotes: toAuthorNotesContextText(
-      collectAuthorNoteEntries(
-        chatMeta,
-        await createAuthorNotePresetsStorage(args.db).list(),
-        (raw) => resolveMacros(raw, promptMacroContext, { trimResult: false }),
+      collectAuthorNoteEntries(chatMeta, await createAuthorNotePresetsStorage(args.db).list(), (raw) =>
+        resolveMacros(raw, promptMacroContext, { trimResult: false }),
       ),
     ),
     activatedLorebookEntries,

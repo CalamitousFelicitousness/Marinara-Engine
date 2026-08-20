@@ -138,4 +138,11 @@ every sync.
 
 - `PORT=7870` and `VITE_PORT=7871` stay clear of other local dev servers.
 - `CORS_ORIGINS` includes the Vite origin, because the dev proxy rewrites `Host` but not `Origin`, so the server's same-origin shortcut does not apply.
+- `core.autocrlf=false` **and** `core.eol=lf`. Upstream added `format:check` to `pnpm check`
+  (`chore/5181-prettier-check`); Prettier defaults to `endOfLine: "lf"`, so a CRLF working tree
+  flags every file — 1297 of them, which reads as catastrophic and is purely line endings.
+  Setting `core.autocrlf=false` alone is not enough: `core.eol` defaults to `native`, which is
+  CRLF on Windows, and `.gitattributes` marks the repo `* text=auto`. Both settings are needed.
+  `*.bat text eol=crlf` keeps the launchers CRLF regardless. Re-materialize an existing checkout
+  with `git rm --cached -r .` then `git reset --hard` on a clean tree.
 - `AUTO_OPEN_BROWSER=false` stops both the launchers and the Vite dev server from opening a tab. The Vite half only works because of the port-resolution patch above — upstream's `vite.config.ts` never reads the repo `.env`, so this setting would otherwise be ignored by `pnpm dev`.

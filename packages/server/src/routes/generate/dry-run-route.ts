@@ -1528,15 +1528,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     // Chat-local note plus active presets, each at its own depth.
-    const authorNoteEntries = collectAuthorNoteEntries(
-      chatMeta,
-      await authorNotePresetsStore.list(),
-      (raw) =>
-        resolveMacros(
-          raw,
-          promptMacroContext,
-          deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
-        ),
+    const authorNoteEntries = collectAuthorNoteEntries(chatMeta, await authorNotePresetsStore.list(), (raw) =>
+      resolveMacros(raw, promptMacroContext, deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined),
     );
     if (authorNoteEntries.length > 0) {
       finalMessages = injectAtDepth(finalMessages as any, toAuthorNoteDepthEntries(authorNoteEntries)) as any;

@@ -3116,15 +3116,8 @@ export async function generateRoutes(app: FastifyInstance) {
 
         // ── Author's Notes injection ──
         // Chat-local note plus active presets, each at its own depth.
-        const authorNoteEntries = collectAuthorNoteEntries(
-          chatMeta,
-          await authorNotePresetsStore.list(),
-          (raw) =>
-            resolveMacros(
-              raw,
-              promptMacroContext,
-              deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined,
-            ),
+        const authorNoteEntries = collectAuthorNoteEntries(chatMeta, await authorNotePresetsStore.list(), (raw) =>
+          resolveMacros(raw, promptMacroContext, deferCharacterMacros ? { deferCharacterMacros: "all" } : undefined),
         );
         // Agents get the same notes flattened to one block.
         const authorNotes = toAuthorNotesContextText(authorNoteEntries) ?? "";

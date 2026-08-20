@@ -264,7 +264,10 @@ import { characterOverrideDb } from "../../packages/server/src/services/professo
 import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { createChatPresetsStorage } from "../../packages/server/src/services/storage/chat-presets.storage.js";
-import { buildGoogleModelsPageUrl } from "../../packages/server/src/routes/connections.routes.js";
+import {
+  buildConnectionTestCatalogUrl,
+  buildGoogleModelsPageUrl,
+} from "../../packages/server/src/routes/connections.routes.js";
 import { normalizeGoogleGenerativeLanguageBaseUrl } from "../../packages/server/src/services/llm/providers/google.provider.js";
 import {
   buildReferencedCharacterContext,
@@ -3728,6 +3731,21 @@ const googleModelsPageUrl = buildGoogleModelsPageUrl(
   "https://gemini-proxy.example.test/v1beta",
   "/models",
   "next page/token",
+);
+assert.equal(
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/", "audio", "/models", "elevenlabs"),
+  "https://api.elevenlabs.io/v1/models",
+  "ElevenLabs audio connection tests must normalize a trailing slash and use the versioned models endpoint",
+);
+assert.equal(
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/v1/", "audio", "/models", "elevenlabs"),
+  "https://api.elevenlabs.io/v1/models",
+  "An explicitly versioned ElevenLabs URL with a trailing slash must not duplicate the API version",
+);
+assert.equal(
+  buildConnectionTestCatalogUrl("https://api.openai.com/v1", "audio", "/models", "openai"),
+  "https://api.openai.com/v1/models",
+  "Other audio sources keep their configured models endpoint",
 );
 assert.equal(
   normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1"),

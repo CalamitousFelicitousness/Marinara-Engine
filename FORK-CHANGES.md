@@ -138,6 +138,16 @@ every sync.
 
 - `PORT=7870` and `VITE_PORT=7871` stay clear of other local dev servers.
 - `CORS_ORIGINS` includes the Vite origin, because the dev proxy rewrites `Host` but not `Origin`, so the server's same-origin shortcut does not apply.
+- Node runs under nvm-windows, which symlinks the Program Files `nodejs` directory at the
+  selected version.
+  Active: 24.19.0, the LTS line CI uses (`.github/workflows/*.yml` set `node-version: 24`).
+  `engines` wants `>=24 <27`; the repo's `.nvmrc` says `25`, which is an EOL line nvm no longer
+  lists — treat `.nvmrc` as stale, not as the target.
+  A fresh `nvm install` arrives with npm but no pnpm, so `pnpm` is `command not found` until
+  `corepack enable pnpm` runs once per installed Node version. pnpm then resolves through
+  corepack and honors `packageManager` in the root `package.json`, so the version is the repo's
+  pin rather than whatever was installed globally. Set `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` for
+  non-interactive runs, or corepack's first-use prompt hangs the shell.
 - `core.autocrlf=false` **and** `core.eol=lf`. Upstream added `format:check` to `pnpm check`
   (`chore/5181-prettier-check`); Prettier defaults to `endOfLine: "lf"`, so a CRLF working tree
   flags every file — 1297 of them, which reads as catastrophic and is purely line endings.

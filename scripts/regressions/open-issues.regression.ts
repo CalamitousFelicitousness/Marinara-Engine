@@ -5541,6 +5541,10 @@ const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
 );
+const choiceSelectionModalSource = readFileSync(
+  new URL("../../packages/client/src/components/presets/ChoiceSelectionModal.tsx", import.meta.url),
+  "utf8",
+);
 const gameSurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
@@ -5864,6 +5868,16 @@ assert.equal(
   "The Persona header avatar inside its upload target must not intercept page clicks",
 );
 assert.match(gameJournalSource, /data-game-journal-scroll/u);
+assert.match(
+  choiceSelectionModalSource,
+  /presentedOptions\.length === 1[\s\S]*<SettingsSwitch[\s\S]*labelPosition="start"/u,
+  "Single-option preset variables must use the standard accessible settings switch",
+);
+assert.doesNotMatch(
+  choiceSelectionModalSource,
+  /inline-flex h-4 w-7 shrink-0 items-center rounded-full/u,
+  "Preset choices must not restore the undersized Android toggle",
+);
 assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);

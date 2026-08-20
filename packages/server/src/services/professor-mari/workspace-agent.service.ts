@@ -1771,9 +1771,6 @@ export function workspaceMutationAuthorizationIssue(
 
   const directUserText = normalizeAuthorizationText(context.directUserText);
   const authorization = normalizeAuthorizationText(command.authorization ?? "");
-  if (!authorization || !directUserText.includes(authorization)) {
-    return "Mutation blocked before execution: authorization must quote a verbatim instruction from the active user message, not attached or fetched content.";
-  }
   if (MUTATION_DENIAL.test(directUserText)) {
     return "Mutation blocked before execution: the active user message explicitly requests no workspace changes.";
   }
@@ -1794,10 +1791,14 @@ export function workspaceMutationAuthorizationIssue(
     return "Mutation blocked before execution: a short confirmation must answer the immediately preceding visible proposal for the same kind of change.";
   }
 
-  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorization);
+  // The model-supplied quote is a hint, not a trust boundary. Small local models
+  // sometimes omit or paraphrase it, so fall back to the direct user message that
+  // the server already separated from attachments and fetched content.
+  const authorizationSource = authorization && directUserText.includes(authorization) ? authorization : directUserText;
+  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorizationSource);
   const authorizationScope = genericAuthorization
     ? directUserText.replace(GENERIC_MUTATION_AUTHORIZATION_CLAUSE, "").trim()
-    : authorization;
+    : authorizationSource;
   const lorebookEntrySplit = authorizesLorebookEntrySplit(authorizationScope, commandEntity, category);
   if (
     INFORMATIONAL_REQUEST_START.test(authorizationScope) &&
@@ -1806,7 +1807,7 @@ export function workspaceMutationAuthorizationIssue(
     return "Mutation blocked before execution: informational and how-to requests do not authorize workspace changes.";
   }
   if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope) && !lorebookEntrySplit) {
-    return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
+    return `Mutation blocked before execution: the active user instruction does not authorize a ${category} operation.`;
   }
   if (genericAuthorization) {
     const explicitCategories = explicitlyRequestedMutationCategories(authorizationScope);

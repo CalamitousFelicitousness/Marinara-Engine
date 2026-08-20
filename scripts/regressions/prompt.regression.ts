@@ -9271,7 +9271,10 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "utf8",
       );
       const ltmFallbackStart = generateRouteSource.indexOf("if (!handledByPresetSection) {");
-      const ltmFallbackEnd = generateRouteSource.indexOf("longTermMemoryRecallReceipt = recall.receipt;", ltmFallbackStart);
+      const ltmFallbackEnd = generateRouteSource.indexOf(
+        "longTermMemoryRecallReceipt = recall.receipt;",
+        ltmFallbackStart,
+      );
       const ltmFallbackSource = generateRouteSource.slice(
         ltmFallbackStart,
         ltmFallbackEnd + "longTermMemoryRecallReceipt = recall.receipt;".length,
@@ -11054,7 +11057,41 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           { ...explicitCommand, authorization: "Delete every lorebook." },
           { directUserText: "Summarize the attached roleplay transcript." },
         ) ?? "",
-        /active user message/iu,
+        /informational and how-to/iu,
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Please add those entries.",
+            arguments: {
+              action: "lorebook.addEntry",
+              lorebookId: "book-id",
+              entry: { name: "Sumeru", content: "A rainforest nation." },
+              apply: true,
+            },
+          },
+          { directUserText: "Create a lorebook entry for Sumeru." },
+        ),
+        null,
+        "a paraphrased model quote must not override the server's direct-user authorization scope",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Please add those entries.",
+            arguments: {
+              action: "lorebook.addEntry",
+              lorebookId: "book-id",
+              entry: { name: "Sumeru", content: "A rainforest nation." },
+              apply: true,
+            },
+          },
+          { directUserText: "Explain how lorebook entries work." },
+        ) ?? "",
+        /informational and how-to/iu,
+        "a malformed quote must not turn an informational direct request into mutation permission",
       );
       assert.match(
         workspaceMutationAuthorizationIssue(

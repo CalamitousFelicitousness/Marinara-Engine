@@ -7051,7 +7051,7 @@ export function ChatSettingsDrawer({
                       type="button"
                       onClick={() => void handleStopActiveGeneration()}
                       disabled={stoppingGeneration}
-                      className="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg bg-red-500/10 px-3 py-2.5 text-left text-red-300 ring-1 ring-red-500/25 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="flex min-h-10 w-full items-center justify-between gap-3 rounded-lg bg-[var(--secondary)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <div className="min-w-0 flex-1">
                         <span className="text-[0.6875rem] font-medium">
@@ -7059,14 +7059,14 @@ export function ChatSettingsDrawer({
                             ? localizeUi("ui.chat.chatsettingsdrawer.stoppingGeneration")
                             : localizeUi("ui.chat.chatsettingsdrawer.stopActiveGeneration")}
                         </span>
-                        <p className="text-[0.625rem] leading-relaxed text-red-200/70">
+                        <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
                           {localizeUi("ui.chat.chatsettingsdrawer.stopActiveGenerationDescription")}
                         </p>
                       </div>
                       {stoppingGeneration ? (
-                        <Loader2 size="0.8125rem" className="shrink-0 animate-spin" />
+                        <Loader2 size="0.8125rem" className="shrink-0 animate-spin text-[var(--muted-foreground)]" />
                       ) : (
-                        <X size="0.8125rem" className="shrink-0" />
+                        <X size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
                       )}
                     </button>
                   )}

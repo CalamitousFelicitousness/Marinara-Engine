@@ -6790,6 +6790,10 @@ const sharedGameSetupSource: GameSetupShareSource = {
     difficulty: "normal",
     combatStyle: "tactical",
     spatialMapInstructions: "Build a shifting tower with a market ward and flooded catacombs.",
+    gameWorldMapMode: "hierarchical",
+    spatialMapDraftSize: "large",
+    spatialMapTargetLocationCount: 10,
+    spatialMapGroundingMode: "lore_expand",
     rating: "nsfw",
     playerGoals: "Become an elite dungeon conqueror",
     gmMode: "standalone",
@@ -6852,6 +6856,9 @@ assert.match(sharedGameSetup, /Use clear progression and frequent loot rewards/u
 assert.match(sharedGameSetup, /Dungeon Lore/u);
 assert.match(sharedGameSetup, /Combat style: Tactical/u);
 assert.match(sharedGameSetup, /Build a shifting tower with a market ward and flooded catacombs\./u);
+assert.match(sharedGameSetup, /World map size: Medium/u);
+assert.match(sharedGameSetup, /World map place target: 10/u);
+assert.match(sharedGameSetup, /World map build from: Lore \+ AI/u);
 assert.match(sharedGameSetup, /"startingValue": 3/u);
 assert.doesNotMatch(
   sharedGameSetup,
@@ -6898,6 +6905,9 @@ assert.equal(
   resolvedGameSetup.config.spatialMapInstructions,
   "Build a shifting tower with a market ward and flooded catacombs.",
 );
+assert.equal(resolvedGameSetup.config.spatialMapDraftSize, "medium");
+assert.equal(resolvedGameSetup.config.spatialMapTargetLocationCount, 10);
+assert.equal(resolvedGameSetup.config.spatialMapGroundingMode, "lore_expand");
 assert.equal(resolvedGameSetup.gmConnectionId, "gm-connection-new-id");
 assert.equal(resolvedGameSetup.config.imageConnectionId, "image-connection-new-id");
 assert.equal(resolvedGameSetup.config.videoConnectionId, "video-connection-new-id");
@@ -6923,7 +6933,43 @@ assert.equal(unresolvedGameSetup.gmConnectionId, null);
 assert.deepEqual(unresolvedGameSetup.config.partyCharacterIds, []);
 assert.equal(unresolvedGameSetup.config.personaId, null);
 assert.deepEqual(unresolvedGameSetup.config.activeLorebookIds, []);
+assert.equal(unresolvedGameSetup.config.spatialMapGroundingMode, "setup");
+assert.ok(unresolvedGameSetup.warnings.some((warning) => /World map[\s\S]*Game setup/u.test(warning)));
 assert.ok(unresolvedGameSetup.warnings.length >= 5);
+
+for (const [size, targetLocationCount] of [
+  ["small", 8],
+  ["medium", 16],
+  ["large", 28],
+] as const) {
+  const presetMapSetup = parseGameSetupShareFileJson(
+    JSON.stringify(
+      buildGameSetupShareFile({
+        ...sharedGameSetupSource,
+        config: {
+          ...sharedGameSetupSource.config,
+          spatialMapDraftSize: size,
+          spatialMapTargetLocationCount: undefined,
+        },
+      }),
+    ),
+  );
+  assert.equal(presetMapSetup.setup.config.spatialMapDraftSize, size);
+  assert.equal(presetMapSetup.setup.config.spatialMapTargetLocationCount, targetLocationCount);
+}
+
+for (const groundingMode of ["setup", "lore_strict", "lore_expand"] as const) {
+  const groundedMapSetup = parseGameSetupShareFileJson(
+    JSON.stringify({
+      ...exportedGameSetup,
+      setup: {
+        ...exportedGameSetup.setup,
+        config: { ...exportedGameSetup.setup.config, spatialMapGroundingMode: groundingMode },
+      },
+    }),
+  );
+  assert.equal(groundedMapSetup.setup.config.spatialMapGroundingMode, groundingMode);
+}
 const providerOnlyGameSetup = resolveGameSetupImport(parsedGameSetup, {
   characters: [],
   personas: [],
@@ -6974,6 +7020,27 @@ assert.throws(
     ),
   /invalid Spatial Map Instructions value/u,
 );
+for (const invalidConfig of [
+  { spatialMapDraftSize: "enormous" },
+  { spatialMapTargetLocationCount: 0 },
+  { spatialMapTargetLocationCount: 41 },
+  { spatialMapTargetLocationCount: 10.5 },
+  { spatialMapGroundingMode: "internet" },
+]) {
+  assert.throws(
+    () =>
+      parseGameSetupShareFileJson(
+        JSON.stringify({
+          ...exportedGameSetup,
+          setup: {
+            ...exportedGameSetup.setup,
+            config: { ...exportedGameSetup.setup.config, ...invalidConfig },
+          },
+        }),
+      ),
+    /invalid (Spatial Map Draft Size|Spatial Map Target Location Count|Spatial Map Grounding Mode) value/u,
+  );
+}
 assert.throws(
   () =>
     parseGameSetupShareFileJson(

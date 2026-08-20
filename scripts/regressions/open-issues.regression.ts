@@ -5486,6 +5486,10 @@ const personaEditorSource = readFileSync(
   new URL("../../packages/client/src/components/personas/PersonaEditor.tsx", import.meta.url),
   "utf8",
 );
+const chatSetupWizardSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatSetupWizard.tsx", import.meta.url),
+  "utf8",
+);
 const convoProfileFieldsSource = readFileSync(
   new URL("../../packages/client/src/components/characters/ConvoProfileFields.tsx", import.meta.url),
   "utf8",
@@ -5825,6 +5829,11 @@ assert.match(
   personaEditorSource,
   /<SettingsSwitch\s+checked=\{formData\.versioningEnabled\}/u,
   "Persona versioning must use the shared aligned settings switch",
+);
+assert.match(
+  chatSetupWizardSource,
+  /className="flex min-w-0 w-full items-center justify-between gap-3 text-left"[\s\S]*className="min-w-0 flex-1"[\s\S]*"h-5 w-9 shrink-0 rounded-full/u,
+  "The New Chat parameter toggle must stay within its card when Android enlarges text",
 );
 assert.match(
   characterEditorSource,

@@ -1342,6 +1342,7 @@ function extractSolidColorFromGradient(gradientStr: string): string {
 function colorNamesSkippingQuotes(
   text: string,
   nameColorMap: Map<string, string>,
+  textShadow?: string,
 ): string {
   if (!text || nameColorMap.size === 0) return text;
   const names = Array.from(nameColorMap.keys());
@@ -1410,7 +1411,8 @@ function colorNamesSkippingQuotes(
             const styleStr = Object.entries(style)
               .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}:${v}`)
               .join(";");
-            result.push(`<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill">${matchedName}</span>`);
+            const dropShadow = textShadow ? `;text-shadow:none;filter:drop-shadow(${textShadow})` : ";text-shadow:none";
+            result.push(`<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill${dropShadow}">${matchedName}</span>`);
           } else {
             result.push(`<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`);
           }
@@ -1447,6 +1449,7 @@ function renderContent(
   selfCharacterId?: string | null,
   galleryIndex?: ChatGalleryIndex | null,
   nameColorMap?: Map<string, string> | null,
+  textShadow?: string
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1458,7 +1461,7 @@ function renderContent(
 
   // Apply inline name coloring before dialogue highlighting — skips names inside quotes
   const withNameColors = nameColorMap && nameColorMap.size > 0
-    ? colorNamesSkippingQuotes(normalized, nameColorMap)
+    ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow)
     : normalized;
 
   // Strip speaker tags before HTML detection (they aren't real HTML)
@@ -1605,7 +1608,8 @@ export function RoleplayMessagePreview({
         htmlScopeClass,
         quoteFormat,
         selfCharacterId,
-        undefined,
+        undefined, // nameColorMap
+        undefined, // textShadowStr
       ),
     [boldDialogue, content, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
   );
@@ -1740,6 +1744,9 @@ export const ChatMessage = memo(function ChatMessage({
         : {},
     [textStrokeWidth, textStrokeColor],
   );
+  const textShadowStr = textStrokeWidth > 0
+    ? `0px 0px ${textStrokeWidth}px ${textStrokeColor}`
+    : "";
   const messageTextStyle = useMemo<React.CSSProperties>(
     () => ({
       fontSize: chatFontSize,
@@ -2594,8 +2601,9 @@ export const ChatMessage = memo(function ChatMessage({
       selfCharacterId,
       galleryIndex,
       nameColorMap,
+      textShadowStr,
     );
-  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex, nameColorMap]);
+  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex, nameColorMap, textShadowStr]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
       renderContent(
@@ -2608,8 +2616,9 @@ export const ChatMessage = memo(function ChatMessage({
         selfCharacterId,
         galleryIndex,
         nameColorMap,
+        textShadowStr,
       ),
-    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap, nameColorMap],
+    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap, nameColorMap, textShadowStr],
   );
 
   // Translated text is rendered through the same markdown pipeline as the
@@ -2627,6 +2636,7 @@ export const ChatMessage = memo(function ChatMessage({
             selfCharacterId,
             galleryIndex,
             nameColorMap,
+            textShadowStr,
           )
         : null,
     [
@@ -2639,6 +2649,7 @@ export const ChatMessage = memo(function ChatMessage({
       selfCharacterId,
       galleryIndex,
       nameColorMap,
+      textShadowStr,
     ],
   );
   const translationDisplayOnly = useMemo(

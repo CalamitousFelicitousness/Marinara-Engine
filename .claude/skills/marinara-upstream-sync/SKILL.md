@@ -99,14 +99,14 @@ grep the file for the old identifier before moving on.
 
 ### The recurring conflicts, by file
 
-| File | Shape | Resolution |
-| --- | --- | --- |
-| `routes/generate/retry-agents-route.ts` | semantic | see below, the dangerous one |
-| `package.json` | fork guards vs upstream scripts | keep both, see below |
-| `localization/locales/en.json` | adjacency | keep both blocks, `localeCompare` order |
-| `e2e/core-flows.e2e.ts` | adjacency | keep both tests, close the first |
-| `pnpm-lock.yaml` | regenerable | take upstream's, then `pnpm install` |
-| `scripts/dev.mjs`, `client/vite.config.ts` | the `.env` PORT patch | keep the fork's, guarded by `dev-ports:check` |
+| File                                       | Shape                           | Resolution                                    |
+| ------------------------------------------ | ------------------------------- | --------------------------------------------- |
+| `routes/generate/retry-agents-route.ts`    | semantic                        | see below, the dangerous one                  |
+| `package.json`                             | fork guards vs upstream scripts | keep both, see below                          |
+| `localization/locales/en.json`             | adjacency                       | keep both blocks, `localeCompare` order       |
+| `e2e/core-flows.e2e.ts`                    | adjacency                       | keep both tests, close the first              |
+| `pnpm-lock.yaml`                           | regenerable                     | take upstream's, then `pnpm install`          |
+| `scripts/dev.mjs`, `client/vite.config.ts` | the `.env` PORT patch           | keep the fork's, guarded by `dev-ports:check` |
 
 **`retry-agents-route.ts` is the one to slow down for.** The fork's
 `authorNotes` derivation sits in the same object literal as `chatSummary`,
@@ -122,8 +122,10 @@ that meant upstream's precomputed `activeChatSummary` (from the async
 `toAuthorNotesContextText(collectAuthorNoteEntries(...))` beside it.
 
 Expect this file to conflict on most syncs. The asymmetry is the point: a
-default of "take theirs" is wrong here in a way nothing outside
-`author-note-presets.regression.ts` will catch.
+default of "take theirs" is wrong here in a way **nothing in the suite
+currently catches**. `author-note-presets.regression.ts` exercises the shared
+helpers in `services/prompt/author-notes.ts`, not this route's wiring, so the
+revert passes every check. Verify the resolution by reading the merged file.
 
 **`package.json`** carries fork guards upstream does not have. Keep
 `agent-docs:check` and `dev-ports:check` in `check` alongside whatever upstream
@@ -156,15 +158,20 @@ diff /tmp/pnpm_base.txt /tmp/pnpm_up.txt
 Anything new on the upstream side has to be mirrored into
 `pnpm-workspace.yaml` by hand.
 
-**`AGENTS.md`.** Upstream hand-edits it and has never once touched
-`CLAUDE.md`. This fork generates it from `CLAUDE.md` plus
-`.github/agents/codex-overlay.md`, so an upstream `AGENTS.md` edit arrives as a
-clean auto-merge that `pnpm agent-docs:check` then rejects. Fold the new
-content into `CLAUDE.md` at the matching position, then:
+**`AGENTS.md`.** Upstream hand-edits it directly, while this fork generates it
+from `CLAUDE.md` plus `.github/agents/codex-overlay.md`. An upstream
+`AGENTS.md` edit therefore arrives as a clean auto-merge that
+`pnpm agent-docs:check` then rejects. Fold the new content into `CLAUDE.md` at
+the matching position, then:
 
 ```bash
 pnpm agent-docs:sync
 ```
+
+Upstream maintains its own `CLAUDE.md` too — 15 commits of history as of
+2026-08, though none landed in that sync's window. When a sync does bring a
+`CLAUDE.md` change, merge it into the fork's `CLAUDE.md` (the generation
+source) and regenerate the same way.
 
 ## Proving a failure is upstream's, not yours
 
@@ -192,8 +199,10 @@ An identical failure there is upstream's. Record it as known-failing in
 `.claude/skills/marinara-validation/SKILL.md` so the next session does not
 re-investigate it.
 
-Clean up afterwards. `git worktree remove --force` fails while `node_modules`
-exists, so remove the directory too:
+Clean up afterwards. A plain `git worktree remove` refuses because
+`node_modules` is untracked; `--force` normally deletes it, but on Windows it
+can still fail with `Directory not empty` when a file inside is locked (it did
+on the 2026-08-20 sync), so finish with the `rm -rf`:
 
 ```bash
 git worktree remove --force /tmp/upwt; git worktree prune; rm -rf /tmp/upwt

@@ -15,14 +15,14 @@ proving a change works.
 
 ## Pick the lane that matches the change
 
-| Change touches | Run | Cost |
-| --- | --- | --- |
-| Anything at all (baseline) | `pnpm check` | ~2 min |
-| Prompt assembly, lorebook, macros, author's notes | `pnpm regression:prompt` | ~1 min |
-| Server behavior, one script | `node ./scripts/run-regressions.mjs --filter <path>` | seconds |
-| A new module you wrote | a new `scripts/regressions/**/*.regression.ts` | seconds |
-| Chat UI shell, panels, popovers | the two relevant e2e specs (see below) | ~1 min |
-| Broad refactor across surfaces | full `pnpm smoke:ui` | **~1 hour** |
+| Change touches                                    | Run                                                  | Cost        |
+| ------------------------------------------------- | ---------------------------------------------------- | ----------- |
+| Anything at all (baseline)                        | `pnpm check`                                         | ~2 min      |
+| Prompt assembly, lorebook, macros, author's notes | `pnpm regression:prompt`                             | ~1 min      |
+| Server behavior, one script                       | `node ./scripts/run-regressions.mjs --filter <path>` | seconds     |
+| A new module you wrote                            | a new `scripts/regressions/**/*.regression.ts`       | seconds     |
+| Chat UI shell, panels, popovers                   | the two relevant e2e specs (see below)               | ~1 min      |
+| Broad refactor across surfaces                    | full `pnpm smoke:ui`                                 | **~1 hour** |
 
 `pnpm check` runs stale-client cleanup, the Impeccable guard, both fork guards
 (`agent-docs:check`, `dev-ports:check`), localization checks, the Prettier
@@ -76,7 +76,7 @@ pnpm smoke:ui --project=desktop-chromium
 
 **Never write `pnpm smoke:ui -- --grep "..."`.** pnpm 11 forwards the literal
 `--` into the command, and Playwright reads everything after a bare `--` as
-positional *file filters* rather than options. The filter is silently ignored
+positional _file filters_ rather than options. The filter is silently ignored
 and the whole suite runs — which looks like you asked for a full run, so
 nothing warns you. (Scripts that parse argv themselves, `version:sync` and
 `release:notes`, tolerate the separator; only Playwright breaks.)
@@ -177,7 +177,7 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
-If you see these, they are not yours. If you see *other* failures and need to
+If you see these, they are not yours. If you see _other_ failures and need to
 know whether your change caused them, the ladder is:
 
 1. **Re-run the failing specs alone.** If they pass in isolation, it was
@@ -200,7 +200,7 @@ pnpm smoke:ui 2>&1 | tail -80      # reports tail's status — a failed run look
 pnpm smoke:ui > log 2>&1; echo "EXIT=$?" >> log   # correct
 ```
 
-In a pipeline the shell reports the *last* command's status. This has already
+In a pipeline the shell reports the _last_ command's status. This has already
 caused a failing suite to be reported as passing. Whenever the exit code
 matters — especially for background runs whose result you will act on —
 redirect to a file and capture `$?` explicitly.
@@ -209,7 +209,7 @@ redirect to a file and capture `$?` explicitly.
 
 `dist/` is a build output that both the server and the regression scripts
 resolve `@marinara-engine/shared` through. It survives `git stash` untouched,
-which means a baseline run on a stashed tree rebuilds it from *clean* source and
+which means a baseline run on a stashed tree rebuilds it from _clean_ source and
 silently strips your new exports. Run `pnpm build:shared` after any stash
 round-trip, after changing shared source, and before running a regression that
 imports from `dist`. A running `pnpm dev:server` also needs a restart, since its
@@ -248,11 +248,18 @@ that for `pnpm run` but not for `pnpm exec` or a bare `node`, and without it the
 script spawns literal `pnpm`, which has no directly-spawnable binary on Windows
 (`spawn pnpm ENOENT`). Set it explicitly when invoking the launcher yourself.
 
-### `git stash push` trips the local push guard
+### The local push guard and `git stash push`
 
-A hook blocks any command containing both `git` and `push`, so `git stash push`
-is a false positive. Use `git stash -u -m "message"` — push is the default
-subcommand.
+`~/.claude/hooks/block-git-push.py` is now subcommand-aware: it tokenizes the
+command and only blocks when the first non-option word after `git` is `push`,
+so `git stash push` passes (verified 2026-08-20). The old advice to spell it
+`git stash -u -m "message"` is obsolete.
+
+What still trips the guard is its fallback scan: a command that is unparseable,
+or that combines a shell-exec word with the literal words `git` and `push`
+anywhere in the raw text — including inside a heredoc body. Writing a doc file
+via `cat > x.md <<'EOF'` whose body contains a ` ```bash ` fence and the phrase
+"git push" is blocked. Use the Write tool for such files instead of a heredoc.
 
 ## Local guards
 
@@ -271,7 +278,7 @@ one blocks a command, the fix is in its message. If a rule is genuinely wrong fo
 a case, say so rather than rephrasing the command to slip past it.
 
 Two quirks worth knowing. These rules match on raw command text, so they also
-fire when you *write about* the pattern — documenting the bad form through a
+fire when you _write about_ the pattern — documenting the bad form through a
 bash heredoc trips the same block. Edit such files with the Write/Edit tools
 instead, which the bash rules do not inspect. And the em-dash rule deliberately
 covers commit text only: em dashes are this repo's house style in files (180+

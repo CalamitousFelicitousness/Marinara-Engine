@@ -9452,7 +9452,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     generateRouteSource,
-    /chatMode === "roleplay" && assistantMessageReadySent\) moveToActiveAgentRuns\(\)/u,
+    /chatMode === "roleplay" && assistantMessageReadySent\) \{[\s\S]{0,220}moveToActiveAgentRuns\([\s\S]{0,180}lastSavedSwipeIndex/u,
     "A durable Roleplay reply must release the main generation slot while retaining its cancellable agent tail",
   );
   assert.match(generateRouteSource, /const activeAgentRuns = new Map<string, Set<ActiveGeneration>>\(\)/u);
@@ -9468,7 +9468,8 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     generateRouteSource,
-    /body\.agentsOnly === true \? agentRuns : \[\.\.\.\(activeGeneration \? \[activeGeneration\] : \[\]\), \.\.\.agentRuns\]/u,
+    /body\.agentsOnly === true[\s\S]{0,180}agentRuns\.length > 0[\s\S]{0,180}activeGeneration/u,
+    "Stop Agents must reach agent work that has not detached from the active request yet",
   );
   assert.match(
     generateRouteSource,

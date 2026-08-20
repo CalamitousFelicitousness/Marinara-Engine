@@ -790,7 +790,7 @@
   "settings.controls.customPointer.label": "Custom Mouse Pointer",
   "settings.controls.debugMode.help": "Logs the prompt and response payloads sent to the model in the server console for debugging.",
   "settings.controls.debugMode.label": "Debug mode",
-  "settings.controls.disableInlineNameGradients.help": "When enabled, gradient name colors are replaced with the first solid color from the gradient for inline name coloring. This improves readability of colored names in prose text.",
+  "settings.controls.disableInlineNameGradients.help": "When enabled, gradient name colors are replaced with the brightest solid color from the gradient array for inline name coloring. This improves readability of colored names in prose text.",
   "settings.controls.disableInlineNameGradients.label": "Force Solid Colors for Inline Names",
   "settings.controls.doubleClickEdit.help": "When on, double-click or double-tap a Roleplay message to open it for editing. Turn it off to avoid accidental edits; edit buttons and keyboard shortcuts still work.",
   "settings.controls.doubleClickEdit.label": "Double-click edits messages",

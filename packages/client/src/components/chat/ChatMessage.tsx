@@ -44,7 +44,18 @@ import {
 } from "lucide-react";
 import { decodeEncodedSpeakerTags, formatTextQuotes, type Message, type QuoteFormat } from "@marinara-engine/shared";
 import type { GameTurnStoryboard, GameTurnStoryboardKeyframe } from "@marinara-engine/shared";
-import { memo, useState, useMemo, useRef, useEffect, useId, useLayoutEffect, useCallback, type ReactNode } from "react";
+import {
+  memo,
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useCallback,
+  cloneElement,
+  type ReactNode,
+} from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { chatKeys, rememberRecentMessageContentEdit } from "../../hooks/use-chats";
@@ -1235,7 +1246,8 @@ function extractSolidColorFromGradient(gradientStr: string): string {
   );
   if (namedMatches) colors.push(...namedMatches);
 
-  if (colors.length === 0) return "#4ecdc4";
+  // No parseable stop (for example `var(--x)` or `color-mix()`): keep the original value.
+  if (colors.length === 0) return gradientStr;
 
   // Convert any color string to {r, g, b}
   const toRgb = (color: string): { r: number; g: number; b: number } | null => {
@@ -1366,6 +1378,9 @@ function colorNamesSkippingQuotes(text: string, nameColorMap: Map<string, string
   let activeQuoteIdx = -1;
   let quoteStartPos = -1;
   let i = 0;
+  // Cache the next match so the regex is not re-run for every character.
+  nameRegex.lastIndex = 0;
+  let nextMatch: RegExpExecArray | null = nameRegex.exec(text);
 
   while (i < text.length) {
     // Check for quote characters
@@ -1401,9 +1416,12 @@ function colorNamesSkippingQuotes(text: string, nameColorMap: Map<string, string
     }
     // If not in quotes, try to match a name at this position
     if (!inQuotes) {
-      nameRegex.lastIndex = i;
-      const match = nameRegex.exec(text);
-      if (match && match.index === i) {
+      while (nextMatch && nextMatch.index < i) {
+        nameRegex.lastIndex = i;
+        nextMatch = nameRegex.exec(text);
+      }
+      const match = nextMatch;
+      if (match && match.index === i && match[0].length > 0) {
         // Push any text before this match
         if (i > lastIndex) {
           result.push(text.slice(lastIndex, i));
@@ -1490,6 +1508,10 @@ function colorNamesInNodes(
     let k = 0;
     nameRegex.lastIndex = 0;
     while ((match = nameRegex.exec(str)) !== null) {
+      if (match[0].length === 0) {
+        nameRegex.lastIndex += 1;
+        continue;
+      }
       if (match.index > lastIndex) parts.push(str.slice(lastIndex, match.index));
       const matchedName = match[0];
       const color = nameColorMap.get(matchedName.toLowerCase());
@@ -1544,7 +1566,7 @@ function colorNamesInNodes(
         const children = Array.isArray(props.children)
           ? props.children.map((c: ReactNode, i: number) => processNode(c, i))
           : processNode(props.children as ReactNode, 0);
-        return { ...element, props: { ...props, children } };
+        return cloneElement(element, {}, children);
       }
     }
     return node;
@@ -1585,9 +1607,6 @@ function renderContent(
 
   const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
 
-  const withNameColors =
-    nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
-
   // Markdown path — renderWithHeadings handles headings, *** and --- horizontal rules,
   // and delegates the rest to speaker-tag / dialogue rendering.
   // Name coloring runs AFTER on the React tree so injected spans don't
@@ -1601,6 +1620,9 @@ function renderContent(
     }
     return markdownResult;
   }
+
+  const withNameColors =
+    nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
 
   // For HTML content, replace speaker tags with color-annotated spans (preserves per-character colors)
   const stripped = speakerColorMap
@@ -2565,24 +2587,24 @@ export const ChatMessage = memo(function ChatMessage({
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
   const nameColorMap = useMemo(() => {
-    if (!colorInlineNames || !characterMap) return null;
+    if (!colorInlineNames || !scopedCharacterMap) return null;
     const map = new Map<string, string>();
-    characterMap.forEach((char) => {
+    const addName = (name: string | undefined | null, color: string) => {
+      const key = name?.trim().toLowerCase();
+      if (key) map.set(key, color);
+    };
+    scopedCharacterMap.forEach((char) => {
       const color = char.nameColor;
       if (!color) return;
       // If gradients are disabled, extract the first solid color from gradient strings
       const effectiveColor =
         disableInlineNameGradients && isGradientNameColor(color) ? extractSolidColorFromGradient(color) : color;
-      map.set(char.name.toLowerCase(), effectiveColor);
-      if (char.convoDisplayName) map.set(char.convoDisplayName.toLowerCase(), effectiveColor);
-      if (char.nameAliases) {
-        for (const alias of char.nameAliases) {
-          map.set(alias.toLowerCase(), effectiveColor);
-        }
-      }
+      addName(char.name, effectiveColor);
+      addName(char.convoDisplayName, effectiveColor);
+      for (const alias of char.nameAliases ?? []) addName(alias, effectiveColor);
     });
     return map.size > 0 ? map : null;
-  }, [colorInlineNames, characterMap, disableInlineNameGradients]);
+  }, [colorInlineNames, scopedCharacterMap, disableInlineNameGradients]);
 
   // Build speaker → dialogueColor map for group chat speaker tag coloring
   const speakerColorMap = useMemo(() => {

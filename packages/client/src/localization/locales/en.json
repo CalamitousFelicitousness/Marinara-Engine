@@ -2183,6 +2183,7 @@
   "ui.characters.colorstab.nameAliasesDescription": "Additional names or nicknames that should be colored with this character's name color when they appear in chat messages. The character's main name is always included automatically.",
   "ui.characters.colorstab.nameAliasesInactive": "Inactive",
   "ui.characters.colorstab.nameAliasesPlaceholder": "Type aliases separated by commas (e.g. Kate, Kitty, Katherine)...",
+  "ui.characters.colorstab.nameAliasesRemove": "Remove alias {{alias}}",
   "ui.characters.colorstab.nameDisplayColor": "Name Display Color",
   "ui.characters.colorstab.theyJumpDownLandingBehindYouAndStraightenUp": "They jump down, landing behind you, and straighten up.",
   "ui.characters.colorstab.uploadAnAvatarFirst": "Upload an avatar first",

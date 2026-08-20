@@ -778,6 +778,22 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Button group",
   },
   {
+    id: "color-inline-names",
+    sectionId: "text-rules",
+    label: "Color Character Names in Text",
+    description: "Color character names and aliases inline in message text.",
+    aliases: ["names", "aliases", "color", "gradient", "characters"],
+    kind: "Toggle",
+  },
+  {
+    id: "disable-inline-name-gradients",
+    sectionId: "text-rules",
+    label: "Force Solid Colors for Inline Names",
+    description: "Replace gradient name colors with the brightest solid color inline.",
+    aliases: ["gradient", "solid", "names", "readability"],
+    kind: "Toggle",
+  },
+  {
     id: "game-instant-text-reveal",
     sectionId: "game-playback",
     label: "Instantly reveal game text",

@@ -36,6 +36,7 @@ function NameAliasInput({ existing, onAdd }: { existing: string[]; onAdd: (alias
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1">
       <input
         type="text"
+        aria-label={localizeUi("ui.characters.colorstab.nameAliases")}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -127,6 +128,7 @@ export function NameAliasesSection({ aliases, onChange, nameColor }: NameAliases
               </span>
               <button
                 type="button"
+                aria-label={localizeUi("ui.characters.colorstab.nameAliasesRemove", { alias })}
                 onClick={() => {
                   const next = aliases.filter((_, i) => i !== idx);
                   onChange(next);

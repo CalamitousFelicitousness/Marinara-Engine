@@ -1105,6 +1105,63 @@ test("settings profiles enforce chat modes and preserve branch identity", async 
   }
 });
 
+test("Message actions stay inside the viewport on a narrow phone", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Action row overflow is a mobile layout concern.");
+
+  const chatResponse = await page.request.post("/api/chats", {
+    data: { name: "Message Action Overflow Smoke", mode: "roleplay", characterIds: [] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+
+  try {
+    // Seed the conditional actions so the row carries what a real chat carries:
+    // reasoning, stored guidance, and a rewrite pair each add a button.
+    const extra = {
+      thinking: "Weighing the options.",
+      generationReplay: { impersonate: true },
+      proseGuardianOriginalText: "The original line before the rewrite.",
+    };
+    for (const role of ["user", "assistant"] as const) {
+      const posted = await page.request.post(`/api/chats/${chat.id}/messages`, {
+        data: { role, characterId: null, content: `A ${role} line.`, extra },
+      });
+      expect(posted.ok()).toBeTruthy();
+    }
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+
+    // 360px is where the unwrapped row first pushed Delete past the right edge.
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto("/");
+    await expect(page.locator("[data-message-id]").first()).toBeVisible({ timeout: 25000 });
+
+    const overflowing = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-message-id]")).flatMap((message) => {
+        const row = message.querySelector(".mari-message-actions");
+        if (!(row instanceof HTMLElement)) return [];
+        const role = message.getAttribute("data-message-role");
+        const offscreen = Array.from(row.querySelectorAll("button"))
+          .filter((button) => {
+            const rect = button.getBoundingClientRect();
+            return rect.right > window.innerWidth || rect.left < 0;
+          })
+          .map((button) => button.getAttribute("aria-label") ?? "?");
+        const clipped = row.scrollWidth > row.clientWidth;
+        return offscreen.length || clipped
+          ? [`${role}: clipped=${clipped} offscreen=[${offscreen.join(", ")}]`]
+          : [];
+      }),
+    );
+    expect(overflowing, "action buttons must wrap rather than leave the viewport").toEqual([]);
+
+    // The reported symptom: Delete is last in the row, so it goes first.
+    const deleteButton = page.locator("[data-message-role='assistant'] .mari-message-actions button[aria-label='Delete']");
+    await expect(deleteButton.first()).toBeInViewport();
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+  }
+});
+
 test("Author's Notes keeps its expand and full macro guide inside the field", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Author's Notes field chrome is covered on desktop.");
 

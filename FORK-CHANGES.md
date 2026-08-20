@@ -64,6 +64,26 @@ Those three generation routes each re-derived the note and re-hardcoded the defa
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
 `scripts/regressions/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
 
+### Message action row wraps on narrow phones
+
+`ChatMessage.tsx` renders the per-message action row (copy, edit, branch, delete, and the
+conditional reasoning / stored-guidance / rewrite actions) as a bare `flex` of `shrink-0`
+buttons with no wrapping. A full assistant row is 12 buttons, and the roleplay message body is
+capped at `calc(100% - avatar space)`, so below roughly 375px the row overflows to the right and
+the trailing buttons leave the viewport entirely. Measured at 390/375/360/344/320px: Delete is
+unreachable from 360px down, and Branch from here joins it at 320px. User rows are unaffected,
+being max-content sized and anchored right.
+
+Both action rows in `ChatMessage.tsx` (the roleplay layout and the default layout) now carry
+`max-w-full flex-wrap`, so the buttons wrap to a second line instead of overflowing. The
+conversation surface uses `ConversationMessageActions`, an absolutely positioned pill that does
+not overflow, and is unchanged.
+
+Patches to upstream files: `packages/client/src/components/chat/ChatMessage.tsx` and
+`e2e/core-flows.e2e.ts`. Covered by the mobile-only e2e spec `Message actions stay inside the
+viewport on a narrow phone`, which fails without the patch with
+`clipped=true offscreen=[Delete]`.
+
 ### Validation skill
 
 `.claude/skills/marinara-validation/SKILL.md` records how to validate a change here: which lane

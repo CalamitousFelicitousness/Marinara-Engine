@@ -3119,7 +3119,10 @@ export const ChatMessage = memo(function ChatMessage({
             {/* Hover actions (tap to toggle on mobile) */}
             <div
               className={cn(
-                "mari-message-actions flex items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
+                // flex-wrap + max-w-full: the buttons are shrink-0, so a full row
+                // (reasoning, guidance, rewrite, branch, delete) overflows the
+                // message body below ~375px and pushes Delete off the viewport.
+                "mari-message-actions flex max-w-full flex-wrap items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
                 isUser && "flex-row-reverse",
                 showActions && "opacity-100",
                 showStreamingThinkingAction &&
@@ -3610,7 +3613,9 @@ export const ChatMessage = memo(function ChatMessage({
           {/* Hover actions (tap to toggle on mobile) */}
           <div
             className={cn(
-              "mari-message-actions flex items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
+              // See the roleplay row above: same shrink-0 overflow, tighter box
+              // here since the body is capped at max-w-[72%].
+              "mari-message-actions flex max-w-full flex-wrap items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
               isUser && "flex-row-reverse",
               showActions && "opacity-100",
               showStreamingThinkingAction &&

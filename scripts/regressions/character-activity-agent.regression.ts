@@ -45,6 +45,16 @@ assert.equal(
   false,
   "Swipes should retain the active set chosen for the original reply",
 );
+assert.equal(
+  shouldRunCharacterActivityAgents({ mode: "conversation", impersonate: true }),
+  false,
+  "Impersonation must not change the chat's active character set",
+);
+assert.equal(
+  shouldRunCharacterActivityAgents({ mode: "roleplay", impersonate: false, continueMessageId: "message-1" }),
+  false,
+  "Continuations should retain the active set chosen for the original reply",
+);
 
 assert.equal(getCustomAgentResultCapability("character_activity_update"), "manage_chat_characters");
 assert.equal(

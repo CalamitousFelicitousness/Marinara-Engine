@@ -1482,29 +1482,30 @@ export async function generateRoutes(app: FastifyInstance) {
       const agentPromptTemplateSelections = normalizeAgentPromptTemplateSelectionMap(chatMeta.agentPromptTemplateIds);
       const hasPerChatAgentList = chatActiveAgentIds.length > 0;
       const perChatAgentSet = new Set(chatActiveAgentIds);
-      const characterActivityConfig = (agent: (typeof configuredPromptAgents)[number]): boolean => {
-        if (BUILT_IN_AGENTS.some((builtIn) => builtIn.id === agent.type)) return false;
-        if (normalizeAgentPhaseValue(agent.phase) !== "pre_generation") return false;
+      const effectiveAgentSettingsById = new Map<string, Record<string, unknown>>();
+      const characterActivityAgentConfigs: typeof configuredPromptAgents = [];
+      const pipelineConfiguredPromptAgents: typeof configuredPromptAgents = [];
+      for (const agent of configuredPromptAgents) {
         const settings = resolveEffectiveAgentSettings({
           agentType: agent.type,
           settings: agent.settings,
           activeMusicPlayerSource,
           chatMetadata: chatMeta,
         });
-        return (
+        effectiveAgentSettingsById.set(agent.id, settings);
+        const isCharacterActivityAgent =
+          !BUILT_IN_AGENTS.some((builtIn) => builtIn.id === agent.type) &&
+          normalizeAgentPhaseValue(agent.phase) === "pre_generation" &&
           settings.resultType === "character_activity_update" &&
-          customAgentHasCapability(settings, "manage_chat_characters")
-        );
-      };
+          customAgentHasCapability(settings, "manage_chat_characters");
+        (isCharacterActivityAgent ? characterActivityAgentConfigs : pipelineConfiguredPromptAgents).push(agent);
+      }
       const activeAgentOrder = new Map(chatActiveAgentIds.map((agentId, index) => [agentId, index]));
-      const characterActivityAgentConfigs = configuredPromptAgents
-        .filter(characterActivityConfig)
-        .sort(
-          (left, right) =>
-            (activeAgentOrder.get(left.type) ?? Number.MAX_SAFE_INTEGER) -
-            (activeAgentOrder.get(right.type) ?? Number.MAX_SAFE_INTEGER),
-        );
-      const pipelineConfiguredPromptAgents = configuredPromptAgents.filter((agent) => !characterActivityConfig(agent));
+      characterActivityAgentConfigs.sort(
+        (left, right) =>
+          (activeAgentOrder.get(left.type) ?? Number.MAX_SAFE_INTEGER) -
+          (activeAgentOrder.get(right.type) ?? Number.MAX_SAFE_INTEGER),
+      );
 
       const isGoogleProvider = conn.provider === "google" || conn.provider === "google_vertex";
       const persistPromptAttachmentCaptions = async (
@@ -1718,12 +1719,7 @@ export async function generateRoutes(app: FastifyInstance) {
       ) {
         for (const config of characterActivityAgentConfigs) {
           if (!perChatAgentSet.has(config.type)) continue;
-          const settings = resolveEffectiveAgentSettings({
-            agentType: config.type,
-            settings: config.settings,
-            activeMusicPlayerSource,
-            chatMetadata: chatMeta,
-          });
+          const settings = effectiveAgentSettingsById.get(config.id)!;
           const activation = matchCustomAgentActivation(settings, chatMessages);
           if (activation.configured && !activation.matched) continue;
 
@@ -1895,6 +1891,7 @@ export async function generateRoutes(app: FastifyInstance) {
             }
             selectedActivity = activity;
             selectedByAgent = agent;
+            break;
           }
 
           if (typeof latestUserMessage?.id === "string") {
@@ -1906,8 +1903,9 @@ export async function generateRoutes(app: FastifyInstance) {
                   messageId: latestUserMessage.id,
                   result,
                 });
-              } catch {
+              } catch (error) {
                 // Cadence bookkeeping must not block the main response.
+                logger.debug(error, "[custom-agent] Could not save character activity cadence bookkeeping");
               }
             }
           }

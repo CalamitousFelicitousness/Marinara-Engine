@@ -505,6 +505,17 @@ function normalizeCustomResultType(value: unknown): CustomAgentResultType {
     : "context_injection";
 }
 
+function resolveCustomAgentPhase(
+  phase: AgentPhase,
+  resultType: CustomAgentResultType,
+  isCustomAgent: boolean,
+): AgentPhase {
+  if (!isCustomAgent) return phase;
+  if (resultType === "text_rewrite") return "post_processing";
+  if (resultType === "character_activity_update") return "pre_generation";
+  return phase;
+}
+
 function customCapabilityMapFromLocal(capabilities: CustomAgentCapabilityMap): CustomAgentCapabilityMap {
   const enabled: CustomAgentCapabilityMap = {};
   for (const capability of CUSTOM_AGENT_CAPABILITY_IDS) {
@@ -1197,12 +1208,7 @@ export function AgentEditor() {
     setSaveError(null);
     const isEditingCustomAgent = isCustomAgent || isNewCustomAgent;
     const agentType = dbConfig?.type ?? builtIn?.id ?? agentDetailId;
-    const selectedPhase =
-      isEditingCustomAgent && localResultType === "text_rewrite"
-        ? "post_processing"
-        : isEditingCustomAgent && localResultType === "character_activity_update"
-          ? "pre_generation"
-          : localPhase;
+    const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
     const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
@@ -1450,12 +1456,7 @@ export function AgentEditor() {
     if (!agentDetailId) return;
     const isEditingCustomAgent = isCustomAgent || isNewCustomAgent;
     const agentType = dbConfig?.type ?? builtIn?.id ?? createCustomAgentType(localName);
-    const selectedPhase =
-      isEditingCustomAgent && localResultType === "text_rewrite"
-        ? "post_processing"
-        : isEditingCustomAgent && localResultType === "character_activity_update"
-          ? "pre_generation"
-          : localPhase;
+    const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
     const mayIncludeTurnData = isEditingCustomAgent && savedPhase === "post_processing";
     const activationKeywords = isEditingCustomAgent ? parseActivationKeywordsText(localActivationKeywordsText) : [];
@@ -1728,12 +1729,11 @@ export function AgentEditor() {
   );
   const normalizedLocalPhase = normalizeAgentPhaseForType(currentAgentType, localPhase);
   const phaseMeta = PHASE_META[normalizedLocalPhase];
-  const effectivePhase =
-    (isCustomAgent || isNewCustomAgent) && localResultType === "text_rewrite"
-      ? "post_processing"
-      : (isCustomAgent || isNewCustomAgent) && localResultType === "character_activity_update"
-        ? "pre_generation"
-        : normalizedLocalPhase;
+  const effectivePhase = resolveCustomAgentPhase(
+    normalizedLocalPhase,
+    localResultType,
+    isCustomAgent || isNewCustomAgent,
+  );
   const showTurnDataAccess = (isCustomAgent || isNewCustomAgent) && effectivePhase === "post_processing";
   const canConfigureLorebookReadBehind = customLorebookReadBehindEnabled(
     effectivePhase,

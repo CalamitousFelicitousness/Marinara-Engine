@@ -161,6 +161,22 @@ at the same durations every run:
 
 All are `locator.click: Test timeout exceeded`.
 
+`scripts/regressions/prompt.regression.ts` also fails, at the Beholder system
+prompt: `The input did not match the regular expression /Persona: Mari
+Current
+state:/u`, actual `'Return a physical-state delta as JSON.'` — the raw
+`promptTemplate`, unaugmented. Confirmed identical on a clean `upstream/staging`
+worktree (`9b1853da3`, its own pnpm 10.34.5 install), so it is upstream's, not
+this fork's. Beholder was still landing upstream when this was recorded.
+
+It is the first `--filter` in `pnpm regression:prompt`, and `&&` chaining means
+that lane exits before reaching `prompt-attachments`, `context-fit`, or
+`author-note-presets`. Run those three individually until upstream fixes it:
+
+```bash
+node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
+```
+
 If you see these, they are not yours. If you see *other* failures and need to
 know whether your change caused them, the ladder is:
 

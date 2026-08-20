@@ -9352,6 +9352,18 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.match(settingsDrawerSource, /\/generate\/status\/\$\{encodeURIComponent\(chat\.id\)\}/u);
   assert.match(settingsDrawerSource, /isRoleplayMode && \(activeGeneration \|\| stoppingGeneration\)/u);
   assert.match(settingsDrawerSource, /await abortGenerationForChat\(chat\.id, controller\)/u);
+  const stopGenerationActionStart = settingsDrawerSource.indexOf(
+    "{isRoleplayMode && (activeGeneration || stoppingGeneration) && (",
+  );
+  const agentSuiteActionStart = settingsDrawerSource.indexOf(
+    "onClick={() => setShowAgentSuiteModal(true)}",
+    stopGenerationActionStart,
+  );
+  assert.ok(stopGenerationActionStart >= 0 && agentSuiteActionStart > stopGenerationActionStart);
+  const stopGenerationActionSource = settingsDrawerSource.slice(stopGenerationActionStart, agentSuiteActionStart);
+  assert.match(stopGenerationActionSource, /bg-\[var\(--secondary\)\][\s\S]*hover:bg-\[var\(--accent\)\]/u);
+  assert.match(stopGenerationActionSource, /text-\[var\(--muted-foreground\)\]/u);
+  assert.doesNotMatch(stopGenerationActionSource, /red-/u);
   assert.equal(
     (
       settingsDrawerSource.match(

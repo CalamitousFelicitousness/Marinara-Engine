@@ -16,6 +16,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- ElevenLabs audio connections now test the documented `/v1/models` endpoint, so the default base URL no longer returns a misleading 404 (#5339).
 - Docker containers now repair mixed ownership inside file storage and imported top-level data folders even when the data root already belongs to the runtime user, preventing private storage hardening from blocking startup (#5323).
 - Roleplay now cancels post-processing work tied to an abandoned swipe before committing the next turn, Stop Agents safely cancels detached agent work without interrupting the primary reply, and an earlier swipe's illustration no longer reappears on the selected swipe while agents finish (#5328).
 - Chat Settings now presents its transient Stop Active Generation action like the neighboring neutral controls instead of making it look like an enabled destructive preference.

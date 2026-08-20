@@ -99,6 +99,21 @@ const useGenerateSource = readSourceText(
 );
 assert.match(
   generateRouteSource,
+  /const messagesById = new Map\(preMessages\.map[\s\S]{0,500}\(anchor\.activeSwipeIndex \?\? 0\) !== run\.swipeIndex[\s\S]{0,300}run\.abortController\.abort\(\)/u,
+  "Committing a Roleplay turn must cancel agent work anchored to an abandoned swipe",
+);
+assert.equal(
+  (generateRouteSource.match(/moveToActiveAgentRuns\([\s\S]{0,180}lastSavedSwipeIndex/gu) ?? []).length,
+  2,
+  "Both Roleplay reply-release paths must retain the generated message and swipe anchor",
+);
+assert.match(
+  generateRouteSource,
+  /const targets =\s*body\.agentsOnly === true\s*\? agentRuns\s*:/u,
+  "Stop Agents must not abort the primary generation before an agent tail detaches",
+);
+assert.match(
+  generateRouteSource,
   /\.\.\.\(input\.submissionId \? \{ submissionId: input\.submissionId \} : \{\}\)/u,
   "The durable user row must retain its client submission ID even when generation fails",
 );
@@ -194,6 +209,58 @@ assert.equal(
 assert.equal(
   reconciledMessages.some((message) => message.id === "__optimistic_unmatched"),
   true,
+);
+
+const switchedSwipe = reconcilePersistedMessages(
+  {
+    pageParams: [undefined],
+    pages: [
+      [
+        {
+          id: "assistant-with-illustration",
+          chatId: "chat-reconciliation-proof",
+          role: "assistant",
+          characterId: "character-1",
+          content: "Previous swipe",
+          activeSwipeIndex: 0,
+          createdAt: "2026-08-14T12:02:30.000Z",
+          extra: { attachments: [{ type: "image", url: "/previous-swipe.png" }] },
+        },
+      ],
+    ],
+  },
+  [
+    {
+      id: "assistant-with-illustration",
+      chatId: "chat-reconciliation-proof",
+      role: "assistant",
+      characterId: "character-1",
+      content: "New swipe",
+      activeSwipeIndex: 1,
+      createdAt: "2026-08-14T12:02:30.000Z",
+      extra: { generationInfo: { model: "new-swipe-model" } },
+    },
+  ],
+).pages.flat()[0];
+assert.deepEqual(
+  switchedSwipe?.extra,
+  { generationInfo: { model: "new-swipe-model" } },
+  "A saved replacement swipe must not inherit illustration attachments from the previously active swipe",
+);
+const refreshedSameSwipe = reconcilePersistedMessages(
+  {
+    pageParams: [undefined],
+    pages: [[{ ...switchedSwipe!, extra: { attachments: [{ type: "image", url: "/current-swipe.png" }] } }]],
+  },
+  [{ ...switchedSwipe!, extra: { generationInfo: { model: "new-swipe-model" } } }],
+).pages.flat()[0];
+assert.deepEqual(
+  refreshedSameSwipe?.extra,
+  {
+    attachments: [{ type: "image", url: "/current-swipe.png" }],
+    generationInfo: { model: "new-swipe-model" },
+  },
+  "A same-swipe refresh must retain post-processing attachments that arrived after its saved snapshot",
 );
 
 const duplicateIncoming: Parameters<typeof reconcilePersistedMessages>[1] = [

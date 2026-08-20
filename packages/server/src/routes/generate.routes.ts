@@ -920,14 +920,21 @@ export async function generateRoutes(app: FastifyInstance) {
     const abortController = new AbortController();
     const generationId = randomUUID();
     const customLorebookReadBehindRunKeys = new Set<string>();
-    const activeGenerationRecord: ActiveGeneration = { abortController, backendUrl: null };
+    const activeGenerationRecord: ActiveGeneration = {
+      abortController,
+      backendUrl: null,
+      messageId: null,
+      swipeIndex: null,
+    };
     activeGenerations.set(input.chatId, activeGenerationRecord);
     const releaseActiveGeneration = () => {
       if (activeGenerations.get(input.chatId)?.abortController === abortController) {
         activeGenerations.delete(input.chatId);
       }
     };
-    const moveToActiveAgentRuns = () => {
+    const moveToActiveAgentRuns = (messageId: string, swipeIndex: number) => {
+      activeGenerationRecord.messageId = messageId;
+      activeGenerationRecord.swipeIndex = swipeIndex;
       releaseActiveGeneration();
       const runs = activeAgentRuns.get(input.chatId) ?? new Set<ActiveGeneration>();
       runs.add(activeGenerationRecord);
@@ -983,6 +990,21 @@ export async function generateRoutes(app: FastifyInstance) {
       // This ensures swipes/regens always use the state from the user's accepted turn.
       let spatialGameStateSnapshotId: string | null = null;
       const preMessages = await chats.listMessages(input.chatId).catch(releaseActiveGenerationAndRethrow);
+      if (requestChatMode === "roleplay") {
+        const messagesById = new Map(preMessages.map((message) => [message.id, message]));
+        for (const run of activeAgentRuns.get(input.chatId) ?? []) {
+          if (!run.messageId || run.swipeIndex === null) continue;
+          const anchor = messagesById.get(run.messageId);
+          if (!anchor || (anchor.activeSwipeIndex ?? 0) !== run.swipeIndex) {
+            logger.info(
+              "[agents] Cancelling work for abandoned swipe %s:%d before committing the next turn",
+              run.messageId,
+              run.swipeIndex,
+            );
+            run.abortController.abort();
+          }
+        }
+      }
       for (let i = preMessages.length - 1; i >= 0; i--) {
         if (preMessages[i]!.role === "assistant") {
           const lastAsstMsg = preMessages[i]!;
@@ -7824,7 +7846,12 @@ export async function generateRoutes(app: FastifyInstance) {
           await sendAssistantMessageReady(currentIterationSavedMsg);
           // Roleplay post-processing is anchored to the saved message/swipe
           // below, so it no longer needs to hold the chat-wide generation slot.
-          if (chatMode === "roleplay" && assistantMessageReadySent) moveToActiveAgentRuns();
+          if (chatMode === "roleplay" && assistantMessageReadySent) {
+            moveToActiveAgentRuns(
+              currentIterationSavedMsg!.id,
+              lastSavedSwipeIndex ?? currentIterationSavedMsg!.activeSwipeIndex ?? 0,
+            );
+          }
         }
 
         // ────────────────────────────────────────
@@ -10096,7 +10123,12 @@ export async function generateRoutes(app: FastifyInstance) {
         // persisted edit (or no-op result) before releasing TTS.
         if (activatedTextRewriteRunAgents.length > 0) {
           await sendAssistantMessageReady();
-          if (chatMode === "roleplay" && assistantMessageReadySent) moveToActiveAgentRuns();
+          if (chatMode === "roleplay" && assistantMessageReadySent) {
+            moveToActiveAgentRuns(
+              currentIterationSavedMsg!.id,
+              lastSavedSwipeIndex ?? currentIterationSavedMsg!.activeSwipeIndex ?? 0,
+            );
+          }
         }
 
         if (!recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {

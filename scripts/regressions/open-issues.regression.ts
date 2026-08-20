@@ -9468,11 +9468,6 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     generateRouteSource,
-    /body\.agentsOnly === true[\s\S]{0,180}agentRuns\.length > 0[\s\S]{0,180}activeGeneration/u,
-    "Stop Agents must reach agent work that has not detached from the active request yet",
-  );
-  assert.match(
-    generateRouteSource,
     /if \(body\.agentsOnly !== true && activeGeneration\?\.backendUrl\) \{[\s\S]{0,500}\/api\/extra\/abort/u,
     "Stopping an old agent tail must not send a backend-wide abort that can kill a newer reply",
   );

@@ -109,8 +109,8 @@ assert.equal(
 );
 assert.match(
   generateRouteSource,
-  /body\.agentsOnly === true[\s\S]{0,180}agentRuns\.length > 0[\s\S]{0,180}activeGeneration/u,
-  "Stop Agents must fall back to agent work inside the active request when no detached tail exists",
+  /const targets =\s*body\.agentsOnly === true\s*\? agentRuns\s*:/u,
+  "Stop Agents must not abort the primary generation before an agent tail detaches",
 );
 assert.match(
   generateRouteSource,

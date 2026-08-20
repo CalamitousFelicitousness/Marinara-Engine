@@ -10569,13 +10569,7 @@ export async function generateRoutes(app: FastifyInstance) {
     const agentRuns = [...(activeAgentRuns.get(chatId) ?? [])];
     const activeGeneration = activeGenerations.get(chatId);
     const targets =
-      body.agentsOnly === true
-        ? agentRuns.length > 0
-          ? agentRuns
-          : activeGeneration
-            ? [activeGeneration]
-            : []
-        : [...(activeGeneration ? [activeGeneration] : []), ...agentRuns];
+      body.agentsOnly === true ? agentRuns : [...(activeGeneration ? [activeGeneration] : []), ...agentRuns];
     if (targets.length === 0) return reply.send({ aborted: false, reason: "No active generation for this chat" });
 
     logger.info("[abort] Explicit abort requested for %d run(s) in chat: %s", targets.length, chatId);

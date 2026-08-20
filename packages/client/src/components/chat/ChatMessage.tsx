@@ -1579,10 +1579,10 @@ function renderContent(
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
   const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
-  
+
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
-  
+
   const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
 
   const withNameColors =
@@ -1591,7 +1591,7 @@ function renderContent(
   // Markdown path — renderWithHeadings handles headings, *** and --- horizontal rules,
   // and delegates the rest to speaker-tag / dialogue rendering.
   // Name coloring runs AFTER on the React tree so injected spans don't
-  // interfere with paragraph splitting or trigger the HTML path.  
+  // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
     const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),

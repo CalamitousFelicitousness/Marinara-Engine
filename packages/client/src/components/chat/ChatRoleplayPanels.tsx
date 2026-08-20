@@ -27,11 +27,11 @@ import { showChoiceDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import {
-  ROLEPLAY_POPOVER_CLOSE_BUTTON,
-  ROLEPLAY_POPOVER_CLOSE_ICON_SIZE,
-  ROLEPLAY_POPOVER_SUBTITLE,
-  ROLEPLAY_POPOVER_TITLE,
-} from "./roleplay-popover-styles";
+  NEUTRAL_PANEL_CLOSE_BUTTON,
+  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
+  NEUTRAL_PANEL_SUBTITLE,
+  NEUTRAL_PANEL_TITLE,
+} from "../ui/neutral-surface-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { MacroTextarea } from "../ui/MacroTextarea";
 
@@ -138,7 +138,8 @@ function ActiveLorebookEntryRow({
         )}
         {isCurrentLocation && (
           <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-sky-400/15 px-1 py-0.5 text-[0.5rem] font-semibold text-sky-200 ring-1 ring-sky-400/25">
-            <MapPin size="0.55rem" /> {localizeUi("ui.noodle.noodleprofilesurface.location")}</span>
+            <MapPin size="0.55rem" /> {localizeUi("ui.noodle.noodleprofilesurface.location")}
+          </span>
         )}
         <span className="ml-auto shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">#{entry.order}</span>
         <button
@@ -152,19 +153,23 @@ function ActiveLorebookEntryRow({
             entry: entry.name,
             lorebook: entry.lorebookName,
           })}
-        >{localizeUi("ui.chat.activelorebookentryrow.open")}</button>
+        >
+          {localizeUi("ui.chat.activelorebookentryrow.open")}
+        </button>
       </div>
       <p className="mt-0.5 truncate text-[0.625rem] text-[var(--muted-foreground)]">
         {entry.lorebookName} ·{" "}
         {entry.activationSources.map((source) => formatActivationSource(source, localizeUi)).join(", ")}
       </p>
       {entry.keys.length > 0 && (
-        <p className="mt-0.5 truncate text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.characters.lorebooktab.keys")} {entry.keys.slice(0, 5).join(", ")}
+        <p className="mt-0.5 truncate text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.characters.lorebooktab.keys")} {entry.keys.slice(0, 5).join(", ")}
           {entry.keys.length > 5 && ` +${entry.keys.length - 5}`}
         </p>
       )}
       {visibleMatchedKeys.length > 0 && (
-        <p className="mt-0.5 truncate text-[0.625rem] text-[var(--muted-foreground)]">{localizeUi("ui.chat.activelorebookentryrow.matched")} {visibleMatchedKeys.slice(0, 5).join(", ")}
+        <p className="mt-0.5 truncate text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.chat.activelorebookentryrow.matched")} {visibleMatchedKeys.slice(0, 5).join(", ")}
           {visibleMatchedKeys.length > 5 && ` +${visibleMatchedKeys.length - 5}`}
         </p>
       )}
@@ -241,17 +246,31 @@ function BudgetSkippedEntryRow({ entry }: { entry: BudgetSkippedLorebookEntry })
         {entry.lorebookName} {localizeUi("ui.chat.budgetskippedentryrow.blockedBy")}{" "}
         {formatBudgetName(entry.blockedBy, localizeUi)}
       </p>
-      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-amber-100/60">{localizeUi("ui.chat.budgetskippedentryrow.sources")}{" "}
+      <p className="mt-0.5 truncate pl-5 text-[0.625rem] text-amber-100/60">
+        {localizeUi("ui.chat.budgetskippedentryrow.sources")}{" "}
         {entry.activationSources.map((source) => formatActivationSource(source, localizeUi)).join(", ")}
       </p>
       {expanded && (
         <div className="mt-1.5 space-y-1 border-t border-amber-500/20 pt-1.5 pl-5 text-[0.625rem] leading-relaxed text-amber-50/75">
-          <p>{localizeUi("ui.chat.activelorebookentryrow.matched")} {entry.matchedKeys.length > 0 ? entry.matchedKeys.slice(0, 5).join(", ") :localizeUi("ui.chat.budgetskippedentryrow.noKeyRecorded")}</p>
-          {isSemanticMatch && <p>{localizeUi("ui.chat.budgetskippedentryrow.semanticVectorScore")}{" "}
-            {semanticScoreLabel ?? localizeUi("chat.activeContext.matched")}</p>}
-          <p>{localizeUi("ui.chat.budgetskippedentryrow.entryEstimate")}{entry.estimatedTokens.toLocaleString()} {localizeUi("ui.agents.agenteditor.tokens")}</p>
-          <p>{localizeUi("ui.chat.budgetskippedentryrow.budgetUsedBeforeEntry")}{" "}
-            {formatBudgetCap(entry, localizeUi)}</p>
+          <p>
+            {localizeUi("ui.chat.activelorebookentryrow.matched")}{" "}
+            {entry.matchedKeys.length > 0
+              ? entry.matchedKeys.slice(0, 5).join(", ")
+              : localizeUi("ui.chat.budgetskippedentryrow.noKeyRecorded")}
+          </p>
+          {isSemanticMatch && (
+            <p>
+              {localizeUi("ui.chat.budgetskippedentryrow.semanticVectorScore")}{" "}
+              {semanticScoreLabel ?? localizeUi("chat.activeContext.matched")}
+            </p>
+          )}
+          <p>
+            {localizeUi("ui.chat.budgetskippedentryrow.entryEstimate")}
+            {entry.estimatedTokens.toLocaleString()} {localizeUi("ui.agents.agenteditor.tokens")}
+          </p>
+          <p>
+            {localizeUi("ui.chat.budgetskippedentryrow.budgetUsedBeforeEntry")} {formatBudgetCap(entry, localizeUi)}
+          </p>
         </div>
       )}
     </button>
@@ -275,7 +294,9 @@ function BudgetSkippedEntriesNotice({ entries }: { entries: BudgetSkippedLoreboo
           <span className="block font-medium text-amber-100">
             {localizeUi("chat.activeContext.skippedEntries", { count: entries.length })}
           </span>
-          <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-amber-50/65">{localizeUi("ui.chat.budgetskippedentriesnotice.expandForBudgetDetailsKnowledgeRetrievalOrKnowledgeRouter")}</span>
+          <span className="mt-0.5 block text-[0.625rem] leading-relaxed text-amber-50/65">
+            {localizeUi("ui.chat.budgetskippedentriesnotice.expandForBudgetDetailsKnowledgeRetrievalOrKnowledgeRouter")}
+          </span>
         </span>
         {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
       </button>
@@ -301,7 +322,9 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-xs text-[var(--muted-foreground)]">
-        <Loader2 size="0.75rem" className="animate-spin" />{localizeUi("ui.chat.activelorebookentriescontent.scanningEntries")}</div>
+        <Loader2 size="0.75rem" className="animate-spin" />
+        {localizeUi("ui.chat.activelorebookentriescontent.scanningEntries")}
+      </div>
     );
   }
 
@@ -309,7 +332,9 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
     return (
       <>
         <BudgetSkippedEntriesNotice entries={skippedEntries} />
-        <p className="py-3 text-center text-xs text-[var(--muted-foreground)]">{localizeUi("ui.chat.activelorebookentriescontent.noActiveEntriesForThisChat")}</p>
+        <p className="py-3 text-center text-xs text-[var(--muted-foreground)]">
+          {localizeUi("ui.chat.activelorebookentriescontent.noActiveEntriesForThisChat")}
+        </p>
       </>
     );
   }
@@ -326,7 +351,8 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
       {currentLocationEntries.length > 0 && (
         <section aria-label={localizeUi("ui.chat.activelorebookentriescontent.currentLocationLore")}>
           <h4 className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-sky-200">
-            <MapPin size="0.6875rem" /> {localizeUi("ui.chat.activelorebookentriescontent.currentLocation")}</h4>
+            <MapPin size="0.6875rem" /> {localizeUi("ui.chat.activelorebookentriescontent.currentLocation")}
+          </h4>
           <div className="space-y-1.5">
             {currentLocationEntries.map((entry) => (
               <ActiveLorebookEntryRow key={entry.id} entry={entry} />
@@ -335,9 +361,14 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
         </section>
       )}
       {otherEntries.length > 0 && (
-        <section className={cn(currentLocationEntries.length > 0 && "mt-3")} aria-label={localizeUi("ui.chat.activelorebookentriescontent.otherActiveLore")}>
+        <section
+          className={cn(currentLocationEntries.length > 0 && "mt-3")}
+          aria-label={localizeUi("ui.chat.activelorebookentriescontent.otherActiveLore")}
+        >
           {currentLocationEntries.length > 0 && (
-            <h4 className="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{localizeUi("ui.chat.activelorebookentriescontent.otherActiveLore")}</h4>
+            <h4 className="mb-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.activelorebookentriescontent.otherActiveLore")}
+            </h4>
           )}
           <div className="space-y-1.5">
             {otherEntries.map((entry) => (
@@ -350,24 +381,20 @@ export function ActiveLorebookEntriesContent({ chatId }: { chatId: string }) {
   );
 }
 
-export function ActiveLorebookEntriesPanel({
-  chatId,
-  onClose,
-}: {
-  chatId: string;
-  onClose: () => void;
-}) {
+export function ActiveLorebookEntriesPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   return (
     <>
-      <h3 className={cn(ROLEPLAY_POPOVER_TITLE, "mb-2")}>
-        <BookOpen size="0.75rem" />{localizeUi("ui.chat.activelorebookentriespanel.activeContext")}<button
+      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
+        <BookOpen size="0.75rem" />
+        {localizeUi("ui.chat.activelorebookentriespanel.activeContext")}
+        <button
           type="button"
           onClick={onClose}
           aria-label={localizeUi("ui.chat.activelorebookentriespanel.closeActiveContext")}
-          className={cn(ROLEPLAY_POPOVER_CLOSE_BUTTON, "ml-auto -my-1")}
+          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
         >
-          <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
         </button>
       </h3>
       <ActiveLorebookEntriesContent chatId={chatId} />
@@ -624,19 +651,19 @@ export function AuthorNotesPanel({
 
   return (
     <>
-      <h3 className={cn(ROLEPLAY_POPOVER_TITLE, "mb-2")}>
+      <h3 className={cn(NEUTRAL_PANEL_TITLE, "mb-2")}>
         <PenLine size="0.75rem" />
         {localizeUi("ui.chat.authornotespanel.authorSNotes")}
         <button
           type="button"
           onClick={onClose}
           aria-label={localizeUi("ui.chat.authornotespanel.closeAuthorSNotes")}
-          className={cn(ROLEPLAY_POPOVER_CLOSE_BUTTON, "ml-auto -my-1")}
+          className={cn(NEUTRAL_PANEL_CLOSE_BUTTON, "ml-auto -my-1")}
         >
-          <X size={ROLEPLAY_POPOVER_CLOSE_ICON_SIZE} />
+          <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
         </button>
       </h3>
-      <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-2")}>
+      <p className={cn(NEUTRAL_PANEL_SUBTITLE, "mb-2")}>
         {localizeUi("ui.chat.authornotespanel.textHereIsInjectedIntoThePromptAtThe")}
       </p>
 
@@ -716,7 +743,7 @@ export function AuthorNotesPanel({
       )}
 
       <div className="mt-3 border-t border-[var(--border)] pt-2">
-        <p className={cn(ROLEPLAY_POPOVER_SUBTITLE, "mb-1.5")}>
+        <p className={cn(NEUTRAL_PANEL_SUBTITLE, "mb-1.5")}>
           {localizeUi("ui.chat.authornotespanel.presetsInjectedAlongsideTheNoteAbove")}
         </p>
         {presets.length === 0 ? (

@@ -75,7 +75,7 @@ export type TrackerTemperatureUnit = (typeof TRACKER_TEMPERATURE_UNITS)[number];
 export const QUICK_REPLIES_SETTINGS_CONTROL_ID = "quick-replies" as const;
 export const TRACKER_PANEL_SIZE_PROFILES = ["compact", "standard", "expanded"] as const;
 export type TrackerPanelSizeProfile = (typeof TRACKER_PANEL_SIZE_PROFILES)[number];
-export type TrackerDataPanelSection = "world" | "persona" | "characters" | "quests" | "custom";
+export type TrackerDataPanelSection = "world" | "persona" | "characters" | "inventory" | "quests" | "custom";
 export type TrackerPanelCollapsedSections = Partial<Record<TrackerDataPanelSection, boolean>>;
 export type TrackerPanelSectionOrder = TrackerDataPanelSection[];
 export type EchoChamberSide = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -94,6 +94,7 @@ export interface FloatingWidgetPosition {
   x: number;
   y: number;
 }
+export const DEFAULT_MOBILE_MUSIC_WIDGET_POSITION = { x: 16, y: 144 } as const;
 export interface SummaryPopoverSettings {
   sourceMode: SummaryPopoverSourceMode;
   contextSize: number | null;
@@ -244,6 +245,7 @@ export const TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
   "world",
   "persona",
   "characters",
+  "inventory",
   "quests",
   "custom",
 ];
@@ -391,7 +393,7 @@ export function normalizeTrackerPanelSizeProfile(value: unknown, legacyWidth?: u
   return "standard";
 }
 
-function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCollapsedSections {
+export function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCollapsedSections {
   const raw = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   const collapsed: TrackerPanelCollapsedSections = {};
   for (const section of TRACKER_DATA_PANEL_SECTIONS) {
@@ -400,7 +402,7 @@ function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCol
   return collapsed;
 }
 
-function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelSectionOrder {
+export function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelSectionOrder {
   const order: TrackerPanelSectionOrder = [];
   const seen = new Set<TrackerDataPanelSection>();
   const raw = Array.isArray(value) ? value : [];
@@ -690,6 +692,12 @@ interface UIState {
   gameMiddleMouseNav: boolean;
   /** Game mode dialogue layout: classic VN box or a VN box with a scrollable segment history above it. */
   gameDialogueDisplayMode: GameDialogueDisplayMode;
+  /**
+   * Game mode narration box collapsed to its handle, so the scene, map or Experience behind it
+   * is visible. The player's standing preference — the box still opens itself whenever it holds
+   * something they must act on (a turn to type, a segment to advance).
+   */
+  gameNarrationCollapsed: boolean;
   /**
    * Chat-list row banners. "hover" (default) paints the active and hovered rows; touch
    * devices have no hover, so there it means the active row only. "always" paints every
@@ -1029,6 +1037,7 @@ interface UIState {
   setGameInstantTextReveal: (v: boolean) => void;
   setGameMiddleMouseNav: (v: boolean) => void;
   setGameDialogueDisplayMode: (v: GameDialogueDisplayMode) => void;
+  setGameNarrationCollapsed: (v: boolean) => void;
   setChatListBackgrounds: (v: ChatListBackgroundMode) => void;
   setGameTextSpeed: (v: number) => void;
   setGameAutoPlayDelay: (v: number) => void;
@@ -1237,6 +1246,7 @@ export function pickSyncedSettings(state: UIState) {
     gameInstantTextReveal: state.gameInstantTextReveal,
     gameMiddleMouseNav: state.gameMiddleMouseNav,
     gameDialogueDisplayMode: state.gameDialogueDisplayMode,
+    gameNarrationCollapsed: state.gameNarrationCollapsed,
     chatListBackgrounds: state.chatListBackgrounds,
     gameTextSpeed: state.gameTextSpeed,
     gameAutoPlayDelay: state.gameAutoPlayDelay,
@@ -1442,6 +1452,7 @@ export const useUIStore = create<UIState>()(
       gameInstantTextReveal: false,
       gameMiddleMouseNav: false,
       gameDialogueDisplayMode: "classic" as GameDialogueDisplayMode,
+      gameNarrationCollapsed: false,
       chatListBackgrounds: "hover" as ChatListBackgroundMode,
       gameTextSpeed: 50,
       gameAutoPlayDelay: 3000,
@@ -1495,7 +1506,7 @@ export const useUIStore = create<UIState>()(
       conversationCallVoiceVolume: 100,
       conversationCallVoiceMuted: false,
       spotifyMobileWidgetCollapsed: true,
-      spotifyMobileWidgetPosition: { x: 16, y: 96 },
+      spotifyMobileWidgetPosition: { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION },
       intuitiveSwipeNavigation: false,
       intuitiveSwipeRerollLatest: false,
       editLastMessageOnArrowUp: true,
@@ -2186,6 +2197,7 @@ export const useUIStore = create<UIState>()(
       setGameInstantTextReveal: (v) => set({ gameInstantTextReveal: v }),
       setGameMiddleMouseNav: (v) => set({ gameMiddleMouseNav: v }),
       setGameDialogueDisplayMode: (v) => set({ gameDialogueDisplayMode: v }),
+      setGameNarrationCollapsed: (v) => set({ gameNarrationCollapsed: v }),
       setChatListBackgrounds: (v) => set({ chatListBackgrounds: v }),
       setGameTextSpeed: (v) => set({ gameTextSpeed: Math.max(1, Math.min(100, v)) }),
       setGameAutoPlayDelay: (v) => set({ gameAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
@@ -2293,8 +2305,12 @@ export const useUIStore = create<UIState>()(
       setSpotifyMobileWidgetPosition: (position) =>
         set({
           spotifyMobileWidgetPosition: {
-            x: Number.isFinite(position.x) ? Math.max(8, Math.round(position.x)) : 16,
-            y: Number.isFinite(position.y) ? Math.max(8, Math.round(position.y)) : 96,
+            x: Number.isFinite(position.x)
+              ? Math.max(8, Math.round(position.x))
+              : DEFAULT_MOBILE_MUSIC_WIDGET_POSITION.x,
+            y: Number.isFinite(position.y)
+              ? Math.max(8, Math.round(position.y))
+              : DEFAULT_MOBILE_MUSIC_WIDGET_POSITION.y,
           },
         }),
       setIntuitiveSwipeNavigation: (v) => set({ intuitiveSwipeNavigation: v }),
@@ -2380,6 +2396,7 @@ export const useUIStore = create<UIState>()(
           roleplayNarratorAvatarCycling: true,
           roleplaySpriteScale: 1,
           gameDialogueDisplayMode: "classic" as GameDialogueDisplayMode,
+          gameNarrationCollapsed: false,
           chatListBackgrounds: "hover" as ChatListBackgroundMode,
           gameAvatarScale: 1,
           gameFullBodySpriteScale: 1.35,
@@ -2502,7 +2519,9 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      version: 93,
+      // v94 -> v95: move only the untouched mobile music-player default below Home bookmarks.
+      // The version bump ensures existing stores run the exact-coordinate migration below.
+      version: 95,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2694,7 +2713,7 @@ export const useUIStore = create<UIState>()(
         if (version <= 19) {
           if (persisted.spotifyMobileWidgetCollapsed === undefined) persisted.spotifyMobileWidgetCollapsed = true;
           if (persisted.spotifyMobileWidgetPosition === undefined) {
-            persisted.spotifyMobileWidgetPosition = { x: 16, y: 96 };
+            persisted.spotifyMobileWidgetPosition = { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION };
           }
         }
         // v20 -> v21: remember Game setup free-text fields and learned preference chips.
@@ -3067,6 +3086,15 @@ export const useUIStore = create<UIState>()(
         if (version <= 90 && persisted.professorMariNavigationEnabled === undefined) {
           persisted.professorMariNavigationEnabled = true;
         }
+        // v94 -> v95: existing custom positions stay untouched; the exact legacy
+        // default is the only reliable indication that the widget was never moved.
+        if (
+          version <= 94 &&
+          persisted.spotifyMobileWidgetPosition?.x === 16 &&
+          persisted.spotifyMobileWidgetPosition?.y === 96
+        ) {
+          persisted.spotifyMobileWidgetPosition = { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION };
+        }
         // v84 -> v85: keep the historical blank-line behavior for /continue by default.
         if (version <= 84 && persisted.continueAddsNewline === undefined) {
           persisted.continueAddsNewline = true;
@@ -3162,6 +3190,7 @@ export const useUIStore = create<UIState>()(
         gameInstantTextReveal: state.gameInstantTextReveal,
         gameMiddleMouseNav: state.gameMiddleMouseNav,
         gameDialogueDisplayMode: state.gameDialogueDisplayMode,
+        gameNarrationCollapsed: state.gameNarrationCollapsed,
         chatListBackgrounds: state.chatListBackgrounds,
         gameTextSpeed: state.gameTextSpeed,
         gameAutoPlayDelay: state.gameAutoPlayDelay,

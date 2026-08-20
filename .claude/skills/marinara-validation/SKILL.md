@@ -19,14 +19,14 @@ proving a change works.
 | --- | --- | --- |
 | Anything at all (baseline) | `pnpm check` | ~2 min |
 | Prompt assembly, lorebook, macros, author's notes | `pnpm regression:prompt` | ~1 min |
-| Server behavior with a named lane | the lane (`regression:issues`, `regression:roleplay`, `regression:providers`, …) | seconds |
-| A new module you wrote | a new `scripts/regressions/*.regression.ts` | seconds |
+| Server behavior, one script | `node ./scripts/run-regressions.mjs --filter <path>` | seconds |
+| A new module you wrote | a new `scripts/regressions/**/*.regression.ts` | seconds |
 | Chat UI shell, panels, popovers | the two relevant e2e specs (see below) | ~1 min |
 | Broad refactor across surfaces | full `pnpm smoke:ui` | **~1 hour** |
 
 `pnpm check` runs stale-client cleanup, the Impeccable guard, both fork guards
-(`agent-docs:check`, `dev-ports:check`), localization checks, lint, typecheck,
-and the production build. It does **not** run regressions, and it does not
+(`agent-docs:check`, `dev-ports:check`), localization checks, the Prettier
+format check, lint, typecheck, and the production build. It does **not** run regressions, and it does not
 execute your code — it only proves it compiles and the guards hold.
 
 That distinction matters. A green `pnpm check` says nothing about whether a
@@ -36,24 +36,35 @@ wiring.
 
 ### Regressions are the test suite
 
-There is no Vitest or Jest. Tests are standalone `tsx` scripts under
-`scripts/regressions/` that assert with `node:assert/strict` and print
-`<name> regression passed.`
+There is no Vitest or Jest. Tests are ~139 standalone `tsx` and `mjs` scripts
+under `scripts/regressions/` that assert with `node:assert/strict` and print
+`<name> regression passed.` Related lanes sit in subdirectories: `launcher/`,
+`mari/`, `noodle/`, `professor-mari/`.
 
 ```bash
 pnpm build:shared   # required when the script imports packages/shared/dist
-pnpm --filter @marinara-engine/server exec tsx ../../scripts/regressions/<name>.regression.ts
+node ./scripts/run-regressions.mjs --list
+node ./scripts/run-regressions.mjs --filter scripts/regressions/<name>.regression.ts
 ```
 
-Register a new script in the matching lane in `package.json` so it runs in CI,
-and delete any `.test.ts` file you created for local proof — the repo does not
-keep them.
+`scripts/run-regressions.mjs` discovers every `*.regression.{ts,mjs,js}` under
+`scripts/regressions/` recursively, so a new script needs no registration in
+`package.json` to run in CI. Each file gets a fixed 30-second budget — a slower
+test fails on time, not on its assertion.
+
+`--filter` is one substring matched against the repo-relative path and throws
+when nothing matches, so pass a full path: a moved file then fails loudly
+instead of silently running nothing. The runner consumes a bare `--` itself, so
+the pnpm separator trap below does not apply to it.
+
+Delete any `.test.ts` file you created for local proof — the repo does not keep
+them.
 
 ## Running the Playwright smoke suite
 
 ### It takes about an hour, and usually you want two specs, not all of them
 
-167 specs × 2 projects (desktop + mobile Chromium) = 334 tests, and
+180 specs × 2 projects (desktop + mobile Chromium) = 360 tests, and
 `fullyParallel: false` with a single spec file means they run essentially one
 after another at ~10s each. Before committing an hour, ask which specs actually
 cover the change and grep for those.
@@ -133,6 +144,11 @@ This is also the fastest way to exercise a new route end to end with `curl`
 before involving a browser.
 
 ## Known-failing specs — do not chase these
+
+**Unverified since the 2026-08-20 sync with `upstream/staging` (447 commits).**
+That merge landed Mari and Beholder fixes that may have repaired some of these,
+and 13 new specs that have never been baselined here. Re-confirm before trusting
+the list; treat an unexpected pass as good news, not a mystery.
 
 These fail on a clean tree at `HEAD` with all work stashed, deterministically,
 at the same durations every run:

@@ -59,6 +59,17 @@ handler now ignores clicks inside `[data-chat-floating-panel]`. It already exemp
 unmounted underneath the name prompt and the discard guard it had just opened. Same guard
 `ChatGalleryDrawer` and `ChatSettingsDrawer` already carry.
 
+The 2026-08-20 sync conflicted in `retry-agents-route.ts`: upstream replaced the synchronous
+`resolveRoleplayChatSummary(chatMode, chatMeta)` with a precomputed `activeChatSummary` from the
+async `resolveRoleplayChatSummaryForPrompt`, inside the same object literal that carries
+`authorNotes`. The two sides fail asymmetrically — keeping the fork side is a compile error
+(the old resolver is no longer imported), keeping upstream's is a silent revert of preset
+injection on agent retry. Resolve as upstream's `chatSummary` plus the fork's `authorNotes`.
+
+`ChatRoleplayPanels.tsx` also conflicted: upstream renamed `ROLEPLAY_POPOVER_*` to
+`NEUTRAL_PANEL_*`. Fork-only code referencing the old names auto-merges cleanly and then fails
+to compile, so rename every reference, not just the conflicted hunks.
+
 Those three generation routes each re-derived the note and re-hardcoded the default depth of
 `4` independently. They now share `packages/server/src/services/prompt/author-notes.ts`, and
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
@@ -102,6 +113,24 @@ Fork-only: upstream has no `.claude/` skills. Nothing here changes product behav
 ### pnpm 11 configuration migration
 
 Every dependency override moved from `package.json#pnpm` into `pnpm-workspace.yaml`, because pnpm 11 no longer reads that field and was silently dropping all 17 pins. Build-script permissions moved from `onlyBuiltDependencies` to the `allowBuilds` map. `protobufjs` resolves to `7.6.5` — the later of the two conflicting pins, matching the committed lockfile.
+
+Upstream stays on pnpm 10.34.5 and still keeps its overrides in `package.json#pnpm`, so this is a
+standing divergence rather than a one-time migration: `package.json` conflicts on most syncs, and
+any override upstream adds to that field lands somewhere this fork no longer reads. After every
+sync, diff `package.json#pnpm` between the merge base and `upstream/staging`. It was unchanged
+across the 447 commits merged 2026-08-20, but a silently dropped pin is the failure mode.
+
+### Regression lane registration
+
+`pnpm regression:prompt` appends `scripts/regressions/author-note-presets.regression.ts` via the
+runner's `--filter`. Upstream replaced the per-script `regression:*` aliases with
+`scripts/run-regressions.mjs`, which discovers `scripts/regressions/**/*.regression.{ts,mjs,js}`
+recursively on a 30-second-per-file budget, so plain `pnpm regression` picks the script up with no
+registration at all; only the focused prompt lane needs the explicit filter.
+
+`pnpm check` keeps both fork guards (`agent-docs:check`, `dev-ports:check`) ahead of upstream's
+`format:check`. Patches `package.json`, which upstream edits constantly — re-check both after
+every sync.
 
 ### Local dev environment
 

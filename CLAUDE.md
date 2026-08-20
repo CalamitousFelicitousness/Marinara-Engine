@@ -39,10 +39,11 @@ Node 24+ and the repo-pinned pnpm (`packageManager` in root `package.json`) are 
 | Dev, Vite client only (port 5173) | `pnpm dev:client` |
 | Production build | `pnpm build` |
 | Baseline validation | `pnpm check` |
-| Full regression + smoke suite | `pnpm test` |
+| Full regression suite, no browser | `pnpm test` |
+| Browser smoke suite | `pnpm smoke:ui` |
 | Format | `pnpm format` |
 
-`pnpm check` runs stale-client cleanup, the Impeccable design-context guard, the agent-doc sync guard, the fork dev-port guard, localization checks, workspace lint/typecheck, and the production build. It does **not** run regressions.
+`pnpm check` runs stale-client cleanup, the Impeccable design-context guard, the agent-doc sync guard, the fork dev-port guard, localization checks, the Prettier format check, workspace lint/typecheck, and the production build. It does **not** run regressions.
 
 Two of those are fork guards, cheap source-shape checks rather than behavioral tests, which is why they sit in `check` instead of the regression lane: `pnpm agent-docs:check` (AGENTS.md matches CLAUDE.md) and `pnpm dev-ports:check` (the dev-server port patch is intact).
 
@@ -54,20 +55,23 @@ The Impeccable guard (`scripts/check-impeccable-context.mjs`) fails the build if
 
 ### Regressions are this repo's test suite
 
-There is no Vitest or Jest suite. Tests are ~113 standalone `tsx` scripts under `scripts/regressions/` that assert with `node:assert/strict` and print `<name> regression passed.` on success.
+There is no Vitest or Jest suite. Tests are ~139 standalone `tsx` and `mjs` scripts under `scripts/regressions/` that assert with `node:assert/strict` and print `<name> regression passed.` on success.
 
 Do not keep `.test.ts` files in the repo. If an agent creates one for local proof, remove it after the test is done.
 
-Run a single regression:
+`scripts/run-regressions.mjs` is the single entry point. It discovers every `*.regression.{ts,mjs,js}` under `scripts/regressions/` recursively and gives each file a fixed 30-second budget. Related lanes sit in subdirectories: `launcher/`, `mari/`, `noodle/`, `professor-mari/`.
 
 ```bash
-pnpm build:shared   # once, when the script imports packages/shared/dist
-pnpm --filter @marinara-engine/server exec tsx ../../scripts/regressions/dice-display.regression.ts
+pnpm build:shared                                  # once, when a script imports packages/shared/dist
+node ./scripts/run-regressions.mjs --list          # print every discovered file
+node ./scripts/run-regressions.mjs --filter dice-display.regression.ts
 ```
 
-Check `package.json` for a named alias first — most lanes have one (`pnpm regression:prompt`, `pnpm regression:issues`, `pnpm regression:roleplay`, `pnpm regression:providers`). Launcher and installer guards are plain node scripts run from the root instead, for example `node ./scripts/regressions/launcher-update.regression.mjs`.
+`--filter` accepts one substring matched against the repo-relative path and throws when nothing matches, so a full path is the safe spelling — a moved file fails loudly instead of silently running nothing. The runner consumes a bare `--`, so the pnpm separator trap below does not apply to it.
 
-`pnpm regression` runs every lane and ends with `pnpm smoke:ui`.
+Roughly a dozen named aliases survive (`pnpm regression:prompt`, `regression:noodle`, `regression:launcher-update`, `regression:extensions-security`, `regression:runtime-integrity`). Check `package.json` before inventing a command; the old per-script `regression:*` aliases were removed.
+
+`pnpm regression` runs every discovered file and no longer ends with the browser suite. Run `pnpm smoke:ui` separately.
 
 ### Playwright smoke
 
@@ -155,6 +159,15 @@ Community locale files are intentionally partial: update only translations the c
 Record bug fixes, behavior changes, and new features that stay in this fork in `FORK-CHANGES.md`, not `CHANGELOG.md`. Upstream rewrites the `[Unreleased]` region constantly, so a fork entry there conflicts on every sync. Keep `CHANGELOG.md` byte-identical to upstream unless the change is destined for an upstream pull request.
 
 Note in `FORK-CHANGES.md` whether a change patches a file upstream also edits, because those are the ones a merge can silently revert.
+
+## Ponytail Implementation Discipline
+
+- Apply [Ponytail](https://github.com/DietrichGebert/ponytail) as an additive minimalism overlay after understanding the task and tracing the affected flow. It never overrides repository rules, validation requirements, or the maintainer's latest request.
+- Before adding code, stop at the first option that works: skip unnecessary work, reuse an existing helper or pattern, use the standard library, use a native platform capability, use an already-installed dependency, choose a clear inline solution, then write the minimum new code.
+- Prefer shared root-cause fixes after checking every caller, deletion over addition, boring over clever, and the fewest files. Avoid speculative abstractions, dependencies, and boilerplate.
+- Never trade away trust-boundary validation, data-loss prevention, security, accessibility, real-hardware calibration, or explicitly requested behavior.
+- Non-trivial logic must leave behind the smallest runnable regression proof. Trivial one-line and instruction-only changes do not need a dedicated test.
+- Mark a deliberate shortcut with a `ponytail:` comment that names its known ceiling and the upgrade path.
 
 ## Preferred Workflow
 

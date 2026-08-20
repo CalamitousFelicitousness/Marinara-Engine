@@ -97,22 +97,33 @@ Baseline validation:
 pnpm check
 ```
 
-This runs the Impeccable project-context guard, workspace lint/type checks, and the production build.
+This runs the Impeccable project-context guard, localization checks, Prettier verification, workspace lint/type checks, and the production build.
+
+Run the individual formatting and lint checks while iterating:
+
+```bash
+pnpm format:check
+pnpm lint
+```
+
+Use `pnpm format` to apply Prettier to the maintained TypeScript and TSX source scope.
 
 Useful follow-up checks:
 
 ```bash
 pnpm version:check
+pnpm regression
 pnpm regression:prompt
-pnpm smoke:ui
+pnpm regression:ui
 ```
 
 Regression guards:
 
+- `pnpm regression` (or `pnpm regression:node`) builds the shared package once, discovers the complete Node regression set from the filesystem, and runs it serially.
 - `pnpm regression:prompt` runs fast deterministic checks for prompt assembly, lorebook keyword matching, macros, summaries, and mode-specific generation gates.
-- `pnpm smoke:ui` runs the Playwright browser smoke suite against isolated temporary app data.
-  Each run clears `.tmp/playwright-data` and starts separate desktop and mobile app servers so their mutable fixtures cannot overlap. Stop any process already using the configured Playwright ports before running it; existing fixture state is disposable and the smoke suite does not reuse a running development server.
-- `pnpm regression` runs both lanes.
+- `pnpm regression:ui` runs the Playwright browser suite; `pnpm smoke:ui` remains a compatibility alias for the same full UI lane.
+  Each run clears `.tmp/playwright-data` and starts separate desktop and mobile app servers so their mutable fixtures cannot overlap. Stop any process already using the configured Playwright ports before running it; existing fixture state is disposable and the suite does not reuse a running development server.
+- `pnpm test` checks the Windows installer layout, then runs the Node regression lane. It does not run the UI lane; invoke `pnpm regression:ui` explicitly for browser validation.
 
 These checks are intentionally small and do not replace manual verification. When you change behavior, include the manual verification you performed and add or update a regression guard for the bug class when practical.
 
@@ -259,12 +270,12 @@ Android policy:
 
 - `versionName` must match the app version.
 - `versionCode` must increase monotonically for every shipped APK.
-- Stable and tagged release APKs require the configured `ANDROID_SIGNING_*` keystore credentials. The manual pre-alpha workflow may publish a debug-signed APK only as a draft, test-only artifact.
+- Stable and tagged release APKs require the repository maintainers' configured `ANDROID_SIGNING_*` keystore credentials. These are CI build inputs, never information requested from APK downloaders. The manual pre-alpha workflow may publish a debug-signed APK only as a draft, test-only artifact.
 
 Release-related behavior already in the repo:
 
 - Docker publishing is triggered by `v*` tags.
-- Tagged releases are published from `CHANGELOG.md` by the GitHub release workflow, with a named versioned source ZIP and a temporary Android APK notice prepended so release-page downloaders know the APK still requires Termux.
+- Tagged releases are published from `CHANGELOG.md` by the GitHub release workflow, with a named versioned source ZIP and a temporary Android APK notice prepended so release-page downloaders know the APK still requires Termux. Android releases attach both the versioned APK and the stable `marinara-engine-android.apk` alias used by the one-click latest-download link.
 - The server update check reads the newest GitHub `v*` tag and uses matching release metadata when it exists.
 - Git-based installs can apply updates automatically; Docker installs are prompted with the pull command instead.
 - Pull request CI runs `pnpm check`, `pnpm version:check`, and the tracked-installer guard.

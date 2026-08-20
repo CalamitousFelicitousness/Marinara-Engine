@@ -3676,36 +3676,20 @@ function PersonaMetadataTab({
                 )}
               />
             </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={formData.versioningEnabled}
-              onClick={() => {
-                updateField("versioningEnabled", !formData.versioningEnabled);
-                if (!formData.versioningEnabled && !formData.personaVersion.trim()) {
+            <SettingsSwitch
+              checked={formData.versioningEnabled}
+              onChange={(enabled) => {
+                updateField("versioningEnabled", enabled);
+                if (enabled && !formData.personaVersion.trim()) {
                   updateField("personaVersion", "1.0");
                 }
               }}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md px-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+              label={localizeUi("ui.cardversionhistory.automaticVersioning")}
+              labelPosition="end"
               title={localizeUi("ui.cardversionhistory.automaticVersioningDescription")}
-            >
-              <span
-                className={cn(
-                  "relative h-5 w-9 rounded-full border transition-colors",
-                  formData.versioningEnabled
-                    ? "border-[var(--primary)] bg-[var(--primary)]"
-                    : "border-[var(--border)] bg-[var(--secondary)]",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
-                    formData.versioningEnabled && "translate-x-4",
-                  )}
-                />
-              </span>
-              {localizeUi("ui.cardversionhistory.automaticVersioning")}
-            </button>
+              className="min-h-11 gap-2 rounded-md px-1 py-0"
+              labelClassName="text-xs font-medium text-[var(--muted-foreground)]"
+            />
           </div>
           <input
             value={formData.personaVersion}

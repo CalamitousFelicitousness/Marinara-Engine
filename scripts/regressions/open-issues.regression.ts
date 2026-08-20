@@ -5486,6 +5486,14 @@ const personaEditorSource = readFileSync(
   new URL("../../packages/client/src/components/personas/PersonaEditor.tsx", import.meta.url),
   "utf8",
 );
+const chatSetupWizardSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatSetupWizard.tsx", import.meta.url),
+  "utf8",
+);
+const setupGenerationParametersStart = chatSetupWizardSource.indexOf("function SetupGenerationParametersPanel");
+const chatSetupWizardEnd = chatSetupWizardSource.indexOf("export function ChatSetupWizard");
+assert.ok(setupGenerationParametersStart >= 0 && chatSetupWizardEnd > setupGenerationParametersStart);
+const setupGenerationParametersSource = chatSetupWizardSource.slice(setupGenerationParametersStart, chatSetupWizardEnd);
 const convoProfileFieldsSource = readFileSync(
   new URL("../../packages/client/src/components/characters/ConvoProfileFields.tsx", import.meta.url),
   "utf8",
@@ -5525,6 +5533,10 @@ const androidMainActivitySource = readFileSync(
   new URL("../../android/app/src/main/java/com/marinara/engine/MainActivity.java", import.meta.url),
   "utf8",
 );
+const configureWebViewStart = androidMainActivitySource.indexOf("private void configureWebView()");
+const configureWebViewEnd = androidMainActivitySource.indexOf("private void tryConnect()", configureWebViewStart);
+assert.ok(configureWebViewStart >= 0 && configureWebViewEnd > configureWebViewStart);
+const configureWebViewSource = androidMainActivitySource.slice(configureWebViewStart, configureWebViewEnd);
 const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
@@ -5811,6 +5823,26 @@ assert.match(
   "Android file saves must require the authenticated top-frame bridge token",
 );
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
+assert.match(
+  configureWebViewSource,
+  /settings\.setTextZoom\(100\);/u,
+  "The Android wrapper must not inherit oversized WebView text zoom",
+);
+assert.match(
+  characterEditorSource,
+  /<SettingsSwitch\s+checked=\{formData\.extensions\.versioningEnabled !== false\}/u,
+  "Character versioning must use the shared aligned settings switch",
+);
+assert.match(
+  personaEditorSource,
+  /<SettingsSwitch\s+checked=\{formData\.versioningEnabled\}/u,
+  "Persona versioning must use the shared aligned settings switch",
+);
+assert.match(
+  setupGenerationParametersSource,
+  /className="flex min-w-0 w-full items-center justify-between gap-3 text-left"[\s\S]*className="min-w-0 flex-1"[\s\S]*"h-5 w-9 shrink-0 rounded-full/u,
+  "The New Chat parameter toggle must stay within its card when Android enlarges text",
+);
 assert.match(
   characterEditorSource,
   /"mari-editor-avatar-tile group relative"/u,

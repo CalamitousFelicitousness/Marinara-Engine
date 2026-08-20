@@ -1203,6 +1203,104 @@ function extractChatStyleBlocks(html: string): { html: string; css: string } {
   });
   return { html: withoutStyles, css: cssBlocks.join("\n") };
 }
+/**
+ * Color character names in text, skipping any name that appears inside
+ * quotation marks (dialogue). Works on raw text before dialogue highlighting.
+ * Supports gradient colors via background-clip and bold weight.
+ */
+function colorNamesSkippingQuotes(
+  text: string,
+  nameColorMap: Map<string, string>,
+): string {
+  if (!text || nameColorMap.size === 0) return text;
+  const names = Array.from(nameColorMap.keys());
+  if (names.length === 0) return text;
+  const escaped = names
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .sort((a, b) => b.length - a.length);
+  const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+  // Quote pairs to track: straight, curly, guillemet, Japanese corner brackets
+  const openQuotes = ["\"", "\u201C", "\u00AB", "\u300C", "\u300E"];
+  const closeQuotes = ["\"", "\u201D", "\u00BB", "\u300D", "\u300F"];
+
+  const result: string[] = [];
+  let lastIndex = 0;
+  let inQuotes = false;
+  let activeQuoteIdx = -1;
+  let quoteStartPos = -1;
+  let i = 0;
+
+  while (i < text.length) {
+    // Check for quote characters
+    const char = text[i];
+    if (!inQuotes) {
+      const openIdx = openQuotes.indexOf(char);
+      if (openIdx >= 0) {
+        inQuotes = true;
+        activeQuoteIdx = openIdx;
+        quoteStartPos = i;
+        i++;
+        continue;
+      }
+    } else {
+      // Check for the matching close quote (or any close quote for straight quotes)
+      const closeIdx = activeQuoteIdx === 0
+        ? closeQuotes.indexOf(char, 0) // straight quotes — either direction matches
+        : closeQuotes.indexOf(char, activeQuoteIdx);
+      if (closeIdx >= 0 && (activeQuoteIdx === 0 || closeIdx === activeQuoteIdx)) {
+        inQuotes = false;
+        activeQuoteIdx = -1;
+        quoteStartPos = -1;
+        i++;
+        continue;
+      }
+    }
+    // Safety valve: unmatched quote — reset after 500 chars of "dialogue"
+    if (inQuotes && quoteStartPos >= 0 && i - quoteStartPos > 500) {
+      inQuotes = false;
+      activeQuoteIdx = -1;
+      quoteStartPos = -1;
+    }
+    // If not in quotes, try to match a name at this position
+    if (!inQuotes) {
+      nameRegex.lastIndex = i;
+      const match = nameRegex.exec(text);
+      if (match && match.index === i) {
+        // Push any text before this match
+        if (i > lastIndex) {
+          result.push(text.slice(lastIndex, i));
+        }
+        const matchedName = match[0];
+        const color = nameColorMap.get(matchedName.toLowerCase());
+        if (color) {
+          if (isGradientNameColor(color)) {
+            const style = gradientNameColorStyle(color);
+            const styleStr = Object.entries(style)
+              .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}:${v}`)
+              .join(";");
+            result.push(`<span style="${styleStr};font-weight:700">${matchedName}</span>`);
+          } else {
+            result.push(`<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`);
+          }
+        } else {
+          result.push(matchedName);
+        }
+        i += matchedName.length;
+        lastIndex = i;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
+
+  return result.length > 0 ? result.join("") : text;
+}
 
 /**
  * Render message content, handling both plain text with dialogue highlighting
@@ -1217,6 +1315,7 @@ function renderContent(
   quoteFormat: QuoteFormat = "straight",
   selfCharacterId?: string | null,
   galleryIndex?: ChatGalleryIndex | null,
+  nameColorMap?: Map<string, string> | null,
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1226,24 +1325,29 @@ function renderContent(
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
   const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
 
+  // Apply inline name coloring before dialogue highlighting — skips names inside quotes
+  const withNameColors = nameColorMap && nameColorMap.size > 0
+    ? colorNamesSkippingQuotes(normalized, nameColorMap)
+    : normalized;
+
   // Strip speaker tags before HTML detection (they aren't real HTML)
-  const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
+  const withoutSpeakerTags = withNameColors.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
 
   if (!HTML_TAG_RE.test(withoutSpeakerTags)) {
     // renderWithHeadings handles headings, *** and --- horizontal rules,
     // and delegates the rest to speaker-tag / dialogue rendering.
-    return renderMarkdownBlocks(normalized, (seg, _kp) =>
+    return renderMarkdownBlocks(withNameColors, (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),
     );
   }
 
   // For HTML content, replace speaker tags with color-annotated spans (preserves per-character colors)
   const stripped = speakerColorMap
-    ? normalized.replace(SPEAKER_TAG_RE, (_, name, dialogue) => {
+    ? withNameColors.replace(SPEAKER_TAG_RE, (_, name, dialogue) => {
         const color = speakerColorMap.get(name as string);
         return color ? `<span data-spk="${color}">${dialogue as string}</span>` : (dialogue as string);
       })
-    : normalized.replace(SPEAKER_TAG_RE, "$2");
+    : withNameColors.replace(SPEAKER_TAG_RE, "$2");
 
   const { html: strippedWithoutStyleBlocks, css: rawStyleBlocks } = extractChatStyleBlocks(stripped);
 
@@ -1370,6 +1474,7 @@ export function RoleplayMessagePreview({
         htmlScopeClass,
         quoteFormat,
         selfCharacterId,
+        undefined,
       ),
     [boldDialogue, content, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
   );
@@ -1465,6 +1570,7 @@ export const ChatMessage = memo(function ChatMessage({
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
+    colorInlineNames,
     editMessageOnDoubleClick,
     quoteFormat,
     ttsLineVolume,
@@ -1486,6 +1592,7 @@ export const ChatMessage = memo(function ChatMessage({
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
+      colorInlineNames: s.colorInlineNames,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
       ttsLineVolume: s.ttsLineVolume,
@@ -2192,6 +2299,24 @@ export const ChatMessage = memo(function ChatMessage({
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
+  
+  
+  const nameColorMap = useMemo(() => {
+    if (!colorInlineNames || !characterMap) return null;
+    const map = new Map<string, string>();
+    characterMap.forEach((char) => {
+      const color = char.nameColor;
+      if (!color) return;
+      map.set(char.name.toLowerCase(), color);
+      if (char.convoDisplayName) map.set(char.convoDisplayName.toLowerCase(), color);
+      if (char.nameAliases) {
+        for (const alias of char.nameAliases) {
+          map.set(alias.toLowerCase(), color);
+        }
+      }
+    });
+    return map.size > 0 ? map : null;
+  }, [colorInlineNames, characterMap]);
 
   // Build speaker → dialogueColor map for group chat speaker tag coloring
   const speakerColorMap = useMemo(() => {
@@ -2331,8 +2456,9 @@ export const ChatMessage = memo(function ChatMessage({
       quoteFormat,
       selfCharacterId,
       galleryIndex,
+      nameColorMap,
     );
-  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex]);
+  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex, nameColorMap]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
       renderContent(
@@ -2344,8 +2470,9 @@ export const ChatMessage = memo(function ChatMessage({
         quoteFormat,
         selfCharacterId,
         galleryIndex,
+        nameColorMap,
       ),
-    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap],
+    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap, nameColorMap],
   );
 
   // Translated text is rendered through the same markdown pipeline as the
@@ -2362,6 +2489,7 @@ export const ChatMessage = memo(function ChatMessage({
             quoteFormat,
             selfCharacterId,
             galleryIndex,
+            nameColorMap,
           )
         : null,
     [
@@ -2373,6 +2501,7 @@ export const ChatMessage = memo(function ChatMessage({
       quoteFormat,
       selfCharacterId,
       galleryIndex,
+      nameColorMap,
     ],
   );
   const translationDisplayOnly = useMemo(

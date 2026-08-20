@@ -377,6 +377,7 @@ function toCharacterMapValue(char: CharacterRow): CharacterMapValue {
       avatarCrop: normalizeAvatarCrop(extensions.avatarCrop),
       conversationStatus: extensions.conversationStatus || undefined,
       conversationActivity: extensions.conversationActivity || undefined,
+      nameAliases: extensions.nameAliases || undefined
     };
   } catch {
     return { name: "Unknown", avatarUrl: char.avatarPath ?? null };

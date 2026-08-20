@@ -1905,7 +1905,11 @@ export async function generateRoutes(app: FastifyInstance) {
                 });
               } catch (error) {
                 // Cadence bookkeeping must not block the main response.
-                logger.debug(error, "[custom-agent] Could not save character activity cadence bookkeeping");
+                logger.debug(
+                  error,
+                  "[custom-agent] Could not save character activity cadence bookkeeping for %s",
+                  result.agentType,
+                );
               }
             }
           }

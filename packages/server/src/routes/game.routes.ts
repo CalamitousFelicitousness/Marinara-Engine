@@ -165,6 +165,7 @@ import {
   normalizeIllustratorImagesPerGeneration,
   resolveGameImageDynamicPromptEnabled,
   resolveGameSetupArtStylePrompt,
+  resolveGameSpatialMapDraftOptions,
   BUILT_IN_AGENT_IDS,
   STORYBOARD_AGENT_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
@@ -1745,6 +1746,9 @@ const gameSetupConfigSchema = z.object({
   combatStyle: z.enum(["classic", "tactical"]).optional(),
   spatialMapInstructions: z.string().max(4000).optional(),
   gameWorldMapMode: z.enum(["standard", "hierarchical"]).optional(),
+  spatialMapDraftSize: z.enum(["small", "medium", "large"]).optional(),
+  spatialMapTargetLocationCount: z.number().int().min(1).max(40).optional(),
+  spatialMapGroundingMode: z.enum(["setup", "lore_strict", "lore_expand"]).optional(),
   playerGoals: z.string().max(2000).default(""),
   gmMode: z.enum(["standalone", "character"]),
   rating: z.enum(["sfw", "nsfw"]).default("sfw"),
@@ -6302,6 +6306,14 @@ export async function gameRoutes(app: FastifyInstance) {
     logger.info("[game/create] Received request");
     const parsedCreateGameInput = createGameSchema.parse(req.body);
     const { name, connectionId, promptPresetId, chatId, preferences, shareLabels } = parsedCreateGameInput;
+    const normalizedSpatialMapDraftOptions =
+      parsedCreateGameInput.setupConfig.spatialMapDraftSize !== undefined ||
+      parsedCreateGameInput.setupConfig.spatialMapTargetLocationCount !== undefined
+        ? resolveGameSpatialMapDraftOptions(
+            parsedCreateGameInput.setupConfig.spatialMapDraftSize,
+            parsedCreateGameInput.setupConfig.spatialMapTargetLocationCount,
+          )
+        : null;
     const selectedPromptPresetId = promptPresetId || parsedCreateGameInput.setupConfig.promptPresetId || null;
     const customHudWidgets = sanitizeGameHudWidgets(parsedCreateGameInput.setupConfig.customHudWidgets);
     const gameSystemPrompt = parsedCreateGameInput.setupConfig.gameSystemPrompt?.trim() || null;
@@ -6337,6 +6349,12 @@ export async function gameRoutes(app: FastifyInstance) {
         requestedWorldMapMode === "hierarchical" && parsedCreateGameInput.setupConfig.enableAgents === true
           ? "hierarchical"
           : "standard",
+      ...(normalizedSpatialMapDraftOptions
+        ? {
+            spatialMapDraftSize: normalizedSpatialMapDraftOptions.size,
+            spatialMapTargetLocationCount: normalizedSpatialMapDraftOptions.targetLocationCount,
+          }
+        : {}),
       enableSpriteGeneration: visualGenerationEnabled || undefined,
       gameStoryboardAutoIllustrationsEnabled: visualGenerationEnabled
         ? storyboardIllustrationsEnabled

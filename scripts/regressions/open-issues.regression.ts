@@ -5932,12 +5932,26 @@ assert.match(
   "New Game setup must preserve the selected custom place target in its post-setup map plan",
 );
 assert.match(
+  gameSetupWizardSource,
+  /setSpatialMapTargetLocationCount\(importedSpatialMapDraftOptions\.targetLocationCount\)/u,
+  "New Game setup imports must restore the saved World Maps place target",
+);
+assert.match(
+  gameSetupWizardSource,
+  /setSpatialMapGroundingMode\(config\.spatialMapGroundingMode \?\? "setup"\)/u,
+  "New Game setup imports must restore the saved World Maps grounding mode",
+);
+assert.match(
   gameSurfaceSource,
   /targetLocationCount:\s*plan\.targetLocationCount/u,
   "Game setup must send the custom place target to World Maps draft generation",
 );
 assert.match(gameTypesSource, /enableAgents\?: boolean;/u);
 assert.match(gameRoutesSource, /enableAgents: z\.boolean\(\)\.optional\(\)/u);
+assert.match(
+  gameRoutesSource,
+  /spatialMapTargetLocationCount: z\.number\(\)\.int\(\)\.min\(1\)\.max\(40\)\.optional\(\)/u,
+);
 assert.match(gameRoutesSource, /"\/:chatId\/journal\/entries\/:entryIndex"/u);
 assert.match(gameRoutesSource, /enableAgents: setupConfig\.enableAgents === true/u);
 assert.match(gameRoutesSource, /gameStoryboardsEnabled: setupConfig\.gameStoryboardsEnabled/u);

@@ -5812,6 +5812,21 @@ assert.match(
 );
 assert.match(androidMainActivitySource, /MediaStore\.Images\.Media\.getContentUri/u);
 assert.match(
+  androidMainActivitySource,
+  /settings\.setTextZoom\(100\);/u,
+  "The Android wrapper must not inherit oversized WebView text zoom",
+);
+assert.match(
+  characterEditorSource,
+  /<SettingsSwitch\s+checked=\{formData\.extensions\.versioningEnabled !== false\}/u,
+  "Character versioning must use the shared aligned settings switch",
+);
+assert.match(
+  personaEditorSource,
+  /<SettingsSwitch\s+checked=\{formData\.versioningEnabled\}/u,
+  "Persona versioning must use the shared aligned settings switch",
+);
+assert.match(
   characterEditorSource,
   /"mari-editor-avatar-tile group relative"/u,
   "The Metadata avatar preview must contain absolutely positioned saved crops",

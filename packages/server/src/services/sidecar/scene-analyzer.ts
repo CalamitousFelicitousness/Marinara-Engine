@@ -332,6 +332,7 @@ export function buildSceneAnalyzerUserPrompt(
         ? "short, concrete sound-generation prompts (for example: quiet footsteps on wet stone, distant wooden door slam)"
         : "sound effects (door slam, explosion, footsteps, impact)"
     }`,
+    `   - "sfxLoopCount": optional total play count from 1 to 5 when a sound should repeat on that beat; omit it for one play`,
     `   - "directions": rare cinematic effects at the exact beat they should happen, usually paired with a meaningful sound or reveal`,
     `   - "background": a DIFFERENT background tag if the characters move to a new location at that beat. The background stays the same until the NEXT segment that changes it, so only set "background" on the beat where characters actually arrive at a new location. Do NOT repeat the current background.`,
     `   Only include segments that HAVE at least one effect — omit empty segments.`,
@@ -425,7 +426,10 @@ export function buildSceneAnalyzerUserPrompt(
   // Build ONE segment example showing the range
   const segmentFields: string[] = [];
   segmentFields.push(`      "segment": <0-${maxSegmentIndex}>`);
-  if (sfxLine) segmentFields.push(sfxLine);
+  if (sfxLine) {
+    segmentFields.push(sfxLine);
+    segmentFields.push(`      "sfxLoopCount": <1-5>  // optional — total plays for each sfx on this beat`);
+  }
   segmentFields.push(
     `      "directions": [{"effect":"<flash|screen_shake|pulse|slow_zoom|impact_zoom|tilt|desaturate|chromatic_aberration|film_grain|rain_streaks|spotlight|focus|vignette|letterbox|color_grade>","duration":<0.4-3>,"intensity":<0-1>}]  // optional, rare`,
   );

@@ -791,15 +791,29 @@ class GameAudioManager {
     this.fadeInterval = interval;
   }
 
-  /** Play a one-shot sound effect. */
-  playSfx(tag: string, manifest?: AssetMap | null): void {
+  /** Play a sound effect once or repeat it sequentially for a scene beat. */
+  playSfx(tag: string, manifest?: AssetMap | null, loopCount = 1): void {
     if (this.isMuted || this.sfxVolume <= 0 || !this.userHasInteracted) return;
     const url = this.resolveAssetUrl(tag, manifest);
     const audio = this.sfxPool[this.sfxIndex % SFX_POOL_SIZE]!;
     this.sfxIndex++;
+    let remainingPlays = Number.isFinite(loopCount) ? Math.max(1, Math.min(5, Math.floor(loopCount))) : 1;
     audio.onerror = () => {
       audio.onerror = null;
+      audio.onended = null;
       this.playProceduralSfx(tag);
+    };
+    audio.onended = () => {
+      remainingPlays -= 1;
+      if (remainingPlays <= 0) {
+        audio.onended = null;
+        return;
+      }
+      audio.currentTime = 0;
+      audio.play().catch(() => {
+        audio.onended = null;
+        this.playProceduralSfx(tag);
+      });
     };
     audio.src = url;
     this.setElementLayerVolume(audio, this.sfxVolume);

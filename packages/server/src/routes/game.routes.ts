@@ -9984,6 +9984,36 @@ export async function gameRoutes(app: FastifyInstance) {
     return { journal, recap: buildStructuredRecap(journal, sessionNumber), playerNotes };
   });
 
+  // ── PUT /game/:chatId/journal/entries/:entryIndex ──
+  app.put<{ Params: { chatId: string; entryIndex: string } }>(
+    "/:chatId/journal/entries/:entryIndex",
+    async (req, reply) => {
+      const entryIndex = z.coerce.number().int().nonnegative().parse(req.params.entryIndex);
+      const { title, content } = z
+        .object({
+          title: z.string().trim().min(1).max(500),
+          content: z.string().max(20_000),
+        })
+        .parse(req.body);
+      const chats = createChatsStorage(app.db);
+      let nextJournal: Journal | null = null;
+      const updated = await chats.patchMetadata(req.params.chatId, (current) => {
+        const journal = (current.gameJournal as Journal) ?? createJournal();
+        const entry = journal.entries[entryIndex];
+        if (!entry) {
+          throw Object.assign(new Error("Journal entry not found"), { statusCode: 404 });
+        }
+        const entries = [...journal.entries];
+        entries[entryIndex] = { ...entry, title, content };
+        nextJournal = { ...journal, entries };
+        return { gameJournal: nextJournal };
+      });
+      if (!updated || !nextJournal) return reply.status(404).send({ error: "Chat not found" });
+
+      return { journal: nextJournal };
+    },
+  );
+
   // ── PUT /game/:chatId/notes ──
   app.put<{ Params: { chatId: string } }>("/:chatId/notes", async (req) => {
     const { notes } = z.object({ notes: z.string().max(10000) }).parse(req.body);

@@ -3480,7 +3480,7 @@ function GameSurfaceComponent({
           if (fx.sfx?.length) {
             for (const sfx of fx.sfx) {
               const resolved = resolveAssetTag(sfx, "sfx", assetMap);
-              audioManager.playSfx(resolved, assetMap);
+              audioManager.playSfx(resolved, assetMap, fx.sfxLoopCount);
             }
           }
           if (fx.ambient) {
@@ -5671,7 +5671,8 @@ function GameSurfaceComponent({
             useGameAssetStore.getState().setCurrentMusic(resolved);
           }
           if (fx.sfx?.length)
-            for (const s of fx.sfx) audioManager.playSfx(resolveAssetTag(s, "sfx", assetMap), assetMap);
+            for (const s of fx.sfx)
+              audioManager.playSfx(resolveAssetTag(s, "sfx", assetMap), assetMap, fx.sfxLoopCount);
           if (fx.ambient) {
             const resolved = resolveAssetTag(fx.ambient, "ambient", assetMap);
             audioManager.playAmbient(resolved, assetMap);

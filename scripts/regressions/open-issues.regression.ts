@@ -5883,8 +5883,13 @@ assert.match(
 assert.match(gameAudioSource, /audio\.onended = \(\) => \{[\s\S]*remainingPlays -= 1/u);
 assert.match(
   gameAudioSource,
-  /const fallbackPlays = remainingPlays;[\s\S]*remainingPlays = 0;[\s\S]*index < fallbackPlays[\s\S]*index \* 350/u,
+  /const fallbackPlays = remainingPlays;[\s\S]*index < fallbackPlays[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
   "Procedural SFX fallback must preserve the bounded number of remaining sequential plays",
+);
+assert.match(
+  gameAudioSource,
+  /dispose\(\): void \{[\s\S]*clearTimeout\(timer\);[\s\S]*proceduralSfxTimers\.clear\(\)/u,
+  "Disposing Game audio must cancel delayed procedural fallback sounds",
 );
 assert.match(gameSurfaceSource, /audioManager\.playSfx\(resolved, assetMap, fx\.sfxLoopCount\)/u);
 assert.match(
@@ -8646,6 +8651,22 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.deepEqual(processed.segmentEffects?.[0]?.sfx, ["quiet footsteps on wet stone"]);
   assert.equal(processed.segmentEffects?.[0]?.sfxLoopCount, 5);
   assert.equal(processed.segmentEffects?.[0]?.music, undefined);
+
+  const lowerBoundProcessed = postProcessSceneResult(
+    {
+      ...processed,
+      segmentEffects: [{ segment: 0, sfx: ["footsteps"], sfxLoopCount: 0 }],
+    },
+    {
+      availableBackgrounds: generatedAudioContext.availableBackgrounds,
+      availableSfx: [],
+      generateSoundEffects: true,
+      generateMusic: true,
+      validWidgetIds: new Set(),
+      characterNames: [],
+    },
+  );
+  assert.equal(lowerBoundProcessed.segmentEffects?.[0]?.sfxLoopCount, 1);
 
   const spotifyProcessed = postProcessSceneResult(
     {

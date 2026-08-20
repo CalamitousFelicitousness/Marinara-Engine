@@ -11051,13 +11051,18 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
         null,
       );
-      assert.match(
-        workspaceMutationAuthorizationIssue(explicitCommand, {
-          directUserText: "Yes, please fix this for me.",
-        }) ?? "",
-        /immediately preceding visible proposal/iu,
-        "a vague mutation confirmation must not authorize the model-selected target by itself",
-      );
+      for (const directUserText of [
+        "Yes, please fix this for me.",
+        "Yes, please just handle it, I trust you completely.",
+        "Sure, go ahead and handle this however you think is best.",
+        "Yeah, just fix whatever is broken.",
+      ]) {
+        assert.match(
+          workspaceMutationAuthorizationIssue(explicitCommand, { directUserText }) ?? "",
+          /immediately preceding visible proposal/iu,
+          `a vague mutation confirmation must not authorize the model-selected target by itself: ${directUserText}`,
+        );
+      }
 
       assert.match(
         workspaceMutationAuthorizationIssue(

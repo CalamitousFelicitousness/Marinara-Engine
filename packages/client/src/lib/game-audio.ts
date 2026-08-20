@@ -88,6 +88,7 @@ class GameAudioManager {
   private sfxPool: HTMLAudioElement[] = [];
   private sfxIndex = 0;
   private sfxAudioContext: AudioContext | null = null;
+  private proceduralSfxTimers = new Set<ReturnType<typeof setTimeout>>();
   private mediaUnlockElement: HTMLAudioElement | null = null;
   private mediaNodes = new WeakMap<HTMLAudioElement, { source: MediaElementAudioSourceNode; gain: GainNode }>();
   private audioContextUnlocked = false;
@@ -805,7 +806,11 @@ class GameAudioManager {
       audio.onerror = null;
       audio.onended = null;
       for (let index = 0; index < fallbackPlays; index++) {
-        setTimeout(() => this.playProceduralSfx(tag), index * 350);
+        const timer = setTimeout(() => {
+          this.proceduralSfxTimers.delete(timer);
+          this.playProceduralSfx(tag);
+        }, index * 350);
+        this.proceduralSfxTimers.add(timer);
       }
     };
     audio.onerror = playProceduralFallback;
@@ -952,6 +957,8 @@ class GameAudioManager {
   dispose(): void {
     this.stopMusic(true);
     this.stopAmbient();
+    for (const timer of this.proceduralSfxTimers) clearTimeout(timer);
+    this.proceduralSfxTimers.clear();
     for (const el of this.sfxPool) {
       releaseAudio(el);
     }

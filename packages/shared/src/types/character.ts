@@ -44,6 +44,10 @@ export interface CharacterExtensions {
   dialogueColor?: string;
   /** Marinara Engine: Chat bubble / dialogue box background color */
   boxColor?: string;
+  /** Marinara Engine: Alternative names/nicknames that should be colored with this
+   *  character's nameColor when they appear in chat prose. The character's primary
+   *  `name` is always a trigger; these are additional aliases (e.g. "Kate", "Kitty"). */
+  nameAliases?: string[];
   /** Marinara Engine: RPG stats toggle + custom attributes */
   rpgStats?: RPGStatsConfig;
   /** Marinara Engine: per-character Tracker fields copied into each new Roleplay chat. */

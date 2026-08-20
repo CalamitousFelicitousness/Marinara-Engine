@@ -778,6 +778,22 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Button group",
   },
   {
+    id: "color-inline-names",
+    sectionId: "text-rules",
+    label: "Color Character Names in Text",
+    description: "Color character names and aliases inline in message text.",
+    aliases: ["names", "aliases", "color", "gradient", "characters"],
+    kind: "Toggle",
+  },
+  {
+    id: "disable-inline-name-gradients",
+    sectionId: "text-rules",
+    label: "Force Solid Colors for Inline Names",
+    description: "Replace gradient name colors with the brightest solid color inline.",
+    aliases: ["gradient", "solid", "names", "readability"],
+    kind: "Toggle",
+  },
+  {
     id: "game-instant-text-reveal",
     sectionId: "game-playback",
     label: "Instantly reveal game text",
@@ -3360,6 +3376,10 @@ function GeneralSettings() {
   const setMessagesPerPage = useUIStore((s) => s.setMessagesPerPage);
   const boldDialogue = useUIStore((s) => s.boldDialogue);
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
+  const colorInlineNames = useUIStore((s) => s.colorInlineNames);
+  const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
+  const disableInlineNameGradients = useUIStore((s) => s.disableInlineNameGradients);
+  const setDisableInlineNameGradients = useUIStore((s) => s.setDisableInlineNameGradients);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
@@ -3693,7 +3713,22 @@ function GeneralSettings() {
             onChange={setConvertLatexSymbols}
             help={localizeUi("ui.panels.generalsettings.turnsCommonModelWrittenLatexCommandsLikeRightarrowNeq")}
           />
-
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("color-inline-names")}
+            label={localizeUi("settings.controls.colorInlineNames.label")}
+            checked={colorInlineNames ?? false}
+            onChange={setColorInlineNames}
+            help={localizeUi("settings.controls.colorInlineNames.help")}
+          />
+          {colorInlineNames && (
+            <ToggleSetting
+              anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
+              label={localizeUi("settings.controls.disableInlineNameGradients.label")}
+              checked={disableInlineNameGradients ?? false}
+              onChange={setDisableInlineNameGradients}
+              help={localizeUi("settings.controls.disableInlineNameGradients.help")}
+            />
+          )}
           <div
             id={getSettingsControlAnchorId("quote-style")}
             className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--secondary)]/50"

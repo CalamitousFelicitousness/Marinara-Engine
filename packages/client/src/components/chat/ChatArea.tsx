@@ -377,6 +377,7 @@ function toCharacterMapValue(char: CharacterRow): CharacterMapValue {
       avatarCrop: normalizeAvatarCrop(extensions.avatarCrop),
       conversationStatus: extensions.conversationStatus || undefined,
       conversationActivity: extensions.conversationActivity || undefined,
+      nameAliases: extensions.nameAliases || undefined,
     };
   } catch {
     return { name: "Unknown", avatarUrl: char.avatarPath ?? null };
@@ -406,6 +407,11 @@ function areCharacterMapValuesEqual(a: CharacterMapValue, b: CharacterMapValue):
     a.boxColor === b.boxColor &&
     a.conversationStatus === b.conversationStatus &&
     a.conversationActivity === b.conversationActivity &&
+    (a.nameAliases === b.nameAliases ||
+      (Array.isArray(a.nameAliases) &&
+        Array.isArray(b.nameAliases) &&
+        a.nameAliases.length === b.nameAliases.length &&
+        a.nameAliases.every((alias, index) => alias === b.nameAliases![index]))) &&
     // avatarCrop is a small plain object — compare by value, not reference.
     (a.avatarCrop === b.avatarCrop || JSON.stringify(a.avatarCrop ?? null) === JSON.stringify(b.avatarCrop ?? null))
   );

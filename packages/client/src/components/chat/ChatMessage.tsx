@@ -2569,6 +2569,7 @@ export const ChatMessage = memo(function ChatMessage({
     : isUser
       ? getAvatarCropStyle(personaAvatarCrop)
       : getAvatarCropStyle(resolvedCharacterInfo?.avatarCrop);
+  const isMergedGroup = groupChatMode === "merged" && !isUser && (chatCharacterIds?.length ?? 0) > 1;
 
   // Resolve colors: character colors for assistant, persona colors for user
   // Prefer per-message persona snapshot colors over current persona
@@ -2582,7 +2583,7 @@ export const ChatMessage = memo(function ChatMessage({
       : personaInfo
     : resolvedCharacterInfo;
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
-  const dialogueColor = msgColors?.dialogueColor || fallbackDialogueColor;
+  const dialogueColor = isMergedGroup ? fallbackDialogueColor : msgColors?.dialogueColor || fallbackDialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
@@ -2622,7 +2623,6 @@ export const ChatMessage = memo(function ChatMessage({
   }, [personaInfo?.dialogueColor, personaInfo?.name, scopedCharacterMap]);
 
   // Merged group chat: cycling avatars + cycling name color
-  const isMergedGroup = groupChatMode === "merged" && !isUser && chatCharacterIds && chatCharacterIds.length > 1;
   const mergedCharacterIds = useMemo(
     () => mergedGroupCharacterIds ?? chatCharacterIds ?? [],
     [chatCharacterIds, mergedGroupCharacterIds],

@@ -1588,6 +1588,10 @@ function renderContent(
   const withNameColors =
     nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
 
+  // Markdown path — renderWithHeadings handles headings, *** and --- horizontal rules,
+  // and delegates the rest to speaker-tag / dialogue rendering.
+  // Name coloring runs AFTER on the React tree so injected spans don't
+  // interfere with paragraph splitting or trigger the HTML path.  
   if (!isHtmlPath) {
     const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),

@@ -143,6 +143,25 @@ A healthy boot logs the storage dir, seeds, and `listening on` within ~1–2s.
 This is also the fastest way to exercise a new route end to end with `curl`
 before involving a browser.
 
+### `pnpm dev` dying instantly and silently is usually the writer lease
+
+The storage layer allows one writer per data dir, enforced through the
+`.writer-lease` lock directory (`data/storage/.writer-lease/owner.json` — a
+directory, because `mkdir` is atomic; `cat` on the path fails with "Is a
+directory", which is not the file being absent). If a previous dev server is
+still alive when the next one starts — on Windows, Ctrl+C reliably kills the
+pnpm wrapper but the `tsx` child can linger for many seconds — the new server
+sees a live same-host PID and exits by design. Since the 2026-08-20 sync the
+dev watcher stops instead of restart-looping (upstream 271658820), and the
+process exits before the async Pino logger flushes, so the observable symptom
+is exactly: `tsx watch` exits 1 with zero output, then
+`Server process exited before it became ready`.
+
+Check `netstat -ano | findstr :7870` and `tasklist | findstr node` for the
+lingering process; otherwise just wait a few seconds and rerun. A lease whose
+PID is dead is reclaimed automatically at next boot with a
+`Reclaimed the writer lease` WARN — that line is normal, not a problem.
+
 ## Known-failing specs — do not chase these
 
 **Unverified since the 2026-08-20 sync with `upstream/staging` (447 commits).**

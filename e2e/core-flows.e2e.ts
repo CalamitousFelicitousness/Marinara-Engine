@@ -605,9 +605,7 @@ test("default dialogue color fills only cards without their own dialogue color",
   }
 });
 
-test("merged narrator hides speaker tags when every character uses the default dialogue color", async ({
-  page,
-}, testInfo) => {
+test("merged narrator applies card colors only to matching speakers", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Merged speaker color fallback is covered on desktop.");
 
   const characterIds: string[] = [];
@@ -634,7 +632,7 @@ test("merged narrator hides speaker tags when every character uses the default d
       data: {
         role: "assistant",
         content:
-          '<speaker="Default Speaker Alpha">"Use the fallback."</speaker> <speaker="Default Speaker Beta">"Keep tags hidden."</speaker>',
+          '<speaker="Default Speaker Alpha">"Use the card color when set."</speaker> <speaker="Default Speaker Beta">"Use the fallback for an uncolored card."</speaker> <speaker="Innkeeper">"Use the fallback without a card."</speaker>',
       },
     });
     expect(messageResponse.ok()).toBeTruthy();
@@ -652,11 +650,31 @@ test("merged narrator hides speaker tags when every character uses the default d
 
     const content = page.locator(`[data-message-id="${message.id}"] .mari-message-content`).first();
     await expect(content).not.toContainText("<speaker=");
-    await expect(content).toContainText('"Use the fallback." "Keep tags hidden."');
-    await expect(content.locator("strong")).toHaveCount(2);
+    await expect(content.locator("strong")).toHaveCount(3);
     for (const dialogue of await content.locator("strong").all()) {
       await expect(dialogue).toHaveCSS("color", "rgb(217, 70, 239)");
     }
+
+    const characterResponse = await page.request.get(`/api/characters/${characterIds[0]}`);
+    expect(characterResponse.ok()).toBeTruthy();
+    const character = (await characterResponse.json()) as { data: string };
+    const characterData = JSON.parse(character.data) as Record<string, unknown>;
+    const extensions = (characterData.extensions ?? {}) as Record<string, unknown>;
+    const updateResponse = await page.request.patch(`/api/characters/${characterIds[0]}`, {
+      data: {
+        data: {
+          ...characterData,
+          extensions: { ...extensions, dialogueColor: "#22c55e" },
+        },
+      },
+    });
+    expect(updateResponse.ok()).toBeTruthy();
+    await page.reload();
+
+    const updatedDialogues = page.locator(`[data-message-id="${message.id}"] .mari-message-content strong`);
+    await expect(updatedDialogues.nth(0)).toHaveCSS("color", "rgb(34, 197, 94)");
+    await expect(updatedDialogues.nth(1)).toHaveCSS("color", "rgb(217, 70, 239)");
+    await expect(updatedDialogues.nth(2)).toHaveCSS("color", "rgb(217, 70, 239)");
   } finally {
     if (chatId) await page.request.delete(`/api/chats/${chatId}`).catch(() => undefined);
     await Promise.all(characterIds.map((id) => page.request.delete(`/api/characters/${id}`).catch(() => undefined)));

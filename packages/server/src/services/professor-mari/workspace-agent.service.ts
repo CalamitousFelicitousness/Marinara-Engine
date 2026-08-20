@@ -1663,6 +1663,8 @@ const MUTATION_DENIAL =
   /\b(?:do\s+not|don't|never|no\s+changes?|read[- ]only|without\s+(?:changing|editing|saving|writing))\b/iu;
 const SHORT_MUTATION_CONFIRMATION =
   /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?)[,.!\s]*$/iu;
+const VAGUE_MUTATION_CONFIRMATION =
+  /^(?:(?:yes|yeah|yep|sure|ok(?:ay)?)[,.!\s]+)?(?:please\s+)?(?:just\s+)?(?:(?:go\s+ahead\s+and\s+)?(?:apply|change|do|edit|fix|handle|update)\s+(?:anything|everything|her|him|his|it|its|problem|something|stuff|that|their|them|these|things?|this|those|whatever))(?:(?:\s+for\s+me)|(?:,\s*|\s+)i\s+trust\s+you(?:\s+completely)?|\s+however\s+you\s+(?:think\s+is\s+best|see\s+fit|want)|\s+is\s+broken|\s+needs\s+to\s+be\s+done)?[,.!\s]*$/iu;
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
 const GENERIC_MUTATION_AUTHORIZATION_CLAUSE =
   /\b(?:i\s+)?(?:authori[sz]e|approve|grant\s+permission)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?\b[,.!;:\s-]*/iu;
@@ -1771,16 +1773,15 @@ export function workspaceMutationAuthorizationIssue(
 
   const directUserText = normalizeAuthorizationText(context.directUserText);
   const authorization = normalizeAuthorizationText(command.authorization ?? "");
-  if (!authorization || !directUserText.includes(authorization)) {
-    return "Mutation blocked before execution: authorization must quote a verbatim instruction from the active user message, not attached or fetched content.";
-  }
   if (MUTATION_DENIAL.test(directUserText)) {
     return "Mutation blocked before execution: the active user message explicitly requests no workspace changes.";
   }
 
   const category = workspaceMutationCategory(command);
   const commandEntity = appDataMutationEntity(command);
-  if (SHORT_MUTATION_CONFIRMATION.test(directUserText)) {
+  const vagueMutationConfirmation =
+    VAGUE_MUTATION_CONFIRMATION.test(directUserText) && explicitlyNamedMutationEntities(directUserText).size === 0;
+  if (SHORT_MUTATION_CONFIRMATION.test(directUserText) || vagueMutationConfirmation) {
     const previousAssistantText = normalizeAuthorizationText(context.previousAssistantText ?? "");
     const previousCategories = explicitlyRequestedMutationCategories(previousAssistantText);
     if (
@@ -1794,10 +1795,14 @@ export function workspaceMutationAuthorizationIssue(
     return "Mutation blocked before execution: a short confirmation must answer the immediately preceding visible proposal for the same kind of change.";
   }
 
-  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorization);
+  // The model-supplied quote is a hint, not a trust boundary. Small local models
+  // sometimes omit or paraphrase it, so fall back to the direct user message that
+  // the server already separated from attachments and fetched content.
+  const authorizationSource = authorization && directUserText.includes(authorization) ? authorization : directUserText;
+  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorizationSource);
   const authorizationScope = genericAuthorization
     ? directUserText.replace(GENERIC_MUTATION_AUTHORIZATION_CLAUSE, "").trim()
-    : authorization;
+    : authorizationSource;
   const lorebookEntrySplit = authorizesLorebookEntrySplit(authorizationScope, commandEntity, category);
   if (
     INFORMATIONAL_REQUEST_START.test(authorizationScope) &&
@@ -1806,7 +1811,7 @@ export function workspaceMutationAuthorizationIssue(
     return "Mutation blocked before execution: informational and how-to requests do not authorize workspace changes.";
   }
   if (!MUTATION_INTENT_PATTERNS[category].test(authorizationScope) && !lorebookEntrySplit) {
-    return `Mutation blocked before execution: the quoted user instruction does not authorize a ${category} operation.`;
+    return `Mutation blocked before execution: the active user instruction does not authorize a ${category} operation.`;
   }
   if (genericAuthorization) {
     const explicitCategories = explicitlyRequestedMutationCategories(authorizationScope);

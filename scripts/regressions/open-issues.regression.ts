@@ -5541,10 +5541,19 @@ const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
 );
+const choiceSelectionModalSource = readFileSync(
+  new URL("../../packages/client/src/components/presets/ChoiceSelectionModal.tsx", import.meta.url),
+  "utf8",
+);
 const gameSurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
 );
+const gameNarrationSource = readFileSync(
+  new URL("../../packages/client/src/components/game/GameNarration.tsx", import.meta.url),
+  "utf8",
+);
+const gameAudioSource = readFileSync(new URL("../../packages/client/src/lib/game-audio.ts", import.meta.url), "utf8");
 const gameSetupWizardSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSetupWizard.tsx", import.meta.url),
   "utf8",
@@ -5864,6 +5873,40 @@ assert.equal(
   "The Persona header avatar inside its upload target must not intercept page clicks",
 );
 assert.match(gameJournalSource, /data-game-journal-scroll/u);
+assert.match(gameJournalSource, /\/game\/\$\{chatId\}\/journal\/entries\/\$\{editingEntry\.index\}/u);
+assert.match(gameJournalSource, /<TimelineView entries=\{visibleEntries\} onEdit=\{beginEditingEntry\}/u);
+assert.match(
+  gameNarrationSource,
+  /const narrationKey = latestAssistant \? `\$\{latestAssistant\.id\}:\$\{latestAssistant\.activeSwipeIndex\}` : null/u,
+  "Game rerolls must reset narration when the saved swipe changes on the same message",
+);
+assert.match(gameAudioSource, /audio\.onended = \(\) => \{[\s\S]*remainingPlays -= 1/u);
+assert.match(
+  gameAudioSource,
+  /const fallbackPlays = remainingPlays;[\s\S]*index < fallbackPlays[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
+  "Procedural SFX fallback must preserve the bounded number of remaining sequential plays",
+);
+assert.match(
+  gameAudioSource,
+  /const generation = this\.sfxGeneration;[\s\S]*generation !== this\.sfxGeneration[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
+  "Procedural SFX callbacks must stay scoped to the active Game audio generation",
+);
+assert.match(
+  gameAudioSource,
+  /dispose\(\): void \{[\s\S]*sfxGeneration \+= 1;[\s\S]*clearTimeout\(timer\);[\s\S]*el\.onerror = null;[\s\S]*el\.onended = null;/u,
+  "Disposing Game audio must invalidate late fallbacks, cancel timers, and detach SFX handlers",
+);
+assert.match(gameSurfaceSource, /audioManager\.playSfx\(resolved, assetMap, fx\.sfxLoopCount\)/u);
+assert.match(
+  choiceSelectionModalSource,
+  /presentedOptions\.length === 1[\s\S]*<SettingsSwitch[\s\S]*labelPosition="start"/u,
+  "Single-option preset variables must use the standard accessible settings switch",
+);
+assert.doesNotMatch(
+  choiceSelectionModalSource,
+  /inline-flex h-4 w-7 shrink-0 items-center rounded-full/u,
+  "Preset choices must not restore the undersized Android toggle",
+);
 assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
@@ -5895,6 +5938,7 @@ assert.match(
 );
 assert.match(gameTypesSource, /enableAgents\?: boolean;/u);
 assert.match(gameRoutesSource, /enableAgents: z\.boolean\(\)\.optional\(\)/u);
+assert.match(gameRoutesSource, /"\/:chatId\/journal\/entries\/:entryIndex"/u);
 assert.match(gameRoutesSource, /enableAgents: setupConfig\.enableAgents === true/u);
 assert.match(gameRoutesSource, /gameStoryboardsEnabled: setupConfig\.gameStoryboardsEnabled/u);
 assert.equal(
@@ -6245,7 +6289,7 @@ const replayMessages = [
       ],
       gameReplayCue: {
         background: "hall-night",
-        segmentEffects: [{ segment: 0, sfx: ["door-creak"] }],
+        segmentEffects: [{ segment: 0, sfx: ["door-creak"], sfxLoopCount: 3 }],
       },
     },
   },
@@ -6267,7 +6311,7 @@ assert.equal(replayTurns[0]?.presentation.background, "manor");
 assert.equal(replayTurns[1]?.playerMessage?.content, "Enter");
 assert.equal(replayTurns[1]?.recordedChoice?.label, "Wait");
 assert.equal(replayTurns[1]?.presentation.background, "hall-night");
-assert.deepEqual(replayTurns[1]?.presentation.segmentEffects, [{ segment: 0, sfx: ["door-creak"] }]);
+assert.deepEqual(replayTurns[1]?.presentation.segmentEffects, [{ segment: 0, sfx: ["door-creak"], sfxLoopCount: 3 }]);
 assert.equal(replayTurns[2]?.playerMessage?.content, "Wait for sunrise");
 
 const replayStoryboardFrames = [
@@ -8577,6 +8621,8 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   };
   const prompt = buildSceneAnalyzerUserPrompt("Boots cross the wet stones.", undefined, generatedAudioContext);
   assert.match(prompt, /short sound description/u);
+  assert.match(prompt, /"sfxLoopCount": <1-5>/u);
+  assert.doesNotMatch(prompt, /"(?:sfxLoopCount|directions|background)"[^\n]*\/\//u);
   // #5161: music free-text prompts are retired — even with generateMusic on,
   // the analyzer is asked for genre/intensity hints, never a music prompt.
   assert.doesNotMatch(prompt, /concise instrumental scene music prompt/u);
@@ -8591,7 +8637,9 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
       weather: null,
       timeOfDay: null,
       reputationChanges: [],
-      segmentEffects: [{ segment: 0, sfx: [" quiet footsteps <on> wet stone "], music: "low suspense pulse" }],
+      segmentEffects: [
+        { segment: 0, sfx: [" quiet footsteps <on> wet stone "], sfxLoopCount: 9, music: "low suspense pulse" },
+      ],
     },
     {
       availableBackgrounds: generatedAudioContext.availableBackgrounds,
@@ -8606,7 +8654,24 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   // downstream from the library (context tracks included). SFX unchanged.
   assert.equal(processed.music, null);
   assert.deepEqual(processed.segmentEffects?.[0]?.sfx, ["quiet footsteps on wet stone"]);
+  assert.equal(processed.segmentEffects?.[0]?.sfxLoopCount, 5);
   assert.equal(processed.segmentEffects?.[0]?.music, undefined);
+
+  const lowerBoundProcessed = postProcessSceneResult(
+    {
+      ...processed,
+      segmentEffects: [{ segment: 0, sfx: ["footsteps"], sfxLoopCount: 0 }],
+    },
+    {
+      availableBackgrounds: generatedAudioContext.availableBackgrounds,
+      availableSfx: [],
+      generateSoundEffects: true,
+      generateMusic: true,
+      validWidgetIds: new Set(),
+      characterNames: [],
+    },
+  );
+  assert.equal(lowerBoundProcessed.segmentEffects?.[0]?.sfxLoopCount, 1);
 
   const spotifyProcessed = postProcessSceneResult(
     {

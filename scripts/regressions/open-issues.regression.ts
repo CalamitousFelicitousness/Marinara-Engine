@@ -5888,8 +5888,13 @@ assert.match(
 );
 assert.match(
   gameAudioSource,
-  /dispose\(\): void \{[\s\S]*clearTimeout\(timer\);[\s\S]*proceduralSfxTimers\.clear\(\)/u,
-  "Disposing Game audio must cancel delayed procedural fallback sounds",
+  /const generation = this\.sfxGeneration;[\s\S]*generation !== this\.sfxGeneration[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
+  "Procedural SFX callbacks must stay scoped to the active Game audio generation",
+);
+assert.match(
+  gameAudioSource,
+  /dispose\(\): void \{[\s\S]*sfxGeneration \+= 1;[\s\S]*clearTimeout\(timer\);[\s\S]*el\.onerror = null;[\s\S]*el\.onended = null;/u,
+  "Disposing Game audio must invalidate late fallbacks, cancel timers, and detach SFX handlers",
 );
 assert.match(gameSurfaceSource, /audioManager\.playSfx\(resolved, assetMap, fx\.sfxLoopCount\)/u);
 assert.match(

@@ -1663,8 +1663,8 @@ const MUTATION_DENIAL =
   /\b(?:do\s+not|don't|never|no\s+changes?|read[- ]only|without\s+(?:changing|editing|saving|writing))\b/iu;
 const SHORT_MUTATION_CONFIRMATION =
   /^(?:yes|yeah|yep|sure|ok(?:ay)?|go\s+ahead|do\s+it|please\s+do|proceed|apply\s+it|make\s+that\s+change|i\s+(?:authori[sz]e|approve)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?)[,.!\s]*$/iu;
-const VAGUE_MUTATION_TARGET =
-  /\b(?:anything|everything|her|him|his|it|its|problem|something|stuff|that|their|them|these|things?|this|those|whatever)\b/iu;
+const VAGUE_MUTATION_CONFIRMATION =
+  /^(?:(?:yes|yeah|yep|sure|ok(?:ay)?)[,.!\s]+)?(?:please\s+)?(?:just\s+)?(?:(?:go\s+ahead\s+and\s+)?(?:apply|change|do|edit|fix|handle|update)\s+(?:anything|everything|her|him|his|it|its|problem|something|stuff|that|their|them|these|things?|this|those|whatever))\b/iu;
 const GENERIC_MUTATION_AUTHORIZATION = /\b(?:authori[sz]e|approve|grant\s+permission)\b/iu;
 const GENERIC_MUTATION_AUTHORIZATION_CLAUSE =
   /\b(?:i\s+)?(?:authori[sz]e|approve|grant\s+permission)(?:\s+(?:it|this|that|this\s+change|that\s+change|the\s+changes?|these\s+changes))?\b[,.!;:\s-]*/iu;
@@ -1780,9 +1780,7 @@ export function workspaceMutationAuthorizationIssue(
   const category = workspaceMutationCategory(command);
   const commandEntity = appDataMutationEntity(command);
   const vagueMutationConfirmation =
-    MUTATION_INTENT_PATTERNS[category].test(directUserText) &&
-    VAGUE_MUTATION_TARGET.test(directUserText) &&
-    explicitlyNamedMutationEntities(directUserText).size === 0;
+    VAGUE_MUTATION_CONFIRMATION.test(directUserText) && explicitlyNamedMutationEntities(directUserText).size === 0;
   if (SHORT_MUTATION_CONFIRMATION.test(directUserText) || vagueMutationConfirmation) {
     const previousAssistantText = normalizeAuthorizationText(context.previousAssistantText ?? "");
     const previousCategories = explicitlyRequestedMutationCategories(previousAssistantText);

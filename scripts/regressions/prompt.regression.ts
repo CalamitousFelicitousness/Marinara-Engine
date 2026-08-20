@@ -11056,6 +11056,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "Yes, please just handle it, I trust you completely.",
         "Sure, go ahead and handle this however you think is best.",
         "Yeah, just fix whatever is broken.",
+        "Okay, do whatever needs to be done.",
       ]) {
         assert.match(
           workspaceMutationAuthorizationIssue(explicitCommand, { directUserText }) ?? "",
@@ -11063,6 +11064,13 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           `a vague mutation confirmation must not authorize the model-selected target by itself: ${directUserText}`,
         );
       }
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Please update Dottore's appearance since it currently looks off.",
+        }),
+        null,
+        "a pronoun later in a concrete mutation request must not turn it into a vague confirmation",
+      );
 
       assert.match(
         workspaceMutationAuthorizationIssue(

@@ -69,6 +69,7 @@ import {
 } from "../services/spatial-context/projection.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
+import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { processLorebooks } from "../services/lorebook/index.js";
@@ -3417,6 +3418,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     delete sanitized.branchParentChatId;
     delete sanitized.branchParentMessageId;
     delete sanitized.branchMessageId;
+    for (const key of Object.keys(sanitized)) {
+      if (key.startsWith("segmentEdit:") || key.startsWith("segmentDelete:")) delete sanitized[key];
+    }
     if ("gameJournal" in sanitized) {
       sanitized.gameJournal = sanitizeGameJournalForExport(sanitized.gameJournal, knownNpcNames);
     }
@@ -3441,9 +3445,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     options: { includeReasoning?: boolean } = {},
   ) => {
     const includeReasoning = options.includeReasoning === true;
-    const msgs = await storage.listMessages(chat.id);
+    const rawMessages = await storage.listMessages(chat.id);
     const charIds = parseExportCharacterIds(chat.characterIds);
     const metadata = parseExportMetadata(chat.metadata);
+    const msgs = rawMessages.map((message) => ({ ...message }));
+    if (chat.mode === "game") applyAllSegmentEdits(msgs, metadata, rawMessages);
     const messageIndexById = new Map(msgs.map((message, index) => [message.id, index]));
     const spatialContextHistory = (await createSpatialContextStorage().listForChat(chat.id))
       .map((snapshot) => ({
@@ -3574,7 +3580,13 @@ export async function chatsRoutes(app: FastifyInstance) {
               content:
                 swipe.index === msg.activeSwipeIndex
                   ? activeContent
-                  : resolveExportMessageContent({ content: swipe.content, characterId: msg.characterId }),
+                  : resolveExportMessageContent({
+                      content:
+                        chat.mode === "game" && (msg.role === "assistant" || msg.role === "narrator")
+                          ? applyMessageSegmentEdits(swipe.content, metadata, msg.id)
+                          : swipe.content,
+                      characterId: msg.characterId,
+                    }),
               extra:
                 swipe.index === msg.activeSwipeIndex
                   ? messageExtra

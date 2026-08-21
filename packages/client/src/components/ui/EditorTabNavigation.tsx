@@ -1,4 +1,5 @@
 import { ChevronDown, type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 
@@ -21,8 +22,9 @@ export function EditorTabNavigation<T extends string>({
   getBadge?: (id: T) => string | number | null;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const localize = useLocalizedUiText();
-  const navigationLabel = localize("Editor sections");
+  const navigationLabel = t("editor.navigation.sections");
 
   return (
     <div className={cn("mari-editor-navigation min-w-0 flex-[3_1_36rem]", className)}>
@@ -34,6 +36,7 @@ export function EditorTabNavigation<T extends string>({
           return (
             <button
               type="button"
+              aria-label={localize(tab.label)}
               aria-current={active ? "page" : undefined}
               data-active={active ? "true" : undefined}
               key={tab.id}
@@ -55,15 +58,11 @@ export function EditorTabNavigation<T extends string>({
           onChange={(event) => onChange(event.target.value as T)}
           className="mari-editor-navigation-select min-h-10 w-full appearance-none rounded-xl border px-3 py-2 pr-9 text-xs font-medium outline-none transition-colors focus-visible:ring-2"
         >
-          {tabs.map((tab) => {
-            const badge = getBadge?.(tab.id);
-            return (
-              <option key={tab.id} value={tab.id}>
-                {localize(tab.label)}
-                {badge != null ? ` (${badge})` : ""}
-              </option>
-            );
-          })}
+          {tabs.map((tab) => (
+            <option key={tab.id} value={tab.id}>
+              {localize(tab.label)}
+            </option>
+          ))}
         </select>
         <ChevronDown
           aria-hidden="true"

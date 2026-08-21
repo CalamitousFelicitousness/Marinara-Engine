@@ -103,6 +103,17 @@ async function readCssVariableColor(page: Page, variableName: string) {
   }, variableName);
 }
 
+async function openEditorSection(editor: Locator, label: string) {
+  const select = editor.getByRole("combobox", { name: "Editor sections" });
+  const navigation = editor.getByRole("navigation", { name: "Editor sections" });
+  await expect.poll(async () => (await select.isVisible()) || (await navigation.isVisible())).toBe(true);
+  if (await select.isVisible()) {
+    await select.selectOption({ label });
+    return;
+  }
+  await navigation.getByRole("button", { name: label, exact: true }).click();
+}
+
 async function bestEffortDelete(request: APIRequestContext, url: string) {
   await request.delete(url, { timeout: 5_000 }).catch(() => undefined);
 }
@@ -3061,10 +3072,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       generateBox.y + generateBox.height > cameraBox.y;
     expect(overlapsCamera).toBe(false);
 
-    await editor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Metadata", exact: true })
-      .click();
+    await openEditorSection(editor, "Metadata");
     const uploadButton = editor.getByRole("button", { name: "Upload avatar", exact: true });
     const metadataGenerateButton = editor.getByRole("button", { name: "Generate with AI", exact: true });
     await expect(uploadButton).toBeVisible();
@@ -3102,20 +3110,19 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         .toBe(true);
     }
 
-    const editorSections = editor.getByRole("navigation", { name: "Editor sections" });
     if (panel === "characters") {
-      await editorSections.getByRole("button", { name: "Card", exact: true }).click();
+      await openEditorSection(editor, "Card");
       const addGreetingButton = editor.getByRole("button", { name: "+ Add", exact: true });
       await expect(addGreetingButton).toHaveClass(/mari-editor-action--accent/u);
     }
 
-    await editorSections.getByRole("button", { name: "Lorebook", exact: true }).click();
+    await openEditorSection(editor, "Lorebook");
     await expect(editor.getByRole("button", { name: "New", exact: true })).toHaveClass(/mari-editor-action/u);
     await expect(editor.getByRole("button", { name: "Assign Lorebook", exact: true })).toHaveClass(
       /mari-editor-action--accent/u,
     );
 
-    await editorSections.getByRole("button", { name: "Colors", exact: true }).click();
+    await openEditorSection(editor, "Colors");
     await expect(editor.getByRole("button", { name: "Extract Colors from Avatar", exact: true })).toHaveClass(
       /mari-editor-action--accent/u,
     );
@@ -3296,23 +3303,20 @@ test("Character and persona sheets persist an explicit reference choice and fall
 
     await page.goto("/");
     await page.locator('[data-tour="panel-characters"]').click();
-    await page.getByText(characterName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    await page
+      .getByText(characterName, { exact: true })
+      .first()
+      .click({ position: { x: 2, y: 2 } });
     const editor = page.locator(".mari-editor-shell");
     await expect(editor).toBeVisible();
-    await editor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Metadata", exact: true })
-      .click();
+    await openEditorSection(editor, "Metadata");
     await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
     await expect(
       editor
         .getByRole("navigation", { name: "Editor sections" })
         .getByRole("button", { name: "Character Sheet", exact: true }),
     ).toHaveCount(0);
-    await editor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Sprites", exact: true })
-      .click();
+    await openEditorSection(editor, "Sprites");
     await expect(editor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
     await expect(editor.getByAltText(`${characterName} character sheet`)).toBeVisible();
     await expect(editor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
@@ -3325,11 +3329,12 @@ test("Character and persona sheets persist an explicit reference choice and fall
     await expect(sheetDialog.getByRole("button", { name: "Save as Character Sheet", exact: true })).toBeDisabled();
     await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
-    await editor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Gallery", exact: true })
-      .click();
-    await expect(editor.getByText("Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.")).toBeVisible();
+    await openEditorSection(editor, "Gallery");
+    await expect(
+      editor.getByText(
+        "Use the Select button above to enter batch editing mode and apply an action to multiple entries at once.",
+      ),
+    ).toBeVisible();
     await editor.getByRole("button", { name: "Select All", exact: true }).click();
     await expect(editor.getByText("1 selected", { exact: true })).toBeVisible();
     await expect(editor.getByRole("button", { name: "Toggle image selection" })).toHaveAttribute(
@@ -3351,24 +3356,21 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .evaluate((button: HTMLButtonElement) => button.click());
     await expect(editor).toHaveCount(0);
     await page.locator('[data-tour="panel-personas"]').click();
-    await page.getByText(personaName, { exact: true }).first().click({ position: { x: 2, y: 2 } });
+    await page
+      .getByText(personaName, { exact: true })
+      .first()
+      .click({ position: { x: 2, y: 2 } });
     const personaEditor = page.locator(".mari-editor-shell");
     await expect(personaEditor).toBeVisible();
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toHaveCount(0);
-    await personaEditor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Sprites", exact: true })
-      .click();
+    await openEditorSection(personaEditor, "Sprites");
     await expect(personaEditor.getByRole("heading", { name: "Character Sheet", exact: true })).toBeVisible();
     await expect(personaEditor.getByAltText(`${personaName} character sheet`)).toBeVisible();
     await expect(personaEditor.getByRole("checkbox", { name: "Use as reference image" })).toBeChecked();
     await personaEditor.getByRole("button", { name: "Create with AI", exact: true }).click();
     await expect(sheetDialog).toBeVisible();
     await sheetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await personaEditor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Gallery", exact: true })
-      .click();
+    await openEditorSection(personaEditor, "Gallery");
     await expect(personaEditor.getByRole("button", { name: "Select images", exact: true })).toBeVisible();
     await expect(personaEditor.getByRole("button", { name: "Select All", exact: true })).toBeVisible();
     await personaEditor.getByRole("button", { name: "Select All", exact: true }).click();
@@ -3575,10 +3577,7 @@ test("Matched full-body sprites approve a neutral anchor before using portrait r
     await rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName }).click();
 
     const editor = page.locator(".mari-editor-shell");
-    await editor
-      .getByRole("navigation", { name: "Editor sections" })
-      .getByRole("button", { name: "Sprites", exact: true })
-      .click();
+    await openEditorSection(editor, "Sprites");
     await editor.getByRole("button", { name: "Full-body", exact: true }).click();
     await editor.getByRole("button", { name: "Generate Sprite", exact: true }).click();
 
@@ -3655,8 +3654,8 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     await page.locator('[data-tour="panel-characters"]').click();
     await page.getByText(characterName, { exact: true }).first().click();
 
-    const editorSections = page.getByRole("navigation", { name: "Editor sections" });
-    await editorSections.getByRole("button", { name: "Convo", exact: true }).click();
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Convo");
 
     const fields = page.locator('[data-component="ConvoProfileFields"]');
     await expect(fields.getByText("About Me", { exact: true })).toBeVisible();
@@ -3710,7 +3709,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
     await page.getByRole("button", { name: "Close expanded editor", exact: true }).click();
-    await editorSections.getByRole("button", { name: "Card", exact: true }).click();
+    await openEditorSection(editor, "Card");
     const descriptionField = page.locator("#character-card-description");
     await descriptionField.getByRole("button", { name: "Expand editor", exact: true }).click();
 
@@ -4513,7 +4512,10 @@ test("empty focused chat composers keep keyboard swipe navigation", async ({ pag
   }
 });
 
-test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({ page, request }, testInfo) => {
+test("mobile transcript swipes navigate Conversation and Roleplay alternatives", async ({
+  page,
+  request,
+}, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch swipe navigation is covered on mobile.");
 
   const fixtures: Array<{ chatId: string; messageId: string; first: string; second: string }> = [];
@@ -4605,10 +4607,7 @@ test("goto keeps stale CYOA choices out of the chat tail", async ({ page, reques
         name: "Guide",
         is_user: false,
         mes: `Imported assistant message ${index + 1}`,
-        extra:
-          index === 79
-            ? { cyoaChoices: [{ label: "Wait", text: staleChoiceText }] }
-            : {},
+        extra: index === 79 ? { cyoaChoices: [{ label: "Wait", text: staleChoiceText }] } : {},
       }),
     ),
   ].join("\n");
@@ -6351,13 +6350,13 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
     await expect(menu.getByRole("menuitem", { name: "Illustrator", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: activeAgentName, exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: inactiveAgentName, exact: true })).toHaveCount(0);
-    await drawer
-      .getByRole("searchbox", { name: "Search gallery images", exact: true })
-      .dispatchEvent("pointerdown");
+    await drawer.getByRole("searchbox", { name: "Search gallery images", exact: true }).dispatchEvent("pointerdown");
     await expect(menu).toHaveCount(0);
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
-    await Promise.all(createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)));
+    await Promise.all(
+      createdAgentIds.map((agentId) => request.delete(`/api/agents/${agentId}`).catch(() => undefined)),
+    );
   }
 });
 
@@ -7563,13 +7562,8 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   await page.goto("/");
   const result = await page.evaluate(async () => {
     const module = (await import("/src/components/game/GameSurface.tsx")) as unknown as {
-      combatSkillsFromSheet(value: unknown):
-        | Array<{ name: string; type: string; description?: string }>
-        | undefined;
-      findGameCombatCard(
-        cards: Array<{ name?: string }>,
-        targetName: string,
-      ): { name?: string } | undefined;
+      combatSkillsFromSheet(value: unknown): Array<{ name: string; type: string; description?: string }> | undefined;
+      findGameCombatCard(cards: Array<{ name?: string }>, targetName: string): { name?: string } | undefined;
       generatedPartyMemberToCombatant(
         member: Record<string, unknown>,
         index: number,
@@ -7608,11 +7602,7 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
         [],
         1,
       ),
-      enemy: module.generatedEnemyToCombatant(
-        { name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] },
-        0,
-        1,
-      ),
+      enemy: module.generatedEnemyToCombatant({ name: "Slime", hp: 0, maxHp: 9, attacks: [], statuses: [] }, 0, 1),
       invalidPartyHp: module.generatedPartyMemberToCombatant(
         { name: "Mika", hp: false, maxHp: 12, attacks: [], statuses: [] },
         0,
@@ -9291,9 +9281,7 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
     .poll(async () => {
       const [cardBounds, stageBounds] = await Promise.all([tutorialCard.boundingBox(), centeredStage.boundingBox()]);
       if (!cardBounds || !stageBounds) return Number.POSITIVE_INFINITY;
-      return Math.abs(
-        cardBounds.y + cardBounds.height / 2 - (stageBounds.y + stageBounds.height / 2),
-      );
+      return Math.abs(cardBounds.y + cardBounds.height / 2 - (stageBounds.y + stageBounds.height / 2));
     })
     .toBeLessThanOrEqual(2);
   const [cardMetrics, centeredStageBounds, navigationBounds] = await Promise.all([
@@ -10770,7 +10758,9 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   }
   await catalogView.getByRole("button", { name: "Install", exact: true }).click();
   await expect(musicPlayer).toBeVisible();
-  const installedToast = page.locator("[data-sonner-toast]").filter({ hasText: "Agent installed. It is ready to use." });
+  const installedToast = page
+    .locator("[data-sonner-toast]")
+    .filter({ hasText: "Agent installed. It is ready to use." });
   await expect(installedToast).toBeVisible();
   await installedToast.getByRole("button", { name: "Close toast" }).click();
   await expect(installedToast).toHaveCount(0);
@@ -11318,29 +11308,36 @@ test("Conversation feature packages expose commands and settings without per-cha
     await page.goto("/");
     await page.getByRole("button", { name: "Chat Settings" }).click();
     let drawer = page.locator(".mari-chat-settings-drawer");
+    const getSectionHeader = (label: string) =>
+      drawer.locator('[role="button"][aria-expanded]').filter({ hasText: new RegExp(`^${label}$`, "u") });
     const openAgentsSection = async () => {
-      const agentsSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents$/ });
+      const agentsSection = getSectionHeader("Agents");
       await expect(agentsSection).toHaveCount(1);
       if ((await agentsSection.getAttribute("aria-expanded")) !== "true") {
         await agentsSection.click();
       }
       await expect(agentsSection).toHaveAttribute("aria-expanded", "true");
     };
-    await openAgentsSection();
-    await expect(drawer.getByText("Commands", { exact: true })).toBeVisible();
+    const commandsSection = getSectionHeader("Commands");
+    await expect(commandsSection).toHaveCount(1);
+    await expect(commandsSection).toHaveAttribute("aria-expanded", "false");
+    await expect(drawer.getByText("Schedule Updates", { exact: true })).toHaveCount(0);
+    await commandsSection.click();
+    await expect(commandsSection).toHaveAttribute("aria-expanded", "true");
     await expect(drawer.getByText("Schedule Updates", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Memories", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Selfies", { exact: true })).toHaveCount(0);
+    await openAgentsSection();
     await expect(drawer.getByText("Illustrator Settings", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Conversation Calls", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Enable Agents", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Agent Suite", { exact: true })).toHaveCount(0);
-    await expect(drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Commands$/ })).toHaveCount(0);
 
     conversationFeaturesInstalled = true;
     await page.reload();
     await page.getByRole("button", { name: "Chat Settings" }).click();
     drawer = page.locator(".mari-chat-settings-drawer");
+    await expect(getSectionHeader("Commands")).toHaveAttribute("aria-expanded", "true");
     await openAgentsSection();
     await expect(
       drawer.locator('[data-capability-client-state="loading"][data-capability-package-id="conversation-calls"]'),
@@ -11355,7 +11352,7 @@ test("Conversation feature packages expose commands and settings without per-cha
     expect((await clientLoadRetry.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     await clientLoadRetry.click();
     await expect(clientLoadFailure).toHaveCount(0);
-    await expect(drawer.getByText("Commands", { exact: true })).toBeVisible();
+    await expect(getSectionHeader("Commands")).toBeVisible();
     await expect(drawer.getByText("Selfies", { exact: true })).toBeVisible();
     await expect(drawer.getByText("8-Ball Pool", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Chess", { exact: true })).toBeVisible();
@@ -11403,7 +11400,7 @@ test("Conversation feature packages expose commands and settings without per-cha
     await runtimeRetry.click();
     await expect(runtimeFailure).toHaveCount(0);
     await expect(drawer.getByText("Conversation Calls", { exact: true })).toBeVisible();
-    await expect(drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Commands$/ })).toHaveCount(0);
+    await expect(getSectionHeader("Commands")).toHaveCount(1);
     expect(clientLoadAttempts).toBe(2);
     expect(errors.some((error) => error.includes("Could not load client capability conversation-calls"))).toBe(true);
     expect(
@@ -13594,7 +13591,9 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       const entries = (await response.json()) as Array<Record<string, unknown>>;
       await route.fulfill({
         response,
-        json: entries.map((candidate) => (candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate)),
+        json: entries.map((candidate) =>
+          candidate.id === entry.id ? { ...candidate, embedding: [0.1, 0.2] } : candidate,
+        ),
       });
     });
 
@@ -13602,8 +13601,8 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
       vectorizeRequestCount += 1;
       const savedResponse = await request.get(`/api/lorebooks/${lorebook.id}`);
       expect(savedResponse.ok()).toBeTruthy();
-      excludedAtVectorization = ((await savedResponse.json()) as { excludeFromVectorization?: boolean })
-        .excludeFromVectorization ?? null;
+      excludedAtVectorization =
+        ((await savedResponse.json()) as { excludeFromVectorization?: boolean }).excludeFromVectorization ?? null;
       reportStoredVector = true;
       await route.fulfill({
         status: 200,
@@ -13766,7 +13765,7 @@ test("Lorebook and entry IDs are visible and copyable", async ({ page }) => {
     await expect(page.getByText("Lorebook ID copied", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("copied-lorebook-id"))).toBe(lorebook.id);
 
-    await page.getByRole("button", { name: /^Entries/ }).click();
+    await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     const row = page.locator(`[data-lorebook-entry-row-id="${entry.id}"]`);
     await row.getByRole("button", { name: "Expand entry" }).click();
     await expect(row.getByText(entry.id, { exact: true })).toBeVisible();
@@ -13797,7 +13796,7 @@ test("Lorebook entry type descriptions inherit editor chrome text", async ({ pag
     await page.goto("/");
     await page.locator('[data-tour="panel-lorebooks"]').click();
     await page.getByText(name, { exact: true }).click();
-    await page.getByRole("button", { name: /^Entries/ }).click();
+    await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     const row = page.locator(`[data-lorebook-entry-row-id="${entry.id}"]`);
     await row.getByRole("button", { name: /Entry type: Normal\. Choose entry type\./ }).click();
     const menu = page.getByRole("menu", { name: "Choose entry type" });
@@ -13850,7 +13849,7 @@ test("selected Lorebook entries mirror safe edits and choose a move destination 
     await page.goto("/");
     await page.locator('[data-tour="panel-lorebooks"]').click();
     await page.getByText(name, { exact: true }).click();
-    await page.getByRole("button", { name: /^Entries/ }).click();
+    await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     await expect(
       page.getByText("Use the Select button above to enter batch editing mode and edit multiple entries at once.", {
         exact: true,
@@ -13994,7 +13993,7 @@ test("Lorebook context filter chips expose Noodle and keep complete borders", as
     await page.goto("/");
     await page.locator('[data-tour="panel-lorebooks"]').click();
     await page.getByText(lorebookName, { exact: true }).click();
-    await page.getByRole("button", { name: /^Entries/ }).click();
+    await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     await page.getByRole("button", { name: "Expand entry" }).click();
     await page.getByText("Context filters & matching sources", { exact: true }).click();
 
@@ -14930,9 +14929,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     const [widgetBounds, shortcutBounds] = await Promise.all([widget.boundingBox(), lastShortcut.boundingBox()]);
     expect(widgetBounds).not.toBeNull();
     expect(shortcutBounds).not.toBeNull();
-    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(
-      widgetBounds!.y + widgetBounds!.height + 1,
-    );
+    expect(shortcutBounds!.y + shortcutBounds!.height).toBeLessThanOrEqual(widgetBounds!.y + widgetBounds!.height + 1);
   }
 
   if (mobile) {
@@ -15284,10 +15281,10 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
     module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
   });
   await expect(sprite).toBeVisible({ timeout: 1_000 });
-  await expect(page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true })).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1")))
-    .toBeNull();
+  await expect(
+    page.getByText("Hey, having trouble finding something? Looking for a Chats tab? Let me help!", { exact: true }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("marinara:home:professor-position:v1"))).toBeNull();
   const resetPosition = await sprite.boundingBox();
   expect(resetPosition).not.toBeNull();
   expect(resetPosition!.x).toBeLessThan(contentBounds!.x + contentBounds!.width / 2);
@@ -16643,11 +16640,13 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   expect(mobileActionOffsets.every((offset) => offset >= 0)).toBe(true);
   expect(new Set(mobileActionOffsets).size).toBe(mobileActionOrder.length);
   expect(mobileActionOffsets).toEqual([...mobileActionOffsets].sort((left, right) => left - right));
-  const mobileDomActionOrder = await topbar.locator("[data-topbar-hover-key]").evaluateAll((elements) =>
-    elements
-      .map((element) => (element as HTMLElement).dataset.topbarHoverKey)
-      .filter((key): key is string => Boolean(key)),
-  );
+  const mobileDomActionOrder = await topbar
+    .locator("[data-topbar-hover-key]")
+    .evaluateAll((elements) =>
+      elements
+        .map((element) => (element as HTMLElement).dataset.topbarHoverKey)
+        .filter((key): key is string => Boolean(key)),
+    );
   expect(mobileDomActionOrder.slice(0, mobileActionOrder.length)).toEqual(mobileActionOrder);
   const homeIconBounds = await homeButton.locator("svg").boundingBox();
   const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
@@ -16781,9 +16780,7 @@ test("Characters topbar underline uses the Characters pink", async ({ page }) =>
   await expect(underline).toBeVisible();
   await expect
     .poll(() =>
-      underline.evaluate((element) =>
-        getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim(),
-      ),
+      underline.evaluate((element) => getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim()),
     )
     .toBe("#f472b6");
 });
@@ -16845,7 +16842,9 @@ test("mobile Docker update checks offer the selected staging image", async ({ pa
 
   await expect(page.getByText("Switch to Staging/UAT", { exact: true })).toBeVisible();
   await expect(page.getByText("ghcr.io/pasta-devs/marinara-engine:staging", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Set the Compose image to .*:staging, then pull it and restart the container\./)).toBeVisible();
+  await expect(
+    page.getByText(/Set the Compose image to .*:staging, then pull it and restart the container\./),
+  ).toBeVisible();
   await expect(page.getByText(/latest Staging\/UAT target/)).toHaveCount(0);
 });
 
@@ -17612,7 +17611,7 @@ test("character card fields can preview Markdown without changing their source",
     await page.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`).click();
 
     const editor = page.locator('[data-component="DetailEditor"]');
-    await editor.getByRole("button", { name: "Card", exact: true }).click();
+    await openEditorSection(editor, "Card");
     const description = editor.locator("#character-card-description");
     const source = "**Bold detail**\n\n- First point";
     await description.locator("textarea").fill(source);

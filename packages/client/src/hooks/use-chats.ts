@@ -21,6 +21,7 @@ import { clearBrowserRuntimeCaches } from "../lib/browser-runtime";
 import { shouldRefetchMessagesOnReconnect } from "../lib/message-page-cache";
 import { normalizeHydratedMessage } from "../lib/message-hydration";
 import { isMessageHidden } from "../lib/message-visibility";
+import { copyLocalSpriteVisualSettings } from "../components/chat/local-sprite-visual-settings";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
 import type {
@@ -1385,6 +1386,7 @@ export function useBranchChat() {
       api.post<Chat>(`/chats/${chatId}/branch`, { upToMessageId }),
     onSuccess: (newChat, { chatId }) => {
       if (newChat) {
+        copyLocalSpriteVisualSettings(chatId, newChat.id);
         qc.setQueryData(chatKeys.detail(newChat.id), newChat);
         qc.setQueryData<Chat[]>(chatKeys.list(), (existing) => syncCachedBranch(existing, chatId, newChat));
 

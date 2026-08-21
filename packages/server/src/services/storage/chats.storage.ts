@@ -542,15 +542,20 @@ export function createChatsStorage(db: DB) {
     const characterIds = Object.keys(cachedSchedules);
     if (characterIds.length === 0) return false;
 
-    const rows = await db.select().from(characters).where(inArray(characters.id, characterIds));
     let hoisted = false;
-    for (const row of rows) {
-      const schedule = cachedSchedules[row.id];
-      if (!schedule || readCharacterSchedule(row.data)) continue;
-      const nextData = writeCardExtension(row.data, "conversationSchedule", schedule);
-      if (!nextData) continue;
-      await db.update(characters).set({ data: nextData }).where(eq(characters.id, row.id));
-      hoisted = true;
+    for (const characterId of characterIds) {
+      const schedule = cachedSchedules[characterId];
+      if (!schedule) continue;
+      const didHoist = await db.transaction(async (tx) => {
+        const rows = await tx.select().from(characters).where(eq(characters.id, characterId));
+        const row = rows[0];
+        if (!row || readCharacterSchedule(row.data)) return false;
+        const nextData = writeCardExtension(row.data, "conversationSchedule", schedule);
+        if (!nextData) return false;
+        await tx.update(characters).set({ data: nextData }).where(eq(characters.id, characterId));
+        return true;
+      });
+      hoisted ||= didHoist;
     }
     return hoisted;
   }
@@ -565,14 +570,17 @@ export function createChatsStorage(db: DB) {
     const characterIds = Object.keys(cachedOverrides);
     if (characterIds.length === 0) return;
 
-    const rows = await db.select().from(characters).where(inArray(characters.id, characterIds));
-    for (const row of rows) {
-      const override = cachedOverrides[row.id];
+    for (const characterId of characterIds) {
+      const override = cachedOverrides[characterId];
       if (!override || typeof override !== "object") continue;
-      if (readCardExtension(row.data, "conversationStatusOverride") !== undefined) continue;
-      const nextData = writeCardExtension(row.data, "conversationStatusOverride", override);
-      if (!nextData) continue;
-      await db.update(characters).set({ data: nextData }).where(eq(characters.id, row.id));
+      await db.transaction(async (tx) => {
+        const rows = await tx.select().from(characters).where(eq(characters.id, characterId));
+        const row = rows[0];
+        if (!row || readCardExtension(row.data, "conversationStatusOverride") !== undefined) return;
+        const nextData = writeCardExtension(row.data, "conversationStatusOverride", override);
+        if (!nextData) return;
+        await tx.update(characters).set({ data: nextData }).where(eq(characters.id, characterId));
+      });
     }
   }
 
@@ -759,8 +767,12 @@ export function createChatsStorage(db: DB) {
 
       // Hoist before the opt-in gate, so a chat that is switched off does not
       // strand the only copy of a pre-existing schedule in its metadata.
-      await hoistLegacyChatSchedules(hasConversationSchedules(meta.characterSchedules) ? meta.characterSchedules : {});
-      await hoistLegacyChatOverrides(meta.conversationStatusOverrides);
+      if (hasConversationSchedules(meta.characterSchedules)) {
+        await hoistLegacyChatSchedules(meta.characterSchedules);
+      }
+      if (isPlainRecord(meta.conversationStatusOverrides) && Object.keys(meta.conversationStatusOverrides).length > 0) {
+        await hoistLegacyChatOverrides(meta.conversationStatusOverrides);
+      }
 
       const presence = await collectConversationPresence(
         characterIds,
@@ -776,7 +788,7 @@ export function createChatsStorage(db: DB) {
       }
 
       const schedules = await this.resolveConversationSchedules(id);
-      return { schedules: Object.keys(schedules).length ? schedules : presence.schedules, statusOverrides };
+      return { schedules, statusOverrides };
     },
 
     /** Schedule half of {@link resolveConversationPresenceState}. */

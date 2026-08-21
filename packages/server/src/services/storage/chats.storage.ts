@@ -208,7 +208,7 @@ function writeCardExtension(rawData: unknown, key: string, value: unknown): stri
 
 function readCharacterSchedule(rawData: unknown): WeekSchedule | null {
   const schedule = readCardExtension(rawData, "conversationSchedule");
-  return schedule && typeof schedule === "object" ? (schedule as WeekSchedule) : null;
+  return isValidLegacySchedule(schedule) ? schedule : null;
 }
 
 /**

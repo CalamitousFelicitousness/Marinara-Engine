@@ -1386,8 +1386,8 @@ const messageSavedHandlerSource =
   useGenerateSource.match(/case "message_saved": \{[\s\S]*?case "schedule_updated":/u)?.[0] ?? "";
 assert.match(
   messageSavedHandlerSource,
-  /if \(!keepStreamLiveThroughPostProcessing\) \{[\s\S]*?rememberContinuedMessageContent\(savedMessage\);[\s\S]*?\}[\s\S]*?upsertPersistedMessages\(qc, params\.chatId, \[savedMessage\]\);/u,
-  "a saved Roleplay reply must remain cached while its live presentation is shadowing it",
+  /if \(!keepStreamLiveThroughPostProcessing\) \{[\s\S]*?rememberContinuedMessageContent\(savedMessage\);[\s\S]*?\}[\s\S]*?if \(!isGameGeneration\) upsertPersistedMessages\(qc, params\.chatId, \[savedMessage\]\);/u,
+  "saved Roleplay replies should enter the cache while Game replies wait for the final scene handoff",
 );
 const updateMessageHookSource =
   useChatsSource.match(/export function useUpdateMessage[\s\S]*?export function useUpdateMessageExtra/u)?.[0] ?? "";

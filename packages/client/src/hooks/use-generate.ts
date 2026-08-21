@@ -2364,7 +2364,7 @@ export function useGenerate() {
                 heldTextRewriteMessage = heldMessage;
                 receivedContent = true;
                 persistedMessages.set(heldMessage.id, heldMessage);
-                if (!streamingEnabled || !shouldDisplayRawStream) {
+                if (!isGameGeneration && (!streamingEnabled || !shouldDisplayRawStream)) {
                   upsertPersistedMessages(qc, params.chatId, [heldMessage]);
                 }
                 break;
@@ -2376,7 +2376,10 @@ export function useGenerate() {
               if (!keepStreamLiveThroughPostProcessing) {
                 rememberContinuedMessageContent(savedMessage);
               }
-              upsertPersistedMessages(qc, params.chatId, [savedMessage]);
+              // Game Narration reveals the saved row segment by segment after
+              // the whole GM pipeline settles. Publishing it now jumps ahead
+              // of that reveal; the final authoritative refresh below owns it.
+              if (!isGameGeneration) upsertPersistedMessages(qc, params.chatId, [savedMessage]);
               break;
             }
 
@@ -2447,7 +2450,7 @@ export function useGenerate() {
               // would insert it into the cache alongside the StreamingIndicator,
               // causing a duplicate flash. The finally block's authoritative
               // refresh will pick up the selfie attachment from DB.
-              if (!streamingEnabled) {
+              if (!streamingEnabled && !isGameGeneration) {
                 await refreshMessagesAuthoritatively(qc, params.chatId, persistedMessages.values());
               }
               break;
@@ -2562,7 +2565,7 @@ export function useGenerate() {
               // would insert it into the cache alongside the StreamingIndicator,
               // causing a duplicate flash. The finally block's authoritative
               // refresh will pick up the illustration attachment from DB.
-              if (!streamingEnabled) {
+              if (!streamingEnabled && !isGameGeneration) {
                 await refreshMessagesAuthoritatively(qc, params.chatId, persistedMessages.values());
               }
               void qc.invalidateQueries({ queryKey: ["gallery", params.chatId] });

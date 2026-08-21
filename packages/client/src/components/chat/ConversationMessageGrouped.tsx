@@ -273,7 +273,7 @@ export function ConversationMessageGrouped({
                           {segName}
                         </span>
                         {isFirst && !hideTimestamp && (
-                          <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]/60">
+                          <span className="mari-conversation-transcript-accent mari-accent-animated shrink-0 text-[0.625rem]">
                             {formatTimestamp(message.createdAt)}
                           </span>
                         )}
@@ -337,7 +337,7 @@ export function ConversationMessageGrouped({
                       )}
                     </div>
                     {isFirst && (showActions || forceShowActions || showMessageNumbers) && messageIndex != null && (
-                      <span className="mt-0.5 block text-center text-[0.5rem] font-medium text-[var(--muted-foreground)] select-none">
+                      <span className="mari-conversation-transcript-accent mari-accent-animated mt-0.5 block text-center text-[0.5rem] font-medium select-none">
                         #{messageIndex}
                       </span>
                     )}
@@ -351,7 +351,7 @@ export function ConversationMessageGrouped({
                         {segName}
                       </span>
                       {isFirst && !hideTimestamp && (
-                        <span className="text-[0.6875rem] text-[var(--muted-foreground)]/60">
+                        <span className="mari-conversation-transcript-accent mari-accent-animated text-[0.6875rem]">
                           {formatTimestamp(message.createdAt)}
                         </span>
                       )}

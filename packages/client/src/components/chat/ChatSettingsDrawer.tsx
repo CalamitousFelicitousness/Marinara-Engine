@@ -585,6 +585,7 @@ const CHAT_SETTINGS_ORDER = {
   connectedChat: -700,
   connectedNotes: -690,
   lorebooks: -600,
+  commands: -550,
   agents: -500,
   widgets: -450,
   impersonate: -400,
@@ -6130,70 +6131,80 @@ export function ChatSettingsDrawer({
             </Section>
           )}
 
-          {/* Conversation feature packages expose commands and settings as soon as they are installed. */}
+          {modeSettingsSurfaces.agentSettingsSurface === "conversation" && hasConversationCommands && (
+            <Section
+              id="conversation-commands"
+              style={{ order: CHAT_SETTINGS_ORDER.commands }}
+              label={localizeUi("ui.chat.chatsettingsdrawer.commands")}
+              icon={<Puzzle size="0.875rem" />}
+              help={localizeUi("ui.chat.chatsettingsdrawer.allowModelsToInteractWithYouThroughInstalledCommands")}
+            >
+              <div className="space-y-3">
+                <SettingsSwitch
+                  label={localizeUi("ui.chat.chatsettingsdrawer.commands")}
+                  description={localizeUi(
+                    "ui.chat.chatsettingsdrawer.allowModelsToInteractWithYouThroughInstalledCommands",
+                  )}
+                  checked={conversationCommandsEnabled}
+                  onChange={(enabled) => updateMeta.mutate({ id: chat.id, characterCommands: enabled })}
+                  labelPosition="start"
+                  className={cn(
+                    "justify-between rounded-lg px-3 py-2.5 text-left",
+                    conversationCommandsEnabled
+                      ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                      : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
+                  )}
+                  labelClassName="text-xs font-medium"
+                />
+
+                {conversationCommandsEnabled && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {availableConversationCommandOptions.map((command) => {
+                      const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
+                      return (
+                        <SettingsSwitch
+                          key={command.id}
+                          label={command.label}
+                          description={command.description}
+                          checked={enabled}
+                          onChange={(nextEnabled) =>
+                            updateMeta.mutate({
+                              id: chat.id,
+                              conversationCommandToggles: {
+                                ...conversationCommandToggles,
+                                [command.id]: nextEnabled,
+                              },
+                            })
+                          }
+                          labelPosition="start"
+                          className={cn(
+                            "h-full min-h-[4.125rem] items-center justify-between rounded-lg px-3 py-2.5 text-left",
+                            enabled
+                              ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                              : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
+                          )}
+                          labelClassName="text-[0.6875rem] font-medium"
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Conversation feature packages expose agent settings as soon as they are installed. */}
           {modeSettingsSurfaces.agentSettingsSurface === "conversation" && (
             <Section
               id="conversation-agents"
               style={{ order: CHAT_SETTINGS_ORDER.agents }}
               label={localizeUi("navigation.topbar.agents")}
               icon={<Sparkles size="0.875rem" />}
-              help={localizeUi(
-                "ui.chat.chatsettingsdrawer.configureConversationCommandsCustomAgentsAndSettingsSuppliedBy",
-              )}
+              help={localizeUi("ui.chat.chatsettingsdrawer.configureCustomAgentsCurrentlyAttachedToThisChat")}
             >
               <div className="space-y-3">
                 {hasConversationCommands && (
                   <div className="space-y-3">
-                    <SettingsSwitch
-                      label={localizeUi("ui.chat.chatsettingsdrawer.commands")}
-                      description={localizeUi(
-                        "ui.chat.chatsettingsdrawer.allowModelsToInteractWithYouThroughInstalledCommands",
-                      )}
-                      checked={conversationCommandsEnabled}
-                      onChange={(enabled) => updateMeta.mutate({ id: chat.id, characterCommands: enabled })}
-                      labelPosition="start"
-                      className={cn(
-                        "justify-between rounded-lg px-3 py-2.5 text-left",
-                        conversationCommandsEnabled
-                          ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
-                          : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
-                      )}
-                      labelClassName="text-xs font-medium"
-                    />
-
-                    {conversationCommandsEnabled && (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {availableConversationCommandOptions.map((command) => {
-                          const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
-                          return (
-                            <SettingsSwitch
-                              key={command.id}
-                              label={command.label}
-                              description={command.description}
-                              checked={enabled}
-                              onChange={(nextEnabled) =>
-                                updateMeta.mutate({
-                                  id: chat.id,
-                                  conversationCommandToggles: {
-                                    ...conversationCommandToggles,
-                                    [command.id]: nextEnabled,
-                                  },
-                                })
-                              }
-                              labelPosition="start"
-                              className={cn(
-                                "h-full min-h-[4.125rem] items-center justify-between rounded-lg px-3 py-2.5 text-left",
-                                enabled
-                                  ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
-                                  : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
-                              )}
-                              labelClassName="text-[0.6875rem] font-medium"
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-
                     {illustratorInstalled && (
                       <div
                         className={cn(

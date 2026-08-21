@@ -1371,6 +1371,10 @@
   color: var(--marinara-chat-chrome-panel-muted);
 }
 
+.mari-conversation-transcript-accent {
+  color: var(--marinara-chat-chrome-button-text-active);
+}
+
 .mari-chrome-accent-surface {
   border-color: var(--marinara-chat-chrome-button-border-active);
   background: var(--marinara-chat-chrome-highlight-bg);
@@ -1596,6 +1600,14 @@
   flex: 1 1 18rem;
   align-items: center;
   gap: 0.75rem;
+}
+
+.mari-editor-header--with-nav {
+  flex-wrap: nowrap;
+}
+
+.mari-editor-header--with-nav .mari-editor-header-main {
+  flex: 0 1 18rem;
 }
 
 .mari-settings-search-header {
@@ -1958,11 +1970,6 @@
   max-width: 48rem;
 }
 
-.mari-editor-tab-rail {
-  border-color: var(--marinara-editor-divider);
-  background: color-mix(in srgb, var(--marinara-editor-surface-bg) 58%, transparent);
-}
-
 .mari-editor-tab {
   color: var(--marinara-editor-muted);
 }
@@ -1986,6 +1993,22 @@
   color: var(--marinara-editor-text);
   font-size: 0.625rem;
   line-height: 1;
+}
+
+.mari-editor-navigation-select {
+  border-color: var(--marinara-editor-border);
+  background: var(--marinara-editor-control-bg);
+  color: var(--marinara-editor-text);
+}
+
+.mari-editor-navigation-select:hover {
+  border-color: var(--marinara-editor-border-strong);
+  background: var(--marinara-editor-control-bg-hover);
+}
+
+.mari-editor-navigation-select:focus-visible {
+  border-color: var(--marinara-editor-border-strong);
+  --tw-ring-color: var(--marinara-editor-focus-ring);
 }
 
 .mari-editor-section-jumps {
@@ -2345,29 +2368,42 @@
     overscroll-behavior-y: contain;
     touch-action: pan-y;
   }
+}
 
-  .mari-editor-tab-rail {
+@container mari-main (max-width: 64rem) {
+  .mari-editor-header--with-nav {
+    height: auto;
+    min-height: 3.8125rem;
+    flex-basis: auto;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .mari-editor-header--with-nav .mari-editor-header-main {
     width: 100%;
-    max-width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--marinara-editor-divider);
-    padding: 0.375rem;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    min-width: 100%;
+    flex: 1 0 100%;
   }
 
-  .mari-editor-tab {
-    flex: 0 0 auto;
-    white-space: nowrap;
-    padding: 0.375rem 0.625rem;
+  .mari-editor-header--with-nav .mari-editor-navigation {
+    flex: 1 1 8rem;
   }
 
-  .mari-editor-tab-badge {
-    margin-left: 0.25rem;
+  .mari-editor-header--with-nav .mari-editor-actions {
+    width: auto;
+    justify-content: flex-end;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .mari-editor-header--with-nav .mari-editor-action--primary {
+    margin-right: 0;
+    padding-inline: 0.5rem;
+  }
+
+  .mari-editor-header--with-nav .mari-editor-save-label {
+    display: none;
   }
 }
 

@@ -1383,11 +1383,44 @@ assert.equal(
   "regeneration owns the existing row in place and must not hide it",
 );
 const messageSavedHandlerSource =
-  useGenerateSource.match(/case "message_saved": \{[\s\S]*?case "schedule_updated":/u)?.[0] ?? "";
+  useGenerateSource.match(/case "message_saved": \{[\s\S]*?case "assistant_message_ready":/u)?.[0] ?? "";
 assert.match(
   messageSavedHandlerSource,
-  /if \(!keepStreamLiveThroughPostProcessing\) \{[\s\S]*?rememberContinuedMessageContent\(savedMessage\);[\s\S]*?\}[\s\S]*?upsertPersistedMessages\(qc, params\.chatId, \[savedMessage\]\);/u,
-  "a saved Roleplay reply must remain cached while its live presentation is shadowing it",
+  /if \(!keepStreamLiveThroughPostProcessing\) \{[\s\S]*?rememberContinuedMessageContent\(savedMessage\);[\s\S]*?\}/u,
+  "saved Roleplay replies should retain their continuation handoff",
+);
+const messageSavedCacheUpdateCount = (messageSavedHandlerSource.match(/upsertPersistedMessages\(/gu) ?? []).length;
+assert.equal(
+  messageSavedCacheUpdateCount,
+  2,
+  "saved Roleplay replies should enter the cache while Game replies wait for the final scene handoff",
+);
+assert.equal(
+  (
+    messageSavedHandlerSource.match(
+      /if \(!isGameGeneration(?: && \(!streamingEnabled \|\| !shouldDisplayRawStream\))?\) (?:\{\s*)?upsertPersistedMessages\(qc, params\.chatId, \[(?:heldMessage|savedMessage)\]\);/gu,
+    ) ?? []
+  ).length,
+  messageSavedCacheUpdateCount,
+  "every message_saved cache update should remain behind a Game-mode guard",
+);
+const selfieHandlerSource = useGenerateSource.match(/case "selfie": \{[\s\S]*?case "selfie_error":/u)?.[0] ?? "";
+assert.match(
+  selfieHandlerSource,
+  /if \(!streamingEnabled && !isGameGeneration\) \{[\s\S]*?refreshMessagesAuthoritatively/u,
+  "selfies should not refresh the visible cache during Game generation",
+);
+const illustrationHandlerSource =
+  useGenerateSource.match(/case "illustration": \{[\s\S]*?case "illustration_queued":/u)?.[0] ?? "";
+assert.match(
+  illustrationHandlerSource,
+  /if \(!streamingEnabled && !isGameGeneration\) \{[\s\S]*?refreshMessagesAuthoritatively/u,
+  "illustrations should not refresh the visible cache during Game generation",
+);
+assert.match(
+  useGenerateSource,
+  /if \(isGameGeneration\) \{[\s\S]*?await refreshMessagesAuthoritatively\(qc, params\.chatId, persistedForRefresh\);[\s\S]*?setStreaming\(false\);/u,
+  "Game generation should publish the authoritative scene before releasing its presentation stream",
 );
 const updateMessageHookSource =
   useChatsSource.match(/export function useUpdateMessage[\s\S]*?export function useUpdateMessageExtra/u)?.[0] ?? "";

@@ -1750,6 +1750,7 @@
 
 .mari-editor-title-line .mari-editor-title-input {
   width: auto;
+  min-width: 4rem;
   max-width: 100%;
   flex: 0 1 auto;
   overflow: hidden;

@@ -3152,6 +3152,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     expect(titleInputBox).not.toBeNull();
     expect(bylineBox).not.toBeNull();
     if (titleLineBox && titleInputBox && bylineBox) {
+      expect(titleInputBox.width).toBeGreaterThanOrEqual(48);
       expect(titleInputBox.x + titleInputBox.width).toBeLessThanOrEqual(bylineBox.x + 1);
       expect(bylineBox.x + bylineBox.width).toBeLessThanOrEqual(titleLineBox.x + titleLineBox.width + 1);
       expect(Math.abs(titleInputBox.y + titleInputBox.height - (bylineBox.y + bylineBox.height))).toBeLessThanOrEqual(

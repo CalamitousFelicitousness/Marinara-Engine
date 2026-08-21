@@ -268,16 +268,29 @@ try {
 
   console.log("experience-generation regression passed");
 } finally {
-  try {
-    for (const chatId of createdChatIds) await chats.remove(chatId).catch(() => undefined);
+  let cleanupFailed = false;
+  let firstCleanupError: unknown;
+  const runCleanup = async (cleanup: () => Promise<unknown>) => {
     try {
-      if (createdConnectionId) await connections.remove(createdConnectionId);
-    } finally {
-      if (previousMainFallbackId) await connections.update(previousMainFallbackId, { fallbackForMain: true });
+      await cleanup();
+    } catch (error) {
+      if (!cleanupFailed) firstCleanupError = error;
+      cleanupFailed = true;
     }
-  } finally {
-    await app.close();
-    await new Promise<void>((resolve) => mockProvider.close(() => resolve()));
-    await closeDB();
+  };
+
+  for (const chatId of createdChatIds) await runCleanup(() => chats.remove(chatId));
+  if (createdConnectionId) await runCleanup(() => connections.remove(createdConnectionId));
+  if (previousMainFallbackId) {
+    await runCleanup(() => connections.update(previousMainFallbackId, { fallbackForMain: true }));
   }
+  await runCleanup(() => app.close());
+  await runCleanup(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        mockProvider.close((error) => (error ? reject(error) : resolve()));
+      }),
+  );
+  await runCleanup(closeDB);
+  if (cleanupFailed) throw firstCleanupError;
 }

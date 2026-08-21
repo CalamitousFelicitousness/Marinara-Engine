@@ -70,6 +70,7 @@ import { logger, logDebugOverride } from "../lib/logger.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
+import { embeddedSpriteSizesAreWithinLimits } from "../services/import/marinara.importer.js";
 import {
   clearEmbeddedLorebookFromCharacter,
   embedLorebookIntoCharacter,
@@ -688,6 +689,12 @@ export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filen
     spec_version: "2.0",
     data: { ...data, extensions },
   };
+}
+
+export function compatibleSpriteExportIsWithinLimits(sprites: ReadonlyArray<{ data: string }>): boolean {
+  return embeddedSpriteSizesAreWithinLimits(
+    sprites.map(({ data }) => Buffer.byteLength(data.slice(data.indexOf(",") + 1), "base64")),
+  );
 }
 
 async function buildNativePersonaEnvelope(
@@ -1929,7 +1936,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
     const charData = JSON.parse(char.data);
-    const v2Envelope = buildCompatibleCharacterExport(charData, await readSpritesForId(char.id));
+    const sprites = await readSpritesForId(char.id);
+    if (!compatibleSpriteExportIsWithinLimits(sprites)) {
+      return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });
+    }
+    const v2Envelope = buildCompatibleCharacterExport(charData, sprites);
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback

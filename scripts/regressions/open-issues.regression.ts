@@ -36,6 +36,7 @@ import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/
 import { MAX_FILE_SIZES } from "../../packages/shared/src/constants/defaults.js";
 import {
   buildCompatibleCharacterExport,
+  compatibleSpriteExportIsWithinLimits,
   validateCharacterGalleryReferences,
 } from "../../packages/server/src/routes/characters.routes.js";
 import {
@@ -540,7 +541,7 @@ assert.equal(
 );
 assert.match(
   characterRoutesSource,
-  /buildCompatibleCharacterExport\(charData, await readSpritesForId\(char\.id\)\)/u,
+  /if \(!compatibleSpriteExportIsWithinLimits\(sprites\)\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites\)/u,
   "PNG export must load sprites into the compatible card envelope",
 );
 assert.match(
@@ -550,8 +551,23 @@ assert.match(
 );
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE]), true);
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE + 1]), false);
-assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.CHARACTER_CARD, 1]), false);
+assert.equal(
+  embeddedSpriteSizesAreWithinLimits(Array(4).fill(MAX_FILE_SIZES.SPRITE)),
+  false,
+  "aggregate sprite bytes must be limited independently of the per-sprite ceiling",
+);
 assert.equal(embeddedSpriteSizesAreWithinLimits(Array(MAX_EMBEDDED_SPRITE_COUNT + 1).fill(0)), false);
+const portableExportSprite = { data: `data:image/png;base64,${Buffer.alloc(16).toString("base64")}` };
+assert.equal(
+  compatibleSpriteExportIsWithinLimits([portableExportSprite]),
+  true,
+  "compatible PNG export accepts sprite sets that its importer can restore",
+);
+assert.equal(
+  compatibleSpriteExportIsWithinLimits(Array(MAX_EMBEDDED_SPRITE_COUNT + 1).fill(portableExportSprite)),
+  false,
+  "compatible PNG export rejects sprite sets that its importer would skip",
+);
 const ownedGalleryUpdate = {
   extensions: { characterSheetImageId: "owned-image", useCharacterSheetAsReference: true },
 };

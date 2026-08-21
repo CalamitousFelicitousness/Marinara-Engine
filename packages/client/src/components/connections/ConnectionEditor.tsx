@@ -1247,6 +1247,8 @@ export function ConnectionEditor() {
 
   const handleFetchModels = useCallback(async () => {
     if (!connectionDetailId) return;
+    const requestScope = fetchScopeRef.current;
+    const requestConnectionId = connectionDetailId;
     setFetchError(null);
     // Save first if dirty so the server has the right baseUrl/apiKey/provider
     if (dirty) {
@@ -1256,10 +1258,10 @@ export function ConnectionEditor() {
         return;
       }
     }
-    const scope = fetchScopeRef.current;
-    fetchModels.mutate(connectionDetailId, {
+    if (fetchScopeRef.current !== requestScope) return;
+    fetchModels.mutate(requestConnectionId, {
       onSuccess: (data) => {
-        if (fetchScopeRef.current !== scope) return;
+        if (fetchScopeRef.current !== requestScope) return;
         const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
         setRemoteModels(result.models);
         setRemoteLoras(result.loras ?? []);
@@ -1270,7 +1272,7 @@ export function ConnectionEditor() {
         });
       },
       onError: (err) => {
-        if (fetchScopeRef.current !== scope) return;
+        if (fetchScopeRef.current !== requestScope) return;
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
       },
     });

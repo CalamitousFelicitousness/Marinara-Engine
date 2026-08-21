@@ -71,7 +71,7 @@ try {
   });
   assert.equal(await readCardSchedule(), undefined, "card starts with no schedule");
 
-  const legacyResolved = await chats.inheritFreshConversationSchedules(legacyChat!.id);
+  const legacyResolved = (await chats.resolveConversationPresenceState(legacyChat!.id)).schedules;
   assert.deepEqual(legacyResolved[characterId], legacy, "legacy chat keeps its schedule");
   assert.deepEqual(await readCardSchedule(), legacy, "legacy schedule is hoisted onto the card");
 
@@ -91,18 +91,22 @@ try {
     mode: "conversation",
     characterIds: [characterId],
   } as never);
-  const otherResolved = await chats.inheritFreshConversationSchedules(otherChat!.id);
+  const otherResolved = (await chats.resolveConversationPresenceState(otherChat!.id)).schedules;
   assert.deepEqual(otherResolved[characterId], shared, "a new chat resolves the card's schedule");
 
-  const legacyRefreshed = await chats.inheritFreshConversationSchedules(legacyChat!.id);
+  const legacyRefreshed = (await chats.resolveConversationPresenceState(legacyChat!.id)).schedules;
   assert.deepEqual(legacyRefreshed[characterId], shared, "the existing chat picks up the card's newer schedule");
 
   // ── 3. The per-chat kill switch is scoped to that chat ──
   await chats.patchMetadata(otherChat!.id, { conversationSchedulesEnabled: false, characterSchedules: {} });
-  assert.deepEqual(await chats.inheritFreshConversationSchedules(otherChat!.id), {}, "disabled chat resolves nothing");
+  assert.deepEqual(
+    (await chats.resolveConversationPresenceState(otherChat!.id)).schedules,
+    {},
+    "disabled chat resolves nothing",
+  );
   assert.deepEqual(await readCardSchedule(), shared, "disabling one chat leaves the card intact");
   assert.deepEqual(
-    (await chats.inheritFreshConversationSchedules(legacyChat!.id))[characterId],
+    (await chats.resolveConversationPresenceState(legacyChat!.id)).schedules[characterId],
     shared,
     "the other chat still resolves the schedule",
   );
@@ -116,16 +120,15 @@ try {
   } as never);
   await chats.update(optOutChat!.id, { characterIds: [characterId] } as never);
   assert.deepEqual(
-    await chats.inheritFreshConversationSchedules(optOutChat!.id),
+    (await chats.resolveConversationPresenceState(optOutChat!.id)).schedules,
     {},
     "a chat that never opted in stays off",
   );
 
   // ── 5. Presence in a chat with schedules off is always-online and never
   //       falls through to the character's global schedule-derived status ──
-  const { resolveLiveConversationStatus } = await import(
-    "../../packages/client/src/lib/conversation-presence-status.js"
-  );
+  const { resolveLiveConversationStatus } =
+    await import("../../packages/client/src/lib/conversation-presence-status.js");
   assert.deepEqual(
     resolveLiveConversationStatus(
       { conversationSchedulesEnabled: false, characterSchedules: {} },
@@ -134,6 +137,52 @@ try {
     ),
     { status: "online", activity: "" },
     "a disabled chat reports online rather than deferring to the card",
+  );
+
+  // ── 6. A manual presence override belongs to the character too ──
+  const cardWithOverride = await chars.getById(characterId);
+  const overrideExtensions = (JSON.parse(cardWithOverride!.data as string) as { extensions?: Record<string, unknown> })
+    .extensions;
+  const beforeVersion = (JSON.parse(cardWithOverride!.data as string) as { character_version: string })
+    .character_version;
+  await chars.update(
+    characterId,
+    {
+      extensions: {
+        ...(overrideExtensions ?? {}),
+        conversationStatusOverride: { status: "dnd", activity: "heads down", createdAt: new Date().toISOString() },
+      },
+    } as never,
+    undefined,
+    { skipVersionSnapshot: true },
+  );
+
+  const legacyPresence = await chats.resolveConversationPresenceState(legacyChat!.id);
+  assert.equal(legacyPresence.statusOverrides[characterId]?.status, "dnd", "the override reaches one chat");
+  const otherPresence = await chats.resolveConversationPresenceState(otherChat!.id);
+  assert.equal(
+    otherPresence.statusOverrides[characterId]?.status,
+    "dnd",
+    "the override reaches a chat with schedules switched off",
+  );
+
+  // ── 7. Schedule and presence are runtime state, so they never bump the card
+  //       version or snapshot a revision ──
+  const bumped = await chars.getById(characterId);
+  assert.equal(
+    (JSON.parse(bumped!.data as string) as { character_version: string }).character_version,
+    beforeVersion,
+    "a presence write leaves the card version alone",
+  );
+  const withSchedule = JSON.parse(bumped!.data as string) as { extensions: Record<string, unknown> };
+  await chars.update(characterId, {
+    extensions: { ...withSchedule.extensions, conversationSchedule: makeSchedule("Rewritten") },
+  } as never);
+  const afterScheduleEdit = await chars.getById(characterId);
+  assert.equal(
+    (JSON.parse(afterScheduleEdit!.data as string) as { character_version: string }).character_version,
+    beforeVersion,
+    "editing only the schedule does not bump the card version",
   );
 
   console.log("character-schedule-ownership regression passed");

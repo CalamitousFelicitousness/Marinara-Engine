@@ -1092,22 +1092,15 @@ export const ChatArea = memo(function ChatArea() {
         },
         {
           onSuccess: () => {
-            if (!chat?.id) return;
-            // Refresh this chat's cached copy right away so the UI does not wait
-            // for the next server-side resolve.
-            updateMeta.mutate({
-              id: chat.id,
-              characterSchedules: {
-                ...((chatMeta.characterSchedules as Record<string, WeekSchedule> | undefined) ?? {}),
-                [savedCharacterId]: updated,
-              },
-            });
+            // Refetching the chat re-resolves its cached copy from the card, so
+            // the new routine shows up here without a second metadata write.
             void queryClient.invalidateQueries({ queryKey: characterKeys.detail(savedCharacterId) });
+            if (chat?.id) void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) });
           },
         },
       );
     },
-    [chat?.id, chatMeta.characterSchedules, queryClient, updateCharacter, updateMeta],
+    [chat?.id, queryClient, updateCharacter],
   );
   const summaryContextSize: number = (chatMeta.summaryContextSize as number) ?? 50;
   const [roleplayVideoReviewItems, setRoleplayVideoReviewItems] = useState<ImagePromptReviewItem[]>([]);

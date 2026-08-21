@@ -54,6 +54,11 @@ export interface CharacterExtensions {
   trackerCustomFieldDefaults?: CharacterTrackerCustomFieldDefault[];
   /** Marinara Engine: Conversation-mode availability status */
   conversationStatus?: import("./chat.js").ConversationPresenceStatus;
+  /** Marinara Engine (Conversation mode ONLY): manual presence override. Like the
+   *  schedule, it belongs to the character and applies in every Conversation chat;
+   *  `null` means no override. Chats cache a resolved copy in
+   *  `chats.metadata.conversationStatusOverrides`. */
+  conversationStatusOverride?: import("./chat.js").ConversationStatusOverride | null;
   /** Marinara Engine (Conversation mode ONLY): the character's weekly schedule. The
    *  character owns it; every conversation chat caches a resolved copy in
    *  `chats.metadata.characterSchedules`. Per-chat opt-out lives on the chat as

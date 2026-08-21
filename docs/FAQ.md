@@ -68,6 +68,8 @@ To get instant replies in one chat, open its Chat Settings and turn **Conversati
 
 Existing chats that never used schedules stay off until you turn them on. New chats you start with a character that has a schedule use it from the start.
 
+A manual status override also belongs to the character. If you set a character to **online** in one chat, the character is online in every chat. Use **clear** to remove the override.
+
 ## Do I need an API key to use Marinara?
 
 Almost always, yes. A **connection** is a saved link that tells Marinara how to reach one AI service: which provider, which model, and your login for it. An **API key** is a secret code, a bit like a password. You get it from an AI provider so Marinara can talk to that provider for you.

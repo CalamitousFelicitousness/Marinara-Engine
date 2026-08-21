@@ -1445,8 +1445,19 @@ function ConvoTab({
   characterId?: string;
 }) {
   const ext = formData.extensions;
-  const schedule = ext.conversationSchedule as WeekSchedule | undefined;
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // The schedule is runtime state, not card content, so it saves on its own
+  // rather than through the editor form. Routing it through `updateExtension`
+  // would mark the card dirty and raise a discard prompt for a routine that is
+  // regenerated every week.
+  const updateCharacter = useUpdateCharacter();
+  const savedCharacter = useCharacter(characterId ?? null);
+  const savedExtensions = (savedCharacter.data as { data?: CharacterData } | undefined)?.data?.extensions;
+  // Read the saved card, not the form: the schedule saves on its own, so the
+  // in-progress form copy goes stale as soon as the editor writes one.
+  const schedule =
+    (savedExtensions?.conversationSchedule as WeekSchedule | undefined) ??
+    (ext.conversationSchedule as WeekSchedule | undefined);
   return (
     // Key by the edited character so transient edit state resets on switch. The
     // editor reuses this component instance while moving between characters.
@@ -1481,7 +1492,13 @@ function ConvoTab({
         characterName={formData.name}
         schedule={schedule}
         onClose={() => setScheduleOpen(false)}
-        onSave={(_savedCharacterId, updated) => updateExtension("conversationSchedule", updated)}
+        onSave={(savedCharacterId, updated) =>
+          updateCharacter.mutate({
+            id: savedCharacterId,
+            data: { extensions: { conversationSchedule: updated } },
+            skipVersionSnapshot: true,
+          })
+        }
       />
     </>
   );

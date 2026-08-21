@@ -765,14 +765,14 @@ export async function conversationRoutes(app: FastifyInstance) {
     const chat = await chats.getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
-    const [schedules, lastContactMap] = await Promise.all([
-      chats.inheritFreshConversationSchedules(req.params.chatId),
+    const [presence, lastContactMap] = await Promise.all([
+      chats.resolveConversationPresenceState(req.params.chatId),
       chats.lastContactByCharacter(req.params.chatId),
     ]);
+    const { schedules, statusOverrides } = presence;
     const characterIds: string[] =
       typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : chat.characterIds;
     const meta = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {});
-    const statusOverrides = parseConversationStatusOverrides(meta.conversationStatusOverrides);
 
     const now = new Date();
     const scheduleNow = toZonedWallClockDate(now, resolveConversationTimeZone(meta));
@@ -912,12 +912,11 @@ export async function conversationRoutes(app: FastifyInstance) {
       return reply.send({ shouldTrigger: false, characterIds: [], reason: "user_dnd", inactivityMs: 0 });
     }
 
-    const schedules: CharacterSchedules = await chats.inheritFreshConversationSchedules(chatId);
+    const { schedules, statusOverrides } = await chats.resolveConversationPresenceState(chatId);
     const characterIds: string[] =
       typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : chat.characterIds;
     const isGroup = characterIds.length > 1;
     const hasRoutineSchedules = hasSchedules(schedules);
-    const statusOverrides = parseConversationStatusOverrides(meta.conversationStatusOverrides);
 
     const autonomySchedules: CharacterSchedules = { ...schedules };
     const schedulelessCharacterIds = characterIds.filter((cid) => !autonomySchedules[cid]);
@@ -1094,10 +1093,9 @@ export async function conversationRoutes(app: FastifyInstance) {
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
-    const schedules: CharacterSchedules = await chats.inheritFreshConversationSchedules(chatId);
+    const { schedules, statusOverrides } = await chats.resolveConversationPresenceState(chatId);
     const schedule = schedules[characterId];
     const meta = typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {});
-    const statusOverrides = parseConversationStatusOverrides(meta.conversationStatusOverrides);
     const now = new Date();
     const scheduleNow = toZonedWallClockDate(now, resolveConversationTimeZone(meta));
 
@@ -1142,8 +1140,7 @@ export async function conversationRoutes(app: FastifyInstance) {
       return reply.send({ shouldTrigger: false, characterIds: [], reason: "exchanges_disabled", inactivityMs: 0 });
     }
 
-    const schedules: CharacterSchedules = await chats.inheritFreshConversationSchedules(chatId);
-    const statusOverrides = parseConversationStatusOverrides(meta.conversationStatusOverrides);
+    const { schedules, statusOverrides } = await chats.resolveConversationPresenceState(chatId);
     const now = new Date();
     const scheduleNow = toZonedWallClockDate(now, resolveConversationTimeZone(meta));
     const sceneBusyCharIds: string[] = meta.sceneBusyCharIds ?? [];

@@ -984,8 +984,10 @@ const COMMANDS: SlashCommand[] = [
         }
 
         try {
-          await api.patch(`/chats/${ctx.chatId}/metadata`, {
-            conversationStatusOverrides: { [target.id]: null },
+          // The override belongs to the character, so it applies in every chat.
+          await api.patch(`/characters/${target.id}`, {
+            data: { extensions: { conversationStatusOverride: null } },
+            skipVersionSnapshot: true,
           });
           ctx.invalidate();
           return { handled: true, feedback: `Cleared ${target.name}'s status override.` };
@@ -1013,15 +1015,18 @@ const COMMANDS: SlashCommand[] = [
       }
 
       try {
-        await api.patch(`/chats/${ctx.chatId}/metadata`, {
-          conversationStatusOverrides: {
-            [target.id]: {
-              status: action,
-              activity: null,
-              createdAt: new Date().toISOString(),
-              expiresAt: null,
+        await api.patch(`/characters/${target.id}`, {
+          data: {
+            extensions: {
+              conversationStatusOverride: {
+                status: action,
+                activity: null,
+                createdAt: new Date().toISOString(),
+                expiresAt: null,
+              },
             },
           },
+          skipVersionSnapshot: true,
         });
         ctx.invalidate();
         return { handled: true, feedback: `Set ${target.name} to ${action}.` };

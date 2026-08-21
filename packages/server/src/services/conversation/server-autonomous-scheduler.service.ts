@@ -335,7 +335,7 @@ export function startServerAutonomousScheduler(app: FastifyInstance) {
       const characterId = result.shouldTrigger ? result.characterIds?.[0] : null;
       if (!characterId) return;
 
-      await chats.inheritFreshConversationSchedules(chat.id);
+      await chats.resolveConversationPresenceState(chat.id);
       const freshChat = await chats.getById(chat.id);
       if (!freshChat) return;
       const freshMeta = parseMetadata(freshChat.metadata);

@@ -198,8 +198,11 @@ function readCardExtension(rawData: unknown, key: string): unknown {
 function writeCardExtension(rawData: unknown, key: string, value: unknown): string | null {
   if (typeof rawData !== "string") return null;
   try {
-    const parsed = JSON.parse(rawData) as Record<string, unknown>;
-    const extensions = (parsed.extensions ?? {}) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(rawData);
+    if (!isPlainRecord(parsed)) return null;
+    const rawExtensions = parsed.extensions;
+    if (rawExtensions !== undefined && rawExtensions !== null && !isPlainRecord(rawExtensions)) return null;
+    const extensions = isPlainRecord(rawExtensions) ? rawExtensions : {};
     return JSON.stringify({ ...parsed, extensions: { ...extensions, [key]: value } });
   } catch {
     return null;
@@ -237,16 +240,29 @@ function isValidLegacyStatusOverride(value: unknown): value is ConversationStatu
 
 function isValidLegacySchedule(value: unknown): value is WeekSchedule {
   if (!isPlainRecord(value) || typeof value.weekStart !== "string" || !isPlainRecord(value.days)) return false;
-  if (typeof value.inactivityThresholdMinutes !== "number" || typeof value.talkativeness !== "number") return false;
+  if (
+    typeof value.inactivityThresholdMinutes !== "number" ||
+    !Number.isFinite(value.inactivityThresholdMinutes) ||
+    value.inactivityThresholdMinutes < 0 ||
+    typeof value.talkativeness !== "number" ||
+    !Number.isFinite(value.talkativeness) ||
+    value.talkativeness < 0 ||
+    value.talkativeness > 100
+  ) {
+    return false;
+  }
   return Object.values(value.days).every(
     (day) =>
       Array.isArray(day) &&
       day.every(
         (block) =>
-          isPlainRecord(block) &&
-          typeof block.time === "string" &&
-          typeof block.activity === "string" &&
-          typeof block.status === "string",
+          (isPlainRecord(block) &&
+            typeof block.time === "string" &&
+            typeof block.activity === "string" &&
+            block.status === "online") ||
+          block.status === "idle" ||
+          block.status === "dnd" ||
+          block.status === "offline",
       ),
   );
 }
@@ -832,7 +848,10 @@ export function createChatsStorage(db: DB) {
       for (const [characterId, override] of Object.entries(cardOverrides)) {
         if (override) statusOverrides[characterId] = override;
       }
-      if (!sameOverrides(meta.conversationStatusOverrides, statusOverrides)) {
+      const cachedOverrides = isPlainRecord(meta.conversationStatusOverrides)
+        ? Object.fromEntries(Object.entries(meta.conversationStatusOverrides).filter(([, value]) => value != null))
+        : {};
+      if (!sameOverrides(cachedOverrides, statusOverrides)) {
         const staleKeys = isPlainRecord(meta.conversationStatusOverrides)
           ? Object.keys(meta.conversationStatusOverrides).filter((key) => !(key in cardOverrides))
           : [];
@@ -881,7 +900,6 @@ export function createChatsStorage(db: DB) {
       await this.patchMetadata(
         id,
         {
-          conversationSchedulesEnabled: true,
           characterSchedules: nextSchedules,
           ...(scheduleWeekStart ? { scheduleWeekStart } : {}),
         },

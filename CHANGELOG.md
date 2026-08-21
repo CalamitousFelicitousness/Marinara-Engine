@@ -20,6 +20,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Android hardware and gesture back now dismisses the topmost menu, editor, dialog, or overlay before leaving the app, with the same behavior available to browser and installed-PWA back navigation (#5366; thanks @luma-inibitor).
 - Long formatted replies now batch their streaming paints on iPhone and iPad browsers, preventing WebKit from freezing while preserving the selected reveal speed (#5365).
 - Roleplay CYOA choices now stay consumed after selection, impersonated choices continue into a character reply, clearing trackers also clears the active prompt, sprites can be fully transparent without covering chat choices, and PNG card exports preserve their sprite sets on Marinara re-import (#5362).
 - Character editors now keep independently saved weekly schedules in sync while other card fields still have unsaved changes.

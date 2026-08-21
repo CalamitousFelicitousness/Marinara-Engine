@@ -20,7 +20,24 @@ const generateRouteSource = readFileSync(
   "utf8",
 );
 assert.doesNotMatch(generateRouteSource, /encryptedReasoningCache/u);
-assert.match(
-  generateRouteSource,
-  /commandOnly: true,[\s\S]*?encryptedReasoning: encryptedReasoningItems\?\.length[\s\S]*?return \{/u,
+
+const reasoningRecoveryIndex = generateRouteSource.indexOf(
+  "// OpenAI Responses API uses encrypted reasoning items for multi-turn continuity.",
 );
+const toolBranchIndex = generateRouteSource.indexOf("if (enableChatTools && provider.chatComplete)");
+assert.ok(reasoningRecoveryIndex >= 0 && reasoningRecoveryIndex < toolBranchIndex);
+assert.match(
+  generateRouteSource.slice(reasoningRecoveryIndex, toolBranchIndex),
+  /reasoningMessages[\s\S]*scopedMessages/u,
+);
+
+const hiddenAnchorStart = generateRouteSource.indexOf("const anchoredMsg = savedMsg?.id");
+const hiddenAnchorEnd = generateRouteSource.indexOf(
+  "\n              if (\n                anchoredMsg?.id",
+  hiddenAnchorStart,
+);
+assert.ok(hiddenAnchorStart >= 0 && hiddenAnchorEnd > hiddenAnchorStart);
+const hiddenAnchorSource = generateRouteSource.slice(hiddenAnchorStart, hiddenAnchorEnd);
+assert.match(hiddenAnchorSource, /updateMessageExtra\(savedMsg\.id/u);
+assert.match(hiddenAnchorSource, /commandOnly: true/u);
+assert.match(hiddenAnchorSource, /encryptedReasoning: encryptedReasoningItems\?\.length/u);

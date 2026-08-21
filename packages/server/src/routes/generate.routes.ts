@@ -1392,6 +1392,26 @@ export async function generateRoutes(app: FastifyInstance) {
         chatMessages = chatMessages.filter((m: any) => m.id !== input.regenerateMessageId);
         lorebookKeeperMessages = lorebookKeeperMessages.filter((m: any) => m.id !== input.regenerateMessageId);
       }
+
+      // OpenAI Responses API uses encrypted reasoning items for multi-turn continuity.
+      // Recover them before choosing the tool or streaming provider path. Hidden command
+      // anchors remain eligible, while a regenerated response cannot seed its replacement.
+      if (!excludePastReasoning) {
+        const reasoningMessages = input.regenerateMessageId
+          ? scopedMessages.filter((message: any) => message.id !== input.regenerateMessageId)
+          : scopedMessages;
+        for (let i = reasoningMessages.length - 1; i >= 0; i--) {
+          const message = reasoningMessages[i]!;
+          if (message.role === "assistant") {
+            const extra = parseExtra(message.extra);
+            if (Array.isArray(extra.encryptedReasoning) && extra.encryptedReasoning.length > 0) {
+              encryptedReasoningItems = extra.encryptedReasoning;
+            }
+            break;
+          }
+        }
+      }
+
       const regenerateContextCutoff =
         input.regenerateMessageId && typeof regenMsg?.createdAt === "string" ? regenMsg.createdAt : null;
       const promptLastGenerationType = resolvePromptLastGenerationType(input);
@@ -6311,30 +6331,6 @@ export async function generateRoutes(app: FastifyInstance) {
           if (enableChatTools && provider.chatComplete) {
             const maxToolRounds = getMaxToolRounds();
             let loopMessages: ChatMessage[] = initialProviderMessages;
-            // ── Load encrypted reasoning from DB ──
-            // OpenAI Responses API uses encrypted reasoning items for multi-turn continuity.
-            // Recover them from the last assistant message's persisted extra for each request.
-            // On regens/swipes: clear the request state so we re-derive from the filtered chatMessages
-            // (which excludes the message being regenerated). Otherwise we'd replay the reasoning
-            // from the discarded response instead of the turn before it.
-            if (input.regenerateMessageId) {
-              encryptedReasoningItems = undefined;
-            }
-            if (excludePastReasoning) {
-              encryptedReasoningItems = undefined;
-            } else if (!encryptedReasoningItems) {
-              for (let i = chatMessages.length - 1; i >= 0; i--) {
-                const msg = chatMessages[i]!;
-                if (msg.role === "assistant") {
-                  const ex = parseExtra(msg.extra);
-                  if (Array.isArray(ex.encryptedReasoning) && ex.encryptedReasoning.length > 0) {
-                    encryptedReasoningItems = ex.encryptedReasoning;
-                  }
-                  break;
-                }
-              }
-            }
-
             // Stream tokens in real-time via onToken callback.
             // Some providers (e.g. Gemini with thinking) return the entire response
             // in one chunk. Break large chunks into small pieces so the client sees

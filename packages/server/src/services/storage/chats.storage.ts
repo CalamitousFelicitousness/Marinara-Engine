@@ -576,22 +576,21 @@ export function createChatsStorage(db: DB) {
     }
   }
 
-  /**
-   * Read the character-owned presence overrides for `characterIds`. Characters
-   * with no override get an explicit `null` tombstone, which `patchMetadata`
-   * strips, so the chat's cached map mirrors the cards exactly instead of
-   * keeping entries the user has since cleared.
-   */
-  async function collectCharacterStatusOverrides(
+  async function collectConversationPresence(
     characterIds: string[],
-  ): Promise<Record<string, ConversationStatusOverride | null>> {
+    scheduleNow: Date,
+  ): Promise<{ schedules: CharacterSchedules; overrides: Record<string, ConversationStatusOverride | null> }> {
     const wanted = Array.from(new Set(characterIds));
+    const schedules: CharacterSchedules = {};
     const overrides: Record<string, ConversationStatusOverride | null> = {};
-    if (wanted.length === 0) return overrides;
-
+    if (wanted.length === 0) return { schedules, overrides };
     const rows = await db.select().from(characters).where(inArray(characters.id, wanted));
-    for (const row of rows) overrides[row.id] = readCharacterStatusOverride(row.data);
-    return overrides;
+    for (const row of rows) {
+      const schedule = readCharacterSchedule(row.data);
+      if (schedule && !scheduleNeedsRefresh(schedule, scheduleNow)) schedules[row.id] = schedule;
+      overrides[row.id] = readCharacterStatusOverride(row.data);
+    }
+    return { schedules, overrides };
   }
 
   async function cleanupChatGallery(chatId: string): Promise<void> {
@@ -763,7 +762,11 @@ export function createChatsStorage(db: DB) {
       await hoistLegacyChatSchedules(hasConversationSchedules(meta.characterSchedules) ? meta.characterSchedules : {});
       await hoistLegacyChatOverrides(meta.conversationStatusOverrides);
 
-      const cardOverrides = await collectCharacterStatusOverrides(characterIds);
+      const presence = await collectConversationPresence(
+        characterIds,
+        toZonedWallClockDate(new Date(), resolveConversationTimeZone(meta)),
+      );
+      const cardOverrides = presence.overrides;
       const statusOverrides: Record<string, ConversationStatusOverride> = {};
       for (const [characterId, override] of Object.entries(cardOverrides)) {
         if (override) statusOverrides[characterId] = override;
@@ -772,7 +775,8 @@ export function createChatsStorage(db: DB) {
         await this.patchMetadata(id, { conversationStatusOverrides: cardOverrides }, { touchUpdatedAt: false });
       }
 
-      return { schedules: await this.resolveConversationSchedules(id), statusOverrides };
+      const schedules = await this.resolveConversationSchedules(id);
+      return { schedules: Object.keys(schedules).length ? schedules : presence.schedules, statusOverrides };
     },
 
     /** Schedule half of {@link resolveConversationPresenceState}. */

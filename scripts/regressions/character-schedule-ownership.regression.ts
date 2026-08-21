@@ -184,6 +184,13 @@ try {
     beforeVersion,
     "editing only the schedule does not bump the card version",
   );
+  await chars.update(characterId, { description: "Versioned description" } as never);
+  const afterContentEdit = await chars.getById(characterId);
+  assert.notEqual(
+    (JSON.parse(afterContentEdit!.data as string) as { character_version: string }).character_version,
+    beforeVersion,
+    "ordinary card edits bump the card version",
+  );
 
   console.log("character-schedule-ownership regression passed");
 } finally {

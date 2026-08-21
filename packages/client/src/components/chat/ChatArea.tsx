@@ -879,7 +879,7 @@ export const ChatArea = memo(function ChatArea() {
     if (areCharacterMapsEqual(characterMapRef.current, map)) return characterMapRef.current;
     characterMapRef.current = map;
     return map;
-  }, [chatCharacterRows, chat?.metadata, presenceNow]);
+  }, [chatCharacterRows, chat?.metadata, presenceNow, chatCharIds]);
 
   const characterNames = useMemo(
     () => chatCharIds.map((id) => characterMap.get(id)?.name).filter((n): n is string => !!n),
@@ -1097,10 +1097,16 @@ export const ChatArea = memo(function ChatArea() {
             void queryClient.invalidateQueries({ queryKey: characterKeys.detail(savedCharacterId) });
             if (chat?.id) void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) });
           },
+          onError: (error) =>
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : localizeUi("ui.chat.characterscheduleeditormodal.failedToSaveSchedule"),
+            ),
         },
       );
     },
-    [chat?.id, queryClient, updateCharacter],
+    [chat?.id, localizeUi, queryClient, updateCharacter],
   );
   const summaryContextSize: number = (chatMeta.summaryContextSize as number) ?? 50;
   const [roleplayVideoReviewItems, setRoleplayVideoReviewItems] = useState<ImagePromptReviewItem[]>([]);

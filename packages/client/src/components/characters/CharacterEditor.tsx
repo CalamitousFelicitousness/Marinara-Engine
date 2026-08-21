@@ -1445,6 +1445,7 @@ function ConvoTab({
   characterId?: string;
 }) {
   const ext = formData.extensions;
+  const { t: localizeUi } = useUiTranslation();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The schedule is runtime state, not card content, so it saves on its own
   // rather than through the editor form. Routing it through `updateExtension`
@@ -1452,7 +1453,17 @@ function ConvoTab({
   // regenerated every week.
   const updateCharacter = useUpdateCharacter();
   const savedCharacter = useCharacter(characterId ?? null);
-  const savedExtensions = (savedCharacter.data as { data?: CharacterData } | undefined)?.data?.extensions;
+  const savedData = (() => {
+    if (!savedCharacter.data) return undefined;
+    try {
+      return (typeof savedCharacter.data === "string" ? JSON.parse(savedCharacter.data) : savedCharacter.data) as
+        | { data?: CharacterData }
+        | undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const savedExtensions = savedData?.data?.extensions;
   // Read the saved card, not the form: the schedule saves on its own, so the
   // in-progress form copy goes stale as soon as the editor writes one.
   const schedule =
@@ -1493,11 +1504,21 @@ function ConvoTab({
         schedule={schedule}
         onClose={() => setScheduleOpen(false)}
         onSave={(savedCharacterId, updated) =>
-          updateCharacter.mutate({
-            id: savedCharacterId,
-            data: { extensions: { conversationSchedule: updated } },
-            skipVersionSnapshot: true,
-          })
+          updateCharacter.mutate(
+            {
+              id: savedCharacterId,
+              data: { extensions: { conversationSchedule: updated } },
+              skipVersionSnapshot: true,
+            },
+            {
+              onError: (error) =>
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : localizeUi("ui.chat.characterscheduleeditormodal.failedToSaveSchedule"),
+                ),
+            },
+          )
         }
       />
     </>

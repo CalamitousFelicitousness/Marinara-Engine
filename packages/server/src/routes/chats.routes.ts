@@ -953,9 +953,13 @@ export async function chatsRoutes(app: FastifyInstance) {
     // only caches them. Resolve on read so a card edited elsewhere shows up as
     // soon as the chat is refetched, instead of waiting for the next poll.
     if (chat.mode === "conversation") {
-      await storage.resolveConversationPresenceState(chat.id);
-      const resolved = await storage.getById(chat.id);
-      if (resolved) return normalizeChatForResponse(resolved);
+      try {
+        await storage.resolveConversationPresenceState(chat.id);
+        const resolved = await storage.getById(chat.id);
+        if (resolved) return normalizeChatForResponse(resolved);
+      } catch (err) {
+        logger.warn(err, "Failed to resolve Conversation presence for chat %s", chat.id);
+      }
     }
     return normalizeChatForResponse(chat);
   });

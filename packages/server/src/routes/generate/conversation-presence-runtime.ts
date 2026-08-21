@@ -10,7 +10,6 @@ import {
   getTodaySchedule,
   type WeekSchedule,
 } from "../../services/conversation/schedule.service.js";
-import { parseConversationStatusOverrides } from "../../services/generation/conversation-context-utils.js";
 import type { GenerationPromptMessage } from "../../services/generation/prompt-message-scope.js";
 import { getActiveTurnGame } from "../../services/turn-games/turn-game-runner.service.js";
 import { isMessageHiddenFromAI, parseExtra } from "./generate-route-utils.js";
@@ -285,7 +284,7 @@ async function resolveConversationPromptCharacters(args: {
   characterIds: string[];
   chars: ConversationPresenceCharactersStore;
   schedules: Record<string, WeekSchedule>;
-  statusOverrides: ReturnType<typeof parseConversationStatusOverrides>;
+  statusOverrides: Record<string, ConversationStatusOverride>;
   actualNow: Date;
   promptNow: Date;
 }): Promise<ConversationPromptCharacterInfo[]> {

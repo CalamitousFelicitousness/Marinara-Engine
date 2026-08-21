@@ -3748,6 +3748,7 @@ export function HomeProfessorMariChat({
   }, []);
 
   const displayMessages = useMemo(() => [createWelcomeMessage(chatId), ...messages], [chatId, messages]);
+  const showConnectionFirstHint = !sending && !messages.some((message) => message.role === "user");
 
   useEffect(() => {
     if (!mobileFocusMode) return;
@@ -5120,6 +5121,11 @@ export function HomeProfessorMariChat({
         ) : (
           <>
             {displayMessages.map(renderDisplayMessage)}
+            {showConnectionFirstHint && (
+              <p className="px-3 py-1 text-center text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.chat.homeprofessormarichat.selectAConnectionFirst")}
+              </p>
+            )}
             {workspaceTimeline.length === 0 && workspaceTimelineActive && !showDottoreSupport && (
               <WorkspaceStatusEvent content={workspaceActivity ?? "Thinking..."} />
             )}
@@ -5869,6 +5875,11 @@ export function HomeProfessorMariChat({
                           ) : (
                             <>
                               {displayMessages.map(renderDisplayMessage)}
+                              {showConnectionFirstHint && (
+                                <p className="px-3 py-1 text-center text-xs text-[var(--muted-foreground)]">
+                                  {localizeUi("ui.chat.homeprofessormarichat.selectAConnectionFirst")}
+                                </p>
+                              )}
                               {workspaceTimeline.length === 0 && workspaceTimelineActive && !showDottoreSupport && (
                                 <WorkspaceStatusEvent content={workspaceActivity ?? "Thinking..."} />
                               )}

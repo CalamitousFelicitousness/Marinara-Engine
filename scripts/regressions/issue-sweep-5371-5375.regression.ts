@@ -5,7 +5,9 @@ const chatSetupWizardSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatSetupWizard.tsx", import.meta.url),
   "utf8",
 );
-const agentHeaderStart = chatSetupWizardSource.indexOf('className="sticky top-0 z-10 flex items-center justify-between');
+const agentHeaderStart = chatSetupWizardSource.indexOf(
+  'className="sticky top-0 z-10 flex items-center justify-between',
+);
 assert.ok(agentHeaderStart >= 0, "The agent category header must remain sticky");
 const agentHeaderSource = chatSetupWizardSource.slice(agentHeaderStart, agentHeaderStart + 220);
 assert.match(
@@ -21,7 +23,7 @@ const professorMariHomeSource = readFileSync(
 );
 assert.match(
   professorMariHomeSource,
-  /const showConnectionFirstHint = !messages\.some\(\(message\) => message\.role === "user"\);/u,
+  /const showConnectionFirstHint = !sending && !messages\.some\(\(message\) => message\.role === "user"\);/u,
   "Professor Mari's connection guidance must remain visible until the first user message",
 );
 assert.equal(
@@ -38,10 +40,7 @@ assert.equal(
   "Select a connection first by clicking the chainlink icon in the input box below!",
 );
 
-const chatsHookSource = readFileSync(
-  new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url),
-  "utf8",
-);
+const chatsHookSource = readFileSync(new URL("../../packages/client/src/hooks/use-chats.ts", import.meta.url), "utf8");
 assert.match(
   chatsHookSource,
   /copyLocalSpriteVisualSettings\(chatId, newChat\.id\)/u,
@@ -60,9 +59,8 @@ Object.defineProperty(globalThis, "window", {
 });
 
 try {
-  const spriteSettingsModule = await import(
-    "../../packages/client/src/components/chat/local-sprite-visual-settings.js"
-  );
+  const spriteSettingsModule =
+    await import("../../packages/client/src/components/chat/local-sprite-visual-settings.js");
   const copyLocalSpriteVisualSettings = Reflect.get(spriteSettingsModule, "copyLocalSpriteVisualSettings") as unknown;
   assert.ok(
     typeof copyLocalSpriteVisualSettings === "function",

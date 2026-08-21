@@ -3601,6 +3601,7 @@
   "ui.chat.homeprofessormarichat.restartSavesTheCurrentChatHere": "Restart saves the current chat here.",
   "ui.chat.homeprofessormarichat.restoredThePreviousAppDataSnapshot": "Restored the previous app data snapshot.",
   "ui.chat.homeprofessormarichat.revertedTheSelectedEntry": "Reverted the entry.",
+  "ui.chat.homeprofessormarichat.selectAConnectionFirst": "Select a connection first by clicking the chainlink icon in the input box below!",
   "ui.chat.homeprofessormarichat.selectChats": "Select",
   "ui.chat.homeprofessormarichat.selectConnection": "Select connection",
   "ui.chat.homeprofessormarichat.selectedChats_one": "{{count}} chat selected",

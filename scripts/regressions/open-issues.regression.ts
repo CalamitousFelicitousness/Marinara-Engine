@@ -36,7 +36,6 @@ import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/
 import { MAX_FILE_SIZES } from "../../packages/shared/src/constants/defaults.js";
 import {
   buildCompatibleCharacterExport,
-  compatibleSpriteExportIsWithinLimits,
   validateCharacterGalleryReferences,
 } from "../../packages/server/src/routes/characters.routes.js";
 import {
@@ -541,8 +540,13 @@ assert.equal(
 );
 assert.match(
   characterRoutesSource,
-  /if \(!compatibleSpriteExportIsWithinLimits\(sprites\)\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites\)/u,
-  "PNG export must load sprites into the compatible card envelope",
+  /const sprites = await readSpritesForId\(char\.id, true\);[\s\S]*if \(!sprites\)[\s\S]*status\(413\)[\s\S]*buildCompatibleCharacterExport\(charData, sprites\)/u,
+  "PNG export must reject sprite collections that cannot round-trip before building the card envelope",
+);
+assert.match(
+  characterRoutesSource,
+  /if \(enforcePortableLimits\)[\s\S]*await stat[\s\S]*embeddedSpriteSizesAreWithinLimits[\s\S]*return null;[\s\S]*readImageAsDataUrl/u,
+  "compatible PNG export must stop reading sprites as soon as a portable size limit is exceeded",
 );
 assert.match(
   stCharacterImporterSource,
@@ -557,17 +561,6 @@ assert.equal(
   "aggregate sprite bytes must be limited independently of the per-sprite ceiling",
 );
 assert.equal(embeddedSpriteSizesAreWithinLimits(Array(MAX_EMBEDDED_SPRITE_COUNT + 1).fill(0)), false);
-const portableExportSprite = { data: `data:image/png;base64,${Buffer.alloc(16).toString("base64")}` };
-assert.equal(
-  compatibleSpriteExportIsWithinLimits([portableExportSprite]),
-  true,
-  "compatible PNG export accepts sprite sets that its importer can restore",
-);
-assert.equal(
-  compatibleSpriteExportIsWithinLimits(Array(MAX_EMBEDDED_SPRITE_COUNT + 1).fill(portableExportSprite)),
-  false,
-  "compatible PNG export rejects sprite sets that its importer would skip",
-);
 const ownedGalleryUpdate = {
   extensions: { characterSheetImageId: "owned-image", useCharacterSheetAsReference: true },
 };

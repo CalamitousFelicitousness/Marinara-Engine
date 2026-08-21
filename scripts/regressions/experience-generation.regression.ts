@@ -103,6 +103,8 @@ async function createExperienceChat(name: string, mode = "game", stamp = true) {
   return chat;
 }
 
+let scenarioFailed = false;
+let scenarioError: unknown;
 try {
   previousMainFallbackId = (await connections.getFallbackForMain())?.id ?? null;
   const conn = await connections.create({
@@ -265,32 +267,45 @@ try {
       await limited.close();
     }
   }
-
-  console.log("experience-generation regression passed");
-} finally {
-  let cleanupFailed = false;
-  let firstCleanupError: unknown;
-  const runCleanup = async (cleanup: () => Promise<unknown>) => {
-    try {
-      await cleanup();
-    } catch (error) {
-      if (!cleanupFailed) firstCleanupError = error;
-      cleanupFailed = true;
-    }
-  };
-
-  for (const chatId of createdChatIds) await runCleanup(() => chats.remove(chatId));
-  if (createdConnectionId) await runCleanup(() => connections.remove(createdConnectionId));
-  if (previousMainFallbackId) {
-    await runCleanup(() => connections.update(previousMainFallbackId, { fallbackForMain: true }));
-  }
-  await runCleanup(() => app.close());
-  await runCleanup(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        mockProvider.close((error) => (error ? reject(error) : resolve()));
-      }),
-  );
-  await runCleanup(closeDB);
-  if (cleanupFailed) throw firstCleanupError;
+} catch (error) {
+  scenarioFailed = true;
+  scenarioError = error;
 }
+
+let cleanupFailed = false;
+let firstCleanupError: unknown;
+const runCleanup = async (cleanup: () => Promise<unknown>) => {
+  try {
+    await cleanup();
+  } catch (error) {
+    if (!cleanupFailed) firstCleanupError = error;
+    cleanupFailed = true;
+  }
+};
+
+for (const chatId of createdChatIds) await runCleanup(() => chats.remove(chatId));
+if (createdConnectionId) await runCleanup(() => connections.remove(createdConnectionId));
+if (previousMainFallbackId) {
+  await runCleanup(() => connections.update(previousMainFallbackId, { fallbackForMain: true }));
+}
+await runCleanup(() => app.close());
+await runCleanup(
+  () =>
+    new Promise<void>((resolve, reject) => {
+      mockProvider.close((error) => (error ? reject(error) : resolve()));
+    }),
+);
+await runCleanup(closeDB);
+
+if (scenarioFailed) {
+  if (cleanupFailed) {
+    throw new AggregateError(
+      [scenarioError, firstCleanupError],
+      "Experience-generation regression and cleanup both failed",
+      { cause: scenarioError },
+    );
+  }
+  throw scenarioError;
+}
+if (cleanupFailed) throw firstCleanupError;
+console.log("experience-generation regression passed");

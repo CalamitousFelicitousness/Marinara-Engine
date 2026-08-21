@@ -811,6 +811,7 @@ import {
 import { parseRouterResponse } from "../../packages/server/src/services/agents/knowledge-router.js";
 import type { PromptOverridesStorage } from "../../packages/server/src/services/storage/prompt-overrides.storage.js";
 import {
+  CHARACTERS_REFERENCE_SHEET,
   listPromptOverrideKeys,
   loadPrompt,
   ROLEPLAY_GALLERY_VIDEO_DIRECTOR,
@@ -4710,6 +4711,20 @@ const cases: RegressionCase[] = [
         },
       });
       assert.deepEqual(missingPersonaSheetAndAvatar, { base64: "persona-sprite-bytes", source: "sprite" });
+
+      assert.equal(listPromptOverrideKeys().includes(CHARACTERS_REFERENCE_SHEET.key), true);
+      assert.match(
+        CHARACTERS_REFERENCE_SHEET.defaultBuilder({ name: "Mira", appearance: "long brown hair" }),
+        /production character design sheet for Mira.*Canonical appearance: long brown hair/u,
+      );
+      const charactersRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/characters.routes.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(
+        charactersRouteSource,
+        /loadPrompt\(promptOverridesStorage, CHARACTERS_REFERENCE_SHEET, \{ name, appearance \}\)/u,
+      );
     },
   },
   {

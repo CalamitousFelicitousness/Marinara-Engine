@@ -15913,7 +15913,7 @@ test("chat mode tabs and new-chat actions stay reachable", async ({ page }) => {
   }
 });
 
-test("renamed Roleplay branches use their display name in the Chats sidebar and search", async ({ page, request }) => {
+test("renamed Roleplay branches keep their chat name in the Chats sidebar and search", async ({ page, request }) => {
   const rawName = `Branch parent fallback ${Date.now()}`;
   const displayName = `NPC_First Kiss ${Date.now()}`;
   const chatResponse = await request.post("/api/chats", {
@@ -15935,11 +15935,11 @@ test("renamed Roleplay branches use their display name in the Chats sidebar and 
     await sidebar.locator('[data-tour="chat-mode-roleplay"]').click();
 
     const chatRow = sidebar.locator(`[data-chat-id="${chat.id}"]`);
-    await expect(chatRow).toContainText(displayName);
-    await expect(chatRow).not.toContainText(rawName);
+    await expect(chatRow).toContainText(rawName);
+    await expect(chatRow).not.toContainText(displayName);
 
     const search = sidebar.getByPlaceholder("Search roleplays");
-    await search.fill("First Kiss");
+    await search.fill("Branch parent fallback");
     await expect(chatRow).toBeVisible();
   } finally {
     const cleanupResponse = await request.delete(`/api/chats/${chat.id}?force=true`);

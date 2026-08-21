@@ -695,9 +695,11 @@ export function ConnectionEditor() {
   // Model list for current provider
   const providerModels = useMemo(() => {
     if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
-    if (localProvider === "image_generation" && selectedImageService === "novelai")  return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-")); {
-    return MODEL_LISTS[localProvider] ?? [];
-}
+    if (localProvider === "image_generation" && selectedImageService === "novelai")
+      return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-"));
+    {
+      return MODEL_LISTS[localProvider] ?? [];
+    }
   }, [localProvider, selectedVideoProvider]);
 
   // Merge known models with remote models (remote first, deduped)
@@ -2111,35 +2113,35 @@ export function ConnectionEditor() {
                 <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
                   {/* Fetch from API button */}
                   {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
-                  <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFetchModels();
-                      }}
-                      disabled={fetchModels.isPending}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
-                    >
-                      {fetchModels.isPending ? (
-                        <Loader2 size="0.75rem" className="animate-spin" />
-                      ) : (
-                        <Globe size="0.75rem" />
+                    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFetchModels();
+                        }}
+                        disabled={fetchModels.isPending}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {fetchModels.isPending ? (
+                          <Loader2 size="0.75rem" className="animate-spin" />
+                        ) : (
+                          <Globe size="0.75rem" />
+                        )}
+                        {fetchModels.isPending
+                          ? localizeUi("ui.connections.connectioneditor.fetching")
+                          : modelFetchButtonLabel}
+                      </button>
+                      {fetchError && (
+                        <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
                       )}
-                      {fetchModels.isPending
-                        ? localizeUi("ui.connections.connectioneditor.fetching")
-                        : modelFetchButtonLabel}
-                    </button>
-                    {fetchError && (
-                      <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
-                    )}
-                    {remoteModels.length > 0 && !fetchError && (
-                      <p className="mt-1 text-[0.625rem] text-emerald-400">
-                        {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
-                        {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
-                        {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
-                      </p>
-                    )}
-                  </div>
+                      {remoteModels.length > 0 && !fetchError && (
+                        <p className="mt-1 text-[0.625rem] text-emerald-400">
+                          {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
+                          {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
+                          {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
+                        </p>
+                      )}
+                    </div>
                   )}
                   {localProvider === "custom" ? (
                     <div className="p-3">

@@ -1210,7 +1210,7 @@ export function useGenerate() {
       turnGameBots?: boolean;
       /** Structured Roleplay/Game movement committed atomically with this owner turn. */
       pendingSpatialTransition?: PendingSpatialTransition;
-      /** Multiswipe: candidates to generate for a regenerate. The server re-clamps and gates this. */
+      /** Multiswipe: candidates to generate for this turn, new or regenerated. The server re-clamps and gates this. */
       candidateCount?: number;
     }) => {
       // Prevent concurrent generations for the same chat. Different chats may

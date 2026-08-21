@@ -1,4 +1,4 @@
-// Multiswipe: candidates 2..N of a regenerate request.
+// Multiswipe: candidates 2..N of a generation request.
 //
 // Candidate 1 comes from the main generate path and stays the active swipe.
 // Every candidate produced here is appended as a silent swipe, so the active
@@ -57,7 +57,6 @@ export interface SwipeAppendedEvent {
 /** Request shape that decides whether multiswipe applies at all. */
 export interface MultiSwipeCountInput {
   requested: number | undefined;
-  regenerateMessageId: string | null;
   continueMessageId: string | null;
   impersonate: boolean;
   turnGameBots: boolean;
@@ -68,8 +67,12 @@ export interface MultiSwipeCountInput {
 
 /**
  * Candidates to generate for this request, after clamping and gating.
+ *
+ * A new turn fans out the same way a regenerate does: the main path saves
+ * candidate 1 as a fresh assistant message whose swipe 0 the tail appends to,
+ * so the caller's savedMsg/savedSwipeIndex pair is all this module ever needed.
+ *
  * Returns 1 (stock behavior) for every path multiswipe does not support:
- * - non-regenerate turns, which have no message to append swipes to
  * - continue, which extends a message in place rather than adding a swipe
  * - impersonate, which saves a user row
  * - turn-game bot turns, which drive seats rather than a chat reply
@@ -79,7 +82,6 @@ export interface MultiSwipeCountInput {
 export function resolveMultiSwipeCount(input: MultiSwipeCountInput): number {
   const requested = normalizeMultiSwipeCandidateCount(input.requested);
   if (requested <= 1) return 1;
-  if (!input.regenerateMessageId) return 1;
   if (input.continueMessageId) return 1;
   if (input.impersonate || input.turnGameBots) return 1;
   if (input.chatMode === "game") return 1;
@@ -130,8 +132,12 @@ const OOC_RE = /<ooc>([\s\S]*?)<\/ooc>/gi;
  *
  * Deliberately omitted, because multiswipe never reaches those paths: game speaker
  * canonicalization and group individual name pruning (both modes force count 1),
- * thinking-only promotion (an empty candidate is simply dropped), and the repeated
- * Conversation response check (regenerations skip it upstream).
+ * and thinking-only promotion (an empty candidate is simply dropped).
+ *
+ * The repeated-Conversation-response check is also absent, and on a new turn that
+ * is a real gap rather than an unreachable path: it guards candidate 1 only, so a
+ * tail candidate may repeat an earlier reply. A weak option in the spread, not
+ * corrupt state, and the user can simply pick another swipe.
  */
 export function sanitizeMultiSwipeCandidate(raw: string, ctx: MultiSwipeSanitizeContext): MultiSwipeSanitizedCandidate {
   let content = raw;

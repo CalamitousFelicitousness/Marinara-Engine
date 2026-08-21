@@ -3825,9 +3825,10 @@ export async function generateRoutes(app: FastifyInstance) {
 
         // Multiswipe: candidates 2..N are appended as silent swipes after the
         // main generation, and every agent phase is deferred to finalize.
+        // Applies to a new turn as well as a regenerate; both end this path with
+        // one saved assistant message the tail can append swipes to.
         const multiSwipeCount = resolveMultiSwipeCount({
           requested: input.candidateCount,
-          regenerateMessageId: input.regenerateMessageId,
           continueMessageId: input.continueMessageId,
           impersonate: input.impersonate,
           turnGameBots: input.turnGameBots,
@@ -7555,8 +7556,18 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
 
-          // Mirror character response to Discord (fire-and-forget, skip regens/swipes)
-          if (discordWebhookUrl && fullResponse.trim() && !input.impersonate && !input.regenerateMessageId) {
+          // Mirror character response to Discord (fire-and-forget, skip regens/swipes).
+          // Multiswipe is excluded because candidate 1 is provisional and posting is
+          // irreversible: the user is being shown N options and has not picked one.
+          // ponytail: silence, not deferral. Posting the committed swipe would mean
+          // teaching the finalize route the webhook config plus an already-posted guard.
+          if (
+            discordWebhookUrl &&
+            fullResponse.trim() &&
+            !input.impersonate &&
+            !input.regenerateMessageId &&
+            !isMultiSwipe
+          ) {
             const charName =
               chatMode === "game"
                 ? await resolveGameDiscordSpeakerName()
@@ -7568,7 +7579,7 @@ export async function generateRoutes(app: FastifyInstance) {
           // Runs before this function returns, so assistant_message_ready, TTS,
           // and the chat-wide generation slot release only once the whole spread
           // exists. Agents stay deferred until the user commits to a swipe.
-          if (isMultiSwipe && input.regenerateMessageId && savedMsg?.id && savedSwipeIndex !== null) {
+          if (isMultiSwipe && savedMsg?.id && savedSwipeIndex !== null) {
             if (!mainChatOptions) {
               logger.info(
                 "[multi-swipe] Skipping candidates for chat %s: tool-call generations stay single-candidate",
@@ -10477,6 +10488,7 @@ export async function generateRoutes(app: FastifyInstance) {
           chatMode === "conversation" &&
           !input.impersonate &&
           !input.regenerateMessageId &&
+          !isMultiSwipe &&
           !abortController.signal.aborted &&
           followUpIteration < MAX_FOLLOW_UP_ITERATIONS
         ) {

@@ -1,7 +1,9 @@
 // Multiswipe through the real POST /api/generate route against a mock provider.
 // Pins the wiring the unit-level lanes cannot: that candidateCount actually
 // reaches the candidate loop, that the tail lands as silent swipes on the
-// regenerated message, and that a count of 1 leaves stock behavior untouched.
+// message the turn produced, and that a count of 1 leaves stock behavior
+// untouched. Covers both a regenerate and a new turn, which differ only in
+// which swipe index candidate 1 occupies.
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -93,8 +95,7 @@ try {
     return { chatId: chat.id, messageId: assistant.id };
   }
 
-  const generate = (payload: Record<string, unknown>) =>
-    app.inject({ method: "POST", url: "/api/generate", payload });
+  const generate = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/api/generate", payload });
 
   // ── candidateCount = 3 produces one active swipe plus two silent ones ──
   {
@@ -174,7 +175,10 @@ try {
     );
   }
 
-  // ── A new turn is never fanned out, whatever the client asks for ──
+  // ── A new turn fans out onto the message it just created ──
+  // The send button's gesture produces exactly this request: no regenerate
+  // target, so candidate 1 is a brand-new assistant message and the tail appends
+  // to its swipe 0 rather than after a pre-existing original.
   {
     const seed = await seedChat("New turn route");
     completionCount = 0;
@@ -185,7 +189,57 @@ try {
       streaming: false,
     });
     assert.equal(response.statusCode, 200);
-    assert.equal(completionCount, 1, "a new turn has no message to append candidate swipes to");
+    assert.equal(completionCount, 4, "a new turn fans out without needing an assistant message to reroll");
+
+    const events = parseSseTypes(response.body);
+    assert.deepEqual(
+      events.filter((event) => event.type === "swipe_appended").map((event) => (event.data as { index: number }).index),
+      [1, 2, 3],
+      "candidate 1 owns swipe 0 on a new message, so the tail starts at 1",
+    );
+
+    const all = await chats.listMessages(seed.chatId);
+    const created = all.filter((message) => message.role === "assistant" && message.id !== seed.messageId);
+    assert.equal(created.length, 1, "a fanned-out turn must still produce exactly one message");
+    const target = created[0]!;
+    assert.equal(target.activeSwipeIndex, 0, "candidate 1 stays active");
+    assert.equal(target.content, "Candidate body 1.", "the message row mirrors candidate 1");
+
+    const swipes = await chats.getSwipes(target.id);
+    assert.equal(swipes.length, 4, "one swipe per candidate, with no pre-existing original");
+    assert.deepEqual(
+      swipes.sort((a, b) => a.index - b.index).map((swipe) => swipe.content),
+      ["Candidate body 1.", "Candidate body 2.", "Candidate body 3.", "Candidate body 4."],
+      "every candidate is retrievable by browsing swipes",
+    );
+
+    const marker = readMultiSwipePendingMarker(target.extra);
+    assert.ok(marker, "a fanned-out new turn defers its agents like any other");
+    assert.equal(marker.candidateCount, 4);
+    for (const swipe of swipes) {
+      assert.ok(
+        readMultiSwipePendingMarker(swipe.extra),
+        `swipe ${swipe.index} must carry the marker so finalize survives swipe browsing`,
+      );
+    }
+  }
+
+  // ── A new turn with no count asked for stays stock ──
+  {
+    const seed = await seedChat("New turn stock");
+    completionCount = 0;
+    const response = await generate({ chatId: seed.chatId, userMessage: "Another prompt.", streaming: false });
+    assert.equal(response.statusCode, 200);
+    assert.equal(completionCount, 1, "an ordinary send must not fan out");
+
+    const all = await chats.listMessages(seed.chatId);
+    const created = all.filter((message) => message.role === "assistant" && message.id !== seed.messageId);
+    assert.equal(created.length, 1);
+    assert.equal(
+      readMultiSwipePendingMarker(created[0]!.extra),
+      null,
+      "an ordinary send must never leave a deferred-agent marker",
+    );
   }
 } finally {
   await app.close();

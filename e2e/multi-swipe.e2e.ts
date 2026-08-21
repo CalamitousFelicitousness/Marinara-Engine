@@ -3,19 +3,34 @@
 // reaching the generate request, and appended silent swipes becoming visible
 // on the swipe control.
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 const ACTIVE_CHAT_KEY = "marinara-active-chat-id";
+const WHATS_NEW_SEEN_VERSION_KEY = "marinara:whats-new:seen-version";
+// Read rather than imported: @marinara-engine/shared does not resolve at runtime
+// from an e2e spec, and this is the same file version:sync keeps canonical.
+const APP_VERSION = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version;
 
 async function seedClient(page: Page, chatId: string, multiSwipeMax: number) {
   await page.addInitScript(
-    ({ chatId: id, multiSwipeMax: max, activeChatKey }) => {
+    ({ chatId: id, multiSwipeMax: max, activeChatKey, whatsNewKey, appVersion }) => {
       localStorage.setItem(activeChatKey, id);
+      // Both first-run overlays sit over the composer and are localStorage-gated,
+      // so retire them here. Dismissing them by clicking instead would persist to
+      // the shared server and change what sibling specs load into.
+      localStorage.setItem(whatsNewKey, appVersion);
       localStorage.setItem(
         "marinara-engine-ui",
-        JSON.stringify({ state: { multiSwipeMax: max }, version: 95 }),
+        JSON.stringify({ state: { multiSwipeMax: max, hasCompletedOnboarding: true }, version: 95 }),
       );
     },
-    { chatId, multiSwipeMax, activeChatKey: ACTIVE_CHAT_KEY },
+    {
+      chatId,
+      multiSwipeMax,
+      activeChatKey: ACTIVE_CHAT_KEY,
+      whatsNewKey: WHATS_NEW_SEEN_VERSION_KEY,
+      appVersion: APP_VERSION,
+    },
   );
 }
 
@@ -88,6 +103,88 @@ test("multiswipe reroll menu requests candidates and reveals the appended swipes
   } finally {
     await page.unroute("**/api/generate");
     await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
+// The send button carries the same gesture, which is the only way to fan out
+// before an assistant message exists to reroll. Pins that the count reaches the
+// server on a turn with no regenerate target, and that a plain send is untouched.
+test("right-clicking send fans out a new turn with no assistant message to reroll", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "The count menu is a right-click gesture.");
+
+  // The composer refuses to send when the chat has no connection, which the
+  // regenerate specs never hit because they call generate() directly. Nothing
+  // reaches this URL: /api/generate is mocked below.
+  const connectionResponse = await request.post("/api/connections", {
+    data: {
+      name: "Multiswipe send menu",
+      provider: "custom",
+      baseUrl: "http://127.0.0.1:1/v1",
+      apiKey: "multi-swipe-e2e",
+      model: "multi-swipe-model",
+      maxContext: 32768,
+    },
+  });
+  expect(connectionResponse.ok()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+
+  const chatResponse = await request.post("/api/chats", {
+    data: { name: "Multiswipe send menu", mode: "roleplay", characterIds: [], connectionId: connection.id },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+
+  try {
+    // A user tail only. Nothing in this chat has a swipe control, so the
+    // regenerate gesture does not exist here at all.
+    const seeded = await request.post(`/api/chats/${chat.id}/messages`, {
+      data: { role: "user", content: "Opening line." },
+    });
+    expect(seeded.ok()).toBeTruthy();
+
+    const generateBodies: Array<Record<string, unknown>> = [];
+    await page.route("**/api/generate", async (route) => {
+      generateBodies.push(JSON.parse(route.request().postData() ?? "{}") as Record<string, unknown>);
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream", "cache-control": "no-store" },
+        body: `data: ${JSON.stringify({ type: "done", data: "" })}
+
+`,
+      });
+    });
+
+    await seedClient(page, chat.id, 3);
+    await page.goto("/");
+
+    const composer = page.locator("textarea.mari-chat-input-textarea");
+    const sendButton = page.locator("button.mari-chat-send-btn");
+    await expect(composer).toBeVisible();
+
+    // Only one send per spec: the mocked stream never produces a real assistant
+    // message, so the composer stays in its streaming state afterwards. The
+    // plain-click guarantee is the same shared hook path the swipe-control spec
+    // below pins, plus multi-swipe-client-state's count-options assertions.
+    await composer.fill("A fanned-out turn.");
+    await sendButton.click({ button: "right" });
+    const generateThree = page.getByText("Generate 3 alternatives", { exact: true });
+    await expect(generateThree, "the send button must offer the count menu").toBeVisible();
+    await generateThree.click();
+
+    await expect
+      .poll(() => generateBodies.length, { message: "the menu selection must start a generation" })
+      .toBeGreaterThan(0);
+    const fannedOut = generateBodies[0];
+    expect(fannedOut?.candidateCount, "the chosen count must reach the server").toBe(3);
+    expect(fannedOut?.userMessage, "the composer text must still be sent").toBe("A fanned-out turn.");
+    expect(fannedOut?.regenerateMessageId ?? null, "a new turn has no regenerate target").toBeNull();
+  } finally {
+    await page.unroute("**/api/generate");
+    await request.delete(`/api/chats/${chat.id}`);
+    await request.delete(`/api/connections/${connection.id}`);
   }
 });
 
@@ -205,9 +302,7 @@ test("a plain swipe click stays a single reroll while multiswipe is armed", asyn
 
     await swipeControl.locator("button").last().click();
 
-    await expect
-      .poll(() => generateBodies.length, { message: "a plain click must still reroll" })
-      .toBeGreaterThan(0);
+    await expect.poll(() => generateBodies.length, { message: "a plain click must still reroll" }).toBeGreaterThan(0);
     expect(generateBodies[0]?.candidateCount ?? 1, "a plain click must not fan out").toBe(1);
     await expect(page.getByText("Reroll 3 alternatives", { exact: true })).toHaveCount(0);
   } finally {

@@ -19,7 +19,7 @@ import { renderWithStickerBlocks } from "../../lib/sticker-render";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ImagePromptPanel } from "./ImagePromptPanel";
 import { SwipeJumpControl } from "./SwipeJumpControl";
-import { MultiSwipePendingBadge, useMultiSwipeRegenerateMenu } from "./MultiSwipeRegenerateMenu";
+import { MultiSwipePendingBadge, useMultiSwipeRegenerateMenu } from "./MultiSwipeMenu";
 import { AnimatedDiceRoll, isDiceRollResult, shouldAnimateDiceRollMessage } from "../dice/AnimatedDiceRoll";
 import type { CharacterMap } from "./chat-area.types";
 import { useTranslation as useUiTranslation } from "react-i18next";

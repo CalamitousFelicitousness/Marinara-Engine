@@ -57,6 +57,7 @@ import { SlashCommandFeedback } from "./SlashCommandFeedback";
 import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
 import { MariSuggestionChips } from "./MariSuggestionChips";
+import { useMultiSwipeSendMenu } from "./MultiSwipeMenu";
 import {
   ConversationMediaPickerPanel,
   type ConversationMediaPickerTab,
@@ -988,7 +989,19 @@ export function ConversationInput({
     [activeChatId, emojiStartPos, setInputDraft, syncInputState],
   );
 
+  // Multiswipe: candidate count for the next send, set by the send button's
+  // gesture menu just before it calls handleSend and consumed on entry. A ref
+  // rather than a handleSend argument because Prettier only hugs a zero-argument
+  // useCallback body; adding a parameter reindents the whole function, which
+  // would conflict on every upstream sync of this file.
+  const nextSendCandidateCountRef = useRef<number | null>(null);
+
   const handleSend = useCallback(async () => {
+    const requestedCandidates = nextSendCandidateCountRef.current;
+    nextSendCandidateCountRef.current = null;
+    // Rides the two branches that generate. Slash commands and the
+    // presence-delayed path only create rows, so they never fan out.
+    const fanOut = requestedCandidates && requestedCandidates > 1 ? { candidateCount: requestedCandidates } : {};
     if (!activeChatId || isSendBlocked) return;
     if (isReadingAttachments) {
       toast.info(localizeUi("ui.chat.chatinput.stillReadingAttachedFilesSendWillBeReadyIn"));
@@ -998,7 +1011,7 @@ export function ConversationInput({
     if (!raw && attachments.length === 0) {
       if (canRetry) {
         try {
-          await generate({ chatId: activeChatId, connectionId: null });
+          await generate({ chatId: activeChatId, connectionId: null, ...fanOut });
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Generation failed";
           toast.error(msg);
@@ -1171,6 +1184,7 @@ export function ConversationInput({
       userMessage: message,
       ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
       ...(mentioned.length ? { mentionedCharacterNames: mentioned } : {}),
+      ...fanOut,
     });
   }, [
     activeChatId,
@@ -1204,6 +1218,22 @@ export function ConversationInput({
     conversationGameSlashContributions,
     localizeUi,
   ]);
+
+  // Right-click / long-press the send button to fan the reply out into several
+  // candidates. Disabled while the button is a stop or is otherwise unusable, so
+  // the gesture never opens a menu a plain click could not act on.
+  const sendWithCandidates = useCallback(
+    (options?: { candidateCount?: number }) => {
+      nextSendCandidateCountRef.current = options?.candidateCount ?? null;
+      return handleSend();
+    },
+    [handleSend],
+  );
+  const multiSwipeSendMenu = useMultiSwipeSendMenu({
+    onSend: sendWithCandidates,
+    chatMode: "conversation",
+    disabled: isActuallyGenerating || isSendBlocked || isReadingAttachments || !activeChatId || !canSubmit,
+  });
 
   const runQuickSlashCommand = useCallback(
     async (commandLine: string, fallbackError: string) => {
@@ -2342,11 +2372,13 @@ export function ConversationInput({
             </div>
           )}
 
+          {multiSwipeSendMenu.menu}
           <button
+            {...multiSwipeSendMenu.triggerProps}
             onClick={
               isActuallyGenerating
                 ? () => useChatStore.getState().stopGeneration(activeChatId ?? undefined)
-                : handleSend
+                : multiSwipeSendMenu.handlePlainClick
             }
             disabled={!isActuallyGenerating && (isSendBlocked || isReadingAttachments || !activeChatId || !canSubmit)}
             aria-label={sendButtonTitle}

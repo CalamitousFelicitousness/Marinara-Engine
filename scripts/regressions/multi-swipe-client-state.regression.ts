@@ -1,7 +1,7 @@
 // Multiswipe client decision logic and cache plumbing.
 // Pins: which action commits the pending swipe, that pending detection reads the
-// persisted marker mirrored onto the message by setActiveSwipe, and that an
-// appended silent swipe raises the cached count.
+// persisted marker mirrored onto the message by setActiveSwipe, that an appended
+// silent swipe raises the cached count, and which counts a surface may offer.
 
 import assert from "node:assert/strict";
 
@@ -9,8 +9,10 @@ import type { Message } from "../../packages/shared/src/types/chat.js";
 import { applyAppendedSwipeCount } from "../../packages/client/src/lib/message-cache-reconciliation.js";
 import {
   findPendingMultiSwipeMessage,
+  multiSwipeCountOptions,
   shouldFinalizeBeforeAction,
 } from "../../packages/client/src/lib/multi-swipe-policy.js";
+import { MAX_MULTI_SWIPE_CANDIDATES } from "../../packages/shared/src/utils/multi-swipe.js";
 
 const marker = { pendingAgents: ["world-state"], candidateCount: 3, createdAt: 1_770_000_000 };
 
@@ -104,11 +106,36 @@ assert.equal(
 assert.equal(applyAppendedSwipeCount(cache, "missing", 9), cache, "unknown ids are ignored");
 assert.equal(applyAppendedSwipeCount(undefined, "a", 3), undefined, "an empty cache stays empty");
 
-const fromUnset = applyAppendedSwipeCount(
-  { pages: [[message("a", "assistant", {})]], pageParams: [0] },
-  "a",
-  2,
-);
+const fromUnset = applyAppendedSwipeCount({ pages: [[message("a", "assistant", {})]], pageParams: [0] }, "a", 2);
 assert.equal(fromUnset?.pages[0]?.[0]?.swipeCount, 2, "a message with no counted swipes still gains one");
+
+// ── Which counts a surface offers ──
+// Shared by the send button and the regenerate menu, so a surface can never
+// present a fan-out the chat mode cannot perform.
+assert.deepEqual(multiSwipeCountOptions({ multiSwipeMax: 4 }), [2, 3, 4], "the menu lists every count up to the cap");
+assert.deepEqual(multiSwipeCountOptions({ multiSwipeMax: 2 }), [2], "a cap of 2 offers exactly one fan-out");
+assert.deepEqual(multiSwipeCountOptions({ multiSwipeMax: 1 }), [], "Off means no gesture at all");
+assert.deepEqual(
+  multiSwipeCountOptions({ multiSwipeMax: 0 }),
+  [],
+  "a corrupted setting below the floor still means Off",
+);
+assert.deepEqual(
+  multiSwipeCountOptions({ multiSwipeMax: 99 }),
+  Array.from({ length: MAX_MULTI_SWIPE_CANDIDATES - 1 }, (_unused, index) => index + 2),
+  "a setting above the cap clamps rather than listing impossible counts",
+);
+assert.deepEqual(
+  multiSwipeCountOptions({ multiSwipeMax: 4, chatMode: "game" }),
+  [],
+  "game mode cannot replay its per-swipe snapshots at finalize, so it offers nothing",
+);
+for (const chatMode of ["roleplay", "conversation", null, undefined]) {
+  assert.deepEqual(
+    multiSwipeCountOptions({ multiSwipeMax: 3, chatMode }),
+    [2, 3],
+    `chat mode ${String(chatMode)} may fan out`,
+  );
+}
 
 console.info("Multiswipe client state regression passed.");

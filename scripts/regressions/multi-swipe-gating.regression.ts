@@ -31,7 +31,6 @@ assert.equal(normalizeMultiSwipeCandidateCount(99), MAX_MULTI_SWIPE_CANDIDATES, 
 // ── Gating matrix ──
 const baseCountInput: MultiSwipeCountInput = {
   requested: 3,
-  regenerateMessageId: "message-1",
   continueMessageId: null,
   impersonate: false,
   turnGameBots: false,
@@ -40,23 +39,21 @@ const baseCountInput: MultiSwipeCountInput = {
   groupChatMode: "merged",
 };
 
-assert.equal(resolveMultiSwipeCount(baseCountInput), 3, "a plain roleplay regenerate may fan out");
+// Regenerate and new turn are the same shape here: both leave the main path with
+// one saved assistant message whose swipe row the tail appends to. The gate is
+// about what a turn *does*, never about whether a message already existed.
+assert.equal(resolveMultiSwipeCount(baseCountInput), 3, "a plain roleplay turn may fan out");
 assert.equal(
   resolveMultiSwipeCount({ ...baseCountInput, chatMode: "conversation" }),
   3,
-  "conversation regenerates may fan out",
+  "conversation turns may fan out",
 );
 assert.equal(
   resolveMultiSwipeCount({ ...baseCountInput, isGroupChat: true, groupChatMode: "merged" }),
   3,
-  "merged group regenerates produce one message, so they may fan out",
+  "merged group turns produce one message, so they may fan out",
 );
 assert.equal(resolveMultiSwipeCount({ ...baseCountInput, requested: 1 }), 1, "a count of 1 stays stock behavior");
-assert.equal(
-  resolveMultiSwipeCount({ ...baseCountInput, regenerateMessageId: null }),
-  1,
-  "a new turn has no message to append candidate swipes to",
-);
 assert.equal(
   resolveMultiSwipeCount({ ...baseCountInput, continueMessageId: "message-1" }),
   1,
@@ -124,7 +121,7 @@ const roleplayCtx: MultiSwipeSanitizeContext = {
 }
 
 {
-  const result = sanitizeMultiSwipeCandidate("She steps outside. [spatial_move: location=\"garden\"]", {
+  const result = sanitizeMultiSwipeCandidate('She steps outside. [spatial_move: location="garden"]', {
     ...roleplayCtx,
     stripSpatialDirectives: true,
   });

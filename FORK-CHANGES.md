@@ -75,12 +75,13 @@ Those three generation routes each re-derived the note and re-hardcoded the defa
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
 `scripts/regressions/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
 
-### Multiswipe: several alternatives per reroll, agents deferred until you pick
+### Multiswipe: several alternatives per turn, agents deferred until you pick
 
-One regenerate can now produce up to 4 alternatives in a single request. Candidate 1 streams and
-saves exactly like a stock reroll; candidates 2..N are generated sequentially and appended as
-silent swipes (`chats.addSwipe(..., silent)`), so the active swipe and the message row never move
-while the tail runs. The existing swipe chevrons then browse the spread.
+One turn can now produce up to 4 alternatives in a single request, whether it is a regenerate or
+a message the user just sent. Candidate 1 streams and saves exactly like a stock turn; candidates
+2..N are generated sequentially and appended as silent swipes (`chats.addSwipe(..., silent)`), so
+the active swipe and the message row never move while the tail runs. The existing swipe chevrons
+then browse the spread.
 
 Upstream declined the feature because multi-swipe "would work terribly with agents", which is
 accurate for the obvious implementation: `AgentContext.mainResponse` is a single string anchored
@@ -122,10 +123,49 @@ falls out of ordering alone: the loop sits inside `generateForCharacter`, and
 `assistant_message_ready` (which releases the roleplay composer, nulls the client abort
 controller, and starts TTS) is only sent after that function returns.
 
+A new turn fans out onto the message it creates. `resolveMultiSwipeCount` originally returned 1
+for anything without a `regenerateMessageId`, on the reasoning that a new turn has no message to
+append swipes to. That was never true of the code: the non-regenerate save branch ends at
+`chats.createMessage`, which always inserts swipe row 0, so the `savedMsg`/`savedSwipeIndex` pair
+the tail needs already existed. Dropping that gate, and the matching one on the tail's own `if`,
+is the core of the change; the only difference from a regenerate is that candidate 1 owns swipe 0
+instead of sitting after a pre-existing original, so the tail starts at index 1 rather than 2. Without it, multiswipe was
+unreachable until the chat already held an assistant message to reroll, which is exactly the
+first turn where picking between openings is most useful.
+
+Two fresh-turn side effects had to be suppressed, because a regenerate never reached them and
+candidate 1 is provisional until the user picks:
+
+- The Discord webhook mirror. Posting is irreversible and the user is being shown N options, so a
+  fanned-out send posts nothing rather than publishing a candidate they may discard. Marked
+  `ponytail:` in place: the upgrade path is posting the committed swipe from the finalize route,
+  which would need the webhook config and an already-posted guard taught to it.
+- The Professor Mari fetch follow-up, which re-runs the entire generation up to twice more. Since
+  `isMultiSwipe` is computed per request, each follow-up would have fanned out too, turning one
+  send into three spreads and up to twelve generations. Same treatment the automatic roleplay
+  summary already had, for the same reason.
+
+The repeated-Conversation-response discard is a knowing gap rather than a suppression: it guards
+candidate 1 only, so a tail candidate on a new conversation turn may repeat an earlier reply. That
+is a weak option in the spread, not corrupt state, and the user can pick another swipe.
+
 Off by default. Settings > General > Input & Editing > "Multiswipe reroll options" sets the cap;
-at `1` (Off) nothing changes anywhere. Above that, right-click (long-press on touch) the
-regenerate button or the create-next-swipe chevron for the count menu. A plain click is always a
-single swipe.
+at `1` (Off) nothing changes anywhere. Above that, right-click (long-press on touch) the send
+button, the regenerate button, or the create-next-swipe chevron for the count menu. A plain click
+is always a single candidate.
+
+The gesture itself is one hook. `useMultiSwipeCountMenu` owns the right-click, the long-press
+timer, the suppressed follow-up click, and the menu, and knows nothing about what a count is used
+for; `useMultiSwipeRegenerateMenu` and `useMultiSwipeSendMenu` are thin adapters over it. That
+split is what let the send button reuse the gesture without touching the regenerate path, and it
+is why the file is now `MultiSwipeMenu.tsx` rather than `MultiSwipeRegenerateMenu.tsx`. Which
+counts a surface may offer moved to `multiSwipeCountOptions` in `multi-swipe-policy.ts`, shared by
+both adapters and directly testable; it applies only the one exclusion visible from a chat alone
+(game mode), leaving the request-level matrix to the server, which re-clamps regardless. Both
+composers thread an optional `candidateCount` through their own `handleSend` into every branch
+that actually generates, so the empty-input "generate the next reply" path fans out too; branches
+that only create rows (manual response order, slash commands, the presence-delayed conversation
+path) never do.
 
 While the active swipe still holds a marker, an "Agents pending" pill sits beside the swipe
 control and runs the deferred agents when clicked. It is suppressed while that message's own
@@ -185,7 +225,9 @@ Covered by `scripts/regressions/multi-swipe-generate-route.regression.ts`, which
 `POST /api/generate` against a mock OpenAI-compatible provider and asserts the whole wiring: three
 sequential provider calls, two silent swipes behind an unmoved active swipe, markers on every
 candidate, and `candidateCount: 1` producing byte-for-byte stock behavior with no multiswipe
-events and no marker. Plus `multi-swipe-candidates.regression.ts` (silent appends against real
+events and no marker, plus a new turn fanning out onto the message it just created (four provider
+calls, swipes appended at 1..3 behind an unmoved active swipe 0, markers on all four) and an
+ordinary send leaving no marker at all. Plus `multi-swipe-candidates.regression.ts` (silent appends against real
 file-backed storage, per-candidate extra, abort mid-loop, partial and total failure),
 `multi-swipe-gating.regression.ts` (the count matrix, the sanitizer, marker round-trips),
 `multi-swipe-finalize.regression.ts` (the finalize route through a real Fastify app: committing a
@@ -193,12 +235,19 @@ browsed-to candidate leaves its siblings marked, a marked sibling never makes a 
 look pending, browsing back to an unchosen candidate re-exposes and then commits its own agents,
 and a committed swipe is not re-marked when the user switches away), and
 `multi-swipe-client-state.regression.ts` (commit triggers, the explicit `multiSwipe: null` that
-finalize writes reading as committed, and swipe-count cache merging). The browser wiring has its
+finalize writes reading as committed, swipe-count cache merging, and the count options each
+surface offers including the game-mode exclusion). The browser wiring has its
 own fork-owned spec, `e2e/multi-swipe.e2e.ts`, kept out of `core-flows.e2e.ts` so it never
 conflicts on a sync: it asserts the count menu appears from the setting, that the chosen count
 reaches the request, that appended silent swipes become visible on the swipe control, that a plain
-click still rerolls exactly once while the menu is armed, and that the pending badge replays the
-deferred agents against the message it sits on and then disappears.
+click still rerolls exactly once while the menu is armed, that the pending badge replays the
+deferred agents against the message it sits on and then disappears, and that right-clicking send
+in a chat holding no assistant message at all sends the typed text with the chosen count and no
+regenerate target. That last spec needs a connection on the chat, because `ChatInput.handleSend`
+refuses to send without one, a guard the regenerate specs never meet since they call `generate()`
+directly. Its `seedClient` also retires both first-run overlays through localStorage: the
+onboarding tour and the What's New modal both cover the composer, and dismissing either by
+clicking persists to the shared server and changes what sibling specs load into.
 Note the setting rides the existing server settings sync (`pickSyncedSettings`), so it outlives a
 browser context; a spec cannot assume it is off just because that context never set it.
 

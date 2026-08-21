@@ -1,24 +1,35 @@
 // ──────────────────────────────────────────────
-// Multiswipe: "regenerate x N" gesture menu and progress badge
+// Multiswipe: candidate-count gesture menus and status badges
 // ──────────────────────────────────────────────
-// A plain click on the regenerate button or the next-swipe chevron keeps stock
-// single-swipe behavior. Right-click (desktop) or long-press (touch) opens the
-// count menu, so asking for several candidates is always a deliberate act.
-import { MAX_MULTI_SWIPE_CANDIDATES } from "@marinara-engine/shared";
+// A plain click on the send button, the regenerate button, or the next-swipe
+// chevron keeps stock single-candidate behavior. Right-click (desktop) or
+// long-press (touch) opens the count menu, so asking for several candidates is
+// always a deliberate act.
+//
+// useMultiSwipeCountMenu owns the gesture and knows nothing about what a count
+// is used for. The adapters below bind it to a surface, which is what let the
+// send button reuse the gesture without touching the regenerate path.
 import { Bot } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { multiSwipeCountOptions } from "../../lib/multi-swipe-policy";
 import { useMultiSwipeStore } from "../../stores/multi-swipe.store";
 import { useUIStore } from "../../stores/ui.store";
 import { ContextMenu, type ContextMenuItem } from "../ui/ContextMenu";
 
 const LONG_PRESS_MS = 500;
 
-interface MultiSwipeMenuOptions {
-  messageId: string;
-  onRegenerate?: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
-  /** Present when this message still has deferred agents waiting on a choice. */
-  onFinalize?: (messageId: string) => void;
+interface MultiSwipeCountMenuOptions {
+  /** Runs with the chosen candidate count (always >= 2). Absent hides the counts. */
+  onSelectCount?: (count: number) => void;
+  /** Localization key for one count entry, resolved with `{ value1: count }`. */
+  countLabelKey: string;
+  /** Entries rendered above the counts. Memoize at the call site. */
+  leadingItems?: ContextMenuItem[];
+  /** Plain click, when no long-press just opened the menu. */
+  onPlainClick?: () => void;
+  /** Chat mode, so a surface that cannot fan out offers no counts. */
+  chatMode?: string | null;
   disabled?: boolean;
 }
 
@@ -26,7 +37,14 @@ interface MultiSwipeMenuOptions {
  * Trigger props for the element that should open the menu, plus the menu node.
  * Spread the props onto a button; render the node next to it.
  */
-export function useMultiSwipeRegenerateMenu({ messageId, onRegenerate, onFinalize, disabled }: MultiSwipeMenuOptions) {
+export function useMultiSwipeCountMenu({
+  onSelectCount,
+  countLabelKey,
+  leadingItems,
+  onPlainClick,
+  chatMode,
+  disabled,
+}: MultiSwipeCountMenuOptions) {
   const { t: localizeUi } = useTranslation();
   const multiSwipeMax = useUIStore((state) => state.multiSwipeMax);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
@@ -42,14 +60,12 @@ export function useMultiSwipeRegenerateMenu({ messageId, onRegenerate, onFinaliz
 
   useEffect(() => clearLongPress, [clearLongPress]);
 
-  const counts = useMemo(() => {
-    const max = Math.min(Math.max(multiSwipeMax, 1), MAX_MULTI_SWIPE_CANDIDATES);
-    const values: number[] = [];
-    for (let count = 2; count <= max; count++) values.push(count);
-    return values;
-  }, [multiSwipeMax]);
+  const counts = useMemo(
+    () => (onSelectCount ? multiSwipeCountOptions({ multiSwipeMax, chatMode }) : []),
+    [chatMode, multiSwipeMax, onSelectCount],
+  );
 
-  const hasMenu = (counts.length > 0 && Boolean(onRegenerate)) || Boolean(onFinalize);
+  const hasMenu = counts.length > 0 || (leadingItems?.length ?? 0) > 0;
 
   const openMenu = useCallback(
     (x: number, y: number) => {
@@ -60,25 +76,19 @@ export function useMultiSwipeRegenerateMenu({ messageId, onRegenerate, onFinaliz
   );
 
   const items: ContextMenuItem[] = useMemo(() => {
-    const entries: ContextMenuItem[] = [];
-    if (onFinalize) {
-      entries.push({
-        label: localizeUi("ui.chat.multiswipe.finalizeNow"),
-        onSelect: () => onFinalize(messageId),
-      });
-    }
-    if (onRegenerate) {
+    const entries: ContextMenuItem[] = [...(leadingItems ?? [])];
+    if (onSelectCount) {
       for (const count of counts) {
         entries.push({
-          label: localizeUi("ui.chat.multiswipe.generateCandidatesValue1", { value1: count }),
-          onSelect: () => onRegenerate(messageId, { skipTouchConfirm: true, candidateCount: count }),
+          label: localizeUi(countLabelKey, { value1: count }),
+          onSelect: () => onSelectCount(count),
         });
       }
     }
     return entries;
-  }, [counts, localizeUi, messageId, onFinalize, onRegenerate]);
+  }, [countLabelKey, counts, leadingItems, localizeUi, onSelectCount]);
 
-  // Memoized so the memo() on the regenerate button still holds.
+  // Memoized so the memo() on the surfaces that spread these still holds.
   const triggerProps = useMemo(
     () => ({
       onContextMenu: (event: React.MouseEvent) => {
@@ -104,20 +114,93 @@ export function useMultiSwipeRegenerateMenu({ messageId, onRegenerate, onFinaliz
     [clearLongPress, disabled, hasMenu, openMenu],
   );
 
-  /** Plain click: a single swipe, unless a long-press just opened the menu. */
+  /** Plain click: stock behavior, unless a long-press just opened the menu. */
   const handlePlainClick = useCallback(() => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
-    onRegenerate?.(messageId);
-  }, [messageId, onRegenerate]);
+    onPlainClick?.();
+  }, [onPlainClick]);
 
   const menu = menuPosition ? (
     <ContextMenu x={menuPosition.x} y={menuPosition.y} items={items} onClose={() => setMenuPosition(null)} />
   ) : null;
 
   return { triggerProps, menu, handlePlainClick, hasMenu };
+}
+
+interface MultiSwipeRegenerateMenuOptions {
+  messageId: string;
+  onRegenerate?: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  /** Present when this message still has deferred agents waiting on a choice. */
+  onFinalize?: (messageId: string) => void;
+  chatMode?: string | null;
+  disabled?: boolean;
+}
+
+/** Count menu for a message's regenerate button and create-next-swipe chevron. */
+export function useMultiSwipeRegenerateMenu({
+  messageId,
+  onRegenerate,
+  onFinalize,
+  chatMode,
+  disabled,
+}: MultiSwipeRegenerateMenuOptions) {
+  const { t: localizeUi } = useTranslation();
+
+  const leadingItems = useMemo(
+    () =>
+      onFinalize
+        ? [{ label: localizeUi("ui.chat.multiswipe.finalizeNow"), onSelect: () => onFinalize(messageId) }]
+        : undefined,
+    [localizeUi, messageId, onFinalize],
+  );
+
+  const onSelectCount = useMemo(
+    () =>
+      onRegenerate
+        ? (count: number) => onRegenerate(messageId, { skipTouchConfirm: true, candidateCount: count })
+        : undefined,
+    [messageId, onRegenerate],
+  );
+
+  const onPlainClick = useCallback(() => onRegenerate?.(messageId), [messageId, onRegenerate]);
+
+  return useMultiSwipeCountMenu({
+    onSelectCount,
+    countLabelKey: "ui.chat.multiswipe.generateCandidatesValue1",
+    leadingItems,
+    onPlainClick,
+    chatMode,
+    disabled,
+  });
+}
+
+interface MultiSwipeSendMenuOptions {
+  /** The surface's own send. `candidateCount` is absent for a plain click. */
+  onSend: (options?: { candidateCount?: number }) => void;
+  chatMode?: string | null;
+  disabled?: boolean;
+}
+
+/**
+ * Count menu for the composer's send button, so a fan-out no longer needs an
+ * assistant message to reroll first. The chosen count rides the same request
+ * field the regenerate menu uses; the server decides whether the turn may fan
+ * out at all and clamps the ones that may not.
+ */
+export function useMultiSwipeSendMenu({ onSend, chatMode, disabled }: MultiSwipeSendMenuOptions) {
+  const onSelectCount = useCallback((count: number) => onSend({ candidateCount: count }), [onSend]);
+  const onPlainClick = useCallback(() => onSend(), [onSend]);
+
+  return useMultiSwipeCountMenu({
+    onSelectCount,
+    countLabelKey: "ui.chat.multiswipe.sendCandidatesValue1",
+    onPlainClick,
+    chatMode,
+    disabled,
+  });
 }
 
 /**

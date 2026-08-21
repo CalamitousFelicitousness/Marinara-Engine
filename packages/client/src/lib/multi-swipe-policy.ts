@@ -1,6 +1,6 @@
 // Pure multiswipe decisions, kept free of React, network, and Vite-only imports
 // so they can be exercised directly by a regression script.
-import { readMultiSwipePendingMarker, type Message } from "@marinara-engine/shared";
+import { MAX_MULTI_SWIPE_CANDIDATES, readMultiSwipePendingMarker, type Message } from "@marinara-engine/shared";
 
 /** Actions that commit the user to whichever swipe is currently active. */
 export type MultiSwipeFinalizeTrigger = "send" | "continue" | "regenerate" | "explicit";
@@ -42,4 +42,21 @@ export function shouldFinalizeBeforeAction(input: {
   if (!input.pendingMessageId) return false;
   if (input.trigger === "regenerate") return input.targetMessageId !== input.pendingMessageId;
   return true;
+}
+
+/**
+ * Candidate counts a surface may offer, or an empty list when it should show no
+ * gesture at all. Chat-level gating only. The server owns the request-level
+ * matrix (continue, impersonate, turn-game bots, group individual) and re-clamps
+ * whatever arrives, so this exists to avoid offering a menu that cannot fan out,
+ * not to be authoritative.
+ */
+export function multiSwipeCountOptions(input: { multiSwipeMax: number; chatMode?: string | null }): number[] {
+  // Game mode is the one exclusion visible from a chat alone: its save-time map
+  // parsing and per-swipe snapshots do not replay at finalize.
+  if (input.chatMode === "game") return [];
+  const max = Math.min(Math.max(input.multiSwipeMax, 1), MAX_MULTI_SWIPE_CANDIDATES);
+  const counts: number[] = [];
+  for (let count = 2; count <= max; count++) counts.push(count);
+  return counts;
 }

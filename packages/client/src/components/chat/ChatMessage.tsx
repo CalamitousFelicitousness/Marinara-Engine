@@ -82,11 +82,7 @@ import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./Gene
 import type { ChatImage } from "../../hooks/use-gallery";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
-import {
-  MultiSwipePendingBadge,
-  MultiSwipeProgressBadge,
-  useMultiSwipeRegenerateMenu,
-} from "./MultiSwipeRegenerateMenu";
+import { MultiSwipePendingBadge, MultiSwipeProgressBadge, useMultiSwipeRegenerateMenu } from "./MultiSwipeMenu";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
@@ -1836,6 +1832,7 @@ export const ChatMessage = memo(function ChatMessage({
     messageId: message.id,
     onRegenerate: canCreateNextSwipe ? onRegenerate : undefined,
     onFinalize: multiSwipePending ? onFinalizeMultiSwipe : undefined,
+    chatMode,
     disabled: Boolean(isStreaming),
   });
   const rewriteVersions = resolveMessageRewriteVersions(message.content, extra, isUser);

@@ -55,6 +55,7 @@ import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import { CARD_ASSET_INSERT_EVENT, type CardAssetInsertDetail } from "../../lib/card-asset-links";
 import { isFileDrag } from "../../lib/chat-resource-drag";
 import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
+import { useMultiSwipeSendMenu } from "./MultiSwipeMenu";
 import { requestChatScrollToBottom } from "../../lib/chat-scroll-events";
 import { EmojiPicker } from "../ui/EmojiPicker";
 import { SpeechToTextButton } from "../ui/SpeechToTextButton";
@@ -856,7 +857,19 @@ export const ChatInput = memo(function ChatInput({
     };
   }, [pushStoryMenuOpen]);
 
+  // Multiswipe: candidate count for the next send, set by the send button's
+  // gesture menu just before it calls handleSend and consumed on entry. A ref
+  // rather than a handleSend argument because Prettier only hugs a zero-argument
+  // useCallback body; adding a parameter reindents the whole function, which
+  // would conflict on every upstream sync of this file.
+  const nextSendCandidateCountRef = useRef<number | null>(null);
+
   const handleSend = useCallback(async () => {
+    const requestedCandidates = nextSendCandidateCountRef.current;
+    nextSendCandidateCountRef.current = null;
+    // Rides every branch below that actually generates. Manual mode and the
+    // prompt-preview macro only create rows, so they never fan out.
+    const fanOut = requestedCandidates && requestedCandidates > 1 ? { candidateCount: requestedCandidates } : {};
     const raw = getValue();
     if (!activeChatId || isInputBusy) return;
     if (isReadingAttachments) {
@@ -881,6 +894,7 @@ export const ChatInput = memo(function ChatInput({
             chatId: activeChatId,
             connectionId: null,
             forCharacterId: queuedCharacterId,
+            ...fanOut,
           });
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Generation failed";
@@ -898,6 +912,7 @@ export const ChatInput = memo(function ChatInput({
           await generateWithNarrativeDirector({
             chatId: activeChatId,
             connectionId: null,
+            ...fanOut,
           });
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Generation failed";
@@ -1077,6 +1092,7 @@ export const ChatInput = memo(function ChatInput({
         ...(canSubmitSpatialMove && pendingSpatialTransition
           ? { pendingSpatialTransition: pendingSpatialTransition.transition }
           : {}),
+        ...fanOut,
       });
       if (succeeded === false) {
         restoreSubmittedDraft();
@@ -1117,6 +1133,22 @@ export const ChatInput = memo(function ChatInput({
     availableCapabilityIds,
     localizeUi,
   ]);
+
+  // Right-click / long-press the send button to fan the reply out into several
+  // candidates. Disabled while the button is a stop or is otherwise unusable, so
+  // the gesture never opens a menu a plain click could not act on.
+  const sendWithCandidates = useCallback(
+    (options?: { candidateCount?: number }) => {
+      nextSendCandidateCountRef.current = options?.candidateCount ?? null;
+      return handleSend();
+    },
+    [handleSend],
+  );
+  const multiSwipeSendMenu = useMultiSwipeSendMenu({
+    onSend: sendWithCandidates,
+    chatMode: mode,
+    disabled: isStreaming || isInputBusy || isReadingAttachments || !activeChatId,
+  });
 
   const runQuickSlashCommand = useCallback(
     async (commandLine: string, fallbackError: string) => {
@@ -2170,8 +2202,14 @@ export const ChatInput = memo(function ChatInput({
 
         {/* Send / Stop button */}
 
+        {multiSwipeSendMenu.menu}
         <button
-          onClick={isStreaming ? () => useChatStore.getState().stopGeneration(activeChatId ?? undefined) : handleSend}
+          {...multiSwipeSendMenu.triggerProps}
+          onClick={
+            isStreaming
+              ? () => useChatStore.getState().stopGeneration(activeChatId ?? undefined)
+              : multiSwipeSendMenu.handlePlainClick
+          }
           disabled={
             (!isStreaming && (isInputBusy || isReadingAttachments)) ||
             (!hasInput && !attachments.length && !canSubmitSpatialMove && !isStreaming && !canRetry && !canContinue) ||

@@ -134,7 +134,7 @@ function readLorebookScope(value: unknown): { mode: "all" | "disabled" | "specif
 // by writing each one under data/sprites/<id>/. Filenames are sanitized to
 // just an expression stem + an extension matching the actual image bytes, so
 // a malicious export can't traverse out of the sprites dir.
-async function restoreSprites(sprites: unknown, id: string): Promise<void> {
+export async function restoreSprites(sprites: unknown, id: string): Promise<void> {
   if (sprites === undefined || sprites === null) return;
   if (!Array.isArray(sprites)) {
     logger.warn("Skipped invalid sprite collection for %s", id);

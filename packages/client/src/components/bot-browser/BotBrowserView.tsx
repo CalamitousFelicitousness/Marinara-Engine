@@ -2773,14 +2773,28 @@ export function BotBrowserView() {
                       >
                         {localizeUi("ui.botBrowser.botbrowserview.previous")}
                       </button>
-                      <span className="text-xs text-[var(--muted-foreground)]">
-                        {localizeUi("ui.botBrowser.botbrowserview.page")} {page}
-                        {totalPages > 1 && totalPages < 9000 ? (
-                          <> {localizeUi("ui.botBrowser.botbrowserview.ofValue1", { value1: totalPages })}</>
-                        ) : (
-                          ""
-                        )}
-                      </span>
+                      {totalPages > 1 && totalPages < 9000 ? (
+                        <label className="flex items-center gap-1 text-xs text-[var(--muted-foreground)]">
+                          {localizeUi("ui.botBrowser.botbrowserview.page")}
+                          <select
+                            aria-label={localizeUi("ui.botBrowser.botbrowserview.page")}
+                            value={page}
+                            onChange={(event) => setPage(Number(event.target.value))}
+                            className="mari-chrome-field mari-chrome-field--compact px-2 py-1 text-xs"
+                          >
+                            {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                              <option key={pageNumber} value={pageNumber}>
+                                {pageNumber}
+                              </option>
+                            ))}
+                          </select>
+                          {localizeUi("ui.botBrowser.botbrowserview.ofValue1", { value1: totalPages })}
+                        </label>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {localizeUi("ui.botBrowser.botbrowserview.page")} {page}
+                        </span>
+                      )}
                       <button
                         disabled={page >= totalPages && totalPages > 1}
                         onClick={() => setPage((p) => p + 1)}

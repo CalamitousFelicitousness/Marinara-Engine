@@ -10236,12 +10236,12 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
 test("Chub NSFW search uses filtered totals and spaced pagination", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Chub filter behavior is covered once on desktop.");
 
-  const observedSearches: Array<{ query: string; nsfw: string | null }> = [];
+  const observedSearches: Array<{ query: string; nsfw: string | null; page: string | null }> = [];
   await page.route("**/api/bot-browser/chub/search?*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q") ?? "";
     const nsfw = url.searchParams.get("nsfw");
-    observedSearches.push({ query, nsfw });
+    observedSearches.push({ query, nsfw, page: url.searchParams.get("page") });
     const isReportedSearch = query === "Kathrin Vaughan" && nsfw === "true";
     await route.fulfill({
       json: {
@@ -10284,7 +10284,11 @@ test("Chub NSFW search uses filtered totals and spaced pagination", async ({ pag
     .click();
   const library = page.locator('[data-component="BotBrowserView"]');
   await expect(library.getByText("96 cards from ChubAI", { exact: true })).toBeVisible();
-  await expect(library.getByText("Page 1 of 2", { exact: true })).toBeVisible();
+  const pageSelector = library.getByRole("combobox", { name: "Page", exact: true });
+  await expect(pageSelector).toHaveValue("1");
+  await pageSelector.selectOption("2");
+  await expect(pageSelector).toHaveValue("2");
+  await expect.poll(() => observedSearches.some((search) => search.query === "" && search.page === "2")).toBe(true);
 
   await library.getByRole("checkbox", { name: "NSFW", exact: true }).check();
   await library.getByPlaceholder("Search characters").fill("Kathrin Vaughan");
@@ -10293,7 +10297,7 @@ test("Chub NSFW search uses filtered totals and spaced pagination", async ({ pag
   await expect(library.getByText("11 cards from ChubAI", { exact: true })).toBeVisible();
   const card = library.getByRole("button", { name: /Kathrin Vaughan/u });
   await expect(card.getByText("NSFW", { exact: true })).toBeVisible();
-  expect(observedSearches).toContainEqual({ query: "Kathrin Vaughan", nsfw: "true" });
+  expect(observedSearches).toContainEqual({ query: "Kathrin Vaughan", nsfw: "true", page: "1" });
 });
 
 test("Character and Persona sidebars find cards by creator", async ({ page, request }, testInfo) => {

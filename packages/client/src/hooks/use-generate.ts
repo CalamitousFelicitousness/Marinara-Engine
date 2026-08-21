@@ -24,6 +24,7 @@ import {
   getRoleplayTypewriterRevealCharsPerSecond,
   getStreamingCharsPerSecond,
   getTypewriterFrameBudget,
+  getTypewriterPaintIntervalMs,
   isGenerationStartBlocked,
   reconcileTypewriterReplacement,
   shouldKeepStreamLiveThroughPostProcessing,
@@ -1479,6 +1480,11 @@ export function useGenerate() {
       // Values 1–99 are literal visible characters per second; 100 is instant.
       const reducedMotionMedia =
         typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+      const typewriterPaintIntervalMs = getTypewriterPaintIntervalMs(
+        navigator.userAgent,
+        navigator.platform,
+        navigator.maxTouchPoints,
+      );
       const getCharsPerSecond = () => {
         const speed = useUIStore.getState().streamingSpeed;
         return getStreamingCharsPerSecond(
@@ -1562,6 +1568,14 @@ export function useGenerate() {
             return;
           }
           typewriterStarted = true;
+          if (
+            lastTypewriterPaintAt > 0 &&
+            typewriterPaintIntervalMs > 0 &&
+            now - lastTypewriterPaintAt < typewriterPaintIntervalMs
+          ) {
+            rafId = requestAnimationFrame(tick);
+            return;
+          }
           if (!lastTypewriterPaintAt) lastTypewriterPaintAt = now;
           const elapsedMs = Math.min(TYPEWRITER_MAX_FRAME_MS, Math.max(0, now - lastTypewriterPaintAt));
           lastTypewriterPaintAt = now;
@@ -1584,7 +1598,12 @@ export function useGenerate() {
             return;
           }
 
-          const frameBudget = getTypewriterFrameBudget(charsPerSecond, elapsedMs, typewriterRemainder);
+          const frameBudget = getTypewriterFrameBudget(
+            charsPerSecond,
+            elapsedMs,
+            typewriterRemainder,
+            typewriterPaintIntervalMs,
+          );
           typewriterRemainder = frameBudget.accruedCharacters;
           const n = Math.min(Math.floor(typewriterRemainder), frameBudget.maxCharacters, pendingText.length);
           if (n < 1) {

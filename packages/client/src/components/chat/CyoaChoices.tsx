@@ -152,13 +152,19 @@ export function CyoaChoices({ messages }: Props) {
   const handleChoice = useCallback(
     async (text: string) => {
       if (!activeChatId || isStreaming || isEditing) return;
+      if (persistedChoiceState?.messageId) {
+        await updateMessageExtra.mutateAsync({
+          messageId: persistedChoiceState.messageId,
+          extra: { cyoaChoices: [] },
+        });
+      }
       clearChoicesForActiveChat();
       const queuedSpatialTransition =
         pendingSpatialTransition?.status === "ready" ? pendingSpatialTransition.transition : null;
       if (impersonateCyoaChoices) {
         const { impersonatePresetId, impersonateConnectionId, impersonateBlockAgents, impersonatePromptTemplate } =
           useUIStore.getState();
-        await generate(
+        const impersonated = await generate(
           buildCyoaChoiceSubmissionPayload({
             chatId: activeChatId,
             text,
@@ -171,6 +177,9 @@ export function CyoaChoices({ messages }: Props) {
             },
           }),
         );
+        if (impersonated) {
+          await generate({ chatId: activeChatId, connectionId: null });
+        }
         return;
       }
 
@@ -188,8 +197,10 @@ export function CyoaChoices({ messages }: Props) {
       isEditing,
       pendingSpatialTransition,
       impersonateCyoaChoices,
+      persistedChoiceState?.messageId,
       clearChoicesForActiveChat,
       generate,
+      updateMessageExtra,
     ],
   );
 

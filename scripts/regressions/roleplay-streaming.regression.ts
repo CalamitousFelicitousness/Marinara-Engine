@@ -4,6 +4,7 @@ import {
   getRoleplayTypewriterRevealCharsPerSecond,
   getStreamingCharsPerSecond,
   getTypewriterFrameBudget,
+  getTypewriterPaintIntervalMs,
   isGenerationSendBlocked,
   isGenerationStartBlocked,
   isMessageShadowedByLiveStream,
@@ -1263,6 +1264,34 @@ assert.ok(
   delayedFrameBudget.maxCharacters <= 3,
   "a delayed frame must not dump its entire reveal debt as one chunky typewriter burst",
 );
+assert.equal(
+  getTypewriterPaintIntervalMs(
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15",
+    "iPhone",
+    5,
+  ),
+  50,
+  "iPhone WebKit should batch stream paints to 20 FPS",
+);
+assert.equal(
+  getTypewriterPaintIntervalMs("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 5),
+  50,
+  "desktop-mode iPadOS should receive the same stream paint protection",
+);
+assert.equal(
+  getTypewriterPaintIntervalMs("Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5),
+  0,
+  "non-iOS browsers should retain the native animation cadence",
+);
+let simulatedIosRemainder = 0;
+let simulatedIosCharacters = 0;
+for (let frame = 0; frame < 20; frame += 1) {
+  const budget = getTypewriterFrameBudget(90, 50, simulatedIosRemainder, 50);
+  const revealedCharacters = Math.min(Math.floor(budget.accruedCharacters), budget.maxCharacters);
+  simulatedIosRemainder = budget.accruedCharacters - revealedCharacters;
+  simulatedIosCharacters += revealedCharacters;
+}
+assert.equal(simulatedIosCharacters, 90, "batched iOS paints must preserve the selected reveal speed");
 assert.match(
   echoChamberPanelSource,
   /behavior: streamingChatId === activeChatId \? "auto" : "smooth"/u,

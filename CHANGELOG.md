@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Settings → Generation now exposes the Character Reference Sheet prompt template, so character and Persona sheet generation can use a saved global override (#5348).
 - Reusable Game Mode setups now preserve World Maps AI draft size, exact place target, and lore grounding choices, with a clear fallback warning when imported lorebooks are unavailable (#5337).
 - Custom pre-generation agents can now opt in to choose the active characters for the current Conversation or Roleplay reply, keeping unused character cards out of that turn's prompt (#5310).
 - Lorebook Keeper can now route entries to exact writable lorebook names or configured aliases, auto-create missing category books, and preserve the selected destination through write approval while keeping one-book behavior unchanged when no target is returned (Pasta-Devs/Marinara-Agents#439).
@@ -17,6 +18,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Manual and range-backfilled Roleplay summaries now participate in semantic retrieval alongside automatic summaries, keeping relevant history without pinning every manual entry in context (#5346).
+- SwarmUI image generation now uses its progress-streaming WebSocket route, preventing long generations from losing an otherwise idle HTTP connection (#5347).
+- Game transcript exports now materialize narration edits and deletions in active messages and alternate swipes, omit fully deleted messages, and remove stale segment-overlay metadata from JSONL (#5349).
+- Game Storyboard planning now always receives character appearance context; the Attach Card Appearance setting remains scoped to the final render prompt and reference attachments (Pasta-Devs/Marinara-Agents#478).
 - ElevenLabs audio connections now test the documented `/v1/models` endpoint, so the default base URL no longer returns a misleading 404 (#5339).
 - Docker containers now repair mixed ownership inside file storage and imported top-level data folders even when the data root already belongs to the runtime user, preventing private storage hardening from blocking startup (#5323).
 - Roleplay now cancels post-processing work tied to an abandoned swipe before committing the next turn, Stop Agents safely cancels detached agent work without interrupting the primary reply, and an earlier swipe's illustration no longer reappears on the selected swipe while agents finish (#5328).

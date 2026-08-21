@@ -3943,6 +3943,7 @@ test("Conversation membership notices begin only after the chat starts", async (
 
 test("character schedules export the live draft and import safely", async ({ page, request }) => {
   const suffix = Date.now().toString(36);
+  const generatedAt = new Date().toISOString();
   const characterName = `Schedule Transfer ${suffix}`;
   const characterResponse = await request.post("/api/characters", {
     data: { data: { name: characterName, first_mes: "Good morning." } },
@@ -3964,7 +3965,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     Sunday: [] as Array<{ time: string; activity: string; status: string }>,
   });
   const originalSchedule = {
-    weekStart: "2026-07-20T00:00:00.000Z",
+    weekStart: generatedAt,
     days: {
       ...emptyDays(),
       Monday: [{ time: "09:00-17:00", activity: "Original research", status: "dnd" }],
@@ -3972,7 +3973,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     inactivityThresholdMinutes: 120,
     autonomousDailyCapOverride: null,
     routineSummary: "An exacting weekly routine.",
-    routineSummaryGeneratedAt: "2026-07-20T12:00:00.000Z",
+    routineSummaryGeneratedAt: generatedAt,
     disabledAutonomousIntents: [],
     talkativeness: 50,
   };

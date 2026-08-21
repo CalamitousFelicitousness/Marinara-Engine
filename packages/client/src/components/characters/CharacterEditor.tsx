@@ -129,7 +129,7 @@ import { Modal } from "../ui/Modal";
 import { SpriteFrameEditor } from "../ui/SpriteFrameEditor";
 import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
-import { EditorTabRail } from "../ui/EditorTabRail";
+import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { EditorSectionAnchor, EditorSectionJumps } from "../ui/EditorSectionJumps";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import {
@@ -906,7 +906,13 @@ export function CharacterEditor() {
 
   const headerActionButtonClass = "mari-editor-action inline-flex";
   const saveDisabled = !dirty || saving || avatarUploading || lorebookEmbedding;
-  const saveLabel = avatarUploading ? "Uploading…" : lorebookEmbedding ? "Embedding…" : saving ? "Saving…" : "Save";
+  const saveLabel = avatarUploading
+    ? localizeUi("editor.save.uploading")
+    : lorebookEmbedding
+      ? localizeUi("editor.save.embedding")
+      : saving
+        ? localizeUi("editor.save.saving")
+        : localizeUi("editor.save.action");
   const saveButtonClass = cn(
     "mari-editor-action mari-editor-action--primary mari-editor-action--save inline-flex",
     saveDisabled && "cursor-not-allowed opacity-50",
@@ -1034,8 +1040,8 @@ export function CharacterEditor() {
       />
 
       {/* ── Header ── */}
-      <div className="mari-editor-header">
-        <div className="mari-editor-header-main max-md:min-w-full">
+      <div className="mari-editor-header mari-editor-header--with-nav">
+        <div className="mari-editor-header-main mari-editor-header-main--identity">
           <button
             type="button"
             onClick={handleClose}
@@ -1115,10 +1121,19 @@ export function CharacterEditor() {
           </div>
         </div>
 
+        <EditorTabNavigation tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
+
         <div className="mari-editor-actions flex">
-          <button type="button" onClick={handleSave} disabled={saveDisabled} className={saveButtonClass}>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saveDisabled}
+            className={saveButtonClass}
+            aria-label={saveLabel}
+            title={saveLabel}
+          >
             <Save size="0.9375rem" />
-            <span>{saveLabel}</span>
+            <span className="mari-editor-save-label">{saveLabel}</span>
           </button>
           {headerActions}
         </div>
@@ -1161,10 +1176,8 @@ export function CharacterEditor() {
         </div>
       )}
 
-      {/* ── Body: Tabs + Content ── */}
-      <div className="mari-editor-body @max-5xl:flex-col">
-        <EditorTabRail tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
-
+      {/* ── Body ── */}
+      <div className="mari-editor-body">
         {/* Tab Content */}
         <div className="mari-editor-content @max-5xl:p-4">
           <div className="mari-editor-content-inner">
@@ -1454,16 +1467,15 @@ function ConvoTab({
   const updateCharacter = useUpdateCharacter();
   const savedCharacter = useCharacter(characterId ?? null);
   const savedData = (() => {
-    if (!savedCharacter.data) return undefined;
+    const rawData = (savedCharacter.data as { data?: unknown } | undefined)?.data;
+    if (!rawData) return undefined;
     try {
-      return (typeof savedCharacter.data === "string" ? JSON.parse(savedCharacter.data) : savedCharacter.data) as
-        | { data?: CharacterData }
-        | undefined;
+      return (typeof rawData === "string" ? JSON.parse(rawData) : rawData) as CharacterData;
     } catch {
       return undefined;
     }
   })();
-  const savedExtensions = savedData?.data?.extensions;
+  const savedExtensions = savedData?.extensions;
   // Read the saved card, not the form: the schedule saves on its own, so the
   // in-progress form copy goes stale as soon as the editor writes one.
   const schedule =

@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Character, Persona, Lorebook, and Preset editors now place section navigation in the header, using compact desktop tabs and a mobile dropdown, and Conversation Chat Settings now keeps Commands, Illustrator Settings, and Calls as matching remembered collapsible subsections inside Agents (#5355, #5356, Pasta-Devs/Marinara-Agents#480).
 - Settings → Generation now exposes the Character Reference Sheet prompt template, so character and Persona sheet generation can use a saved global override (#5348).
 - Reusable Game Mode setups now preserve World Maps AI draft size, exact place target, and lore grounding choices, with a clear fallback warning when imported lorebooks are unavailable (#5337).
 - Custom pre-generation agents can now opt in to choose the active characters for the current Conversation or Roleplay reply, keeping unused character cards out of that turn's prompt (#5310).
@@ -18,6 +19,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Character editors now keep independently saved weekly schedules in sync while other card fields still have unsaved changes.
+- Conversation transcript dates, timestamps, and message numbers now follow Chat Chrome Text Color instead of a legacy fixed color (#5357).
 - Conversation schedules and manual status overrides now apply consistently across all chats for the same character, with per-chat schedule opt-outs still supported (#5358).
 - Long-running sessions now bound chat notification history and release persisted reasoning state from server memory, mobile history stays put after the keyboard opens, and Playwright shuts down its owned test servers cleanly (#5353).
 - Claude Subscription custom parameters can no longer override the provider's text-only Agent SDK isolation; model-generation overrides remain supported while tool, process, environment, filesystem, and session controls stay provider-owned (#5351).

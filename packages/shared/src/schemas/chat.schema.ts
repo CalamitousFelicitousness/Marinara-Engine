@@ -2,6 +2,7 @@
 // Chat Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { MAX_MULTI_SWIPE_CANDIDATES } from "../utils/multi-swipe.js";
 import { pendingSpatialTransitionSchema } from "./spatial-context.schema.js";
 
 export const chatModeSchema = z.enum(["conversation", "roleplay", "game"]);
@@ -41,6 +42,11 @@ export const generateRequestSchema = z.object({
   /** When true, this generation drives the active turn-game's bot seats instead of a normal chat reply. */
   turnGameBots: z.boolean().optional().default(false),
   streaming: z.boolean().optional().default(true),
+  /**
+   * Multiswipe: candidates to generate for a regenerate request. 1 keeps stock behavior.
+   * Honored only on the plain regenerate path; the server re-clamps and gates it.
+   */
+  candidateCount: z.number().int().min(1).max(MAX_MULTI_SWIPE_CANDIDATES).optional().default(1),
   userStatus: z.enum(["active", "idle", "dnd", "invisible"]).optional().default("active"),
   userActivity: z.string().max(120).optional().default(""),
   autonomous: z.boolean().optional().default(false),

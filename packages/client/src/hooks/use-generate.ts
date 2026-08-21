@@ -18,7 +18,9 @@ import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../lib
 import { hasVisibleUserMessagePayload } from "../lib/chat-message-visibility";
 import { formatGenerationParameterError } from "../lib/generation-parameter-errors";
 import { createLeadingTrailingCoalescer } from "../lib/message-page-cache";
-import { reconcilePersistedMessages } from "../lib/message-cache-reconciliation";
+import { applyAppendedSwipeCount, reconcilePersistedMessages } from "../lib/message-cache-reconciliation";
+import { translate } from "../localization/i18n";
+import { finalizePendingMultiSwipe } from "./use-multi-swipe";
 import { sanitizeAppCss } from "../lib/theme-css";
 import {
   getRoleplayTypewriterRevealCharsPerSecond,
@@ -598,6 +600,7 @@ import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
 import { agentResultMatchesVisibleSwipe } from "../lib/agent-result-ownership";
 import { useGameModeStore } from "../stores/game-mode.store";
+import { useMultiSwipeStore } from "../stores/multi-swipe.store";
 import { useGameStateStore } from "../stores/game-state.store";
 import { useTranslationStore } from "../stores/translation.store";
 import { useUIStore } from "../stores/ui.store";
@@ -1207,6 +1210,8 @@ export function useGenerate() {
       turnGameBots?: boolean;
       /** Structured Roleplay/Game movement committed atomically with this owner turn. */
       pendingSpatialTransition?: PendingSpatialTransition;
+      /** Multiswipe: candidates to generate for a regenerate. The server re-clamps and gates this. */
+      candidateCount?: number;
     }) => {
       // Prevent concurrent generations for the same chat. Different chats may
       // keep generating in the background while the user navigates elsewhere.
@@ -1340,6 +1345,20 @@ export function useGenerate() {
       }
 
       await cancellation;
+
+      // Multiswipe: moving the chat forward commits whichever candidate the user
+      // left active, so the agents deferred during that spread run now and their
+      // output is part of this prompt. Regenerating the undecided message itself
+      // replaces the choice, so that case skips finalizing. Deliberately after the
+      // optimistic user turn and the abort controller, so the message appears and
+      // Stop works while the deferred agents run.
+      await finalizePendingMultiSwipe(qc, params.chatId, {
+        trigger: params.regenerateMessageId ? "regenerate" : "send",
+        targetMessageId: params.regenerateMessageId ?? null,
+        retryAgents: async (chatId, agentTypes, retryOptions) =>
+          (await retryAgentsRef.current?.(chatId, agentTypes, retryOptions)) ?? false,
+      });
+
       const assistantMessagesBeforeGeneration = snapshotMessagesByRole(qc, params.chatId, "assistant");
       const expectedPersistedRole: Message["role"] = params.impersonate ? "user" : "assistant";
       const expectedMessagesBeforeGeneration =
@@ -2294,6 +2313,30 @@ export function useGenerate() {
               break;
             }
 
+            case "multi_swipe_progress": {
+              useMultiSwipeStore.getState().setProgress(
+                params.chatId,
+                event.data as {
+                  messageId: string;
+                  current: number;
+                  total: number;
+                  status: "generating" | "saved" | "failed";
+                },
+              );
+              break;
+            }
+
+            case "swipe_appended": {
+              // Silent candidate swipes never move activeSwipeIndex, so the count
+              // has to come from the event for the swipe controls to reveal them.
+              const appended = event.data as { messageId: string; index: number; swipeCount: number };
+              qc.setQueryData<InfiniteData<Message[]>>(chatKeys.messages(params.chatId), (old) =>
+                applyAppendedSwipeCount(old, appended.messageId, appended.swipeCount),
+              );
+              qc.invalidateQueries({ queryKey: [...chatKeys.all, "swipes", appended.messageId] });
+              break;
+            }
+
             case "message_saved": {
               flushLeadingSpeakerPrefix();
               const savedMessage = event.data as Message;
@@ -3179,6 +3222,14 @@ export function useGenerate() {
           }
         }
         setProcessingRun(agentProcessingRunId, false, params.chatId);
+        // Tell the user why they got fewer alternatives than they asked for.
+        const multiSwipeProgress = useMultiSwipeStore.getState().progressByChatId[params.chatId];
+        if (multiSwipeProgress && multiSwipeProgress.failed > 0) {
+          toast.warning(
+            translate("ui.chat.multiswipe.someCandidatesFailedValue1", { value1: multiSwipeProgress.failed }),
+          );
+        }
+        useMultiSwipeStore.getState().clearProgress(params.chatId);
 
         const completedReply =
           !abortController.signal.aborted &&

@@ -19,6 +19,7 @@ import { renderWithStickerBlocks } from "../../lib/sticker-render";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ImagePromptPanel } from "./ImagePromptPanel";
 import { SwipeJumpControl } from "./SwipeJumpControl";
+import { MultiSwipePendingBadge, useMultiSwipeRegenerateMenu } from "./MultiSwipeRegenerateMenu";
 import { AnimatedDiceRoll, isDiceRollResult, shouldAnimateDiceRollMessage } from "../dice/AnimatedDiceRoll";
 import type { CharacterMap } from "./chat-area.types";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -158,7 +159,8 @@ export interface MessageRenderContext {
   onOpenAboutMe?: (anchor: DOMRect) => void;
   onRemoveAttachment: (index: number) => void;
   onSetActiveSwipe?: (id: string, index: number) => void;
-  onRegenerate?: (id: string) => void;
+  onRegenerate?: (id: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  onFinalizeMultiSwipe?: (id: string) => void;
   onToggleHiddenFromAI?: (id: string, current: boolean) => void;
   onPeekPrompt?: () => void;
   onDelete?: (id: string) => void;
@@ -635,34 +637,54 @@ export function ConversationMessageTranslation({
 
 /** Compact swipe control — consistent style for all Conversation layouts. */
 export function ConversationMessageSwipes({
+  chatId,
   messageId,
   activeSwipeIndex,
   swipeCount,
   onSetActiveSwipe,
   onCreateNextSwipe,
+  onRegenerate,
+  onFinalizeMultiSwipe,
   className,
 }: {
+  chatId: string;
   messageId: string;
   activeSwipeIndex: number;
   swipeCount: number;
   onSetActiveSwipe: (index: number) => void;
   onCreateNextSwipe?: () => void;
+  /** Enables the right-click / long-press multiswipe count menu on the create-next chevron. */
+  onRegenerate?: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  /** Present only while this message's active swipe has deferred agents that never ran. */
+  onFinalizeMultiSwipe?: (messageId: string) => void;
   className?: string;
 }) {
+  const multiSwipeMenu = useMultiSwipeRegenerateMenu({
+    messageId,
+    onRegenerate,
+    onFinalize: onFinalizeMultiSwipe,
+  });
   return (
-    <SwipeJumpControl
-      messageId={messageId}
-      activeSwipeIndex={activeSwipeIndex}
-      swipeCount={swipeCount}
-      onSetActiveSwipe={onSetActiveSwipe}
-      onCreateNextSwipe={onCreateNextSwipe}
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)]",
-        className,
+    <>
+      {multiSwipeMenu.menu}
+      {onFinalizeMultiSwipe && (
+        <MultiSwipePendingBadge chatId={chatId} messageId={messageId} onFinalize={onFinalizeMultiSwipe} />
       )}
-      buttonClassName="rounded-sm p-0.5 transition-colors hover:bg-[var(--accent)] disabled:opacity-30"
-      inputClassName="h-[1.25rem] w-[2rem] border-none bg-transparent text-center text-[0.625rem] outline-none"
-    />
+      <SwipeJumpControl
+        messageId={messageId}
+        activeSwipeIndex={activeSwipeIndex}
+        swipeCount={swipeCount}
+        onSetActiveSwipe={onSetActiveSwipe}
+        onCreateNextSwipe={onCreateNextSwipe}
+        nextButtonTriggerProps={multiSwipeMenu.triggerProps}
+        className={cn(
+          "inline-flex items-center gap-0.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-1.5 py-0.5 text-[0.625rem] text-[var(--muted-foreground)]",
+          className,
+        )}
+        buttonClassName="rounded-sm p-0.5 transition-colors hover:bg-[var(--accent)] disabled:opacity-30"
+        inputClassName="h-[1.25rem] w-[2rem] border-none bg-transparent text-center text-[0.625rem] outline-none"
+      />
+    </>
   );
 }
 

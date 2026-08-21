@@ -50,7 +50,8 @@ type ConversationSurfaceProps = {
   selectedMessageIds: Set<string>;
   spriteArrangeMode: boolean;
   onDelete: (messageId: string) => void;
-  onRegenerate: (messageId: string) => void;
+  onRegenerate: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
@@ -118,6 +119,7 @@ export function ChatConversationSurface({
   spriteArrangeMode,
   onDelete,
   onRegenerate,
+  onFinalizeMultiSwipe,
   onEdit,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
@@ -173,6 +175,7 @@ export function ChatConversationSurface({
           chatCharIds={chatCharIds}
           onDelete={onDelete}
           onRegenerate={onRegenerate}
+          onFinalizeMultiSwipe={onFinalizeMultiSwipe}
           onEdit={onEdit}
           onSetActiveSwipe={onSetActiveSwipe}
           onToggleHiddenFromAI={onToggleHiddenFromAI}

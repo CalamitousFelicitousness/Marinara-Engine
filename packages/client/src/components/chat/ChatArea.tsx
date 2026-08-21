@@ -33,6 +33,7 @@ import {
 
 import { getCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { useGenerate } from "../../hooks/use-generate";
+import { useMultiSwipeFinalize } from "../../hooks/use-multi-swipe";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
   characterKeys,
@@ -669,6 +670,7 @@ export const ChatArea = memo(function ChatArea() {
   const branchChat = useBranchChat();
   const branchPendingRef = useRef(false);
   const { generate, retryAgents } = useGenerate();
+  const { finalizeMessage } = useMultiSwipeFinalize(retryAgents);
   const generateGallerySelfie = useGenerateGallerySelfie(activeChatId ?? "");
   const { mutateAsync: setActiveSwipe } = useSetActiveSwipe(activeChatId);
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
@@ -1887,7 +1889,7 @@ export const ChatArea = memo(function ChatArea() {
   }, [messages]);
 
   const handleRegenerate = useCallback(
-    async (messageId: string, options?: { skipTouchConfirm?: boolean }) => {
+    async (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => {
       if (!activeChatId || isStreaming) return;
       // On touch devices, confirm to prevent accidental taps
       if (
@@ -1902,9 +1904,11 @@ export const ChatArea = memo(function ChatArea() {
         return;
       }
       try {
+        // Any pending multiswipe spread is committed inside generate() itself.
         // Regenerate as a new swipe on the existing message
         const currentInput = getCurrentInputSnapshot();
         const hasInput = currentInput ? currentInput.trim().length > 0 : false;
+        const candidateCount = options?.candidateCount;
         await generate(
           guideGenerations && hasInput
             ? {
@@ -1913,14 +1917,28 @@ export const ChatArea = memo(function ChatArea() {
                 regenerateMessageId: messageId,
                 generationGuide: buildGuidedGenerationInstructionMessage(currentInput.toString()),
                 generationGuideSource: "guide",
+                ...(candidateCount ? { candidateCount } : {}),
               }
-            : { chatId: activeChatId, connectionId: null, regenerateMessageId: messageId },
+            : {
+                chatId: activeChatId,
+                connectionId: null,
+                regenerateMessageId: messageId,
+                ...(candidateCount ? { candidateCount } : {}),
+              },
         );
       } catch {
         // Error toast is shown by the generate hook
       }
     },
     [activeChatId, isStreaming, generate, guideGenerations, localizeUi],
+  );
+
+  const handleFinalizeMultiSwipe = useCallback(
+    async (messageId: string) => {
+      if (!activeChatId || isStreaming) return;
+      await finalizeMessage(activeChatId, messageId);
+    },
+    [activeChatId, isStreaming, finalizeMessage],
   );
 
   const handleRetryAgents = useCallback(async () => {
@@ -3025,6 +3043,7 @@ export const ChatArea = memo(function ChatArea() {
             spriteArrangeMode={spriteArrangeMode}
             onDelete={handleDelete}
             onRegenerate={handleRegenerate}
+            onFinalizeMultiSwipe={handleFinalizeMultiSwipe}
             onEdit={handleEdit}
             onSetActiveSwipe={handleSetActiveSwipe}
             onToggleHiddenFromAI={handleToggleHiddenFromAI}
@@ -3161,6 +3180,7 @@ export const ChatArea = memo(function ChatArea() {
           onLoadMore={handleLoadMore}
           onDelete={handleDelete}
           onRegenerate={handleRegenerate}
+          onFinalizeMultiSwipe={handleFinalizeMultiSwipe}
           onEdit={handleRoleplayEdit}
           onSetActiveSwipe={handleSetActiveSwipe}
           onToggleConversationStart={handleToggleConversationStart}

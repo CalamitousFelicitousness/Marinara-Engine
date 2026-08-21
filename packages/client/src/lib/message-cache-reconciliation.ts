@@ -31,6 +31,31 @@ function mergeCachedGeneratedMessage(existing: Message, incoming: Message): Mess
   return merged;
 }
 
+/**
+ * Raise a cached message's swipe count after a multiswipe candidate was appended.
+ * Silent swipes never move activeSwipeIndex, and swipeCount is decorated at list
+ * time rather than stored, so a re-sent message row cannot carry the new total.
+ * The count only reaches the client through the swipe_appended event.
+ */
+export function applyAppendedSwipeCount(
+  old: InfiniteData<Message[]> | undefined,
+  messageId: string,
+  swipeCount: number,
+): InfiniteData<Message[]> | undefined {
+  if (!old) return old;
+  let changed = false;
+  const pages = old.pages.map((page) =>
+    page.map((message) => {
+      if (message.id !== messageId) return message;
+      const current = typeof message.swipeCount === "number" ? message.swipeCount : 0;
+      if (current >= swipeCount) return message;
+      changed = true;
+      return { ...message, swipeCount };
+    }),
+  );
+  return changed ? { ...old, pages } : old;
+}
+
 export function reconcilePersistedMessages(
   old: InfiniteData<Message[]> | undefined,
   sortedIncoming: Message[],

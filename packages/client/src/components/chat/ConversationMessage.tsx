@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import { useUIStore, type ConversationMessageStyle } from "../../stores/ui.store";
 import { cn, copyToClipboard, getAvatarCropStyle } from "../../lib/utils";
-import { normalizeAvatarCrop } from "@marinara-engine/shared";
+import { normalizeAvatarCrop, readMultiSwipePendingMarker } from "@marinara-engine/shared";
 import { resolveMessageMacros } from "../../lib/chat-macros";
 import { useTranslate } from "../../hooks/use-translate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
@@ -93,7 +93,8 @@ interface ConversationMessageProps {
   bubbleGroupPosition?: "single" | "first" | "middle" | "last";
   originalContent?: string;
   onDelete?: (messageId: string) => void;
-  onRegenerate?: (messageId: string) => void;
+  onRegenerate?: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit?: (messageId: string, content: string) => void;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleHiddenFromAI?: (messageId: string, current: boolean) => void;
@@ -136,6 +137,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   originalContent,
   onDelete,
   onRegenerate,
+  onFinalizeMultiSwipe,
   onEdit,
   onSetActiveSwipe,
   onToggleHiddenFromAI,
@@ -211,6 +213,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   }, [message.extra]);
   const isConversationStart = extra.isConversationStart === true;
   const isHiddenFromAI = extra.hiddenFromAI === true;
+  // This message still holds a multiswipe spread whose agents have not run.
+  const multiSwipePending = readMultiSwipePendingMarker(extra) !== null;
   const conversationCallEvent =
     extra.conversationCallEvent &&
     typeof extra.conversationCallEvent === "object" &&
@@ -896,6 +900,7 @@ export const ConversationMessage = memo(function ConversationMessage({
     onRemoveAttachment: handleRemoveAttachment,
     onSetActiveSwipe: handleSetActiveSwipe,
     onRegenerate,
+    onFinalizeMultiSwipe: multiSwipePending ? onFinalizeMultiSwipe : undefined,
     onToggleHiddenFromAI,
     onPeekPrompt,
     onDelete,

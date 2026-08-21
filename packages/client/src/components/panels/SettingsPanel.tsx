@@ -59,6 +59,7 @@ import {
   createFolderEntry,
   getFolderImportEntries,
   getFolderManifestConfig,
+  MAX_MULTI_SWIPE_CANDIDATES,
   type AppSettingsResponse,
   type APIConnection,
   type ConversationCallCharacterVideoClipKind,
@@ -736,6 +737,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Create a reroll when swiping past the newest assistant message.",
     aliases: ["swipe", "reroll", "regenerate"],
     kind: "Toggle",
+  },
+  {
+    id: "multi-swipe-max",
+    sectionId: "input-editing",
+    label: "Multiswipe reroll options",
+    description: "Reroll several alternatives at once and pick one before agents run.",
+    aliases: ["multiswipe", "swipe", "reroll", "candidates", "alternatives"],
+    kind: "Select",
   },
   {
     id: "up-arrow-edits-last-message",
@@ -3382,6 +3391,8 @@ function GeneralSettings() {
   const setIntuitiveSwipeNavigation = useUIStore((s) => s.setIntuitiveSwipeNavigation);
   const intuitiveSwipeRerollLatest = useUIStore((s) => s.intuitiveSwipeRerollLatest);
   const setIntuitiveSwipeRerollLatest = useUIStore((s) => s.setIntuitiveSwipeRerollLatest);
+  const multiSwipeMax = useUIStore((s) => s.multiSwipeMax);
+  const setMultiSwipeMax = useUIStore((s) => s.setMultiSwipeMax);
   const editLastMessageOnArrowUp = useUIStore((s) => s.editLastMessageOnArrowUp);
   const setEditLastMessageOnArrowUp = useUIStore((s) => s.setEditLastMessageOnArrowUp);
   const editMessageOnDoubleClick = useUIStore((s) => s.editMessageOnDoubleClick);
@@ -3655,6 +3666,25 @@ function GeneralSettings() {
             disabled={!intuitiveSwipeNavigation}
             help={localizeUi("settings.controls.rerollLatest.help")}
           />
+          <label
+            id={getSettingsControlAnchorId("multi-swipe-max")}
+            className="flex scroll-mt-3 flex-wrap items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-[var(--secondary)]/50"
+          >
+            <span className="text-xs">{localizeUi("settings.controls.multiSwipeMax.label")}</span>
+            <HelpTooltip text={localizeUi("settings.controls.multiSwipeMax.help")} />
+            <select
+              value={multiSwipeMax}
+              onChange={(event) => setMultiSwipeMax(Number(event.target.value))}
+              className="rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-xs"
+            >
+              <option value={1}>{localizeUi("settings.controls.multiSwipeMax.off")}</option>
+              {Array.from({ length: MAX_MULTI_SWIPE_CANDIDATES - 1 }, (_, index) => index + 2).map((count) => (
+                <option key={count} value={count}>
+                  {count}
+                </option>
+              ))}
+            </select>
+          </label>
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("up-arrow-edits-last-message")}
             label={localizeUi("settings.controls.upArrowEdit.label")}

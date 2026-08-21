@@ -84,6 +84,7 @@ export function ConversationMessageGrouped({
     onTranslate,
     onStartEdit,
     onRegenerate,
+    onFinalizeMultiSwipe,
     onToggleHiddenFromAI,
     onPeekPrompt,
     onDelete,
@@ -435,11 +436,14 @@ export function ConversationMessageGrouped({
               {!hideActions && (hasSwipes || (canRegenerate && onRegenerate)) && (
                 <div className="ml-14 mt-1.5">
                   <ConversationMessageSwipes
+                    chatId={message.chatId}
                     messageId={message.id}
                     activeSwipeIndex={message.activeSwipeIndex}
                     swipeCount={swipeCount}
                     onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
                     onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
+                    onRegenerate={canRegenerate ? onRegenerate : undefined}
+                    onFinalizeMultiSwipe={onFinalizeMultiSwipe}
                   />
                 </div>
               )}

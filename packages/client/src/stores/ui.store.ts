@@ -7,6 +7,7 @@ import { generateClientId } from "../lib/utils";
 import {
   IMAGE_STYLE_PROFILES_STORAGE_KEY,
   normalizeImageStyleProfileSettings,
+  normalizeMultiSwipeCandidateCount,
   normalizeQuoteFormat,
   type ImageStyleProfileSettings,
   type GenerateSpatialMapDraftResponse,
@@ -788,6 +789,12 @@ interface UIState {
   intuitiveSwipeNavigation: boolean;
   /** When true, moving past the newest swipe on the latest assistant message creates a new reroll. */
   intuitiveSwipeRerollLatest: boolean;
+  /**
+   * Highest candidate count offered by the multiswipe reroll menu. 1 disables the menu.
+   * No persist migration: zustand merges persisted state over the initial state, so a
+   * store written before this field falls back to the default, which is the off value.
+   */
+  multiSwipeMax: number;
   /** When true, pressing Up Arrow with an empty chat input opens the last user message for editing (Conversation/Roleplay). */
   editLastMessageOnArrowUp: boolean;
   /** When true, double-clicking or double-tapping a Roleplay message opens it for editing. */
@@ -1090,6 +1097,7 @@ interface UIState {
   setSpotifyMobileWidgetPosition: (position: FloatingWidgetPosition) => void;
   setIntuitiveSwipeNavigation: (v: boolean) => void;
   setIntuitiveSwipeRerollLatest: (v: boolean) => void;
+  setMultiSwipeMax: (v: number) => void;
   setEditLastMessageOnArrowUp: (v: boolean) => void;
   setEditMessageOnDoubleClick: (v: boolean) => void;
   setSummaryPopoverSettings: (settings: Partial<SummaryPopoverSettings>) => void;
@@ -1303,6 +1311,7 @@ export function pickSyncedSettings(state: UIState) {
     spotifyMobileWidgetPosition: state.spotifyMobileWidgetPosition,
     intuitiveSwipeNavigation: state.intuitiveSwipeNavigation,
     intuitiveSwipeRerollLatest: state.intuitiveSwipeRerollLatest,
+    multiSwipeMax: state.multiSwipeMax,
     editLastMessageOnArrowUp: state.editLastMessageOnArrowUp,
     editMessageOnDoubleClick: state.editMessageOnDoubleClick,
     summaryPopoverSettings: state.summaryPopoverSettings,
@@ -1509,6 +1518,7 @@ export const useUIStore = create<UIState>()(
       spotifyMobileWidgetPosition: { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION },
       intuitiveSwipeNavigation: false,
       intuitiveSwipeRerollLatest: false,
+      multiSwipeMax: 1,
       editLastMessageOnArrowUp: true,
       editMessageOnDoubleClick: true,
       summaryPopoverSettings: DEFAULT_SUMMARY_POPOVER_SETTINGS,
@@ -2315,6 +2325,7 @@ export const useUIStore = create<UIState>()(
         }),
       setIntuitiveSwipeNavigation: (v) => set({ intuitiveSwipeNavigation: v }),
       setIntuitiveSwipeRerollLatest: (v) => set({ intuitiveSwipeRerollLatest: v }),
+      setMultiSwipeMax: (v) => set({ multiSwipeMax: normalizeMultiSwipeCandidateCount(v) }),
       setEditLastMessageOnArrowUp: (v) => set({ editLastMessageOnArrowUp: v }),
       setEditMessageOnDoubleClick: (v) => set({ editMessageOnDoubleClick: v }),
       setSummaryPopoverSettings: (settings) =>
@@ -3247,6 +3258,7 @@ export const useUIStore = create<UIState>()(
         spotifyMobileWidgetPosition: state.spotifyMobileWidgetPosition,
         intuitiveSwipeNavigation: state.intuitiveSwipeNavigation,
         intuitiveSwipeRerollLatest: state.intuitiveSwipeRerollLatest,
+        multiSwipeMax: state.multiSwipeMax,
         editLastMessageOnArrowUp: state.editLastMessageOnArrowUp,
         editMessageOnDoubleClick: state.editMessageOnDoubleClick,
         summaryPopoverSettings: state.summaryPopoverSettings,

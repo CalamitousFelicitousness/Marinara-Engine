@@ -42,7 +42,13 @@ import {
   EyeOff,
   Shield,
 } from "lucide-react";
-import { decodeEncodedSpeakerTags, formatTextQuotes, type Message, type QuoteFormat } from "@marinara-engine/shared";
+import {
+  decodeEncodedSpeakerTags,
+  formatTextQuotes,
+  readMultiSwipePendingMarker,
+  type Message,
+  type QuoteFormat,
+} from "@marinara-engine/shared";
 import type { GameTurnStoryboard, GameTurnStoryboardKeyframe } from "@marinara-engine/shared";
 import { memo, useState, useMemo, useRef, useEffect, useId, useLayoutEffect, useCallback, type ReactNode } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -76,6 +82,11 @@ import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./Gene
 import type { ChatImage } from "../../hooks/use-gallery";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
+import {
+  MultiSwipePendingBadge,
+  MultiSwipeProgressBadge,
+  useMultiSwipeRegenerateMenu,
+} from "./MultiSwipeRegenerateMenu";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
@@ -870,7 +881,9 @@ interface ChatMessageProps {
   /** Frame-throttled live content that receives the same formatter as committed messages. */
   streamingContent?: (renderText: (text: string) => ReactNode) => ReactNode;
   onDelete?: (messageId: string) => void;
-  onRegenerate?: (messageId: string) => void;
+  onRegenerate?: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  /** Runs the agents deferred by a multiswipe run against the currently active swipe. */
+  onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleConversationStart?: ToggleConversationStart;
@@ -1417,6 +1430,7 @@ export const ChatMessage = memo(function ChatMessage({
   streamingContent,
   onDelete,
   onRegenerate,
+  onFinalizeMultiSwipe,
   onEdit,
   onSetActiveSwipe,
   onToggleConversationStart,
@@ -1815,6 +1829,15 @@ export const ChatMessage = memo(function ChatMessage({
   const generationReplay = hasGenerationReplayDetails(extra.generationReplay) ? extra.generationReplay : null;
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
+  // Right-click / long-press on regenerate or the create-next chevron asks for
+  // several candidates at once; a plain click stays a single swipe.
+  const multiSwipePending = !isUser && readMultiSwipePendingMarker(extra) !== null;
+  const multiSwipeMenu = useMultiSwipeRegenerateMenu({
+    messageId: message.id,
+    onRegenerate: canCreateNextSwipe ? onRegenerate : undefined,
+    onFinalize: multiSwipePending ? onFinalizeMultiSwipe : undefined,
+    disabled: Boolean(isStreaming),
+  });
   const rewriteVersions = resolveMessageRewriteVersions(message.content, extra, isUser);
   const proseGuardianOriginalText = rewriteVersions.originalText;
   const proseGuardianRewrittenText = rewriteVersions.rewrittenText;
@@ -3101,6 +3124,16 @@ export const ChatMessage = memo(function ChatMessage({
               />
             ) : null}
 
+            {multiSwipeMenu.menu}
+            <MultiSwipeProgressBadge chatId={message.chatId} messageId={message.id} />
+            {multiSwipePending && onFinalizeMultiSwipe && (
+              <MultiSwipePendingBadge
+                chatId={message.chatId}
+                messageId={message.id}
+                onFinalize={onFinalizeMultiSwipe}
+              />
+            )}
+
             {/* Swipes */}
             {(hasSwipes || canCreateNextSwipe) && (
               <SwipeJumpControl
@@ -3109,6 +3142,7 @@ export const ChatMessage = memo(function ChatMessage({
                 swipeCount={swipeCount}
                 onSetActiveSwipe={handleSetActiveSwipe}
                 onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
+                nextButtonTriggerProps={multiSwipeMenu.triggerProps}
                 className="px-1 text-[0.75rem] text-white/40"
                 buttonClassName="rounded-md p-[0.25em] transition-colors hover:bg-white/10 disabled:opacity-30"
                 inputClassName="border-white/10 bg-white/5 text-white/70 [color-scheme:dark]"
@@ -3171,7 +3205,11 @@ export const ChatMessage = memo(function ChatMessage({
                   dark
                 />
               )}
-              <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} dark />
+              <GuidedRegenerateActionBtn
+                onClick={multiSwipeMenu.handlePlainClick}
+                triggerProps={multiSwipeMenu.triggerProps}
+                dark
+              />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -3596,6 +3634,12 @@ export const ChatMessage = memo(function ChatMessage({
             </div>
           )}
 
+          {multiSwipeMenu.menu}
+          <MultiSwipeProgressBadge chatId={message.chatId} messageId={message.id} />
+          {multiSwipePending && onFinalizeMultiSwipe && (
+            <MultiSwipePendingBadge chatId={message.chatId} messageId={message.id} onFinalize={onFinalizeMultiSwipe} />
+          )}
+
           {/* Swipes */}
           {(hasSwipes || canCreateNextSwipe) && (
             <SwipeJumpControl
@@ -3660,7 +3704,10 @@ export const ChatMessage = memo(function ChatMessage({
                 disabled={switchingRewriteVersion}
               />
             )}
-            <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
+            <GuidedRegenerateActionBtn
+              onClick={multiSwipeMenu.handlePlainClick}
+              triggerProps={multiSwipeMenu.triggerProps}
+            />
             {onToggleConversationStart && (
               <ConversationStartAction
                 messageId={message.id}
@@ -3910,9 +3957,11 @@ function TTSLineVolumeControl({
 // ── Action button ──
 const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
   onClick,
+  triggerProps,
   dark,
 }: {
   onClick: () => void;
+  triggerProps?: React.HTMLAttributes<HTMLButtonElement>;
   dark?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -3922,6 +3971,7 @@ const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
     <ActionBtn
       icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
       onClick={onClick}
+      triggerProps={triggerProps}
       title={
         isGuided ? localizeUi("ui.chat.chatmessage.regenerateGuided") : localizeUi("ui.chat.chatmessage.regenerate")
       }
@@ -3945,6 +3995,7 @@ function ActionBtn({
   ariaPressed,
   thinkingAction,
   buttonRef,
+  triggerProps,
 }: {
   icon: React.ReactNode;
   onClick: () => void;
@@ -3955,11 +4006,14 @@ function ActionBtn({
   ariaPressed?: boolean;
   thinkingAction?: boolean;
   buttonRef?: React.Ref<HTMLButtonElement>;
+  /** Extra gesture handlers (right-click / long-press menus) layered under the click handler. */
+  triggerProps?: React.HTMLAttributes<HTMLButtonElement>;
 }) {
   return (
     <button
       ref={buttonRef}
       type="button"
+      {...triggerProps}
       onClick={onClick}
       title={title}
       aria-label={title}

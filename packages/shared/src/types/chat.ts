@@ -846,6 +846,11 @@ export interface MessageExtra {
   /** Fingerprint of the compiled chat summary used when prompt caches/reasoning were stored. */
   chatSummaryFingerprint?: string | null;
   /**
+   * Multiswipe deferred-agent marker. Set on every candidate swipe of a multiswipe
+   * run and cleared when the user commits to a swipe. See utils/multi-swipe.ts.
+   */
+  multiSwipe?: import("../utils/multi-swipe.js").MultiSwipePendingMarker | null;
+  /**
    * Hidden command-generation options needed to make swipes/regenerations replay
    * the same slash-command or guided-regenerate prompt behavior.
    */

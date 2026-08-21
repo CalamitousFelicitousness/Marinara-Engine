@@ -9,6 +9,12 @@ interface SwipeJumpControlProps {
   swipeCount: number;
   onSetActiveSwipe: (index: number) => void;
   onCreateNextSwipe?: () => void;
+  /**
+   * Gesture handlers for the multiswipe menu, applied to the next-swipe chevron.
+   * Attached at every swipe position, not only the newest, so the menu's finalize
+   * action stays reachable while the user is still browsing the spread.
+   */
+  nextButtonTriggerProps?: React.HTMLAttributes<HTMLButtonElement>;
   className?: string;
   buttonClassName?: string;
   inputClassName?: string;
@@ -21,6 +27,7 @@ export function SwipeJumpControl({
   swipeCount,
   onSetActiveSwipe,
   onCreateNextSwipe,
+  nextButtonTriggerProps,
   className,
   buttonClassName,
   inputClassName,
@@ -103,6 +110,7 @@ export function SwipeJumpControl({
       <button
         type="button"
         className={buttonClassName}
+        {...nextButtonTriggerProps}
         onClick={(event) => {
           event.stopPropagation();
           if (hasNextSwipe) {

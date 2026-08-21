@@ -164,6 +164,7 @@ import {
   withLlmRequestTimeout,
   yieldToEventLoop,
   type ChatMessage,
+  type ChatOptions,
   type LLMUsage,
 } from "../services/llm/base-provider.js";
 import { executeToolCalls, formatToolExecutionResultForModel } from "../services/tools/tool-executor.js";
@@ -369,6 +370,7 @@ import {
 import { registerDryRunRoute } from "./generate/dry-run-route.js";
 import { registerRawRoute } from "./generate/raw-route.js";
 import { registerRetryAgentsRoute, type ActiveAgentRun } from "./generate/retry-agents-route.js";
+import { resolveMultiSwipeCount, runMultiSwipeCandidates } from "./generate/multi-swipe-candidates.js";
 import { fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
 import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
 import {
@@ -3820,6 +3822,21 @@ export async function generateRoutes(app: FastifyInstance) {
         const isGroupChat = characterIds.length > 1;
         const groupResponseOrder = (chatMeta.groupResponseOrder as string) ?? "sequential";
         const groupChatMode = resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode);
+
+        // Multiswipe: candidates 2..N are appended as silent swipes after the
+        // main generation, and every agent phase is deferred to finalize.
+        const multiSwipeCount = resolveMultiSwipeCount({
+          requested: input.candidateCount,
+          regenerateMessageId: input.regenerateMessageId,
+          continueMessageId: input.continueMessageId,
+          impersonate: input.impersonate,
+          turnGameBots: input.turnGameBots,
+          chatMode,
+          isGroupChat,
+          groupChatMode,
+        });
+        const isMultiSwipe = multiSwipeCount > 1;
+
         // Auto-enable speaker colors for conversation mode groups (system prompt already requests tags)
         const groupSpeakerColors = chatMeta.groupSpeakerColors === true || (chatMode === "conversation" && isGroupChat);
         const groupTurnPromptEnabled = chatMeta.groupTurnPromptEnabled !== false;
@@ -4730,7 +4747,8 @@ export async function generateRoutes(app: FastifyInstance) {
         );
         const textRewriteRunAgents = mergePairedBuiltInRewriteAgents(textRewriteAgents);
         const textRewritePendingState = getTextRewritePendingState(textRewriteAgents);
-        const holdForTextRewrite = shouldHoldForTextRewrite(textRewriteAgents);
+        // Multiswipe defers every rewrite agent to finalize, so candidate 1 streams normally.
+        const holdForTextRewrite = !isMultiSwipe && shouldHoldForTextRewrite(textRewriteAgents);
         const textRewriteAgentIds = new Set(textRewriteAgents.map((a) => a.id));
         const lorebookKeeperAgent = resolvedAgents.find((a) => a.type === "lorebook-keeper") ?? null;
         let pipelineAgents = resolvedAgents.filter(
@@ -6293,6 +6311,11 @@ export async function generateRoutes(app: FastifyInstance) {
             });
           };
 
+          // Set only by the plain streaming path below. Multiswipe reuses it for
+          // candidates 2..N; the tool-call path stays single-candidate, because a
+          // one-shot candidate cannot reproduce a multi-round tool conversation.
+          let mainChatOptions: ChatOptions | null = null;
+
           if (enableChatTools && provider.chatComplete) {
             const maxToolRounds = getMaxToolRounds();
             let loopMessages: ChatMessage[] = initialProviderMessages;
@@ -6634,7 +6657,8 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           } else {
             logPromptSentToModel(initialProviderMessages);
-            const gen = provider.chat(initialProviderMessages, {
+            // Captured so multiswipe candidates reuse candidate 1's exact options.
+            mainChatOptions = {
               model: conn.model,
               temperature,
               maxTokens: effectiveMaxTokensForSend,
@@ -6669,7 +6693,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 ? undefined
                 : (items) => encryptedReasoningCache.set(input.chatId, items),
               onChatCompletionsReasoning: rememberChatCompletionsReasoning,
-            });
+            };
+            const gen = provider.chat(initialProviderMessages, mainChatOptions);
             try {
               let result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
               await recordAcceptedLongTermMemoryPrompt(initialProviderMessages);
@@ -7539,6 +7564,99 @@ export async function generateRoutes(app: FastifyInstance) {
             postToDiscordWebhook(discordWebhookUrl, { content: fullResponse, username: charName });
           }
 
+          // ── Multiswipe: candidates 2..N as silent swipes ──
+          // Runs before this function returns, so assistant_message_ready, TTS,
+          // and the chat-wide generation slot release only once the whole spread
+          // exists. Agents stay deferred until the user commits to a swipe.
+          if (isMultiSwipe && input.regenerateMessageId && savedMsg?.id && savedSwipeIndex !== null) {
+            if (!mainChatOptions) {
+              logger.info(
+                "[multi-swipe] Skipping candidates for chat %s: tool-call generations stay single-candidate",
+                input.chatId,
+              );
+            } else {
+              const candidateSpeakerName = targetCharId
+                ? (charInfo.find((character) => character.id === targetCharId)?.name ?? null)
+                : null;
+              const multiSwipeSummary = await runMultiSwipeCandidates({
+                reply,
+                chats,
+                chatId: input.chatId,
+                messageId: savedMsg.id,
+                activeSwipeIndex: savedSwipeIndex,
+                totalCandidates: multiSwipeCount,
+                provider,
+                providerMessages: initialProviderMessages,
+                chatOptions: mainChatOptions,
+                abortSignal: abortController.signal,
+                chatGenerationTimeoutMs,
+                debugMode: isDebug || requestDebug,
+                sanitize: {
+                  chatMode: chatMode === "conversation" ? "conversation" : "roleplay",
+                  customThinkingTags,
+                  assistantPrefill: tailMessages.assistantPrefillInjected ? assistantPrefill : null,
+                  conversationCommandsEnabled,
+                  filterEnabledCommands: (commands) => filterEnabledConversationCommands(commands, chatMeta),
+                  roleplayDmCommandsEnabled,
+                  stripOocForConnectedChat: Boolean(chat.connectedChatId),
+                  conversationEnvelope: {
+                    speakerName: candidateSpeakerName,
+                    speakerNames: charInfo.map((character) => character.name),
+                    preserveSpeakerPrefix: isGroupChat && !usesIndividualGroupGeneration,
+                  },
+                  trimIncompleteModelOutput: input.trimIncompleteModelOutput,
+                  stripSpatialDirectives:
+                    hierarchicalMapsEnabledForChat && (requestChatMode === "roleplay" || requestChatMode === "game"),
+                },
+                generationInfoStatic: {
+                  temperature: temperature ?? null,
+                  maxTokens: effectiveMaxTokensForSend ?? null,
+                  maxContext: suppressModelParameters ? null : (effectiveMaxContext ?? connectionMaxContext ?? null),
+                  showThoughts: showThoughts ?? null,
+                  reasoningEffort: resolvedEffort ?? reasoningEffort ?? null,
+                  verbosity: verbosity ?? null,
+                  serviceTier,
+                  assistantPrefill: assistantPrefill || null,
+                  assistantReasoningPrefill: assistantReasoningPrefill || null,
+                  customParameters: Object.keys(customParameters).length > 0 ? customParameters : null,
+                },
+                sharedSwipeExtra: {
+                  contextInjections: contextInjections.length > 0 ? contextInjections : null,
+                  generationReplay: buildGenerationReplay(input),
+                  startsNewAssistantBubble,
+                  cachedPrompt: finalPromptSent.map((m) => ({
+                    role: m.role,
+                    content: m.content,
+                    ...(m.providerMetadata ? { providerMetadata: m.providerMetadata } : {}),
+                  })),
+                  lorebookScan: lorebookScanSnapshot,
+                  chatSummaryFingerprint: fingerprintChatSummary(chatMeta.summary),
+                },
+                pendingMarker: {
+                  pendingAgents: [
+                    ...new Set(
+                      resolvedAgents
+                        .filter((agent) => agent.phase === "post_processing" || agent.phase === "parallel")
+                        .map((agent) => agent.type),
+                    ),
+                  ],
+                  candidateCount: multiSwipeCount,
+                  createdAt: Date.now(),
+                },
+                getProviderOrigin: () => generationProviderOrigin,
+              });
+              logger.info(
+                "[multi-swipe] Chat %s message %s: %d of %d candidate(s) appended, %d failed%s",
+                input.chatId,
+                savedMsg.id,
+                multiSwipeSummary.appended.length,
+                multiSwipeCount - 1,
+                multiSwipeSummary.failed.length,
+                multiSwipeSummary.aborted ? ", aborted" : "",
+              );
+            }
+          }
+
           return {
             savedMsg,
             savedSwipeIndex,
@@ -7555,7 +7673,8 @@ export async function generateRoutes(app: FastifyInstance) {
         // ────────────────────────────────────────
         const hasParallelAgents = pipelineAgents.some((a) => a.phase === "parallel");
         let parallelPromise: Promise<AgentResult[]> | null = null;
-        if (hasParallelAgents && !abortController.signal.aborted) {
+        // Multiswipe defers post-processing, which is the only consumer of parallel results.
+        if (hasParallelAgents && !isMultiSwipe && !abortController.signal.aborted) {
           deferParallelAgentEvents = true;
           parallelAgentStartPending = true;
           parallelPromise = pipeline.runParallel();
@@ -7895,7 +8014,10 @@ export async function generateRoutes(app: FastifyInstance) {
           }
         }
 
-        const hasPostProcessingAgents = resolvedAgents.some((a) => a.phase === "post_processing");
+        // Multiswipe defers every agent phase to finalize. Gating the inputs rather
+        // than hasPostWork keeps that expression and its post block byte-identical
+        // to upstream, which agent-activation.regression.ts pins by source shape.
+        const hasPostProcessingAgents = !isMultiSwipe && resolvedAgents.some((a) => a.phase === "post_processing");
         agentContext.mainResponseSegments = shouldPrefixGroupHistorySpeakers ? allResponseSegments : undefined;
         let lorebookKeeperProcessedMessageId = "";
         // Illustration runs asynchronously so it doesn't block other agents.
@@ -10101,7 +10223,8 @@ export async function generateRoutes(app: FastifyInstance) {
           if (chatMode === "roleplay" && assistantMessageReadySent) moveToActiveAgentRuns();
         }
 
-        if (!recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {
+        // A multiswipe summary would embed candidate 1 text the user may still discard.
+        if (!isMultiSwipe && !recoveredAlreadyAppliedOwnerTurn && !abortController.signal.aborted) {
           try {
             await runAutomaticRoleplaySummary();
           } catch (summaryErr) {

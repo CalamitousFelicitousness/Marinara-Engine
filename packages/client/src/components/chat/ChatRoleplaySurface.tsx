@@ -1189,7 +1189,8 @@ type RoleplaySurfaceProps = {
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onLoadMore: () => void;
   onDelete: (messageId: string) => void;
-  onRegenerate: (messageId: string) => void;
+  onRegenerate: (messageId: string, options?: { skipTouchConfirm?: boolean; candidateCount?: number }) => void;
+  onFinalizeMultiSwipe?: (messageId: string) => void;
   onEdit: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleConversationStart: (
@@ -1310,6 +1311,7 @@ export function ChatRoleplaySurface({
   onLoadMore,
   onDelete,
   onRegenerate,
+  onFinalizeMultiSwipe,
   onEdit,
   onSetActiveSwipe,
   onToggleConversationStart,
@@ -2237,6 +2239,7 @@ export function ChatRoleplaySurface({
                           msg={msg}
                           onDelete={onDelete}
                           onRegenerate={onRegenerate}
+                          onFinalizeMultiSwipe={onFinalizeMultiSwipe}
                           onEdit={onEdit}
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
@@ -2269,6 +2272,7 @@ export function ChatRoleplaySurface({
                           isStreaming={false}
                           onDelete={onDelete}
                           onRegenerate={onRegenerate}
+                          onFinalizeMultiSwipe={onFinalizeMultiSwipe}
                           onEdit={onEdit}
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}

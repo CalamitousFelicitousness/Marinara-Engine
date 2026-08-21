@@ -962,6 +962,58 @@ assert.equal(
     assert.ok(subscriptionOptions);
     assert.deepEqual(subscriptionOptions.thinking, { type: "adaptive", display: "summarized" });
     assert.equal(subscriptionOptions.effort, "xhigh");
+
+    assert.equal(
+      await collectProviderOutputForMessages(
+        provider,
+        [
+          { role: "system", content: "Keep the caller-owned system prompt." },
+          { role: "user", content: "test" },
+        ],
+        {
+          model: "claude-opus-5",
+          stream: true,
+          customParameters: {
+            fallbackModel: "claude-sonnet-4-6",
+            maxBudgetUsd: 2,
+            tools: { type: "preset", preset: "claude_code" },
+            skills: "all",
+            maxTurns: 20,
+            allowedTools: ["Bash"],
+            mcpServers: { unsafe: { command: "/bin/false" } },
+            pathToClaudeCodeExecutable: "/bin/false",
+            extraArgs: { "dangerously-skip-permissions": null },
+            permissionMode: "acceptEdits",
+            settingSources: ["user", "project", "local"],
+            settings: "/tmp/untrusted-settings.json",
+            env: { ENABLE_CLAUDEAI_MCP_SERVERS: "true", UNTRUSTED_VALUE: "present" },
+            cwd: "/tmp",
+            systemPrompt: { type: "preset", preset: "claude_code" },
+          },
+        },
+      ),
+      "Subscription reply",
+    );
+    assert.ok(subscriptionOptions);
+    assert.equal(subscriptionOptions.fallbackModel, "claude-sonnet-4-6");
+    assert.equal(subscriptionOptions.maxBudgetUsd, 2);
+    assert.deepEqual(subscriptionOptions.tools, []);
+    assert.deepEqual(subscriptionOptions.skills, []);
+    assert.equal(subscriptionOptions.maxTurns, 1);
+    assert.equal("allowedTools" in subscriptionOptions, false);
+    assert.equal("mcpServers" in subscriptionOptions, false);
+    assert.equal("pathToClaudeCodeExecutable" in subscriptionOptions, false);
+    assert.equal("extraArgs" in subscriptionOptions, false);
+    assert.equal(subscriptionOptions.permissionMode, "bypassPermissions");
+    assert.deepEqual(subscriptionOptions.settingSources, []);
+    assert.deepEqual(subscriptionOptions.settings, { fastMode: false });
+    assert.equal(subscriptionOptions.cwd, undefined);
+    assert.equal(subscriptionOptions.systemPrompt, "Keep the caller-owned system prompt.");
+    assert.equal(
+      (subscriptionOptions.env as Record<string, unknown>).ENABLE_CLAUDEAI_MCP_SERVERS,
+      "false",
+    );
+    assert.equal("UNTRUSTED_VALUE" in (subscriptionOptions.env as Record<string, unknown>), false);
   } finally {
     __setSdkForTesting(null);
   }

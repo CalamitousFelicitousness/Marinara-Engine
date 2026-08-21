@@ -40,6 +40,7 @@ import {
   useActivePersona,
   useCharacters,
   usePersona,
+  useUpdateCharacter,
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { usePageActivity } from "../../hooks/use-page-activity";
@@ -849,6 +850,10 @@ export const ChatArea = memo(function ChatArea() {
       ...Object.keys(chatStatuses ?? {}),
       ...Object.keys((convoMeta.conversationStatusOverrides as Record<string, unknown> | undefined) ?? {}),
       ...Object.keys((convoMeta.characterSchedules as Record<string, unknown> | undefined) ?? {}),
+      // A chat with schedules off has no cached schedules to key off, but its
+      // characters still need the always-online answer instead of the card's
+      // global status.
+      ...(convoMeta.conversationSchedulesEnabled === false ? chatCharIds : []),
     ]);
     for (const id of presenceIds) {
       const existing = map.get(id);
@@ -1074,18 +1079,35 @@ export const ChatArea = memo(function ChatArea() {
     setScheduleModalCharacterId(null);
     setScheduleModalInitialDay(null);
   }, []);
+  const updateCharacter = useUpdateCharacter();
+  // The character owns its schedule; the chat's `characterSchedules` map is only
+  // a cache, so write the card and let the server re-resolve the chat copy.
   const handleSaveCharacterSchedule = useCallback(
     (savedCharacterId: string, updated: WeekSchedule) => {
-      if (!chat?.id) return;
-      updateMeta.mutate({
-        id: chat.id,
-        characterSchedules: {
-          ...((chatMeta.characterSchedules as Record<string, WeekSchedule> | undefined) ?? {}),
-          [savedCharacterId]: updated,
+      updateCharacter.mutate(
+        {
+          id: savedCharacterId,
+          data: { extensions: { conversationSchedule: updated } },
+          skipVersionSnapshot: true,
         },
-      });
+        {
+          onSuccess: () => {
+            if (!chat?.id) return;
+            // Refresh this chat's cached copy right away so the UI does not wait
+            // for the next server-side resolve.
+            updateMeta.mutate({
+              id: chat.id,
+              characterSchedules: {
+                ...((chatMeta.characterSchedules as Record<string, WeekSchedule> | undefined) ?? {}),
+                [savedCharacterId]: updated,
+              },
+            });
+            void queryClient.invalidateQueries({ queryKey: characterKeys.detail(savedCharacterId) });
+          },
+        },
+      );
     },
-    [chat?.id, chatMeta.characterSchedules, updateMeta],
+    [chat?.id, chatMeta.characterSchedules, queryClient, updateCharacter, updateMeta],
   );
   const summaryContextSize: number = (chatMeta.summaryContextSize as number) ?? 50;
   const [roleplayVideoReviewItems, setRoleplayVideoReviewItems] = useState<ImagePromptReviewItem[]>([]);

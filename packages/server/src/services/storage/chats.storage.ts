@@ -17,6 +17,7 @@ import {
 } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import {
+  characters,
   chats,
   messages,
   messageSwipes,
@@ -150,9 +151,46 @@ function hasConversationSchedules(value: unknown): value is CharacterSchedules {
   return !!value && typeof value === "object" && Object.keys(value as Record<string, unknown>).length > 0;
 }
 
+/**
+ * A chat opts into schedules explicitly, or implicitly by already having a
+ * cached schedule from an earlier opt-in. An unset flag on a chat that has never
+ * used schedules means off, so a character gaining a schedule does not silently
+ * switch it on in every old chat.
+ */
 function areConversationSchedulesEnabled(meta: MetadataPatch): boolean {
   if (typeof meta.conversationSchedulesEnabled === "boolean") return meta.conversationSchedulesEnabled;
   return hasConversationSchedules(meta.characterSchedules);
+}
+
+/** Cheap structural compare, so a resolve that changes nothing skips the metadata write. */
+function sameSchedules(a: CharacterSchedules, b: CharacterSchedules): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => b[key] !== undefined && JSON.stringify(a[key]) === JSON.stringify(b[key]));
+}
+
+/** Read `extensions.conversationSchedule` off a serialized character card. */
+function readCharacterSchedule(rawData: unknown): WeekSchedule | null {
+  if (typeof rawData !== "string") return null;
+  try {
+    const parsed = JSON.parse(rawData) as { extensions?: { conversationSchedule?: unknown } };
+    const schedule = parsed?.extensions?.conversationSchedule;
+    return schedule && typeof schedule === "object" ? (schedule as WeekSchedule) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Serialize a character card with `extensions.conversationSchedule` replaced. */
+function writeCharacterSchedule(rawData: unknown, schedule: WeekSchedule): string | null {
+  if (typeof rawData !== "string") return null;
+  try {
+    const parsed = JSON.parse(rawData) as Record<string, unknown>;
+    const extensions = (parsed.extensions ?? {}) as Record<string, unknown>;
+    return JSON.stringify({ ...parsed, extensions: { ...extensions, conversationSchedule: schedule } });
+  } catch {
+    return null;
+  }
 }
 
 function parseCharacterIds(raw: unknown): string[] {
@@ -440,31 +478,49 @@ export function createChatsStorage(db: DB) {
     await chatLastMessageAtBackfillPromise;
   }
 
+  /**
+   * Read the character-owned schedules for `characterIds`, skipping any that are
+   * stale for `scheduleNow`. The character card is the single source of truth;
+   * chats only cache a resolved copy in `metadata.characterSchedules`.
+   */
   async function collectFreshConversationSchedules(
     characterIds: string[],
-    excludeChatId?: string,
+    scheduleNow: Date,
   ): Promise<CharacterSchedules> {
-    const wanted = new Set(characterIds);
-    const sharedSchedules: CharacterSchedules = {};
-    if (wanted.size === 0) return sharedSchedules;
+    const wanted = Array.from(new Set(characterIds));
+    const freshSchedules: CharacterSchedules = {};
+    if (wanted.length === 0) return freshSchedules;
 
-    const allChats = await db.select().from(chats).orderBy(desc(chats.updatedAt));
-    for (const chat of allChats) {
-      if (chat.id === excludeChatId || chat.mode !== "conversation") continue;
-      const meta = parseMetadata(chat.metadata);
-      if (!areConversationSchedulesEnabled(meta) || !hasConversationSchedules(meta.characterSchedules)) continue;
-      const scheduleNow = toZonedWallClockDate(new Date(), resolveConversationTimeZone(meta));
-
-      for (const [characterId, schedule] of Object.entries(meta.characterSchedules)) {
-        if (!wanted.has(characterId) || sharedSchedules[characterId] || scheduleNeedsRefresh(schedule, scheduleNow))
-          continue;
-        sharedSchedules[characterId] = schedule;
-      }
-
-      if (Object.keys(sharedSchedules).length === wanted.size) break;
+    const rows = await db.select().from(characters).where(inArray(characters.id, wanted));
+    for (const row of rows) {
+      const schedule = readCharacterSchedule(row.data);
+      if (!schedule || scheduleNeedsRefresh(schedule, scheduleNow)) continue;
+      freshSchedules[row.id] = schedule;
     }
 
-    return sharedSchedules;
+    return freshSchedules;
+  }
+
+  /**
+   * Legacy hoist: chats used to own `characterSchedules`. Copy any chat-cached
+   * schedule up to a character that has none yet, so pre-existing routines
+   * survive the move to character-owned storage. One-way and idempotent.
+   */
+  async function hoistLegacyChatSchedules(cachedSchedules: CharacterSchedules): Promise<boolean> {
+    const characterIds = Object.keys(cachedSchedules);
+    if (characterIds.length === 0) return false;
+
+    const rows = await db.select().from(characters).where(inArray(characters.id, characterIds));
+    let hoisted = false;
+    for (const row of rows) {
+      const schedule = cachedSchedules[row.id];
+      if (!schedule || readCharacterSchedule(row.data)) continue;
+      const nextData = writeCharacterSchedule(row.data, schedule);
+      if (!nextData) continue;
+      await db.update(characters).set({ data: nextData }).where(eq(characters.id, row.id));
+      hoisted = true;
+    }
+    return hoisted;
   }
 
   async function cleanupChatGallery(chatId: string): Promise<void> {
@@ -581,7 +637,12 @@ export function createChatsStorage(db: DB) {
       const id = newId();
       const timestamp = resolveTimestamps(timestampOverrides);
       const inheritedSchedules =
-        input.mode === "conversation" ? await collectFreshConversationSchedules(input.characterIds) : {};
+        input.mode === "conversation"
+          ? await collectFreshConversationSchedules(
+              input.characterIds,
+              toZonedWallClockDate(new Date(), resolveConversationTimeZone({})),
+            )
+          : {};
       const metadata: MetadataPatch = {
         summary: null,
         tags: [],
@@ -618,21 +679,28 @@ export function createChatsStorage(db: DB) {
       if (!chat || chat.mode !== "conversation") return {};
 
       const meta = parseMetadata(chat.metadata);
-      if (meta.conversationSchedulesEnabled === false) return {};
-
       const characterIds = parseCharacterIds(chat.characterIds);
       const currentSchedules = hasConversationSchedules(meta.characterSchedules) ? meta.characterSchedules : {};
       const scheduleNow = toZonedWallClockDate(new Date(), resolveConversationTimeZone(meta));
-      const missingOrStaleIds = characterIds.filter((characterId) => {
-        const existing = currentSchedules[characterId];
-        return !existing || scheduleNeedsRefresh(existing, scheduleNow);
-      });
-      if (missingOrStaleIds.length === 0) return currentSchedules;
 
-      const sharedSchedules = await collectFreshConversationSchedules(missingOrStaleIds, id);
-      if (!hasConversationSchedules(sharedSchedules)) return currentSchedules;
+      // Hoist before the opt-in gate, so a chat that is switched off does not
+      // strand the only copy of a pre-existing schedule in its metadata.
+      await hoistLegacyChatSchedules(currentSchedules);
+      if (!areConversationSchedulesEnabled(meta)) return {};
 
-      const nextSchedules: CharacterSchedules = { ...currentSchedules, ...sharedSchedules };
+      // The character card is the source of truth; the chat map is a cache that
+      // can be stale or hold a schedule the character has since replaced.
+      const freshSchedules = await collectFreshConversationSchedules(characterIds, scheduleNow);
+      const nextSchedules: CharacterSchedules = {};
+      for (const characterId of characterIds) {
+        const schedule = freshSchedules[characterId] ?? currentSchedules[characterId];
+        if (schedule) nextSchedules[characterId] = schedule;
+      }
+      if (sameSchedules(currentSchedules, nextSchedules)) return currentSchedules;
+      if (!hasConversationSchedules(nextSchedules)) {
+        await this.patchMetadata(id, { characterSchedules: {} }, { touchUpdatedAt: false });
+        return {};
+      }
       const scheduleWeekStart = firstScheduleWeekStart(nextSchedules);
       await this.patchMetadata(
         id,

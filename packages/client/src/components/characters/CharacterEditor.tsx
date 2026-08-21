@@ -55,6 +55,7 @@ import {
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { ConvoProfileFields } from "./ConvoProfileFields";
+import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorModal";
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
@@ -114,7 +115,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
-import { normalizeAvatarCrop } from "@marinara-engine/shared";
+import { normalizeAvatarCrop, type WeekSchedule } from "@marinara-engine/shared";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
 import { buildCardAssetMarkdown } from "../../lib/card-asset-links";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -1444,29 +1445,45 @@ function ConvoTab({
   characterId?: string;
 }) {
   const ext = formData.extensions;
+  const schedule = ext.conversationSchedule as WeekSchedule | undefined;
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   return (
     // Key by the edited character so transient edit state resets on switch. The
     // editor reuses this component instance while moving between characters.
-    <ConvoProfileFields
-      key={characterId ?? "new-character"}
-      kind={kind}
-      entityKey={characterId ?? "new-character"}
-      baseName={formData.name}
-      displayName={(ext.convoDisplayName as string) ?? ""}
-      onDisplayNameChange={(v) => updateExtension("convoDisplayName", v)}
-      displayNameInCard={ext.convoDisplayNameInCard === true}
-      onDisplayNameInCardChange={(v) => updateExtension("convoDisplayNameInCard", v)}
-      aboutMe={(ext.aboutMe as string) ?? ""}
-      onAboutMeChange={(v) => updateExtension("aboutMe", v)}
-      behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
-      onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
-      imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
-      onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
-      applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
-      onApplyImageInstructionsToNoodleChange={(value) =>
-        updateExtension("applyConversationImageInstructionsToNoodle", value)
-      }
-    />
+    <>
+      <ConvoProfileFields
+        key={characterId ?? "new-character"}
+        kind={kind}
+        entityKey={characterId ?? "new-character"}
+        baseName={formData.name}
+        displayName={(ext.convoDisplayName as string) ?? ""}
+        onDisplayNameChange={(v) => updateExtension("convoDisplayName", v)}
+        displayNameInCard={ext.convoDisplayNameInCard === true}
+        onDisplayNameInCardChange={(v) => updateExtension("convoDisplayNameInCard", v)}
+        aboutMe={(ext.aboutMe as string) ?? ""}
+        onAboutMeChange={(v) => updateExtension("aboutMe", v)}
+        behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
+        onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
+        imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
+        onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
+        applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
+        onApplyImageInstructionsToNoodleChange={(value) =>
+          updateExtension("applyConversationImageInstructionsToNoodle", value)
+        }
+        schedule={schedule}
+        onEditSchedule={kind === "character" && characterId ? () => setScheduleOpen(true) : undefined}
+      />
+      {/* No chatId: the schedule belongs to the character, so the editor works
+        without a chat open. The draft routes fall back to the default connection. */}
+      <CharacterScheduleEditorModal
+        open={scheduleOpen && !!characterId}
+        characterId={characterId ?? ""}
+        characterName={formData.name}
+        schedule={schedule}
+        onClose={() => setScheduleOpen(false)}
+        onSave={(_savedCharacterId, updated) => updateExtension("conversationSchedule", updated)}
+      />
+    </>
   );
 }
 

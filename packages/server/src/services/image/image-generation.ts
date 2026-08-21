@@ -1992,11 +1992,13 @@ export function resolveNovelAiStyleReferenceSecondaryStrength(fidelity: number):
 }
 
 function isNovelAiV4Model(model: string): boolean {
-  return /^nai-diffusion-(?:4(?:-(?:curated-preview|full))?|4-5(?:-(?:curated|full))?)$/i.test(model.trim());
+  return /^nai-diffusion-(?:4(?:-(?:curated-preview|full))?|4-5(?:-(?:curated|full))?|5(?:-(?:curated|full))?)$/i.test(
+    model.trim(),
+  );
 }
 
 function isNovelAiPreciseReferenceModel(model: string): boolean {
-  return /^nai-diffusion-4-5(?:-(?:curated|full))?$/i.test(model.trim());
+  return /^nai-diffusion-(?:4-5|5)(?:-(?:curated|full))?$/i.test(model.trim());
 }
 
 function collectNovelAiReferenceImages(request: ImageGenRequest): string[] {

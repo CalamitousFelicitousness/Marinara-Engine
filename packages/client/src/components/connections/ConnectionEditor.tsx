@@ -695,7 +695,9 @@ export function ConnectionEditor() {
   // Model list for current provider
   const providerModels = useMemo(() => {
     if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
+    if (localProvider === "image_generation" && selectedImageService === "novelai")  return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-")); {
     return MODEL_LISTS[localProvider] ?? [];
+}
   }, [localProvider, selectedVideoProvider]);
 
   // Merge known models with remote models (remote first, deduped)
@@ -2108,6 +2110,7 @@ export function ConnectionEditor() {
               {showModelDropdown && (
                 <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
                   {/* Fetch from API button */}
+                  {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
                   <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
                     <button
                       onClick={(e) => {
@@ -2137,7 +2140,7 @@ export function ConnectionEditor() {
                       </p>
                     )}
                   </div>
-
+                  )}
                   {localProvider === "custom" ? (
                     <div className="p-3">
                       <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">

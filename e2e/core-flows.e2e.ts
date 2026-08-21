@@ -11295,6 +11295,11 @@ test("Conversation Agents exposes matching collapsible command and feature setti
   });
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
+  const otherChatResponse = await page.request.post("/api/chats", {
+    data: { name: "Conversation Agent Settings Other", mode: "conversation", characterIds: [] },
+  });
+  expect(otherChatResponse.ok()).toBeTruthy();
+  const otherChat = (await otherChatResponse.json()) as { id: string };
   let conversationFeaturesInstalled = false;
   let clientLoadAttempts = 0;
   const releaseInitialClientLoad = createDeferred();
@@ -11430,7 +11435,9 @@ test("Conversation Agents exposes matching collapsible command and feature setti
     });
   });
   await page.addInitScript((chatId) => {
+    if (sessionStorage.getItem("marinara-agent-settings-seeded")) return;
     localStorage.setItem("marinara-active-chat-id", chatId);
+    sessionStorage.setItem("marinara-agent-settings-seeded", "true");
   }, chat.id);
 
   try {
@@ -11567,6 +11574,29 @@ test("Conversation Agents exposes matching collapsible command and feature setti
     await expect(drawer.locator('[data-chat-settings-section="conversation-commands"]')).toHaveCount(0);
     await expect(commandsCard).toHaveCount(1);
     expect(clientLoadAttempts).toBe(2);
+
+    await page.evaluate((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), otherChat.id);
+    await page.reload();
+    await page.getByRole("button", { name: "Chat Settings" }).click();
+    drawer = page.locator(".mari-chat-settings-drawer");
+    await openAgentsSection();
+    const otherCallsSettings = drawer.locator("marinara-capability-conversation-calls [data-calls-settings]");
+    const otherCallsHeader = otherCallsSettings.locator("[data-calls-settings-toggle]");
+    await expect(otherCallsHeader).toHaveAttribute("aria-expanded", "false");
+    await expect(otherCallsSettings.getByRole("button", { name: "Audio/Video Calls", exact: true })).toHaveCount(0);
+    await otherCallsHeader.click();
+    await expect(otherCallsHeader).toHaveAttribute("aria-expanded", "true");
+    await expect(otherCallsSettings.getByRole("button", { name: "Audio/Video Calls", exact: true })).toBeVisible();
+
+    await page.evaluate((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.reload();
+    await page.getByRole("button", { name: "Chat Settings" }).click();
+    drawer = page.locator(".mari-chat-settings-drawer");
+    await openAgentsSection();
+    await expect(drawer.locator("marinara-capability-conversation-calls [data-calls-settings-toggle]")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(errors.some((error) => error.includes("Could not load client capability conversation-calls"))).toBe(true);
     expect(
       errors.filter(
@@ -11576,7 +11606,10 @@ test("Conversation Agents exposes matching collapsible command and feature setti
       ),
     ).toEqual([]);
   } finally {
-    await page.request.delete(`/api/chats/${chat.id}`);
+    await Promise.all([
+      page.request.delete(`/api/chats/${chat.id}`),
+      page.request.delete(`/api/chats/${otherChat.id}`),
+    ]);
   }
 });
 

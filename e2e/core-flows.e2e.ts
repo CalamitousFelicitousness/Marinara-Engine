@@ -10770,6 +10770,10 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   }
   await catalogView.getByRole("button", { name: "Install", exact: true }).click();
   await expect(musicPlayer).toBeVisible();
+  const installedToast = page.locator("[data-sonner-toast]").filter({ hasText: "Agent installed. It is ready to use." });
+  await expect(installedToast).toBeVisible();
+  await installedToast.getByRole("button", { name: "Close toast" }).click();
+  await expect(installedToast).toHaveCount(0);
 
   musicPlayerRow = await openMusicPlayerSetting();
   const installedMusicPlayerToggle = musicPlayerRow.locator('input[type="checkbox"]');

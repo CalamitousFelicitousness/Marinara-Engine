@@ -1263,7 +1263,7 @@ export function ConversationView({
             return (
               <div key={item.key} className="relative my-4 flex items-center px-4">
                 <div className="flex-1 border-t border-[var(--border)]/40" />
-                <span className="mari-conversation-transcript-accent mari-accent-animated mx-4 text-[0.6875rem] font-semibold">
+                <span className="mari-conversation-transcript-chrome-text mx-4 text-[0.6875rem] font-semibold">
                   {item.label}
                 </span>
                 <div className="flex-1 border-t border-[var(--border)]/40" />

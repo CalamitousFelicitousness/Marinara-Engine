@@ -1371,8 +1371,8 @@
   color: var(--marinara-chat-chrome-panel-muted);
 }
 
-.mari-conversation-transcript-accent {
-  color: var(--marinara-chat-chrome-button-text-active);
+.mari-conversation-transcript-chrome-text {
+  color: var(--marinara-chat-chrome-text);
 }
 
 .mari-chrome-accent-surface {
@@ -1608,6 +1608,14 @@
 
 .mari-editor-header--with-nav .mari-editor-header-main {
   flex: 0 1 18rem;
+}
+
+.mari-editor-header--with-nav .mari-editor-navigation {
+  flex: 0 1 auto;
+}
+
+.mari-editor-header--with-nav .mari-editor-actions {
+  margin-left: auto;
 }
 
 .mari-settings-search-header {
@@ -1971,6 +1979,8 @@
 }
 
 .mari-editor-tab {
+  height: 2.25rem;
+  min-height: 2.25rem;
   color: var(--marinara-editor-muted);
 }
 
@@ -2009,6 +2019,22 @@
 .mari-editor-navigation-select:focus-visible {
   border-color: var(--marinara-editor-border-strong);
   --tw-ring-color: var(--marinara-editor-focus-ring);
+}
+
+.mari-editor-navigation-menu {
+  border-color: var(--marinara-editor-border);
+  background: var(--marinara-editor-surface-bg);
+  color: var(--marinara-editor-text);
+}
+
+.mari-editor-navigation-menu-item {
+  color: var(--marinara-editor-muted);
+}
+
+.mari-editor-navigation-menu-item:hover,
+.mari-editor-navigation-menu-item[aria-checked="true"] {
+  background: var(--marinara-editor-control-bg-hover);
+  color: var(--marinara-editor-text);
 }
 
 .mari-editor-section-jumps {
@@ -2370,6 +2396,46 @@
   }
 }
 
+@container (min-width: 64.001rem) and (max-width: 96rem) {
+  .mari-editor-tab {
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+    font-size: 0.625rem;
+  }
+
+  .mari-editor-tab > svg {
+    display: none;
+  }
+}
+
+@container (min-width: 64.001rem) {
+  .mari-editor-header--with-nav .mari-editor-action {
+    height: 2.25rem;
+    min-height: 2.25rem;
+    line-height: 1;
+  }
+
+  .mari-editor-header--with-nav .mari-editor-header-main--identity {
+    max-width: 42rem;
+    flex-basis: auto;
+  }
+
+  .mari-editor-header-main--identity .mari-editor-byline {
+    max-width: 24rem;
+    flex: 0 1 24rem;
+  }
+}
+
+@container (min-width: 90rem) {
+  .mari-editor-header--with-nav .mari-editor-header-main--identity {
+    flex-shrink: 0;
+  }
+
+  .mari-editor-header-main--identity .mari-editor-byline {
+    flex-shrink: 0;
+  }
+}
+
 @container (max-width: 64rem) {
   .mari-editor-header--with-nav {
     height: auto;
@@ -2387,11 +2453,14 @@
   }
 
   .mari-editor-header--with-nav .mari-editor-navigation {
-    flex: 1 1 8rem;
+    width: min(8rem, 100%);
+    flex: 1 1 6rem;
+    max-width: 8rem;
   }
 
   .mari-editor-header--with-nav .mari-editor-actions {
     width: auto;
+    margin-left: 0;
     justify-content: flex-end;
     border-top: 0;
     padding-top: 0;

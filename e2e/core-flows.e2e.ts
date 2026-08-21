@@ -104,11 +104,15 @@ async function readCssVariableColor(page: Page, variableName: string) {
 }
 
 async function openEditorSection(editor: Locator, label: string) {
-  const select = editor.getByRole("combobox", { name: "Editor sections" });
+  const compactMenuButton = editor.getByRole("button", { name: "Editor sections" });
   const navigation = editor.getByRole("navigation", { name: "Editor sections" });
-  await expect.poll(async () => (await select.isVisible()) || (await navigation.isVisible())).toBe(true);
-  if (await select.isVisible()) {
-    await select.selectOption({ label });
+  await expect.poll(async () => (await compactMenuButton.isVisible()) || (await navigation.isVisible())).toBe(true);
+  if (await compactMenuButton.isVisible()) {
+    await compactMenuButton.click();
+    await editor
+      .getByRole("menu", { name: "Editor sections" })
+      .getByRole("menuitemradio", { name: label, exact: true })
+      .click();
     return;
   }
   await navigation.getByRole("button", { name: label, exact: true }).click();
@@ -1621,7 +1625,7 @@ test("message deletion uses unified chroma controls and selection states", async
   }
 });
 
-test("Conversation transcript dates and message numbers follow the selected chroma accent", async ({ page }) => {
+test("Conversation transcript dates and message numbers follow Chat Chrome Text Color", async ({ page }) => {
   const chatResponse = await page.request.post("/api/chats", {
     data: { name: "Conversation Transcript Chroma Smoke", mode: "conversation", characterIds: [] },
   });
@@ -1651,17 +1655,24 @@ test("Conversation transcript dates and message numbers follow the selected chro
     await expect(messageNumber).toBeVisible();
     await expect(daySeparator).toBeVisible();
 
-    const transcriptLabels = page.locator(".mari-conversation-transcript-accent");
-    const assertAccent = async (accent: string) => {
-      await setAppAccentColor(page, accent);
-      const expectedColor = await readCssVariableColor(page, "--marinara-chat-chrome-button-text-active");
+    const transcriptLabels = page.locator(".mari-conversation-transcript-chrome-text");
+    const assertChromeText = async (color: string) => {
+      await page.evaluate(async (nextColor) => {
+        const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+          useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
+        };
+        useUIStore.getState().setChatChromeTextColor(nextColor);
+      }, color);
+      const expectedColor = await readCssVariableColor(page, "--marinara-chat-chrome-text");
       for (const label of await transcriptLabels.all()) {
         await expect(label).toHaveCSS("color", expectedColor);
       }
     };
 
-    await assertAccent("#14b8a6");
-    await assertAccent("#3b82f6");
+    await assertChromeText("");
+    await assertChromeText("#14b8a6");
+    await setAppAccentColor(page, "#ec4899");
+    await assertChromeText("#3b82f6");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }
@@ -2994,6 +3005,9 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
 });
 
 test("Character and Persona avatar actions stay separated and visually balanced", async ({ page }) => {
+  if ((page.viewportSize()?.width ?? 768) >= 768) {
+    await page.setViewportSize({ width: 1800, height: 900 });
+  }
   const suffix = Date.now().toString(36);
   const connectionResponse = await page.request.post("/api/connections", {
     data: {
@@ -3068,6 +3082,60 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     await expect(byline).toHaveText(`by ${creator}·v${version}`);
     await expect(editor.locator(".mari-editor-secondary-line .mari-editor-meta")).toHaveCount(0);
 
+    const header = editor.locator(".mari-editor-header--with-nav");
+    const navigation = header.locator(".mari-editor-navigation");
+    const actions = header.locator(".mari-editor-actions");
+    const compactMenuButton = navigation.getByRole("button", { name: "Editor sections" });
+    const desktopTabs = navigation.getByRole("navigation", { name: "Editor sections" });
+    if ((page.viewportSize()?.width ?? 768) < 768) {
+      await expect(compactMenuButton).toBeVisible();
+      const [menuButtonBox, firstActionBox] = await Promise.all([
+        compactMenuButton.boundingBox(),
+        actions.locator(".mari-editor-action").first().boundingBox(),
+      ]);
+      expect(menuButtonBox).not.toBeNull();
+      expect(firstActionBox).not.toBeNull();
+      if (menuButtonBox && firstActionBox) {
+        expect(menuButtonBox.width).toBeLessThanOrEqual(137);
+        expect(
+          Math.abs(menuButtonBox.y + menuButtonBox.height / 2 - (firstActionBox.y + firstActionBox.height / 2)),
+        ).toBeLessThanOrEqual(1);
+        expect(menuButtonBox.x + menuButtonBox.width).toBeLessThanOrEqual(firstActionBox.x);
+      }
+      await compactMenuButton.click();
+      const compactMenu = navigation.getByRole("menu", { name: "Editor sections" });
+      const compactMenuBox = await compactMenu.boundingBox();
+      expect(compactMenuBox).not.toBeNull();
+      if (menuButtonBox && compactMenuBox) {
+        expect(compactMenuBox.y).toBeGreaterThanOrEqual(menuButtonBox.y + menuButtonBox.height - 1);
+      }
+      await compactMenu.getByRole("menuitemradio", { checked: true }).click();
+    } else {
+      await expect(desktopTabs).toBeVisible();
+      const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
+        header.boundingBox(),
+        navigation.boundingBox(),
+        actions.locator(".mari-editor-action").first().boundingBox(),
+        desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
+          tabs.map((tab) => {
+            const box = tab.getBoundingClientRect();
+            return { left: box.left, right: box.right, height: box.height };
+          }),
+        ),
+      ]);
+      expect(headerBox).not.toBeNull();
+      expect(navigationBox).not.toBeNull();
+      if (headerBox && navigationBox) {
+        expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
+      }
+      for (let index = 1; index < tabBoxes.length; index += 1) {
+        expect(tabBoxes[index].left - tabBoxes[index - 1].right).toBeLessThanOrEqual(5);
+      }
+      if (firstActionBox) {
+        for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
+      }
+    }
+
     const [titleLineBox, titleInputBox, bylineBox] = await Promise.all([
       titleLine.boundingBox(),
       titleInput.boundingBox(),
@@ -3082,6 +3150,16 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       expect(Math.abs(titleInputBox.y + titleInputBox.height - (bylineBox.y + bylineBox.height))).toBeLessThanOrEqual(
         2,
       );
+      if ((page.viewportSize()?.width ?? 768) >= 768) {
+        expect(bylineBox.x - (titleInputBox.x + titleInputBox.width)).toBeLessThanOrEqual(10);
+        const navigationBox = await navigation.boundingBox();
+        expect(navigationBox).not.toBeNull();
+        if (navigationBox) expect(navigationBox.x - (bylineBox.x + bylineBox.width)).toBeLessThanOrEqual(24);
+        const creatorFits = await byline
+          .locator(".mari-editor-byline-creator")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth);
+        expect(creatorFits).toBe(true);
+      }
     }
 
     const tile = editor.locator(".mari-editor-avatar-tile");
@@ -11205,9 +11283,7 @@ test("installed package artwork appears in the sidebar and clears immediately on
   expect(errors).toEqual([]);
 });
 
-test("Conversation feature packages expose commands and settings without per-chat attachment", async ({
-  page,
-}, testInfo) => {
+test("Conversation Agents exposes matching collapsible command and feature settings", async ({ page }, testInfo) => {
   test.skip(
     !testInfo.project.name.includes("desktop"),
     "Conversation agent settings regression is covered on desktop.",
@@ -11317,8 +11393,12 @@ test("Conversation feature packages expose commands and settings without per-cha
               if (this.getAttribute("view") !== "settings") return;
               const props = this.capabilityProps || {};
               const enabled = props.metadata?.conversationCallsEnabled === true;
-              this.innerHTML = '<section class="mari-chat-option-field"><span>Conversation Calls</span><button type="button">Audio/Video Calls</button><button type="button" data-crash-capability>Crash capability</button>' + (enabled ? '<span>Call Audio Pipeline</span>' : '') + '</section>';
-              this.querySelector("button:not([data-crash-capability])")?.addEventListener("click", () => {
+              const expanded = props.expanded === true;
+              this.innerHTML = '<section data-calls-settings class="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70"><div class="flex items-start p-3"><button type="button" data-calls-settings-toggle aria-expanded="' + expanded + '" class="-m-1 flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1 text-left"><span>Calls</span><span>Per-chat call access.</span></button></div>' + (expanded ? '<div class="space-y-3 px-3 pb-2"><button type="button" data-calls-enabled>Audio/Video Calls</button><button type="button" data-crash-capability>Crash capability</button>' + (enabled ? '<span>Call Audio Pipeline</span>' : '') + '</div>' : '') + '</section>';
+              this.querySelector("[data-calls-settings-toggle]")?.addEventListener("click", () => {
+                props.onExpandedChange?.(!expanded);
+              });
+              this.querySelector("[data-calls-enabled]")?.addEventListener("click", () => {
                 props.updateMetadata?.({ conversationCallsEnabled: !enabled });
               });
               this.querySelector("[data-crash-capability]")?.addEventListener("click", () => {
@@ -11367,16 +11447,19 @@ test("Conversation feature packages expose commands and settings without per-cha
       }
       await expect(agentsSection).toHaveAttribute("aria-expanded", "true");
     };
-    const commandsSection = getSectionHeader("Commands");
-    await expect(commandsSection).toHaveCount(1);
-    await expect(commandsSection).toHaveAttribute("aria-expanded", "false");
+    await expect(drawer.locator('[data-chat-settings-section="conversation-commands"]')).toHaveCount(0);
+    await openAgentsSection();
+    const agentsSection = drawer.locator('[data-chat-settings-section="conversation-agents"]');
+    const commandsCard = agentsSection.locator(`#chat-settings-agent-menu-${chat.id}-conversation-commands`);
+    const commandsCardHeader = commandsCard.locator("button[aria-expanded]").first();
+    await expect(commandsCard).toHaveCount(1);
+    await expect(commandsCardHeader).toHaveAttribute("aria-expanded", "false");
     await expect(drawer.getByText("Schedule Updates", { exact: true })).toHaveCount(0);
-    await commandsSection.click();
-    await expect(commandsSection).toHaveAttribute("aria-expanded", "true");
+    await commandsCardHeader.click();
+    await expect(commandsCardHeader).toHaveAttribute("aria-expanded", "true");
     await expect(drawer.getByText("Schedule Updates", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Memories", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Selfies", { exact: true })).toHaveCount(0);
-    await openAgentsSection();
     await expect(drawer.getByText("Illustrator Settings", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Conversation Calls", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Enable Agents", { exact: true })).toHaveCount(0);
@@ -11386,8 +11469,8 @@ test("Conversation feature packages expose commands and settings without per-cha
     await page.reload();
     await page.getByRole("button", { name: "Chat Settings" }).click();
     drawer = page.locator(".mari-chat-settings-drawer");
-    await expect(getSectionHeader("Commands")).toHaveAttribute("aria-expanded", "true");
     await openAgentsSection();
+    await expect(commandsCardHeader).toHaveAttribute("aria-expanded", "true");
     await expect(
       drawer.locator('[data-capability-client-state="loading"][data-capability-package-id="conversation-calls"]'),
     ).toBeVisible();
@@ -11401,7 +11484,7 @@ test("Conversation feature packages expose commands and settings without per-cha
     expect((await clientLoadRetry.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     await clientLoadRetry.click();
     await expect(clientLoadFailure).toHaveCount(0);
-    await expect(getSectionHeader("Commands")).toBeVisible();
+    await expect(commandsCard).toBeVisible();
     await expect(drawer.getByText("Selfies", { exact: true })).toBeVisible();
     await expect(drawer.getByText("8-Ball Pool", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Chess", { exact: true })).toBeVisible();
@@ -11409,9 +11492,19 @@ test("Conversation feature packages expose commands and settings without per-cha
     await expect(drawer.getByText("Rock-Paper-Scissors", { exact: true })).toBeVisible();
     await expect(drawer.getByText("Tic-Tac-Toe", { exact: true })).toBeVisible();
     await expect(drawer.getByText("UNO", { exact: true })).toBeVisible();
-    await expect(drawer.getByText("Illustrator Settings", { exact: true })).toBeVisible();
-    await expect(drawer.getByText("Conversation Calls", { exact: true })).toBeVisible();
+    const illustratorCard = agentsSection.locator(`#chat-settings-agent-menu-${chat.id}-illustrator`);
+    const illustratorCardHeader = illustratorCard.locator("button[aria-expanded]").first();
+    await expect(illustratorCard).toBeVisible();
+    await expect(illustratorCardHeader).toHaveAttribute("aria-expanded", "false");
+    await expect(drawer.getByText("Image generation settings", { exact: true })).toHaveCount(0);
     const callsCapability = drawer.locator("marinara-capability-conversation-calls");
+    const callsSettings = callsCapability.locator("[data-calls-settings]");
+    const callsSettingsHeader = callsSettings.locator("[data-calls-settings-toggle]");
+    await expect(callsSettings).toBeVisible();
+    await expect(callsSettingsHeader).toHaveAttribute("aria-expanded", "false");
+    await expect(callsSettings.getByText("Calls", { exact: true })).toBeVisible();
+    await expect(callsSettings.getByText("Per-chat call access.", { exact: true })).toBeVisible();
+    await expect(callsSettings.getByText(/Adds live audio/iu)).toHaveCount(0);
     await expect(callsCapability).toHaveAttribute("lang", "en");
     await expect(callsCapability).toHaveAttribute("dir", "ltr");
     await expect
@@ -11425,20 +11518,40 @@ test("Conversation feature packages expose commands and settings without per-cha
       )
       .toEqual({ locale: "en", direction: "ltr" });
     await expect(drawer.getByText("Call Audio Pipeline", { exact: true })).toHaveCount(0);
+    await expect(drawer.getByRole("button", { name: "Audio/Video Calls", exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Enable Agents", { exact: true })).toHaveCount(0);
     await expect(drawer.getByText("Agent Suite", { exact: true })).toHaveCount(0);
-    const illustratorSettings = drawer.getByText("Illustrator Settings", { exact: true });
-    const callsSettings = drawer.getByText("Conversation Calls", { exact: true });
-    const callsSettingsHandle = await callsSettings.elementHandle();
-    if (!callsSettingsHandle) throw new Error("Conversation Calls settings did not render");
-    expect(
-      await illustratorSettings.evaluate(
-        (illustrator, calls) =>
-          calls instanceof Node &&
-          Boolean(illustrator.compareDocumentPosition(calls) & Node.DOCUMENT_POSITION_FOLLOWING),
-        callsSettingsHandle,
+    const [commandsSurfaceStyle, illustratorSurfaceStyle, callsSurfaceStyle] = await Promise.all(
+      [commandsCard, illustratorCard, callsSettings].map((surface) =>
+        surface.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            backgroundColor: style.backgroundColor,
+            borderColor: style.borderColor,
+            borderRadius: style.borderRadius,
+          };
+        }),
       ),
-    ).toBe(true);
+    );
+    expect(illustratorSurfaceStyle).toEqual(commandsSurfaceStyle);
+    expect(callsSurfaceStyle).toEqual(commandsSurfaceStyle);
+    const [commandsBox, illustratorBox, callsBox] = await Promise.all([
+      commandsCard.boundingBox(),
+      illustratorCard.boundingBox(),
+      callsSettings.boundingBox(),
+    ]);
+    expect(commandsBox).not.toBeNull();
+    expect(illustratorBox).not.toBeNull();
+    expect(callsBox).not.toBeNull();
+    if (commandsBox && illustratorBox && callsBox) {
+      expect(commandsBox.y).toBeLessThan(illustratorBox.y);
+      expect(illustratorBox.y).toBeLessThan(callsBox.y);
+    }
+    await illustratorCardHeader.click();
+    await expect(illustratorCardHeader).toHaveAttribute("aria-expanded", "true");
+    await expect(drawer.getByText("Image generation settings", { exact: true })).toBeVisible();
+    await callsSettingsHeader.click();
+    await expect(callsSettingsHeader).toHaveAttribute("aria-expanded", "true");
     await drawer.getByRole("button", { name: "Audio/Video Calls", exact: true }).click();
     await expect(drawer.getByText("Call Audio Pipeline", { exact: true })).toBeVisible();
     await drawer.getByRole("button", { name: "Crash capability", exact: true }).click();
@@ -11448,8 +11561,11 @@ test("Conversation feature packages expose commands and settings without per-cha
     expect((await runtimeRetry.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     await runtimeRetry.click();
     await expect(runtimeFailure).toHaveCount(0);
-    await expect(drawer.getByText("Conversation Calls", { exact: true })).toBeVisible();
-    await expect(getSectionHeader("Commands")).toHaveCount(1);
+    await expect(callsSettings).toBeVisible();
+    await expect(callsSettingsHeader).toHaveAttribute("aria-expanded", "true");
+    await expect(drawer.getByText("Call Audio Pipeline", { exact: true })).toBeVisible();
+    await expect(drawer.locator('[data-chat-settings-section="conversation-commands"]')).toHaveCount(0);
+    await expect(commandsCard).toHaveCount(1);
     expect(clientLoadAttempts).toBe(2);
     expect(errors.some((error) => error.includes("Could not load client capability conversation-calls"))).toBe(true);
     expect(

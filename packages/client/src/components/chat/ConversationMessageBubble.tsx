@@ -168,7 +168,7 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
                 </div>
               )}
               {(showActions || forceShowActions || showMessageNumbers) && messageIndex != null && (
-                <span className="mari-conversation-transcript-accent mari-accent-animated mt-0.5 block text-center text-[0.5rem] font-medium select-none">
+                <span className="mari-conversation-transcript-chrome-text mt-0.5 block text-center text-[0.5rem] font-medium select-none">
                   #{messageIndex}
                 </span>
               )}
@@ -200,7 +200,7 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
                 />
               )}
               {!hideTimestamp && !isUser && (
-                <span className="mari-message-timestamp mari-conversation-transcript-accent mari-accent-animated text-[0.6875rem]">
+                <span className="mari-message-timestamp mari-conversation-transcript-chrome-text text-[0.6875rem]">
                   {formatTimestamp(message.createdAt)}
                 </span>
               )}

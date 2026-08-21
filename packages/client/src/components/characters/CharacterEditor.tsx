@@ -1034,7 +1034,7 @@ export function CharacterEditor() {
 
       {/* ── Header ── */}
       <div className="mari-editor-header mari-editor-header--with-nav">
-        <div className="mari-editor-header-main">
+        <div className="mari-editor-header-main mari-editor-header-main--identity">
           <button
             type="button"
             onClick={handleClose}

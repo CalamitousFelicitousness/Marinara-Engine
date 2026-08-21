@@ -551,6 +551,7 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 // ── Provider Implementations ──
 
 const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const SWARMUI_MAX_TRACKED_IMAGES = 16;
 const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
 const NANOGPT_MAX_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -3467,7 +3468,12 @@ async function generateSwarmUiImageReference(
       if (!isRecord(message)) return;
       if (typeof message.image === "string" && message.image.trim()) {
         const index = Number.parseInt(String(message.batch_index ?? images.size), 10);
-        images.set(Number.isNaN(index) ? images.size : index, message.image.trim());
+        const resolvedIndex = Number.isNaN(index) ? images.size : index;
+        if (!images.has(resolvedIndex) && images.size >= SWARMUI_MAX_TRACKED_IMAGES) {
+          finish(new Error("SwarmUI generation returned too many image messages"));
+          return;
+        }
+        images.set(resolvedIndex, message.image.trim());
       }
       if (Array.isArray(message.discard_indices)) {
         for (const index of message.discard_indices) {

@@ -28,8 +28,9 @@ function encodeWebSocketText(value: unknown): Buffer {
   return Buffer.concat([header, payload]);
 }
 
-function readClientTextFrame(buffer: Buffer): { payload: string; consumed: number } | null {
+function readClientFrame(buffer: Buffer): { payload: string | null; consumed: number } | null {
   if (buffer.length < 2) return null;
+  const opcode = buffer[0]! & 0x0f;
   let payloadLength = buffer[1]! & 0x7f;
   let cursor = 2;
   if (payloadLength === 126) {
@@ -52,7 +53,7 @@ function readClientTextFrame(buffer: Buffer): { payload: string; consumed: numbe
   if (mask) {
     for (let index = 0; index < payload.length; index++) payload[index] ^= mask[index % 4]!;
   }
-  return { payload: payload.toString("utf8"), consumed: cursor + payloadLength };
+  return { payload: opcode === 0x1 ? payload.toString("utf8") : null, consumed: cursor + payloadLength };
 }
 
 const server = createServer((request, response) => {
@@ -92,13 +93,17 @@ server.on("upgrade", (request, socket, head) => {
   let generationStarted = false;
   const consume = (chunk?: Buffer) => {
     if (chunk) buffered = Buffer.concat([buffered, chunk]);
-    const frame = readClientTextFrame(buffered);
-    if (!frame || generationStarted) return;
-    generationStarted = true;
-    generationBody = JSON.parse(frame.payload) as Record<string, unknown>;
-    setTimeout(() => socket.write(encodeWebSocketText({ gen_progress: { overall_percent: 0.5 } })), 60);
-    setTimeout(() => socket.write(encodeWebSocketText({ image: "View/generated.png", batch_index: "0" })), 120);
-    setTimeout(() => socket.write(encodeWebSocketText({ socket_intention: "close" })), 130);
+    while (!generationStarted) {
+      const frame = readClientFrame(buffered);
+      if (!frame) return;
+      buffered = buffered.subarray(frame.consumed);
+      if (frame.payload === null) continue;
+      generationStarted = true;
+      generationBody = JSON.parse(frame.payload) as Record<string, unknown>;
+      setTimeout(() => socket.write(encodeWebSocketText({ gen_progress: { overall_percent: 0.5 } })), 60);
+      setTimeout(() => socket.write(encodeWebSocketText({ image: "View/generated.png", batch_index: "0" })), 120);
+      setTimeout(() => socket.write(encodeWebSocketText({ socket_intention: "close" })), 130);
+    }
   };
   consume();
   socket.on("data", consume);

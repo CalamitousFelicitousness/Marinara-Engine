@@ -70,6 +70,7 @@ import {
   shouldExecuteQuickPostAsCommand,
 } from "../../packages/client/src/lib/slash-commands.js";
 import { getAvatarCropStyle } from "../../packages/client/src/lib/utils.js";
+import { rememberBoundedSetValue } from "../../packages/client/src/lib/bounded-set.js";
 import { filterCustomEmojisByName } from "../../packages/client/src/lib/custom-emoji.js";
 import {
   shouldSuppressAutonomousMessages,
@@ -5452,6 +5453,7 @@ const playwrightWebServer = Array.isArray(playwrightConfig.webServer)
   : playwrightConfig.webServer;
 assert.equal(playwrightWebServer?.env?.DEV_PRESERVE_SHARED_DIST, "true");
 assert.match(playwrightWebServer?.command ?? "", /e2e\/start-servers\.mjs/u);
+assert.deepEqual(playwrightWebServer?.gracefulShutdown, { signal: "SIGTERM", timeout: 10_000 });
 const desktopPlaywrightProject = playwrightConfig.projects?.find((project) => project.name === "desktop-chromium");
 const mobilePlaywrightProject = playwrightConfig.projects?.find((project) => project.name === "mobile-chromium");
 assert.ok(desktopPlaywrightProject);
@@ -5466,6 +5468,12 @@ assert.match(playwrightServerSource, /startProject\("mobile", mobileClientPort, 
 assert.match(playwrightServerSource, /startProject\("desktop", desktopClientPort, desktopServerPort\)/u);
 assert.match(playwrightServerSource, /resolve\(dataRoot, name\)/u);
 assert.match(playwrightServerSource, /DATA_DIR:\s*dataDir/u);
+
+const boundedValues = new Set(["first", "second"]);
+rememberBoundedSetValue(boundedValues, "third", 2);
+assert.deepEqual([...boundedValues], ["second", "third"]);
+rememberBoundedSetValue(boundedValues, "second", 2);
+assert.deepEqual([...boundedValues], ["third", "second"]);
 
 const appSource = readFileSync(new URL("../../packages/client/src/App.tsx", import.meta.url), "utf8");
 const homeBrowserHubSource = readFileSync(

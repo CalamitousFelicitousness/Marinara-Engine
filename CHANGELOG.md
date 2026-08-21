@@ -18,6 +18,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Long-running sessions now bound chat notification history and release persisted reasoning state from server memory, while Playwright shuts down its owned test servers cleanly (#5353).
 - Claude Subscription custom parameters can no longer override the provider's text-only Agent SDK isolation; model-generation overrides remain supported while tool, process, environment, filesystem, and session controls stay provider-owned (#5351).
 - Manual and range-backfilled Roleplay summaries now participate in semantic retrieval alongside automatic summaries, keeping relevant history without pinning every manual entry in context (#5346).
 - SwarmUI image generation now uses its progress-streaming WebSocket route, preventing long generations from losing an otherwise idle HTTP connection (#5347).

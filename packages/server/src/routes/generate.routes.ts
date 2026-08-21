@@ -10528,6 +10528,7 @@ export async function generateRoutes(app: FastifyInstance) {
           : "Generation failed";
       sendSseEvent(reply, { type: "error", data: message });
     } finally {
+      encryptedReasoningCache.delete(input.chatId);
       for (const runKey of customLorebookReadBehindRunKeys) {
         activeCustomLorebookReadBehindRuns.delete(runKey);
       }

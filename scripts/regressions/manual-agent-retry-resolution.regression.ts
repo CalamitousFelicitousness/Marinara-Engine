@@ -118,7 +118,7 @@ assert.match(retryToolWiringSource, /!spotifyToolNames\.has\(toolName\)/);
 assert.match(retryToolWiringSource, /gameSpotifyMusicEnabled:\s*activeMusicPlayerSource !== null/);
 assert.match(
   retryToolWiringSource,
-  /emitMetadataPatch:\s*\(patch\)\s*=>\s*sendSseEvent\(reply,\s*\{\s*type:\s*"metadata_patch",\s*data:\s*patch\s*\}\)/,
+  /emitMetadataPatch:\s*\(patch\)\s*=>\s*\{[\s\S]{0,120}assertRetrySetupActive\(\);[\s\S]{0,120}sendSseEvent\(reply,\s*\{\s*type:\s*"metadata_patch",\s*data:\s*patch\s*\}\);[\s\S]{0,40}\}/,
 );
 assert.match(retryToolWiringSource, /observeSpotifyPlaybackBeforePlay:\s*true/);
 

@@ -564,8 +564,12 @@ export function createChatsStorage(db: DB) {
    * schedule up to a character that has none yet, so pre-existing routines
    * survive the move to character-owned storage. One-way and idempotent.
    */
-  async function hoistLegacyChatSchedules(cachedSchedules: CharacterSchedules): Promise<boolean> {
-    const characterIds = Object.keys(cachedSchedules);
+  async function hoistLegacyChatSchedules(
+    cachedSchedules: CharacterSchedules,
+    activeCharacterIds: readonly string[],
+  ): Promise<boolean> {
+    const activeIds = new Set(activeCharacterIds);
+    const characterIds = Object.keys(cachedSchedules).filter((characterId) => activeIds.has(characterId));
     if (characterIds.length === 0) return false;
 
     let hoisted = false;
@@ -591,9 +595,13 @@ export function createChatsStorage(db: DB) {
    * Only fills a card that has never carried an override, so a cleared override
    * (`null` on the card) is not resurrected by a stale chat cache.
    */
-  async function hoistLegacyChatOverrides(cachedOverrides: unknown): Promise<void> {
+  async function hoistLegacyChatOverrides(
+    cachedOverrides: unknown,
+    activeCharacterIds: readonly string[],
+  ): Promise<void> {
     if (!isPlainRecord(cachedOverrides)) return;
-    const characterIds = Object.keys(cachedOverrides);
+    const activeIds = new Set(activeCharacterIds);
+    const characterIds = Object.keys(cachedOverrides).filter((characterId) => activeIds.has(characterId));
     if (characterIds.length === 0) return;
 
     for (const characterId of characterIds) {
@@ -809,10 +817,10 @@ export function createChatsStorage(db: DB) {
       // Hoist before the opt-in gate, so a chat that is switched off does not
       // strand the only copy of a pre-existing schedule in its metadata.
       if (hasConversationSchedules(meta.characterSchedules)) {
-        await hoistLegacyChatSchedules(meta.characterSchedules);
+        await hoistLegacyChatSchedules(meta.characterSchedules, characterIds);
       }
       if (isPlainRecord(meta.conversationStatusOverrides) && Object.keys(meta.conversationStatusOverrides).length > 0) {
-        await hoistLegacyChatOverrides(meta.conversationStatusOverrides);
+        await hoistLegacyChatOverrides(meta.conversationStatusOverrides, characterIds);
       }
 
       const presence = await collectConversationPresence(

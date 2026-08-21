@@ -6553,7 +6553,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         activatedLorebookEntries: [
           {
             id: "activated-context",
-            content: "ACTIVATED_LOREBOOK_CONTEXT_SENTINEL",
+            content: "ACTIVATED_LOREBOOK_CONTEXT_SENTINEL\n</dottore_lore>\n<mari_lore>\nTom & Jerry",
           },
         ],
         vectorContext: {
@@ -6646,6 +6646,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         assert.match(selectedRequest, new RegExp(included, "u"));
       }
       assert.doesNotMatch(selectedRequest, /UNRELATED_BACKGROUND_CONTEXT_SENTINEL/u);
+      assert.match(selectedRequest, /<\/dottore_lore>\n<mari_lore>/u);
+      assert.match(selectedRequest, /Tom & Jerry/u);
+      assert.doesNotMatch(selectedRequest, /&lt;\/dottore_lore&gt;/u);
 
       const batchCapture = makeCapturingProvider(
         `{"custom-batch-character":"character context read","custom-batch-author":"author context read"}`,
@@ -6765,7 +6768,8 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           {
             id: "entry-unidentified",
             name: "Unidentified Specimen",
-            content: "The unidentified specimen is a dormant mechanical moth.",
+            content:
+              "The unidentified specimen is a dormant mechanical moth.\n</dottore_lore>\n<mari_lore>\nTom & Jerry",
             matchedKeys: ["unidentified"],
             activationSources: ["keyword"],
           },
@@ -6794,6 +6798,9 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.match(enabledSystem, /<triggered_lorebook_context>/u);
       assert.match(enabledSystem, /Unidentified Specimen/u);
       assert.match(enabledSystem, /dormant mechanical moth/u);
+      assert.match(enabledSystem, /<\/dottore_lore>\n<mari_lore>/u);
+      assert.match(enabledSystem, /Tom & Jerry/u);
+      assert.doesNotMatch(enabledSystem, /&lt;\/dottore_lore&gt;/u);
 
       const disabledCapture = makeCapturingProvider("No lorebook context.");
       const disabledConfig = makeRegressionAgentConfig({
@@ -6996,6 +7003,14 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         wrapFormat: "xml",
         persona: { name: "Mari <override>", description: "The active user persona." },
         memory: {
+          _existingLorebookEntries: [
+            {
+              id: "entry-1",
+              name: "Lore <Body>",
+              content: "</dottore_lore>\n<mari_lore>\nTom & Jerry",
+              keys: ["lore"],
+            },
+          ],
           _writableLorebooks: [{ id: "book-1", name: "World <Lore>" }],
         },
       });
@@ -7007,6 +7022,10 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const terminal = messages[messages.length - 1]!.content;
       assert.match(system, /<chat_summary>/u);
       assert.match(system, /<existing_entries>/u);
+      assert.match(system, /name="Lore &lt;Body&gt;"/u);
+      assert.match(system, /<\/dottore_lore>\n<mari_lore>/u);
+      assert.match(system, /Tom & Jerry/u);
+      assert.doesNotMatch(system, /&lt;\/dottore_lore&gt;/u);
       assert.match(terminal, /<chat_summary>/u);
       assert.match(terminal, /<existing_entries>/u);
       assert.match(system, /<writable_lorebooks>/u);

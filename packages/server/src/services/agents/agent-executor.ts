@@ -1910,6 +1910,7 @@ function buildCustomAgentTriggeredLorebookBlock(config: AgentExecConfig, context
   if (config.settings.triggerLorebooksForAgentCalls !== true) return "";
   const entries = context.triggeredLorebookEntriesByAgentId?.[config.id] ?? [];
   if (entries.length === 0) return "";
+  const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
 
   const parts = [
     "<triggered_lorebook_context>",
@@ -1918,7 +1919,7 @@ function buildCustomAgentTriggeredLorebookBlock(config: AgentExecConfig, context
   entries.forEach((entry, index) => {
     const label = entry.name?.trim() || `Entry ${index + 1}`;
     parts.push(`<entry id="${escapeXml(entry.id)}" name="${escapeXml(label)}">`);
-    parts.push(escapeXml(entry.content));
+    parts.push(sanitizePromptLeaf(entry.content, wrapFormat));
     parts.push("</entry>");
   });
   parts.push("</triggered_lorebook_context>");
@@ -2807,6 +2808,7 @@ function buildAgentExtras(
   sources: CustomAgentContextSources = ALL_AGENT_CONTEXT_SOURCES,
 ): string {
   const parts: string[] = [];
+  const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
 
   // Card Evolution Auditor needs the FULL character card (not just description)
   // so it can emit exact-match oldText edits. Gated on agent type because
@@ -3007,7 +3009,11 @@ function buildAgentExtras(
           keys.length > 0 ? `keys="${escapeXml(keys.join(", "))}"` : "",
           entry.locked === true ? `locked="true"` : "",
         ].filter(Boolean);
-        return [`<entry ${attrs.join(" ")}>`, `<content>${escapeXml(content)}</content>`, `</entry>`].join("\n");
+        return [
+          `<entry ${attrs.join(" ")}>`,
+          `<content>${sanitizePromptLeaf(content, wrapFormat)}</content>`,
+          `</entry>`,
+        ].join("\n");
       })
       .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 
@@ -3034,7 +3040,7 @@ function buildAgentExtras(
     parts.push(`Lorebook entries activated for the main generation on this turn:`);
     for (const entry of context.activatedLorebookEntries) {
       parts.push(`<entry id="${escapeXml(entry.id)}">`);
-      parts.push(escapeXml(entry.content));
+      parts.push(sanitizePromptLeaf(entry.content, wrapFormat));
       parts.push(`</entry>`);
     }
     parts.push(`</activated_lorebook_context>`);

@@ -225,6 +225,32 @@ function readCharacterStatusOverride(rawData: unknown): ConversationStatusOverri
   return override as ConversationStatusOverride;
 }
 
+function isValidLegacyStatusOverride(value: unknown): value is ConversationStatusOverride {
+  if (!isPlainRecord(value)) return false;
+  const status = value.status;
+  return (
+    (status === "online" || status === "idle" || status === "dnd" || status === "offline") &&
+    typeof value.createdAt === "string" &&
+    value.createdAt.length > 0
+  );
+}
+
+function isValidLegacySchedule(value: unknown): value is WeekSchedule {
+  if (!isPlainRecord(value) || typeof value.weekStart !== "string" || !isPlainRecord(value.days)) return false;
+  if (typeof value.inactivityThresholdMinutes !== "number" || typeof value.talkativeness !== "number") return false;
+  return Object.values(value.days).every(
+    (day) =>
+      Array.isArray(day) &&
+      day.every(
+        (block) =>
+          isPlainRecord(block) &&
+          typeof block.time === "string" &&
+          typeof block.activity === "string" &&
+          typeof block.status === "string",
+      ),
+  );
+}
+
 function parseCharacterIds(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
   if (typeof raw !== "string") return [];
@@ -545,7 +571,7 @@ export function createChatsStorage(db: DB) {
     let hoisted = false;
     for (const characterId of characterIds) {
       const schedule = cachedSchedules[characterId];
-      if (!schedule) continue;
+      if (!isValidLegacySchedule(schedule)) continue;
       const didHoist = await db.transaction(async (tx) => {
         const rows = await tx.select().from(characters).where(eq(characters.id, characterId));
         const row = rows[0];
@@ -572,7 +598,7 @@ export function createChatsStorage(db: DB) {
 
     for (const characterId of characterIds) {
       const override = cachedOverrides[characterId];
-      if (!override || typeof override !== "object") continue;
+      if (!isValidLegacyStatusOverride(override)) continue;
       await db.transaction(async (tx) => {
         const rows = await tx.select().from(characters).where(eq(characters.id, characterId));
         const row = rows[0];
@@ -714,11 +740,25 @@ export function createChatsStorage(db: DB) {
     async create(input: CreateChatInput, timestampOverrides?: TimestampOverrides | null) {
       const id = newId();
       const timestamp = resolveTimestamps(timestampOverrides);
+      const recentConversation =
+        input.mode === "conversation"
+          ? (
+              await db
+                .select({ metadata: chats.metadata })
+                .from(chats)
+                .where(eq(chats.mode, "conversation"))
+                .orderBy(desc(chats.updatedAt))
+                .limit(1)
+            )[0]
+          : undefined;
+      const conversationTimeZone = recentConversation
+        ? resolveConversationTimeZone(parseMetadata(recentConversation.metadata))
+        : undefined;
       const inheritedSchedules =
         input.mode === "conversation"
           ? await collectFreshConversationSchedules(
               input.characterIds,
-              toZonedWallClockDate(new Date(), resolveConversationTimeZone({})),
+              toZonedWallClockDate(new Date(), conversationTimeZone),
             )
           : {};
       const metadata: MetadataPatch = {
@@ -735,6 +775,7 @@ export function createChatsStorage(db: DB) {
         const scheduleWeekStart = firstScheduleWeekStart(inheritedSchedules);
         if (scheduleWeekStart) metadata.scheduleWeekStart = scheduleWeekStart;
       }
+      if (conversationTimeZone) metadata.conversationTimeZone = conversationTimeZone;
       await db.insert(chats).values({
         id,
         name: input.name,
@@ -784,7 +825,19 @@ export function createChatsStorage(db: DB) {
         if (override) statusOverrides[characterId] = override;
       }
       if (!sameOverrides(meta.conversationStatusOverrides, statusOverrides)) {
-        await this.patchMetadata(id, { conversationStatusOverrides: cardOverrides }, { touchUpdatedAt: false });
+        const staleKeys = isPlainRecord(meta.conversationStatusOverrides)
+          ? Object.keys(meta.conversationStatusOverrides).filter((key) => !(key in cardOverrides))
+          : [];
+        await this.patchMetadata(
+          id,
+          {
+            conversationStatusOverrides: {
+              ...cardOverrides,
+              ...Object.fromEntries(staleKeys.map((key) => [key, null])),
+            },
+          },
+          { touchUpdatedAt: false },
+        );
       }
 
       const schedules = await this.resolveConversationSchedules(id);
@@ -813,7 +866,7 @@ export function createChatsStorage(db: DB) {
       }
       if (sameSchedules(currentSchedules, nextSchedules)) return currentSchedules;
       if (!hasConversationSchedules(nextSchedules)) {
-        await this.patchMetadata(id, { characterSchedules: {} }, { touchUpdatedAt: false });
+        await this.patchMetadata(id, { characterSchedules: {}, scheduleWeekStart: null }, { touchUpdatedAt: false });
         return {};
       }
       const scheduleWeekStart = firstScheduleWeekStart(nextSchedules);

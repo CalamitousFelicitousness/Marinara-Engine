@@ -410,6 +410,7 @@ export function ConnectionEditor() {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modelSearchInputRef = useRef<HTMLInputElement>(null);
   const comfyWorkflowTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const fetchScopeRef = useRef(0);
 
   // Remote models fetched from provider API
   const [remoteModels, setRemoteModels] = useState<RemoteConnectionModel[]>([]);
@@ -697,9 +698,7 @@ export function ConnectionEditor() {
     if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
     if (localProvider === "image_generation" && selectedImageService === "novelai")
       return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-"));
-    {
-      return MODEL_LISTS[localProvider] ?? [];
-    }
+    return MODEL_LISTS[localProvider] ?? [];
   }, [localProvider, selectedVideoProvider, selectedImageService]);
 
   // Merge known models with remote models (remote first, deduped)
@@ -730,6 +729,7 @@ export function ConnectionEditor() {
   useEffect(() => {
     setRemoteModels([]);
     setRemoteLoras([]);
+    fetchScopeRef.current++;
     setFetchError(null);
   }, [localProvider, selectedImageService]);
 
@@ -1256,8 +1256,10 @@ export function ConnectionEditor() {
         return;
       }
     }
+    const scope = fetchScopeRef.current;
     fetchModels.mutate(connectionDetailId, {
       onSuccess: (data) => {
+        if (fetchScopeRef.current !== scope) return;
         const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
         setRemoteModels(result.models);
         setRemoteLoras(result.loras ?? []);
@@ -1268,6 +1270,7 @@ export function ConnectionEditor() {
         });
       },
       onError: (err) => {
+        if (fetchScopeRef.current !== scope) return;
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
       },
     });

@@ -1918,7 +1918,9 @@ async function generateArli(baseUrl: string, apiKey: string, request: ImageGenRe
 }
 
 const NOVELAI_V4_PROMPT_HINT =
-  "NovelAI V4/V4.5/V5 prompts support roughly 512 T5 tokens and reject most Unicode prompt characters; try a shorter ASCII prompt without emoji or non-Latin text.";
+  "NovelAI V4/V4.5 prompts support roughly 512 T5 tokens and reject most Unicode prompt characters; try a shorter ASCII prompt without emoji or non-Latin text.";
+const NOVELAI_V5_PROMPT_HINT =
+  "NovelAI V5 prompts support up to 1471 tokens (Full) or 703 tokens (Curated) and accept Unicode text including Japanese and Chinese; try a shorter prompt.";
 const NOVELAI_SIZE_MULTIPLE = 64;
 const NOVELAI_MIN_DIMENSION = 64;
 const NOVELAI_MAX_DIMENSION = 2048;
@@ -1983,7 +1985,9 @@ export function resolveNovelAiRequestSize(
   defaults: NovelAiDefaults = resolveNovelAiDefaults(request),
 ): { width: number; height: number } {
   const model = request.model || "nai-diffusion-4-5-full";
-  const scenePrompt = isNovelAiV4Model(model) ? sanitizeNovelAiV4Prompt(request.prompt) : request.prompt;
+  const scenePrompt = isNovelAiV4Model(model)
+    ? sanitizeNovelAiV4Prompt(request.prompt, isNovelAiV5Model(model))
+    : request.prompt;
   return resolveNovelAiSize(request, scenePrompt, defaults);
 }
 
@@ -1997,8 +2001,12 @@ function isNovelAiV4Model(model: string): boolean {
   );
 }
 
+function isNovelAiV5Model(model: string): boolean {
+  return /^nai-diffusion-5(?:-(?:curated|full))?$/i.test(model.trim());
+}
+
 function isNovelAiPreciseReferenceModel(model: string): boolean {
-  return /^nai-diffusion-(?:4-5|5)(?:-(?:curated|full))?$/i.test(model.trim());
+  return /^nai-diffusion-(?:4-5)(?:-(?:curated|full))?$/i.test(model.trim());
 }
 
 function collectNovelAiReferenceImages(request: ImageGenRequest): string[] {
@@ -2110,7 +2118,7 @@ function cloneNovelAiRequestForMetadata(body: Record<string, unknown>): Record<s
   return metadataBody;
 }
 
-function sanitizeNovelAiV4Prompt(value: string): string {
+function sanitizeNovelAiV4Prompt(value: string, allowUnicode = false): string {
   return value
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
@@ -2120,7 +2128,7 @@ function sanitizeNovelAiV4Prompt(value: string): string {
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, " ")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, allowUnicode ? "$&" : " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "\n")
     .trim();
@@ -2129,10 +2137,10 @@ function sanitizeNovelAiV4Prompt(value: string): string {
 function prepareNovelAiPrompt(value: string, fieldName: string, model: string): string {
   if (!isNovelAiV4Model(model)) return value;
 
-  const sanitized = sanitizeNovelAiV4Prompt(value);
+  const sanitized = sanitizeNovelAiV4Prompt(value, isNovelAiV5Model(model));
   if (value.trim() && !sanitized) {
     throw new Error(
-      `NovelAI ${fieldName} contains only unsupported V4/V4.5/V5 prompt characters. ${NOVELAI_V4_PROMPT_HINT}`,
+      `NovelAI ${fieldName} contains only unsupported ${isNovelAiV5Model(model) ? "V5" : "V4/V4.5"} prompt characters. ${isNovelAiV5Model(model) ? NOVELAI_V5_PROMPT_HINT : NOVELAI_V4_PROMPT_HINT}`,
     );
   }
   return sanitized;
@@ -2251,7 +2259,7 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
     ? [styleReferenceImage, ...characterReferenceImages]
     : characterReferenceImages;
   if (referenceImages.length > 0 && !isNovelAiPreciseReferenceModel(model)) {
-    throw new Error("NovelAI precise reference images require a V4.5 or V5 model such as nai-diffusion-4-5-full or nai-diffusion-5-full.");
+    throw new Error("NovelAI precise reference images require a V4.5 model such as nai-diffusion-4-5-full.");
   }
   const directorReferenceImages = await prepareNovelAiDirectorReferenceImages(referenceImages);
   const characterPromptPayload = buildNovelAiV4CharacterPromptPayload(request.characterPrompts, model);
@@ -2335,7 +2343,7 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "Unknown error");
-    const hint = isV4 ? ` ${NOVELAI_V4_PROMPT_HINT}` : "";
+    const hint = isV4 ? ` ${isNovelAiV5Model(model) ? NOVELAI_V5_PROMPT_HINT : NOVELAI_V4_PROMPT_HINT}` : "";
     const referenceDetail = hasReferences ? ` with ${directorReferenceImages.length} precise reference image(s)` : "";
     throw new Error(
       `NovelAI image generation failed (${resp.status})${referenceDetail}: ${sanitizeErrorText(errText)}${hint}`,

@@ -11644,7 +11644,7 @@ export async function gameRoutes(app: FastifyInstance) {
         charAvatarByName: storyboardCharacterContext.charAvatarByName,
         charDescriptionByName: storyboardCharacterContext.charDescriptionByName,
         includeReferenceImages: false,
-        includeCharacterDescriptions: includeCharacterAppearance,
+        includeCharacterDescriptions: true,
         maxReferenceImages: 0,
       });
       const storyboardAppearanceContextBlock = buildGameIllustratorAppearanceContextBlock(

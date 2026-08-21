@@ -10682,6 +10682,8 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const result = await executeAgent(config as any, context, provider as any, "regression-model");
       const system = calls[0]?.[0]?.content ?? "";
       const user = calls[0]?.[1]?.content ?? "";
+      assert.equal(calls[0]?.[0]?.role, "system");
+      assert.equal(calls[0]?.[1]?.role, "user");
       assert.equal(system, "Return a physical-state delta as JSON.");
       assert.match(user, /Persona: Mari\nCurrent state:/u);
       assert.match(user, /"self":\{/u);
@@ -10706,6 +10708,8 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "regression-model",
       );
       const firstRunUser = firstRun.calls[0]?.[1]?.content ?? "";
+      assert.equal(firstRun.calls[0]?.[0]?.role, "system");
+      assert.equal(firstRun.calls[0]?.[1]?.role, "user");
       assert.match(firstRunUser, /^Persona: Mari\nNarration:/u);
       assert.doesNotMatch(firstRunUser, /Current state:/u);
       assert.deepEqual(firstRunResult.data, { characters: [] });

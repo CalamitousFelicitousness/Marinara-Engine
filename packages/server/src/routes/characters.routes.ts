@@ -674,7 +674,7 @@ async function buildNativeCharacterEnvelope(
 }
 
 export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filename: string; data: string }> = []) {
-  const extensions = parseCharacterDataRecord(data?.extensions);
+  const extensions = { ...parseCharacterDataRecord(data?.extensions) };
   delete extensions.characterSheetImageId;
   extensions.useCharacterSheetAsReference = false;
   if (sprites.length > 0) {

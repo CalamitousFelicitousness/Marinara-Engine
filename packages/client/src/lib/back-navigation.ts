@@ -40,7 +40,9 @@ export function getBackLayerStack(): BackLayer[] {
 }
 
 function armSentinel() {
-  if (sentinelActive) return;
+  // A cleanup back() cannot be cancelled once requested. Wait for its
+  // popstate instead of pushing an entry that the in-flight back would eat.
+  if (sentinelActive || pendingSelfPops > 0) return;
   sentinelActive = true;
   window.history.pushState({ marinaraOverlay: true }, "");
 }
@@ -64,6 +66,7 @@ function handlePopState() {
   if (pendingSelfPops > 0) {
     // Our own cleanup pop; whatever it closed is already closed.
     pendingSelfPops -= 1;
+    if (pendingSelfPops === 0 && getBackLayerStack().length > 0) armSentinel();
     return;
   }
   if (!sentinelActive) return; // Not ours — let the WebView/browser handle it.

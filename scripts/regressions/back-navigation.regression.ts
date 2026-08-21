@@ -218,4 +218,16 @@ release(); // idempotent
 history.flush();
 assert.equal(history.depth, 0);
 
+// ── 13. A follow-up layer opened before a cleanup pop re-arms afterward ──
+reset();
+openLayer("first-modal");
+storeLayers = [];
+syncBackNavigation(); // queue the cleanup pop
+const followUp = openLayer("follow-up-modal");
+assert.equal(history.pushes, 1, "an in-flight cleanup must not consume a newly pushed sentinel");
+history.flush();
+assert.equal(history.depth, 1, "the follow-up layer is armed after cleanup finishes");
+history.userBack();
+assert.equal(followUp.closed, 1, "back closes the follow-up layer instead of exiting");
+
 console.log("back-navigation regression checks passed");

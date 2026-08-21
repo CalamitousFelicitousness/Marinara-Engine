@@ -268,12 +268,16 @@ try {
 
   console.log("experience-generation regression passed");
 } finally {
-  for (const chatId of createdChatIds) await chats.remove(chatId).catch(() => undefined);
-  if (createdConnectionId) await connections.remove(createdConnectionId).catch(() => undefined);
-  if (previousMainFallbackId) {
-    await connections.update(previousMainFallbackId, { fallbackForMain: true }).catch(() => undefined);
+  try {
+    for (const chatId of createdChatIds) await chats.remove(chatId).catch(() => undefined);
+    try {
+      if (createdConnectionId) await connections.remove(createdConnectionId);
+    } finally {
+      if (previousMainFallbackId) await connections.update(previousMainFallbackId, { fallbackForMain: true });
+    }
+  } finally {
+    await app.close();
+    await new Promise<void>((resolve) => mockProvider.close(() => resolve()));
+    await closeDB();
   }
-  await app.close();
-  await new Promise<void>((resolve) => mockProvider.close(() => resolve()));
-  await closeDB();
 }

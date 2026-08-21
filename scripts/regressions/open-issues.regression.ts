@@ -33,10 +33,15 @@ import {
   CUSTOM_AGENT_RESULT_TYPE_IDS,
 } from "../../packages/client/src/lib/custom-agent-result-examples.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
+import { MAX_FILE_SIZES } from "../../packages/shared/src/constants/defaults.js";
 import {
   buildCompatibleCharacterExport,
   validateCharacterGalleryReferences,
 } from "../../packages/server/src/routes/characters.routes.js";
+import {
+  embeddedSpriteSizesAreWithinLimits,
+  MAX_EMBEDDED_SPRITE_COUNT,
+} from "../../packages/server/src/services/import/marinara.importer.js";
 import { takeEmbeddedMarinaraSprites } from "../../packages/server/src/services/import/st-character.importer.js";
 import {
   orderConversationRespondersByDelay,
@@ -498,10 +503,21 @@ const portableSprites = [
   { filename: "happy.png", data: "data:image/png;base64,iVBORw0KGgo=" },
   { filename: "full_idle.webp", data: "data:image/webp;base64,UklGRg==" },
 ];
-const compatibleSpriteCard = buildCompatibleCharacterExport(
-  { name: "Portable Sprite Card", extensions: { marinara: { retained: true } } },
-  portableSprites,
+const compatibleSpriteSource = {
+  name: "Portable Sprite Card",
+  extensions: {
+    characterSheetImageId: "local-gallery-id",
+    useCharacterSheetAsReference: true,
+    marinara: { retained: true },
+  },
+};
+const compatibleSpriteCard = buildCompatibleCharacterExport(compatibleSpriteSource, portableSprites);
+assert.equal(
+  compatibleSpriteSource.extensions.characterSheetImageId,
+  "local-gallery-id",
+  "compatible export must not mutate local-only source extensions",
 );
+assert.equal(compatibleSpriteSource.extensions.useCharacterSheetAsReference, true);
 assert.deepEqual(
   (compatibleSpriteCard.data.extensions.marinara as Record<string, unknown>).sprites,
   portableSprites,
@@ -532,6 +548,10 @@ assert.match(
   /await restoreSprites\(embeddedMarinaraSprites, charId\)/u,
   "PNG import must restore embedded sprites under the newly imported character ID",
 );
+assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE]), true);
+assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE + 1]), false);
+assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.CHARACTER_CARD, 1]), false);
+assert.equal(embeddedSpriteSizesAreWithinLimits(Array(MAX_EMBEDDED_SPRITE_COUNT + 1).fill(0)), false);
 const ownedGalleryUpdate = {
   extensions: { characterSheetImageId: "owned-image", useCharacterSheetAsReference: true },
 };

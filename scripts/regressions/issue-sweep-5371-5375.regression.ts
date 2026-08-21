@@ -23,8 +23,13 @@ const professorMariHomeSource = readFileSync(
 );
 assert.match(
   professorMariHomeSource,
-  /const showConnectionFirstHint = !sending && !messages\.some\(\(message\) => message\.role === "user"\);/u,
-  "Professor Mari's connection guidance must remain visible until the first user message",
+  /const showConnectionFirstHint =\s*chatId !== null &&\s*loadedMessagesChatId === chatId &&\s*!sending &&\s*!messages\.some\(\(message\) => message\.role === "user"\);/u,
+  "Professor Mari's connection guidance must wait for the active chat history and remain visible until the first user message",
+);
+assert.match(
+  professorMariHomeSource,
+  /setMessages\(\[\]\);\s*setLoadedMessagesChatId\(chat\.id\);/u,
+  "Restarting Professor Mari must mark the new empty chat history as loaded",
 );
 assert.equal(
   professorMariHomeSource.match(/showConnectionFirstHint &&/gu)?.length,

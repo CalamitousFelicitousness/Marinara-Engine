@@ -164,13 +164,14 @@ PID is dead is reclaimed automatically at next boot with a
 
 ## Known-failing specs — do not chase these
 
-**Unverified since the 2026-08-20 sync with `upstream/staging` (447 commits).**
-That merge landed Mari and Beholder fixes that may have repaired some of these,
-and 13 new specs that have never been baselined here. Re-confirm before trusting
-the list; treat an unexpected pass as good news, not a mystery.
+**Regression suite re-baselined at the 2026-08-21 sync (81 commits, merge
+`59d7a1f79`): 141/147 pass, 6 fail, listed below.** The Playwright specs in this
+section are still unverified since the 2026-08-20 sync (447 commits) and have
+not been re-run since. Re-confirm before trusting them; treat an unexpected pass
+as good news, not a mystery.
 
-These fail on a clean tree at `HEAD` with all work stashed, deterministically,
-at the same durations every run:
+These Playwright specs fail on a clean tree at `HEAD` with all work stashed,
+deterministically, at the same durations every run:
 
 - `Character favorite tags and stars inherit the configured accent color` (~1.0m)
 - `Character Chat actions reuse mode selection and seed the chosen setup wizard` (~2.1m)
@@ -195,6 +196,32 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 ```bash
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
+
+### Regression suite: the 6 failures at the 2026-08-21 sync
+
+Observed identically before and after that merge, so none are the sync's doing:
+
+| Spec                                          | Attribution                                                                      |
+| --------------------------------------------- | -------------------------------------------------------------------------------- |
+| `open-issues.regression.ts`                   | upstream, see below                                                              |
+| `prompt.regression.ts`                        | upstream, see above                                                              |
+| `manual-agent-retry-resolution.regression.ts` | pins `emitMetadataPatch:` by source shape in `retry-agents-route.ts`             |
+| `agent-runtime.regression.ts`                 | fails on "agent result vocabulary must retain its exact public values and order" |
+| `launcher/format-guard.regression.mjs`        | not investigated                                                                 |
+| `launcher/update.regression.mjs`              | not investigated                                                                 |
+
+The last four were observed failing but not traced to a side; do not assume they
+are upstream's without checking.
+
+`open-issues.regression.ts` arrived failing with the 2026-08-21 merge, at
+`Changing media providers must clear stale remote LoRA choices`. It is a
+source-text `assert.match` against `ConnectionEditor.tsx`, and upstream both
+rewrote that spec (+178 lines) and reformatted that component in the same
+window, including a commit titled `ran prettier on connectioneditor.tsx`. This
+fork has touched neither file since the merge base, and a regex over file
+contents has no path by which fork code could affect it, so attribution is
+conclusive on provenance alone. The empirical clean-worktree confirmation was
+attempted and abandoned: the throwaway worktree hit `ENOSPC` mid-install.
 
 If you see these, they are not yours. If you see _other_ failures and need to
 know whether your change caused them, the ladder is:

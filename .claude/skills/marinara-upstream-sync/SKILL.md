@@ -18,6 +18,15 @@ those live in files upstream also touches, and
 Everything below was verified on the 2026-08-20 sync: 447 upstream commits,
 84 PR merges, v2.4.3 to v2.4.4, merge commit `151a263f5`.
 
+Re-exercised on the 2026-08-21 sync: 81 upstream commits, merge `59d7a1f79`.
+`git merge-tree` predicted zero conflicts and the merge produced none, so every
+check below ran against a clean auto-merge. All passed: the `authorNotes`
+resolution in `retry-agents-route.ts` landed correctly on its own (upstream's
+`activeChatSummary` with the fork's `toAuthorNotesContextText` beside it),
+`package.json#pnpm` was unchanged, and upstream touched neither `AGENTS.md` nor
+`CLAUDE.md`. A conflict-free merge is therefore not evidence you can skip these:
+it is the case that makes them worth running.
+
 ## Merge, never rebase
 
 `CLAUDE.md § Fork Workflow` prescribes a merge, and the remote layout assumes

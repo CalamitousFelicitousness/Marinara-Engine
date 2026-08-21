@@ -173,12 +173,12 @@ async function expectHomeWidgetHeightsMatch(page: Page, baseline: number) {
 
 async function openHomeBookmark(page: Page, name: string) {
   const bookmarks = page.getByRole("navigation", { name: "Home bookmarks" });
-  let action = bookmarks.getByRole("button", { name, exact: true }).filter({ visible: true });
-  if ((await action.count()) === 0) {
-    await bookmarks.getByRole("button", { name: "Bookmarks", exact: true }).click();
-    action = bookmarks.getByRole("button", { name, exact: true }).filter({ visible: true });
+  const mobileTrigger = bookmarks.getByRole("button", { name: "Bookmarks", exact: true });
+  if (await mobileTrigger.isVisible()) {
+    if ((await mobileTrigger.getAttribute("aria-expanded")) !== "true") await mobileTrigger.click();
+    await expect(mobileTrigger).toHaveAttribute("aria-expanded", "true");
   }
-  await action.click();
+  await bookmarks.getByRole("button", { name, exact: true }).filter({ visible: true }).click();
 }
 
 async function updateLiveReasoningState(

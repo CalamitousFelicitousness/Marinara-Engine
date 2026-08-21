@@ -8,6 +8,7 @@ import { createHash, createHmac, randomBytes } from "crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { inflateRawSync } from "zlib";
+import { WebSocket } from "undici";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { newId } from "../../utils/id-generator.js";
 import {
@@ -224,8 +225,6 @@ function resolveImageBackend(source: string, baseUrl: string, serviceHint: strin
 /** Default 30-minute timeout for image generation API calls (overridable via env). */
 const IMAGE_GEN_TIMEOUT = Number(process.env.IMAGE_GEN_TIMEOUT_MS ?? 1_800_000);
 const COMFYUI_GEN_TIMEOUT_SECONDS = Number(process.env.COMFYUI_GEN_TIMEOUT ?? 2400);
-const SWARMUI_KEEP_ALIVE_INITIAL_DELAY_MS = 10_000;
-
 export function resolveComfyUiImageGenerationTimeoutMs(
   imageTimeoutMs = IMAGE_GEN_TIMEOUT,
   comfyUiTimeoutSeconds = COMFYUI_GEN_TIMEOUT_SECONDS,
@@ -552,6 +551,7 @@ export function stageImageToDisk(chatId: string, base64: string, ext: string): S
 // ── Provider Implementations ──
 
 const MAX_IMAGE_RESPONSE_BYTES = 30 * 1024 * 1024;
+const SWARMUI_MAX_TRACKED_IMAGES = 16;
 const LOCAL_IMAGE_BACKENDS = new Set(["comfyui", "swarmui", "automatic1111"]);
 const NANOGPT_REFERENCE_IMAGE_LIMIT = 3;
 const NANOGPT_MAX_REQUEST_BYTES = 4 * 1024 * 1024;
@@ -3384,6 +3384,111 @@ export function parseSwarmUiImageReference(value: unknown): string {
   return image.trim();
 }
 
+async function generateSwarmUiImageReference(
+  base: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<string> {
+  const socketUrl = new URL(`${base}/API/GenerateText2ImageWS`);
+  if (socketUrl.protocol === "https:") socketUrl.protocol = "wss:";
+  else if (socketUrl.protocol === "http:") socketUrl.protocol = "ws:";
+  else throw new Error(`SwarmUI requires an HTTP or HTTPS base URL, received ${socketUrl.protocol}`);
+  await validateOutboundUrl(socketUrl, {
+    allowLocal: true,
+    allowedProtocols: ["wss:", "ws:"],
+    flagName: "IMAGE_LOCAL_URLS_ENABLED",
+  });
+
+  return new Promise<string>((resolve, reject) => {
+    const images = new Map<number, string>();
+    const discarded = new Set<number>();
+    const socket = new WebSocket(socketUrl, { headers: swarmUiHeaders(apiKey) });
+    let settled = false;
+
+    const closeSocket = () => {
+      try {
+        socket.close();
+      } catch {
+        // The connection may have failed before the opening handshake completed.
+      }
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", abort);
+      closeSocket();
+      if (error) {
+        reject(error);
+        return;
+      }
+      const image = [...images.entries()]
+        .filter(([index]) => !discarded.has(index))
+        .sort(([left], [right]) => left - right)[0]?.[1];
+      if (!image) {
+        reject(new Error("SwarmUI completed without an image output"));
+        return;
+      }
+      resolve(image);
+    };
+    const abort = () => {
+      finish(signal.reason instanceof Error ? signal.reason : new Error("SwarmUI generation aborted"));
+    };
+
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+
+    socket.addEventListener("open", () => {
+      if (!settled) socket.send(JSON.stringify(body));
+    });
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        finish(new Error("SwarmUI generation returned a non-text WebSocket message"));
+        return;
+      }
+      if (Buffer.byteLength(event.data) > MAX_IMAGE_RESPONSE_BYTES) {
+        finish(new Error("SwarmUI generation returned an oversized WebSocket message"));
+        return;
+      }
+      let message: unknown;
+      try {
+        message = JSON.parse(event.data) as unknown;
+      } catch {
+        finish(new Error("SwarmUI generation returned invalid JSON"));
+        return;
+      }
+      const apiError = swarmUiApiError(message);
+      if (apiError) {
+        finish(new Error(`SwarmUI API error: ${apiError}`));
+        return;
+      }
+      if (!isRecord(message)) return;
+      if (typeof message.image === "string" && message.image.trim()) {
+        const index = Number.parseInt(String(message.batch_index ?? images.size), 10);
+        const resolvedIndex = Number.isNaN(index) ? images.size : index;
+        if (!images.has(resolvedIndex) && images.size >= SWARMUI_MAX_TRACKED_IMAGES) {
+          finish(new Error("SwarmUI generation returned too many image messages"));
+          return;
+        }
+        images.set(resolvedIndex, message.image.trim());
+      }
+      if (Array.isArray(message.discard_indices)) {
+        for (const index of message.discard_indices) {
+          if (typeof index === "number" && Number.isInteger(index)) discarded.add(index);
+        }
+      }
+      if (message.socket_intention === "close") finish();
+    });
+    socket.addEventListener("error", () => finish(new Error("SwarmUI WebSocket connection failed")));
+    socket.addEventListener("close", () => {
+      if (!settled) finish(images.size > 0 ? undefined : new Error("SwarmUI WebSocket closed before completion"));
+    });
+  });
+}
+
 async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   const base = baseUrl.replace(/\/+$/, "");
   const sessionId = await createSwarmUiSession(base, apiKey, request);
@@ -3397,31 +3502,7 @@ async function generateSwarmUI(baseUrl: string, apiKey: string, request: ImageGe
     "[debug/image/swarmui] final request payload:\n%s",
     JSON.stringify(debugBody, null, 2),
   );
-  const response = await localImageBackendFetch(
-    `${base}/API/GenerateText2Image`,
-    {
-      method: "POST",
-      headers: swarmUiHeaders(apiKey),
-      body: JSON.stringify(body),
-      signal: imageRequestSignal(request),
-    },
-    {
-      timeoutMs: resolveComfyUiImageGenerationTimeoutMs(),
-      keepAliveInitialDelayMs: SWARMUI_KEEP_ALIVE_INITIAL_DELAY_MS,
-    },
-  );
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`SwarmUI generation failed (${response.status}): ${sanitizeErrorText(text)}`);
-  }
-
-  let result: unknown;
-  try {
-    result = JSON.parse(text) as unknown;
-  } catch {
-    throw new Error("SwarmUI generation returned invalid JSON");
-  }
-  const imageReference = parseSwarmUiImageReference(result);
+  const imageReference = await generateSwarmUiImageReference(base, apiKey, body, imageRequestSignal(request));
   if (imageReference.startsWith("data:")) return decodeImageDataUrl(imageReference);
   const imageUrl = new URL(imageReference, `${base}/`).toString();
   return downloadImageUrl(imageUrl, request.privateImageResultOrigin, request.signal);

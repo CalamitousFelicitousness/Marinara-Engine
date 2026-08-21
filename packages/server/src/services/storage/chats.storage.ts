@@ -549,7 +549,7 @@ export function createChatsStorage(db: DB) {
       const didHoist = await db.transaction(async (tx) => {
         const rows = await tx.select().from(characters).where(eq(characters.id, characterId));
         const row = rows[0];
-        if (!row || readCharacterSchedule(row.data)) return false;
+        if (!row || readCardExtension(row.data, "conversationSchedule") !== undefined) return false;
         const nextData = writeCardExtension(row.data, "conversationSchedule", schedule);
         if (!nextData) return false;
         await tx.update(characters).set({ data: nextData }).where(eq(characters.id, characterId));
@@ -808,7 +808,7 @@ export function createChatsStorage(db: DB) {
       const freshSchedules = await collectFreshConversationSchedules(characterIds, scheduleNow);
       const nextSchedules: CharacterSchedules = {};
       for (const characterId of characterIds) {
-        const schedule = freshSchedules[characterId] ?? currentSchedules[characterId];
+        const schedule = freshSchedules[characterId];
         if (schedule) nextSchedules[characterId] = schedule;
       }
       if (sameSchedules(currentSchedules, nextSchedules)) return currentSchedules;

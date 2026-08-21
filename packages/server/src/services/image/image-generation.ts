@@ -2126,7 +2126,7 @@ function sanitizeNovelAiV4Prompt(value: string, allowUnicode = false): string {
     .replace(/\u2026/g, "...")
     .replace(/\u00A0/g, " ")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .normalize("NFKD")
+    .normalize(allowUnicode ? "NFC" : "NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, allowUnicode ? "$&" : " ")
     .replace(/[ \t]+/g, " ")

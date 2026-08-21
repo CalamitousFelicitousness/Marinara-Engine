@@ -731,7 +731,7 @@ export function ConnectionEditor() {
     setRemoteLoras([]);
     fetchScopeRef.current++;
     setFetchError(null);
-  }, [localProvider, selectedImageService]);
+  }, [localProvider, selectedImageService, connectionDetailId]);
 
   useEffect(() => {
     if (!showModelDropdown) return;

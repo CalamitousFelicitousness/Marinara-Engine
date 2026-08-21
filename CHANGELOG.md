@@ -19,6 +19,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Character editors now keep independently saved weekly schedules in sync while other card fields still have unsaved changes.
 - Conversation transcript dates, timestamps, and message numbers now follow Chat Chrome Text Color instead of a legacy fixed color (#5357).
 - Conversation schedules and manual status overrides now apply consistently across all chats for the same character, with per-chat schedule opt-outs still supported (#5358).
 - Long-running sessions now bound chat notification history and release persisted reasoning state from server memory, mobile history stays put after the keyboard opens, and Playwright shuts down its owned test servers cleanly (#5353).

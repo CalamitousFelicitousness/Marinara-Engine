@@ -3109,7 +3109,14 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       if (menuButtonBox && compactMenuBox) {
         expect(compactMenuBox.y).toBeGreaterThanOrEqual(menuButtonBox.y + menuButtonBox.height - 1);
       }
-      await compactMenu.getByRole("menuitemradio", { checked: true }).click();
+      const selectedMenuItem = compactMenu.getByRole("menuitemradio", { checked: true });
+      await expect(selectedMenuItem).toBeFocused();
+      await selectedMenuItem.press("ArrowDown");
+      await expect(compactMenu.getByRole("menuitemradio").nth(1)).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(compactMenu).toHaveCount(0);
+      await expect(compactMenuButton).toBeFocused();
+      await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
     } else {
       await expect(desktopTabs).toBeVisible();
       const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([

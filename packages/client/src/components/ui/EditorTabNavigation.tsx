@@ -28,20 +28,28 @@ export function EditorTabNavigation<T extends string>({
   const navigationLabel = t("editor.navigation.sections");
   const compactMenuId = useId();
   const compactMenuRef = useRef<HTMLDivElement>(null);
+  const compactMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [compactMenuOpen, setCompactMenuOpen] = useState(false);
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
 
   useEffect(() => {
     if (!compactMenuOpen) return;
+    const focusFrame = window.requestAnimationFrame(() => {
+      compactMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus();
+    });
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!compactMenuRef.current?.contains(event.target as Node)) setCompactMenuOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCompactMenuOpen(false);
+      if (event.key === "Escape") {
+        setCompactMenuOpen(false);
+        compactMenuButtonRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", closeOnOutsidePress);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", closeOnOutsidePress);
       document.removeEventListener("keydown", closeOnEscape);
     };
@@ -74,6 +82,7 @@ export function EditorTabNavigation<T extends string>({
 
       <div ref={compactMenuRef} className="relative hidden @max-5xl:block">
         <button
+          ref={compactMenuButtonRef}
           type="button"
           aria-label={navigationLabel}
           aria-haspopup="menu"
@@ -94,6 +103,16 @@ export function EditorTabNavigation<T extends string>({
             id={compactMenuId}
             role="menu"
             aria-label={navigationLabel}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+              event.preventDefault();
+              const items = Array.from(
+                compactMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [],
+              );
+              const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+              const direction = event.key === "ArrowDown" ? 1 : -1;
+              items[(currentIndex + direction + items.length) % items.length]?.focus();
+            }}
             className="mari-editor-navigation-menu absolute left-0 top-full z-50 mt-1 w-max min-w-full max-w-[min(16rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border p-1 shadow-xl"
           >
             {tabs.map((tab) => {
@@ -109,6 +128,7 @@ export function EditorTabNavigation<T extends string>({
                   onClick={() => {
                     onChange(tab.id);
                     setCompactMenuOpen(false);
+                    compactMenuButtonRef.current?.focus();
                   }}
                   className="mari-editor-navigation-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium"
                 >

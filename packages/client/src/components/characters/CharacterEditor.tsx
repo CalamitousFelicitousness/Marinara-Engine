@@ -1467,16 +1467,15 @@ function ConvoTab({
   const updateCharacter = useUpdateCharacter();
   const savedCharacter = useCharacter(characterId ?? null);
   const savedData = (() => {
-    if (!savedCharacter.data) return undefined;
+    const rawData = (savedCharacter.data as { data?: unknown } | undefined)?.data;
+    if (!rawData) return undefined;
     try {
-      return (typeof savedCharacter.data === "string" ? JSON.parse(savedCharacter.data) : savedCharacter.data) as
-        | { data?: CharacterData }
-        | undefined;
+      return (typeof rawData === "string" ? JSON.parse(rawData) : rawData) as CharacterData;
     } catch {
       return undefined;
     }
   })();
-  const savedExtensions = savedData?.data?.extensions;
+  const savedExtensions = savedData?.extensions;
   // Read the saved card, not the form: the schedule saves on its own, so the
   // in-progress form copy goes stale as soon as the editor writes one.
   const schedule =

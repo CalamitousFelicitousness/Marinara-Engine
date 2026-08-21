@@ -1621,6 +1621,52 @@ test("message deletion uses unified chroma controls and selection states", async
   }
 });
 
+test("Conversation transcript dates and message numbers follow the selected chroma accent", async ({ page }) => {
+  const chatResponse = await page.request.post("/api/chats", {
+    data: { name: "Conversation Transcript Chroma Smoke", mode: "conversation", characterIds: [] },
+  });
+  expect(chatResponse.ok()).toBeTruthy();
+  const chat = (await chatResponse.json()) as { id: string };
+  const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+    data: { role: "user", content: "Transcript chroma probe." },
+  });
+  expect(messageResponse.ok()).toBeTruthy();
+  const message = (await messageResponse.json()) as { id: string };
+
+  try {
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+        useUIStore: { getState: () => { setShowMessageNumbers: (value: boolean) => void } };
+      };
+      useUIStore.getState().setShowMessageNumbers(true);
+    });
+
+    const messageRow = page.locator(`[data-message-id="${message.id}"]`);
+    const timestamp = messageRow.locator(".mari-message-timestamp");
+    const messageNumber = messageRow.getByText(/^#1$/u);
+    const daySeparator = page.getByText(/^(Today|Yesterday)$/u);
+    await expect(timestamp).toBeVisible();
+    await expect(messageNumber).toBeVisible();
+    await expect(daySeparator).toBeVisible();
+
+    const transcriptLabels = page.locator(".mari-conversation-transcript-accent");
+    const assertAccent = async (accent: string) => {
+      await setAppAccentColor(page, accent);
+      const expectedColor = await readCssVariableColor(page, "--marinara-chat-chrome-button-text-active");
+      for (const label of await transcriptLabels.all()) {
+        await expect(label).toHaveCSS("color", expectedColor);
+      }
+    };
+
+    await assertAccent("#14b8a6");
+    await assertAccent("#3b82f6");
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
+  }
+});
+
 test("bulk chat deletion uses the shared primary accent control", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop chat-sidebar selection chrome is covered here.");
 
@@ -6866,6 +6912,9 @@ test("preset pictures can be uploaded from the panel and replaced in the Overvie
     await expect(panelPicture.locator("img")).toHaveAttribute("src", /\/api\/prompts\/images\/file\//u);
 
     await presetRow.locator("[data-preset-open-action]").click({ position: { x: 8, y: 8 } });
+    const presetEditor = page.locator(".mari-editor-shell");
+    await openEditorSection(presetEditor, "Sections");
+    await openEditorSection(presetEditor, "Overview");
     const overviewPicture = page.locator("[data-preset-overview-picture]");
     await expect(overviewPicture).toBeVisible();
     await expect(overviewPicture).toHaveAttribute("aria-label", "Replace preset picture");

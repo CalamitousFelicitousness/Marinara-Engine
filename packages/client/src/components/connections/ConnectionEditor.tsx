@@ -700,7 +700,7 @@ export function ConnectionEditor() {
     {
       return MODEL_LISTS[localProvider] ?? [];
     }
-  }, [localProvider, selectedVideoProvider]);
+  }, [localProvider, selectedVideoProvider, selectedImageService]);
 
   // Merge known models with remote models (remote first, deduped)
   const allModels = useMemo(() => {
@@ -731,7 +731,7 @@ export function ConnectionEditor() {
     setRemoteModels([]);
     setRemoteLoras([]);
     setFetchError(null);
-  }, [localProvider]);
+  }, [localProvider, selectedImageService]);
 
   useEffect(() => {
     if (!showModelDropdown) return;

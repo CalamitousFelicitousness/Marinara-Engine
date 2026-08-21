@@ -1918,7 +1918,7 @@ async function generateArli(baseUrl: string, apiKey: string, request: ImageGenRe
 }
 
 const NOVELAI_V4_PROMPT_HINT =
-  "NovelAI V4/V4.5 prompts support roughly 512 T5 tokens and reject most Unicode prompt characters; try a shorter ASCII prompt without emoji or non-Latin text.";
+  "NovelAI V4/V4.5/V5 prompts support roughly 512 T5 tokens and reject most Unicode prompt characters; try a shorter ASCII prompt without emoji or non-Latin text.";
 const NOVELAI_SIZE_MULTIPLE = 64;
 const NOVELAI_MIN_DIMENSION = 64;
 const NOVELAI_MAX_DIMENSION = 2048;
@@ -2132,7 +2132,7 @@ function prepareNovelAiPrompt(value: string, fieldName: string, model: string): 
   const sanitized = sanitizeNovelAiV4Prompt(value);
   if (value.trim() && !sanitized) {
     throw new Error(
-      `NovelAI ${fieldName} contains only unsupported V4/V4.5 prompt characters. ${NOVELAI_V4_PROMPT_HINT}`,
+      `NovelAI ${fieldName} contains only unsupported V4/V4.5/V5 prompt characters. ${NOVELAI_V4_PROMPT_HINT}`,
     );
   }
   return sanitized;
@@ -2251,7 +2251,7 @@ async function generateNovelAI(baseUrl: string, apiKey: string, request: ImageGe
     ? [styleReferenceImage, ...characterReferenceImages]
     : characterReferenceImages;
   if (referenceImages.length > 0 && !isNovelAiPreciseReferenceModel(model)) {
-    throw new Error("NovelAI precise reference images require a V4.5 model such as nai-diffusion-4-5-full.");
+    throw new Error("NovelAI precise reference images require a V4.5 or V5 model such as nai-diffusion-4-5-full or nai-diffusion-5-full.");
   }
   const directorReferenceImages = await prepareNovelAiDirectorReferenceImages(referenceImages);
   const characterPromptPayload = buildNovelAiV4CharacterPromptPayload(request.characterPrompts, model);

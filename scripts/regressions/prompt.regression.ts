@@ -7022,6 +7022,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       const terminal = messages[messages.length - 1]!.content;
       assert.match(system, /<chat_summary>/u);
       assert.match(system, /<existing_entries>/u);
+      assert.match(system, /name="Lore &lt;Body&gt;"/u);
       assert.match(system, /<\/dottore_lore>\n<mari_lore>/u);
       assert.match(system, /Tom & Jerry/u);
       assert.doesNotMatch(system, /&lt;\/dottore_lore&gt;/u);

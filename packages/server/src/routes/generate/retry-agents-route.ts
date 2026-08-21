@@ -3843,7 +3843,12 @@ async function applyRetryResultEffects(args: {
   }
 }
 
-export type ActiveAgentRun = { abortController: AbortController; backendUrl: string | null };
+export type ActiveAgentRun = {
+  abortController: AbortController;
+  backendUrl: string | null;
+  messageId: string | null;
+  swipeIndex: number | null;
+};
 
 export async function runRetrySetupPhase<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
   signal.throwIfAborted();
@@ -3946,7 +3951,12 @@ export async function registerRetryAgentsRoute(
     const onFallback: typeof notifyFallback = (notice) => {
       if (!abortController.signal.aborted) notifyFallback(notice);
     };
-    const activeAgentRun: ActiveAgentRun = { abortController, backendUrl: null };
+    const activeAgentRun: ActiveAgentRun = {
+      abortController,
+      backendUrl: null,
+      messageId: null,
+      swipeIndex: null,
+    };
     const runs = activeAgentRuns.get(chatId) ?? new Set<ActiveAgentRun>();
     runs.add(activeAgentRun);
     activeAgentRuns.set(chatId, runs);
@@ -4030,6 +4040,8 @@ export async function registerRetryAgentsRoute(
       }
       const retryMessageId = lastAssistant?.id ?? "";
       const retrySwipeIndex = lastAssistant?.activeSwipeIndex ?? 0;
+      activeAgentRun.messageId = retryMessageId || null;
+      activeAgentRun.swipeIndex = retryMessageId ? retrySwipeIndex : null;
 
       const activeMusicPlayerSource =
         musicPlayerEnabled === false

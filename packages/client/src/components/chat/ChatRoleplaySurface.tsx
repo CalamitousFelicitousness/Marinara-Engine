@@ -53,6 +53,7 @@ import {
 } from "../../lib/chat-floating-ui-events";
 import { getConnectedChatDisplayName } from "../../lib/chat-display";
 import { playConfiguredNotificationPing } from "../../lib/notification-sound";
+import { rememberBoundedSetValue } from "../../lib/bounded-set";
 import { messageHasPendingPostProcessing } from "../../lib/chat-message-extra";
 import { isMessageHiddenFromUser } from "../../lib/chat-message-visibility";
 import { getTranscriptRenderWindow, TRANSCRIPT_RENDER_WINDOW_STEP } from "../../lib/transcript-render-window";
@@ -149,6 +150,7 @@ const ActiveLorebookEntriesContent = lazy(async () => {
 });
 
 const roleplayNotificationSeenKeys = new Set<string>();
+const MAX_ROLEPLAY_NOTIFICATION_SEEN_KEYS = 5_000;
 const MOBILE_FLOATING_PANEL_PADDING = 8;
 
 type MobileFloatingPanelFrame = {
@@ -1593,7 +1595,9 @@ export function ChatRoleplaySurface({
         prevMessageKeysRef.current = currentKeys;
         for (const message of messages) {
           const key = `${activeChatId}:${message.id}`;
-          if (!pendingPostProcessingKeys.has(key)) seenMessageKeysRef.current.add(key);
+          if (!pendingPostProcessingKeys.has(key)) {
+            rememberBoundedSetValue(seenMessageKeysRef.current, key, MAX_ROLEPLAY_NOTIFICATION_SEEN_KEYS);
+          }
         }
         pendingPostProcessingKeysRef.current = pendingPostProcessingKeys;
         initialLoadSettledRef.current = true;
@@ -1623,7 +1627,9 @@ export function ChatRoleplaySurface({
 
     for (const message of messages) {
       const key = `${activeChatId}:${message.id}`;
-      if (!pendingPostProcessingKeys.has(key)) seenKeys.add(key);
+      if (!pendingPostProcessingKeys.has(key)) {
+        rememberBoundedSetValue(seenKeys, key, MAX_ROLEPLAY_NOTIFICATION_SEEN_KEYS);
+      }
     }
     prevMessageKeysRef.current = currentKeys;
     pendingPostProcessingKeysRef.current = pendingPostProcessingKeys;

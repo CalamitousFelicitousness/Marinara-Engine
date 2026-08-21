@@ -192,7 +192,10 @@ function isMobileGameViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 }
 
-type NarrationMessage = Pick<Message, "id" | "chatId" | "role" | "content" | "characterId" | "extra"> & {
+type NarrationMessage = Pick<
+  Message,
+  "id" | "chatId" | "role" | "content" | "characterId" | "extra" | "activeSwipeIndex"
+> & {
   characterName?: string;
 };
 
@@ -2831,10 +2834,11 @@ export function GameNarration({
 
   const restoredRef = useRef(false);
   const restoredChatIdRef = useRef<string | null>(null);
-  const lastNarrationMsgIdRef = useRef<string | undefined>(undefined);
+  const lastNarrationKeyRef = useRef<string | undefined>(undefined);
   const segmentChangeReady = useRef(false);
   const segmentEnterReady = useRef(false);
-  const narrationMessageChanged = Boolean(latestAssistant?.id && latestAssistant.id !== lastNarrationMsgIdRef.current);
+  const narrationKey = latestAssistant ? `${latestAssistant.id}:${latestAssistant.activeSwipeIndex}` : null;
+  const narrationMessageChanged = Boolean(narrationKey && narrationKey !== lastNarrationKeyRef.current);
   const gameInstantTextReveal = useUIStore((s) => s.gameInstantTextReveal);
   const reduceAmbientEffects = useReducedAmbientEffects();
   const revealTextInstantly = gameInstantTextReveal || reduceAmbientEffects;
@@ -2864,16 +2868,16 @@ export function GameNarration({
   );
 
   useEffect(() => {
-    // Only react to message ID changes (not content changes during streaming).
+    // React to a new message or saved swipe (not content changes during streaming).
     // Ignore transient null states (e.g. during React Query refetch) — keep existing ref.
-    if (!latestAssistant?.id) return;
-    if (latestAssistant.id === lastNarrationMsgIdRef.current) return;
+    if (!latestAssistant?.id || !narrationKey) return;
+    if (narrationKey === lastNarrationKeyRef.current) return;
 
     // Don't reset narration while streaming — wait until the full message arrives.
     // This prevents the snap-back to segment 0 mid-stream.
     if (isStreaming) return;
 
-    lastNarrationMsgIdRef.current = latestAssistant.id;
+    lastNarrationKeyRef.current = narrationKey;
 
     const currentChatId = latestAssistant.chatId ?? null;
     const firstNarrationForChat = restoredChatIdRef.current !== currentChatId;
@@ -2907,6 +2911,7 @@ export function GameNarration({
     segmentChangeReady.current = true;
     segmentEnterReady.current = true;
   }, [
+    narrationKey,
     latestAssistant?.id,
     latestAssistant?.chatId,
     isStreaming,

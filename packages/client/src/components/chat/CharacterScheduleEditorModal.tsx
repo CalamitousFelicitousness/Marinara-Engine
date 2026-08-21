@@ -25,7 +25,8 @@ import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download
 
 type CharacterScheduleEditorModalProps = {
   open: boolean;
-  chatId: string;
+  /** Omitted when editing from the Character Editor, where no chat is open. */
+  chatId?: string;
   characterId: string;
   characterName: string;
   characterAvatarUrl?: string | null;

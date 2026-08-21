@@ -31,6 +31,7 @@ import { useChatStore } from "../../stores/chat.store";
 import { useConversationGamesStore } from "../../stores/conversation-games.store";
 import { useUIStore } from "../../stores/ui.store";
 import { playConfiguredNotificationPing } from "../../lib/notification-sound";
+import { rememberBoundedSetValue } from "../../lib/bounded-set";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { messageHasPendingPostProcessing } from "../../lib/chat-message-extra";
 import { getTranscriptRenderWindow, TRANSCRIPT_RENDER_WINDOW_STEP } from "../../lib/transcript-render-window";
@@ -268,6 +269,7 @@ function splitAssistantContentLines(content: string, charName?: string | null): 
 // component remounts. This prevents stagger animations and notification sounds
 // from replaying when the user navigates away from a chat and comes back.
 const globalSeenKeys = new Set<string>();
+const MAX_GLOBAL_SEEN_KEYS = 5_000;
 
 export function ConversationView({
   chatId,
@@ -583,7 +585,7 @@ export function ConversationView({
     },
     [scrollToMessagesBottom],
   );
-  useKeepLatestChatMessageVisible(scrollRef, scheduleScrollToMessagesBottom);
+  useKeepLatestChatMessageVisible(scrollRef, scrollToMessagesBottom);
 
   useEffect(() => {
     if (shouldKeepMobileComposerOpen) setMobileHistoryComposerCollapsed(false);
@@ -1036,7 +1038,9 @@ export function ConversationView({
         prevRenderedKeysRef.current = currentKeys;
         // Mark all current keys as globally seen so remount won't replay them
         for (const item of messageItems) {
-          if (!pendingPostProcessingKeys.has(item.key)) globalSeenKeysRef.current.add(item.key);
+          if (!pendingPostProcessingKeys.has(item.key)) {
+            rememberBoundedSetValue(globalSeenKeysRef.current, item.key, MAX_GLOBAL_SEEN_KEYS);
+          }
         }
         pendingPostProcessingKeysRef.current = pendingPostProcessingKeys;
         initialLoadSettledRef.current = true;
@@ -1092,7 +1096,9 @@ export function ConversationView({
 
     // Mark all current keys as globally seen
     for (const item of messageItems) {
-      if (!pendingPostProcessingKeys.has(item.key)) seenGlobal.add(item.key);
+      if (!pendingPostProcessingKeys.has(item.key)) {
+        rememberBoundedSetValue(seenGlobal, item.key, MAX_GLOBAL_SEEN_KEYS);
+      }
     }
     prevRenderedKeysRef.current = currentKeys;
     pendingPostProcessingKeysRef.current = pendingPostProcessingKeys;
@@ -1259,7 +1265,7 @@ export function ConversationView({
             return (
               <div key={item.key} className="relative my-4 flex items-center px-4">
                 <div className="flex-1 border-t border-[var(--border)]/40" />
-                <span className="mx-4 text-[0.6875rem] font-semibold text-[var(--marinara-chat-chrome-panel-muted)]">
+                <span className="mari-conversation-transcript-chrome-text mx-4 text-[0.6875rem] font-semibold">
                   {item.label}
                 </span>
                 <div className="flex-1 border-t border-[var(--border)]/40" />

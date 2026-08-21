@@ -1052,6 +1052,7 @@ export function ConversationInput({
           requestChatScrollToBottom({ chatId: activeChatId, behavior: "auto" });
         },
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
+        invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
         characters: activeChatCharacters?.map((character) => ({ id: character.id, name: character.name })),
         latestAssistantMessageId: latestAssistantMessage?.id ?? null,
@@ -1263,6 +1264,7 @@ export function ConversationInput({
           requestChatScrollToBottom({ chatId: submittingChatId, behavior: "auto" });
         },
         invalidate: () => qc.invalidateQueries({ queryKey: chatKeys.all }),
+        invalidateCharacter: (characterId) => qc.invalidateQueries({ queryKey: characterKeys.detail(characterId) }),
         characterNames: activeCharacterNames,
         characters: activeChatCharacters?.map((character) => ({ id: character.id, name: character.name })),
         latestAssistantMessageId: latestAssistantMessage?.id ?? null,

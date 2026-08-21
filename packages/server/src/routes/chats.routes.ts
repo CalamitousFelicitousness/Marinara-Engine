@@ -69,6 +69,7 @@ import {
 } from "../services/spatial-context/projection.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
+import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { processLorebooks } from "../services/lorebook/index.js";
@@ -620,36 +621,6 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
   };
 
-  const clearConversationScheduleState = async (chat: Awaited<ReturnType<typeof storage.getById>>) => {
-    if (!chat) return;
-    const characterIds: string[] =
-      typeof chat.characterIds === "string"
-        ? JSON.parse(chat.characterIds)
-        : Array.isArray(chat.characterIds)
-          ? chat.characterIds
-          : [];
-    if (characterIds.length === 0) return;
-
-    const characterStorage = createCharactersStorage(app.db);
-    for (const characterId of characterIds) {
-      const row = await characterStorage.getById(characterId);
-      if (!row) continue;
-      const data = JSON.parse(row.data as string) as CharacterData;
-      const currentExtensions = (data.extensions ?? {}) as Record<string, unknown>;
-      if (currentExtensions.conversationStatus === "online" && currentExtensions.conversationActivity == null) {
-        continue;
-      }
-      const extensions: Record<string, unknown> = {
-        ...currentExtensions,
-        conversationStatus: "online",
-        conversationActivity: undefined,
-      };
-      await characterStorage.update(characterId, { extensions } as Partial<CharacterData>, undefined, {
-        skipVersionSnapshot: true,
-      });
-    }
-  };
-
   // List all chats
   app.get("/", async () => {
     await cleanupEmptyRoleplayDmChats();
@@ -978,6 +949,18 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!chat || isHomeProfessorMariChat(chat)) {
       return reply.status(404).send({ error: "Chat not found" });
     }
+    // Schedules and presence overrides live on the character cards; this chat
+    // only caches them. Resolve on read so a card edited elsewhere shows up as
+    // soon as the chat is refetched, instead of waiting for the next poll.
+    if (chat.mode === "conversation") {
+      try {
+        await storage.resolveConversationPresenceState(chat.id);
+        const resolved = await storage.getById(chat.id);
+        if (resolved) return normalizeChatForResponse(resolved);
+      } catch (err) {
+        logger.warn(err, "Failed to resolve Conversation presence for chat %s", chat.id);
+      }
+    }
     return normalizeChatForResponse(chat);
   });
 
@@ -1153,7 +1136,10 @@ export async function chatsRoutes(app: FastifyInstance) {
       incoming.excludedLorebookIds = Array.from(new Set(incoming.excludedLorebookIds as string[]));
     }
     if (incoming.conversationSchedulesEnabled === false) {
-      await clearConversationScheduleState(chat);
+      // Chat-scoped only: drop this chat's cached copy, but leave the character
+      // card alone. The schedule belongs to the character and other chats may
+      // still be using it, so resetting the card's presence here would reach
+      // outside this chat.
       incoming.characterSchedules = undefined;
       incoming.scheduleWeekStart = undefined;
     }
@@ -3428,6 +3414,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     delete sanitized.branchParentChatId;
     delete sanitized.branchParentMessageId;
     delete sanitized.branchMessageId;
+    for (const key of Object.keys(sanitized)) {
+      if (key.startsWith("segmentEdit:") || key.startsWith("segmentDelete:")) delete sanitized[key];
+    }
     if ("gameJournal" in sanitized) {
       sanitized.gameJournal = sanitizeGameJournalForExport(sanitized.gameJournal, knownNpcNames);
     }
@@ -3452,9 +3441,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     options: { includeReasoning?: boolean } = {},
   ) => {
     const includeReasoning = options.includeReasoning === true;
-    const msgs = await storage.listMessages(chat.id);
+    const rawMessages = await storage.listMessages(chat.id);
     const charIds = parseExportCharacterIds(chat.characterIds);
     const metadata = parseExportMetadata(chat.metadata);
+    const msgs = rawMessages.map((message) => ({ ...message }));
+    if (chat.mode === "game") applyAllSegmentEdits(msgs, metadata, rawMessages);
     const messageIndexById = new Map(msgs.map((message, index) => [message.id, index]));
     const spatialContextHistory = (await createSpatialContextStorage().listForChat(chat.id))
       .map((snapshot) => ({
@@ -3585,7 +3576,13 @@ export async function chatsRoutes(app: FastifyInstance) {
               content:
                 swipe.index === msg.activeSwipeIndex
                   ? activeContent
-                  : resolveExportMessageContent({ content: swipe.content, characterId: msg.characterId }),
+                  : resolveExportMessageContent({
+                      content:
+                        chat.mode === "game" && (msg.role === "assistant" || msg.role === "narrator")
+                          ? applyMessageSegmentEdits(swipe.content, metadata, msg.id)
+                          : swipe.content,
+                      characterId: msg.characterId,
+                    }),
               extra:
                 swipe.index === msg.activeSwipeIndex
                   ? messageExtra

@@ -30,6 +30,8 @@ import { createGameSceneVideosStorage } from "../services/storage/game-scene-vid
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../services/storage/noodle.storage.js";
+import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
+import { CHARACTERS_REFERENCE_SHEET, loadPrompt } from "../services/prompt-overrides/index.js";
 import { generateImage } from "../services/image/image-generation.js";
 import {
   resolveConnectionImageDefaults,
@@ -490,17 +492,15 @@ const AVATAR_GENERATION_HARD_NEGATIVE_PROMPT =
 const CHARACTER_SHEET_HARD_NEGATIVE_PROMPT =
   "text, captions, logos, watermarks, decorative borders, unrelated characters, extra limbs, inconsistent faces, cropped-off body parts";
 
-function buildAvatarGenerationPrompt(body: AvatarGenerationBody, profileSubjectTags: string): string {
+async function buildAvatarGenerationPrompt(
+  promptOverridesStorage: ReturnType<typeof createPromptOverridesStorage>,
+  body: AvatarGenerationBody,
+  profileSubjectTags: string,
+): Promise<string> {
   const name = body.name?.trim() || "Character";
   const appearance = body.appearance?.trim() || name;
   if (body.purpose === "character-sheet") {
-    return [
-      `Create a polished production character design sheet for ${name}.`,
-      `Canonical appearance: ${appearance}.`,
-      "Show multiple consistent views of the same character: one large full-body hero view, front and back turnaround views in neutral poses, close-up face and costume details, important accessories, and a compact color palette on a clean neutral background.",
-      "Keep the same face, body proportions, hairstyle, outfit construction, colors, accessories, and distinguishing features in every view.",
-      "Show only this character and keep every body view fully in frame.",
-    ].join(" ");
+    return loadPrompt(promptOverridesStorage, CHARACTERS_REFERENCE_SHEET, { name, appearance });
   }
   if (profileSubjectTags.trim()) return `Canonical appearance for ${name}: ${appearance}.`;
   return `Create a polished character avatar portrait for ${name}. Canonical appearance: ${appearance}. Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`;
@@ -829,6 +829,7 @@ export async function charactersRoutes(app: FastifyInstance) {
   const personaGallery = createPersonaGalleryStorage(app.db);
   const lorebooksStorage = createLorebooksStorage(app.db);
   const connections = createConnectionsStorage(app.db);
+  const promptOverridesStorage = createPromptOverridesStorage(app.db);
   const characterUpdateQueues = new Map<string, Promise<unknown>>();
   const personaUpdateQueues = new Map<string, Promise<unknown>>();
 
@@ -899,7 +900,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       ).subjectTags[isCharacterSheet ? "illustration" : "avatar"] ?? "";
     const compiled = compileImagePrompt({
       kind: isCharacterSheet ? "illustration" : "avatar",
-      prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
+      prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
       styleProfiles: imageSettings.styleProfiles,
       styleProfileId: body.styleProfileId,
       imageDefaults,
@@ -985,7 +986,7 @@ export async function charactersRoutes(app: FastifyInstance) {
         }
       : compileImagePrompt({
           kind: isCharacterSheet ? "illustration" : "avatar",
-          prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
+          prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
           styleProfiles: imageSettings.styleProfiles,
           styleProfileId: body.styleProfileId,
           imageDefaults,

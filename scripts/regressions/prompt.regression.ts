@@ -811,6 +811,7 @@ import {
 import { parseRouterResponse } from "../../packages/server/src/services/agents/knowledge-router.js";
 import type { PromptOverridesStorage } from "../../packages/server/src/services/storage/prompt-overrides.storage.js";
 import {
+  CHARACTERS_REFERENCE_SHEET,
   listPromptOverrideKeys,
   loadPrompt,
   ROLEPLAY_GALLERY_VIDEO_DIRECTOR,
@@ -4710,6 +4711,20 @@ const cases: RegressionCase[] = [
         },
       });
       assert.deepEqual(missingPersonaSheetAndAvatar, { base64: "persona-sprite-bytes", source: "sprite" });
+
+      assert.equal(listPromptOverrideKeys().includes(CHARACTERS_REFERENCE_SHEET.key), true);
+      assert.match(
+        CHARACTERS_REFERENCE_SHEET.defaultBuilder({ name: "Mira", appearance: "long brown hair" }),
+        /production character design sheet for Mira.*Canonical appearance: long brown hair/u,
+      );
+      const charactersRouteSource = readFileSync(
+        new URL("../../packages/server/src/routes/characters.routes.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(
+        charactersRouteSource,
+        /loadPrompt\(promptOverridesStorage, CHARACTERS_REFERENCE_SHEET, \{ name, appearance \}\)/u,
+      );
     },
   },
   {
@@ -4780,7 +4795,7 @@ const cases: RegressionCase[] = [
     },
   },
   {
-    name: "Storyboard appearance is gated and injected once across planner and fallback paths",
+    name: "Storyboard appearance always reaches the planner and is injected once into render prompts",
     async run() {
       const appearance = "auburn hair, green eyes, leather jacket";
       const description = "A verbose roleplay card description that must not be sent as visual appearance.";
@@ -5124,8 +5139,8 @@ const cases: RegressionCase[] = [
       assert.doesNotMatch(gameSurfaceSource, /useGamePromptTemplate/u);
       assert.match(gameRouteSource, /characterAppearanceContextBlock:\s*storyboardAppearanceContextBlock/u);
       assert.equal(gameRouteSource.match(/^\s+characterAppearanceContextBlock,\s*$/gmu)?.length, 2);
-      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length ?? 0, 0);
-      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*includeCharacterAppearance,/gu)?.length, 5);
+      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*true,/gu)?.length, 1);
+      assert.equal(gameRouteSource.match(/includeCharacterDescriptions:\s*includeCharacterAppearance,/gu)?.length, 4);
       assert.equal(
         gameRouteSource.match(
           /includeCharacterDescriptions:\s*includeCharacterAppearanceAtRender && characterPrompts\.length === 0,/gu,
@@ -9271,7 +9286,10 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "utf8",
       );
       const ltmFallbackStart = generateRouteSource.indexOf("if (!handledByPresetSection) {");
-      const ltmFallbackEnd = generateRouteSource.indexOf("longTermMemoryRecallReceipt = recall.receipt;", ltmFallbackStart);
+      const ltmFallbackEnd = generateRouteSource.indexOf(
+        "longTermMemoryRecallReceipt = recall.receipt;",
+        ltmFallbackStart,
+      );
       const ltmFallbackSource = generateRouteSource.slice(
         ltmFallbackStart,
         ltmFallbackEnd + "longTermMemoryRecallReceipt = recall.receipt;".length,
@@ -11048,13 +11066,74 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         }),
         null,
       );
+      for (const directUserText of [
+        "Yes, please fix this for me.",
+        "Yes, please just handle it, I trust you completely.",
+        "Sure, go ahead and handle this however you think is best.",
+        "Yeah, just fix whatever is broken.",
+        "Okay, do whatever needs to be done.",
+      ]) {
+        assert.match(
+          workspaceMutationAuthorizationIssue(explicitCommand, { directUserText }) ?? "",
+          /immediately preceding visible proposal/iu,
+          `a vague mutation confirmation must not authorize the model-selected target by itself: ${directUserText}`,
+        );
+      }
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Please update Dottore's appearance since it currently looks off.",
+        }),
+        null,
+        "a pronoun later in a concrete mutation request must not turn it into a vague confirmation",
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(explicitCommand, {
+          directUserText: "Fix this outfit to be red for the wedding scene.",
+        }),
+        null,
+        "a concrete scope after a demonstrative target must not be treated as a standalone confirmation",
+      );
 
       assert.match(
         workspaceMutationAuthorizationIssue(
           { ...explicitCommand, authorization: "Delete every lorebook." },
           { directUserText: "Summarize the attached roleplay transcript." },
         ) ?? "",
-        /active user message/iu,
+        /informational and how-to/iu,
+      );
+      assert.equal(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Please add those entries.",
+            arguments: {
+              action: "lorebook.addEntry",
+              lorebookId: "book-id",
+              entry: { name: "Sumeru", content: "A rainforest nation." },
+              apply: true,
+            },
+          },
+          { directUserText: "Create a lorebook entry for Sumeru." },
+        ),
+        null,
+        "a paraphrased model quote must not override the server's direct-user authorization scope",
+      );
+      assert.match(
+        workspaceMutationAuthorizationIssue(
+          {
+            ...explicitCommand,
+            authorization: "Please add those entries.",
+            arguments: {
+              action: "lorebook.addEntry",
+              lorebookId: "book-id",
+              entry: { name: "Sumeru", content: "A rainforest nation." },
+              apply: true,
+            },
+          },
+          { directUserText: "Explain how lorebook entries work." },
+        ) ?? "",
+        /informational and how-to/iu,
+        "a malformed quote must not turn an informational direct request into mutation permission",
       );
       assert.match(
         workspaceMutationAuthorizationIssue(

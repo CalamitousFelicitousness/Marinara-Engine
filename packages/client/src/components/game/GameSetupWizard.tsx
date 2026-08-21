@@ -52,6 +52,7 @@ import {
   type GameGmMode,
   type GameSpotifySourceType,
   normalizeSpotifySourceType,
+  resolveGameSpatialMapDraftOptions,
   type GenerationParameters,
   type SpatialMapGroundingMode,
   type SpatialMapDraftSize,
@@ -249,12 +250,6 @@ const SPATIAL_MAP_DRAFT_SIZE_OPTIONS: Array<{
   { value: "large", targetLocationCount: 28, label: "Large", detail: "About 28 places" },
 ];
 const SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT = 40;
-
-function spatialMapDraftSizeForTargetLocationCount(targetLocationCount: number): SpatialMapDraftSize {
-  if (targetLocationCount <= 8) return "small";
-  if (targetLocationCount <= 16) return "medium";
-  return "large";
-}
 
 function normalizeSpatialMapTargetLocationCount(value: string): number | null {
   const parsed = Number(value);
@@ -1109,6 +1104,10 @@ export function GameSetupWizard({
       setGameSystemPromptEdited(Boolean(importedCustomPrompt));
       setGameSpecialInstructions(config.gameSpecialInstructions?.trim() || "");
       const importedSpatialMapInstructions = config.spatialMapInstructions?.trim() || "";
+      const importedSpatialMapDraftOptions = resolveGameSpatialMapDraftOptions(
+        config.spatialMapDraftSize,
+        config.spatialMapTargetLocationCount,
+      );
       setDraftSpatialMap(
         hierarchicalMapsInstalled &&
           (config.gameWorldMapMode === "hierarchical" || Boolean(importedSpatialMapInstructions)),
@@ -1117,10 +1116,10 @@ export function GameSetupWizard({
       setTemplateSpatialMap(false);
       setSpatialTemplateSelection(null);
       setSpatialTemplatePickerOpen(false);
-      setSpatialMapDraftSize("medium");
-      setSpatialMapTargetLocationCount(16);
-      setSpatialMapTargetLocationCountInput("16");
-      setSpatialMapGroundingMode("setup");
+      setSpatialMapDraftSize(importedSpatialMapDraftOptions.size);
+      setSpatialMapTargetLocationCount(importedSpatialMapDraftOptions.targetLocationCount);
+      setSpatialMapTargetLocationCountInput(String(importedSpatialMapDraftOptions.targetLocationCount));
+      setSpatialMapGroundingMode(config.spatialMapGroundingMode ?? "setup");
       setSpatialMapInstructions(importedSpatialMapInstructions);
 
       const warningCount = imported.warnings.length;
@@ -1167,6 +1166,12 @@ export function GameSetupWizard({
         enableAgents && hierarchicalMapsInstalled && (draftSpatialMap || manualSpatialMap || templateSpatialMap)
           ? "hierarchical"
           : "standard",
+      spatialMapDraftSize:
+        enableAgents && hierarchicalMapsInstalled && draftSpatialMap ? spatialMapDraftSize : undefined,
+      spatialMapTargetLocationCount:
+        enableAgents && hierarchicalMapsInstalled && draftSpatialMap ? spatialMapTargetLocationCount : undefined,
+      spatialMapGroundingMode:
+        enableAgents && hierarchicalMapsInstalled && draftSpatialMap ? spatialMapGroundingMode : undefined,
       rating,
       gmMode,
       gmCharacterId: gmMode === "character" && gmCharacterId ? gmCharacterId : undefined,
@@ -3172,7 +3177,7 @@ export function GameSetupWizard({
                                 const normalized = normalizeSpatialMapTargetLocationCount(raw);
                                 if (normalized !== null) {
                                   setSpatialMapTargetLocationCount(normalized);
-                                  setSpatialMapDraftSize(spatialMapDraftSizeForTargetLocationCount(normalized));
+                                  setSpatialMapDraftSize(resolveGameSpatialMapDraftOptions(undefined, normalized).size);
                                 }
                               }}
                               onBlur={() => {
@@ -3182,7 +3187,7 @@ export function GameSetupWizard({
                                 if (normalized !== null) {
                                   setSpatialMapTargetLocationCount(normalized);
                                   setSpatialMapTargetLocationCountInput(String(normalized));
-                                  setSpatialMapDraftSize(spatialMapDraftSizeForTargetLocationCount(normalized));
+                                  setSpatialMapDraftSize(resolveGameSpatialMapDraftOptions(undefined, normalized).size);
                                 }
                               }}
                               className={cn(

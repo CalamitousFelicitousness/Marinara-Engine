@@ -165,6 +165,7 @@ import {
   normalizeIllustratorImagesPerGeneration,
   resolveGameImageDynamicPromptEnabled,
   resolveGameSetupArtStylePrompt,
+  resolveGameSpatialMapDraftOptions,
   BUILT_IN_AGENT_IDS,
   STORYBOARD_AGENT_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
@@ -1745,6 +1746,9 @@ const gameSetupConfigSchema = z.object({
   combatStyle: z.enum(["classic", "tactical"]).optional(),
   spatialMapInstructions: z.string().max(4000).optional(),
   gameWorldMapMode: z.enum(["standard", "hierarchical"]).optional(),
+  spatialMapDraftSize: z.enum(["small", "medium", "large"]).optional(),
+  spatialMapTargetLocationCount: z.number().int().min(1).max(40).optional(),
+  spatialMapGroundingMode: z.enum(["setup", "lore_strict", "lore_expand"]).optional(),
   playerGoals: z.string().max(2000).default(""),
   gmMode: z.enum(["standalone", "character"]),
   rating: z.enum(["sfw", "nsfw"]).default("sfw"),
@@ -6302,6 +6306,14 @@ export async function gameRoutes(app: FastifyInstance) {
     logger.info("[game/create] Received request");
     const parsedCreateGameInput = createGameSchema.parse(req.body);
     const { name, connectionId, promptPresetId, chatId, preferences, shareLabels } = parsedCreateGameInput;
+    const normalizedSpatialMapDraftOptions =
+      parsedCreateGameInput.setupConfig.spatialMapDraftSize !== undefined ||
+      parsedCreateGameInput.setupConfig.spatialMapTargetLocationCount !== undefined
+        ? resolveGameSpatialMapDraftOptions(
+            parsedCreateGameInput.setupConfig.spatialMapDraftSize,
+            parsedCreateGameInput.setupConfig.spatialMapTargetLocationCount,
+          )
+        : null;
     const selectedPromptPresetId = promptPresetId || parsedCreateGameInput.setupConfig.promptPresetId || null;
     const customHudWidgets = sanitizeGameHudWidgets(parsedCreateGameInput.setupConfig.customHudWidgets);
     const gameSystemPrompt = parsedCreateGameInput.setupConfig.gameSystemPrompt?.trim() || null;
@@ -6337,6 +6349,12 @@ export async function gameRoutes(app: FastifyInstance) {
         requestedWorldMapMode === "hierarchical" && parsedCreateGameInput.setupConfig.enableAgents === true
           ? "hierarchical"
           : "standard",
+      ...(normalizedSpatialMapDraftOptions
+        ? {
+            spatialMapDraftSize: normalizedSpatialMapDraftOptions.size,
+            spatialMapTargetLocationCount: normalizedSpatialMapDraftOptions.targetLocationCount,
+          }
+        : {}),
       enableSpriteGeneration: visualGenerationEnabled || undefined,
       gameStoryboardAutoIllustrationsEnabled: visualGenerationEnabled
         ? storyboardIllustrationsEnabled
@@ -9984,6 +10002,36 @@ export async function gameRoutes(app: FastifyInstance) {
     return { journal, recap: buildStructuredRecap(journal, sessionNumber), playerNotes };
   });
 
+  // ── PUT /game/:chatId/journal/entries/:entryIndex ──
+  app.put<{ Params: { chatId: string; entryIndex: string } }>(
+    "/:chatId/journal/entries/:entryIndex",
+    async (req, reply) => {
+      const entryIndex = z.coerce.number().int().nonnegative().parse(req.params.entryIndex);
+      const { title, content } = z
+        .object({
+          title: z.string().trim().min(1).max(500),
+          content: z.string().max(20_000),
+        })
+        .parse(req.body);
+      const chats = createChatsStorage(app.db);
+      let nextJournal: Journal | null = null;
+      const updated = await chats.patchMetadata(req.params.chatId, (current) => {
+        const journal = (current.gameJournal as Journal) ?? createJournal();
+        const entry = journal.entries[entryIndex];
+        if (!entry) {
+          throw Object.assign(new Error("Journal entry not found"), { statusCode: 404 });
+        }
+        const entries = [...journal.entries];
+        entries[entryIndex] = { ...entry, title, content };
+        nextJournal = { ...journal, entries };
+        return { gameJournal: nextJournal };
+      });
+      if (!updated || !nextJournal) return reply.status(404).send({ error: "Chat not found" });
+
+      return { journal: nextJournal };
+    },
+  );
+
   // ── PUT /game/:chatId/notes ──
   app.put<{ Params: { chatId: string } }>("/:chatId/notes", async (req) => {
     const { notes } = z.object({ notes: z.string().max(10000) }).parse(req.body);
@@ -11596,7 +11644,7 @@ export async function gameRoutes(app: FastifyInstance) {
         charAvatarByName: storyboardCharacterContext.charAvatarByName,
         charDescriptionByName: storyboardCharacterContext.charDescriptionByName,
         includeReferenceImages: false,
-        includeCharacterDescriptions: includeCharacterAppearance,
+        includeCharacterDescriptions: true,
         maxReferenceImages: 0,
       });
       const storyboardAppearanceContextBlock = buildGameIllustratorAppearanceContextBlock(

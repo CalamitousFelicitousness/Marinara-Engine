@@ -156,6 +156,8 @@ export interface SceneSegmentEffect {
   background?: string | null;
   music?: string | null;
   sfx?: string[];
+  /** Total sequential plays for each sound effect on this beat. Defaults to 1. */
+  sfxLoopCount?: number;
   ambient?: string | null;
   /** Rare cinematic overlays/visual effects to fire when this narration segment appears. */
   directions?: DirectionCommand[];

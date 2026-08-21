@@ -264,7 +264,10 @@ import { characterOverrideDb } from "../../packages/server/src/services/professo
 import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../../packages/server/src/services/storage/noodle.storage.js";
 import { createChatPresetsStorage } from "../../packages/server/src/services/storage/chat-presets.storage.js";
-import { buildGoogleModelsPageUrl } from "../../packages/server/src/routes/connections.routes.js";
+import {
+  buildConnectionTestCatalogUrl,
+  buildGoogleModelsPageUrl,
+} from "../../packages/server/src/routes/connections.routes.js";
 import { normalizeGoogleGenerativeLanguageBaseUrl } from "../../packages/server/src/services/llm/providers/google.provider.js";
 import {
   buildReferencedCharacterContext,
@@ -3730,6 +3733,21 @@ const googleModelsPageUrl = buildGoogleModelsPageUrl(
   "next page/token",
 );
 assert.equal(
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/", "audio", "/models", "elevenlabs"),
+  "https://api.elevenlabs.io/v1/models",
+  "ElevenLabs audio connection tests must normalize a trailing slash and use the versioned models endpoint",
+);
+assert.equal(
+  buildConnectionTestCatalogUrl("https://api.elevenlabs.io/v1/", "audio", "/models", "elevenlabs"),
+  "https://api.elevenlabs.io/v1/models",
+  "An explicitly versioned ElevenLabs URL with a trailing slash must not duplicate the API version",
+);
+assert.equal(
+  buildConnectionTestCatalogUrl("https://api.openai.com/v1", "audio", "/models", "openai"),
+  "https://api.openai.com/v1/models",
+  "Other audio sources keep their configured models endpoint",
+);
+assert.equal(
   normalizeGoogleGenerativeLanguageBaseUrl("https://generativelanguage.googleapis.com/v1"),
   "https://generativelanguage.googleapis.com/v1beta",
   "Legacy Gemini v1 connection URLs must use the supported v1beta endpoint",
@@ -5541,10 +5559,19 @@ const gameJournalSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameJournal.tsx", import.meta.url),
   "utf8",
 );
+const choiceSelectionModalSource = readFileSync(
+  new URL("../../packages/client/src/components/presets/ChoiceSelectionModal.tsx", import.meta.url),
+  "utf8",
+);
 const gameSurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSurface.tsx", import.meta.url),
   "utf8",
 );
+const gameNarrationSource = readFileSync(
+  new URL("../../packages/client/src/components/game/GameNarration.tsx", import.meta.url),
+  "utf8",
+);
+const gameAudioSource = readFileSync(new URL("../../packages/client/src/lib/game-audio.ts", import.meta.url), "utf8");
 const gameSetupWizardSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameSetupWizard.tsx", import.meta.url),
   "utf8",
@@ -5864,6 +5891,40 @@ assert.equal(
   "The Persona header avatar inside its upload target must not intercept page clicks",
 );
 assert.match(gameJournalSource, /data-game-journal-scroll/u);
+assert.match(gameJournalSource, /\/game\/\$\{chatId\}\/journal\/entries\/\$\{editingEntry\.index\}/u);
+assert.match(gameJournalSource, /<TimelineView entries=\{visibleEntries\} onEdit=\{beginEditingEntry\}/u);
+assert.match(
+  gameNarrationSource,
+  /const narrationKey = latestAssistant \? `\$\{latestAssistant\.id\}:\$\{latestAssistant\.activeSwipeIndex\}` : null/u,
+  "Game rerolls must reset narration when the saved swipe changes on the same message",
+);
+assert.match(gameAudioSource, /audio\.onended = \(\) => \{[\s\S]*remainingPlays -= 1/u);
+assert.match(
+  gameAudioSource,
+  /const fallbackPlays = remainingPlays;[\s\S]*index < fallbackPlays[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
+  "Procedural SFX fallback must preserve the bounded number of remaining sequential plays",
+);
+assert.match(
+  gameAudioSource,
+  /const generation = this\.sfxGeneration;[\s\S]*generation !== this\.sfxGeneration[\s\S]*proceduralSfxTimers\.add\(timer\)/u,
+  "Procedural SFX callbacks must stay scoped to the active Game audio generation",
+);
+assert.match(
+  gameAudioSource,
+  /dispose\(\): void \{[\s\S]*sfxGeneration \+= 1;[\s\S]*clearTimeout\(timer\);[\s\S]*el\.onerror = null;[\s\S]*el\.onended = null;/u,
+  "Disposing Game audio must invalidate late fallbacks, cancel timers, and detach SFX handlers",
+);
+assert.match(gameSurfaceSource, /audioManager\.playSfx\(resolved, assetMap, fx\.sfxLoopCount\)/u);
+assert.match(
+  choiceSelectionModalSource,
+  /presentedOptions\.length === 1[\s\S]*<SettingsSwitch[\s\S]*labelPosition="start"/u,
+  "Single-option preset variables must use the standard accessible settings switch",
+);
+assert.doesNotMatch(
+  choiceSelectionModalSource,
+  /inline-flex h-4 w-7 shrink-0 items-center rounded-full/u,
+  "Preset choices must not restore the undersized Android toggle",
+);
 assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
@@ -5889,12 +5950,27 @@ assert.match(
   "New Game setup must preserve the selected custom place target in its post-setup map plan",
 );
 assert.match(
+  gameSetupWizardSource,
+  /setSpatialMapTargetLocationCount\(importedSpatialMapDraftOptions\.targetLocationCount\)/u,
+  "New Game setup imports must restore the saved World Maps place target",
+);
+assert.match(
+  gameSetupWizardSource,
+  /setSpatialMapGroundingMode\(config\.spatialMapGroundingMode \?\? "setup"\)/u,
+  "New Game setup imports must restore the saved World Maps grounding mode",
+);
+assert.match(
   gameSurfaceSource,
   /targetLocationCount:\s*plan\.targetLocationCount/u,
   "Game setup must send the custom place target to World Maps draft generation",
 );
 assert.match(gameTypesSource, /enableAgents\?: boolean;/u);
 assert.match(gameRoutesSource, /enableAgents: z\.boolean\(\)\.optional\(\)/u);
+assert.match(
+  gameRoutesSource,
+  /spatialMapTargetLocationCount: z\.number\(\)\.int\(\)\.min\(1\)\.max\(40\)\.optional\(\)/u,
+);
+assert.match(gameRoutesSource, /"\/:chatId\/journal\/entries\/:entryIndex"/u);
 assert.match(gameRoutesSource, /enableAgents: setupConfig\.enableAgents === true/u);
 assert.match(gameRoutesSource, /gameStoryboardsEnabled: setupConfig\.gameStoryboardsEnabled/u);
 assert.equal(
@@ -6245,7 +6321,7 @@ const replayMessages = [
       ],
       gameReplayCue: {
         background: "hall-night",
-        segmentEffects: [{ segment: 0, sfx: ["door-creak"] }],
+        segmentEffects: [{ segment: 0, sfx: ["door-creak"], sfxLoopCount: 3 }],
       },
     },
   },
@@ -6267,7 +6343,7 @@ assert.equal(replayTurns[0]?.presentation.background, "manor");
 assert.equal(replayTurns[1]?.playerMessage?.content, "Enter");
 assert.equal(replayTurns[1]?.recordedChoice?.label, "Wait");
 assert.equal(replayTurns[1]?.presentation.background, "hall-night");
-assert.deepEqual(replayTurns[1]?.presentation.segmentEffects, [{ segment: 0, sfx: ["door-creak"] }]);
+assert.deepEqual(replayTurns[1]?.presentation.segmentEffects, [{ segment: 0, sfx: ["door-creak"], sfxLoopCount: 3 }]);
 assert.equal(replayTurns[2]?.playerMessage?.content, "Wait for sunrise");
 
 const replayStoryboardFrames = [
@@ -6746,6 +6822,10 @@ const sharedGameSetupSource: GameSetupShareSource = {
     difficulty: "normal",
     combatStyle: "tactical",
     spatialMapInstructions: "Build a shifting tower with a market ward and flooded catacombs.",
+    gameWorldMapMode: "hierarchical",
+    spatialMapDraftSize: "large",
+    spatialMapTargetLocationCount: 10,
+    spatialMapGroundingMode: "lore_expand",
     rating: "nsfw",
     playerGoals: "Become an elite dungeon conqueror",
     gmMode: "standalone",
@@ -6808,6 +6888,9 @@ assert.match(sharedGameSetup, /Use clear progression and frequent loot rewards/u
 assert.match(sharedGameSetup, /Dungeon Lore/u);
 assert.match(sharedGameSetup, /Combat style: Tactical/u);
 assert.match(sharedGameSetup, /Build a shifting tower with a market ward and flooded catacombs\./u);
+assert.match(sharedGameSetup, /World map size: Medium/u);
+assert.match(sharedGameSetup, /World map place target: 10/u);
+assert.match(sharedGameSetup, /World map build from: Lore \+ AI/u);
 assert.match(sharedGameSetup, /"startingValue": 3/u);
 assert.doesNotMatch(
   sharedGameSetup,
@@ -6854,6 +6937,9 @@ assert.equal(
   resolvedGameSetup.config.spatialMapInstructions,
   "Build a shifting tower with a market ward and flooded catacombs.",
 );
+assert.equal(resolvedGameSetup.config.spatialMapDraftSize, "medium");
+assert.equal(resolvedGameSetup.config.spatialMapTargetLocationCount, 10);
+assert.equal(resolvedGameSetup.config.spatialMapGroundingMode, "lore_expand");
 assert.equal(resolvedGameSetup.gmConnectionId, "gm-connection-new-id");
 assert.equal(resolvedGameSetup.config.imageConnectionId, "image-connection-new-id");
 assert.equal(resolvedGameSetup.config.videoConnectionId, "video-connection-new-id");
@@ -6879,7 +6965,43 @@ assert.equal(unresolvedGameSetup.gmConnectionId, null);
 assert.deepEqual(unresolvedGameSetup.config.partyCharacterIds, []);
 assert.equal(unresolvedGameSetup.config.personaId, null);
 assert.deepEqual(unresolvedGameSetup.config.activeLorebookIds, []);
+assert.equal(unresolvedGameSetup.config.spatialMapGroundingMode, "setup");
+assert.ok(unresolvedGameSetup.warnings.some((warning) => /World map[\s\S]*Game setup/u.test(warning)));
 assert.ok(unresolvedGameSetup.warnings.length >= 5);
+
+for (const [size, targetLocationCount] of [
+  ["small", 8],
+  ["medium", 16],
+  ["large", 28],
+] as const) {
+  const presetMapSetup = parseGameSetupShareFileJson(
+    JSON.stringify(
+      buildGameSetupShareFile({
+        ...sharedGameSetupSource,
+        config: {
+          ...sharedGameSetupSource.config,
+          spatialMapDraftSize: size,
+          spatialMapTargetLocationCount: undefined,
+        },
+      }),
+    ),
+  );
+  assert.equal(presetMapSetup.setup.config.spatialMapDraftSize, size);
+  assert.equal(presetMapSetup.setup.config.spatialMapTargetLocationCount, targetLocationCount);
+}
+
+for (const groundingMode of ["setup", "lore_strict", "lore_expand"] as const) {
+  const groundedMapSetup = parseGameSetupShareFileJson(
+    JSON.stringify({
+      ...exportedGameSetup,
+      setup: {
+        ...exportedGameSetup.setup,
+        config: { ...exportedGameSetup.setup.config, spatialMapGroundingMode: groundingMode },
+      },
+    }),
+  );
+  assert.equal(groundedMapSetup.setup.config.spatialMapGroundingMode, groundingMode);
+}
 const providerOnlyGameSetup = resolveGameSetupImport(parsedGameSetup, {
   characters: [],
   personas: [],
@@ -6930,6 +7052,27 @@ assert.throws(
     ),
   /invalid Spatial Map Instructions value/u,
 );
+for (const invalidConfig of [
+  { spatialMapDraftSize: "enormous" },
+  { spatialMapTargetLocationCount: 0 },
+  { spatialMapTargetLocationCount: 41 },
+  { spatialMapTargetLocationCount: 10.5 },
+  { spatialMapGroundingMode: "internet" },
+]) {
+  assert.throws(
+    () =>
+      parseGameSetupShareFileJson(
+        JSON.stringify({
+          ...exportedGameSetup,
+          setup: {
+            ...exportedGameSetup.setup,
+            config: { ...exportedGameSetup.setup.config, ...invalidConfig },
+          },
+        }),
+      ),
+    /invalid (Spatial Map Draft Size|Spatial Map Target Location Count|Spatial Map Grounding Mode) value/u,
+  );
+}
 assert.throws(
   () =>
     parseGameSetupShareFileJson(
@@ -8577,6 +8720,8 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   };
   const prompt = buildSceneAnalyzerUserPrompt("Boots cross the wet stones.", undefined, generatedAudioContext);
   assert.match(prompt, /short sound description/u);
+  assert.match(prompt, /"sfxLoopCount": <1-5>/u);
+  assert.doesNotMatch(prompt, /"(?:sfxLoopCount|directions|background)"[^\n]*\/\//u);
   // #5161: music free-text prompts are retired — even with generateMusic on,
   // the analyzer is asked for genre/intensity hints, never a music prompt.
   assert.doesNotMatch(prompt, /concise instrumental scene music prompt/u);
@@ -8591,7 +8736,9 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
       weather: null,
       timeOfDay: null,
       reputationChanges: [],
-      segmentEffects: [{ segment: 0, sfx: [" quiet footsteps <on> wet stone "], music: "low suspense pulse" }],
+      segmentEffects: [
+        { segment: 0, sfx: [" quiet footsteps <on> wet stone "], sfxLoopCount: 9, music: "low suspense pulse" },
+      ],
     },
     {
       availableBackgrounds: generatedAudioContext.availableBackgrounds,
@@ -8606,7 +8753,24 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   // downstream from the library (context tracks included). SFX unchanged.
   assert.equal(processed.music, null);
   assert.deepEqual(processed.segmentEffects?.[0]?.sfx, ["quiet footsteps on wet stone"]);
+  assert.equal(processed.segmentEffects?.[0]?.sfxLoopCount, 5);
   assert.equal(processed.segmentEffects?.[0]?.music, undefined);
+
+  const lowerBoundProcessed = postProcessSceneResult(
+    {
+      ...processed,
+      segmentEffects: [{ segment: 0, sfx: ["footsteps"], sfxLoopCount: 0 }],
+    },
+    {
+      availableBackgrounds: generatedAudioContext.availableBackgrounds,
+      availableSfx: [],
+      generateSoundEffects: true,
+      generateMusic: true,
+      validWidgetIds: new Set(),
+      characterNames: [],
+    },
+  );
+  assert.equal(lowerBoundProcessed.segmentEffects?.[0]?.sfxLoopCount, 1);
 
   const spotifyProcessed = postProcessSceneResult(
     {
@@ -9452,7 +9616,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     generateRouteSource,
-    /chatMode === "roleplay" && assistantMessageReadySent\) moveToActiveAgentRuns\(\)/u,
+    /chatMode === "roleplay" && assistantMessageReadySent\) \{[\s\S]{0,220}moveToActiveAgentRuns\([\s\S]{0,180}lastSavedSwipeIndex/u,
     "A durable Roleplay reply must release the main generation slot while retaining its cancellable agent tail",
   );
   assert.match(generateRouteSource, /const activeAgentRuns = new Map<string, Set<ActiveGeneration>>\(\)/u);
@@ -9465,10 +9629,6 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     generateRouteSource,
     /active: activeGenerations\.has\(req\.params\.chatId\) \|\| \(activeAgentRuns\.get\(req\.params\.chatId\)\?\.size \?\? 0\) > 0/u,
     "Generation status must preserve detached Agent activity across reconnects",
-  );
-  assert.match(
-    generateRouteSource,
-    /body\.agentsOnly === true \? agentRuns : \[\.\.\.\(activeGeneration \? \[activeGeneration\] : \[\]\), \.\.\.agentRuns\]/u,
   );
   assert.match(
     generateRouteSource,

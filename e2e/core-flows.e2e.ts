@@ -9285,8 +9285,19 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
     page.locator('[data-component="OnboardingTutorial.Spotlight"][data-tour-target="home-navigation"]'),
   ).toBeVisible();
   await expect(page.locator('[data-component="OnboardingTutorial.Spotlight"]')).toHaveCount(1);
+  const tutorialCard = page.locator('[data-component="OnboardingTutorial.Card"]');
+  const centeredStage = page.locator('[data-component="OnboardingTutorial.CenteredStage"]');
+  await expect
+    .poll(async () => {
+      const [cardBounds, stageBounds] = await Promise.all([tutorialCard.boundingBox(), centeredStage.boundingBox()]);
+      if (!cardBounds || !stageBounds) return Number.POSITIVE_INFINITY;
+      return Math.abs(
+        cardBounds.y + cardBounds.height / 2 - (stageBounds.y + stageBounds.height / 2),
+      );
+    })
+    .toBeLessThanOrEqual(2);
   const [cardMetrics, centeredStageBounds, navigationBounds] = await Promise.all([
-    page.locator('[data-component="OnboardingTutorial.Card"]').evaluate((element) => {
+    tutorialCard.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return {
         centerX: bounds.left + bounds.width / 2,
@@ -9295,7 +9306,7 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
         scrollHeight: element.scrollHeight,
       };
     }),
-    page.locator('[data-component="OnboardingTutorial.CenteredStage"]').boundingBox(),
+    centeredStage.boundingBox(),
     navigationTarget.boundingBox(),
   ]);
   const viewport = page.viewportSize();
@@ -9306,7 +9317,7 @@ test("Professor Mari replaces the Noodle tour with highlighted Home guidance", a
   );
   expect(
     Math.abs(cardMetrics.centerY - (centeredStageBounds!.y + centeredStageBounds!.height / 2)),
-  ).toBeLessThanOrEqual(8);
+  ).toBeLessThanOrEqual(2);
   expect(cardMetrics.scrollHeight).toBeLessThanOrEqual(cardMetrics.clientHeight);
   expect(navigationBounds).not.toBeNull();
   expect(navigationBounds!.width).toBeLessThan(viewport!.width / 2);
@@ -16206,7 +16217,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
   }
 });
 
-test("mobile composers preserve history position and stay open in Conversation and Roleplay", async ({
+test("mobile composers preserve history position and restore focus in Conversation and Roleplay", async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Focused composer history behavior is mobile-only.");
@@ -16263,10 +16274,8 @@ test("mobile composers preserve history position and stay open in Conversation a
         .toBeGreaterThan(180);
       const preservedScrollTop = await transcript.evaluate((element) => element.scrollTop);
 
-      if (mode === "roleplay") {
-        const showComposer = page.getByRole("button", { name: "Show message input", exact: true });
-        if (await showComposer.isVisible()) await showComposer.click();
-      }
+      const showComposer = page.getByRole("button", { name: "Show message input", exact: true });
+      if (await showComposer.isVisible()) await showComposer.click();
       await expect(textarea).toBeVisible();
       await textarea.evaluate((element) => {
         element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));

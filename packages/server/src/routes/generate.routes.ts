@@ -781,12 +781,6 @@ export async function generateRoutes(app: FastifyInstance) {
   const personaGallery = createPersonaGalleryStorage(app.db);
   const appSettings = createAppSettingsStorage(app.db);
 
-  /**
-   * In-memory cache for OpenAI Responses API encrypted reasoning items.
-   * Keyed by chatId → opaque reasoning items from the last response.
-   * These are replayed on the next turn so the model can continue its reasoning chain.
-   */
-  const encryptedReasoningCache = new Map<string, unknown[]>();
   type ActiveGeneration = ActiveAgentRun;
   const activeGenerations = new Map<string, ActiveGeneration>();
   const activeAgentRuns = new Map<string, Set<ActiveGeneration>>();
@@ -1196,6 +1190,7 @@ export async function generateRoutes(app: FastifyInstance) {
         : null;
     const promptNow = toZonedWallClockDate(new Date(), promptTimeZone);
     const excludePastReasoning = chatMeta.excludePastReasoning !== false;
+    let encryptedReasoningItems: unknown[] | undefined;
     const imageCaptioningRuntime: ImageCaptioningRuntime = await resolveImageCaptioningRuntime({
       chatMeta,
       fallbackConnectionId: connId,
@@ -1397,6 +1392,26 @@ export async function generateRoutes(app: FastifyInstance) {
         chatMessages = chatMessages.filter((m: any) => m.id !== input.regenerateMessageId);
         lorebookKeeperMessages = lorebookKeeperMessages.filter((m: any) => m.id !== input.regenerateMessageId);
       }
+
+      // OpenAI Responses API uses encrypted reasoning items for multi-turn continuity.
+      // Recover them before choosing the tool or streaming provider path. Hidden command
+      // anchors remain eligible, while a regenerated response cannot seed its replacement.
+      if (!excludePastReasoning) {
+        const reasoningMessages = input.regenerateMessageId
+          ? scopedMessages.filter((message: any) => message.id !== input.regenerateMessageId)
+          : scopedMessages;
+        for (let i = reasoningMessages.length - 1; i >= 0; i--) {
+          const message = reasoningMessages[i]!;
+          if (message.role === "assistant") {
+            const extra = parseExtra(message.extra);
+            if (Array.isArray(extra.encryptedReasoning) && extra.encryptedReasoning.length > 0) {
+              encryptedReasoningItems = extra.encryptedReasoning;
+            }
+            break;
+          }
+        }
+      }
+
       const regenerateContextCutoff =
         input.regenerateMessageId && typeof regenMsg?.createdAt === "string" ? regenMsg.createdAt : null;
       const promptLastGenerationType = resolvePromptLastGenerationType(input);
@@ -6316,31 +6331,6 @@ export async function generateRoutes(app: FastifyInstance) {
           if (enableChatTools && provider.chatComplete) {
             const maxToolRounds = getMaxToolRounds();
             let loopMessages: ChatMessage[] = initialProviderMessages;
-            // ── Seed encrypted reasoning cache from DB ──
-            // OpenAI Responses API uses encrypted reasoning items for multi-turn continuity.
-            // These must be replayed on each request. If the in-memory cache was lost (e.g. server
-            // restart), recover from the last assistant message's persisted extra.
-            // On regens/swipes: clear the cache so we re-derive from the filtered chatMessages
-            // (which excludes the message being regenerated). Otherwise we'd replay the reasoning
-            // from the discarded response instead of the turn before it.
-            if (input.regenerateMessageId) {
-              encryptedReasoningCache.delete(input.chatId);
-            }
-            if (excludePastReasoning) {
-              encryptedReasoningCache.delete(input.chatId);
-            } else if (!encryptedReasoningCache.has(input.chatId)) {
-              for (let i = chatMessages.length - 1; i >= 0; i--) {
-                const msg = chatMessages[i]!;
-                if (msg.role === "assistant") {
-                  const ex = parseExtra(msg.extra);
-                  if (Array.isArray(ex.encryptedReasoning) && ex.encryptedReasoning.length > 0) {
-                    encryptedReasoningCache.set(input.chatId, ex.encryptedReasoning);
-                  }
-                  break;
-                }
-              }
-            }
-
             // Stream tokens in real-time via onToken callback.
             // Some providers (e.g. Gemini with thinking) return the entire response
             // in one chunk. Break large chunks into small pieces so the client sees
@@ -6401,12 +6391,12 @@ export async function generateRoutes(app: FastifyInstance) {
                     onToken: input.streaming ? onToken : undefined,
                     openrouterProvider: conn.openrouterProvider ?? undefined,
                     signal: abortController.signal,
-                    encryptedReasoningItems: excludePastReasoning
-                      ? undefined
-                      : encryptedReasoningCache.get(input.chatId),
+                    encryptedReasoningItems: excludePastReasoning ? undefined : encryptedReasoningItems,
                     onEncryptedReasoning: excludePastReasoning
                       ? undefined
-                      : (items) => encryptedReasoningCache.set(input.chatId, items),
+                      : (items) => {
+                          encryptedReasoningItems = items;
+                        },
                     onChatCompletionsReasoning: rememberChatCompletionsReasoning,
                   }),
                 );
@@ -6621,12 +6611,12 @@ export async function generateRoutes(app: FastifyInstance) {
                     onToken: input.streaming ? onToken : undefined,
                     openrouterProvider: conn.openrouterProvider ?? undefined,
                     signal: abortController.signal,
-                    encryptedReasoningItems: excludePastReasoning
-                      ? undefined
-                      : encryptedReasoningCache.get(input.chatId),
+                    encryptedReasoningItems: excludePastReasoning ? undefined : encryptedReasoningItems,
                     onEncryptedReasoning: excludePastReasoning
                       ? undefined
-                      : (items) => encryptedReasoningCache.set(input.chatId, items),
+                      : (items) => {
+                          encryptedReasoningItems = items;
+                        },
                     onChatCompletionsReasoning: rememberChatCompletionsReasoning,
                   }),
                 );
@@ -6684,10 +6674,12 @@ export async function generateRoutes(app: FastifyInstance) {
                 geminiResponseParts = parts;
               },
               signal: abortController.signal,
-              encryptedReasoningItems: excludePastReasoning ? undefined : encryptedReasoningCache.get(input.chatId),
+              encryptedReasoningItems: excludePastReasoning ? undefined : encryptedReasoningItems,
               onEncryptedReasoning: excludePastReasoning
                 ? undefined
-                : (items) => encryptedReasoningCache.set(input.chatId, items),
+                : (items) => {
+                    encryptedReasoningItems = items;
+                  },
               onChatCompletionsReasoning: rememberChatCompletionsReasoning,
             });
             try {
@@ -7175,6 +7167,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     commandOnly: true,
                     conversationCommandContent: conversationCommandContent ?? null,
                     isGenerated: true,
+                    encryptedReasoning: encryptedReasoningItems?.length ? encryptedReasoningItems : null,
                   })
                 : savedMsg;
               if (
@@ -7300,7 +7293,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   if (!recoveredMessage) throw error;
                   recoveredAlreadyAppliedSpatialTurn = true;
                   recoveredAlreadyAppliedOwnerTurn = true;
-                  encryptedReasoningCache.delete(input.chatId);
+                  encryptedReasoningItems = undefined;
                   savedMsg = recoveredMessage;
                   savedSwipeIndex = recovered.swipeIndex;
                   fullResponse = recoveredMessage.content;
@@ -7422,8 +7415,7 @@ export async function generateRoutes(app: FastifyInstance) {
             if (chatCompletionsReasoning) extraUpdate.chatCompletionsReasoning = chatCompletionsReasoning;
             else extraUpdate.chatCompletionsReasoning = null;
             // Store OpenAI Responses API encrypted reasoning items for multi-turn continuity
-            const cachedReasoning = encryptedReasoningCache.get(input.chatId);
-            if (cachedReasoning?.length) extraUpdate.encryptedReasoning = cachedReasoning;
+            if (encryptedReasoningItems?.length) extraUpdate.encryptedReasoning = encryptedReasoningItems;
             else extraUpdate.encryptedReasoning = null;
             // Cache the exact prompt injections used for this swipe so future
             // regenerations and swipe switches replay the same guidance.

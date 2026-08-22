@@ -95,9 +95,9 @@ import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
+import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionButton";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
 
-const MESSAGE_ACTION_ICON_SIZE = "1em";
 const MESSAGE_SWIPE_ICON_SIZE = "1.15em";
 const MESSAGE_DOUBLE_TAP_MS = 320;
 const MESSAGE_DOUBLE_TAP_DISTANCE_PX = 26;
@@ -884,6 +884,8 @@ const EditTextarea = memo(function EditTextarea({
 interface ChatMessageProps {
   message: Message & { swipes?: Array<{ id: string; content: string }> };
   isStreaming?: boolean;
+  /** Whether the live Roleplay response has begun emitting visible output. */
+  streamingOutputStarted?: boolean;
   /** Frame-throttled live content that receives the same formatter as committed messages. */
   streamingContent?: (renderText: (text: string) => ReactNode) => ReactNode;
   onDelete?: (messageId: string) => void;
@@ -925,6 +927,91 @@ const IMAGE_URL_RE = /^https?:\/\/\S+\.(?:gif|png|jpe?g|webp)(?:\?[^\s]*)?$/i;
 const SPEAKER_TAG_RE = /<speaker="([^"]*)">([\s\S]*?)<\/speaker>/g;
 const INLINE_MARKDOWN_CONTAINER_RE =
   /\*\*\*[\s\S]+?\*\*\*|\*\*[\s\S]+?\*\*|__[\s\S]+?__|(?<!\*)\*(?!\*)[\s\S]+?(?<!\*)\*(?!\*)|==[\s\S]+?==|~~[\s\S]+?~~|(?<![_\w])_[^_]+?_(?![_\w])/g;
+
+function RoleplayThinkingDisclosure({
+  thinking,
+  summaryUnavailable,
+  isStreaming,
+  outputStarted,
+  keepExpanded,
+  durationMs,
+}: {
+  thinking: string | null;
+  summaryUnavailable: boolean;
+  isStreaming: boolean;
+  outputStarted: boolean;
+  keepExpanded: boolean;
+  durationMs: number | null;
+}) {
+  const { t } = useTranslation();
+  const contentId = useId();
+  const startedAtRef = useRef(Date.now());
+  const [expanded, setExpanded] = useState(isStreaming || keepExpanded);
+  const [liveDurationMs, setLiveDurationMs] = useState(0);
+
+  useEffect(() => {
+    if (!isStreaming || outputStarted) return;
+    const updateDuration = () => setLiveDurationMs(Date.now() - startedAtRef.current);
+    updateDuration();
+    const interval = window.setInterval(updateDuration, 1_000);
+    return () => window.clearInterval(interval);
+  }, [isStreaming, outputStarted]);
+
+  useLayoutEffect(() => {
+    if (!isStreaming || !outputStarted) return;
+    setLiveDurationMs(Date.now() - startedAtRef.current);
+    if (!keepExpanded) setExpanded(false);
+  }, [isStreaming, keepExpanded, outputStarted]);
+
+  const seconds = Math.max(1, Math.round((durationMs ?? liveDurationMs) / 1_000));
+
+  return (
+    <div
+      data-message-thinking-inline
+      className="mb-2 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]"
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        title={t(expanded ? "chat.message.thoughts.collapse" : "chat.message.thoughts.expand")}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[0.75rem] font-medium text-[var(--marinara-chat-chrome-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
+      >
+        <Brain
+          size="0.875rem"
+          aria-hidden="true"
+          className={cn("shrink-0", isStreaming && !outputStarted && "animate-pulse")}
+        />
+        <span className="min-w-0 flex-1">{t("chat.message.thoughts.duration", { count: seconds })}</span>
+        <ChevronRight
+          size="0.875rem"
+          aria-hidden="true"
+          className={cn("shrink-0 transition-transform", expanded && "rotate-90")}
+        />
+      </button>
+      {expanded && (
+        <div
+          id={contentId}
+          className="max-h-64 overflow-y-auto border-t border-[var(--marinara-chat-chrome-panel-border)] px-2.5 py-2 text-[0.75rem] leading-relaxed"
+        >
+          {summaryUnavailable ? (
+            <div>
+              <p className="font-medium text-[var(--marinara-chat-chrome-panel-title)]">
+                {t("chat.message.thoughts.unavailable.title")}
+              </p>
+              <p className="mt-1 text-[var(--marinara-chat-chrome-panel-muted)]">
+                {t("chat.message.thoughts.unavailable.description")}
+              </p>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-words font-[inherit]">{thinking}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Process speaker tags into ReactNodes with per-character dialogue coloring.
@@ -1662,6 +1749,7 @@ function NameColorText({ color, children }: { color?: string; children: ReactNod
 export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming,
+  streamingOutputStarted = false,
   streamingContent,
   onDelete,
   onRegenerate,
@@ -1707,6 +1795,8 @@ export const ChatMessage = memo(function ChatMessage({
     roleplayAvatarScale,
     roleplayAvatarsScrollable,
     roleplayNarratorAvatarCycling,
+    showRoleplayThinkingInMessages,
+    keepRoleplayThinkingExpanded,
     textStrokeWidth,
     textStrokeColor,
     showModelName,
@@ -1730,6 +1820,8 @@ export const ChatMessage = memo(function ChatMessage({
       roleplayAvatarScale: s.roleplayAvatarScale,
       roleplayAvatarsScrollable: s.roleplayAvatarsScrollable,
       roleplayNarratorAvatarCycling: s.roleplayNarratorAvatarCycling,
+      showRoleplayThinkingInMessages: s.showRoleplayThinkingInMessages,
+      keepRoleplayThinkingExpanded: s.keepRoleplayThinkingExpanded,
       textStrokeWidth: s.textStrokeWidth,
       textStrokeColor: s.textStrokeColor,
       showModelName: s.showModelName,
@@ -2064,7 +2156,10 @@ export const ChatMessage = memo(function ChatMessage({
     summaryUnavailable: reasoningSummaryUnavailable,
     hasReasoning,
   } = resolveMessageReasoningDisplay(extra);
-  const showStreamingThinkingAction = !!isStreaming && hasReasoning && !isUser;
+  const showInlineThinking = isRoleplay && showRoleplayThinkingInMessages && hasReasoning && !isUser;
+  const showThinkingAction = hasReasoning && !isUser && !showInlineThinking;
+  const showStreamingThinkingAction = !!isStreaming && showThinkingAction;
+  const reasoningDurationMs = readPositiveNumber(extra.generationInfo?.durationMs);
   const generationReplay = hasGenerationReplayDetails(extra.generationReplay) ? extra.generationReplay : null;
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
@@ -2835,11 +2930,22 @@ export const ChatMessage = memo(function ChatMessage({
     />
   ) : (
     <>
+      {showInlineThinking && (
+        <RoleplayThinkingDisclosure
+          thinking={thinking}
+          summaryUnavailable={reasoningSummaryUnavailable}
+          isStreaming={!!isStreaming}
+          outputStarted={streamingOutputStarted}
+          keepExpanded={keepRoleplayThinkingExpanded}
+          durationMs={reasoningDurationMs}
+        />
+      )}
       <div
         className={cn("mari-message-content break-words", !isHtmlContent && "whitespace-pre-wrap")}
         style={messageTextStyle}
       >
-        {isStreaming && streamingContent ? (
+        {isStreaming && streamingContent && showInlineThinking && !streamingOutputStarted ? null : isStreaming &&
+          streamingContent ? (
           <>
             {streamingContent(renderStreamingText)}
             <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
@@ -3508,7 +3614,7 @@ export const ChatMessage = memo(function ChatMessage({
                   dark
                 />
               )}
-              {hasReasoning && !isUser && (
+              {showThinkingAction && (
                 <ActionBtn
                   icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowThinking(true)}
@@ -3604,7 +3710,7 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
 
         {/* Thinking modal */}
-        {showThinking && hasReasoning && (
+        {showThinking && showThinkingAction && (
           <MessageThinkingModal
             thinking={thinking}
             summaryUnavailable={reasoningSummaryUnavailable}
@@ -3981,7 +4087,7 @@ export const ChatMessage = memo(function ChatMessage({
                 title={localizeUi("ui.chat.chatmessage.storedGuidance")}
               />
             )}
-            {hasReasoning && !isUser && (
+            {showThinkingAction && (
               <ActionBtn
                 icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => setShowThinking(true)}
@@ -4079,7 +4185,7 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
 
       {/* Thinking modal */}
-      {showThinking && hasReasoning && (
+      {showThinking && showThinkingAction && (
         <MessageThinkingModal
           thinking={thinking}
           summaryUnavailable={reasoningSummaryUnavailable}
@@ -4236,7 +4342,6 @@ function ActionBtn({
   onClick,
   title,
   className,
-  dark,
   disabled,
   ariaPressed,
   thinkingAction,
@@ -4253,25 +4358,16 @@ function ActionBtn({
   buttonRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
-    <button
-      ref={buttonRef}
-      type="button"
+    <MessageActionButton
+      buttonRef={buttonRef}
+      icon={icon}
       onClick={onClick}
       title={title}
-      aria-label={title}
-      aria-pressed={ariaPressed}
-      data-message-thinking-action={thinkingAction || undefined}
+      className={className}
       disabled={disabled}
-      className={cn(
-        "inline-flex h-[1.7em] w-[1.7em] shrink-0 items-center justify-center rounded-md p-0 text-[0.8125rem] leading-none transition-all active:scale-90 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-30",
-        dark
-          ? "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-        className,
-      )}
-    >
-      {icon}
-    </button>
+      ariaPressed={ariaPressed}
+      thinkingAction={thinkingAction}
+    />
   );
 }
 

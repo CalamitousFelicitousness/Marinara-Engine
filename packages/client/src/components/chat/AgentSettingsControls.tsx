@@ -302,7 +302,7 @@ export function AgentSettingsToggle({
         onChange={() => onToggle()}
         labelPosition="start"
         className={cn(
-          "justify-between rounded-lg px-3 py-2.5 text-left",
+          "justify-between rounded-md px-3 py-2.5 text-left",
           enabled
             ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
             : surface === "secondary"

@@ -369,6 +369,9 @@ function StreamingIndicator({
 }) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    Boolean(s.streamBuffers.get(activeChatId) ?? (s.activeChatId === activeChatId ? s.streamBuffer : "")),
+  );
   const streamingCharacterId = useChatStore((s) => s.streamingCharacterId);
 
   return (
@@ -391,6 +394,7 @@ function StreamingIndicator({
           createdAt: new Date().toISOString(),
         }}
         isStreaming
+        streamingOutputStarted={streamingOutputStarted}
         streamingContent={(renderText) => (
           <RoleplayLiveStreamText
             chatId={activeChatId}
@@ -418,6 +422,9 @@ function RegeneratingMessageContent({
 } & Omit<ComponentProps<typeof ChatMessage>, "message" | "isStreaming">) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    Boolean(s.streamBuffers.get(msg.chatId) ?? (s.activeChatId === msg.chatId ? s.streamBuffer : "")),
+  );
   // Strip old-swipe attachments so a previous illustration doesn't linger
   // while the new swipe's text is streaming in. The same applies to old
   // reasoning: expose the action only after this swipe receives its first
@@ -428,6 +435,7 @@ function RegeneratingMessageContent({
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
+      streamingOutputStarted={streamingOutputStarted}
       streamingContent={(renderText) => (
         <RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} renderText={renderText} />
       )}

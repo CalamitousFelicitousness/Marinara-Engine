@@ -812,6 +812,10 @@ interface UIState {
   chatFontOpacity: number;
   /** When true, flatten expensive Roleplay paint effects for smoother navigation. */
   roleplayReducedPaintEffects: boolean;
+  /** When true, show saved and streaming model reasoning inside Roleplay message bubbles. */
+  showRoleplayThinkingInMessages: boolean;
+  /** When true, inline Roleplay reasoning stays expanded until the user collapses it. */
+  keepRoleplayThinkingExpanded: boolean;
   /** Whether Game mode applies animated emphasis to narration and dialogue text. */
   gameTextEffectsEnabled: boolean;
   /** Layout style for roleplay message avatars */
@@ -1105,6 +1109,8 @@ interface UIState {
   setChatChromeTextColor: (v: string) => void;
   setChatFontOpacity: (v: number) => void;
   setRoleplayReducedPaintEffects: (v: boolean) => void;
+  setShowRoleplayThinkingInMessages: (v: boolean) => void;
+  setKeepRoleplayThinkingExpanded: (v: boolean) => void;
   setGameTextEffectsEnabled: (v: boolean) => void;
   setRoleplayAvatarStyle: (v: RoleplayAvatarStyle) => void;
   setRoleplayAvatarScale: (v: number) => void;
@@ -1319,6 +1325,8 @@ export function pickSyncedSettings(state: UIState) {
     defaultDialogueColor: state.defaultDialogueColor,
     chatChromeTextColor: state.chatChromeTextColor,
     chatFontOpacity: state.chatFontOpacity,
+    showRoleplayThinkingInMessages: state.showRoleplayThinkingInMessages,
+    keepRoleplayThinkingExpanded: state.keepRoleplayThinkingExpanded,
     gameTextEffectsEnabled: state.gameTextEffectsEnabled,
     roleplayAvatarStyle: state.roleplayAvatarStyle,
     roleplayAvatarScale: state.roleplayAvatarScale,
@@ -1528,6 +1536,8 @@ export const useUIStore = create<UIState>()(
       chatChromeTextColor: "",
       chatFontOpacity: 90,
       roleplayReducedPaintEffects: false,
+      showRoleplayThinkingInMessages: false,
+      keepRoleplayThinkingExpanded: false,
       gameTextEffectsEnabled: true,
       roleplayAvatarStyle: "circles" as RoleplayAvatarStyle,
       roleplayAvatarScale: 1,
@@ -2343,6 +2353,13 @@ export const useUIStore = create<UIState>()(
       setChatChromeTextColor: (v) => set({ chatChromeTextColor: normalizeChatChromeTextColor(v) }),
       setChatFontOpacity: (v) => set({ chatFontOpacity: Math.max(0, Math.min(100, v)) }),
       setRoleplayReducedPaintEffects: (v) => set({ roleplayReducedPaintEffects: v }),
+      setShowRoleplayThinkingInMessages: (v) =>
+        set({
+          showRoleplayThinkingInMessages: v,
+          ...(!v ? { keepRoleplayThinkingExpanded: false } : {}),
+        }),
+      setKeepRoleplayThinkingExpanded: (v) =>
+        set((state) => ({ keepRoleplayThinkingExpanded: state.showRoleplayThinkingInMessages && v })),
       setGameTextEffectsEnabled: (v) => set({ gameTextEffectsEnabled: v }),
       setRoleplayAvatarStyle: (v) => set({ roleplayAvatarStyle: v }),
       setRoleplayAvatarScale: (v) =>
@@ -2401,6 +2418,8 @@ export const useUIStore = create<UIState>()(
           chatChromeTextColor: "",
           chatFontOpacity: 90,
           roleplayReducedPaintEffects: false,
+          showRoleplayThinkingInMessages: false,
+          keepRoleplayThinkingExpanded: false,
           gameTextEffectsEnabled: true,
           roleplayAvatarStyle: "circles" as RoleplayAvatarStyle,
           roleplayAvatarScale: 1,
@@ -2531,9 +2550,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      // v94 -> v95: move only the untouched mobile music-player default below Home bookmarks.
-      // The version bump ensures existing stores run the exact-coordinate migration below.
-      version: 95,
+      // v95 -> v96: add opt-in inline Roleplay reasoning preferences.
+      version: 96,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -3107,6 +3125,10 @@ export const useUIStore = create<UIState>()(
         ) {
           persisted.spotifyMobileWidgetPosition = { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION };
         }
+        if (version <= 95) {
+          persisted.showRoleplayThinkingInMessages = false;
+          persisted.keepRoleplayThinkingExpanded = false;
+        }
         // v84 -> v85: keep the historical blank-line behavior for /continue by default.
         if (version <= 84 && persisted.continueAddsNewline === undefined) {
           persisted.continueAddsNewline = true;
@@ -3118,6 +3140,9 @@ export const useUIStore = create<UIState>()(
         persisted.professorMariNavigationEnabled = persisted.professorMariNavigationEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
         persisted.roleplayReducedPaintEffects = persisted.roleplayReducedPaintEffects === true;
+        persisted.showRoleplayThinkingInMessages = persisted.showRoleplayThinkingInMessages === true;
+        persisted.keepRoleplayThinkingExpanded =
+          persisted.showRoleplayThinkingInMessages && persisted.keepRoleplayThinkingExpanded === true;
         persisted.roleplayNarratorAvatarCycling = persisted.roleplayNarratorAvatarCycling !== false;
         persisted.gameTextEffectsEnabled = persisted.gameTextEffectsEnabled !== false;
         persisted.defaultDialogueColor =
@@ -3270,6 +3295,8 @@ export const useUIStore = create<UIState>()(
         chatChromeTextColor: state.chatChromeTextColor,
         chatFontOpacity: state.chatFontOpacity,
         roleplayReducedPaintEffects: state.roleplayReducedPaintEffects,
+        showRoleplayThinkingInMessages: state.showRoleplayThinkingInMessages,
+        keepRoleplayThinkingExpanded: state.keepRoleplayThinkingExpanded,
         gameTextEffectsEnabled: state.gameTextEffectsEnabled,
         roleplayAvatarStyle: state.roleplayAvatarStyle,
         roleplayAvatarScale: state.roleplayAvatarScale,

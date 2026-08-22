@@ -419,7 +419,7 @@ function LearnedOptionChips({
         <button
           type="button"
           onClick={onToggleExpanded}
-          className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+          className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
         >
           {expanded
             ? localizeUi("ui.game.learnedoptionchips.showLess")
@@ -1554,7 +1554,7 @@ export function GameSetupWizard({
                             key={g}
                             onClick={() => toggleGenre(g)}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               genres.includes(g)
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1621,7 +1621,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => applySuggestion(setSetting, s)}
-                            className="flex items-center gap-1 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s === "Surprise me!" && <Sparkles size={9} />}
                             {s}
@@ -1649,7 +1649,7 @@ export function GameSetupWizard({
                             key={t}
                             onClick={() => toggleTone(t)}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               tones.includes(t)
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1710,7 +1710,7 @@ export function GameSetupWizard({
                             key={d}
                             onClick={() => setDifficulty(d)}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               difficulty === d
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1774,7 +1774,7 @@ export function GameSetupWizard({
                           onClick={() => setRating("sfw")}
                           aria-pressed={rating === "sfw"}
                           className={cn(
-                            "rounded-full px-3 py-1 text-xs transition-colors",
+                            "rounded-md px-3 py-1 text-xs transition-colors",
                             rating === "sfw"
                               ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                               : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1787,7 +1787,7 @@ export function GameSetupWizard({
                           onClick={() => setRating("nsfw")}
                           aria-pressed={rating === "nsfw"}
                           className={cn(
-                            "rounded-full px-3 py-1 text-xs transition-colors",
+                            "rounded-md px-3 py-1 text-xs transition-colors",
                             rating === "nsfw"
                               ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                               : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1821,7 +1821,7 @@ export function GameSetupWizard({
                             key={option.value}
                             onClick={() => setLanguage(option.label)}
                             className={cn(
-                              "rounded-full px-2 py-0.5 text-[0.625rem] transition-colors",
+                              "rounded-md px-2 py-0.5 text-[0.625rem] transition-colors",
                               normalizedLanguage === option.value
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10",
@@ -2831,7 +2831,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => applySuggestion(setPlayerGoals, s)}
-                            className="flex items-center gap-1 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s === "Surprise me!" && <Sparkles size={9} />}
                             {s}
@@ -2864,7 +2864,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => setPreferences((prev) => (prev ? `${prev}, ${s.toLowerCase()}` : s))}
-                            className="rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s}
                           </button>

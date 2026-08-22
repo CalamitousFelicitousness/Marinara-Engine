@@ -1838,8 +1838,10 @@ export function SpriteGenerationModal({
             {/* Sprite Type Tabs */}
             <div className="flex gap-2">
               <button
+                type="button"
+                aria-pressed={spriteType === "expressions"}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ring-1",
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors ring-1",
                   spriteType === "expressions"
                     ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/40"
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -1853,8 +1855,10 @@ export function SpriteGenerationModal({
                 {localizeUi("ui.ui.spritegenerationmodal.expressionsPortrait")}
               </button>
               <button
+                type="button"
+                aria-pressed={spriteType === "full-body"}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ring-1",
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors ring-1",
                   spriteType === "full-body"
                     ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/40"
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2070,9 +2074,11 @@ export function SpriteGenerationModal({
                     {(Object.keys(EXPRESSION_PRESETS) as PresetKey[]).map((key) => (
                       <button
                         key={key}
+                        type="button"
                         onClick={() => handlePresetChange(key)}
+                        aria-pressed={preset === key}
                         className={cn(
-                          "rounded-lg px-3 py-1.5 text-xs transition-colors ring-1",
+                          "rounded-md px-3 py-1.5 text-xs transition-colors ring-1",
                           preset === key
                             ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/40"
                             : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2096,7 +2102,7 @@ export function SpriteGenerationModal({
                         key={expr}
                         onClick={() => toggleExpression(expr)}
                         className={cn(
-                          "rounded-full px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
+                          "rounded-md px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
                           selectedExpressions.includes(expr)
                             ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                             : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -2186,9 +2192,11 @@ export function SpriteGenerationModal({
                         {(Object.keys(EXPRESSION_PRESETS) as PresetKey[]).map((key) => (
                           <button
                             key={key}
+                            type="button"
                             onClick={() => handlePresetChange(key)}
+                            aria-pressed={preset === key}
                             className={cn(
-                              "rounded-lg px-3 py-1.5 text-xs transition-colors ring-1",
+                              "rounded-md px-3 py-1.5 text-xs transition-colors ring-1",
                               preset === key
                                 ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2211,7 +2219,7 @@ export function SpriteGenerationModal({
                             key={pose}
                             onClick={() => toggleExpression(pose)}
                             className={cn(
-                              "rounded-full px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
+                              "rounded-md px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
                               selectedExpressions.includes(pose)
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",

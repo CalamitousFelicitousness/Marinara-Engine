@@ -2815,8 +2815,19 @@ function buildAgentExtras(
     for (const agentType of [...new Set(agentTypes)]) {
       const value = (capabilityContexts as Record<string, unknown>)[agentType];
       if (value === null || value === undefined) continue;
+      let serialized: string | undefined;
+      try {
+        serialized = JSON.stringify(value);
+      } catch (error) {
+        logger.warn(error, "Capability agent runtime context serialization failed for %s", agentType);
+        continue;
+      }
+      if (serialized === undefined) {
+        logger.warn("Capability agent runtime context for %s is not serializable", agentType);
+        continue;
+      }
       parts.push(`<agent_runtime_context agent="${escapeXml(agentType)}">`);
-      parts.push(escapeXml(JSON.stringify(value)));
+      parts.push(escapeXml(serialized));
       parts.push(`</agent_runtime_context>`);
     }
   }

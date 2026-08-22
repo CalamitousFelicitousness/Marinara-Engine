@@ -1,6 +1,7 @@
 import type { AgentContext, AgentResult } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import type { AgentExecConfig } from "../agents/agent-executor.js";
+import { withDeadline } from "./capability-prompt-context.service.js";
 import { getCapabilityService } from "./capability-service-registry.service.js";
 
 const SERVICE_PREFIX = "agent-runtime:";
@@ -42,7 +43,10 @@ export async function prepareCapabilityAgentContexts(
     const runtime = runtimeFor(agent.type);
     if (!runtime?.prepareContext) continue;
     try {
-      const value = await runtime.prepareContext({ agent, context });
+      const value = await withDeadline(
+        runtime.prepareContext({ agent, context }),
+        `agent-runtime prepareContext ${agent.type}`,
+      );
       if (value !== null && value !== undefined) prepared[agent.type] = value;
     } catch (error) {
       logger.warn(error, "Capability agent context preparation failed for %s", agent.type);
@@ -74,12 +78,15 @@ export async function finalizeCapabilityAgentResults(
       const runtime = agent ? runtimeFor(agent.type) : null;
       if (!agent || !runtime?.finalizeResult) return result;
       try {
-        return await runtime.finalizeResult({
-          agent,
-          context,
-          preparedContext: preparedByType[agent.type],
-          result,
-        });
+        return await withDeadline(
+          runtime.finalizeResult({
+            agent,
+            context,
+            preparedContext: preparedByType[agent.type],
+            result,
+          }),
+          `agent-runtime finalizeResult ${agent.type}`,
+        );
       } catch (error) {
         logger.warn(error, "Capability agent result finalization failed for %s", agent.type);
         return {

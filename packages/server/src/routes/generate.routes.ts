@@ -8347,7 +8347,10 @@ export async function generateRoutes(app: FastifyInstance) {
                     : null;
                 const phaseRetryContext: AgentContext =
                   agentCfg.phase === "post_processing"
-                    ? { ...agentContext, mainResponse: completedResponse }
+                    ? {
+                        ...(preparedCapabilityPostContext ?? postAgentContext),
+                        mainResponse: completedResponse,
+                      }
                     : agentContext;
                 const retryCtx: AgentContext = historicalLorebookTarget
                   ? (buildHistoricalLorebookKeeperContext(

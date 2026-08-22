@@ -2141,6 +2141,17 @@ export function ChatSettingsDrawer({
     }
     if (beholderAgent) addLink("beholder", activeAgentIds.includes("beholder"), beholderAgent.name);
     if (mapsAgent && mapsPackage) addLink(mapsPackage.id, mapsPackageEnabledForChat, mapsAgent.name);
+    for (const [agentId, capabilityPackage] of chatSettingsPackageByAgentId) {
+      if (
+        agentId === "hierarchical-maps" ||
+        agentId === "long-term-memory" ||
+        links.some((link) => link.id === agentId)
+      ) {
+        continue;
+      }
+      const agent = availableAgents.find((candidate) => candidate.id === agentId);
+      addLink(agentId, activeAgentIds.includes(agentId), agent?.name ?? capabilityPackage.manifest.name);
+    }
     if (activeCustomAgents.length > 0) {
       links.push({
         id: "custom-agents",
@@ -2154,9 +2165,11 @@ export function ChatSettingsDrawer({
   }, [
     activeCustomAgents,
     activeAgentIds,
+    availableAgents,
     beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
+    chatSettingsPackageByAgentId,
     chat.id,
     continuityActive,
     continuityAgentMeta.name,

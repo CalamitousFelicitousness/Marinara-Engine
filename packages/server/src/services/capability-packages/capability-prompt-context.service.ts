@@ -68,7 +68,7 @@ export function registerCapabilityPromptContext(
 
 /** Deadline per contributor. A throw is already non-fatal, but a promise that never settles would hang
  *  the turn, so building the prompt can't wait on one indefinitely. */
-const CONTRIBUTOR_TIMEOUT_MS = 2_000;
+export const CONTRIBUTOR_TIMEOUT_MS = 2_000;
 
 /**
  * Reject if `value` has not settled within {@link CONTRIBUTOR_TIMEOUT_MS}. A primitive is passed straight
@@ -79,17 +79,14 @@ const CONTRIBUTOR_TIMEOUT_MS = 2_000;
  * thenable, so a hand-rolled one that never settles would slip past the guard and hang the turn — which is
  * the exact failure this exists to prevent.
  */
-function withDeadline<T>(value: Promise<T> | T, packageId: string): Promise<T> {
+export function withDeadline<T>(value: Promise<T> | T, label: string, timeoutMs = CONTRIBUTOR_TIMEOUT_MS): Promise<T> {
   const canDefer = value !== null && (typeof value === "object" || typeof value === "function");
   if (!canDefer) return Promise.resolve(value);
   let timer: NodeJS.Timeout;
   return Promise.race([
     Promise.resolve(value),
     new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`prompt-context contributor ${packageId} exceeded ${CONTRIBUTOR_TIMEOUT_MS}ms`)),
-        CONTRIBUTOR_TIMEOUT_MS,
-      );
+      timer = setTimeout(() => reject(new Error(`${label} exceeded ${timeoutMs}ms`)), timeoutMs);
       timer.unref?.();
     }),
   ]).finally(() => clearTimeout(timer)) as Promise<T>;
@@ -111,7 +108,7 @@ export async function collectCapabilityPromptContext(
     typeof request.chatMeta.gameExperienceId === "string" ? request.chatMeta.gameExperienceId : null;
   for (const [packageId, contribute] of contributorsByPackage) {
     try {
-      const contribution = await withDeadline(contribute(request), packageId);
+      const contribution = await withDeadline(contribute(request), `prompt-context contributor ${packageId}`);
       if (contribution === null || contribution === undefined) continue;
       const text = typeof contribution === "string" ? contribution : contribution.text;
       if (typeof text === "string" && text.trim().length > 0) {

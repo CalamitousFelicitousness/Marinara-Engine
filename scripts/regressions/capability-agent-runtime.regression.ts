@@ -10,6 +10,7 @@ import {
   registerCapabilityService,
   resetCapabilityServices,
 } from "../../packages/server/src/services/capability-packages/capability-service-registry.service.js";
+import { withDeadline } from "../../packages/server/src/services/capability-packages/capability-prompt-context.service.js";
 
 const agent = {
   id: "memory-nag-config",
@@ -65,6 +66,7 @@ assert.deepEqual(prepared.memory._capabilityAgentContexts, {
 });
 const finalized = await finalizeCapabilityAgentResults([result], [agent], prepared);
 assert.deepEqual(finalized[0]?.data, { nags_needed: true, memoryIds: ["promise"] });
+await assert.rejects(withDeadline(new Promise(() => undefined), "agent-runtime regression", 5), /exceeded 5ms/);
 
 release();
 resetCapabilityServices();

@@ -29,6 +29,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Generic active, focus, notification, avatar-glow, and editor-reticle styling now follows the configured app accent instead of falling back to legacy fixed pink, while chat setup connection gates follow Chat Chrome Text Color and close before opening Connections; semantic mode, category, status, artwork, and color-picker palettes keep their intentional colors.
 - Chat IDs in Roleplay Chat Settings are now copied by clicking the ID row, with visible click guidance, and compact option buttons across the UI use the unified square shape.
 - Memory Recall and individual Tracker schedules now use the established Chat Settings toggle colors, with consistently centered toggle thumbs.
+- Recreated Docker and Podman containers can now recover a storage lock left after an interrupted shutdown even when the replacement reuses the same internal PID (#5389).
 - The in-field Macro reference and `/macro` help now show the supported `!=`, `is not`, `not contains`, and `not includes` conditional operators (#5383).
 - Bot-browser character author notes now render their HTML and CSS through the same sanitizer and style containment as chat messages, with scripts, event handlers, links, and global page styling blocked (#5377).
 - Manual Roleplay background generation from Gallery now pauses for media prompt review when that setting is enabled and sends the reviewed prompt exactly once (#5379).

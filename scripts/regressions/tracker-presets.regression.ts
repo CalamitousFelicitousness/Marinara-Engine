@@ -110,7 +110,7 @@ try {
 
   // ── Seeding a chat whose card already configures one of the preset's fields ──
   const card = await characters.create({
-    name: "Amy",
+    name: "Nova",
     description: "",
     personality: "",
     scenario: "",

@@ -225,3 +225,27 @@ export function blankTrackerExtraTemplate(sample: unknown, depth = 0): unknown {
   if (typeof sample === "boolean") return false;
   return "";
 }
+
+/** True when a container carries nothing to show. Leaves are never empty. */
+export function isEmptyTrackerExtraContainer(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  if (isRecord(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+/**
+ * Leaves under `value`, stopping once `limit` is reached.
+ *
+ * Drives the renderer's default open state: a small subtree unfolds, a large
+ * one stays collapsed so a 40-leaf `body` cannot bury the rest of the card.
+ */
+export function countTrackerExtraLeaves(value: unknown, limit = 64, depth = 0): number {
+  if (depth >= TRACKER_EXTRA_MAX_DEPTH || isTrackerExtraLeaf(value)) return 1;
+  const entries = Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [];
+  let total = 0;
+  for (const entry of entries) {
+    total += countTrackerExtraLeaves(entry, limit, depth + 1);
+    if (total >= limit) return total;
+  }
+  return total;
+}

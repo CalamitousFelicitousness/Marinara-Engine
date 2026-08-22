@@ -8,10 +8,16 @@
 //
 // Generic by necessity: the shape belongs to the user's prompt, so the tree is
 // driven by the data rather than by any schema this component knows.
+//
+// Layout follows the card's own custom-field rows: font size comes from the
+// list wrapper (never per-row, or the rows render smaller than their siblings),
+// and the label/value split only appears once the card is wide enough for it.
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import {
   blankTrackerExtraTemplate,
+  countTrackerExtraLeaves,
+  isEmptyTrackerExtraContainer,
   isTrackerExtraLeaf,
   isTrackerFieldLocked,
   readTrackerExtraAt,
@@ -28,6 +34,22 @@ import { trackerEditableText } from "../../lib/tracker-display";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerLockContext } from "../TrackerLockContext";
 
+// Matches CHARACTER_CUSTOM_FIELD_LIST_CLASS so extras read at the same size as
+// the custom-field rows above them. `rem` resolves against the app's root size,
+// which the panel scales down, so a per-row override lands near 6px.
+const EXTRAS_LIST_CLASS =
+  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[0.5625rem] @min-[176px]:text-[0.625rem]";
+
+// Stacked while the card is narrow, label/value columns once there is room.
+const EXTRAS_ROW_CLASS =
+  "grid min-w-0 grid-cols-1 items-start gap-x-0.5 @min-[176px]:grid-cols-[minmax(2.35rem,0.42fr)_minmax(0,1fr)] @min-[176px]:items-center @min-[176px]:gap-x-1";
+const EXTRAS_ROW_DELETE_CLASS =
+  "grid-cols-[minmax(0,1fr)_1.25rem] @min-[176px]:grid-cols-[minmax(2.35rem,0.38fr)_minmax(0,1fr)_1.25rem]";
+
+/** Subtrees at or below these sizes unfold on first render. */
+const OPEN_BY_DEFAULT_TOP_LEVEL = 24;
+const OPEN_BY_DEFAULT_NESTED = 8;
+
 /** Numbers stay numbers so a heel height does not silently become a string. */
 function coerceLeaf(previous: unknown, next: string): unknown {
   if (typeof previous === "number") {
@@ -42,9 +64,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Path segments as a readable label: `footwear.0` renders as "footwear 1". */
+/** Path segments as a readable label: `heel_height_cm` renders as "heel height cm". */
 function segmentLabel(segment: string | number): string {
-  return typeof segment === "number" ? `${segment + 1}` : segment;
+  return typeof segment === "number" ? `${segment + 1}` : segment.replace(/_/gu, " ");
+}
+
+/**
+ * Array rows are numbered, which says nothing. Borrow the row's own descriptive
+ * field when it has one, so `clothing.outerwear.0` reads as "red cape".
+ */
+function arrayItemLabel(node: unknown, index: number): string {
+  if (isRecord(node)) {
+    for (const key of ["item", "name", "title", "label", "type"]) {
+      const value = node[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+  return `${index + 1}`;
+}
+
+function openByDefault(node: unknown, depth: number): boolean {
+  const limit = depth === 0 ? OPEN_BY_DEFAULT_TOP_LEVEL : OPEN_BY_DEFAULT_NESTED;
+  return countTrackerExtraLeaves(node, limit + 1) <= limit;
 }
 
 interface ExtrasNodeProps {
@@ -54,24 +95,38 @@ interface ExtrasNodeProps {
   fieldLocks: TrackerFieldLocks | null | undefined;
   depth: number;
   deleteMode: boolean;
+  readable: boolean;
+  label: string;
   onEdit: (path: TrackerExtraPath, value: unknown) => void;
   onRemove: (path: TrackerExtraPath) => void;
   onAdd: (path: TrackerExtraPath) => void;
 }
 
-function ExtrasNode({ node, path, prefix, fieldLocks, depth, deleteMode, onEdit, onRemove, onAdd }: ExtrasNodeProps) {
+function ExtrasNode({
+  node,
+  path,
+  prefix,
+  fieldLocks,
+  depth,
+  deleteMode,
+  readable,
+  label,
+  onEdit,
+  onRemove,
+  onAdd,
+}: ExtrasNodeProps) {
   const { t: localizeUi } = useUiTranslation();
   const { lockMode, onToggleFieldLock } = useTrackerLockContext();
-  // Top level opens by default; deeper nesting stays folded so a large tree does
-  // not bury the stats above it.
-  const [open, setOpen] = useState(depth < 1);
+  const [open, setOpen] = useState(() => openByDefault(node, depth));
   const lockKey = trackerExtraLockKey(prefix, path);
-  const label = path.length > 0 ? segmentLabel(path[path.length - 1]!) : "";
 
   if (isTrackerExtraLeaf(node)) {
     return (
-      <div className="grid grid-cols-[minmax(3.5rem,0.4fr)_minmax(0,1fr)_auto] items-center gap-1">
-        <span className="truncate px-0.5 text-[0.5625rem] text-[var(--muted-foreground)]" title={label}>
+      <div className={cn(EXTRAS_ROW_CLASS, deleteMode && EXTRAS_ROW_DELETE_CLASS)}>
+        <span
+          className="truncate px-0.5 font-medium text-[color:var(--tracker-inline-muted,var(--muted-foreground))]"
+          title={String(path[path.length - 1] ?? "")}
+        >
           {label}
         </span>
         <InlineEdit
@@ -79,23 +134,22 @@ function ExtrasNode({ node, path, prefix, fieldLocks, depth, deleteMode, onEdit,
           onSave={(next) => onEdit(path, coerceLeaf(node, next))}
           placeholder={localizeUi("ui.trackerPanel.charactertrackercard.value")}
           ariaLabel={`${path.join(" ")} value`}
-          className="min-w-0 px-0.5 py-0 text-[0.5625rem]"
-          scrollOnHover
+          className="min-w-0 px-0.5 py-0"
+          scrollOnHover={!readable}
+          twoLinePreview={readable}
           locked={isTrackerFieldLocked(fieldLocks, lockKey)}
           lockMode={lockMode}
           onToggleLock={onToggleFieldLock ? () => onToggleFieldLock(lockKey) : undefined}
         />
-        {deleteMode && typeof path[path.length - 1] === "string" ? (
+        {deleteMode && typeof path[path.length - 1] === "string" && (
           <button
             type="button"
             onClick={() => onRemove(path)}
             aria-label={localizeUi("ui.trackerPanel.charactertrackerextras.removeValue1", { value1: label })}
-            className="rounded-sm p-0.5 text-[var(--destructive)] transition-colors hover:bg-[var(--foreground)]/8 active:scale-90"
+            className="flex h-5 w-5 items-center justify-center justify-self-end rounded text-[var(--destructive)] transition-all hover:bg-[var(--destructive)]/10 active:scale-90 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
           >
             <X size="0.625rem" />
           </button>
-        ) : (
-          <span />
         )}
       </div>
     );
@@ -106,52 +160,55 @@ function ExtrasNode({ node, path, prefix, fieldLocks, depth, deleteMode, onEdit,
     : isRecord(node)
       ? Object.entries(node)
       : [];
+  // An empty container is noise: a chevron over nothing. The agent re-emits the
+  // key every turn, so hiding it loses no data and costs no round trip.
+  const visible = entries.filter(([, value]) => !isEmptyTrackerExtraContainer(value));
+  if (visible.length === 0) return null;
 
   return (
-    <div className={cn(depth > 0 && "border-l border-[var(--border)]/40 pl-1.5")}>
-      {path.length > 0 && (
-        <div className="flex items-center gap-0.5">
+    <div className={cn("min-w-0", depth > 0 && "border-l border-[var(--tracker-profile-rule)]/40 pl-1")}>
+      <div className="flex min-w-0 items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-0.5 rounded-sm px-0.5 py-0.5 text-left font-semibold text-[color:var(--tracker-inline-foreground,var(--foreground))] transition-colors hover:bg-[var(--tracker-profile-accent-solid)]/10"
+        >
+          <ChevronRight
+            size="0.6875rem"
+            className={cn("shrink-0 opacity-70 transition-transform", open && "rotate-90")}
+          />
+          <span className="truncate">{label}</span>
+          <span className="shrink-0 tabular-nums opacity-55">{visible.length}</span>
+        </button>
+        {onToggleFieldLock && lockMode && (
           <button
             type="button"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            className="flex min-w-0 flex-1 items-center gap-0.5 rounded-sm px-0.5 py-0.5 text-left text-[0.5625rem] font-medium text-[var(--foreground)]/85 transition-colors hover:bg-[var(--foreground)]/6"
+            onClick={() => onToggleFieldLock(lockKey)}
+            aria-label={localizeUi("ui.trackerPanel.charactertrackerextras.lockValue1", { value1: label })}
+            className={cn(
+              "shrink-0 rounded-sm px-1 transition-colors",
+              isTrackerFieldLocked(fieldLocks, lockKey) ? "text-[var(--primary)]" : "opacity-55 hover:opacity-100",
+            )}
           >
-            <ChevronRight size="0.5625rem" className={cn("shrink-0 transition-transform", open && "rotate-90")} />
-            <span className="truncate">{label}</span>
-            <span className="shrink-0 text-[var(--muted-foreground)]">{entries.length}</span>
+            {isTrackerFieldLocked(fieldLocks, lockKey) ? "🔒" : "🔓"}
           </button>
-          {onToggleFieldLock && lockMode && (
-            <button
-              type="button"
-              onClick={() => onToggleFieldLock(lockKey)}
-              aria-label={localizeUi("ui.trackerPanel.charactertrackerextras.lockValue1", { value1: label })}
-              className={cn(
-                "rounded-sm px-1 text-[0.5rem] transition-colors",
-                isTrackerFieldLocked(fieldLocks, lockKey)
-                  ? "text-[var(--primary)]"
-                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
-              )}
-            >
-              {isTrackerFieldLocked(fieldLocks, lockKey) ? "🔒" : "🔓"}
-            </button>
-          )}
-          {deleteMode && (
-            <button
-              type="button"
-              onClick={() => onRemove(path)}
-              aria-label={localizeUi("ui.trackerPanel.charactertrackerextras.removeValue1", { value1: label })}
-              className="rounded-sm p-0.5 text-[var(--destructive)] transition-colors hover:bg-[var(--foreground)]/8 active:scale-90"
-            >
-              <X size="0.625rem" />
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        {deleteMode && (
+          <button
+            type="button"
+            onClick={() => onRemove(path)}
+            aria-label={localizeUi("ui.trackerPanel.charactertrackerextras.removeValue1", { value1: label })}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--destructive)] transition-all hover:bg-[var(--destructive)]/10 active:scale-90 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+          >
+            <X size="0.625rem" />
+          </button>
+        )}
+      </div>
 
       {open && (
-        <div className="flex flex-col gap-0.5 pl-1">
-          {entries.map(([segment, value]) => (
+        <div className="grid min-w-0 gap-px pl-1">
+          {visible.map(([segment, value]) => (
             <ExtrasNode
               key={String(segment)}
               node={value}
@@ -160,6 +217,8 @@ function ExtrasNode({ node, path, prefix, fieldLocks, depth, deleteMode, onEdit,
               fieldLocks={fieldLocks}
               depth={depth + 1}
               deleteMode={deleteMode}
+              readable={readable}
+              label={typeof segment === "number" ? arrayItemLabel(value, segment) : segmentLabel(segment)}
               onEdit={onEdit}
               onRemove={onRemove}
               onAdd={onAdd}
@@ -169,9 +228,9 @@ function ExtrasNode({ node, path, prefix, fieldLocks, depth, deleteMode, onEdit,
             <button
               type="button"
               onClick={() => onAdd(path)}
-              className="inline-flex w-fit items-center gap-0.5 rounded-sm px-1 py-0.5 text-[0.5rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--foreground)]/8 hover:text-[var(--foreground)] active:scale-95"
+              className="inline-flex w-fit items-center gap-0.5 rounded-sm px-1 py-0.5 opacity-60 transition-opacity hover:opacity-100 active:scale-95"
             >
-              <Plus size="0.5rem" />
+              <Plus size="0.5625rem" />
               {localizeUi("ui.trackerPanel.charactertrackerextras.addRow")}
             </button>
           )}
@@ -185,15 +244,18 @@ export function CharacterTrackerExtras({
   extras,
   lockPrefix,
   deleteMode,
+  readable = false,
   onChange,
 }: {
   extras: Record<string, unknown>;
   lockPrefix: string;
   deleteMode: boolean;
+  readable?: boolean;
   onChange: (nextExtras: Record<string, unknown>) => void;
 }) {
   const { fieldLocks, onUpdateFieldLocks } = useTrackerLockContext();
-  if (Object.keys(extras).length === 0) return null;
+  const sections = Object.entries(extras).filter(([, value]) => !isEmptyTrackerExtraContainer(value));
+  if (sections.length === 0) return null;
 
   const edit = (path: TrackerExtraPath, value: unknown) => {
     onChange(writeTrackerExtraAt(extras, path, value) as Record<string, unknown>);
@@ -216,8 +278,8 @@ export function CharacterTrackerExtras({
   };
 
   return (
-    <div className="mt-0.5 flex flex-col gap-0.5 rounded-sm bg-[var(--foreground)]/4 p-0.5">
-      {Object.entries(extras).map(([key, value]) => (
+    <div className={EXTRAS_LIST_CLASS}>
+      {sections.map(([key, value]) => (
         <ExtrasNode
           key={key}
           node={value}
@@ -226,6 +288,8 @@ export function CharacterTrackerExtras({
           fieldLocks={fieldLocks}
           depth={0}
           deleteMode={deleteMode}
+          readable={readable}
+          label={segmentLabel(key)}
           onEdit={edit}
           onRemove={remove}
           onAdd={add}

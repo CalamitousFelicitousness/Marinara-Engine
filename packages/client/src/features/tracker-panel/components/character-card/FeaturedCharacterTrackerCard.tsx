@@ -4,10 +4,12 @@ import {
   characterCustomFieldTrackerLockKey,
   characterStatTrackerLockKey,
   characterTrackerLockKey,
+  characterTrackerLockPrefix,
   isTrackerFieldHidden,
   isTrackerFieldLocked,
   normalizeTrackerFieldLocks,
   normalizeTrackerHiddenFields,
+  readCharacterExtras,
   removeTrackerFieldLockPrefix,
   renameTrackerFieldLockPrefix,
   type PresentCharacter,
@@ -21,6 +23,7 @@ import type {
 import { cn } from "../../../../lib/utils";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { trackerEditableText } from "../../lib/tracker-display";
+import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
 import { useTrackerWindow } from "../TrackerWindowContext";
 import {
   makeUniqueCharacterCustomFieldName,
@@ -150,6 +153,7 @@ export function FeaturedCharacterTrackerCard({
     ([name, value]) => [name, value, trackerEditableText(value)] as const,
   );
   const characterStats = Array.isArray(character.stats) ? character.stats : [];
+  const characterExtras = readCharacterExtras(character);
   const featuredStatColumnHeightRem =
     trackerPanelSizeProfile === "expanded"
       ? TRACKER_PROFILE_PORTRAIT_ROOMY_MEDIA_STAGE_REM
@@ -506,6 +510,22 @@ export function FeaturedCharacterTrackerCard({
           )}
         </div>
       )}
+
+      <div className="mx-1 mb-1">
+        <CharacterTrackerExtras
+          extras={characterExtras}
+          lockPrefix={characterTrackerLockPrefix(character, characterIndex)}
+          deleteMode={deleteMode}
+          readable={trackerPanelSizeProfile === "expanded"}
+          onChange={(nextExtras) => {
+            // Replace the whole extras surface: a removed key must not survive
+            // as a leftover on the spread character object.
+            const base: Record<string, unknown> = { ...character };
+            for (const key of Object.keys(characterExtras)) delete base[key];
+            onUpdate({ ...base, ...nextExtras } as unknown as PresentCharacter);
+          }}
+        />
+      </div>
     </article>
   );
 }

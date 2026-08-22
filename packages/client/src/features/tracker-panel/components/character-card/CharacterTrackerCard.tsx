@@ -526,6 +526,7 @@ export function CharacterTrackerCard({
         extras={characterExtras}
         lockPrefix={characterTrackerLockPrefix(character, characterIndex)}
         deleteMode={deleteMode}
+        readable={readableCustomFields}
         onChange={(nextExtras) => {
           // Replace the whole extras surface: a removed key must not survive as
           // a leftover on the spread character object.

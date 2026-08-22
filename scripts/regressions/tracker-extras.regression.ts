@@ -11,6 +11,8 @@ import {
   applyTrackerExtraLocks,
   blankTrackerExtraTemplate,
   characterTrackerLockPrefix,
+  countTrackerExtraLeaves,
+  isEmptyTrackerExtraContainer,
   isTrackerExtraLeaf,
   applyTrackerFieldLocksToGameStatePatch,
   KNOWN_PRESENT_CHARACTER_KEYS,
@@ -24,8 +26,8 @@ import {
 
 // ── Extras are everything PresentCharacter does not render itself ──
 const character = {
-  characterId: "amy",
-  name: "Amy",
+  characterId: "nova",
+  name: "Nova",
   emoji: "🙂",
   mood: "wary",
   appearance: "tall",
@@ -33,7 +35,7 @@ const character = {
   thoughts: null,
   customFields: { Footwear: "boots" },
   stats: [{ name: "HP", value: 90, max: 100, color: "#ef4444" }],
-  avatarPath: "/api/avatars/file/amy.png",
+  avatarPath: "/api/avatars/file/nova.png",
   clothing: { footwear: [{ item: "leather boots", heel_height_cm: 4, state: "scuffed" }] },
   action_traces: ["stepped inside"],
 };
@@ -43,14 +45,14 @@ assert.ok(KNOWN_PRESENT_CHARACTER_KEYS.has("customFields"), "flat custom fields 
 assert.ok(!KNOWN_PRESENT_CHARACTER_KEYS.has("clothing"), "a prompt-defined key is an extra");
 
 // ── Lock keys are dotted paths under the character's own prefix ──
-const prefix = characterTrackerLockPrefix({ characterId: "amy", name: "Amy" }, 0);
+const prefix = characterTrackerLockPrefix({ characterId: "nova", name: "Nova" }, 0);
 assert.equal(
   trackerExtraLockKey(prefix, ["clothing", "footwear", 0, "heel_height_cm"]),
-  "characters.id:amy.extra.clothing.footwear.0.heel_height_cm",
+  "characters.id:nova.extra.clothing.footwear.0.heel_height_cm",
 );
 // A dot inside a key must not fracture the path, or an unrelated lock could
 // collide with a deeper node.
-assert.equal(trackerExtraLockKey(prefix, ["a.b"]), "characters.id:amy.extra.a%2Eb");
+assert.equal(trackerExtraLockKey(prefix, ["a.b"]), "characters.id:nova.extra.a%2Eb");
 // The "extra" namespace keeps a prompt-defined "stats" clear of real stat locks.
 assert.notEqual(trackerExtraLockKey(prefix, ["stats"]), `${prefix}.stats`);
 
@@ -149,8 +151,8 @@ assert.ok(!isTrackerExtraLeaf({}) && !isTrackerExtraLeaf([]));
     worldCustomFields: [],
     presentCharacters: [
       {
-        characterId: "amy",
-        name: "Amy",
+        characterId: "nova",
+        name: "Nova",
         emoji: "🙂",
         mood: "calm",
         appearance: null,
@@ -164,15 +166,15 @@ assert.ok(!isTrackerExtraLeaf({}) && !isTrackerExtraLeaf([]));
     recentEvents: [],
     playerStats: null,
     personaStats: null,
-    fieldLocks: { "characters.id:amy.extra.clothing.footwear.0.heel_height_cm": true },
+    fieldLocks: { "characters.id:nova.extra.clothing.footwear.0.heel_height_cm": true },
     createdAt: "2026-01-01T00:00:00.000Z",
   };
 
   const patch = {
     presentCharacters: [
       {
-        characterId: "amy",
-        name: "Amy",
+        characterId: "nova",
+        name: "Nova",
         emoji: "🙂",
         mood: "startled",
         appearance: null,
@@ -191,5 +193,27 @@ assert.ok(!isTrackerExtraLeaf({}) && !isTrackerExtraLeaf([]));
   assert.equal(shoe.heel_height_cm, 10, "a locked nested leaf survives the patch path");
   assert.equal((result.presentCharacters as Array<Record<string, unknown>>)[0]!.mood, "startled");
 }
+
+// ── Empty containers are hidden, not deleted ──
+// A prompt that re-emits an always-present empty list every turn must not paint
+// an empty section per key; the renderer skips them while the data stays intact.
+assert.ok(isEmptyTrackerExtraContainer([]) && isEmptyTrackerExtraContainer({}));
+assert.ok(!isEmptyTrackerExtraContainer(0) && !isEmptyTrackerExtraContainer("") && !isEmptyTrackerExtraContainer(null));
+assert.ok(!isEmptyTrackerExtraContainer([{}]), "a populated list is not empty");
+// Skipping is render-only: the merge still carries the key forward.
+assert.deepEqual(mergeTrackerExtras({ effects: [] }, {}), { effects: [] });
+
+// ── Leaf counting drives the default open state ──
+assert.equal(countTrackerExtraLeaves("boots"), 1);
+assert.equal(countTrackerExtraLeaves({ a: 1, b: { c: 2, d: 3 } }), 3);
+assert.equal(countTrackerExtraLeaves([{ x: 1 }, { y: 2 }]), 2);
+// Counting stops at the limit rather than walking a huge tree.
+{
+  const wide = { list: Array.from({ length: 500 }, (_, i) => i) };
+  const counted = countTrackerExtraLeaves(wide, 24);
+  assert.ok(counted >= 24 && counted < 500, `expected an early stop, got ${counted}`);
+}
+// An empty container still costs nothing, so a card of them stays collapsed-free.
+assert.equal(countTrackerExtraLeaves({ effects: [], waypoints: [] }), 0);
 
 console.log("tracker-extras regression passed.");

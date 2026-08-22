@@ -351,8 +351,8 @@ A custom Character Tracker prompt can define a schema richer than
 `PresentCharacter`: clothing layers with heel type and height, body state, action traces. The
 agent's output was already persisted verbatim into the game-state snapshot, but only
 `customFields` and `stats` were ever read back, so everything else rendered nowhere and vanished
-on any turn the agent omitted it. Confirmed against a live snapshot whose character carried
-six prompt-defined top-level keys alongside an empty `customFields`.
+on any turn the agent omitted it. Confirmed against a live snapshot whose character carried six
+prompt-defined top-level keys alongside an empty `customFields`.
 
 `packages/shared/src/utils/tracker-extras.ts` makes those keys first class. Every key not in
 `KNOWN_PRESENT_CHARACTER_KEYS` is an "extra", a JSON tree that is rendered, edited, locked, and
@@ -366,7 +366,7 @@ Three rules, each pinned by `scripts/regressions/tracker-extras.regression.ts`:
   previous value. Arrays take their length from the agent, which is authoritative about list
   membership, but surviving elements merge by index so an element's unmentioned sub-keys persist.
 - **Lock by dotted path**, reusing the existing lock-key scheme:
-  `characters.id:amy.extra.clothing.footwear.0.heel_height_cm`. Locking a container freezes its
+  `characters.id:nova.extra.clothing.footwear.0.heel_height_cm`. Locking a container freezes its
   subtree. The `extra` namespace segment keeps a prompt-defined key named `stats` clear of the
   real stat locks, and segments are URI-encoded so a dot inside a key cannot fracture the path.
 - **Edit immutably**, cloning only the touched spine, with add and remove for array members. A new
@@ -388,6 +388,25 @@ encodings equal.
 
 Both upstream patches are verified by mutation: removing either the merge or the lock application
 fails the lane.
+
+Follow-up, after the first render landed and the tree proved unreadable against real prompt output:
+
+- **Empty containers are skipped.** A prompt that re-emits the same always-present empty lists each
+  turn painted one chevron over nothing per key. `isEmptyTrackerExtraContainer` hides them at render
+  time only; the merge still carries the key forward.
+- **Typography comes from the list wrapper**, matching `CHARACTER_CUSTOM_FIELD_LIST_CLASS`. The
+  per-row `text-[0.5625rem]` resolved against the panel's reduced root size and landed near 6px,
+  which read as blank space next to the card's own rows.
+- **Rows stack under 176px** and split into label/value columns above it, on the container-query
+  breakpoint the card already uses, so a long key is not truncated into a fixed fraction of a
+  narrow card.
+- **Default open state follows subtree size** via `countTrackerExtraLeaves` rather than depth, so a
+  40-leaf `body` stays folded while `clothing` unfolds.
+- **Array rows borrow their own descriptive field** (`item`/`name`/`title`/`label`/`type`) instead
+  of rendering as a bare ordinal.
+- **`FeaturedCharacterTrackerCard.tsx` gained the mount it was missing.** Only the compact card
+  rendered extras, so a featured character showed none of the data the API returned. This is a
+  fourth upstream file patched.
 
 ### Message action row wraps on narrow phones
 

@@ -26,6 +26,16 @@
 //  11. Turn-game resign wipes turn-game rows but never experience rows.
 //  12. Checkpoint restore recovers the capture-time world even after the same anchor is
 //      rewritten post-checkpoint (the ordering that invalidated the createdAt re-lookup).
+//  13. DELETE wipes only the chat's experience namespace — a foreign-namespace row in the
+//      same chat survives — and reports the number of rows it removed (#5405).
+//  14. Export → delete → import round-trips a campaign: same states, same anchors, same
+//      order, and the restored campaign reads back through the normal GET (#5405).
+//  15. Import bounds: over the row cap or over the per-row state cap is a clean 422 with
+//      nothing written, including when one bad row rides along with good ones (#5405).
+//  16. Import recency: rows are re-stamped with strictly increasing createdAt in array
+//      order, so the newest imported row wins fallback reads even against a pre-existing
+//      row that was newer than the import (the store resolves a createdAt tie to the
+//      FIRST-inserted row, which is pinned here too) (#5405).
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 // Shared must come from the built dist so the echo engine registers into the SAME module
@@ -81,6 +91,11 @@ async function createExperienceChat(name: string) {
 const putState = (chatId: string, payload: unknown) =>
   app.inject({ method: "PUT", url: `/api/game/${chatId}/experience-state`, payload: payload as object });
 const getState = (chatId: string) => app.inject({ method: "GET", url: `/api/game/${chatId}/experience-state` });
+const deleteState = (chatId: string) => app.inject({ method: "DELETE", url: `/api/game/${chatId}/experience-state` });
+const exportState = (chatId: string) =>
+  app.inject({ method: "GET", url: `/api/game/${chatId}/experience-state/export` });
+const importState = (chatId: string, payload: unknown) =>
+  app.inject({ method: "POST", url: `/api/game/${chatId}/experience-state/import`, payload: payload as object });
 
 const addAssistantMessage = async (chatId: string, content: string) => {
   const message = await chats.createMessage({
@@ -126,6 +141,15 @@ try {
     const put = await putState(chat.id, { state: { nope: true } });
     assert.equal(put.statusCode, 409, "PUT refuses a chat without gameExperienceId");
     assert.equal(await engineStore.getLatest(chat.id), null, "the refused PUT wrote nothing");
+
+    // The same gate covers the save-management verbs (#5405).
+    assert.equal((await deleteState(chat.id)).statusCode, 409, "DELETE refuses a chat without gameExperienceId");
+    assert.equal((await exportState(chat.id)).statusCode, 409, "export refuses a chat without gameExperienceId");
+    const importRes = await importState(chat.id, {
+      rows: [{ messageId: "", swipeIndex: 0, state: { nope: true } }],
+    });
+    assert.equal(importRes.statusCode, 409, "import refuses a chat without gameExperienceId");
+    assert.equal(await engineStore.getLatest(chat.id), null, "the refused import wrote nothing");
   }
 
   // ── 3. Namespace isolation from turn-game rows ──
@@ -236,6 +260,9 @@ try {
     await chats.patchMetadata(chat.id, () => ({ gameExperienceId: EXPERIENCE_ID }));
     assert.equal((await getState(chat.id)).statusCode, 409, "GET refuses a stamped non-game chat");
     assert.equal((await putState(chat.id, { state: { x: 1 } })).statusCode, 409, "PUT refuses a stamped non-game chat");
+    assert.equal((await deleteState(chat.id)).statusCode, 409, "DELETE refuses a stamped non-game chat");
+    assert.equal((await exportState(chat.id)).statusCode, 409, "export refuses a stamped non-game chat");
+    assert.equal((await importState(chat.id, { rows: [] })).statusCode, 409, "import refuses a stamped non-game chat");
   }
 
   // ── 8b. A malformed stamp is refused — it must never reach the gameType namespace ──
@@ -258,6 +285,13 @@ try {
   {
     const get = await getState("experience-state-missing-chat");
     assert.equal(get.statusCode, 404, "GET on a deleted chat is a clean 404 so packages can stop saving");
+    assert.equal((await deleteState("experience-state-missing-chat")).statusCode, 404, "DELETE on a deleted chat 404s");
+    assert.equal((await exportState("experience-state-missing-chat")).statusCode, 404, "export on a deleted chat 404s");
+    assert.equal(
+      (await importState("experience-state-missing-chat", { rows: [] })).statusCode,
+      404,
+      "import on a deleted chat 404s",
+    );
   }
 
   // ── 10. An experience save must not shadow an active turn-game ──
@@ -366,6 +400,215 @@ try {
       { world: "W1-at-checkpoint" },
       "restore recovers the checkpoint-time world even after a same-anchor rewrite",
     );
+  }
+
+  // ── 13. DELETE wipes only the experience namespace, and counts what it removed ──
+  {
+    const chat = await createExperienceChat("experience delete scope");
+    const m1 = await addAssistantMessage(chat.id, "turn 1");
+    await putState(chat.id, { state: { save: 1 } });
+    await tick(8);
+    await addAssistantMessage(chat.id, "turn 2");
+    await putState(chat.id, { state: { save: 2 } });
+    // A foreign writer's row in the same chat, at an anchor an experience row also holds.
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: m1.id,
+      swipeIndex: 0,
+      gameType: "uno",
+      schemaVersion: 1,
+      state: JSON.stringify({ turnGame: true }),
+      committed: true,
+    });
+
+    const removed = await deleteState(chat.id);
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.deepEqual(removed.json(), { ok: true, deleted: 2 }, "DELETE reports the rows it removed");
+
+    assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "the experience namespace is empty");
+    const foreign = await engineStore.getLatest(chat.id, "uno");
+    assert.ok(foreign, "a foreign-namespace row in the same chat survives the delete");
+    assert.deepEqual(JSON.parse(foreign.state), { turnGame: true });
+
+    assert.deepEqual((await exportState(chat.id)).json(), { rows: [] }, "export of an emptied namespace is []");
+    const afterDelete = await getState(chat.id);
+    assert.equal(afterDelete.statusCode, 200, "reads after a delete are a clean empty save, not an error");
+    assert.equal(afterDelete.json().state, null);
+
+    const again = await deleteState(chat.id);
+    assert.deepEqual(again.json(), { ok: true, deleted: 0 }, "deleting an already-empty namespace is a no-op 0");
+  }
+
+  // ── 14. Export → delete → import round-trips a campaign ──
+  {
+    const chat = await createExperienceChat("experience export round trip");
+    const anchors: string[] = [];
+    for (const turn of [1, 2, 3]) {
+      const message = await addAssistantMessage(chat.id, `turn ${turn}`);
+      anchors.push(message.id);
+      await putState(chat.id, { state: { turn, note: `save ${turn}` }, schemaVersion: 7 });
+      await tick(8);
+    }
+
+    const exported = await exportState(chat.id);
+    assert.equal(exported.statusCode, 200, exported.body);
+    const rows = exported.json().rows as {
+      messageId: string;
+      swipeIndex: number;
+      state: { turn: number };
+      schemaVersion: number;
+      committed: boolean;
+      createdAt: string;
+    }[];
+    assert.equal(rows.length, 3, "export returns every row of the namespace");
+    assert.deepEqual(
+      rows.map((row) => row.state.turn),
+      [1, 2, 3],
+      "export is ordered oldest write first",
+    );
+    assert.deepEqual(
+      rows.map((row) => row.messageId),
+      anchors,
+      "export carries each row's own anchor",
+    );
+    assert.equal(rows[0]!.schemaVersion, 7, "export carries schemaVersion");
+    assert.equal(rows[0]!.committed, true, "export carries the committed flag");
+
+    assert.equal((await deleteState(chat.id)).json().deleted, 3);
+    const restored = await importState(chat.id, { rows });
+    assert.equal(restored.statusCode, 200, restored.body);
+    assert.deepEqual(restored.json(), { ok: true, imported: 3 });
+
+    // createdAt is deliberately re-stamped on import (see the route comment), so the
+    // round-trip is compared on everything else — state, anchors, order, metadata.
+    const strip = (row: (typeof rows)[number]) => ({
+      messageId: row.messageId,
+      swipeIndex: row.swipeIndex,
+      state: row.state,
+      schemaVersion: row.schemaVersion,
+      committed: row.committed,
+    });
+    const reExported = (await exportState(chat.id)).json().rows as typeof rows;
+    assert.deepEqual(reExported.map(strip), rows.map(strip), "import reproduces the exported campaign");
+
+    const read = await getState(chat.id);
+    assert.deepEqual(read.json().state, { turn: 3, note: "save 3" }, "the visible anchor reads its restored save");
+    assert.equal(read.json().anchorMatched, true, "anchors survived the round trip");
+    assert.equal(read.json().schemaVersion, 7);
+
+    // A re-import over a live campaign replaces same-anchor rows rather than duplicating.
+    await importState(chat.id, { rows });
+    assert.equal(
+      (await exportState(chat.id)).json().rows.length,
+      3,
+      "re-importing the same anchors does not duplicate",
+    );
+  }
+
+  // ── 15. Import bounds: over-cap and oversized rows are refused whole ──
+  {
+    const chat = await createExperienceChat("experience import bounds");
+    const trivial = (index: number) => ({ messageId: `anchor-${index}`, swipeIndex: 0, state: { index } });
+
+    const overCap = await importState(chat.id, { rows: Array.from({ length: 101 }, (_, i) => trivial(i)) });
+    assert.equal(overCap.statusCode, 422, "an import over the anchor cap is refused");
+    assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "the over-cap import wrote nothing");
+
+    const atCap = await importState(chat.id, { rows: Array.from({ length: 100 }, (_, i) => trivial(i)) });
+    assert.equal(atCap.statusCode, 200, `an import exactly at the cap is accepted: ${atCap.body}`);
+    assert.equal((await exportState(chat.id)).json().rows.length, 100);
+    await deleteState(chat.id);
+
+    // One oversized row poisons the whole batch — the good row before it must not land.
+    const oversized = await importState(chat.id, {
+      rows: [trivial(0), { messageId: "anchor-big", swipeIndex: 0, state: { blob: "x".repeat(263_000) } }],
+    });
+    assert.equal(oversized.statusCode, 422, "an oversized row is refused");
+    assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "a batch with a bad row is refused whole");
+
+    // A value JSON.stringify cannot represent is the same clean refusal, not a 500.
+    const unserializable = await importState(chat.id, {
+      rows: [{ messageId: "anchor-fn", swipeIndex: 0, state: undefined }],
+    });
+    assert.equal(unserializable.statusCode, 422, "a non-serializable state is refused");
+    assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "the refused import wrote nothing");
+  }
+
+  // ── 16. Import recency: monotonic re-stamping, and the tie rule it defends against ──
+  {
+    // 16a. Pin the store fact the import has to work around: createdAt is the only recency
+    // key the reads order by, and a desc(createdAt) read of a tied group returns its
+    // FIRST-inserted row (the store's sort is stable over in-memory insertion order — the
+    // same assumption latestPerGameType documents; after a shard reload ties re-sort by row
+    // id instead). Under neither regime does the newest write reliably win a tie, which is
+    // why the import re-stamps instead of letting a same-millisecond batch fall to now().
+    const tied = await createExperienceChat("experience createdAt tie");
+    const tiedAt = new Date().toISOString();
+    for (const marker of ["first-inserted", "second-inserted"]) {
+      await engineStore.create({
+        chatId: tied.id,
+        messageId: `tie-${marker}`,
+        swipeIndex: 0,
+        gameType: GAME_TYPE,
+        schemaVersion: 1,
+        state: JSON.stringify({ marker }),
+        committed: true,
+        createdAt: tiedAt,
+      });
+    }
+    assert.equal(
+      JSON.parse((await engineStore.getLatest(tied.id, GAME_TYPE))!.state).marker,
+      "first-inserted",
+      "a createdAt tie resolves to the FIRST-inserted row — why import cannot rely on now()",
+    );
+
+    // 16b. An import must therefore re-stamp monotonically, and beat whatever is already
+    // in the namespace: here a pre-existing row stamped a minute into the future. Without
+    // the guard the whole import lands behind it and fallback reads keep returning the
+    // stale save.
+    const chat = await createExperienceChat("experience import recency");
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "pre-existing-anchor",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: JSON.stringify({ marker: "stale-but-newest" }),
+      committed: true,
+      createdAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const imported = await importState(chat.id, {
+      rows: [
+        { messageId: "campaign-a", swipeIndex: 0, state: { step: "oldest" } },
+        { messageId: "campaign-b", swipeIndex: 0, state: { step: "middle" } },
+        { messageId: "campaign-c", swipeIndex: 0, state: { step: "newest" } },
+      ],
+    });
+    assert.equal(imported.statusCode, 200, imported.body);
+
+    // The chat has no messages, so the GET has no visible anchor and falls back to the
+    // latest committed row — which must be the last row of the imported array.
+    const read = await getState(chat.id);
+    assert.deepEqual(read.json().state, { step: "newest" }, "the newest imported row wins fallback reads");
+
+    const stored = await engineStore.listForChat(chat.id, GAME_TYPE);
+    const campaign = stored.filter((row) => row.messageId.startsWith("campaign-"));
+    assert.deepEqual(
+      campaign.map((row) => JSON.parse(row.state).step),
+      ["oldest", "middle", "newest"],
+      "imported rows keep their array order as their stored recency order",
+    );
+    for (let i = 1; i < campaign.length; i += 1) {
+      assert.ok(
+        campaign[i]!.createdAt > campaign[i - 1]!.createdAt,
+        "import stamps a strictly increasing createdAt per row",
+      );
+    }
+
+    // Anchors that do not exist as messages in this chat are still written and still
+    // serve through the fallback path — the crudeness the FR accepts.
+    assert.equal(campaign.length, 3, "rows anchored to messages this chat never had are still imported");
   }
 
   console.log("experience-state regression passed");

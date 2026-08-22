@@ -4,7 +4,7 @@
 // Game-agnostic persistence for the turn-game framework (UNO and beyond).
 // Mirrors game-state.storage.ts (per-message snapshots + committed flag +
 // regen-exclusion) but stores an opaque engine JSON blob instead of RPG fields.
-import { and, desc, eq, gt, inArray, lte, ne, notLike, type FileCondition } from "../../db/file-query.js";
+import { and, asc, desc, eq, gt, inArray, lte, ne, notLike, type FileCondition } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { gameEngineState } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
@@ -30,6 +30,15 @@ export interface CreateGameEngineStateInput {
   /** Already JSON-stringified engine state. */
   state: string;
   committed?: boolean;
+  /**
+   * Override the row's creation timestamp (#5405). Only the experience-state import uses this:
+   * `createdAt` is the sole recency key every read orders by, and the store's sort is stable
+   * over insertion order, so a tie makes `desc(createdAt).limit(1)` return the FIRST-inserted
+   * row of the tied group. A bulk import that writes its rows inside one millisecond would
+   * therefore make its OLDEST row win fallback reads. The importer stamps a strictly
+   * increasing timestamp per row instead. Every other caller omits this and gets `now()`.
+   */
+  createdAt?: string;
 }
 
 export function createGameEngineStateStorage(db: DB) {
@@ -126,6 +135,19 @@ export function createGameEngineStateStorage(db: DB) {
         .orderBy(desc(gameEngineState.createdAt));
     },
 
+    /**
+     * Every row of one scope in a chat, oldest write first (#5405). Backs the experience-state
+     * bulk export and the row count the namespace delete reports; ordering is `asc(createdAt)`
+     * so a re-import replaying the array in order reproduces the original recency.
+     */
+    async listForChat(chatId: string, gameType?: GameEngineStateScope) {
+      return db
+        .select()
+        .from(gameEngineState)
+        .where(scoped(eq(gameEngineState.chatId, chatId), gameType))
+        .orderBy(asc(gameEngineState.createdAt));
+    },
+
     async getLatestExcludingMessage(chatId: string, excludeMessageId: string, gameType?: GameEngineStateScope) {
       const rows = await db
         .select()
@@ -213,7 +235,7 @@ export function createGameEngineStateStorage(db: DB) {
         schemaVersion: input.schemaVersion,
         state: input.state,
         committed: input.committed ? 1 : 0,
-        createdAt: now(),
+        createdAt: input.createdAt ?? now(),
       });
       return id;
     },

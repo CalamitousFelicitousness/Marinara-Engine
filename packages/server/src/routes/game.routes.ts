@@ -1711,6 +1711,12 @@ const MAX_EXPERIENCE_STATE_CHARS = 262_144;
  *  recent anchors and checkpoint restore reads the blob captured in the checkpoint row, so
  *  older rows are unreachable — pruning them bounds the chat's game_engine_state shard. */
 const EXPERIENCE_STATE_KEEP_ANCHORS = 100;
+/** Route-level body ceiling for the experience-state import (#5405): the PUT's per-save formula
+ *  (up to 6 raw bytes per stored UTF-16 unit, for \uXXXX escapes) scaled by the row cap, plus a
+ *  small per-row envelope for the anchor fields and a fixed slack for the array wrapper. Stays
+ *  under the app-wide 256 MiB ceiling, so an oversize import still dies at the socket with 413. */
+const EXPERIENCE_STATE_IMPORT_BODY_LIMIT =
+  (MAX_EXPERIENCE_STATE_CHARS * 6 + 1_024) * EXPERIENCE_STATE_KEEP_ANCHORS + 16_384;
 const GAME_REPUTATION_ACTION_MAX_LENGTH = 500;
 /** Shape and length ceiling for a game-surface Experience's package id (#5102). The setup schema
  *  and the experience-state route's resolver must validate a stamp identically — a looser rule here
@@ -10200,6 +10206,209 @@ export async function gameRoutes(app: FastifyInstance) {
         });
         await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
         return { ok: true, id, anchor };
+      });
+    },
+  );
+
+  // ── Experience save management: delete / export / import (#5405) ──
+  // Three player-initiated verbs over the same namespace the GET/PUT above own.
+  // Nothing automatic calls any of them: a package surfaces them behind explicit
+  // player action ("New Game", "Free up space", "Back up this campaign"). All three
+  // reuse resolveExperienceStateGameType, so a chat without a valid game-mode stamp
+  // gets the same 409 the GET/PUT give and a missing chat the same 404; the two that
+  // mutate run inside withExperienceStateWriteLock, so they cannot interleave with a
+  // concurrent save's delete-then-insert. CSRF needs no route-level work: the app's
+  // onRequest hook treats DELETE and POST as unsafe methods (UNSAFE_METHODS covers
+  // POST/PUT/PATCH/DELETE) for every /api/ path, so both are origin-checked already.
+
+  // ── DELETE /game/:chatId/experience-state ──
+  // Removes every row of this chat's experience namespace. Turn-game rows and any
+  // other writer's rows in the same chat are untouched (the delete is gameType-scoped).
+  // Losing these rows does not strand old campaigns: checkpoints capture the world blob
+  // by value at create time (engineStateData, #5102/#5077), so a restore still recovers
+  // the world even with no surviving per-turn row.
+  app.delete<{ Params: { chatId: string } }>("/:chatId/experience-state", async (req, reply) => {
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.code(404).send({ error: "Chat not found" });
+    const gameType = resolveExperienceStateGameType(chat);
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it has no experience state",
+      });
+    }
+
+    return withExperienceStateWriteLock(req.params.chatId, async () => {
+      const storage = createGameEngineStateStorage(app.db);
+      // Counted inside the lock so `deleted` is what this call actually removed.
+      const doomed = await storage.listForChat(req.params.chatId, gameType);
+      if (doomed.length > 0) await storage.deleteForChat(req.params.chatId, gameType);
+      logger.info("Deleted %d experience-state row(s) for chat %s (%s)", doomed.length, req.params.chatId, gameType);
+      return { ok: true, deleted: doomed.length };
+    });
+  });
+
+  // ── GET /game/:chatId/experience-state/export ──
+  // Every row of the namespace, oldest write first, so a player can take a campaign
+  // off-device. Deliberately unpaginated: the response can reach roughly
+  // EXPERIENCE_STATE_KEEP_ANCHORS × MAX_EXPERIENCE_STATE_CHARS (~100 × 256K) of state
+  // plus envelope. That is accepted for an explicit, player-triggered export — the
+  // alternative (paging a save file) would hand packages a partial-export failure mode
+  // for no benefit on a local-first server.
+  app.get<{ Params: { chatId: string } }>("/:chatId/experience-state/export", async (req, reply) => {
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.code(404).send({ error: "Chat not found" });
+    const gameType = resolveExperienceStateGameType(chat);
+    if (!gameType) {
+      return reply.code(409).send({
+        error: "This chat has no game-surface Experience, so it has no experience state",
+      });
+    }
+
+    const storage = createGameEngineStateStorage(app.db);
+    const rows = await storage.listForChat(req.params.chatId, gameType);
+    return {
+      rows: rows.map((row) => {
+        let state: unknown = null;
+        try {
+          state = JSON.parse(row.state);
+        } catch {
+          // Same tolerance as the single-row GET: the PUT only ever stores
+          // JSON.stringify output, so an unparseable row is on-disk corruption.
+          // Export it as null rather than failing the whole campaign's export.
+          logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+        }
+        return {
+          messageId: row.messageId,
+          swipeIndex: row.swipeIndex,
+          state,
+          schemaVersion: row.schemaVersion,
+          committed: row.committed === 1,
+          createdAt: row.createdAt,
+        };
+      }),
+    };
+  });
+
+  // ── POST /game/:chatId/experience-state/import ──
+  // Accepts an export payload back. Each row is rewritten at its ORIGINAL anchor via
+  // storage.create, whose delete-then-insert dedupe means a re-import over a live
+  // campaign replaces same-anchor rows and leaves the rest — a player wanting a clean
+  // slate calls the DELETE above first. Import is additive by design so the two verbs
+  // stay independently useful.
+  //
+  // Crudeness the FR explicitly accepts: an anchor whose message no longer exists in
+  // this chat (an export replayed into a different chat, or after the anchor message
+  // was deleted) is still written. Such a row is simply never the visible anchor's own
+  // save — it serves through the GET's fallback path (latest committed / latest of
+  // any), which is exactly what makes an imported campaign playable again.
+  const experienceStateImportSchema = z.object({
+    rows: z.array(
+      z.object({
+        /** "" is the live anchor the PUT uses before the first assistant message exists. */
+        messageId: z.string().max(200),
+        swipeIndex: z.number().int().min(0).max(1_000_000),
+        state: z.unknown(),
+        schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
+        committed: z.boolean().default(true),
+        /** Accepted so an export round-trips without stripping fields, but never stored —
+         *  see the stamping note in the handler. */
+        createdAt: z.string().max(64).optional(),
+      }),
+    ),
+  });
+
+  app.post<{ Params: { chatId: string } }>(
+    "/:chatId/experience-state/import",
+    { bodyLimit: EXPERIENCE_STATE_IMPORT_BODY_LIMIT },
+    async (req, reply) => {
+      // Count-cap before the schema parse: the body limit is sized for full-size saves,
+      // so it still admits millions of tiny rows. Rejecting on length first keeps a
+      // pathological batch from being validated row by row before it is refused.
+      const rawRows = (req.body as { rows?: unknown } | null | undefined)?.rows;
+      if (Array.isArray(rawRows) && rawRows.length > EXPERIENCE_STATE_KEEP_ANCHORS) {
+        return reply.code(422).send({
+          error: `rows must contain at most ${EXPERIENCE_STATE_KEEP_ANCHORS} entries`,
+        });
+      }
+      const body = experienceStateImportSchema.parse(req.body ?? {});
+
+      // Serialize and bound every row up front so an invalid batch is refused whole
+      // instead of half-applied: nothing is written until all of them pass.
+      const pending: {
+        messageId: string;
+        swipeIndex: number;
+        state: string;
+        schemaVersion: number;
+        committed: boolean;
+      }[] = [];
+      for (const [index, row] of body.rows.entries()) {
+        const serialized = JSON.stringify(row.state);
+        if (serialized === undefined) {
+          return reply.code(422).send({ error: `rows[${index}].state must be a JSON-serializable value` });
+        }
+        if (serialized.length > MAX_EXPERIENCE_STATE_CHARS) {
+          return reply.code(422).send({
+            error: `rows[${index}].state must serialize to at most ${MAX_EXPERIENCE_STATE_CHARS} characters`,
+          });
+        }
+        pending.push({
+          messageId: row.messageId,
+          swipeIndex: row.swipeIndex,
+          state: serialized,
+          schemaVersion: row.schemaVersion,
+          committed: row.committed,
+        });
+      }
+
+      const chats = createChatsStorage(app.db);
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.code(404).send({ error: "Chat not found" });
+      const gameType = resolveExperienceStateGameType(chat);
+      if (!gameType) {
+        return reply.code(409).send({
+          error: "This chat has no game-surface Experience, so it cannot store experience state",
+        });
+      }
+
+      return withExperienceStateWriteLock(req.params.chatId, async () => {
+        const storage = createGameEngineStateStorage(app.db);
+        // Recency comes from array ORDER, not from the exported createdAt. Honoring a
+        // caller-supplied timestamp would let a far-future stamp permanently shadow every
+        // later save and skew deleteAfter/getLatestAtOrBefore, so the batch is re-stamped
+        // here. It has to be stamped monotonically rather than left to now(): createdAt is
+        // the only recency key the reads order by, and the store's sort is stable over
+        // insertion order, so a desc(createdAt) read of a tied group returns its
+        // FIRST-inserted row. A whole import landing inside one millisecond would
+        // otherwise hand every fallback read the OLDEST save in the file.
+        const newestExisting = await storage.getLatest(req.params.chatId, gameType);
+        const existingMs = newestExisting ? Date.parse(newestExisting.createdAt) : Number.NaN;
+        // Ends exactly at the base so the last row written is the namespace's newest,
+        // stepping backwards one millisecond per earlier row (bounded by the row cap).
+        const base = Number.isFinite(existingMs) ? Math.max(Date.now(), existingMs + 1) : Date.now();
+        for (const [index, row] of pending.entries()) {
+          await storage.create({
+            chatId: req.params.chatId,
+            messageId: row.messageId,
+            swipeIndex: row.swipeIndex,
+            gameType,
+            schemaVersion: row.schemaVersion,
+            state: row.state,
+            committed: row.committed,
+            createdAt: new Date(base - (pending.length - 1 - index)).toISOString(),
+          });
+        }
+        // Same bound the PUT enforces: an import merged onto a live campaign can push the
+        // namespace past the anchor cap.
+        await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
+        logger.info(
+          "Imported %d experience-state row(s) for chat %s (%s)",
+          pending.length,
+          req.params.chatId,
+          gameType,
+        );
+        return { ok: true, imported: pending.length };
       });
     },
   );

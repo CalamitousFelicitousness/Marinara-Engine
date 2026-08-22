@@ -1267,6 +1267,40 @@ export function ChatSettingsDrawer({
     (item) =>
       item.status === "active" && item.manifest.kind.includes("conversation-calls") && item.manifest.entrypoints.client,
   );
+  const chatSettingsPackageByAgentId = useMemo(() => {
+    const packages = new Map<string, (typeof installedCapabilities)[number]>();
+    for (const item of installedCapabilities) {
+      if (
+        item.status === "active" &&
+        item.manifest.entrypoints.client &&
+        item.manifest.contributions?.slots?.includes("chat-settings")
+      ) {
+        packages.set(item.id, item);
+      }
+    }
+    return packages;
+  }, [installedCapabilities]);
+  const renderDownloadedAgentChatSettings = (agent: { id: string; name: string; description: string }) => {
+    if (agent.id === "hierarchical-maps" || agent.id === "long-term-memory") return null;
+    const capabilityPackage = chatSettingsPackageByAgentId.get(agent.id);
+    if (!capabilityPackage) return null;
+    return (
+      <CapabilityElement
+        packageId={capabilityPackage.id}
+        view="settings"
+        capabilityProps={{
+          chatId: chat.id,
+          chatMode,
+          debugMode,
+          agent,
+          connections: chatGenerationConnectionsList,
+          onDirtyChange: setEditorDirty,
+          confirmAction: showConfirmDialog,
+        }}
+        className="mt-2 block overflow-hidden rounded-lg"
+      />
+    );
+  };
   const availableConversationCommandOptions = useMemo(() => {
     return CONVERSATION_COMMAND_TOGGLE_OPTIONS.filter((command) => {
       const agentId = CONVERSATION_COMMAND_AGENT_IDS[command.id];
@@ -2107,6 +2141,17 @@ export function ChatSettingsDrawer({
     }
     if (beholderAgent) addLink("beholder", activeAgentIds.includes("beholder"), beholderAgent.name);
     if (mapsAgent && mapsPackage) addLink(mapsPackage.id, mapsPackageEnabledForChat, mapsAgent.name);
+    for (const [agentId, capabilityPackage] of chatSettingsPackageByAgentId) {
+      if (
+        agentId === "hierarchical-maps" ||
+        agentId === "long-term-memory" ||
+        links.some((link) => link.id === agentId)
+      ) {
+        continue;
+      }
+      const agent = availableAgents.find((candidate) => candidate.id === agentId);
+      addLink(agentId, activeAgentIds.includes(agentId), agent?.name ?? capabilityPackage.manifest.name);
+    }
     if (activeCustomAgents.length > 0) {
       links.push({
         id: "custom-agents",
@@ -2120,9 +2165,11 @@ export function ChatSettingsDrawer({
   }, [
     activeCustomAgents,
     activeAgentIds,
+    availableAgents,
     beholderAgent,
     cardEvolutionAuditorActive,
     cardEvolutionAuditorAgentMeta.name,
+    chatSettingsPackageByAgentId,
     chat.id,
     continuityActive,
     continuityAgentMeta.name,
@@ -8696,25 +8743,17 @@ export function ChatSettingsDrawer({
                                   <div className="flex flex-col gap-1 mb-1.5">
                                     {activeInCat.map((agent) => {
                                       const tokenEst = agentLoadCost.tokensByType.get(agent.id);
+                                      const hasSettingsTarget =
+                                        agent.id === "hierarchical-maps" ||
+                                        agent.id === "long-term-memory" ||
+                                        agent.id === "beholder" ||
+                                        agent.id === STORYBOARD_AGENT_ID ||
+                                        chatSettingsPackageByAgentId.has(agent.id);
                                       return (
                                         <div
                                           key={agent.id}
-                                          id={
-                                            agent.id === "hierarchical-maps" ||
-                                            agent.id === "long-term-memory" ||
-                                            agent.id === "beholder" ||
-                                            agent.id === STORYBOARD_AGENT_ID
-                                              ? getAgentSettingsMenuId(chat.id, agent.id)
-                                              : undefined
-                                          }
-                                          tabIndex={
-                                            agent.id === "hierarchical-maps" ||
-                                            agent.id === "long-term-memory" ||
-                                            agent.id === "beholder" ||
-                                            agent.id === STORYBOARD_AGENT_ID
-                                              ? -1
-                                              : undefined
-                                          }
+                                          id={hasSettingsTarget ? getAgentSettingsMenuId(chat.id, agent.id) : undefined}
+                                          tabIndex={hasSettingsTarget ? -1 : undefined}
                                           data-chat-agent-entry={agent.id}
                                           className="scroll-mt-3 rounded-lg bg-[var(--primary)]/10 px-3 py-2 ring-1 ring-[var(--primary)]/30 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/60"
                                         >
@@ -8825,6 +8864,7 @@ export function ChatSettingsDrawer({
                                               className="mt-2 block overflow-hidden rounded-lg"
                                             />
                                           )}
+                                          {renderDownloadedAgentChatSettings(agent)}
                                           {agent.id === STORYBOARD_AGENT_ID && (
                                             <Suspense fallback={null}>
                                               <StoryboardChatSettingsPanel

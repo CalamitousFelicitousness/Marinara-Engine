@@ -6943,10 +6943,10 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     const settingToggle = settingRow.locator('input[type="checkbox"]');
     await expect(settingToggle).toBeChecked();
     const rowBox = await settingRow.boundingBox();
-    const languageBox = await page.locator("#settings-control-language").boundingBox();
+    const confirmBox = await page.locator("#settings-control-confirm-before-delete").boundingBox();
     expect(rowBox).not.toBeNull();
-    expect(languageBox).not.toBeNull();
-    expect(rowBox!.y).toBeLessThan(languageBox!.y);
+    expect(confirmBox).not.toBeNull();
+    expect(rowBox!.y).toBeGreaterThan(confirmBox!.y);
 
     await settingRow.getByText("Hide chat Help button", { exact: true }).click();
     await expect(settingToggle).not.toBeChecked();

@@ -3428,14 +3428,6 @@ function GeneralSettings() {
         {...getSettingsSectionAnchorProps("application")}
       >
         <div className="flex flex-col gap-2.5">
-          <ToggleSetting
-            anchorId={getSettingsControlAnchorId("hide-chat-help-button")}
-            label={localizeUi("settings.controls.hideChatHelpButton.label")}
-            checked={chatHelpButtonHidden}
-            onChange={setChatHelpButtonHidden}
-            help={localizeUi("settings.controls.hideChatHelpButton.help")}
-          />
-
           <label id={getSettingsControlAnchorId("language")} className="flex scroll-mt-3 flex-col gap-1">
             <span className="inline-flex items-center gap-1 text-xs font-medium">
               {t("settings.application.language.label")}
@@ -3465,6 +3457,13 @@ function GeneralSettings() {
             checked={confirmBeforeDelete}
             onChange={setConfirmBeforeDelete}
             help={localizeUi("settings.controls.confirmBeforeDelete.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("hide-chat-help-button")}
+            label={localizeUi("settings.controls.hideChatHelpButton.label")}
+            checked={chatHelpButtonHidden}
+            onChange={setChatHelpButtonHidden}
+            help={localizeUi("settings.controls.hideChatHelpButton.help")}
           />
           <AndroidStatusBarSetting />
           <ToggleSetting

@@ -123,8 +123,9 @@ try {
     const db = await createFileNativeDB(containerLeaseHooks);
     const leaseTemplate = readJson<LeaseRecord>(ownerPath(dir));
     const socketPathIsSupported = process.platform !== "win32" && Buffer.byteLength(livenessPath(dir)) <= 100;
-    assert.ok(
-      leaseTemplate.version === 2 || (socketPathIsSupported && leaseTemplate.version === 3),
+    assert.equal(
+      leaseTemplate.version,
+      socketPathIsSupported ? 3 : 2,
       "new leases use an owner socket only when the platform, host identity, and path support it",
     );
     assert.equal(existsSync(livenessPath(dir)), leaseTemplate.version === 3);

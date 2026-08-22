@@ -251,6 +251,62 @@ clicking persists to the shared server and changes what sibling specs load into.
 Note the setting rides the existing server settings sync (`pickSyncedSettings`), so it outlives a
 browser context; a spec cannot assume it is off just because that context never set it.
 
+### Tracker presets
+
+Every character card carried its own `trackerCustomFieldDefaults` and `rpgStats.pools`, and there
+was no way to give a whole library the same tracker layout short of editing each card. A new
+global `tracker_presets` table now holds reusable layouts: character text fields, character stat
+bars, persona text fields, and persona stat bars. `app_settings.activeTrackerPresetId` selects one
+app-wide and `ChatMetadata.trackerPresetId` overrides it per chat.
+
+A preset is a base layer, never a replacement. `mergeTrackerNamedEntries` puts preset rows first,
+so every card lays out identically, but a colliding card or live tracker value keeps the preset's
+slot and its own value. Applying is therefore additive and idempotent: pressing Apply twice, or
+mid-chat, never resets a tracked value. Preset stats deliberately ignore a card's
+`rpgStats.enabled` toggle, which defaults off and is untouched on most libraries; gating on it
+would make preset stats a no-op exactly where they are wanted.
+
+Seeding is the whole mechanism, not a convenience. `buildLoreBlock` in `agent-executor.ts` emits
+`Configured RPG pools` and `Configured persona stat bars` but has no custom-field equivalent, so
+the tracker agent learns a text field exists only by seeing it in current tracker state.
+
+Persona cards gained tracker text fields, which had no card-level equivalent before: the tracker
+rendered `PlayerStats.customTrackerFields` but they could only be added by hand, per chat. They
+ride inside the existing `personaStats` JSON blob rather than a new `personas` column, because
+every stage on that column already passes unknown keys through: `normalizePersonaStats` and its
+siblings are spread-first, `personaStatsSchema` is `.passthrough()`, and `mari-db.service.ts`
+already lists `personaStats` among its structured fields.
+
+Application runs from `services/tracker/tracker-preset.service.ts`, kept out of `chats.routes.ts`
+on purpose. That file is upstream-owned and actively edited, and `buildRoleplayTrackerDefaultCharacters`
+was last touched by an upstream review commit, so the fork's only lines there are two calls to
+`applyTrackerPresetToChat` plus the metadata read. The card-owned seeding pass is untouched and
+still runs first; the preset layers under whatever it wrote.
+
+`trackerPresetId` is deliberately not validated in the `PATCH /chats/:id/metadata` route, to add no
+lines to that upstream-hot handler. `readChatTrackerPresetId` is the guard instead: anything that
+is neither a non-empty string nor `null` degrades to "inherit the global selection", so a bad
+value cannot disable presets for a chat.
+
+New files only, apart from four small patches: `packages/shared/src/types/chat.ts`
+(`ChatMetadata.trackerPresetId`), `packages/shared/src/types/persona.ts` (`PersonaStatsConfig.fields`),
+`packages/shared/src/utils/custom-tracker-fields.ts` (`comparableTrackerName` extracted from the
+existing dedup rule, plus `mergeTrackerNamedEntries`), `packages/server/src/routes/chats.routes.ts`,
+`packages/server/src/db/file-backed-store.ts` (table registration only, no `STORAGE_VERSION` bump
+since new tables are additive), `packages/client/src/components/panels/SettingsPanel.tsx` (one mount),
+and `packages/client/src/components/personas/PersonaEditor.tsx`.
+
+Covered by `scripts/regressions/tracker-presets.regression.ts`, which runs the routes and the
+service against real storage and pins the additive merge, idempotent re-apply, chat override
+versus global fallback, persona seeding, and the cleared pointer on delete.
+
+`tracker_presets` is registered in both table lists: `FILE_BACKED_TABLES` in
+`db/file-backed-store.ts` and the hand-maintained `SHARDED_TABLES` copy in
+`scripts/protect-launcher-data.mjs`, which `launcher/format-guard.regression.mjs` pins
+`deepEqual`, order included. Adding this table is what surfaced that `author_note_presets` had
+never been registered there, fixed separately; see that commit for why the omission loses data.
+Every future table added to `FILE_BACKED_TABLES` needs the same entry at the same position.
+
 ### Message action row wraps on narrow phones
 
 `ChatMessage.tsx` renders the per-message action row (copy, edit, branch, delete, and the

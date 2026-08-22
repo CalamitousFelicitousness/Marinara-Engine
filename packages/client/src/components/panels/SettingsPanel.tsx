@@ -153,6 +153,7 @@ import {
   ToggleSetting,
 } from "./settings/SettingControls";
 import { TrackerCardColorSettings } from "./settings/TrackerCardColorSettings";
+import { TrackerPresetSettings } from "./settings/TrackerPresetSettings";
 import { PromptOverridesEditor } from "./settings/PromptOverridesEditor";
 import { BackgroundPicker } from "./settings/BackgroundPicker";
 import { CustomGenerationParametersSettings } from "./settings/CustomGenerationParametersSettings";
@@ -2644,6 +2645,7 @@ function TrackerPanelAppearanceDrawer() {
           </div>
           <TrackerPanelCardOrderSetting />
           <TrackerCardColorSettings />
+          <TrackerPresetSettings />
         </fieldset>
       )}
     </section>

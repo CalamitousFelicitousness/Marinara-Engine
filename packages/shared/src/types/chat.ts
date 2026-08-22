@@ -297,6 +297,12 @@ export interface ChatMetadata {
    * alongside `authorNotes`. Unresolvable ids are ignored at assembly.
    */
   activeAuthorNotePresetIds?: string[];
+  /**
+   * Tracker preset override for this chat. `undefined` inherits the global
+   * selection; `null` means this chat deliberately uses no preset. Unresolvable
+   * ids fall back to the global selection.
+   */
+  trackerPresetId?: string | null;
   /** Custom tags for organisation */
   tags: string[];
   /** Whether agents are enabled for this chat */

@@ -122,6 +122,7 @@ import {
   normalizeRpgStatPools,
   syncRpgHpFromPools,
   type CharacterData,
+  type CharacterTrackerCustomFieldDefault,
   type ConvoBehaviorConfig,
   type Persona,
   type PersonaCardSnapshot,
@@ -3235,6 +3236,14 @@ function PersonaStatsTab({
     save({ ...parsed, bars: nextBars });
   };
 
+  // Tracker text fields. Unlike the bars these are not gated on `enabled`:
+  // they seed PlayerStats.customTrackerFields, which the tracker shows whether
+  // or not persona status bars are switched on.
+  const trackerFields = Array.isArray(parsed.fields) ? parsed.fields : [];
+  const updateTrackerField = (index: number, patch: Partial<CharacterTrackerCustomFieldDefault>) => {
+    save({ ...parsed, fields: trackerFields.map((field, i) => (i === index ? { ...field, ...patch } : field)) });
+  };
+
   // RPG Attributes helpers
   const rpgStats: RPGStatsConfig = parsed.rpgStats ?? DEFAULT_RPG_STATS;
   const rpgPools = normalizeRpgStatPools(rpgStats);
@@ -3494,6 +3503,66 @@ function PersonaStatsTab({
               </div>
             </div>
           </>
+        )}
+      </div>
+
+      {/* Persona counterpart of a character card's Tracker Custom Fields.
+          Stored inside personaStats so no personas column was needed. */}
+      <div className="space-y-3 border-t border-[var(--border)] pt-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">{localizeUi("ui.personas.personastatstab.trackerCustomFields")}</h3>
+            <p className="mt-0.5 text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]">
+              {localizeUi("ui.personas.personastatstab.trackerCustomFieldsDescription")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => save({ ...parsed, fields: [...trackerFields, { name: "", value: "" }] })}
+            className="mari-chrome-accent-surface mari-accent-animated flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[0.6875rem] font-medium transition-colors"
+          >
+            <Plus size="0.75rem" />
+            {localizeUi("ui.characters.metadatatab.add")}
+          </button>
+        </div>
+
+        {trackerFields.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">
+            {localizeUi("ui.personas.personastatstab.noTrackerCustomFields")}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {trackerFields.map((field, index) => (
+              <div
+                key={index}
+                className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] sm:items-center"
+              >
+                <input
+                  value={field.name}
+                  onChange={(event) => updateTrackerField(index, { name: event.target.value })}
+                  className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs font-medium"
+                  placeholder={localizeUi("ui.characters.statstab.trackerFieldName")}
+                  aria-label={localizeUi("ui.characters.statstab.trackerFieldName")}
+                />
+                <input
+                  value={field.value}
+                  onChange={(event) => updateTrackerField(index, { value: event.target.value })}
+                  className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs"
+                  placeholder={localizeUi("ui.characters.statstab.initialValue")}
+                  aria-label={localizeUi("ui.characters.statstab.initialValue")}
+                />
+                <button
+                  type="button"
+                  onClick={() => save({ ...parsed, fields: trackerFields.filter((_, i) => i !== index) })}
+                  className="rounded-lg p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--primary)]/15 hover:text-[var(--primary)]"
+                  title={localizeUi("ui.characters.statstab.removeTrackerField")}
+                  aria-label={localizeUi("ui.characters.statstab.removeTrackerField")}
+                >
+                  <X size="0.75rem" />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

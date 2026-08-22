@@ -121,4 +121,13 @@ export interface PersonaStatsConfig {
   bars: PersonaStatBar[];
   /** Optional Game mode RPG stats stored alongside the persona status bars. */
   rpgStats?: RPGStatsConfig;
+  /**
+   * Persona tracker text fields seeded into `PlayerStats.customTrackerFields`,
+   * the persona counterpart of a character's `trackerCustomFieldDefaults`.
+   *
+   * Carried inside `personaStats` rather than a new `personas` column because
+   * every normalizer, projector, importer and backup path on this blob is
+   * spread-first and already preserves unknown keys.
+   */
+  fields?: import("./character.js").CharacterTrackerCustomFieldDefault[];
 }

@@ -304,6 +304,7 @@ export const FILE_BACKED_TABLES = [
   "game_turn_storyboard_keyframes",
   "regex_scripts",
   "author_note_presets",
+  "tracker_presets",
   "chat_images",
   "character_images",
   "persona_images",

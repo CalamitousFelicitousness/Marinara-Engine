@@ -61,6 +61,7 @@ import { createConnectionsStorage } from "../services/storage/connections.storag
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createGameStateStorage, type GameStateVisibleAnchor } from "../services/storage/game-state.storage.js";
+import { applyTrackerPresetToChat, readChatTrackerPresetId } from "../services/tracker/tracker-preset.service.js";
 import {
   formatOwnerSpatialBreadcrumb,
   injectOwnerSpatialPrompt,
@@ -547,13 +548,28 @@ function mergeRoleplayTrackerDefaultCharacters(currentCharacters: PresentCharact
 
 async function seedNewRoleplayChatTrackerDefaults(
   app: FastifyInstance,
-  chat: { id: string; mode?: string | null },
+  chat: { id: string; mode?: string | null; personaId?: string | null; metadata?: unknown },
   characterIds: string[],
 ) {
   if (chat.mode !== "roleplay" || characterIds.length === 0) return;
 
+  // Fork: the active tracker preset is layered on after the card-owned seeding
+  // below, so card values always win. See services/tracker/tracker-preset.service.ts.
+  const applyPreset = async () => {
+    await applyTrackerPresetToChat(app, {
+      chatId: chat.id,
+      mode: chat.mode,
+      characterIds,
+      personaId: chat.personaId ?? null,
+      chatPresetId: readChatTrackerPresetId(chat.metadata),
+    });
+  };
+
   const seeds = await buildRoleplayTrackerDefaultCharacters(app, characterIds);
-  if (seeds.length === 0) return;
+  if (seeds.length === 0) {
+    await applyPreset();
+    return;
+  }
 
   const gameStateStore = createGameStateStorage(app.db);
   const latest = await gameStateStore.getLatest(chat.id);
@@ -562,6 +578,7 @@ async function seedNewRoleplayChatTrackerDefaults(
 
   if (latest) {
     await gameStateStore.updateLatest(chat.id, { presentCharacters });
+    await applyPreset();
     return;
   }
 
@@ -583,6 +600,7 @@ async function seedNewRoleplayChatTrackerDefaults(
     hiddenTrackerFields: null,
     committed: false,
   });
+  await applyPreset();
 }
 
 function resolveEntryStateOverrides(value: unknown): EntryStateOverrides | undefined {

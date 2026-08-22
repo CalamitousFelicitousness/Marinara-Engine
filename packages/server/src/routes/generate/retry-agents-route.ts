@@ -247,6 +247,8 @@ type ResolvedRetryAgent = {
   agentModel: string;
 };
 
+type RetryLorebookEffectStatus = "applied" | "pending_approval" | "failed";
+
 const isBuiltInAgentType = (agentType: string) => BUILT_IN_AGENTS.some((agent) => agent.id === agentType);
 
 function findRetryResultAgent(result: AgentResult, agents: ResolvedRetryAgent[]): ResolvedAgent | null {
@@ -2497,6 +2499,7 @@ async function applyRetryResultEffects(args: {
   debugMode: boolean;
   secretPlotRerollMode?: "full" | "turn_only";
   signal: AbortSignal;
+  onLorebookEffectStatus?: (agentId: string, status: RetryLorebookEffectStatus) => void;
 }) {
   const {
     app,
@@ -2522,6 +2525,7 @@ async function applyRetryResultEffects(args: {
     debugMode,
     secretPlotRerollMode,
     signal,
+    onLorebookEffectStatus,
   } = args;
   const assertRetryActive = () => signal.throwIfAborted();
   assertRetryActive();
@@ -2941,7 +2945,10 @@ async function applyRetryResultEffects(args: {
 
     if (result.success && result.type === "lorebook_update" && result.data && typeof result.data === "object") {
       try {
-        if (isAgentWriteApprovalEnvelope(result.data)) continue;
+        if (isAgentWriteApprovalEnvelope(result.data)) {
+          onLorebookEffectStatus?.(result.agentId, "pending_approval");
+          continue;
+        }
         const resultAgent = findRetryResultAgent(result, resolvedAgents);
         const isBuiltInLorebookAgent = isBuiltInAgentType(result.agentType);
         const customCanEditLorebooks =
@@ -2950,7 +2957,10 @@ async function applyRetryResultEffects(args: {
         const customCanCreateLorebooks =
           isBuiltInLorebookAgent ||
           (resultAgent ? customAgentHasCapability(resultAgent.settings, "create_lorebooks") : false);
-        if (!customCanEditLorebooks && !customCanCreateLorebooks) continue;
+        if (!customCanEditLorebooks && !customCanCreateLorebooks) {
+          onLorebookEffectStatus?.(result.agentId, "failed");
+          continue;
+        }
 
         const lkData = result.data as Record<string, unknown>;
         const retryUpdates = (lkData.updates as any[]) ?? [];
@@ -2967,6 +2977,7 @@ async function applyRetryResultEffects(args: {
                 ? (agentContext.memory._lorebookKeeperTargetLorebookId as string)
                 : null;
           if (!customCanCreateLorebooks && !preferredTargetLorebookId && !writableLorebookIds?.length) {
+            onLorebookEffectStatus?.(result.agentId, "failed");
             continue;
           }
           assertRetryActive();
@@ -2986,8 +2997,10 @@ async function applyRetryResultEffects(args: {
           });
           assertRetryActive();
         }
+        onLorebookEffectStatus?.(result.agentId, "applied");
       } catch (err) {
         assertRetryActive();
+        onLorebookEffectStatus?.(result.agentId, "failed");
         logger.error(err, "[retry-agents] Failed to apply lorebook update");
       }
     }
@@ -4696,6 +4709,7 @@ export async function registerRetryAgentsRoute(
         }
       }
       if (abortController.signal.aborted) return;
+      let customLorebookBackfillEffectStatus: RetryLorebookEffectStatus | null = null;
       await applyRetryResultEffects({
         app,
         reply,
@@ -4722,22 +4736,24 @@ export async function registerRetryAgentsRoute(
         debugMode,
         secretPlotRerollMode,
         signal: abortController.signal,
+        onLorebookEffectStatus: customLorebookBackfillTarget
+          ? (agentId, status) => {
+              if (agentId === customLorebookBackfillTarget.agentConfigId) {
+                customLorebookBackfillEffectStatus = status;
+              }
+            }
+          : undefined,
       });
 
-      if (customLorebookBackfillTarget) {
-        const successful = permittedResults.some(
-          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
+      if (customLorebookBackfillTarget && customLorebookBackfillEffectStatus === "applied") {
+        // Backfill exposes only idempotent lorebook writes, so a cursor write
+        // failure can safely retry this chunk without duplicating effects.
+        await agentsStore.setMemory(
+          customLorebookBackfillTarget.agentConfigId,
+          chatId,
+          CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
+          customLorebookBackfillTarget.messageId,
         );
-        if (successful) {
-          // Backfill exposes only idempotent lorebook writes, so a cursor write
-          // failure can safely retry this chunk without duplicating effects.
-          await agentsStore.setMemory(
-            customLorebookBackfillTarget.agentConfigId,
-            chatId,
-            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
-            customLorebookBackfillTarget.messageId,
-          );
-        }
       }
 
       if (abortController.signal.aborted) return;

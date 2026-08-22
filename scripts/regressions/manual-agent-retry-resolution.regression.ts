@@ -476,6 +476,7 @@ const idempotentWriter = makeAgent("idempotent-writer", "custom-idempotent-write
 });
 let storedWriterEntry: Record<string, unknown> | null = null;
 let writerCreateCount = 0;
+let writerPersistenceCount = 0;
 await resolveAgentGenerationTools({
   requestBody: {},
   chatId: "retry-chat",
@@ -492,11 +493,15 @@ await resolveAgentGenerationTools({
     getById: async () => ({ id: "book-write", name: "Writable" }),
     listEntries: async () => (storedWriterEntry ? [storedWriterEntry] : []),
     createEntry: async (entry) => {
+      writerPersistenceCount += 1;
       writerCreateCount += 1;
       storedWriterEntry = { ...entry, id: "entry-1" };
       return storedWriterEntry;
     },
-    updateEntry: async () => storedWriterEntry,
+    updateEntry: async () => {
+      writerPersistenceCount += 1;
+      return storedWriterEntry;
+    },
   },
   resolvedAgents: [idempotentWriter],
   enabledConfigs: [],
@@ -514,6 +519,23 @@ const createWriterEntry = { name: "Timeline", content: "Turn seven", keys: ["tim
 assert.equal((await callTool(idempotentWriter, "save_lorebook_entry", createWriterEntry)).action, "created");
 assert.equal((await callTool(idempotentWriter, "save_lorebook_entry", createWriterEntry)).action, "exists");
 assert.equal(writerCreateCount, 1, "Retrying a create-mode lorebook write must not duplicate the entry");
+assert.equal(writerPersistenceCount, 1, "Retrying a create-mode lorebook write must persist only once");
+
+assert.match(
+  retryRouteSource,
+  /isAgentWriteApprovalEnvelope\(result\.data\)[\s\S]*onLorebookEffectStatus\?\.\(result\.agentId, "pending_approval"\)/u,
+  "Approval-required lorebook backfill must remain pending without advancing its cursor",
+);
+assert.match(
+  retryRouteSource,
+  /catch \(err\) \{[\s\S]*onLorebookEffectStatus\?\.\(result\.agentId, "failed"\)[\s\S]*Failed to apply lorebook update/u,
+  "Failed lorebook persistence must report failure without advancing its cursor",
+);
+assert.match(
+  retryRouteSource,
+  /customLorebookBackfillEffectStatus === "applied"[\s\S]*CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY/u,
+  "Custom lorebook backfill cursor advances only after durable application",
+);
 
 const rollResult = await callTool(composedAgent, "roll_dice", { notation: "1d2" });
 assert.equal(rollResult.notation, "1d2", "built-in collision handling must preserve the built-in implementation");

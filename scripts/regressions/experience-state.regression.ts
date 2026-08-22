@@ -55,6 +55,9 @@
 //      recency read and no two saves can tie (#5405).
 //  23. Export/import share a dedicated rate-limit class; the per-turn GET/PUT save does not
 //      fall into it (#5405).
+//  24. The checkpoint-restore legacy fallback (empty/absent capture) stamps createdAt past the
+//      namespace's newest like every other writer in the family, so a future-stamped burst
+//      cannot shadow the freshly restored world (#5418).
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 // Shared must come from the built dist so the echo engine registers into the SAME module
@@ -1059,6 +1062,92 @@ try {
       await limited.close();
       resetRateLimitBucketsForTests();
     }
+  }
+
+  // ── 24. The legacy restore fallback stamps like every other writer (#5418) ──
+  // stampBase = max(now, newest + 1), so a stamped burst legitimately runs AHEAD of the
+  // clock (a full import lands up to ~99 ms in the future). The legacy fallback was the
+  // family's last unstamped writer: its bare now() could land inside that window and sort
+  // the freshly restored world BEHIND the rows it supersedes — flipping getLatest, the
+  // anchor-cap prune, and the next checkpoint's capture lookup to a world the player just
+  // restored away from. The future-stamped row here is that window, pinned deterministically.
+  {
+    const chat = await createExperienceChat("experience legacy restore stamp");
+    const m1 = await addAssistantMessage(chat.id, "turn 1");
+
+    // Checkpoint FIRST, while the chat has no engine rows: the capture is empty, which is
+    // exactly the pre-#5102 shape that sends the restore down the createdAt re-lookup.
+    await stateStore.create({
+      chatId: chat.id,
+      messageId: m1.id,
+      swipeIndex: 0,
+      date: "",
+      time: "",
+      location: "",
+      weather: "",
+      temperature: "",
+      worldCustomFields: [],
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: null,
+      personaStats: null,
+      fieldLocks: {},
+      hiddenTrackerFields: [],
+      committed: true,
+    } as Parameters<typeof stateStore.create>[0]);
+    const snapshot = await stateStore.getLatest(chat.id);
+    assert.ok(snapshot);
+    const cpId = await checkpointSvc.create({
+      chatId: chat.id,
+      snapshotId: snapshot.id,
+      spatialSnapshotId: null,
+      messageId: m1.id,
+      label: "legacy stamp cp",
+      triggerType: "manual",
+    });
+
+    // The row the fallback's at-or-before lookup will find (backdated behind the checkpoint)...
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "legacy-anchor",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: JSON.stringify({ world: "W-legacy" }),
+      committed: true,
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    // ...and the future-stamped row that IS the burst window an unstamped now() lands inside.
+    const futureStamp = new Date(Date.now() + 60_000).toISOString();
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "ahead-of-clock",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: JSON.stringify({ world: "W-future" }),
+      committed: true,
+      createdAt: futureStamp,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/game/checkpoint/load",
+      payload: { chatId: chat.id, checkpointId: cpId },
+    });
+    assert.equal(res.statusCode, 200, `checkpoint load should succeed: ${res.statusCode} ${res.body}`);
+
+    const newest = await engineStore.getLatest(chat.id, GAME_TYPE);
+    assert.ok(newest);
+    assert.deepEqual(
+      JSON.parse(newest.state),
+      { world: "W-legacy" },
+      "the legacy-restored world is the namespace's newest, not shadowed by a future-stamped row",
+    );
+    assert.ok(
+      newest.createdAt > futureStamp,
+      "the fallback stamps strictly past the namespace's newest like every other writer",
+    );
   }
 
   console.log("experience-state regression passed");

@@ -14326,6 +14326,18 @@ export async function gameRoutes(app: FastifyInstance) {
             state: cpEngineRow.state,
             committed: true,
             writeOrdinal: await restoreOrdinal(cpEngineRow.gameType),
+            // Stamped like every other writer in the family (#5418) — this branch was the
+            // last unstamped one. An unstamped now() can land INSIDE the future window a
+            // stamped burst legitimately runs ahead by (a full import stamps up to ~99 ms
+            // past the clock), sorting the restored row BEHIND rows it supersedes for
+            // getLatest, the anchor-cap prune, and the next checkpoint's capture lookup —
+            // and, on experience rows, disagreeing with the fresh writeOrdinal above.
+            // Unlike the captured branch this can stamp a TURN-GAME row: consistent (the
+            // restore is genuinely the namespace's newest write), and in a namespace no
+            // stamped writer ever touched the base collapses to plain now().
+            createdAt: new Date(
+              experienceStateStampBase(await engineStore.getLatest(input.chatId, cpEngineRow.gameType)),
+            ).toISOString(),
           });
         }
       }

@@ -10142,7 +10142,7 @@ export async function gameRoutes(app: FastifyInstance) {
       };
     };
     if (!storedIsString) {
-      logger.warn("Non-string experience state on disk for chat %s (%s)", req.params.chatId, gameType);
+      logger.error("Non-string experience state on disk for chat %s (%s)", req.params.chatId, gameType);
       corrupt = quarantineFrom(row.state);
     } else {
       try {
@@ -10153,7 +10153,7 @@ export async function gameRoutes(app: FastifyInstance) {
         // so without this the damaged bytes are destroyed unseen; with it a package
         // can preserve a bounded excerpt (a few KB in metadata, or a bug-report copy)
         // before repairing — the full blob does not belong in hot chat metadata.
-        logger.warn(err, "Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+        logger.error(err, "Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
         corrupt = quarantineFrom(row.state);
       }
     }

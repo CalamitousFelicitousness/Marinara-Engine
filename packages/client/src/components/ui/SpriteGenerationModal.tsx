@@ -2100,7 +2100,9 @@ export function SpriteGenerationModal({
                     {ALL_EXPRESSIONS.map((expr) => (
                       <button
                         key={expr}
+                        type="button"
                         onClick={() => toggleExpression(expr)}
+                        aria-pressed={selectedExpressions.includes(expr)}
                         className={cn(
                           "rounded-md px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
                           selectedExpressions.includes(expr)
@@ -2217,7 +2219,9 @@ export function SpriteGenerationModal({
                         {ALL_FULL_BODY_POSES.map((pose) => (
                           <button
                             key={pose}
+                            type="button"
                             onClick={() => toggleExpression(pose)}
+                            aria-pressed={selectedExpressions.includes(pose)}
                             className={cn(
                               "rounded-md px-2.5 py-1 text-[0.6875rem] capitalize transition-colors",
                               selectedExpressions.includes(pose)

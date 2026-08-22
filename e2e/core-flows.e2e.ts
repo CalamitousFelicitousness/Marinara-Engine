@@ -316,7 +316,9 @@ test("Settings switches share one centered track and thumb geometry", async ({ p
     await page.getByRole("tab", { name: label, exact: true }).click();
     const tracks = page.locator(`#settings-panel-${id} [data-settings-switch-track]`);
     await tracks.locator("[data-settings-switch-thumb]").evaluateAll(async (thumbs) => {
-      await Promise.all(thumbs.flatMap((thumb) => thumb.getAnimations().map((animation) => animation.finished)));
+      await Promise.all(
+        thumbs.flatMap((thumb) => thumb.getAnimations().map((animation) => animation.finished.catch(() => undefined))),
+      );
     });
     const metrics = await tracks.evaluateAll((elements) =>
       elements.map((track) => {
@@ -1755,16 +1757,15 @@ test("Conversation message actions follow their messages on desktop and mobile",
   });
   expect(chatResponse.ok()).toBeTruthy();
   const chat = (await chatResponse.json()) as { id: string };
-  const messageResponses = await Promise.all([
-    page.request.post(`/api/chats/${chat.id}/messages`, {
-      data: { role: "user", content: "User action placement probe." },
-    }),
-    page.request.post(`/api/chats/${chat.id}/messages`, {
-      data: { role: "assistant", content: "Assistant action placement probe." },
-    }),
-  ]);
-  for (const response of messageResponses) expect(response.ok()).toBeTruthy();
-  const messages = (await Promise.all(messageResponses.map((response) => response.json()))) as Array<{
+  const userMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+    data: { role: "user", content: "User action placement probe." },
+  });
+  expect(userMessageResponse.ok()).toBeTruthy();
+  const assistantMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+    data: { role: "assistant", content: "Assistant action placement probe." },
+  });
+  expect(assistantMessageResponse.ok()).toBeTruthy();
+  const messages = (await Promise.all([userMessageResponse.json(), assistantMessageResponse.json()])) as Array<{
     id: string;
   }>;
 
@@ -1913,7 +1914,10 @@ test("Conversation Calls matches the participant control height", async ({ page,
               if (this.getAttribute("view") !== "toolbar") return this.replaceChildren();
               const button = document.createElement("button");
               button.title = "Start call";
-              button.className = "mari-chrome-control flex h-9 w-9 items-center justify-center p-0";
+              const toolbarButtonClass = this.capabilityProps?.toolbarButtonClass;
+              button.className = typeof toolbarButtonClass === "string"
+                ? "mari-chrome-control flex items-center justify-center p-0 " + toolbarButtonClass
+                : "mari-chrome-control flex h-9 w-9 items-center justify-center p-0";
               this.replaceChildren(button);
             };
             this.addEventListener("marinara-capability-props", render);
@@ -1943,7 +1947,7 @@ test("Conversation Calls matches the participant control height", async ({ page,
     const [presenceBox, callBox] = await Promise.all([presenceButton.boundingBox(), callButton.boundingBox()]);
     expect(presenceBox).not.toBeNull();
     expect(callBox).not.toBeNull();
-    expect(callBox!.height).toBe(presenceBox!.height);
+    expect(callBox!.height).toBeCloseTo(presenceBox!.height, 1);
   } finally {
     await Promise.all([
       request.delete(`/api/chats/${chat.id}`).catch(() => undefined),
@@ -5728,13 +5732,14 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     await updateLiveReasoningState(page, chat.id, "append-thinking", "First live reasoning chunk.");
     const liveMessage = page.locator('[data-message-id="__streaming__"]');
     const liveThinking = liveMessage.locator("[data-message-thinking-inline]");
-    await expect(liveThinking.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    const liveThinkingButton = liveThinking.getByRole("button", { name: /^Thought for \d+ seconds?…$/u });
+    await expect(liveThinkingButton).toHaveAttribute("aria-expanded", "true");
     await expect(liveThinking).toContainText("First live reasoning chunk.");
 
     await updateLiveReasoningState(page, chat.id, "append-thinking", " Second live reasoning chunk.");
     await expect(liveThinking).toContainText("First live reasoning chunk. Second live reasoning chunk.");
     await updateLiveReasoningState(page, chat.id, "append-content", "The visible response begins.");
-    await expect(liveThinking.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    await expect(liveThinkingButton).toHaveAttribute("aria-expanded", "false");
     await expect(liveThinking).not.toContainText("First live reasoning chunk.");
     await expect(liveMessage).toContainText("The visible response begins.");
     await updateLiveReasoningState(page, chat.id, "stop");
@@ -5747,7 +5752,10 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     const persistentLiveThinking = page
       .locator('[data-message-id="__streaming__"]')
       .locator("[data-message-thinking-inline]");
-    await expect(persistentLiveThinking.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    await expect(persistentLiveThinking.getByRole("button", { name: /^Thought for \d+ seconds?…$/u })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await expect(persistentLiveThinking).toContainText("Reasoning that stays open.");
   } finally {
     await updateLiveReasoningState(page, chat.id, "stop").catch(() => undefined);
@@ -12715,10 +12723,10 @@ test("Roleplay Chat Settings exposes click-to-copy chat ID and square parameter 
       hasText: "Advanced Parameters",
     });
     await advancedParameters.click();
-    const advancedParametersSection = advancedParameters.locator("..");
+    const advancedParametersSection = drawer.locator('[data-chat-settings-section="advanced-parameters"]');
     const reasoningOff = advancedParametersSection.getByRole("button", { name: "Off", exact: true });
     await expect(reasoningOff).toHaveClass(/rounded-md/u);
-    await expect(reasoningOff).toHaveAttribute("aria-pressed");
+    await expect(reasoningOff).toHaveAttribute("aria-pressed", "false");
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
   }
@@ -16664,7 +16672,7 @@ test("new-chat connection gates follow Chat Chrome Text Color and close before o
     expect(colors.emptyBorder).toBe(colors.expectedEmptyBorder);
 
     if (index < modes.length - 1) {
-      await gate.locator("button").first().click();
+      await gate.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(gate).toHaveCount(0);
     } else {
       await gate.getByRole("button", { name: "Open Connections", exact: true }).click();

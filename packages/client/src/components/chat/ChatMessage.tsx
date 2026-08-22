@@ -359,7 +359,6 @@ function HideFromAIAction({
   hiddenCharacterIds,
   characters,
   onToggle,
-  dark,
   align = "left",
 }: {
   messageId: string;
@@ -367,7 +366,6 @@ function HideFromAIAction({
   hiddenCharacterIds: string[];
   characters: AIVisibilityCharacter[];
   onToggle: ToggleHiddenFromAI;
-  dark?: boolean;
   align?: "left" | "right";
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -429,7 +427,6 @@ function HideFromAIAction({
           hasRestriction && "mari-accent-animated",
         )}
         ariaPressed={hasRestriction}
-        dark={dark}
       />
 
       {open && isGroupChat && (
@@ -496,7 +493,6 @@ function ConversationStartAction({
   characterIds,
   characters,
   onToggle,
-  dark,
   align = "left",
 }: {
   messageId: string;
@@ -504,7 +500,6 @@ function ConversationStartAction({
   characterIds: string[];
   characters: AIVisibilityCharacter[];
   onToggle: ToggleConversationStart;
-  dark?: boolean;
   align?: "left" | "right";
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -559,7 +554,6 @@ function ConversationStartAction({
           hasStart && "mari-accent-animated",
         )}
         ariaPressed={hasStart}
-        dark={dark}
       />
 
       {open && isGroupChat && (
@@ -948,9 +942,12 @@ function RoleplayThinkingDisclosure({
   const startedAtRef = useRef(Date.now());
   const [expanded, setExpanded] = useState(isStreaming || keepExpanded);
   const [liveDurationMs, setLiveDurationMs] = useState(0);
+  const [capturedReasoningDurationMs, setCapturedReasoningDurationMs] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isStreaming || outputStarted) return;
+    startedAtRef.current = Date.now();
+    setCapturedReasoningDurationMs(null);
     const updateDuration = () => setLiveDurationMs(Date.now() - startedAtRef.current);
     updateDuration();
     const interval = window.setInterval(updateDuration, 1_000);
@@ -959,11 +956,15 @@ function RoleplayThinkingDisclosure({
 
   useLayoutEffect(() => {
     if (!isStreaming || !outputStarted) return;
-    setLiveDurationMs(Date.now() - startedAtRef.current);
+    const elapsedMs = Date.now() - startedAtRef.current;
+    setLiveDurationMs(elapsedMs);
+    setCapturedReasoningDurationMs((current) => current ?? elapsedMs);
     if (!keepExpanded) setExpanded(false);
   }, [isStreaming, keepExpanded, outputStarted]);
 
-  const seconds = Math.max(1, Math.round((durationMs ?? liveDurationMs) / 1_000));
+  const displayedDurationMs =
+    capturedReasoningDurationMs ?? (isStreaming ? liveDurationMs : durationMs) ?? liveDurationMs;
+  const seconds = Math.max(1, Math.round(displayedDurationMs / 1_000));
 
   return (
     <div
@@ -973,7 +974,7 @@ function RoleplayThinkingDisclosure({
       <button
         type="button"
         aria-expanded={expanded}
-        aria-controls={contentId}
+        aria-controls={expanded ? contentId : undefined}
         title={t(expanded ? "chat.message.thoughts.collapse" : "chat.message.thoughts.expand")}
         onClick={() => setExpanded((value) => !value)}
         className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[0.75rem] font-medium text-[var(--marinara-chat-chrome-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
@@ -3537,7 +3538,6 @@ export const ChatMessage = memo(function ChatMessage({
                 icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={handleCopy}
                 title={localizeUi("lorebook.editor.batch.copy")}
-                dark
               />
               <ActionBtn
                 icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
@@ -3547,13 +3547,11 @@ export const ChatMessage = memo(function ChatMessage({
                     ? localizeUi("ui.chat.chatmessage.hideTranslation")
                     : localizeUi("ui.chat.chatmessage.translate")
                 }
-                dark
               />
               <ActionBtn
                 icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={startEditing}
                 title={localizeUi("ui.noodle.noodlepostcard.edit")}
-                dark
               />
               {hasRewriteVersions && (
                 <ActionBtn
@@ -3572,10 +3570,9 @@ export const ChatMessage = memo(function ChatMessage({
                   }
                   className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
                   disabled={switchingRewriteVersion}
-                  dark
                 />
               )}
-              <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} dark />
+              <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -3583,7 +3580,6 @@ export const ChatMessage = memo(function ChatMessage({
                   characterIds={conversationStartForCharacterIds}
                   characters={aiVisibilityCharacters}
                   onToggle={onToggleConversationStart}
-                  dark
                   align={isUser ? "right" : "left"}
                 />
               )}
@@ -3594,7 +3590,6 @@ export const ChatMessage = memo(function ChatMessage({
                   hiddenCharacterIds={hiddenFromAICharacterIds}
                   characters={isRoleplay ? aiVisibilityCharacters : []}
                   onToggle={onToggleHiddenFromAI}
-                  dark
                   align={isUser ? "right" : "left"}
                 />
               )}
@@ -3603,7 +3598,6 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => onPeekPrompt?.()}
                   title={localizeUi("ui.chat.chatmessage.peekPrompt")}
-                  dark
                 />
               )}
               {generationReplay && (
@@ -3611,7 +3605,6 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowGenerationReplay(true)}
                   title={localizeUi("ui.chat.chatmessage.storedGuidance")}
-                  dark
                 />
               )}
               {showThinkingAction && (
@@ -3625,7 +3618,6 @@ export const ChatMessage = memo(function ChatMessage({
                   )}
                   thinkingAction
                   buttonRef={thinkingButtonRef}
-                  dark
                 />
               )}
               {onBranch && (
@@ -3633,7 +3625,6 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => onBranch(message.id)}
                   title={localizeUi("ui.chat.chatmessage.branchFromHere")}
-                  dark
                 />
               )}
               {onCloneSceneFromHere && (
@@ -3642,14 +3633,12 @@ export const ChatMessage = memo(function ChatMessage({
                   onClick={() => onCloneSceneFromHere(message.id)}
                   title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
                   disabled={isCloneSceneFromHereDisabled}
-                  dark
                 />
               )}
               <ActionBtn
                 icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => onDelete?.(message.id)}
                 title={localizeUi("lorebook.editor.batch.delete")}
-                dark
               />
               {ttsEnabled && (
                 <>
@@ -3669,13 +3658,11 @@ export const ChatMessage = memo(function ChatMessage({
                             ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
                             : localizeUi("ui.chat.chatmessage.pauseSpeaking")
                         }
-                        dark
                       />
                       <ActionBtn
                         icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
                         onClick={handleRestartTTS}
                         title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                        dark
                       />
                     </>
                   )}
@@ -3700,7 +3687,6 @@ export const ChatMessage = memo(function ChatMessage({
                             : localizeUi("ui.chat.chatmessage.speak")
                     }
                     disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-                    dark
                   />
                   <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
                 </>
@@ -4120,7 +4106,6 @@ export const ChatMessage = memo(function ChatMessage({
                 hiddenCharacterIds={hiddenFromAICharacterIds}
                 characters={isRoleplay ? aiVisibilityCharacters : []}
                 onToggle={onToggleHiddenFromAI}
-                dark
                 align={isUser ? "right" : "left"}
               />
             )}
@@ -4260,7 +4245,6 @@ function TTSLineVolumeControl({
         icon={muted ? <VolumeX size={MESSAGE_ACTION_ICON_SIZE} /> : <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />}
         onClick={() => setOpen((value) => !value)}
         title={label}
-        dark={dark}
         ariaPressed={open}
         className={
           open ? (dark ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : "bg-[var(--accent)] text-[var(--foreground)]") : undefined
@@ -4310,13 +4294,7 @@ function TTSLineVolumeControl({
 }
 
 // ── Action button ──
-const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
-  onClick,
-  dark,
-}: {
-  onClick: () => void;
-  dark?: boolean;
-}) {
+const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({ onClick }: { onClick: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   const guideGenerations = useUIStore((state) => state.guideGenerations);
   const isGuided = useChatStore((state) => guideGenerations && state.hasCurrentInput);
@@ -4332,7 +4310,6 @@ const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
           ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30 hover:text-[var(--primary)]"
           : undefined
       }
-      dark={dark}
     />
   );
 });
@@ -4351,7 +4328,6 @@ function ActionBtn({
   onClick: () => void;
   title: string;
   className?: string;
-  dark?: boolean;
   disabled?: boolean;
   ariaPressed?: boolean;
   thinkingAction?: boolean;

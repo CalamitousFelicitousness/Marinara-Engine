@@ -904,6 +904,7 @@ export function ChatSettingsDrawer({
         })
       }
       disabled={updateMeta.isPending}
+      aria-pressed={noodleTimelineContextEnabled}
       className={cn(
         "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60",
         noodleTimelineContextEnabled
@@ -5618,6 +5619,7 @@ export function ChatSettingsDrawer({
                 <div className="mt-2">
                   <button
                     onClick={() => updateMeta.mutate({ id: chat.id, groupSpeakerColors: !metadata.groupSpeakerColors })}
+                    aria-pressed={Boolean(metadata.groupSpeakerColors)}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.groupSpeakerColors && "mari-chat-option-field--active",
@@ -5705,6 +5707,7 @@ export function ChatSettingsDrawer({
                         groupTurnPromptEnabled: metadata.groupTurnPromptEnabled === false,
                       })
                     }
+                    aria-pressed={metadata.groupTurnPromptEnabled !== false}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.groupTurnPromptEnabled !== false && "mari-chat-option-field--active",
@@ -5738,6 +5741,7 @@ export function ChatSettingsDrawer({
                           groupSpeakerNamesInHistory: metadata.groupSpeakerNamesInHistory !== true,
                         })
                       }
+                      aria-pressed={metadata.groupSpeakerNamesInHistory === true}
                       className={cn(
                         "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                         metadata.groupSpeakerNamesInHistory === true && "mari-chat-option-field--active",
@@ -5836,6 +5840,7 @@ export function ChatSettingsDrawer({
                     onClick={() => {
                       updateMeta.mutate({ id: chat.id, autonomousMessages: !metadata.autonomousMessages });
                     }}
+                    aria-pressed={Boolean(metadata.autonomousMessages)}
                     className="flex w-full items-center justify-between px-3 py-2.5 text-left"
                   >
                     <div className="flex-1 min-w-0">
@@ -5911,6 +5916,7 @@ export function ChatSettingsDrawer({
                     onClick={() => {
                       updateMeta.mutate({ id: chat.id, characterExchanges: !metadata.characterExchanges });
                     }}
+                    aria-pressed={Boolean(metadata.characterExchanges)}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.characterExchanges && "mari-chat-option-field--active",
@@ -5948,6 +5954,7 @@ export function ChatSettingsDrawer({
                     }
                     updateMeta.mutate({ id: chat.id, conversationSchedulesEnabled: nextEnabled });
                   }}
+                  aria-pressed={conversationSchedulesEnabled}
                   className={cn(
                     "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                     conversationSchedulesEnabled && "mari-chat-option-field--active",
@@ -6412,6 +6419,7 @@ export function ChatSettingsDrawer({
                       crossChatAwareness: metadata.crossChatAwareness === false ? true : false,
                     });
                   }}
+                  aria-pressed={metadata.crossChatAwareness !== false}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                     metadata.crossChatAwareness !== false
@@ -6578,6 +6586,7 @@ export function ChatSettingsDrawer({
                       roleplayDmCommandsEnabled: metadata.roleplayDmCommandsEnabled !== true,
                     })
                   }
+                  aria-pressed={metadata.roleplayDmCommandsEnabled === true}
                   className={cn(
                     "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
                     metadata.roleplayDmCommandsEnabled === true
@@ -8400,6 +8409,7 @@ export function ChatSettingsDrawer({
                                           });
                                         }
                                       }}
+                                      aria-pressed={active}
                                       className={cn(
                                         "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                                         active

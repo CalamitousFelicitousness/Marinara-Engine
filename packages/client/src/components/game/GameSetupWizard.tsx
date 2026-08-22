@@ -419,6 +419,7 @@ function LearnedOptionChips({
         <button
           type="button"
           onClick={onToggleExpanded}
+          aria-expanded={expanded}
           className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
         >
           {expanded
@@ -1553,6 +1554,7 @@ export function GameSetupWizard({
                           <button
                             key={g}
                             onClick={() => toggleGenre(g)}
+                            aria-pressed={genres.includes(g)}
                             className={cn(
                               "rounded-md px-3 py-1 text-xs transition-colors",
                               genres.includes(g)
@@ -1570,6 +1572,7 @@ export function GameSetupWizard({
                             <button
                               key={g}
                               onClick={() => toggleGenre(g)}
+                              aria-pressed={genres.includes(g)}
                               className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {g}
@@ -1648,6 +1651,7 @@ export function GameSetupWizard({
                           <button
                             key={t}
                             onClick={() => toggleTone(t)}
+                            aria-pressed={tones.includes(t)}
                             className={cn(
                               "rounded-md px-3 py-1 text-xs transition-colors",
                               tones.includes(t)
@@ -1665,6 +1669,7 @@ export function GameSetupWizard({
                             <button
                               key={t}
                               onClick={() => toggleTone(t)}
+                              aria-pressed={tones.includes(t)}
                               className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {t}
@@ -1709,6 +1714,7 @@ export function GameSetupWizard({
                           <button
                             key={d}
                             onClick={() => setDifficulty(d)}
+                            aria-pressed={difficulty === d}
                             className={cn(
                               "rounded-md px-3 py-1 text-xs transition-colors",
                               difficulty === d
@@ -1820,6 +1826,7 @@ export function GameSetupWizard({
                           <button
                             key={option.value}
                             onClick={() => setLanguage(option.label)}
+                            aria-pressed={normalizedLanguage === option.value}
                             className={cn(
                               "rounded-md px-2 py-0.5 text-[0.625rem] transition-colors",
                               normalizedLanguage === option.value

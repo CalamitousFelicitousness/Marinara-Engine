@@ -70,6 +70,7 @@ import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ChatMessageSearch } from "./ChatMessageSearch";
+import { ChatHelpButton } from "./ChatHelpButton";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   CHAT_TOOLBAR_OVERFLOW_MENU_SELECTOR,
@@ -708,6 +709,7 @@ function ActiveContextLinksButton({
     <div className="relative" ref={ref} onClick={(event) => event.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="context"
         onClick={() => setOpen((prev) => !prev)}
         className={getChatToolbarButtonClass({ compact, open })}
         title={t("chat.toolbar.activeContext")}
@@ -890,6 +892,7 @@ function SummaryButton({
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="summary"
         data-chat-toolbar-panel-action="summary"
         onClick={() => {
           if (open && document.querySelector("[data-macro-modal]")) return;
@@ -1048,6 +1051,7 @@ function AuthorNotesButton({
     <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="author-notes"
         onClick={() => {
           const nextOpen = !open;
           setMobileFrame(nextOpen && useMobilePanel ? getMobileFloatingPanelFrame(buttonRef.current, 288) : null);
@@ -1832,7 +1836,7 @@ export function ChatRoleplaySurface({
                 }}
               >
                 {chat && chatMeta.enableAgents && (
-                  <div className="pointer-events-auto flex-1 overflow-x-auto">
+                  <div data-chat-help="agents" className="pointer-events-auto flex-1 overflow-x-auto">
                     <Suspense fallback={null}>
                       <RoleplayHUD
                         chatId={chat.id}
@@ -1851,17 +1855,19 @@ export function ChatRoleplaySurface({
                   data-roleplay-top-controls="right"
                   className={cn("pointer-events-auto ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                 >
+                  <ChatHelpButton mode="roleplay" className="hidden md:flex" />
                   {conversationToolbarPackages.map((item) => (
-                    <CapabilityElement
-                      key={`${item.id}-toolbar`}
-                      packageId={item.id}
-                      view="toolbar"
-                      capabilityProps={{
-                        ...conversationCapabilityProps,
-                        toolbarButtonClass: getChatToolbarButtonClass(),
-                      }}
-                      className="contents"
-                    />
+                    <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+                      <CapabilityElement
+                        packageId={item.id}
+                        view="toolbar"
+                        capabilityProps={{
+                          ...conversationCapabilityProps,
+                          toolbarButtonClass: getChatToolbarButtonClass(),
+                        }}
+                        className="contents"
+                      />
+                    </span>
                   ))}
                   <ChatBranchSelector
                     activeChatId={activeChatId}
@@ -1870,6 +1876,7 @@ export function ChatRoleplaySurface({
                     variant="roleplay"
                   />
                   <ChatToolbarMenu openSummaryOnRequest>
+                    <ChatHelpButton mode="roleplay" className="md:hidden" />
                     <SummaryButton
                       chatId={chat?.id ?? null}
                       summary={chatMeta.summary ?? null}
@@ -1925,6 +1932,7 @@ export function ChatRoleplaySurface({
                     {chat?.connectedChatId && (
                       <ChatToolbarButton
                         icon={<ArrowRightLeft size="0.875rem" />}
+                        helpTarget="connected-chat"
                         title={
                           linkedChatName
                             ? t("chat.toolbar.switchTo", { name: linkedChatName })
@@ -1958,7 +1966,7 @@ export function ChatRoleplaySurface({
                       paddingRight: "calc(0.5rem + var(--tracker-panel-hud-clear-right, 0px))",
                     }}
                   >
-                    <div className="min-w-0 flex-1 overflow-x-auto">
+                    <div data-chat-help="agents" className="min-w-0 flex-1 overflow-x-auto">
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
@@ -1977,19 +1985,22 @@ export function ChatRoleplaySurface({
                       data-roleplay-top-controls="right"
                       className={cn("ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                     >
+                      <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                       {conversationToolbarPackages.map((item) => (
-                        <CapabilityElement
-                          key={`${item.id}-compact-toolbar`}
-                          packageId={item.id}
-                          view="toolbar"
-                          capabilityProps={{
-                            ...conversationCapabilityProps,
-                            toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
-                          }}
-                          className="contents"
-                        />
+                        <span key={`${item.id}-compact-toolbar`} data-chat-help="agent-controls" className="contents">
+                          <CapabilityElement
+                            packageId={item.id}
+                            view="toolbar"
+                            capabilityProps={{
+                              ...conversationCapabilityProps,
+                              toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
+                            }}
+                            className="contents"
+                          />
+                        </span>
                       ))}
                       <ChatToolbarMenu openSummaryOnRequest>
+                        <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                         <ChatBranchSelector
                           activeChatId={activeChatId}
                           activeChatName={chat?.name}
@@ -2052,6 +2063,7 @@ export function ChatRoleplaySurface({
                         {chat?.connectedChatId && (
                           <ChatToolbarButton
                             icon={<ArrowRightLeft size="0.875rem" />}
+                            helpTarget="connected-chat"
                             title={
                               linkedChatName
                                 ? t("chat.toolbar.switchTo", { name: linkedChatName })
@@ -2075,7 +2087,9 @@ export function ChatRoleplaySurface({
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
+                    <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                     <ChatToolbarMenu openSummaryOnRequest>
+                      <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                       <ChatBranchSelector
                         activeChatId={activeChatId}
                         activeChatName={chat?.name}
@@ -2136,6 +2150,7 @@ export function ChatRoleplaySurface({
                       {chat?.connectedChatId && (
                         <ChatToolbarButton
                           icon={<ArrowRightLeft size="0.875rem" />}
+                          helpTarget="connected-chat"
                           title={
                             linkedChatName
                               ? t("chat.toolbar.switchTo", { name: linkedChatName })

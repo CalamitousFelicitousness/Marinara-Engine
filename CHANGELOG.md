@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Roleplay Appearance settings can now place model thinking in a collapsible field above each response, stream it live, optionally keep it expanded, and style its stable disclosure header with Chat Chrome Text Color (#5381).
+- Conversation, Roleplay, and Game chats now provide a responsive Help overlay that labels available chat controls, opens automatically after the first chat setup in each mode, and can be reopened from the toolbar or hidden permanently from the overlay or App Behavior settings (#5390).
 - Fresh Professor Mari chats on Home now explain how to select a connection until the first message is sent (#5375).
 - Online character browsing now provides an exact page selector alongside the current page and total (#5361).
 - Character, Persona, Lorebook, and Preset editors now place section navigation in the header, using compact desktop tabs and a mobile dropdown, and Conversation Chat Settings now keeps Commands, Illustrator Settings, and Calls as matching remembered collapsible subsections inside Agents (#5355, #5356, Pasta-Devs/Marinara-Agents#480).

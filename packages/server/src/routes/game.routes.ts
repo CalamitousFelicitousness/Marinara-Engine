@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
 import { eq } from "../db/file-query.js";
+import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
@@ -10098,6 +10099,24 @@ export async function gameRoutes(app: FastifyInstance) {
     return run;
   };
 
+  /**
+   * The millisecond an experience-state write should be stamped with, given the namespace's
+   * current newest row (#5405): the wall clock, or one past the newest row when the clock has
+   * not moved past it yet. Every writer in the GET/PUT/import route family goes through here,
+   * inside the write lock, so no two of THEIR rows can ever share a createdAt — see
+   * CreateGameEngineStateInput.createdAt for why a tie is unsafe (neither tie-break the store
+   * can apply returns the newest write). The checkpoint-restore clone also stamps through this
+   * helper but does not yet hold the write lock, so a tie with an in-flight save remains
+   * possible in that one narrow window (closed by #5406, which locks the restore block).
+   * A bulk writer adds its row index to the returned base so the whole batch stays strictly
+   * increasing.
+   */
+  const experienceStateStampBase = (newest: { createdAt: string } | null): number => {
+    const newestMs = newest ? Date.parse(newest.createdAt) : Number.NaN;
+    // An unparseable stored stamp cannot order anything; fall back to the clock rather than NaN.
+    return Number.isFinite(newestMs) ? Math.max(Date.now(), newestMs + 1) : Date.now();
+  };
+
   // ── GET /game/:chatId/experience-state ──
   app.get<{ Params: { chatId: string } }>("/:chatId/experience-state", async (req, reply) => {
     const chats = createChatsStorage(app.db);
@@ -10203,6 +10222,16 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: body.schemaVersion,
           state: serialized,
           committed: body.committed,
+          // Strictly newer than the namespace's current newest, not just now() (#5405). Two
+          // saves inside the same millisecond — a package saving twice in one narration turn,
+          // or a scripted loop — otherwise TIE on createdAt, and a tie is not resolved in
+          // favor of the newer write: in-process the FIRST-inserted row wins the desc read,
+          // and after a shard reload the LOWEST row id does. Reading the newest inside the
+          // write lock and stepping past it keeps every save's recency unambiguous, which is
+          // what makes the export's "oldest write first" ordering real.
+          createdAt: new Date(
+            experienceStateStampBase(await storage.getLatest(req.params.chatId, gameType)),
+          ).toISOString(),
         });
         await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
         return { ok: true, id, anchor };
@@ -10215,9 +10244,10 @@ export async function gameRoutes(app: FastifyInstance) {
   // Nothing automatic calls any of them: a package surfaces them behind explicit
   // player action ("New Game", "Free up space", "Back up this campaign"). All three
   // reuse resolveExperienceStateGameType, so a chat without a valid game-mode stamp
-  // gets the same 409 the GET/PUT give and a missing chat the same 404; the two that
-  // mutate run inside withExperienceStateWriteLock, so they cannot interleave with a
-  // concurrent save's delete-then-insert. CSRF needs no route-level work: the app's
+  // gets the same 409 the GET/PUT give and a missing chat the same 404; all three run
+  // inside withExperienceStateWriteLock, so none of them can interleave with a concurrent
+  // save's delete-then-insert (export included — a backup has to be atomic against a
+  // concurrent save by construction). CSRF needs no route-level work: the app's
   // onRequest hook treats DELETE and POST as unsafe methods (UNSAFE_METHODS covers
   // POST/PUT/PATCH/DELETE) for every /api/ path, so both are origin-checked already.
 
@@ -10266,43 +10296,70 @@ export async function gameRoutes(app: FastifyInstance) {
       });
     }
 
-    const storage = createGameEngineStateStorage(app.db);
-    const rows = await storage.listForChat(req.params.chatId, gameType);
-    return {
-      rows: rows.map((row) => {
-        let state: unknown = null;
-        try {
-          state = JSON.parse(row.state);
-        } catch {
-          // Same tolerance as the single-row GET: the PUT only ever stores
-          // JSON.stringify output, so an unparseable row is on-disk corruption.
-          // Export it as null rather than failing the whole campaign's export.
-          logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
-        }
-        return {
-          messageId: row.messageId,
-          swipeIndex: row.swipeIndex,
-          state,
-          schemaVersion: row.schemaVersion,
-          committed: row.committed === 1,
-          createdAt: row.createdAt,
-        };
-      }),
-    };
+    // Read under the write lock so a backup is atomic against a concurrent save by
+    // construction: without it an export interleaving with the PUT's delete-then-insert could
+    // capture the namespace mid-rewrite and miss the anchor being replaced.
+    return withExperienceStateWriteLock(req.params.chatId, async () => {
+      const storage = createGameEngineStateStorage(app.db);
+      const rows = await storage.listForChat(req.params.chatId, gameType);
+      return {
+        rows: rows.map((row) => {
+          let state: unknown = null;
+          let corrupt = false;
+          try {
+            state = JSON.parse(row.state);
+          } catch {
+            // Same tolerance as the single-row GET: the PUT only ever stores
+            // JSON.stringify output, so an unparseable row is on-disk corruption.
+            // Export it as null rather than failing the whole campaign's export.
+            corrupt = true;
+            logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+          }
+          return {
+            messageId: row.messageId,
+            swipeIndex: row.swipeIndex,
+            state,
+            schemaVersion: row.schemaVersion,
+            committed: row.committed === 1,
+            createdAt: row.createdAt,
+            // Present only on rows that failed to parse, so a reader can tell "this save was
+            // corrupt on disk" from "this save really is null". The import refuses to store a
+            // flagged row: without the flag a round trip would launder on-disk corruption into
+            // a legitimate stored null and the campaign would silently lose that turn's world.
+            ...(corrupt ? { corrupt: true as const } : {}),
+          };
+        }),
+      };
+    });
   });
 
   // ── POST /game/:chatId/experience-state/import ──
   // Accepts an export payload back. Each row is rewritten at its ORIGINAL anchor via
   // storage.create, whose delete-then-insert dedupe means a re-import over a live
-  // campaign replaces same-anchor rows and leaves the rest — a player wanting a clean
-  // slate calls the DELETE above first. Import is additive by design so the two verbs
-  // stay independently useful.
+  // campaign replaces same-anchor rows — a player wanting a clean slate calls the
+  // DELETE above first. Import is additive UP TO THE ANCHOR CAP: imported rows are
+  // stamped newer than everything already stored, so when the merged total exceeds
+  // EXPERIENCE_STATE_KEEP_ANCHORS the prune evicts the OLDEST-stamped rows — which is
+  // the pre-existing campaign, not the import. On a chat already at the cap, importing
+  // a full backup replaces the live campaign's per-turn history entirely (its
+  // checkpoints survive; they carry state by value). The response's `pruned` count
+  // reports exactly how many pre-existing rows the merge evicted.
   //
-  // Crudeness the FR explicitly accepts: an anchor whose message no longer exists in
-  // this chat (an export replayed into a different chat, or after the anchor message
-  // was deleted) is still written. Such a row is simply never the visible anchor's own
-  // save — it serves through the GET's fallback path (latest committed / latest of
-  // any), which is exactly what makes an imported campaign playable again.
+  // An anchor whose message does not exist in THIS chat (an export replayed into a
+  // different chat, or one whose anchor message was deleted) is still imported, but under
+  // a synthetic "imported:<originalId>" anchor rather than the caller's id. That rewrite is
+  // load-bearing, not cosmetic: the messages→game_engine_state cascade matches on messageId
+  // ALONE and is never scoped by chatId, so storing a foreign chat's message ids verbatim
+  // would let the SOURCE chat's message deletions silently destroy the imported campaign
+  // here. A prefixed id can never equal a real messages.id, so no cascade can reach it, and
+  // the row still serves through the GET's fallback path (latest committed / latest of any)
+  // — which is exactly what makes an imported campaign playable again. Rows whose anchors DO
+  // resolve here keep them, so a same-chat export→import round trip is unaffected and stays
+  // idempotent. See IMPORTED_GAME_ENGINE_ANCHOR_PREFIX for the validate() exemption that
+  // stops these by-design dangling refs from reading as integrity errors.
+  //
+  // Rate limiting: export/import share a dedicated 20/min class (ROUTE_RULES key
+  // "game-experience-save-transfer") rather than the 600/min default — see rate-limit.ts.
   const experienceStateImportSchema = z.object({
     rows: z.array(
       z.object({
@@ -10315,14 +10372,48 @@ export async function gameRoutes(app: FastifyInstance) {
         /** Accepted so an export round-trips without stripping fields, but never stored —
          *  see the stamping note in the handler. */
         createdAt: z.string().max(64).optional(),
+        /** The export's marker for a row whose stored state would not parse. Such a row is
+         *  SKIPPED rather than stored: its exported `state` is null only because the bytes on
+         *  disk were unreadable, and storing that null would launder on-disk corruption into a
+         *  legitimate save. */
+        corrupt: z.boolean().optional(),
       }),
     ),
   });
+
+  /** The anchor an imported row is actually stored at. Only ids that name a message of THIS
+   *  chat survive verbatim; see the cascade note above the schema for why the rest must not. */
+  const resolveImportAnchor = (messageId: string, chatMessageIds: ReadonlySet<string>): string => {
+    // The "" live anchor is a sentinel, not an id: no message can ever carry it, so no cascade
+    // can match it, and keeping it preserves a pre-narration save across a same-chat round trip.
+    // A CROSS-chat import at "" does overwrite the destination's own "" row — accepted, because
+    // that row is only reachable before the chat's first assistant message and replacing it is
+    // the intended restore semantic; the cascade argument alone would not justify the pass-through.
+    if (messageId === "") return messageId;
+    // Already synthetic (re-importing an export OF an import). Re-prefixing would mint a second
+    // anchor for the same save and duplicate the campaign instead of replacing it.
+    if (messageId.startsWith(IMPORTED_GAME_ENGINE_ANCHOR_PREFIX)) return messageId;
+    if (chatMessageIds.has(messageId)) return messageId;
+    return `${IMPORTED_GAME_ENGINE_ANCHOR_PREFIX}${messageId}`;
+  };
 
   app.post<{ Params: { chatId: string } }>(
     "/:chatId/experience-state/import",
     { bodyLimit: EXPERIENCE_STATE_IMPORT_BODY_LIMIT },
     async (req, reply) => {
+      // Gate first: a missing chat or a chat with no game-surface Experience is refused
+      // before any body work at all, so the reject path costs one chat read instead of a
+      // parse plus a per-row serialize of a batch that was never going to be stored.
+      const chats = createChatsStorage(app.db);
+      const chat = await chats.getById(req.params.chatId);
+      if (!chat) return reply.code(404).send({ error: "Chat not found" });
+      const gameType = resolveExperienceStateGameType(chat);
+      if (!gameType) {
+        return reply.code(409).send({
+          error: "This chat has no game-surface Experience, so it cannot store experience state",
+        });
+      }
+
       // Count-cap before the schema parse: the body limit is sized for full-size saves,
       // so it still admits millions of tiny rows. Rejecting on length first keeps a
       // pathological batch from being validated row by row before it is refused.
@@ -10337,13 +10428,29 @@ export async function gameRoutes(app: FastifyInstance) {
       // Serialize and bound every row up front so an invalid batch is refused whole
       // instead of half-applied: nothing is written until all of them pass.
       const pending: {
+        /** The row's index in the request body, so a rejection names what the caller sent. */
+        index: number;
         messageId: string;
         swipeIndex: number;
         state: string;
         schemaVersion: number;
         committed: boolean;
       }[] = [];
+      let skipped = 0;
       for (const [index, row] of body.rows.entries()) {
+        if (row.corrupt) {
+          // The export could not parse this row's stored bytes, so its `state: null` is an
+          // absence of data, not data. Storing it would turn on-disk corruption into a
+          // legitimate empty save that later exports would then hand back as genuine.
+          skipped += 1;
+          logger.warn(
+            "Skipping corrupt-flagged experience-state row %d for chat %s (%s)",
+            index,
+            req.params.chatId,
+            gameType,
+          );
+          continue;
+        }
         const serialized = JSON.stringify(row.state);
         if (serialized === undefined) {
           return reply.code(422).send({ error: `rows[${index}].state must be a JSON-serializable value` });
@@ -10354,6 +10461,7 @@ export async function gameRoutes(app: FastifyInstance) {
           });
         }
         pending.push({
+          index,
           messageId: row.messageId,
           swipeIndex: row.swipeIndex,
           state: serialized,
@@ -10362,14 +10470,35 @@ export async function gameRoutes(app: FastifyInstance) {
         });
       }
 
-      const chats = createChatsStorage(app.db);
-      const chat = await chats.getById(req.params.chatId);
-      if (!chat) return reply.code(404).send({ error: "Chat not found" });
-      const gameType = resolveExperienceStateGameType(chat);
-      if (!gameType) {
-        return reply.code(409).send({
-          error: "This chat has no game-surface Experience, so it cannot store experience state",
-        });
+      // Resolve every anchor against THIS chat's messages before writing anything (see the
+      // cascade note above the schema). Read outside the write lock deliberately: the lock
+      // orders experience-state writes and never covers message creation, so holding it here
+      // would buy nothing and only lengthen the critical section.
+      const chatMessageIds = new Set<string>(
+        pending.length > 0 ? (await chats.listMessages(req.params.chatId)).map((message) => message.id) : [],
+      );
+      const resolved = pending.map((row) => ({
+        ...row,
+        messageId: resolveImportAnchor(row.messageId, chatMessageIds),
+      }));
+
+      // Two rows at the same anchor would COLLAPSE: create() replaces any prior row of this
+      // gameType at the same (message, swipe), so the later one silently overwrites the
+      // earlier and the batch stores fewer saves than it was handed. Refuse the whole batch —
+      // the same posture every other bound on this route takes — rather than pick a winner.
+      const anchorFirstSeen = new Map<string, number>();
+      for (const row of resolved) {
+        const key = JSON.stringify([row.messageId, row.swipeIndex]);
+        const first = anchorFirstSeen.get(key);
+        if (first !== undefined) {
+          return reply.code(422).send({
+            error:
+              `rows[${row.index}] and rows[${first}] resolve to the same anchor ` +
+              `(messageId ${JSON.stringify(row.messageId)}, swipeIndex ${row.swipeIndex}); ` +
+              `every row must have a distinct (messageId, swipeIndex) pair`,
+          });
+        }
+        anchorFirstSeen.set(key, row.index);
       }
 
       return withExperienceStateWriteLock(req.params.chatId, async () => {
@@ -10377,38 +10506,50 @@ export async function gameRoutes(app: FastifyInstance) {
         // Recency comes from array ORDER, not from the exported createdAt. Honoring a
         // caller-supplied timestamp would let a far-future stamp permanently shadow every
         // later save and skew deleteAfter/getLatestAtOrBefore, so the batch is re-stamped
-        // here. It has to be stamped monotonically rather than left to now(): createdAt is
-        // the only recency key the reads order by, and the store's sort is stable over
-        // insertion order, so a desc(createdAt) read of a tied group returns its
-        // FIRST-inserted row. A whole import landing inside one millisecond would
-        // otherwise hand every fallback read the OLDEST save in the file.
-        const newestExisting = await storage.getLatest(req.params.chatId, gameType);
-        const existingMs = newestExisting ? Date.parse(newestExisting.createdAt) : Number.NaN;
-        // Ends exactly at the base so the last row written is the namespace's newest,
-        // stepping backwards one millisecond per earlier row (bounded by the row cap).
-        const base = Number.isFinite(existingMs) ? Math.max(Date.now(), existingMs + 1) : Date.now();
-        for (const [index, row] of pending.entries()) {
-          await storage.create({
-            chatId: req.params.chatId,
-            messageId: row.messageId,
-            swipeIndex: row.swipeIndex,
-            gameType,
-            schemaVersion: row.schemaVersion,
-            state: row.state,
-            committed: row.committed,
-            createdAt: new Date(base - (pending.length - 1 - index)).toISOString(),
-          });
+        // here, FORWARD from a base strictly past everything already in the namespace.
+        // Stamping backwards from the base instead would push the batch's earliest rows
+        // BEHIND a pre-existing recent row, and the post-write prune below — which keeps the
+        // newest anchors — would then delete the import's own oldest saves.
+        const existingBefore = (await storage.listForChat(req.params.chatId, gameType)).length;
+        const base = experienceStateStampBase(await storage.getLatest(req.params.chatId, gameType));
+        const writtenIds = new Set<string>();
+        for (const [index, row] of resolved.entries()) {
+          writtenIds.add(
+            await storage.create({
+              chatId: req.params.chatId,
+              messageId: row.messageId,
+              swipeIndex: row.swipeIndex,
+              gameType,
+              schemaVersion: row.schemaVersion,
+              state: row.state,
+              committed: row.committed,
+              createdAt: new Date(base + index).toISOString(),
+            }),
+          );
         }
         // Same bound the PUT enforces: an import merged onto a live campaign can push the
         // namespace past the anchor cap.
         await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
+        // Report survivors, not intentions: the prune runs after the writes, so a response
+        // counting what was handed to create() could name rows that no longer exist. Re-read
+        // the namespace and count this call's own ids.
+        const surviving = await storage.listForChat(req.params.chatId, gameType);
+        const retained = surviving.reduce((count, row) => count + (writtenIds.has(row.id) ? 1 : 0), 0);
+        // Pre-existing rows the merge evicted through the anchor cap. Named in the
+        // response because an import onto a full campaign can evict ALL of them, and
+        // a success payload that stays silent about that is a lie of omission.
+        const survivingExisting = surviving.length - retained;
+        const pruned = Math.max(0, existingBefore - survivingExisting);
         logger.info(
-          "Imported %d experience-state row(s) for chat %s (%s)",
-          pending.length,
+          "Imported %d experience-state row(s) (%d retained, %d pre-existing pruned, %d skipped) for chat %s (%s)",
+          writtenIds.size,
+          retained,
+          pruned,
+          skipped,
           req.params.chatId,
           gameType,
         );
-        return { ok: true, imported: pending.length };
+        return { ok: true, imported: writtenIds.size, retained, pruned, skipped };
       });
     },
   );
@@ -14018,6 +14159,13 @@ export async function gameRoutes(app: FastifyInstance) {
     })();
     if (capturedEngineStates.length > 0) {
       for (const captured of capturedEngineStates) {
+        // Restore clones take the same monotonic stamp as the save/import family —
+        // an unstamped now() here could tie a concurrent save in the same millisecond,
+        // and ties resolve differently in-process vs after a shard reload, so the NEXT
+        // checkpoint's capture could flip between the restored blob and the newer save
+        // across a restart. (A narrow race remains until this write also holds the
+        // experience write lock — tracked with #5406's ordinal work, which locks this
+        // block; the stamp closes the deterministic half.)
         await engineStore.create({
           chatId: input.chatId,
           messageId: restoreMsg.id,
@@ -14026,6 +14174,9 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
           state: captured.state,
           committed: true,
+          createdAt: new Date(
+            experienceStateStampBase(await engineStore.getLatest(input.chatId, captured.gameType)),
+          ).toISOString(),
         });
       }
     } else {

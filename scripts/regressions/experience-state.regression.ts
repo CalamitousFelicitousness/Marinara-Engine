@@ -36,6 +36,20 @@
 //      order, so the newest imported row wins fallback reads even against a pre-existing
 //      row that was newer than the import (the store resolves a createdAt tie to the
 //      FIRST-inserted row, which is pinned here too) (#5405).
+//  17. Import stamps FORWARD of everything already in the namespace, so the post-import
+//      prune can never delete the import's own rows, and the response counts survivors
+//      rather than intentions (#5405).
+//  18. Cross-chat safety: an anchor that is not a message of the destination chat is stored
+//      under a synthetic "imported:" id, so the SOURCE chat's message deletions cannot reach
+//      it through the store's chatId-agnostic messageId cascade (#5405).
+//  19. Duplicate anchors inside one batch are a clean 422 naming both indices instead of a
+//      silent collapse; the same messageId at a different swipeIndex stays legal (#5405).
+//  20. Corrupt rows: export flags an unparseable row, and import refuses to store a flagged
+//      row rather than laundering on-disk corruption into a legitimate null save (#5405).
+//  21. The PUT stamps strictly past the namespace's newest row, so a save always wins the
+//      recency read and no two saves can tie (#5405).
+//  22. Export/import share a dedicated rate-limit class; the per-turn GET/PUT save does not
+//      fall into it (#5405).
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 // Shared must come from the built dist so the echo engine registers into the SAME module
@@ -43,12 +57,16 @@ import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import { registerTurnGameEngine, type AnyTurnGameEngine } from "../../packages/shared/dist/index.js";
 import { eq } from "../../packages/server/src/db/file-query.js";
 import { gameEngineState } from "../../packages/server/src/db/schema/index.js";
+import { rateLimitHook, resetRateLimitBucketsForTests } from "../../packages/server/src/middleware/rate-limit.js";
 import { gameRoutes } from "../../packages/server/src/routes/game.routes.js";
 import { createCheckpointService } from "../../packages/server/src/services/game/checkpoint.service.js";
 import { createChatsStorage } from "../../packages/server/src/services/storage/chats.storage.js";
 import { createGameEngineStateStorage } from "../../packages/server/src/services/storage/game-engine-state.storage.js";
 import { createGameStateStorage } from "../../packages/server/src/services/storage/game-state.storage.js";
-import { getTurnGameView, resignTurnGame } from "../../packages/server/src/services/turn-games/turn-game-runner.service.js";
+import {
+  getTurnGameView,
+  resignTurnGame,
+} from "../../packages/server/src/services/turn-games/turn-game-runner.service.js";
 
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const db = await getDB();
@@ -443,11 +461,13 @@ try {
   {
     const chat = await createExperienceChat("experience export round trip");
     const anchors: string[] = [];
+    // No wall-clock spacing between the saves on purpose: the PUT stamps each row strictly
+    // past the namespace's newest (case 21), so "oldest write first" holds by construction
+    // rather than by hoping three saves land in three different milliseconds.
     for (const turn of [1, 2, 3]) {
       const message = await addAssistantMessage(chat.id, `turn ${turn}`);
       anchors.push(message.id);
       await putState(chat.id, { state: { turn, note: `save ${turn}` }, schemaVersion: 7 });
-      await tick(8);
     }
 
     const exported = await exportState(chat.id);
@@ -477,7 +497,11 @@ try {
     assert.equal((await deleteState(chat.id)).json().deleted, 3);
     const restored = await importState(chat.id, { rows });
     assert.equal(restored.statusCode, 200, restored.body);
-    assert.deepEqual(restored.json(), { ok: true, imported: 3 });
+    assert.deepEqual(
+      restored.json(),
+      { ok: true, imported: 3, retained: 3, pruned: 0, skipped: 0 },
+      "the import response reports what survived, not what was attempted",
+    );
 
     // createdAt is deliberately re-stamped on import (see the route comment), so the
     // round-trip is compared on everything else — state, anchors, order, metadata.
@@ -593,7 +617,8 @@ try {
     assert.deepEqual(read.json().state, { step: "newest" }, "the newest imported row wins fallback reads");
 
     const stored = await engineStore.listForChat(chat.id, GAME_TYPE);
-    const campaign = stored.filter((row) => row.messageId.startsWith("campaign-"));
+    // "imported:" because none of these anchors is a message of this chat — see case 18.
+    const campaign = stored.filter((row) => row.messageId.startsWith("imported:campaign-"));
     assert.deepEqual(
       campaign.map((row) => JSON.parse(row.state).step),
       ["oldest", "middle", "newest"],
@@ -606,9 +631,247 @@ try {
       );
     }
 
-    // Anchors that do not exist as messages in this chat are still written and still
-    // serve through the fallback path — the crudeness the FR accepts.
+    // Anchors that do not exist as messages in this chat are still imported (under the
+    // synthetic id case 18 pins) and still serve through the fallback path.
     assert.equal(campaign.length, 3, "rows anchored to messages this chat never had are still imported");
+  }
+
+  // ── 17. Import stamps FORWARD, so its own rows cannot be pruned away ──
+  // The data-loss shape: stamping backwards from the base put the batch's earliest rows
+  // BEHIND a recent pre-existing row, and the post-import prune — which keeps the newest
+  // anchors — then deleted the import's oldest saves while the response still claimed them.
+  {
+    const chat = await createExperienceChat("experience import forward stamping");
+    const seeded = await putState(chat.id, { state: { seeded: true } });
+    assert.equal(seeded.statusCode, 200, seeded.body);
+    const before = (await engineStore.listForChat(chat.id, GAME_TYPE))[0]!;
+
+    const backup = Array.from({ length: 100 }, (_, index) => ({
+      messageId: `backup-${String(index).padStart(3, "0")}`,
+      swipeIndex: 0,
+      state: { index },
+    }));
+    const res = await importState(chat.id, { rows: backup });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.deepEqual(
+      res.json(),
+      { ok: true, imported: 100, retained: 100, pruned: 1, skipped: 0 },
+      "a full-cap import keeps every row it wrote and reports the pre-existing row it evicted",
+    );
+
+    const stored = await engineStore.listForChat(chat.id, GAME_TYPE);
+    const importedAnchors = new Set(stored.map((row) => row.messageId));
+    for (const row of backup) {
+      assert.ok(
+        importedAnchors.has(`imported:${row.messageId}`),
+        `${row.messageId} survived the post-import prune (the backwards stamp lost the oldest rows)`,
+      );
+    }
+    for (const row of stored) {
+      assert.ok(
+        row.createdAt > before.createdAt,
+        "every imported row is stamped strictly after the pre-existing save it landed on top of",
+      );
+    }
+    // 101 rows into a 100-anchor cap: the pre-existing save is the one that goes, never the
+    // import's own oldest row.
+    assert.equal(stored.length, 100, "the cap prunes the oldest row in the namespace");
+  }
+
+  // ── 18. An imported anchor cannot be destroyed by the SOURCE chat's message deletions ──
+  // The store's messages -> game_engine_state cascade matches messageId GLOBALLY (it is
+  // never scoped by chatId), so a campaign replayed into another chat would otherwise be
+  // silently wiped when the original chat's message was deleted.
+  {
+    const source = await createExperienceChat("experience cascade source");
+    const sourceMessage = await addAssistantMessage(source.id, "turn 1");
+    await putState(source.id, { state: { campaign: "portable" } });
+    const exported = (await exportState(source.id)).json().rows as { messageId: string }[];
+    assert.equal(exported.length, 1);
+    assert.equal(exported[0]!.messageId, sourceMessage.id, "the export carries the source chat's real anchor");
+
+    const destination = await createExperienceChat("experience cascade destination");
+    const res = await importState(destination.id, { rows: exported });
+    assert.equal(res.statusCode, 200, res.body);
+
+    const planted = await engineStore.listForChat(destination.id, GAME_TYPE);
+    assert.equal(planted.length, 1);
+    assert.equal(
+      planted[0]!.messageId,
+      `imported:${sourceMessage.id}`,
+      "an anchor that is not a message of THIS chat is stored under a synthetic, uncascadable id",
+    );
+
+    await chats.removeMessage(sourceMessage.id);
+    assert.equal(
+      await engineStore.getLatest(source.id, GAME_TYPE),
+      null,
+      "sanity: the cascade really does fire and wipes the source chat's own row",
+    );
+
+    const survivors = await engineStore.listForChat(destination.id, GAME_TYPE);
+    assert.equal(survivors.length, 1, "the imported campaign survives the source chat's message deletion");
+    assert.deepEqual(
+      (await getState(destination.id)).json().state,
+      { campaign: "portable" },
+      "and it still reads back through the GET's fallback path",
+    );
+  }
+
+  // ── 19. Duplicate anchors in one batch are refused, not silently collapsed ──
+  {
+    const chat = await createExperienceChat("experience import duplicates");
+    const duplicate = await importState(chat.id, {
+      rows: [
+        { messageId: "anchor-x", swipeIndex: 0, state: { keep: "first" } },
+        { messageId: "anchor-y", swipeIndex: 0, state: { other: true } },
+        { messageId: "anchor-x", swipeIndex: 0, state: { keep: "second" } },
+      ],
+    });
+    assert.equal(duplicate.statusCode, 422, duplicate.body);
+    assert.match(
+      duplicate.json().error,
+      /rows\[2\] and rows\[0\]/,
+      "the refusal names both offending indices so a package can fix its payload",
+    );
+    assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "the duplicate batch wrote nothing");
+
+    // The same messageId at a different swipeIndex is a DISTINCT anchor and stays legal.
+    const swipes = await importState(chat.id, {
+      rows: [
+        { messageId: "anchor-x", swipeIndex: 0, state: { swipe: 0 } },
+        { messageId: "anchor-x", swipeIndex: 1, state: { swipe: 1 } },
+      ],
+    });
+    assert.equal(swipes.statusCode, 200, swipes.body);
+    assert.deepEqual(swipes.json(), { ok: true, imported: 2, retained: 2, pruned: 0, skipped: 0 });
+  }
+
+  // ── 20. A corrupt row is flagged by the export and skipped by the import ──
+  // Without the flag the round trip laundered on-disk corruption into a legitimate stored
+  // null, which every later export then handed back as a genuine (empty) save.
+  {
+    const chat = await createExperienceChat("experience corrupt row");
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "corrupt-anchor",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: "{not json",
+      committed: true,
+    });
+
+    const exported = (await exportState(chat.id)).json().rows as { state: unknown; corrupt?: boolean }[];
+    assert.equal(exported.length, 1);
+    assert.equal(exported[0]!.corrupt, true, "export flags a row whose stored state does not parse");
+    assert.equal(exported[0]!.state, null, "and still exports it as null so the anchor is visible");
+
+    const fresh = await createExperienceChat("experience corrupt import");
+    const refused = await importState(fresh.id, { rows: exported });
+    assert.equal(refused.statusCode, 200, refused.body);
+    assert.deepEqual(
+      refused.json(),
+      { ok: true, imported: 0, retained: 0, pruned: 0, skipped: 1 },
+      "a corrupt-flagged row is reported as skipped, not imported",
+    );
+    assert.equal(await engineStore.getLatest(fresh.id, GAME_TYPE), null, "nothing was stored for the corrupt row");
+
+    // A healthy row riding alongside a corrupt one still lands — the skip is per row.
+    const mixed = await importState(fresh.id, {
+      rows: [...exported, { messageId: "healthy-anchor", swipeIndex: 0, state: { ok: true } }],
+    });
+    assert.deepEqual(mixed.json(), { ok: true, imported: 1, retained: 1, pruned: 0, skipped: 1 });
+    assert.deepEqual((await getState(fresh.id)).json().state, { ok: true });
+  }
+
+  // ── 21. The PUT stamps strictly past the namespace's newest row ──
+  // createdAt is the only recency key the reads order by, and neither tie-break the store can
+  // apply returns the newest write (first-inserted in-process, lowest row id after a shard
+  // reload), so two saves inside one millisecond would make recency arbitrary. The guard is
+  // pinned deterministically with a row stamped AHEAD of the wall clock — the same shape a
+  // tie takes, without racing the clock.
+  {
+    const chat = await createExperienceChat("experience save monotonic");
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "ahead-of-clock",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: JSON.stringify({ marker: "stale-but-newest" }),
+      committed: true,
+      createdAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const put = await putState(chat.id, { state: { marker: "the-actual-newest" } });
+    assert.equal(put.statusCode, 200, put.body);
+    assert.deepEqual(
+      (await getState(chat.id)).json().state,
+      { marker: "the-actual-newest" },
+      "a fresh save always wins the recency read, even against a row stamped into the future",
+    );
+
+    // And a tight save loop produces no ties at all, which is what makes the export's
+    // "oldest write first" ordering meaningful rather than incidental.
+    const loop = await createExperienceChat("experience save monotonic loop");
+    for (let turn = 0; turn < 16; turn += 1) {
+      await addAssistantMessage(loop.id, `turn ${turn}`);
+      assert.equal((await putState(loop.id, { state: { turn } })).statusCode, 200);
+    }
+    const saves = await engineStore.listForChat(loop.id, GAME_TYPE);
+    assert.equal(saves.length, 16, "each anchor kept its own save");
+    for (let i = 1; i < saves.length; i += 1) {
+      assert.ok(saves[i]!.createdAt > saves[i - 1]!.createdAt, "16 tight saves produce 16 distinct timestamps");
+    }
+    assert.deepEqual(
+      ((await exportState(loop.id)).json().rows as { state: { turn: number } }[]).map((row) => row.state.turn),
+      Array.from({ length: 16 }, (_, turn) => turn),
+      "so the export's oldest-write-first ordering is exact",
+    );
+  }
+
+  // ── 22. Export/import sit in their own rate-limit class ──
+  // Both serialize or rewrite the chat's whole namespace (up to ~100 x 256K), so a package
+  // loop must hit a dedicated wall rather than the 600/min default. The hook runs on a
+  // separate Fastify instance so its buckets never throttle the functional cases above, and
+  // an unstamped chat 409s before any storage work, so burning the budget costs nothing.
+  {
+    resetRateLimitBucketsForTests();
+    const limited = Fastify();
+    limited.decorate("db", db);
+    limited.addHook("onRequest", rateLimitHook);
+    await limited.register(gameRoutes, { prefix: "/api/game" });
+    try {
+      const unstamped = await chats.create({ name: "experience transfer rate limit", mode: "game", characterIds: [] });
+      assert.ok(unstamped);
+      createdChatIds.push(unstamped.id);
+
+      const exportUrl = `/api/game/${unstamped.id}/experience-state/export`;
+      let firstLimited = -1;
+      for (let call = 1; call <= 21; call += 1) {
+        const res = await limited.inject({ method: "GET", url: exportUrl });
+        if (res.statusCode === 429) {
+          firstLimited = call;
+          break;
+        }
+        assert.equal(res.statusCode, 409, `pre-limit call ${call} hits the stamp gate, not the wall`);
+      }
+      assert.equal(firstLimited, 21, "the dedicated 20/min transfer wall engages on the 21st call");
+
+      const importRes = await limited.inject({
+        method: "POST",
+        url: `/api/game/${unstamped.id}/experience-state/import`,
+        payload: { rows: [] },
+      });
+      assert.equal(importRes.statusCode, 429, "export and import share one transfer bucket");
+
+      const save = await limited.inject({ method: "GET", url: `/api/game/${unstamped.id}/experience-state` });
+      assert.equal(save.statusCode, 409, "the per-turn save verbs stay in the generous default class");
+    } finally {
+      await limited.close();
+      resetRateLimitBucketsForTests();
+    }
   }
 
   console.log("experience-state regression passed");

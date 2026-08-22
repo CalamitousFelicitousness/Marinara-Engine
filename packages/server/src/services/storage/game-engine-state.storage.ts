@@ -31,12 +31,18 @@ export interface CreateGameEngineStateInput {
   state: string;
   committed?: boolean;
   /**
-   * Override the row's creation timestamp (#5405). Only the experience-state import uses this:
-   * `createdAt` is the sole recency key every read orders by, and the store's sort is stable
-   * over insertion order, so a tie makes `desc(createdAt).limit(1)` return the FIRST-inserted
-   * row of the tied group. A bulk import that writes its rows inside one millisecond would
-   * therefore make its OLDEST row win fallback reads. The importer stamps a strictly
-   * increasing timestamp per row instead. Every other caller omits this and gets `now()`.
+   * Override the row's creation timestamp (#5405). Only the experience-state writers use this
+   * (the PUT save and the bulk import): `createdAt` is the sole recency key every read orders
+   * by, and a `desc(createdAt).limit(1)` read of a TIED group does not return the newest write
+   * under either regime the store can be in —
+   *   - in-process, `Array.prototype.sort` is stable, so the tied group keeps insertion order
+   *     and the FIRST-inserted row wins;
+   *   - after a shard reload the loader pre-sorts rows by `createdAt` then primary key, so the
+   *     LOWEST row id wins instead.
+   * Two saves inside the same millisecond (a tight save loop) or a bulk import landing inside
+   * one millisecond would therefore hand fallback reads an arbitrary — often the OLDEST — save,
+   * and which one it is can change across a restart. Both writers pass a strictly increasing
+   * stamp instead, so a tie never forms. Every other caller omits this and gets `now()`.
    */
   createdAt?: string;
 }
@@ -278,9 +284,13 @@ export function createGameEngineStateStorage(db: DB) {
       const latest = new Map<string, GameEngineStateRow>();
       for (const row of rows) {
         const current = latest.get(row.gameType);
-        // Strictly-greater keeps the FIRST-inserted row on a createdAt tie — the same row
-        // a desc(createdAt) read returns, because the store's sort is stable over
-        // insertion order. The captured blob must be the one the running game shows.
+        // Strictly-greater keeps the FIRST row of a createdAt tie in array order — the same
+        // row a desc(createdAt) read returns, so the captured blob is the one the running
+        // game shows. Which row that is depends on the store's state, and neither answer is
+        // "the newest write": in-process Array.prototype.sort is stable, so it is the
+        // first-INSERTED row; after a shard reload the loader has pre-sorted ties by primary
+        // key, so it is the LOWEST row id. Writers that care (the experience-state save and
+        // import, #5405) re-stamp createdAt strictly upward so no tie ever forms here.
         if (!current || row.createdAt > current.createdAt) latest.set(row.gameType, row);
       }
       return [...latest.values()];

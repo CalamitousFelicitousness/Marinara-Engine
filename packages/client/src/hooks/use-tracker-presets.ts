@@ -15,6 +15,7 @@ import { api } from "../lib/api-client";
 const trackerPresetKeys = {
   all: ["tracker-presets"] as const,
   active: ["tracker-presets", "active"] as const,
+  autoAdopt: ["tracker-presets", "auto-adopt"] as const,
 };
 
 export interface TrackerPresetApplyResult {
@@ -112,5 +113,26 @@ export interface ExtractedTrackerPreset {
 export function useExtractTrackerPreset() {
   return useMutation({
     mutationFn: (chatId: string) => api.get<ExtractedTrackerPreset>(`/tracker-presets/from-chat/${chatId}`),
+  });
+}
+
+/**
+ * Auto-adopt: seed new chats with tracker rows already in use elsewhere, with
+ * no preset to build or apply.
+ */
+export function useTrackerAutoAdopt() {
+  return useQuery({
+    queryKey: trackerPresetKeys.autoAdopt,
+    queryFn: async () => (await api.get<{ enabled: boolean }>("/tracker-presets/auto-adopt")).enabled,
+  });
+}
+
+export function useSetTrackerAutoAdopt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.put<{ enabled: boolean }>("/tracker-presets/auto-adopt", { enabled }),
+    onSuccess: (result) => {
+      qc.setQueryData(trackerPresetKeys.autoAdopt, result.enabled);
+    },
   });
 }

@@ -399,6 +399,79 @@ try {
   assert.equal(skipped.applied, false);
   assert.equal(await gameStates.getLatest(convo.id), null, "no snapshot is created for a non-roleplay chat");
 
+  // ── Auto-adopt: rows in use anywhere seed a brand-new chat, with no preset ──
+  // The zero-ceremony path. Note the stock Character Tracker prompt forbids the
+  // agent from adding custom fields, so rows normally enter state because a
+  // person added one in the tracker panel; adoption is what spreads it.
+  assert.equal((await app.inject({ method: "GET", url: "/api/tracker-presets/auto-adopt" })).json().enabled, false);
+
+  await app.inject({ method: "PUT", url: "/api/tracker-presets/active", payload: { presetId: null } });
+  const withoutAdopt = await applyTrackerPresetToChat(app as never, {
+    chatId: (await chats.create({
+      name: "No preset, no adopt",
+      mode: "roleplay",
+      characterIds: [card.id],
+      groupId: null,
+      personaId: null,
+      promptPresetId: null,
+      connectionId: null,
+    }))!.id,
+    mode: "roleplay",
+    characterIds: [card.id],
+  });
+  assert.equal(withoutAdopt.applied, false, "no preset and adoption off means nothing is seeded");
+
+  await app.inject({ method: "PUT", url: "/api/tracker-presets/auto-adopt", payload: { enabled: true } });
+  assert.equal((await app.inject({ method: "GET", url: "/api/tracker-presets/auto-adopt" })).json().enabled, true);
+
+  const adoptChat = await chats.create({
+    name: "Adopted",
+    mode: "roleplay",
+    characterIds: [card.id],
+    groupId: null,
+    personaId: null,
+    promptPresetId: null,
+    connectionId: null,
+  });
+  assert.ok(adoptChat);
+  const adoptResult = await applyTrackerPresetToChat(app as never, {
+    chatId: adoptChat.id,
+    mode: "roleplay",
+    characterIds: [card.id],
+  });
+  assert.equal(adoptResult.applied, true, "adoption seeds a chat even with no preset selected");
+
+  const adoptedRows = await latestCharacters(adoptChat.id);
+  const adoptedNames = Object.keys(adoptedRows[0]!.customFields);
+  for (const expected of ["Outfit", "Injuries", "Scent", "Familiar"]) {
+    assert.ok(adoptedNames.includes(expected), `adopted rows must include ${expected}`);
+  }
+  assert.equal(
+    adoptedRows[0]!.customFields.Outfit,
+    "school uniform",
+    "the card layer still wins over an adopted row, which carries no value",
+  );
+
+  // Adopted rows sit behind an explicit preset rather than reordering it.
+  await app.inject({ method: "PUT", url: "/api/tracker-presets/active", payload: { presetId: other.id } });
+  const mixedChat = await chats.create({
+    name: "Preset plus adopted",
+    mode: "roleplay",
+    characterIds: [],
+    groupId: null,
+    personaId: null,
+    promptPresetId: null,
+    connectionId: null,
+  });
+  assert.ok(mixedChat);
+  await applyTrackerPresetToChat(app as never, { chatId: mixedChat.id, mode: "roleplay", characterIds: [card.id] });
+  const mixed = Object.keys((await latestCharacters(mixedChat.id))[0]!.customFields);
+  assert.equal(mixed[0], "Corruption", "the selected preset's own row still leads the layout");
+  assert.ok(mixed.includes("Scent"), "adopted rows are appended behind it");
+
+  await app.inject({ method: "PUT", url: "/api/tracker-presets/auto-adopt", payload: { enabled: false } });
+  await app.inject({ method: "PUT", url: "/api/tracker-presets/active", payload: { presetId: preset.id } });
+
   // ── Deleting the active preset clears the global pointer ──
   const removed = await app.inject({ method: "DELETE", url: `/api/tracker-presets/${preset.id}` });
   assert.equal(removed.statusCode, 204);

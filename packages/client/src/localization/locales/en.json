@@ -7942,6 +7942,8 @@
   "ui.panels.trackerpresetsettings.applyFailed": "Could not apply the preset.",
   "ui.panels.trackerpresetsettings.applyHint": "New chats get the preset automatically. Use this to add it to a chat that already exists; values already tracked are never overwritten.",
   "ui.panels.trackerpresetsettings.applyToThisChat": "Apply to this chat",
+  "ui.panels.trackerpresetsettings.autoAdopt": "Adopt tracker rows automatically",
+  "ui.panels.trackerpresetsettings.autoAdoptHelp": "New Roleplay chats start with every tracker row already in use across your recent chats, with no preset to build or apply. Add a field once in any chat's tracker panel and it appears everywhere after that. A selected preset still leads the layout; adopted rows are appended behind it, and values already tracked are never overwritten. The trade-off: a one-off row you added for a single scene will also start appearing, until you delete it there.",
   "ui.panels.trackerpresetsettings.buildFailed": "Could not read this chat's tracker.",
   "ui.panels.trackerpresetsettings.buildFromThisChat": "Build from this chat",
   "ui.panels.trackerpresetsettings.buildFromThisChatHint": "Reads the rows this chat's tracker is already using and adds any the preset is missing. Names come from the tracker itself, so they match your tracker prompt exactly. Values are left blank and bars start full, since a preset seeds new chats. Nothing you have typed is changed.",

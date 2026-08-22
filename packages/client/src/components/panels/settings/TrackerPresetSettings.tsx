@@ -20,6 +20,8 @@ import {
   useCreateTrackerPreset,
   useDeleteTrackerPreset,
   useSetActiveTrackerPreset,
+  useSetTrackerAutoAdopt,
+  useTrackerAutoAdopt,
   useTrackerPresets,
   useUpdateTrackerPreset,
 } from "../../../hooks/use-tracker-presets";
@@ -28,6 +30,7 @@ import { useChatStore } from "../../../stores/chat.store";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import { api } from "../../../lib/api-client";
 import { cn } from "../../../lib/utils";
+import { ToggleSetting } from "./SettingControls";
 
 /** Sentinel for "inherit the global selection", distinct from an explicit none. */
 const INHERIT = "__inherit__";
@@ -216,6 +219,8 @@ export function TrackerPresetSettings() {
   const { data: presets, isLoading } = useTrackerPresets();
   const { data: activePresetId } = useActiveTrackerPresetId();
   const setActive = useSetActiveTrackerPreset();
+  const { data: autoAdopt } = useTrackerAutoAdopt();
+  const setAutoAdopt = useSetTrackerAutoAdopt();
   const createPreset = useCreateTrackerPreset();
   const updatePreset = useUpdateTrackerPreset();
   const deletePreset = useDeleteTrackerPreset();
@@ -403,6 +408,13 @@ export function TrackerPresetSettings() {
           ))}
         </select>
       </label>
+
+      <ToggleSetting
+        label={localizeUi("ui.panels.trackerpresetsettings.autoAdopt")}
+        checked={autoAdopt === true}
+        onChange={(enabled) => setAutoAdopt.mutate(enabled)}
+        help={localizeUi("ui.panels.trackerpresetsettings.autoAdoptHelp")}
+      />
 
       {isRoleplayChat && (
         <>

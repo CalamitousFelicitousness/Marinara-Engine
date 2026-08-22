@@ -45,6 +45,9 @@ export const setActiveTrackerPresetSchema = z.object({
   presetId: z.string().min(1).nullable(),
 });
 
+/** Auto-adopt: seed new chats with tracker rows already in use elsewhere. */
+export const setTrackerAutoAdoptSchema = z.object({ enabled: z.boolean() });
+
 /**
  * Explicit apply-to-chat. Omitting `presetId` uses whatever the chat already
  * resolves to, so the button works without repeating the selection.
@@ -61,3 +64,4 @@ export type UpdateTrackerPresetInput = z.infer<typeof updateTrackerPresetSchema>
 export type ReorderTrackerPresetsInput = z.infer<typeof reorderTrackerPresetsSchema>;
 export type SetActiveTrackerPresetInput = z.infer<typeof setActiveTrackerPresetSchema>;
 export type ApplyTrackerPresetInput = z.infer<typeof applyTrackerPresetSchema>;
+export type SetTrackerAutoAdoptInput = z.infer<typeof setTrackerAutoAdoptSchema>;

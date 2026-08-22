@@ -7,6 +7,7 @@ import {
   createTrackerPresetSchema,
   reorderTrackerPresetsSchema,
   setActiveTrackerPresetSchema,
+  setTrackerAutoAdoptSchema,
   updateTrackerPresetSchema,
 } from "@marinara-engine/shared";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -14,6 +15,8 @@ import { createTrackerPresetsStorage } from "../services/storage/tracker-presets
 import {
   applyTrackerPresetToChat,
   extractTrackerPresetFromChat,
+  isTrackerAutoAdoptEnabled,
+  setTrackerAutoAdoptEnabled,
   readChatCharacterIds,
   readChatTrackerPresetId,
 } from "../services/tracker/tracker-preset.service.js";
@@ -36,6 +39,16 @@ export async function trackerPresetsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Tracker preset not found" });
     }
     return { presetId: await storage.setActiveId(input.presetId) };
+  });
+
+  app.get("/auto-adopt", async () => {
+    return { enabled: await isTrackerAutoAdoptEnabled(app) };
+  });
+
+  app.put("/auto-adopt", async (req) => {
+    const input = setTrackerAutoAdoptSchema.parse(req.body);
+    await setTrackerAutoAdoptEnabled(app, input.enabled);
+    return { enabled: input.enabled };
   });
 
   app.put("/reorder", async (req) => {

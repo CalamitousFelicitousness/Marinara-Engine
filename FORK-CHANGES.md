@@ -310,6 +310,23 @@ Covered by `scripts/regressions/tracker-presets.regression.ts`, which runs the r
 service against real storage and pins the additive merge, idempotent re-apply, chat override
 versus global fallback, persona seeding, and the cleared pointer on delete.
 
+**Adopt tracker rows automatically.** An app setting (`trackerAutoAdoptFields`) that removes the
+preset from the loop entirely: at seed time the union of tracker rows across the 40 most recent
+game-state snapshots, any chat, is folded in as an extra layer. Add a field once in any chat's
+tracker panel and every later chat starts with it.
+
+Adoption is a layer inside the existing pipeline rather than a second path: adopted rows are
+appended behind whatever a selected preset already names, so an explicit preset keeps its layout
+order and starting values, and with no preset selected the adopted rows stand alone. The chain
+stays `preset -> adopted -> card -> live state`.
+
+Worth knowing why this matters at all: the stock Character Tracker prompt (the `character-tracker`
+capability package) ends with "Do not add, rename, or remove custom fields", so the agent never
+creates a custom field, it only echoes existing ones. Rows enter tracker state because a person
+added one in the panel or something seeded it. That is why seeding is the mechanism rather than a
+convenience, and why adoption spreads hand-added rows rather than agent-invented ones unless the
+user's custom prompt lifts that restriction.
+
 **Build from this chat.** The preset editor can derive its rows from a chat's live tracker:
 `GET /api/tracker-presets/from-chat/:chatId` reads the latest game-state snapshot and returns the
 union of `presentCharacters[].customFields` keys, `presentCharacters[].stats` names,

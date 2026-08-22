@@ -33,7 +33,10 @@ import {
   type RPGStatsConfig,
   type TrackerPreset,
 } from "@marinara-engine/shared";
+import { desc } from "../../db/file-query.js";
+import { gameStateSnapshots } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
+import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { createTrackerPresetsStorage } from "../storage/tracker-presets.storage.js";
@@ -186,6 +189,47 @@ async function readCardTrackerDefaults(app: FastifyInstance, characterId: string
   };
 }
 
+/** Append rows the base does not already name, preserving the base's order and values. */
+function appendUnnamedRows<T extends { name: string }>(base: readonly T[], extra: readonly T[]): T[] {
+  const known = new Set(base.map((row) => comparableTrackerName(row.name)).filter(Boolean));
+  const added = extra.filter((row) => {
+    const key = comparableTrackerName(row.name);
+    return key && !known.has(key);
+  });
+  return added.length > 0 ? [...base, ...added] : [...base];
+}
+
+/** Fold adopted rows into a preset, synthesizing one when no preset is selected. */
+function withAdoptedRows(
+  preset: TrackerPreset | null,
+  adopted: {
+    characterFields: CharacterTrackerCustomFieldDefault[];
+    characterStats: RPGStatPool[];
+    personaFields: CharacterTrackerCustomFieldDefault[];
+    personaStats: PersonaStatBar[];
+  } | null,
+): TrackerPreset | null {
+  if (!adopted) return preset;
+  const base: TrackerPreset = preset ?? {
+    id: "",
+    name: "Adopted tracker rows",
+    characterFields: [],
+    characterStats: [],
+    personaFields: [],
+    personaStats: [],
+    order: 0,
+    createdAt: "",
+    updatedAt: "",
+  };
+  return {
+    ...base,
+    characterFields: appendUnnamedRows(base.characterFields ?? [], adopted.characterFields),
+    characterStats: appendUnnamedRows(base.characterStats ?? [], adopted.characterStats),
+    personaFields: appendUnnamedRows(base.personaFields ?? [], adopted.personaFields),
+    personaStats: appendUnnamedRows(base.personaStats ?? [], adopted.personaStats),
+  };
+}
+
 /**
  * Apply a tracker preset to one Roleplay chat.
  *
@@ -228,8 +272,15 @@ export async function applyTrackerPresetToChat(
   if (options.mode !== undefined && options.mode !== "roleplay") return EMPTY_RESULT;
 
   const presetsStore = createTrackerPresetsStorage(app.db);
-  const preset =
+  const resolved =
     options.preset !== undefined ? options.preset : (await presetsStore.resolveForChat(options.chatPresetId)).preset;
+
+  // Auto-adopt is a layer, not a separate pipeline: learned rows are appended
+  // behind whatever the preset already names, so an explicit preset still owns
+  // the layout order and its starting values. With no preset at all the adopted
+  // rows stand alone, which is the zero-ceremony path.
+  const adopted = (await isTrackerAutoAdoptEnabled(app)) ? await collectAdoptedTrackerRows(app) : null;
+  const preset = withAdoptedRows(resolved, adopted);
   if (!preset) return EMPTY_RESULT;
 
   const includeCharacters = options.includeCharacters !== false;
@@ -499,4 +550,77 @@ export async function extractTrackerPresetFromChat(
     personaStats: collectStats(parseSnapshotList<CharacterStat>(latest.personaStats, [])),
     characters,
   };
+}
+
+// ──────────────────────────────────────────────
+// Auto-adopt: learn tracker rows from recent chats
+// ──────────────────────────────────────────────
+
+/** App-settings key. "true" enables adoption; anything else disables it. */
+export const TRACKER_AUTO_ADOPT_SETTINGS_KEY = "trackerAutoAdoptFields";
+
+/** Snapshots scanned when adopting. Bounded so chat creation stays cheap. */
+const AUTO_ADOPT_SNAPSHOT_LIMIT = 40;
+
+export async function isTrackerAutoAdoptEnabled(app: FastifyInstance): Promise<boolean> {
+  return (await createAppSettingsStorage(app.db).get(TRACKER_AUTO_ADOPT_SETTINGS_KEY)) === "true";
+}
+
+/**
+ * Union the tracker rows in use across the most recent snapshots, any chat.
+ *
+ * The point is a zero-ceremony path: add a field once in any chat's tracker
+ * panel and every later chat starts with it, no preset to build or apply.
+ *
+ * Note what this can and cannot see. The stock Character Tracker prompt forbids
+ * the agent from adding custom fields ("Do not add, rename, or remove custom
+ * fields"), so rows normally enter state because a person added them in the
+ * panel or a preset seeded them. A custom prompt that lifts that restriction
+ * makes the agent a source too, which is also when a one-off invented field can
+ * spread; that is the trade-off this setting carries.
+ */
+export async function collectAdoptedTrackerRows(app: FastifyInstance): Promise<ExtractedTrackerPreset> {
+  const rows = (await app.db
+    .select()
+    .from(gameStateSnapshots)
+    .orderBy(desc(gameStateSnapshots.createdAt))
+    .limit(AUTO_ADOPT_SNAPSHOT_LIMIT)) as Array<Record<string, unknown>> | undefined;
+  if (!rows?.length) return EMPTY_EXTRACTION;
+
+  const fieldNames: string[] = [];
+  const statRows: unknown[] = [];
+  const personaFieldNames: unknown[] = [];
+  const personaStatRows: unknown[] = [];
+  let characters = 0;
+
+  for (const row of rows) {
+    for (const character of parseSnapshotList<PresentCharacter>(row.presentCharacters, [])) {
+      const fields =
+        character?.customFields && typeof character.customFields === "object" && !Array.isArray(character.customFields)
+          ? Object.keys(character.customFields as Record<string, string>)
+          : [];
+      const stats = Array.isArray(character?.stats) ? character.stats : [];
+      if (fields.length === 0 && stats.length === 0) continue;
+      fieldNames.push(...fields);
+      statRows.push(...stats);
+      characters += 1;
+    }
+    const playerStats = parseSnapshotRecord<PlayerStats>(row.playerStats);
+    if (Array.isArray(playerStats?.customTrackerFields)) {
+      personaFieldNames.push(...(playerStats.customTrackerFields as CustomTrackerField[]).map((f) => f?.name));
+    }
+    personaStatRows.push(...parseSnapshotList<CharacterStat>(row.personaStats, []));
+  }
+
+  return {
+    characterFields: collectNames(fieldNames),
+    characterStats: collectStats(statRows),
+    personaFields: collectNames(personaFieldNames),
+    personaStats: collectStats(personaStatRows),
+    characters,
+  };
+}
+
+export async function setTrackerAutoAdoptEnabled(app: FastifyInstance, enabled: boolean): Promise<void> {
+  await createAppSettingsStorage(app.db).set(TRACKER_AUTO_ADOPT_SETTINGS_KEY, enabled ? "true" : "false");
 }

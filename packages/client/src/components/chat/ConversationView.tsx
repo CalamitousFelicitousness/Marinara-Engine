@@ -23,6 +23,7 @@ import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
 import { ChatToolbarButton, ChatToolbarMenu, getChatToolbarButtonClass } from "./ChatToolbarControls";
+import { ChatHelpButton } from "./ChatHelpButton";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { TranscriptWindowControls } from "./TranscriptWindowControls";
@@ -473,6 +474,7 @@ export function ConversationView({
       {onSwitchChat && (
         <ChatToolbarButton
           icon={<ArrowRightLeft size="0.875rem" />}
+          helpTarget="connected-chat"
           title={
             connectedChatName
               ? t("chat.toolbar.switchTo", { name: connectedChatName })
@@ -488,6 +490,7 @@ export function ConversationView({
         panelAction="settings"
         onClick={onOpenSettings}
       />
+      <ChatHelpButton mode="conversation" compact={compact} />
     </>
   );
   const renderHeader = () => (
@@ -504,24 +507,27 @@ export function ConversationView({
 
       <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-2">
         {conversationToolbarPackages.map((item) => (
-          <CapabilityElement
-            key={`${item.id}-toolbar`}
-            packageId={item.id}
-            view="toolbar"
-            capabilityProps={{
-              ...conversationCapabilityProps,
-              toolbarButtonClass: getChatToolbarButtonClass(),
-            }}
-            className="contents"
-          />
+          <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+            <CapabilityElement
+              packageId={item.id}
+              view="toolbar"
+              capabilityProps={{
+                ...conversationCapabilityProps,
+                toolbarButtonClass: getChatToolbarButtonClass(),
+              }}
+              className="contents"
+            />
+          </span>
         ))}
         {callsPackage && (
-          <CapabilityElement
-            packageId={callsPackage.id}
-            view="toolbar"
-            capabilityProps={callCapabilityProps}
-            className="contents"
-          />
+          <span data-chat-help="call" className="contents">
+            <CapabilityElement
+              packageId={callsPackage.id}
+              view="toolbar"
+              capabilityProps={callCapabilityProps}
+              className="contents"
+            />
+          </span>
         )}
         <ChatToolbarMenu
           className="flex-1"

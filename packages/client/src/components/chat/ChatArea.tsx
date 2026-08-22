@@ -67,6 +67,7 @@ import {
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
   normalizeManualTrackerAgentTypes,
+  type ChatMode,
   type GeneratedSceneVideo,
   type SpritePlacement,
   type SpriteSide,
@@ -142,6 +143,7 @@ import {
 } from "../ui/ImagePromptReviewModal";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ChatResourceDropOverlay } from "./ChatResourceDropOverlay";
+import { ChatHelpOverlay } from "./ChatHelpOverlay";
 
 export type { CharacterMap };
 
@@ -2928,6 +2930,16 @@ export const ChatArea = memo(function ChatArea() {
     </Suspense>
   ) : null;
   const resourceDropOverlay = chat ? <ChatResourceDropOverlay chat={chat} /> : null;
+  const chatHelpOverlay = chat ? (
+    <ChatHelpOverlay
+      mode={chatMode as ChatMode}
+      activeChatId={chat.id}
+      isFirstChat={(allChats ?? []).filter((candidate) => candidate.mode === chatMode).length === 1}
+      autoOpenBlocked={
+        wizardOpen || settingsOpen || galleryOpen || !!pendingNewChatMode || !!peekPromptData || !!deleteDialogMessageId
+      }
+    />
+  ) : null;
 
   // ═══════════════════════════════════════════════
   // Game mode — RPG surface with GM narration, map, party chat
@@ -3005,6 +3017,7 @@ export const ChatArea = memo(function ChatArea() {
             onSelectAllAboveSelection={handleSelectAllAboveSelection}
             onSelectAllBelowSelection={handleSelectAllBelowSelection}
           />
+          {chatHelpOverlay}
         </>
       </Suspense>
     );
@@ -3103,6 +3116,7 @@ export const ChatArea = memo(function ChatArea() {
           onCancel={() => closeConversationSelfiePromptReview(null)}
           onConfirm={confirmConversationSelfiePromptReview}
         />
+        {chatHelpOverlay}
         {pendingNewChatMode && (
           <NewChatConnectionGate
             mode={pendingNewChatMode}
@@ -3272,6 +3286,7 @@ export const ChatArea = memo(function ChatArea() {
         onCancel={() => closeRoleplayVideoPromptReview(null)}
         onConfirm={confirmRoleplayVideoPromptReview}
       />
+      {chatHelpOverlay}
       {pendingNewChatMode && (
         <NewChatConnectionGate
           mode={pendingNewChatMode}

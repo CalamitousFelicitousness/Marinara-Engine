@@ -100,6 +100,16 @@ const useGenerateSource = readSourceText(
 );
 assert.match(
   generateRouteSource,
+  /if \(receivedThinking && generationStartedAt !== null && reasoningDurationMs === null\)[\s\S]{0,180}Date\.now\(\) - generationStartedAt/u,
+  "The server must capture reasoning duration when visible output begins",
+);
+assert.match(
+  generateRouteSource,
+  /durationMs,\s*reasoningDurationMs,\s*finishReason/u,
+  "Committed generation metadata must retain the reasoning-only duration",
+);
+assert.match(
+  generateRouteSource,
   /const messagesById = new Map\(preMessages\.map[\s\S]{0,500}\(anchor\.activeSwipeIndex \?\? 0\) !== run\.swipeIndex[\s\S]{0,300}run\.abortController\.abort\(\)/u,
   "Committing a Roleplay turn must cancel agent work anchored to an abandoned swipe",
 );

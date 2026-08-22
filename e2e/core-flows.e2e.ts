@@ -5676,7 +5676,7 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     expect(messageResponse.ok()).toBeTruthy();
     const message = (await messageResponse.json()) as { id: string };
     const generationInfoResponse = await page.request.patch(`/api/chats/${chat.id}/messages/${message.id}/extra`, {
-      data: { generationInfo: { durationMs: 2_200 } },
+      data: { generationInfo: { durationMs: 90_000, reasoningDurationMs: 2_200 } },
     });
     expect(generationInfoResponse.ok()).toBeTruthy();
 

@@ -1573,7 +1573,7 @@ export function GameSetupWizard({
                               key={g}
                               onClick={() => toggleGenre(g)}
                               aria-pressed={genres.includes(g)}
-                              className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
+                              className="flex items-center gap-1 rounded-md bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {g}
                               <X size={10} />
@@ -1670,7 +1670,7 @@ export function GameSetupWizard({
                               key={t}
                               onClick={() => toggleTone(t)}
                               aria-pressed={tones.includes(t)}
-                              className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
+                              className="flex items-center gap-1 rounded-md bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {t}
                               <X size={10} />
@@ -1736,6 +1736,7 @@ export function GameSetupWizard({
                       <div className="flex gap-2">
                         <button
                           onClick={() => setCombatStyle("classic")}
+                          aria-pressed={combatStyle === "classic"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             combatStyle === "classic"
@@ -1752,6 +1753,7 @@ export function GameSetupWizard({
                         </button>
                         <button
                           onClick={() => setCombatStyle("tactical")}
+                          aria-pressed={combatStyle === "tactical"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             combatStyle === "tactical"
@@ -1855,6 +1857,7 @@ export function GameSetupWizard({
                       <div className="flex gap-2">
                         <button
                           onClick={() => setGmMode("standalone")}
+                          aria-pressed={gmMode === "standalone"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             gmMode === "standalone"
@@ -1871,6 +1874,7 @@ export function GameSetupWizard({
                         </button>
                         <button
                           onClick={() => setGmMode("character")}
+                          aria-pressed={gmMode === "character"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             gmMode === "character"

@@ -35,11 +35,12 @@ export interface CreateGameEngineStateInput {
    * with a single store — turn-games have nothing to order this row against.
    *
    * A value passed here is only ever valid inside ONE chat's counter space. Checkpoint restore
-   * therefore ALLOCATES a fresh ordinal rather than replaying the captured one (which would
-   * hand the same value out twice, and would also under-state a restore that is genuinely the
-   * newest write). Chat branching is the one case that copies an ordinal verbatim, and only
-   * because it inherits the source chat's whole counter alongside it via
-   * `chats.raiseWriteOrdinalFloor` — same counter space, so the copies keep their order.
+   * therefore ALLOCATES a fresh ordinal for its experience rows rather than replaying the
+   * captured one (which would hand the same value out twice, and would also under-state a
+   * restore that is genuinely the newest write); its turn-game rows stay null. Chat branching is
+   * the one case that copies an ordinal verbatim, and only because it raises the branch's counter
+   * above every ordinal it copied via `chats.raiseWriteOrdinalFloor` — same counter space, so the
+   * copies keep their order and the branch's next allocation still beats all of them.
    */
   writeOrdinal?: number | null;
 }

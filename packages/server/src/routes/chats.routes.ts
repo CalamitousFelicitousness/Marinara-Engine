@@ -3906,7 +3906,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     // `metadataWriteOrdinals` mirror. Inherit the source's write-ordinal counter too, or the
     // branch's first allocation would come in BELOW the stamps it just copied and invert the
     // "which store is newer" comparison for the life of the branch. Raised before the metadata
-    // write so no interleaved allocation can slip in under the floor.
+    // write so no interleaved allocation can slip in under the floor. This snapshot can already
+    // be stale by the time the engine rows are copied further down, so the copy loop raises the
+    // floor a second time against what it actually copied.
     await storage.raiseWriteOrdinalFloor(newChat.id, sourceChat.writeOrdinalCounter);
     await storage.updateMetadata(newChat.id, {
       ...settingsToKeep,
@@ -4003,12 +4005,21 @@ export async function chatsRoutes(app: FastifyInstance) {
           throw err;
         }
       };
+      // #5406: highest ordinal this branch actually copied onto its own engine rows. The
+      // pre-metadata floor above was read from a counter snapshot taken before any of the copy
+      // work, so a source-chat experience save landing mid-branch produces a copied row whose
+      // ordinal is ABOVE that floor — and the branch's first allocation would then duplicate it.
+      // Tracked live here and applied once after the copy loop.
+      let maxCopiedWriteOrdinal = 0;
       const copyEngineSnapshot = async (
         snapshot: NonNullable<Awaited<ReturnType<NonNullable<typeof gameEngineStore>["getByChatAndMessage"]>>>,
         targetMessageId: string,
         targetSwipeIndex: number,
       ) => {
         if (!gameEngineStore) return;
+        if (typeof snapshot.writeOrdinal === "number" && snapshot.writeOrdinal > maxCopiedWriteOrdinal) {
+          maxCopiedWriteOrdinal = snapshot.writeOrdinal;
+        }
         await gameEngineStore.create({
           chatId: newChat.id,
           messageId: targetMessageId,
@@ -4018,10 +4029,10 @@ export async function chatsRoutes(app: FastifyInstance) {
           state: snapshot.state,
           committed: (snapshot.committed as any) === 1,
           // #5406: keep the source ordinal verbatim. The branch inherits the source's whole
-          // metadata blob (mirror included) AND, via the raiseWriteOrdinalFloor call above, its
-          // counter — so this is the same counter space, and the copied rows and the copied
-          // mirror stay in exactly the order they had in the source. Re-allocating here instead
-          // would reorder the copies against a mirror that was NOT re-stamped.
+          // metadata blob (mirror included) AND, via the raiseWriteOrdinalFloor calls, a counter
+          // above everything it copied — so this is the same counter space, and the copied rows
+          // and the copied mirror stay in exactly the order they had in the source. Re-allocating
+          // here instead would reorder the copies against a mirror that was NOT re-stamped.
           writeOrdinal: snapshot.writeOrdinal,
         });
       };
@@ -4076,6 +4087,10 @@ export async function chatsRoutes(app: FastifyInstance) {
           await copyEngineSnapshot(engineBootstrap, "", 0);
         }
       }
+      // #5406: re-floor against what was really copied, now that every row is in. Without this
+      // the branch's first allocation can collide with a row copied after the earlier snapshot
+      // was taken, handing the same ordinal to two rows in one counter space.
+      await storage.raiseWriteOrdinalFloor(newChat.id, maxCopiedWriteOrdinal);
     } catch (err) {
       try {
         await storage.remove(newChat.id);

@@ -10,7 +10,7 @@ import { eq } from "../db/file-query.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
-import { createChatsStorage } from "../services/storage/chats.storage.js";
+import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
@@ -19,7 +19,10 @@ import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { createGameSceneVideosStorage } from "../services/storage/game-scene-videos.storage.js";
 import { createGameStoryboardsStorage } from "../services/storage/game-storyboards.storage.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
-import { createGameEngineStateStorage } from "../services/storage/game-engine-state.storage.js";
+import {
+  createGameEngineStateStorage,
+  EXPERIENCE_GAME_TYPE_PREFIX,
+} from "../services/storage/game-engine-state.storage.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { formatOwnerSpatialBreadcrumb, resolveOwnerSpatialProjection } from "../services/spatial-context/projection.js";
 import {
@@ -7191,6 +7194,12 @@ export async function gameRoutes(app: FastifyInstance) {
         gameSceneAmbient: _previousSceneAmbient,
         gameRecentMusic: _previousRecentMusic,
         gameRecentSpotifyTracks: _previousRecentSpotifyTracks,
+        // #5406: the write-ordinal mirror is per-chat and never travels. A new session clones no
+        // engine rows, so it has nothing to order against — carrying the previous session's
+        // stamps into a chat whose counter starts at null would just make its first real writes
+        // compare as older than the inherited ones. (allocateWriteOrdinal's mirror floor covers
+        // the same hazard, but the mirror is meaningless here regardless.)
+        [METADATA_WRITE_ORDINALS_KEY]: _previousWriteOrdinals,
         ...carryMeta
       } = prevMeta;
 
@@ -13835,36 +13844,50 @@ export async function gameRoutes(app: FastifyInstance) {
     // write to the experience store — which is exactly what stops a boot comparison from
     // deciding a stale chat-metadata copy (whose mirror kept advancing while the player was on
     // a later turn) is newer than the world the user just restored.
-    if (capturedEngineStates.length > 0) {
-      for (const captured of capturedEngineStates) {
-        await engineStore.create({
-          chatId: input.chatId,
-          messageId: restoreMsg.id,
-          swipeIndex: 0,
-          gameType: captured.gameType,
-          schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
-          state: captured.state,
-          committed: true,
-          writeOrdinal: await chats.allocateWriteOrdinal(input.chatId),
-        });
+    //
+    // The whole block runs inside the experience-state write lock, the same one the PUT holds.
+    // Outside it, an autosave PUT landing at the restore anchor can allocate a HIGHER ordinal
+    // than the restore and still lose the delete-then-insert race, leaving the surviving row
+    // carrying the lower number — at which point the next boot comparison prefers the stale
+    // chat-metadata copy and resurrects the pre-restore world, the exact clobber #5406 exists
+    // to prevent. Lock order stays experience-lock -> metadata-queue: allocateWriteOrdinal takes
+    // the metadata queue from inside this lock, never the reverse.
+    await withExperienceStateWriteLock(input.chatId, async () => {
+      // Only experience rows are ordered: a turn-game keeps a single store, so it has nothing to
+      // compare against and its rows stay null (see game_engine_state.writeOrdinal).
+      const restoreOrdinal = async (gameType: string) =>
+        gameType.startsWith(EXPERIENCE_GAME_TYPE_PREFIX) ? await chats.allocateWriteOrdinal(input.chatId) : null;
+      if (capturedEngineStates.length > 0) {
+        for (const captured of capturedEngineStates) {
+          await engineStore.create({
+            chatId: input.chatId,
+            messageId: restoreMsg.id,
+            swipeIndex: 0,
+            gameType: captured.gameType,
+            schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
+            state: captured.state,
+            committed: true,
+            writeOrdinal: await restoreOrdinal(captured.gameType),
+          });
+        }
+      } else {
+        // No usable capture (pre-#5102 checkpoint, empty chat at capture time, or a
+        // corrupt blob): the createdAt re-lookup is strictly better than nothing.
+        const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
+        if (cpEngineRow) {
+          await engineStore.create({
+            chatId: input.chatId,
+            messageId: restoreMsg.id,
+            swipeIndex: 0,
+            gameType: cpEngineRow.gameType,
+            schemaVersion: cpEngineRow.schemaVersion,
+            state: cpEngineRow.state,
+            committed: true,
+            writeOrdinal: await restoreOrdinal(cpEngineRow.gameType),
+          });
+        }
       }
-    } else {
-      // No usable capture (pre-#5102 checkpoint, empty chat at capture time, or a
-      // corrupt blob): the createdAt re-lookup is strictly better than nothing.
-      const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
-      if (cpEngineRow) {
-        await engineStore.create({
-          chatId: input.chatId,
-          messageId: restoreMsg.id,
-          swipeIndex: 0,
-          gameType: cpEngineRow.gameType,
-          schemaVersion: cpEngineRow.schemaVersion,
-          state: cpEngineRow.state,
-          committed: true,
-          writeOrdinal: await chats.allocateWriteOrdinal(input.chatId),
-        });
-      }
-    }
+    });
 
     // Restore chat metadata fields from checkpoint
     if (cp.gameState) {

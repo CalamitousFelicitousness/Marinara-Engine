@@ -156,13 +156,15 @@ function mergeMetadataPatch(current: MetadataPatch, patch: MetadataPatch): Metad
 // deadlock, and because every allocation funnels through the one queue no two writes can read
 // the same counter value. Crashing between an allocation and the write it stamps burns an
 // ordinal; the contract is strict ordering, not density, so gaps are fine.
+//
+// The counter is not trusted on its own, because a metadata blob (mirror included) can be MOVED
+// into a chat that never allocated those ordinals — branching, a game "Next Session" carry, a
+// restored backup. Every allocation therefore floors the counter by the ordinals the chat's own
+// mirror already carries (`writeOrdinalFloor`), and the branch seam additionally raises the
+// counter above every engine-row ordinal it copied.
 
 /** Engine-owned metadata key holding `{ "<top-level metadata key>": <write ordinal> }` (#5406). */
 export const METADATA_WRITE_ORDINALS_KEY = "metadataWriteOrdinals";
-
-function nextWriteOrdinal(counter: unknown): number {
-  return (typeof counter === "number" && Number.isSafeInteger(counter) && counter > 0 ? counter : 0) + 1;
-}
 
 /** Read a stored mirror defensively — it can predate #5406 or have been clobbered by a
  *  whole-blob `updateMetadata`, and only positive safe integers are usable ordinals. */
@@ -177,29 +179,116 @@ function readOrdinalMirror(value: unknown): Map<string, number> {
 }
 
 /**
- * Did this patch actually write a new value for the key? Reference equality is the fast path
- * and the important one: the `{ ...current, changedKey }` updater shape used throughout this
- * file re-supplies every key with the SAME object reference, and stamping those would falsely
- * advance the ordinal of a package's untouched key — which is precisely the false "metadata is
- * newer" reading that would clobber a good save. Anything not reference-equal falls back to a
- * value comparison so a structurally identical re-send is not counted as a write either.
+ * The value this chat's next ordinal must beat: its counter, floored by every ordinal its
+ * metadata mirror already carries.
+ *
+ * The mirror can legitimately sit ABOVE the counter, because a metadata blob can be *moved* into
+ * a chat whose counter never handed those values out — a chat branch copying the source blob, a
+ * game "Next Session" carrying the previous session's metadata, an imported or restored backup.
+ * Allocating below a live stamp would make a brand-new write compare as older than a stale one
+ * for the rest of that key's life, so BOTH allocators floor here rather than trusting the counter
+ * alone.
  */
-function metadataValueChanged(before: unknown, after: unknown): boolean {
-  if (Object.is(before, after)) return false;
-  if (before === undefined || after === undefined) return true;
-  if (before === null || after === null || typeof before !== "object" || typeof after !== "object") return true;
+function writeOrdinalFloor(counter: unknown, metadata: MetadataPatch | null | undefined): number {
+  let floor = typeof counter === "number" && Number.isSafeInteger(counter) && counter > 0 ? counter : 0;
+  for (const ordinal of readOrdinalMirror(metadata?.[METADATA_WRITE_ORDINALS_KEY]).values()) {
+    if (ordinal > floor) floor = ordinal;
+  }
+  return floor;
+}
+
+/** The chat's next write ordinal: one past {@link writeOrdinalFloor}. */
+function nextWriteOrdinal(counter: unknown, metadata?: MetadataPatch | null): number {
+  return writeOrdinalFloor(counter, metadata) + 1;
+}
+
+/**
+ * Cap on how much of one metadata value is serialized for change detection. Past it the
+ * comparison degrades to reference identity: a multi-megabyte `gameMap` would otherwise be
+ * stringified twice on every patch (once for the pre-updater snapshot, once for the merged
+ * value) purely to decide whether to move an ordinal.
+ *
+ * The trade that buys: an oversize value re-sent as a fresh but equal object is counted as a
+ * write (harmless over-stamping), and an oversize value mutated in place is NOT seen (the same
+ * blind spot the pre-fingerprint code had for every value). Ordering by metadata is a boot cache
+ * for packages that keep their save small; a package that wants a multi-megabyte value ordered
+ * should split the ordered part out.
+ */
+const ORDINAL_DIFF_MAX_CHARS = 32_768;
+
+/** Bail-out token thrown from the bounded serializer's replacer. */
+const ORDINAL_DIFF_TOO_LARGE = Symbol("ordinal-diff-too-large");
+
+/** Fingerprint standing for "this key is absent", distinct from every JSON serialization. */
+const ORDINAL_DIFF_ABSENT = "\u0000absent";
+
+/**
+ * Fingerprint one metadata value for change detection, or null when it cannot be compared by
+ * value — too large (see {@link ORDINAL_DIFF_MAX_CHARS}) or unserializable (cyclic). The replacer
+ * charges every visited node against the budget and bails out, so an oversize value costs a
+ * partial walk rather than a full stringify.
+ */
+function fingerprintMetadataValue(value: unknown): string | null {
+  if (value === undefined) return ORDINAL_DIFF_ABSENT;
+  let budget = ORDINAL_DIFF_MAX_CHARS;
   try {
-    return JSON.stringify(before) !== JSON.stringify(after);
+    return (
+      JSON.stringify(value, (_key, nested: unknown) => {
+        budget -= typeof nested === "string" ? nested.length + 2 : 8;
+        if (budget < 0) throw ORDINAL_DIFF_TOO_LARGE;
+        return nested;
+      }) ?? ORDINAL_DIFF_ABSENT
+    );
   } catch {
-    // Cyclic or otherwise unserializable: treat it as a write rather than silently skipping.
-    return true;
+    return null;
   }
 }
 
 /**
- * Strip the engine-owned mirror out of an incoming patch. Ordinals are only ever server-
- * assigned; the whole point of #5406 is that a client cannot forge or freeze the ordering,
- * and function updaters that spread `current` would otherwise write the mirror back verbatim.
+ * Fingerprint the top-level metadata values an updater could mutate IN PLACE, for the "before"
+ * side of {@link metadataValueChanged}. Only object-valued keys need it: a primitive cannot be
+ * mutated through the shallow copy the updater receives, so `current[key]` still holds its
+ * pre-updater value afterwards and can be fingerprinted lazily.
+ */
+function fingerprintMetadata(current: MetadataPatch): Map<string, string | null> {
+  const fingerprints = new Map<string, string | null>();
+  for (const key of Object.keys(current)) {
+    const value = current[key];
+    if (value !== null && typeof value === "object") fingerprints.set(key, fingerprintMetadataValue(value));
+  }
+  return fingerprints;
+}
+
+/**
+ * Did this patch actually write a new value for the key? Stamping a key whose value did not move
+ * would falsely advance the ordinal of a package's untouched key — precisely the bogus "metadata
+ * is newer" reading that clobbers a good save — so the `{ ...current, changedKey }` updater shape
+ * used throughout this file must leave every other key alone.
+ *
+ * `beforeFingerprint` is captured BEFORE a function updater runs. Comparing against the live
+ * `current[key]` afterwards is blind to an updater that mutates a nested value IN PLACE (the tool
+ * runtime hands a shallow copy of the live metadata to package-supplied code, so `current[key]`
+ * and `merged[key]` are then the same, already-mutated object and every value comparison agrees
+ * they match).
+ *
+ * When either side is un-fingerprintable (oversize, or cyclic) the test degrades to reference
+ * identity — the same answer the old `Object.is` fast path gave for those values, in-place blind
+ * spot included. See {@link ORDINAL_DIFF_MAX_CHARS} for why that is the right trade.
+ */
+function metadataValueChanged(beforeFingerprint: string | null, beforeValue: unknown, after: unknown): boolean {
+  const afterFingerprint = fingerprintMetadataValue(after);
+  if (beforeFingerprint !== null && afterFingerprint !== null) return beforeFingerprint !== afterFingerprint;
+  return !Object.is(beforeValue, after);
+}
+
+/**
+ * Strip the engine-owned mirror out of an incoming patch, so a caller on the metadata PATCH path
+ * cannot forge or freeze the ordering: on that path ordinals are only ever server-assigned, and
+ * function updaters that spread `current` would otherwise write the mirror back verbatim.
+ *
+ * This is a property of the queued patch path only. Whole-blob writers (`updateMetadata`, the
+ * capability persistence host) rewrite the mirror as part of the blob they carry — see the
+ * `updateMetadata` doc comment for why that is in scope.
  */
 function stripOrdinalMirrorKey(patch: MetadataPatch): MetadataPatch {
   if (!Object.prototype.hasOwnProperty.call(patch, METADATA_WRITE_ORDINALS_KEY)) return patch;
@@ -214,19 +303,28 @@ type OrdinalStamp = { ordinal: number; mirror: Record<string, number> };
  * changed. All keys in one patch share the ordinal because they were written in the same atomic
  * row update — there is no meaningful order among them. Returns null when nothing changed, so a
  * no-op patch neither burns an ordinal nor rewrites the mirror.
+ *
+ * `before` is the fingerprint snapshot taken before a function updater ran, or null for a literal
+ * patch object (which cannot have mutated `current`, so its live values are still trustworthy).
  */
 function stampMetadataWriteOrdinals(
   counter: unknown,
   current: MetadataPatch,
   merged: MetadataPatch,
   patch: MetadataPatch,
+  before: Map<string, string | null> | null,
 ): OrdinalStamp | null {
+  const fingerprintBefore = (key: string): string | null =>
+    // Not in the snapshot means either "no updater ran" or "a primitive an updater cannot have
+    // mutated in place" — in both cases the live value is still the pre-updater one.
+    before?.has(key) ? (before.get(key) as string | null) : fingerprintMetadataValue(current[key]);
   const changed = Object.keys(patch).filter(
-    (key) => key !== METADATA_WRITE_ORDINALS_KEY && metadataValueChanged(current[key], merged[key]),
+    (key) =>
+      key !== METADATA_WRITE_ORDINALS_KEY && metadataValueChanged(fingerprintBefore(key), current[key], merged[key]),
   );
   if (changed.length === 0) return null;
 
-  const ordinal = nextWriteOrdinal(counter);
+  const ordinal = nextWriteOrdinal(counter, current);
   const mirror = readOrdinalMirror(current[METADATA_WRITE_ORDINALS_KEY]);
   for (const key of changed) mirror.set(key, ordinal);
   // Drop ordinals for keys the merged metadata no longer carries (a patch value of `undefined`
@@ -1106,12 +1204,21 @@ export function createChatsStorage(db: DB) {
     },
 
     /**
-     * Whole-blob metadata replace, outside the patch queue and NOT write-ordinal stamped
-     * (#5406). Host-internal callers use this to rewrite a metadata object they just read, so
-     * the mirror rides along in the blob unchanged and no key's ordinal moves — correct,
-     * because a verbatim rewrite is not a new value. Anything that needs to be orderable by a
-     * client (everything a capability package can reach, which is only the metadata PATCH
-     * route) must go through `patchMetadata` instead.
+     * Whole-blob metadata replace, outside the patch queue and NOT write-ordinal stamped (#5406).
+     *
+     * What makes that safe is scope, not innocence: most live callers pass
+     * `{ ...freshMeta, changedKey }` and genuinely do change a key, so "a verbatim rewrite is not
+     * a new value" is simply false here. A key written through this path keeps whatever ordinal
+     * it already had and therefore reads as OLDER than it is. That is tolerable only because
+     * every key a capability package can order against is reachable solely through the chat
+     * metadata PATCH route, which goes through `patchMetadata`.
+     *
+     * The rule that follows: a key that becomes package-ordered must never be written here. Move
+     * the write to `patchMetadata` rather than adding a caller on this path.
+     *
+     * The capability persistence host (`updateChatMetadata` / `updateChatActivity` in
+     * capability-persistence.service.ts) writes whole metadata blobs the same unstamped way and
+     * is in the same category — it carries the mirror through untouched rather than restamping.
      */
     async updateMetadata(id: string, metadata: Record<string, unknown>) {
       await db
@@ -1131,15 +1238,19 @@ export function createChatsStorage(db: DB) {
      * already hold that queue MUST pass `metadataQueueHeld` — the queue is not reentrant.
      * Callers holding a different per-chat lock (the experience-state write lock) may call this
      * directly: the lock order is always their-lock -> metadata-queue, never the reverse.
+     *
+     * The counter alone is not the floor: the metadata mirror can carry ordinals the counter
+     * never handed out (a blob moved in by a branch, a session carry, a restore), so this reads
+     * both and allocates above whichever is higher — see {@link writeOrdinalFloor}.
      */
     async allocateWriteOrdinal(id: string, opts: { metadataQueueHeld?: boolean } = {}): Promise<number | null> {
       const allocate = async () => {
         const [row] = await db
-          .select({ writeOrdinalCounter: chats.writeOrdinalCounter })
+          .select({ writeOrdinalCounter: chats.writeOrdinalCounter, metadata: chats.metadata })
           .from(chats)
           .where(eq(chats.id, id));
         if (!row) return null;
-        const ordinal = nextWriteOrdinal(row.writeOrdinalCounter);
+        const ordinal = nextWriteOrdinal(row.writeOrdinalCounter, parseMetadata(row.metadata));
         // Counter only — allocating an ordinal is not a user-visible chat edit, so it must not
         // reorder the chat list the way a touched updatedAt would.
         await db.update(chats).set({ writeOrdinalCounter: ordinal }).where(eq(chats.id, id));
@@ -1150,13 +1261,22 @@ export function createChatsStorage(db: DB) {
 
     /**
      * Raise a chat's write-ordinal counter to at least `floor`, never lowering it (#5406).
-     * Chat branching copies the source chat's metadata verbatim — mirror included — so the
-     * branch must also inherit the source's counter, or its first allocation would sit below
-     * the inherited stamps and invert the ordering for the branch's whole life. Idempotent.
+     * Chat branching copies the source chat's metadata verbatim — mirror included — and its
+     * engine rows with their ordinals, so the branch must also inherit a counter above all of
+     * them, or its first allocation would sit below the values it just copied and invert the
+     * ordering for the branch's whole life. Idempotent.
+     *
+     * Like its siblings this runs inside the per-chat metadata patch queue, so a caller that
+     * already holds the queue MUST pass `metadataQueueHeld` — the queue is not reentrant and
+     * would otherwise deadlock silently.
      */
-    async raiseWriteOrdinalFloor(id: string, floor: number | null | undefined): Promise<void> {
+    async raiseWriteOrdinalFloor(
+      id: string,
+      floor: number | null | undefined,
+      opts: { metadataQueueHeld?: boolean } = {},
+    ): Promise<void> {
       if (typeof floor !== "number" || !Number.isSafeInteger(floor) || floor <= 0) return;
-      await withChatMetadataPatchQueue(id, async () => {
+      const raise = async () => {
         const [row] = await db
           .select({ writeOrdinalCounter: chats.writeOrdinalCounter })
           .from(chats)
@@ -1165,7 +1285,9 @@ export function createChatsStorage(db: DB) {
         const current = row.writeOrdinalCounter;
         if (typeof current === "number" && current >= floor) return;
         await db.update(chats).set({ writeOrdinalCounter: floor }).where(eq(chats.id, id));
-      });
+      };
+      if (opts.metadataQueueHeld) await raise();
+      else await withChatMetadataPatchQueue(id, raise);
     },
 
     async patchMetadata(
@@ -1178,6 +1300,10 @@ export function createChatsStorage(db: DB) {
         if (!existing) return null;
 
         const current = parseMetadata(existing.metadata);
+        // #5406: fingerprint BEFORE the updater runs. `{ ...current }` is a shallow copy, so an
+        // updater that mutates a nested value in place mutates `current`'s value too and the
+        // post-hoc comparison would see two identical objects and skip the stamp.
+        const before = typeof patchOrUpdater === "function" ? fingerprintMetadata(current) : null;
         const raw = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...current }) : patchOrUpdater;
         const patch = stripOrdinalMirrorKey(raw);
         const merged = mergeMetadataPatch(current, patch);
@@ -1185,7 +1311,7 @@ export function createChatsStorage(db: DB) {
         // already held here, and folding the counter into the same row update makes the stamp
         // and the counter bump one atomic write, so a crash can never leave a mirror entry
         // whose ordinal the counter never advanced past.
-        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch);
+        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch, before);
         applyOrdinalStamp(merged, stamp);
 
         await db
@@ -1223,10 +1349,11 @@ export function createChatsStorage(db: DB) {
         if (!existing) return null;
 
         const current = parseMetadata(existing.metadata);
+        const before = fingerprintMetadata(current);
         const { metadata: raw, characterIds } = await updater({ ...current });
         const patch = stripOrdinalMirrorKey(raw);
         const merged = mergeMetadataPatch(current, patch);
-        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch);
+        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch, before);
         applyOrdinalStamp(merged, stamp);
 
         await db

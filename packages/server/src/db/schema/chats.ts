@@ -42,7 +42,12 @@ export const chats = fileTable("chats", {
    * game_engine_state row (`write_ordinal`) or to the metadata mirror
    * (`metadata.metadataWriteOrdinals`) is allocated by bumping this one counter, so a client
    * holding a value from either store can totally order the two. Null until the chat's first
-   * allocation; see `allocateWriteOrdinal` in chats.storage.ts for the monotonicity argument.
+   * allocation.
+   *
+   * Not the sole floor: a metadata blob can be moved into a chat whose counter never handed its
+   * stamps out (branching, a game session carry, a restore), so allocation takes the max of this
+   * counter and the chat's own mirror. See `writeOrdinalFloor` / `allocateWriteOrdinal` in
+   * chats.storage.ts for the monotonicity argument.
    */
   writeOrdinalCounter: integer("write_ordinal_counter"),
   createdAt: text("created_at").notNull(),

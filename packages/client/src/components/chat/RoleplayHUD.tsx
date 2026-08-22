@@ -32,6 +32,8 @@ import { useUpdateMessageExtra } from "../../hooks/use-chats";
 import { discardPendingGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { useUIStore } from "../../stores/ui.store";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
+import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { CapabilityElement } from "../capabilities/CapabilityElement";
 import {
   classifyWorldWeather,
   getLocationPinColor,
@@ -138,6 +140,14 @@ export function RoleplayHUD({
 
   const { data: agentConfigs } = useAgentConfigs();
   const enabledAgentTypes = enabledAgentTypesProp ?? EMPTY_AGENT_TYPE_SET;
+  const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
+  const roleplayTrackerPackages = installedCapabilities.filter(
+    (item) =>
+      item.status === "active" &&
+      enabledAgentTypes.has(item.id) &&
+      Boolean(item.manifest.entrypoints.client) &&
+      item.manifest.contributions?.slots?.includes("roleplay-tracker"),
+  );
 
   const thoughtBubbles = useAgentStore((s) => s.thoughtBubbles);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
@@ -311,6 +321,16 @@ export function RoleplayHUD({
         {trackerPanelEnabled && !trackerPanelOpen && (
           <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
         )}
+
+        {roleplayTrackerPackages.map((item) => (
+          <CapabilityElement
+            key={`${item.id}-roleplay-tracker`}
+            packageId={item.id}
+            view="toolbar"
+            capabilityProps={{ chatId, chatMode: "roleplay", mobileCompact: mobileCompact === true }}
+            className="contents"
+          />
+        ))}
 
         {/* Actions (Agents + Clear) */}
         <ActionsGroup

@@ -34,6 +34,9 @@
 //  12. A new game session carries no mirror into its brand-new chat.
 //  13. Chat settings profiles never carry the mirror, and applying one preserves the target
 //      chat's own mirror.
+//  14. The bulk import (#5405) allocates a fresh ordinal per row in array order, floored by the
+//      destination's carried mirror, and never honors a caller-supplied writeOrdinal — so a
+//      freshly imported campaign beats a stale metadata cache at the next boot.
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import { CHAT_PRESET_EXCLUDED_METADATA_KEYS } from "../../packages/shared/src/types/chat-preset.js";
@@ -116,6 +119,8 @@ async function createCarriedMirrorChat(name: string, metadata: Record<string, un
 const putState = (chatId: string, payload: unknown) =>
   app.inject({ method: "PUT", url: `/api/game/${chatId}/experience-state`, payload: payload as object });
 const getState = (chatId: string) => app.inject({ method: "GET", url: `/api/game/${chatId}/experience-state` });
+const importState = (chatId: string, payload: unknown) =>
+  app.inject({ method: "POST", url: `/api/game/${chatId}/experience-state/import`, payload: payload as object });
 
 const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -742,6 +747,46 @@ try {
     assert.ok(
       CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("metadataWriteOrdinals"),
       "the mirror is on the profile exclusion list",
+    );
+  }
+
+  // ── 14. Imported rows draw fresh ordinals from the destination chat ──
+  // The import (#5405) is an experience-store write like any other. If its rows landed with
+  // writeOrdinal null, a freshly imported campaign would LOSE the boot comparison to the
+  // destination chat's stale metadata mirror and the pre-import world would be resurrected —
+  // the exact clobber the ordinal exists to prevent. Fresh allocation (never the exported
+  // value: a foreign chat's counter space) keeps ordinal order aligned with the import's
+  // own forward createdAt stamps.
+  {
+    const chat = await createCarriedMirrorChat("ordinal import floor", {
+      gameExperienceId: EXPERIENCE_ID,
+      [PACKAGE_KEY]: { world: "stale-cache" },
+      metadataWriteOrdinals: { [PACKAGE_KEY]: 60 },
+    });
+    const imported = await importState(chat.id, {
+      rows: [
+        // The forged writeOrdinal must be ignored — same policy as the exported createdAt.
+        { messageId: "campaign-a", swipeIndex: 0, state: { step: 1 }, writeOrdinal: 999 },
+        { messageId: "campaign-b", swipeIndex: 0, state: { step: 2 } },
+      ],
+    });
+    assert.equal(imported.statusCode, 200, imported.body);
+
+    const stored = (await engineStore.listForChat(chat.id, `experience:${EXPERIENCE_ID}`)).filter((row) =>
+      row.messageId.startsWith("imported:campaign-"),
+    );
+    assert.equal(stored.length, 2, "both rows imported under synthetic anchors");
+    assert.deepEqual(
+      stored.map((row) => row.writeOrdinal),
+      [61, 62],
+      "imported rows draw fresh ordinals above the carried mirror, in array order, never the forged value",
+    );
+
+    const read = await getState(chat.id);
+    assert.equal(
+      read.json().writeOrdinal,
+      62,
+      "the newest imported row wins the boot comparison against the mirror at 60",
     );
   }
 

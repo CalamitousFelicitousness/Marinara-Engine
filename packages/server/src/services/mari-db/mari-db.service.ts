@@ -9,7 +9,7 @@ import { basename, join, resolve } from "node:path";
 import { eq } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { flushDB } from "../../db/connection.js";
-import { CASCADES, FILE_BACKED_TABLES } from "../../db/file-backed-store.js";
+import { CASCADE_DANGLING_EXEMPT_PREFIXES, CASCADES, FILE_BACKED_TABLES } from "../../db/file-backed-store.js";
 import { getFileTableConfig, isFileTable, type AnyFileColumn, type AnyFileTable } from "../../db/file-schema.js";
 import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
@@ -5195,11 +5195,15 @@ export class MariDbService {
 
     for (const cascade of CASCADES) {
       if (table && table !== cascade.child && table !== cascade.parent) continue;
+      // Refs this cascade declares dangling BY DESIGN (#5405: experience-state rows imported
+      // at an anchor the destination chat never had). See CASCADE_DANGLING_EXEMPT_PREFIXES.
+      const exemptPrefix = CASCADE_DANGLING_EXEMPT_PREFIXES[`${cascade.child}.${cascade.childKey}`];
       const parents = new Set(
         (await getRows(cascade.parent)).map((row) => row[cascade.parentKey]).filter((id) => typeof id === "string"),
       );
       for (const child of await getRows(cascade.child)) {
         const ref = child[cascade.childKey];
+        if (typeof ref === "string" && exemptPrefix && ref.startsWith(exemptPrefix)) continue;
         if (typeof ref === "string" && ref && !parents.has(ref)) {
           issues.push({
             level: "error",
@@ -7820,6 +7824,9 @@ export class MariDbService {
       for (const cascade of CASCADES.filter((entry) => entry.child === change.table)) {
         const ref = change.afterRaw?.[cascade.childKey];
         if (typeof ref !== "string" || !ref) continue;
+        // Same by-design exemption the full validate() walk applies (#5405).
+        const exemptPrefix = CASCADE_DANGLING_EXEMPT_PREFIXES[`${cascade.child}.${cascade.childKey}`];
+        if (exemptPrefix && ref.startsWith(exemptPrefix)) continue;
         const parentInsertedOrUpdated = changes.some(
           (entry) =>
             entry.table === cascade.parent && entry.action !== "delete" && entry.afterRaw?.[cascade.parentKey] === ref,

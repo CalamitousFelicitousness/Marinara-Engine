@@ -488,6 +488,35 @@ const DURABLE_ON_COMMIT_TABLES = new Set<string>([
   "slurp_fan_activity_state",
 ]);
 
+/**
+ * Anchor prefix an experience-state import stamps on a row whose exported anchor is not a
+ * message of the DESTINATION chat (#5405) — a campaign replayed into a different chat, or one
+ * whose anchor message was deleted before the re-import.
+ *
+ * Two properties make it load-bearing rather than cosmetic:
+ *   - The `messages -> game_engine_state` cascade below matches on `messageId` ALONE, never
+ *     scoped by chatId. Storing the caller-supplied id verbatim would let the SOURCE chat's
+ *     message deletions silently destroy the imported campaign in the destination chat.
+ *     A prefixed id can never equal a real `messages.id`, so no cascade can ever match it.
+ *   - The row is still perfectly usable: the experience-state GET falls back to the latest
+ *     committed/latest row when the visible anchor has no save of its own, which is exactly
+ *     how an imported campaign becomes playable.
+ * These anchors are therefore DANGLING BY DESIGN, which is why the
+ * `game_engine_state.messageId` cascade is listed in CASCADE_DANGLING_EXEMPT_PREFIXES below —
+ * otherwise `mari db validate` would report every imported row as an integrity error.
+ */
+export const IMPORTED_GAME_ENGINE_ANCHOR_PREFIX = "imported:";
+
+/**
+ * Child references that are DANGLING BY DESIGN and must not be reported as integrity errors.
+ * Keyed by `<child table>.<child key>` of the CASCADES entry they exempt; a ref starting with
+ * the mapped prefix is skipped by the dangling-reference walks in `MariDbService.validate` and
+ * `validateTouchedRows`. Keep this list tiny — the default must stay "a dangling ref is a bug".
+ */
+export const CASCADE_DANGLING_EXEMPT_PREFIXES: Readonly<Record<string, string>> = {
+  "game_engine_state.messageId": IMPORTED_GAME_ENGINE_ANCHOR_PREFIX,
+};
+
 export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; parentKey: string; childKey: string }> =
   [
     {
@@ -596,6 +625,9 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "messages", child: "game_state_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "spatial_context_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "game_checkpoints", parentKey: "id", childKey: "messageId" },
+    // Matched on messageId ALONE — never scoped by chatId. See
+    // IMPORTED_GAME_ENGINE_ANCHOR_PREFIX above for why the experience-state import must not
+    // store a foreign chat's message ids verbatim, and for its validate() exemption.
     { parent: "messages", child: "game_engine_state", parentKey: "id", childKey: "messageId" },
     { parent: "game_state_snapshots", child: "game_checkpoints", parentKey: "id", childKey: "snapshotId" },
     { parent: "conversation_call_sessions", child: "conversation_call_messages", parentKey: "id", childKey: "callId" },

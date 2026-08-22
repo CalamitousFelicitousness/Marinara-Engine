@@ -2810,6 +2810,28 @@ function buildAgentExtras(
   const parts: string[] = [];
   const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
 
+  const capabilityContexts = context.memory._capabilityAgentContexts;
+  if (capabilityContexts && typeof capabilityContexts === "object" && !Array.isArray(capabilityContexts)) {
+    for (const agentType of [...new Set(agentTypes)]) {
+      const value = (capabilityContexts as Record<string, unknown>)[agentType];
+      if (value === null || value === undefined) continue;
+      let serialized: string | undefined;
+      try {
+        serialized = JSON.stringify(value);
+      } catch (error) {
+        logger.warn(error, "Capability agent runtime context serialization failed for %s", agentType);
+        continue;
+      }
+      if (serialized === undefined) {
+        logger.warn("Capability agent runtime context for %s is not serializable", agentType);
+        continue;
+      }
+      parts.push(`<agent_runtime_context agent="${escapeXml(agentType)}">`);
+      parts.push(escapeXml(serialized));
+      parts.push(`</agent_runtime_context>`);
+    }
+  }
+
   // Card Evolution Auditor needs the FULL character card (not just description)
   // so it can emit exact-match oldText edits. Gated on agent type because
   // forwarding every field would bloat context for agents that don't need it.
@@ -3161,6 +3183,7 @@ const AGENT_RESULT_TYPE_MAP: Record<string, AgentResultType> = {
   haptic: "haptic_command",
   cyoa: "cyoa_choices",
   "about-me-keeper": "about_me_update",
+  "memory-nag": "memory_nag",
   beholder: "context_injection",
 };
 
@@ -3243,6 +3266,7 @@ const JSON_AGENTS = new Set([
   "haptic",
   "cyoa",
   "beholder",
+  "memory-nag",
 ]);
 
 /**

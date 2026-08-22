@@ -1227,7 +1227,7 @@ async function stopWriterLeaseLiveness(liveness: WriterLeaseLiveness | null) {
   for (const socket of liveness.sockets) socket.destroy();
   await new Promise<void>((resolveClose, rejectClose) => {
     liveness.server.close((error) => {
-      if (error) rejectClose(error);
+      if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") rejectClose(error);
       else resolveClose();
     });
   });

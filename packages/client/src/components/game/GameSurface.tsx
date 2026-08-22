@@ -3165,6 +3165,10 @@ function GameSurfaceComponent({
   const [ambientVolume, setAmbientVolume] = useState(persistedGameAudioSettings.ambientVolume);
   const [audioSettingsHydrated, setAudioSettingsHydrated] = useState(false);
   const [chatHelpOpen, setChatHelpOpen] = useState(false);
+  useEffect(() => {
+    setChatHelpOpen(false);
+    setMobileActionsOpen(false);
+  }, [activeChatId]);
   const [compactHudWidgets, setCompactHudWidgets] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );

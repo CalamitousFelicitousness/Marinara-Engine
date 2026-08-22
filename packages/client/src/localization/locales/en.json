@@ -107,7 +107,7 @@
   "chat.delete.selection.delete": "Delete selected",
   "chat.delete.selection.unselectAll": "Unselect all",
   "chat.help.button": "Help",
-  "chat.help.exitInstruction": "Click or tap anywhere to exit help overlay.",
+  "chat.help.exitInstruction": "Click or tap anywhere to exit the help overlay.",
   "chat.help.hidePermanently": "Hide Help button permanently",
   "chat.help.mode.conversation": "Conversation Help",
   "chat.help.mode.game": "Game Help",

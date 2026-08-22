@@ -112,6 +112,14 @@ const COMMON_TOOLBAR_TARGETS: HelpTargetDefinition[] = [
   },
 ];
 
+function commonToolbarTargets(...ids: HelpTargetId[]): HelpTargetDefinition[] {
+  return ids.map((id) => {
+    const target = COMMON_TOOLBAR_TARGETS.find((candidate) => candidate.id === id);
+    if (!target) throw new Error(`Unknown common toolbar help target: ${id}`);
+    return target;
+  });
+}
+
 const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
   conversation: [
     {
@@ -149,21 +157,21 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       bodyKey: "chat.help.targets.agents.body",
     },
     HELP_TARGET,
-    ...COMMON_TOOLBAR_TARGETS.slice(0, 2),
+    ...commonToolbarTargets("branches", "agent-controls"),
     {
       id: "summary",
       selector: '[data-chat-help="summary"]',
       titleKey: "chat.help.targets.summary.title",
       bodyKey: "chat.help.targets.summary.body",
     },
-    ...COMMON_TOOLBAR_TARGETS.slice(2, 3),
+    ...commonToolbarTargets("context"),
     {
       id: "author-notes",
       selector: '[data-chat-help="author-notes"]',
       titleKey: "chat.help.targets.authorNotes.title",
       bodyKey: "chat.help.targets.authorNotes.body",
     },
-    ...COMMON_TOOLBAR_TARGETS.slice(3),
+    ...commonToolbarTargets("gallery", "connected-chat", "search", "settings"),
     {
       id: "messages",
       virtual: "messages",
@@ -197,7 +205,7 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       bodyKey: "chat.help.targets.sceneMedia.body",
     },
     HELP_TARGET,
-    ...COMMON_TOOLBAR_TARGETS.slice(0, 1),
+    ...commonToolbarTargets("branches"),
     {
       id: "retry",
       selector: '[data-chat-help="retry"]',
@@ -222,8 +230,7 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       titleKey: "chat.help.targets.assets.title",
       bodyKey: "chat.help.targets.assets.body",
     },
-    ...COMMON_TOOLBAR_TARGETS.slice(2, 5),
-    ...COMMON_TOOLBAR_TARGETS.slice(6),
+    ...commonToolbarTargets("context", "gallery", "connected-chat", "settings"),
     {
       id: "widgets",
       selector: "[data-game-widget-rail]",
@@ -309,9 +316,10 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement): Re
 }
 
 function measureTargets(mode: ChatMode) {
-  const root = Array.from(document.querySelectorAll<HTMLElement>(`[data-chat-mode="${mode}"]`)).find(
-    (element) => element.getBoundingClientRect().width > 1 && element.getBoundingClientRect().height > 1,
-  );
+  const root = Array.from(document.querySelectorAll<HTMLElement>(`[data-chat-mode="${mode}"]`)).find((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.width > 1 && rect.height > 1;
+  });
   if (!root) return { rootRect: null, targets: [] as MeasuredTarget[] };
 
   const viewportWidth = window.innerWidth;
@@ -419,7 +427,7 @@ export function ChatHelpOverlay({
   useEffect(() => {
     if (!open) return;
     let frame = 0;
-    const update = () => {
+    const measure = () => {
       const next = measureTargets(mode);
       const signature = measurementsSignature(next.rootRect, next.targets);
       if (signature !== measurementSignatureRef.current) {
@@ -427,10 +435,27 @@ export function ChatHelpOverlay({
         setRootRect(next.rootRect);
         setTargets(next.targets);
       }
-      frame = window.requestAnimationFrame(update);
     };
-    update();
-    return () => window.cancelAnimationFrame(frame);
+    const scheduleMeasure = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(scheduleMeasure);
+    for (const element of document.querySelectorAll<HTMLElement>(`[data-chat-mode="${mode}"]`)) {
+      observer.observe(element);
+    }
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, true);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure, true);
+    };
   }, [mode, open]);
 
   useEffect(() => {

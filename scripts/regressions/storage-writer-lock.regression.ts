@@ -75,6 +75,9 @@ async function leaveStaleSocket(path: string) {
   );
   await new Promise<void>((resolveReady, rejectReady) => {
     child.once("error", rejectReady);
+    child.once("exit", (code, signal) => {
+      rejectReady(new Error(`Stale-socket helper exited before listening (code=${code}, signal=${signal})`));
+    });
     child.stdout!.once("data", () => resolveReady());
   });
   child.kill("SIGKILL");

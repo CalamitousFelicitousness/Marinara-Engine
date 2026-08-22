@@ -408,6 +408,28 @@ Follow-up, after the first render landed and the tree proved unreadable against 
   rendered extras, so a featured character showed none of the data the API returned. This is a
   fourth upstream file patched.
 
+### Detached tracker panel leaves the docked panel unresponsive
+
+`AppShell.tsx` created one `trackerPanelHost` div for the lifetime of the shell and physically moved
+it into the detached window's document (`TrackerPanelDetachedWindow` appends it to `popup.document.body`).
+
+React attaches its delegated event listeners to a portal container once, in `preparePortalMount`, and
+marks the node so it never attaches again. Closing the movable window tears down that document and
+drops the listeners with it. The node was then moved back into the main document, so the panel
+rendered normally and CSS `:active` still fired on its buttons, but no handler ran: React had a live
+tree pointed at a container nothing was listening on.
+
+Reproduced by closing the movable window directly rather than using the Dock button. The Dock button
+path happens to survive because it closes the popup from the opener, so nothing else changes.
+
+Fix: mint a fresh host node when a detach session ends. A new container makes React unmount the old
+portal and run `preparePortalMount` again on a node in the live document. Patch is
+`createTrackerPanelHost()` plus one effect keyed on the detached flag, in `AppShell.tsx` -- an
+upstream file this fork already patches elsewhere.
+
+Not covered by a regression: the failure needs a real second browsing context, which the smoke suite
+does not drive.
+
 ### Message action row wraps on narrow phones
 
 `ChatMessage.tsx` renders the per-message action row (copy, edit, branch, delete, and the

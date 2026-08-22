@@ -129,6 +129,12 @@ const CENTER_COMPACT_WIDTH = 768;
 const CENTER_COMPACT_HYSTERESIS = 80;
 const CENTER_COMPACT_SCAN_DEPTH = 6;
 
+function createTrackerPanelHost() {
+  const host = document.createElement("div");
+  host.style.display = "contents";
+  return host;
+}
+
 function TrackerPanelHostSlot({ host }: { host: HTMLElement }) {
   const slotRef = useRef<HTMLDivElement>(null);
 
@@ -390,11 +396,8 @@ export function AppShell() {
   const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
   const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
   const detachTrackerPanelPendingRef = useRef(false);
-  const [trackerPanelHost] = useState(() => {
-    const host = document.createElement("div");
-    host.style.display = "contents";
-    return host;
-  });
+  const [trackerPanelHost, setTrackerPanelHost] = useState(createTrackerPanelHost);
+  const trackerPanelWasDetachedRef = useRef(false);
   const { queuePersonaPortraitSave, flushPersonaPortraitSave } = usePersonaPortraitSaveCoordinator();
   const trackerPanelHasCustomBackground =
     trackerPanelBackgroundColor.trim().toLowerCase() !== TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR;
@@ -865,6 +868,20 @@ export function AppShell() {
     },
     [activeChatId, setTrackerPanelOpen],
   );
+
+  // Detaching moves the host node into the popup document. React attaches its
+  // delegated listeners to a portal container once and marks the node so it
+  // never re-attaches, and the popup's teardown drops those listeners -- so a
+  // re-docked panel renders but every handler is dead. A fresh node re-arms it.
+  useEffect(() => {
+    if (trackerPanelDetached) {
+      trackerPanelWasDetachedRef.current = true;
+      return;
+    }
+    if (!trackerPanelWasDetachedRef.current) return;
+    trackerPanelWasDetachedRef.current = false;
+    setTrackerPanelHost(createTrackerPanelHost());
+  }, [trackerPanelDetached]);
 
   const professorMariFloatingActive =
     hasProfessorMariFloatingFollowup() &&

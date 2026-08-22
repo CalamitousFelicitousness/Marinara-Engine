@@ -20,11 +20,13 @@ import {
   mergeTrackerNamedEntries,
   normalizePersonaStats,
   normalizeCharacterTrackerCustomFieldDefaults,
+  normalizeRpgStatPools,
   type CharacterData,
   type CharacterStat,
   type CustomTrackerField,
   type PlayerStats,
   type PresentCharacter,
+  type RPGStatsConfig,
   type TrackerPreset,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
@@ -126,8 +128,24 @@ function presetFieldsAsTrackerFields(preset: TrackerPreset, key: "characterField
   })) satisfies CustomTrackerField[];
 }
 
-/** Build a bare tracker entry for a card the tracker has not seen yet. */
-async function buildBarePresentCharacter(app: FastifyInstance, characterId: string): Promise<PresentCharacter | null> {
+interface CardTrackerDefaults {
+  /** `extensions.trackerCustomFieldDefaults`, the card's own text rows. */
+  fields: Record<string, string>;
+  /** `extensions.rpgStats.pools`, empty unless the card enables RPG Stats. */
+  stats: CharacterStat[];
+  /** Ready-made tracker entry for a card this chat has not seen yet. */
+  entry: PresentCharacter;
+}
+
+/**
+ * Read one card's tracker defaults: the middle layer between the preset and
+ * whatever the chat already tracks.
+ *
+ * The card's own `rpgStats.enabled` toggle gates its own stats, matching
+ * upstream's seeding pass. Preset stats deliberately ignore that toggle; see
+ * `applyTrackerPresetToChat`.
+ */
+async function readCardTrackerDefaults(app: FastifyInstance, characterId: string): Promise<CardTrackerDefaults | null> {
   const row = await createCharactersStorage(app.db).getById(characterId);
   if (!row) return null;
   let data: CharacterData;
@@ -137,32 +155,56 @@ async function buildBarePresentCharacter(app: FastifyInstance, characterId: stri
     return null;
   }
   const extensions = (data.extensions ?? {}) as Record<string, unknown>;
+  const rpgStats = extensions.rpgStats as RPGStatsConfig | undefined;
   return {
-    characterId,
-    name: data.name || "Character",
-    emoji: "👤",
-    mood: "",
-    appearance: typeof extensions.appearance === "string" ? extensions.appearance : null,
-    outfit: null,
-    avatarPath: row.avatarPath ?? null,
-    avatarCrop: extensions.avatarCrop ?? null,
-    customFields: {},
-    stats: [],
-    thoughts: null,
+    fields: characterTrackerCustomFieldDefaultsToRecord(extensions.trackerCustomFieldDefaults),
+    stats: rpgStats?.enabled
+      ? normalizeRpgStatPools(rpgStats).map((pool) => ({
+          name: pool.name,
+          value: pool.value,
+          max: pool.max,
+          color: pool.color,
+        }))
+      : [],
+    entry: {
+      characterId,
+      name: data.name || "Character",
+      emoji: "👤",
+      mood: "",
+      appearance: typeof extensions.appearance === "string" ? extensions.appearance : null,
+      outfit: null,
+      avatarPath: row.avatarPath ?? null,
+      avatarCrop: extensions.avatarCrop ?? null,
+      customFields: {},
+      stats: [],
+      thoughts: null,
+    },
   };
 }
 
 /**
  * Apply a tracker preset to one Roleplay chat.
  *
- * Additive in both directions: existing tracker values always win a name
- * collision, so re-applying is idempotent and never resets a tracked value.
- * Preset rows the chat does not have yet are appended.
+ * One chain, run identically for characters and the persona:
  *
- * Preset stats apply regardless of a card's `rpgStats.enabled` toggle. That
- * toggle defaults to off and is untouched on most libraries, so gating on it
- * would make preset stats a no-op exactly where the preset is most wanted. Opt
- * out by leaving stats out of the preset or setting the chat override to none.
+ *     preset  ->  card  ->  live tracker state
+ *
+ * Later layers win a name collision, so card values beat preset values and a
+ * value the chat already tracks beats both. Applying is therefore additive and
+ * idempotent: it never resets a tracked value, and rows the chat lacks are
+ * appended in preset order so every card lays out the same way.
+ *
+ * The card layer is read here rather than inherited from
+ * `chats.routes.ts#seedNewRoleplayChatTrackerDefaults`, which runs only at chat
+ * creation and character-add. Without it, Apply on an existing chat picked up
+ * persona card edits but not character card edits.
+ *
+ * Preset stats apply regardless of a card's `rpgStats.enabled` toggle, the one
+ * deliberate break in the symmetry. That toggle defaults to off and is
+ * untouched on most libraries, so gating on it would make preset stats a no-op
+ * exactly where the preset is most wanted. The card's own stats still respect
+ * it. Opt out by leaving stats out of the preset, or setting the chat override
+ * to none.
  */
 export async function applyTrackerPresetToChat(
   app: FastifyInstance,
@@ -215,24 +257,40 @@ export async function applyTrackerPresetToChat(
       return { ...character };
     });
 
+    // One read per card, reused for both the missing-entry case and the merge.
+    const cardIds = new Set<string>(options.characterIds);
+    for (const character of nextCharacters) {
+      if (typeof character?.characterId === "string" && character.characterId.trim()) {
+        cardIds.add(character.characterId);
+      }
+    }
+    const cardDefaults = new Map<string, CardTrackerDefaults>();
+    for (const characterId of cardIds) {
+      const defaults = await readCardTrackerDefaults(app, characterId);
+      if (defaults) cardDefaults.set(characterId, defaults);
+    }
+
     for (const characterId of options.characterIds) {
       if (byId.has(characterId)) continue;
-      const bare = await buildBarePresentCharacter(app, characterId);
-      if (!bare) continue;
+      const defaults = cardDefaults.get(characterId);
+      if (!defaults) continue;
       byId.set(characterId, nextCharacters.length);
-      nextCharacters.push(bare);
+      nextCharacters.push(defaults.entry);
     }
 
     for (const character of nextCharacters) {
+      const defaults = character.characterId ? cardDefaults.get(character.characterId) : undefined;
       const existingFields =
         character.customFields && typeof character.customFields === "object" && !Array.isArray(character.customFields)
           ? (character.customFields as Record<string, string>)
           : {};
-      // Preset keys first so every card lays out identically; existing values
-      // win, so a tracked value is never reset by re-applying.
-      character.customFields = { ...presetFieldRecord, ...existingFields };
+      // preset -> card -> live state, the same chain the persona half runs.
+      // Preset keys land first so every card lays out identically; later
+      // spreads win on value, so a tracked value is never reset by re-applying.
+      // An agent-invented NPC has no card and simply skips the middle layer.
+      character.customFields = { ...presetFieldRecord, ...(defaults?.fields ?? {}), ...existingFields };
       character.stats = mergeTrackerNamedEntries(
-        presetCharacterStats,
+        mergeTrackerNamedEntries(presetCharacterStats, defaults?.stats ?? []),
         Array.isArray(character.stats) ? character.stats : [],
       );
       touchedCharacters += 1;

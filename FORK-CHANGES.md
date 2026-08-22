@@ -259,12 +259,22 @@ global `tracker_presets` table now holds reusable layouts: character text fields
 bars, persona text fields, and persona stat bars. `app_settings.activeTrackerPresetId` selects one
 app-wide and `ChatMetadata.trackerPresetId` overrides it per chat.
 
-A preset is a base layer, never a replacement. `mergeTrackerNamedEntries` puts preset rows first,
-so every card lays out identically, but a colliding card or live tracker value keeps the preset's
-slot and its own value. Applying is therefore additive and idempotent: pressing Apply twice, or
-mid-chat, never resets a tracked value. Preset stats deliberately ignore a card's
-`rpgStats.enabled` toggle, which defaults off and is untouched on most libraries; gating on it
-would make preset stats a no-op exactly where they are wanted.
+A preset is a base layer, never a replacement. One chain runs identically for characters and the
+persona: `preset -> card -> live tracker state`. `mergeTrackerNamedEntries` puts preset rows first
+so every card lays out identically, and later layers win a collision, so card values beat preset
+values and a value the chat already tracks beats both. Applying is therefore additive and
+idempotent: pressing Apply twice, or mid-chat, never resets a tracked value.
+
+The card layer is read inside the service rather than inherited from
+`seedNewRoleplayChatTrackerDefaults`, which runs only at chat creation and character-add. Without
+it the two halves diverged: Apply on an existing chat picked up persona card edits, because that
+branch reads the persona row directly, but not character card edits. Cards are read only, never
+written.
+
+Preset stats deliberately ignore a card's `rpgStats.enabled` toggle, the one intentional break in
+the symmetry, because that toggle defaults off and is untouched on most libraries; gating on it
+would make preset stats a no-op exactly where they are wanted. A card's own stats still respect
+it.
 
 Seeding is the whole mechanism, not a convenience. `buildLoreBlock` in `agent-executor.ts` emits
 `Configured RPG pools` and `Configured persona stat bars` but has no custom-field equivalent, so

@@ -108,33 +108,39 @@ try {
   // ── Seeding a chat whose card already configures one of the preset's fields ──
   const card = await characters.create({
     name: "Amy",
-    data: {
-      name: "Amy",
-      description: "",
-      personality: "",
-      scenario: "",
-      first_mes: "",
-      mes_example: "",
-      creator_notes: "",
-      system_prompt: "",
-      post_history_instructions: "",
-      tags: [],
-      creator: "",
-      character_version: "1.0",
-      alternate_greetings: [],
-      character_book: null,
-      extensions: {
-        talkativeness: 0.5,
-        fav: false,
-        world: "",
-        depth_prompt: { prompt: "", depth: 4 },
-        backstory: "",
-        appearance: "",
-        trackerCustomFieldDefaults: [{ name: "Outfit", value: "school uniform" }],
-      },
+    description: "",
+    personality: "",
+    scenario: "",
+    first_mes: "",
+    mes_example: "",
+    creator_notes: "",
+    system_prompt: "",
+    post_history_instructions: "",
+    tags: [],
+    creator: "",
+    character_version: "1.0",
+    alternate_greetings: [],
+    character_book: null,
+    extensions: {
+      talkativeness: 0.5,
+      fav: false,
+      world: "",
+      depth_prompt: { prompt: "", depth: 4 },
+      backstory: "",
+      appearance: "",
+      trackerCustomFieldDefaults: [{ name: "Outfit", value: "school uniform" }],
     },
   } as never);
   assert.ok(card);
+  // Guard the fixture itself: create() takes CharacterData, and a { name, data }
+  // wrapper silently nests extensions one level too deep, leaving the card with
+  // no tracker defaults and every card-layer assertion below vacuously green.
+  assert.equal(
+    (JSON.parse(String(card.data)) as { extensions?: { trackerCustomFieldDefaults?: unknown[] } }).extensions
+      ?.trackerCustomFieldDefaults?.length,
+    1,
+    "fixture card must actually carry its tracker field default",
+  );
 
   const chat = await chats.create({
     name: "Preset chat",
@@ -163,10 +169,16 @@ try {
     ["Outfit", "Injuries"],
     "preset order defines the layout even when a card supplies one of the fields",
   );
-  assert.equal(seeded[0]!.customFields.Outfit, "casual", "a bare entry takes the preset's own starting value");
+  assert.equal(
+    seeded[0]!.customFields.Outfit,
+    "school uniform",
+    "the card layer beats the preset's starting value, without card seeding having run",
+  );
+  assert.equal(seeded[0]!.customFields.Injuries, "none", "a preset-only row keeps the preset's starting value");
   assert.deepEqual(
     seeded[0]!.stats.map((stat) => stat.name),
     ["Stamina"],
+    "the card has RPG Stats disabled, so it contributes no bars",
   );
 
   // ── Live values survive re-application ──
@@ -203,6 +215,44 @@ try {
     "Injuries",
     "Scent",
   ]);
+
+  // ── A card edited after the chat exists is picked up by Apply ──
+  // The card-owned seeding pass in chats.routes.ts runs only at chat creation
+  // and character-add, so without the card layer read here these edits would
+  // never reach an existing chat.
+  await characters.update(card.id, {
+    extensions: {
+      trackerCustomFieldDefaults: [
+        { name: "Outfit", value: "school uniform" },
+        { name: "Familiar", value: "black cat" },
+      ],
+      rpgStats: {
+        enabled: true,
+        attributes: [],
+        hp: { value: 70, max: 70 },
+        pools: [{ name: "Resolve", value: 70, max: 70, color: "#8b5cf6" }],
+      },
+    },
+  } as never);
+
+  await applyTrackerPresetToChat(app as never, { chatId: chat.id, mode: "roleplay", characterIds: [card.id] });
+  const afterCardEdit = await latestCharacters(chat.id);
+  assert.deepEqual(
+    Object.keys(afterCardEdit[0]!.customFields),
+    ["Outfit", "Injuries", "Scent", "Familiar"],
+    "a field added to the card after the chat existed is appended after the preset's rows",
+  );
+  assert.equal(afterCardEdit[0]!.customFields.Familiar, "black cat");
+  assert.equal(
+    afterCardEdit[0]!.customFields.Outfit,
+    "soaked raincoat",
+    "the live tracker value still beats the card, so the card layer cannot reset play state",
+  );
+  assert.deepEqual(
+    afterCardEdit[0]!.stats.map((stat) => stat.name),
+    ["Stamina", "Resolve"],
+    "enabling RPG Stats on the card contributes its pools behind the preset's",
+  );
 
   // ── Chat override beats the global selection; null opts out entirely ──
   const optedOut = await applyTrackerPresetToChat(app as never, {

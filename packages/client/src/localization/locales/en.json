@@ -198,6 +198,7 @@
   "chat.message.thoughts.collapse": "Collapse thoughts",
   "chat.message.thoughts.duration_one": "Thought for {{count}} second…",
   "chat.message.thoughts.duration_other": "Thought for {{count}} seconds…",
+  "chat.message.thoughts.durationUnknown": "Thought…",
   "chat.message.thoughts.expand": "Expand thoughts",
   "chat.message.thoughts.title": "Model Thoughts",
   "chat.message.thoughts.unavailable.description": "The model used reasoning, but the provider did not return a displayable summary for this response.",

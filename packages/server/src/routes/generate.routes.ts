@@ -5563,18 +5563,25 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
         };
+        const recordReasoningDuration = (text: string) => {
+          if (text.trim() && receivedThinking && generationStartedAt !== null && reasoningDurationMs === null) {
+            reasoningDurationMs = Math.max(1, Date.now() - generationStartedAt);
+          }
+        };
         const sendTokenTextChunked = async (text: string) => {
           const visibleText = spatialDirectiveStreamFilter?.push(text) ?? text;
           if (visibleText) {
-            if (receivedThinking && generationStartedAt !== null && reasoningDurationMs === null) {
-              reasoningDurationMs = Math.max(1, Date.now() - generationStartedAt);
-            }
+            recordReasoningDuration(visibleText);
             await emitTokenTextChunked(visibleText);
           }
         };
         const writeContentChunked = async (text: string) => {
           fullResponse += text;
-          if (!holdForTextRewrite) await sendTokenTextChunked(text);
+          if (holdForTextRewrite) {
+            recordReasoningDuration(text);
+          } else {
+            await sendTokenTextChunked(text);
+          }
         };
 
         const resolveMessageSpeakerName = (message: any): string => {
@@ -6355,6 +6362,7 @@ export async function generateRoutes(app: FastifyInstance) {
               }
               fullResponse += chunk;
               if (holdForTextRewrite) {
+                recordReasoningDuration(chunk);
                 return;
               }
               await sendTokenTextChunked(chunk);
@@ -6707,6 +6715,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 // so the client sees progressive streaming.
                 const val = result.value;
                 if (holdForTextRewrite) {
+                  recordReasoningDuration(val);
                   result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
                   continue;
                 }
@@ -6739,7 +6748,10 @@ export async function generateRoutes(app: FastifyInstance) {
 
           if (!holdForTextRewrite) {
             const pendingSpatialText = spatialDirectiveStreamFilter?.flush() ?? "";
-            if (pendingSpatialText) await emitTokenTextChunked(pendingSpatialText);
+            if (pendingSpatialText) {
+              recordReasoningDuration(pendingSpatialText);
+              await emitTokenTextChunked(pendingSpatialText);
+            }
           }
 
           const durationMs = Date.now() - genStartTime;

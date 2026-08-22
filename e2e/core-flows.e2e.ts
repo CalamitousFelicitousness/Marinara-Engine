@@ -5680,6 +5680,15 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
       data: { generationInfo: { durationMs: 90_000, reasoningDurationMs: 2_200 } },
     });
     expect(generationInfoResponse.ok()).toBeTruthy();
+    const legacyMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+      data: {
+        role: "assistant",
+        content: "This older response has no saved reasoning duration.",
+        extra: { thinking: "Legacy inline reasoning." },
+      },
+    });
+    expect(legacyMessageResponse.ok()).toBeTruthy();
+    const legacyMessage = (await legacyMessageResponse.json()) as { id: string };
 
     await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
     await page.goto("/");
@@ -5729,6 +5738,11 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     expect(Math.max(...expandedLayoutSamples) - Math.min(...expandedLayoutSamples)).toBeLessThanOrEqual(0.5);
     await expect(savedThinking).toContainText("Saved inline reasoning.");
 
+    const legacyThinking = page
+      .locator(`[data-message-id="${legacyMessage.id}"]`)
+      .locator("[data-message-thinking-inline]");
+    await expect(legacyThinking.getByRole("button", { name: "Thought…" })).toHaveAttribute("aria-expanded", "false");
+
     await updateLiveReasoningState(page, chat.id, "start");
     await updateLiveReasoningState(page, chat.id, "append-thinking", "First live reasoning chunk.");
     const liveMessage = page.locator('[data-message-id="__streaming__"]');
@@ -5739,6 +5753,8 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
 
     await updateLiveReasoningState(page, chat.id, "append-thinking", " Second live reasoning chunk.");
     await expect(liveThinking).toContainText("First live reasoning chunk. Second live reasoning chunk.");
+    await updateLiveReasoningState(page, chat.id, "append-content", "\n  ");
+    await expect(liveThinkingButton).toHaveAttribute("aria-expanded", "true");
     await updateLiveReasoningState(page, chat.id, "append-content", "The visible response begins.");
     await expect(liveThinkingButton).toHaveAttribute("aria-expanded", "false");
     await expect(liveThinking).not.toContainText("First live reasoning chunk.");
@@ -7216,7 +7232,8 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
       await expect(overlay).toHaveCount(0);
     }
   } finally {
-    await Promise.allSettled(chats.map((chat) => request.delete(`/api/chats/${chat.id}`)));
+    const cleanupResponses = await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
+    for (const response of cleanupResponses) expect(response.ok()).toBeTruthy();
   }
 });
 

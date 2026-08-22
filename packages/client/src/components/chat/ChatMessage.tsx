@@ -962,9 +962,13 @@ function RoleplayThinkingDisclosure({
     if (!keepExpanded) setExpanded(false);
   }, [isStreaming, keepExpanded, outputStarted]);
 
-  const displayedDurationMs =
-    capturedReasoningDurationMs ?? (isStreaming ? liveDurationMs : durationMs) ?? liveDurationMs;
-  const seconds = Math.max(1, Math.round(displayedDurationMs / 1_000));
+  const displayedDurationMs = capturedReasoningDurationMs ?? (isStreaming ? liveDurationMs : durationMs);
+  const durationLabel =
+    displayedDurationMs === null
+      ? t("chat.message.thoughts.durationUnknown")
+      : t("chat.message.thoughts.duration", {
+          count: Math.max(1, Math.round(displayedDurationMs / 1_000)),
+        });
 
   return (
     <div
@@ -984,7 +988,7 @@ function RoleplayThinkingDisclosure({
           aria-hidden="true"
           className={cn("shrink-0", isStreaming && !outputStarted && "animate-pulse")}
         />
-        <span className="min-w-0 flex-1">{t("chat.message.thoughts.duration", { count: seconds })}</span>
+        <span className="min-w-0 flex-1">{durationLabel}</span>
         <ChevronRight
           size="0.875rem"
           aria-hidden="true"

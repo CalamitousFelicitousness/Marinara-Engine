@@ -315,6 +315,9 @@ test("Settings switches share one centered track and thumb geometry", async ({ p
   ]) {
     await page.getByRole("tab", { name: label, exact: true }).click();
     const tracks = page.locator(`#settings-panel-${id} [data-settings-switch-track]`);
+    await tracks.locator("[data-settings-switch-thumb]").evaluateAll(async (thumbs) => {
+      await Promise.all(thumbs.flatMap((thumb) => thumb.getAnimations().map((animation) => animation.finished)));
+    });
     const metrics = await tracks.evaluateAll((elements) =>
       elements.map((track) => {
         const thumb = track.querySelector<HTMLElement>("[data-settings-switch-thumb]");

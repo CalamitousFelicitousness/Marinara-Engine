@@ -7450,7 +7450,7 @@
   "ui.panels.connectionspanel.deleteConnections": "Delete Connections",
   "ui.panels.connectionspanel.deletedValue1ConnectionValue2": "Deleted {{value1}} connection{{value2}}",
   "ui.panels.connectionspanel.deleteValue1ConnectionValue2ThisCannotBeUndone": "Delete {{value1}} connection{{value2}}? This cannot be undone.",
-  "ui.panels.connectionspanel.dismissPermanently": "Dismiss permanently",
+  "ui.panels.connectionspanel.dismissPermanently": "Dismiss",
   "ui.panels.connectionspanel.dragAndDropConnectionsToFoldersDoubleClickOr": "Drag and drop connections to folders, double-click or double-tap to rename",
   "ui.panels.connectionspanel.exitConnectionSelectionMode": "Exit connection selection mode",
   "ui.panels.connectionspanel.exportConnectionData": "Export Connection Data",

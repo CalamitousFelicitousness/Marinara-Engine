@@ -57,6 +57,7 @@ const stateStore = createGameStateStorage(db);
 const checkpointSvc = createCheckpointService(db);
 const presets = createChatPresetsStorage(db);
 const createdChatIds: string[] = [];
+const createdPresetIds: string[] = [];
 
 /**
  * Hook fired synchronously for every `chats` row the ROUTES insert (case 9 only).
@@ -716,6 +717,7 @@ try {
       },
     } as Parameters<typeof presets.create>[0]);
     assert.ok(preset);
+    createdPresetIds.push(preset.id);
     assert.equal(
       (preset.settings.metadata as Record<string, unknown> | undefined)?.metadataWriteOrdinals,
       undefined,
@@ -748,6 +750,9 @@ try {
   for (const chatId of createdChatIds) {
     await engineStore.deleteForChat(chatId).catch(() => undefined);
     await chats.remove(chatId).catch(() => undefined);
+  }
+  for (const presetId of createdPresetIds) {
+    await presets.remove(presetId).catch(() => undefined);
   }
   await app.close();
   await closeDB();

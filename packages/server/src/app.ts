@@ -48,7 +48,7 @@ import { initializeCapabilityAgentRegistry } from "./services/capability-package
 import { capabilityPackageManager } from "./services/capability-packages/package-manager.service.js";
 import { capabilityModuleRuntime } from "./services/capability-packages/capability-module-runtime.service.js";
 import { migrateLegacyCapabilities } from "./services/capability-packages/legacy-capability-migration.js";
-import { createClientStaticOptions } from "./config/client-static-config.js";
+import { createClientStaticOptions, isNonSpaRequest } from "./config/client-static-config.js";
 import { hostValidationHook } from "./middleware/host-validation.js";
 import { androidLocalAuthHook, androidLocalLoginRoute } from "./middleware/android-local-auth.js";
 import { arch, platform, release } from "node:os";
@@ -285,9 +285,10 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   if (existsSync(clientIndex)) {
     await app.register(fastifyStatic, createClientStaticOptions(clientDist));
 
-    // SPA fallback — serve index.html for non-API routes
+    // SPA fallback — serve index.html for navigation routes only. Hashed asset
+    // requests must 404 instead, or a stale tab gets index.html for a .js URL.
     app.setNotFoundHandler(async (req, reply) => {
-      if (req.raw.url?.startsWith("/api/")) {
+      if (isNonSpaRequest(req.raw.url)) {
         return reply.status(404).send({ error: "Not Found" });
       }
 

@@ -457,6 +457,23 @@ That contract changed deliberately, so the assertion now pins width and density 
 still red on the pre-existing upstream `ConnectionEditor.tsx` failure recorded in the
 marinara-validation skill.
 
+### SPA fallback no longer answers asset requests with the app shell
+
+`@fastify/static` is registered with `wildcard: false`, so it enumerates `dist` at registration time.
+Any file written afterwards -- a launcher auto-update, or a rebuild under a running server -- has no
+route and lands on the not-found handler, which returned `index.html` for everything outside `/api/`.
+A hashed chunk request therefore got `200 text/html`, and the browser reported
+`Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"`.
+That reads as a broken app rather than a stale tab, and it defeats the client's own
+`vite:preloadError` recovery in `lib/browser-runtime.ts`, which clears the service worker and reloads.
+
+`isNonSpaRequest` in `config/client-static-config.ts` now excludes `/assets/` alongside `/api/`, so a
+missing chunk 404s. Verified live: the running server returned 3024 bytes of `text/html` for
+`/assets/index-JO7zOKHI.js` while that file existed on disk.
+
+Pinned by `scripts/regressions/spa-fallback.regression.ts`. The predicate is a separate export so the
+lane does not need to boot the whole app.
+
 ### Game-state characters are repaired at the boundary
 
 `PresentCharacter` declares `characterId`, `name`, `emoji`, `mood`, `customFields` and `stats` as

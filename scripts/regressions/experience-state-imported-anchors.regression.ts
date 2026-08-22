@@ -12,6 +12,9 @@
 //      reference (the CASCADE_DANGLING_EXEMPT_PREFIXES exemption).
 //   2. The exemption is narrow: a genuinely dangling, unprefixed anchor is STILL an error, and
 //      the sibling chatId cascade on the same table is untouched.
+//   3. The prefix is RESERVED: the one message writer that takes a caller-supplied id refuses
+//      to mint a real message under it, so the "no cascade can ever match a synthetic anchor"
+//      invariant the exemption rests on is enforced rather than assumed.
 // The pre-commit walk (validateTouchedRows) reads the same exemption table through the same
 // `<child>.<childKey>` lookup and is not separately covered here.
 //
@@ -21,6 +24,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+// Type-only, so it is erased before the FILE_STORAGE_DIR assignment the dynamic imports below
+// depend on.
+import type { MariDbValidationIssue } from "../../packages/shared/src/types/professor-mari-workspace.js";
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-imported-anchor-db-"));
 const previousStorageDir = process.env.FILE_STORAGE_DIR;
@@ -31,10 +37,16 @@ const { MariDbService } = await import("../../packages/server/src/services/mari-
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameEngineStateStorage } =
   await import("../../packages/server/src/services/storage/game-engine-state.storage.js");
+const { createCapabilityPersistenceHost } =
+  await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
+const { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } = await import("../../packages/server/src/db/file-backed-store.js");
 
 const db = await createFileNativeDB();
 const GAME_TYPE = "experience:imported-anchor-test";
-const danglingRefs = (issues: { table: string; message: string }[]) =>
+// MariDbValidationIssue, not a narrowed literal: validate() declares `table` OPTIONAL, and the
+// assertions below read `issue.id`. A hand-written `{ table: string; message: string }[]` both
+// rejects `result.errors` and hides the `id` these cases depend on.
+const danglingRefs = (issues: MariDbValidationIssue[]) =>
   issues.filter((issue) => issue.table === "game_engine_state" && issue.message.startsWith("Dangling reference"));
 
 try {
@@ -98,6 +110,38 @@ try {
     ),
     "a dangling chatId is still an error even on a row whose messageId is exempt",
   );
+
+  // ── 3. The prefix is reserved against caller-supplied message ids ──
+  // The exemption above is only safe while no REAL message can carry the prefix: the
+  // messages -> game_engine_state cascade matches messageId alone, so a real message minted at
+  // "imported:X" would let its deletion reach an imported campaign in a DIFFERENT chat — the
+  // exact cross-chat destruction the synthetic anchor exists to prevent. Every other message
+  // writer builds its id with newId() (nanoid; no colon in the alphabet), so the capability
+  // host's createMessageWithSwipe is the only path that can violate it, and it must refuse.
+  const host = createCapabilityPersistenceHost(db);
+  const reservedChat = await chats.create({ name: "reserved prefix chat", mode: "game", characterIds: [] });
+  const baseMessage = {
+    swipeId: "swipe-reserved",
+    chatId: reservedChat.id,
+    role: "assistant" as const,
+    characterId: null,
+    content: "hello",
+    extra: {},
+    createdAt: new Date().toISOString(),
+  };
+  await assert.rejects(
+    () => host.createMessageWithSwipe({ ...baseMessage, id: `${IMPORTED_GAME_ENGINE_ANCHOR_PREFIX}forged` }),
+    /reserved/i,
+    "a caller-supplied message id under the reserved prefix is refused",
+  );
+  assert.equal(
+    (await chats.listMessages(reservedChat.id)).length,
+    0,
+    "and the refusal writes nothing — no message, no swipe",
+  );
+  // The reservation is a prefix rule, not a ban on the word: an ordinary id is still accepted.
+  const allowed = await host.createMessageWithSwipe({ ...baseMessage, id: "not-imported:forged" });
+  assert.equal(allowed.id, "not-imported:forged", "an id that merely CONTAINS the prefix is fine");
 
   console.log("experience-state imported-anchor validate regression passed");
 } finally {

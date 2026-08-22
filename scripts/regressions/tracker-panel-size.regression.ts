@@ -20,6 +20,11 @@ import {
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
 } from "../../packages/client/src/lib/tracker-panel-size.js";
+import {
+  resolveTrackerPanelDesktopWidth,
+  resolveTrackerPanelGutterWidth,
+} from "../../packages/client/src/lib/tracker-panel-layout.js";
+import { clampPanelWidth } from "../../packages/client/src/hooks/use-panel-resize.js";
 
 // ── The two axes really are independent ──
 // A preset pairs them, but nothing derives one from the other.
@@ -93,5 +98,33 @@ assert.equal(nearestTrackerPanelPreset(300), "compact");
 assert.equal(nearestTrackerPanelPreset(311), "standard");
 assert.equal(nearestTrackerPanelPreset(640), "expanded");
 assert.equal(nearestTrackerPanelPreset(0), "compact", "clamped before comparing");
+
+// ── The gutter is the drag ceiling ──
+// A drag that can exceed the room beside the chat column snaps back on release,
+// so the handle needs the gutter, not just the preferred width.
+const gutterArgs = {
+  mainLeft: 280,
+  mainRight: 1920,
+  chatColumnLeft: 636,
+  chatColumnRight: 1564,
+  side: "right" as const,
+  gap: 8,
+};
+assert.equal(resolveTrackerPanelGutterWidth(gutterArgs), 348);
+// Preferred width still wins while it fits.
+assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 340, ...gutterArgs }), 340);
+// And the gutter clamps once it does not.
+assert.equal(resolveTrackerPanelDesktopWidth({ preferredWidth: 640, ...gutterArgs }), 348);
+// A gutter narrower than the gap cannot go negative.
+assert.equal(
+  resolveTrackerPanelGutterWidth({ ...gutterArgs, chatColumnRight: 1919 }),
+  0,
+  "a collapsed gutter clamps to zero rather than inverting",
+);
+
+// ── The shared resize clamp ──
+assert.equal(clampPanelWidth(300, 240, 640), 300);
+assert.equal(clampPanelWidth(100, 240, 640), 240);
+assert.equal(clampPanelWidth(900, 240, 640), 640);
 
 console.log("tracker-panel-size regression passed.");

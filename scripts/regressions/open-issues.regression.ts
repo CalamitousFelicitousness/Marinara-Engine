@@ -6711,6 +6711,10 @@ const trackerMigrationProjection = (settings: Record<string, unknown>) => ({
   trackerPanelSectionOrder: settings.trackerPanelSectionOrder,
   summaryPopoverSettings: settings.summaryPopoverSettings,
   trackerPanelThoughtBubbleDisplay: settings.trackerPanelThoughtBubbleDisplay,
+  // Fork: the size profile split into an independent width and density, so a
+  // wider panel shows more rather than larger. An explicit legacy width wins.
+  trackerPanelWidth: settings.trackerPanelWidth,
+  trackerPanelDensity: settings.trackerPanelDensity,
   trackerPanelSizeProfile: settings.trackerPanelSizeProfile,
   trackerTemperatureUnit: settings.trackerTemperatureUnit,
   trackerPanelDockedThoughtsAlwaysVisible: settings.trackerPanelDockedThoughtsAlwaysVisible,
@@ -6735,7 +6739,9 @@ assert.deepEqual(trackerMigrationProjection(currentTrackerSettings), {
     collapseHiddenMessages: false,
   },
   trackerPanelThoughtBubbleDisplay: "floating",
-  trackerPanelSizeProfile: "compact",
+  trackerPanelWidth: 280,
+  trackerPanelDensity: "compact",
+  trackerPanelSizeProfile: undefined,
   trackerTemperatureUnit: "celsius",
   trackerPanelDockedThoughtsAlwaysVisible: false,
   quoteFormat: "straight",

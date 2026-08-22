@@ -8,18 +8,25 @@ interface TrackerPanelDesktopWidthInput {
   gap?: number;
 }
 
-/** Keep the desktop Tracker inside the free gutter beside the centered Roleplay chat column. */
-export function resolveTrackerPanelDesktopWidth({
-  preferredWidth,
+/**
+ * Room actually available beside the centered Roleplay chat column. This is the
+ * ceiling a resize drag must respect, otherwise releasing snaps the panel back.
+ */
+export function resolveTrackerPanelGutterWidth({
   mainLeft,
   mainRight,
   chatColumnLeft,
   chatColumnRight,
   side,
   gap = 0,
-}: TrackerPanelDesktopWidthInput) {
+}: Omit<TrackerPanelDesktopWidthInput, "preferredWidth">) {
   const gutterWidth = side === "left" ? chatColumnLeft - mainLeft : mainRight - chatColumnRight;
-  return Math.max(0, Math.min(preferredWidth, Math.floor(gutterWidth - gap)));
+  return Math.max(0, Math.floor(gutterWidth - gap));
+}
+
+/** Keep the desktop Tracker inside the free gutter beside the centered Roleplay chat column. */
+export function resolveTrackerPanelDesktopWidth({ preferredWidth, ...gutter }: TrackerPanelDesktopWidthInput) {
+  return Math.min(preferredWidth, resolveTrackerPanelGutterWidth(gutter));
 }
 
 /** Scale constrained Tracker contents while retaining a readable lower bound and responsive reflow. */

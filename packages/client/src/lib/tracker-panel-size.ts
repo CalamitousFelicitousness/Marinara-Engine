@@ -6,8 +6,9 @@
 // meant widening the panel enlarged its text instead of showing more of it, and
 // made a resize handle pointless.
 //
-// Pure and store-free on purpose: ui.store.ts touches localStorage at module
-// load, so nothing importable from a regression can live there.
+// Store-free on purpose: this is pure data plus the persisted-state migration,
+// so a regression can assert it without booting a Zustand store, and ui.store.ts
+// -- a file upstream edits constantly -- keeps only state and re-exports.
 
 export const TRACKER_PANEL_SIZE_PROFILES = ["compact", "standard", "expanded"] as const;
 /** A named width+density pairing. A preset, not the storage model. */

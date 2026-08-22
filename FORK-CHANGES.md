@@ -429,6 +429,34 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### One drag-resize primitive, and a resizable tracker panel
+
+`AppShell.tsx` carried two near-identical inline resize implementations (~40 lines each) for the left
+sidebar and the right panel, differing only in the clamp expression. The tracker had none. Rather
+than add a third copy, `packages/client/src/hooks/use-panel-resize.ts` now owns it, with two upgrades
+taken while extracting:
+
+- **Pointer events instead of mouse events**, with `setPointerCapture`, so touch and stylus work.
+  The old handlers listened for `mousemove`/`mouseup`, which never fire in the Android WebView wrapper.
+- **The live width can be published as a CSS custom property instead of React state.** The old
+  handlers called `setState` per `mousemove`, re-rendering the whole shell each frame. The tracker's
+  subtree is far larger and would visibly stutter, so its handle uses the variable path and never
+  re-renders during a drag; the sidebar and right panel keep their `onPreview` state for unchanged
+  behaviour, now coalesced to one update per frame.
+
+Keyboard handling and the `role="separator"` / `aria-valuenow` markup were already correct upstream
+and are preserved, with arrow directions now derived from which edge the panel is anchored to.
+Double-click resets to the nearest preset.
+
+`resolveTrackerPanelGutterWidth` is split out of `resolveTrackerPanelDesktopWidth` so the drag can be
+clamped to the room actually available beside the chat column; without it, dragging past the edge
+would snap back on release.
+
+`open-issues.regression.ts` asserted the old settings-sync projection carried `trackerPanelSizeProfile`.
+That contract changed deliberately, so the assertion now pins width and density instead. That lane is
+still red on the pre-existing upstream `ConnectionEditor.tsx` failure recorded in the
+marinara-validation skill.
+
 ### Detached tracker panel leaves the docked panel unresponsive
 
 `AppShell.tsx` created one `trackerPanelHost` div for the lifetime of the shell and physically moved

@@ -19,8 +19,12 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
+  TRACKER_PANEL_PRESETS,
+  TRACKER_PANEL_WIDTH_MAX,
+  TRACKER_PANEL_WIDTH_MIN,
   useUIStore,
 } from "../../stores/ui.store";
+import { clampPanelWidth, usePanelResize } from "../../hooks/use-panel-resize";
 import { useChatStore } from "../../stores/chat.store";
 import { useBackgroundAutonomousPolling } from "../../hooks/use-background-autonomous";
 import { useClearAutonomousUnread, useUpdateChatMetadata } from "../../hooks/use-chats";
@@ -37,7 +41,7 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
-import { resolveTrackerPanelContentScale, resolveTrackerPanelDesktopWidth } from "../../lib/tracker-panel-layout";
+import { resolveTrackerPanelContentScale, resolveTrackerPanelGutterWidth } from "../../lib/tracker-panel-layout";
 import {
   closeTrackerPanelWindow,
   openTrackerPanelWindow,
@@ -59,8 +63,6 @@ import {
   useCallback,
   useMemo,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -106,12 +108,6 @@ const OnboardingTutorial = lazy(() =>
   import("../onboarding/OnboardingTutorial").then((module) => ({ default: module.OnboardingTutorial })),
 );
 
-function clampWidth(width: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, width));
-}
-
-const PANEL_RESIZE_STEP = 16;
-const PANEL_RESIZE_LARGE_STEP = 48;
 const SHARED_SIDEBAR_WIDTH_MIN = Math.max(SIDEBAR_WIDTH_MIN, RIGHT_PANEL_WIDTH_MIN);
 const SHARED_SIDEBAR_WIDTH_MAX = Math.min(SIDEBAR_WIDTH_MAX, RIGHT_PANEL_WIDTH_MAX);
 const TRACKER_PANEL_EDGE_OFFSET = 8;
@@ -351,6 +347,7 @@ export function AppShell() {
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
   const trackerPanelStoredWidth = useUIStore((s) => s.trackerPanelWidth);
   const trackerPanelDensity = useUIStore((s) => s.trackerPanelDensity);
+  const setTrackerPanelWidth = useUIStore((s) => s.setTrackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const spatialMapDetailChatId = useUIStore((s) => s.spatialMapDetailChatId);
   const pendingSpatialMapDraftReview = useUIStore((s) => s.pendingSpatialMapDraftReview);
@@ -382,9 +379,7 @@ export function AppShell() {
   }, [closeAgentDetail, openRightPanel]);
   const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
   const [rightPanelDragWidth, setRightPanelDragWidth] = useState<number | null>(null);
-  const sidebarDragWidthRef = useRef<number | null>(null);
-  const rightPanelDragWidthRef = useRef<number | null>(null);
-  const sharedSidebarWidth = clampWidth(
+  const sharedSidebarWidth = clampPanelWidth(
     rightPanelWidth || sidebarWidth,
     SHARED_SIDEBAR_WIDTH_MIN,
     SHARED_SIDEBAR_WIDTH_MAX,
@@ -397,6 +392,8 @@ export function AppShell() {
     resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity) ?? nearestTrackerPanelPreset(trackerPanelWidth);
   const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
   const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
+  const [trackerPanelGutterWidth, setTrackerPanelGutterWidth] = useState(TRACKER_PANEL_WIDTH_MAX);
+  const shellRootRef = useRef<HTMLDivElement>(null);
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);
   const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
   const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
@@ -646,125 +643,52 @@ export function AppShell() {
     });
   }, [activeChat?.metadata, activeChatId, clearAutonomousUnread, clearUnread, isClearingAutonomousUnread]);
 
-  const startSidebarResize = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (shellOverlayMode) return;
-      event.preventDefault();
-      const originalCursor = document.body.style.cursor;
-      const originalUserSelect = document.body.style.userSelect;
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      sidebarDragWidthRef.current = sharedSidebarWidth;
-      setSidebarDragWidth(sharedSidebarWidth);
-
-      const onMove = (moveEvent: MouseEvent) => {
-        const nextWidth = clampWidth(moveEvent.clientX, SHARED_SIDEBAR_WIDTH_MIN, SHARED_SIDEBAR_WIDTH_MAX);
-        sidebarDragWidthRef.current = nextWidth;
-        setSidebarDragWidth(nextWidth);
-      };
-      let finished = false;
-      const finishResize = () => {
-        if (finished) return;
-        finished = true;
-        const nextWidth = sidebarDragWidthRef.current ?? sharedSidebarWidth;
-        setSidebarWidth(nextWidth);
-        setRightPanelWidth(nextWidth);
-        sidebarDragWidthRef.current = null;
-        setSidebarDragWidth(null);
-        document.body.style.cursor = originalCursor;
-        document.body.style.userSelect = originalUserSelect;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", finishResize);
-        window.removeEventListener("blur", finishResize);
-      };
-
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", finishResize);
-      window.addEventListener("blur", finishResize);
+  const commitSharedSidebarWidth = useCallback(
+    (nextWidth: number) => {
+      setSidebarWidth(nextWidth);
+      setRightPanelWidth(nextWidth);
     },
-    [setRightPanelWidth, setSidebarWidth, sharedSidebarWidth, shellOverlayMode],
+    [setRightPanelWidth, setSidebarWidth],
   );
 
-  const startRightPanelResize = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (shellOverlayMode) return;
-      event.preventDefault();
-      const originalCursor = document.body.style.cursor;
-      const originalUserSelect = document.body.style.userSelect;
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      rightPanelDragWidthRef.current = sharedSidebarWidth;
-      setRightPanelDragWidth(sharedSidebarWidth);
+  const sidebarResize = usePanelResize({
+    edge: "left",
+    width: sharedSidebarWidth,
+    min: SHARED_SIDEBAR_WIDTH_MIN,
+    max: SHARED_SIDEBAR_WIDTH_MAX,
+    disabled: shellOverlayMode,
+    label: localizeUi("ui.layout.appshell.resizeLeftSidebar"),
+    onCommit: commitSharedSidebarWidth,
+    onPreview: setSidebarDragWidth,
+  });
 
-      const onMove = (moveEvent: MouseEvent) => {
-        const nextWidth = clampWidth(
-          window.innerWidth - moveEvent.clientX,
-          SHARED_SIDEBAR_WIDTH_MIN,
-          SHARED_SIDEBAR_WIDTH_MAX,
-        );
-        rightPanelDragWidthRef.current = nextWidth;
-        setRightPanelDragWidth(nextWidth);
-      };
-      let finished = false;
-      const finishResize = () => {
-        if (finished) return;
-        finished = true;
-        const nextWidth = rightPanelDragWidthRef.current ?? sharedSidebarWidth;
-        setSidebarWidth(nextWidth);
-        setRightPanelWidth(nextWidth);
-        rightPanelDragWidthRef.current = null;
-        setRightPanelDragWidth(null);
-        document.body.style.cursor = originalCursor;
-        document.body.style.userSelect = originalUserSelect;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", finishResize);
-        window.removeEventListener("blur", finishResize);
-      };
+  const trackerPanelResize = usePanelResize({
+    edge: trackerPanelSide,
+    width: trackerPanelWidth,
+    min: TRACKER_PANEL_WIDTH_MIN,
+    // The gutter beside the chat column is the real ceiling; without it a drag
+    // past the edge would snap back on release.
+    max: Math.max(TRACKER_PANEL_WIDTH_MIN, Math.min(TRACKER_PANEL_WIDTH_MAX, trackerPanelGutterWidth)),
+    disabled: shellOverlayMode,
+    label: localizeUi("ui.layout.appshell.resizeTrackerPanel"),
+    onCommit: setTrackerPanelWidth,
+    // No onPreview: the panel follows this custom property so a drag never
+    // re-renders the tracker subtree.
+    previewVariable: "--mari-tracker-drag-width",
+    previewTarget: shellRootRef,
+    resetWidth: () => TRACKER_PANEL_PRESETS[nearestTrackerPanelPreset(trackerPanelWidth)].width,
+  });
 
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", finishResize);
-      window.addEventListener("blur", finishResize);
-    },
-    [setRightPanelWidth, setSidebarWidth, sharedSidebarWidth, shellOverlayMode],
-  );
-
-  const adjustSidebarWidth = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const step = event.shiftKey ? PANEL_RESIZE_LARGE_STEP : PANEL_RESIZE_STEP;
-      let nextWidth: number;
-
-      if (event.key === "ArrowLeft") nextWidth = sharedSidebarWidth - step;
-      else if (event.key === "ArrowRight") nextWidth = sharedSidebarWidth + step;
-      else if (event.key === "Home") nextWidth = SHARED_SIDEBAR_WIDTH_MIN;
-      else if (event.key === "End") nextWidth = SHARED_SIDEBAR_WIDTH_MAX;
-      else return;
-
-      event.preventDefault();
-      const clampedWidth = clampWidth(nextWidth, SHARED_SIDEBAR_WIDTH_MIN, SHARED_SIDEBAR_WIDTH_MAX);
-      setSidebarWidth(clampedWidth);
-      setRightPanelWidth(clampedWidth);
-    },
-    [setRightPanelWidth, setSidebarWidth, sharedSidebarWidth],
-  );
-
-  const adjustRightPanelWidth = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const step = event.shiftKey ? PANEL_RESIZE_LARGE_STEP : PANEL_RESIZE_STEP;
-      let nextWidth: number;
-
-      if (event.key === "ArrowLeft") nextWidth = sharedSidebarWidth + step;
-      else if (event.key === "ArrowRight") nextWidth = sharedSidebarWidth - step;
-      else if (event.key === "Home") nextWidth = SHARED_SIDEBAR_WIDTH_MIN;
-      else if (event.key === "End") nextWidth = SHARED_SIDEBAR_WIDTH_MAX;
-      else return;
-
-      event.preventDefault();
-      const clampedWidth = clampWidth(nextWidth, SHARED_SIDEBAR_WIDTH_MIN, SHARED_SIDEBAR_WIDTH_MAX);
-      setSidebarWidth(clampedWidth);
-      setRightPanelWidth(clampedWidth);
-    },
-    [setRightPanelWidth, setSidebarWidth, sharedSidebarWidth],
-  );
+  const rightPanelResize = usePanelResize({
+    edge: "right",
+    width: sharedSidebarWidth,
+    min: SHARED_SIDEBAR_WIDTH_MIN,
+    max: SHARED_SIDEBAR_WIDTH_MAX,
+    disabled: shellOverlayMode,
+    label: localizeUi("ui.layout.appshell.resizeRightSidebar"),
+    onCommit: commitSharedSidebarWidth,
+    onPreview: setRightPanelDragWidth,
+  });
 
   const detailView = regexDetailId ? (
     <RegexScriptEditor />
@@ -1101,8 +1025,7 @@ export function AppShell() {
         return false;
       }
 
-      const nextWidth = resolveTrackerPanelDesktopWidth({
-        preferredWidth: trackerPanelWidth,
+      const gutter = resolveTrackerPanelGutterWidth({
         mainLeft: mainRect.left,
         mainRight: mainRect.right,
         chatColumnLeft: chatColumnRect.left,
@@ -1110,6 +1033,8 @@ export function AppShell() {
         side: trackerPanelSide,
         gap: TRACKER_PANEL_CHAT_GAP,
       });
+      const nextWidth = Math.min(trackerPanelWidth, gutter);
+      setTrackerPanelGutterWidth((current) => (current === gutter ? current : gutter));
       setTrackerPanelResolvedWidth((current) => (current === nextWidth ? current : nextWidth));
       setTrackerPanelWidthMeasured(true);
 
@@ -1226,11 +1151,12 @@ export function AppShell() {
         className={cn(
           "mari-tracker-panel fixed z-30 hidden overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-zinc-700/80 backdrop-blur-2xl transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] md:block",
           side === "left" ? "rounded-r-xl" : "rounded-l-xl",
+          trackerPanelResize.dragging && "!transition-none",
         )}
         style={{
           top: trackerPanelTop,
           maxHeight: `calc(100vh - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
-          width: trackerPanelResolvedWidth,
+          width: `var(--mari-tracker-drag-width, ${trackerPanelResolvedWidth}px)`,
           transformOrigin: `${side === "left" ? "left" : "right"} ${Math.max(
             -56,
             Math.min(56, (trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop),
@@ -1254,6 +1180,7 @@ export function AppShell() {
 
   return (
     <div
+      ref={shellRootRef}
       data-component="AppShell"
       data-chat-surface-active={chatSurfaceActive ? "true" : undefined}
       className={cn(
@@ -1314,17 +1241,10 @@ export function AppShell() {
       )}
       {!shellOverlayMode && sidebarOpen && (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={localizeUi("ui.layout.appshell.resizeLeftSidebar")}
-          aria-valuemin={SHARED_SIDEBAR_WIDTH_MIN}
-          aria-valuemax={SHARED_SIDEBAR_WIDTH_MAX}
+          {...sidebarResize.separatorProps}
           aria-valuenow={Math.round(liveSidebarWidth)}
-          tabIndex={0}
-          onMouseDown={startSidebarResize}
-          onKeyDown={adjustSidebarWidth}
           className="absolute inset-y-0 z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block"
-          style={{ left: sidebarOpen ? liveSidebarWidth : 0 }}
+          style={{ ...sidebarResize.separatorProps.style, left: sidebarOpen ? liveSidebarWidth : 0 }}
         />
       )}
 
@@ -1403,6 +1323,30 @@ export function AppShell() {
 
       <AnimatePresence initial={false} mode="wait">
         {!shellOverlayMode && trackerPanelSurfaceAvailable && trackerPanelDesktop(trackerPanelSide)}
+        {!shellOverlayMode && trackerPanelVisible && trackerPanelWidthMeasured && (
+          <div
+            {...trackerPanelResize.separatorProps}
+            aria-valuenow={Math.round(trackerPanelResolvedWidth)}
+            className={cn(
+              "fixed z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block",
+              trackerPanelResize.dragging && "bg-[var(--primary)]/40",
+            )}
+            style={{
+              ...trackerPanelResize.separatorProps.style,
+              top: trackerPanelTop,
+              height: `calc(100vh - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
+              [trackerPanelSide]: `calc(${
+                trackerPanelSide === "left"
+                  ? sidebarOpen
+                    ? liveSidebarWidth
+                    : 0
+                  : rightPanelOpen
+                    ? liveRightPanelWidth
+                    : 0
+              }px + var(--mari-tracker-drag-width, ${trackerPanelResolvedWidth}px))`,
+            }}
+          />
+        )}
       </AnimatePresence>
 
       {trackerPanelWindowTarget && trackerPanelActive && trackerPanelModeAvailable && (
@@ -1525,17 +1469,10 @@ export function AppShell() {
 
       {!shellOverlayMode && rightPanelOpen && (
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={localizeUi("ui.layout.appshell.resizeRightSidebar")}
-          aria-valuemin={SHARED_SIDEBAR_WIDTH_MIN}
-          aria-valuemax={SHARED_SIDEBAR_WIDTH_MAX}
+          {...rightPanelResize.separatorProps}
           aria-valuenow={Math.round(liveRightPanelWidth)}
-          tabIndex={0}
-          onMouseDown={startRightPanelResize}
-          onKeyDown={adjustRightPanelWidth}
           className="absolute inset-y-0 z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block"
-          style={{ right: rightPanelOpen ? liveRightPanelWidth : 0 }}
+          style={{ ...rightPanelResize.separatorProps.style, right: rightPanelOpen ? liveRightPanelWidth : 0 }}
         />
       )}
 

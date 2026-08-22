@@ -5573,6 +5573,7 @@
   "ui.layout.appshell.mainContent": "Main content",
   "ui.layout.appshell.resizeLeftSidebar": "Resize left sidebar",
   "ui.layout.appshell.resizeRightSidebar": "Resize right sidebar",
+  "ui.layout.appshell.resizeTrackerPanel": "Resize tracker panel",
   "ui.layout.appshell.settingsAndToolsPanel": "Settings and tools panel",
   "ui.layout.appshell.trackerDataPanel": "Tracker data panel",
   "ui.layout.appshell.trackerPanelPopupBlocked": "Your browser blocked the tracker window. Allow popups for Marinara and try again.",

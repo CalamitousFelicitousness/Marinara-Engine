@@ -1697,7 +1697,7 @@ class FileTableStore {
           return;
         } catch (err) {
           try {
-            await stopWriterLeaseLiveness(liveness);
+            await stopWriterLeaseLiveness(liveness).catch(() => undefined);
           } finally {
             rmSync(path, { recursive: true, force: true });
           }

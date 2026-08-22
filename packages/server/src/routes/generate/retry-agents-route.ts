@@ -4055,6 +4055,8 @@ export async function registerRetryAgentsRoute(
         };
       }
 
+      const unfilteredRecentMessages = recentMessages;
+
       const supportsHiddenFromAI = chat.mode === "conversation" || chat.mode === "roleplay";
       if (supportsHiddenFromAI) {
         recentMessages = recentMessages.filter((message: any) => !isMessageHiddenFromAI(message));
@@ -4121,6 +4123,7 @@ export async function registerRetryAgentsRoute(
           getCustomLorebookReadBehindMessages(entry.resolved.settings),
           cursor,
           settings.chunkSize,
+          unfilteredRecentMessages,
         );
         if (!chunk) {
           sendSseEvent(reply, {
@@ -4670,6 +4673,22 @@ export async function registerRetryAgentsRoute(
         new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.messageId])),
         abortController.signal,
       );
+      if (customLorebookBackfillTarget) {
+        const successful = permittedResults.some(
+          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
+        );
+        if (successful) {
+          // Claim completion before applying effects. If persistence fails, no
+          // lorebook effect has run; if a later effect fails, the successful
+          // agent result remains at-most-once instead of being duplicated.
+          await agentsStore.setMemory(
+            customLorebookBackfillTarget.agentConfigId,
+            chatId,
+            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
+            customLorebookBackfillTarget.messageId,
+          );
+        }
+      }
       for (const entry of lorebookKeeperRunEntries) {
         if (abortController.signal.aborted) return;
         try {
@@ -4709,20 +4728,6 @@ export async function registerRetryAgentsRoute(
         secretPlotRerollMode,
         signal: abortController.signal,
       });
-
-      if (customLorebookBackfillTarget) {
-        const successful = permittedResults.some(
-          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
-        );
-        if (successful) {
-          await agentsStore.setMemory(
-            customLorebookBackfillTarget.agentConfigId,
-            chatId,
-            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
-            customLorebookBackfillTarget.messageId,
-          );
-        }
-      }
 
       if (abortController.signal.aborted) return;
       sendSseEvent(reply, { type: "done", data: "" });

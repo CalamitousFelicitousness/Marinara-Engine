@@ -626,6 +626,15 @@ function parseUnknownStringList(raw: unknown): string[] | undefined {
   return values && values.length ? values : undefined;
 }
 
+function parseFolderPathList(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const values = raw
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return values.length ? values : undefined;
+}
+
 function parseLorebookEntriesParam(raw: string): CreateLorebookEntryCommand[] | undefined {
   const entries = raw
     .split(/\s*\|\|\s*/)
@@ -806,7 +815,7 @@ function parseLorebookBlock(raw: string): CreateLorebookCommand | null {
       description: typeof parsed.description === "string" ? parsed.description : undefined,
       category: typeof parsed.category === "string" ? parsed.category : undefined,
       tags: parseUnknownStringList(parsed.tags),
-      folders: parseUnknownStringList(parsed.folders),
+      folders: parseFolderPathList(parsed.folders),
       entries: entries.length ? entries : undefined,
     };
   } catch {
@@ -881,7 +890,7 @@ function parseUpdateLorebookBlock(raw: string): UpdateLorebookCommand | null {
       description: typeof parsed.description === "string" ? parsed.description : undefined,
       category: typeof parsed.category === "string" ? parsed.category : undefined,
       tags: parseUnknownStringList(parsed.tags),
-      folders: parseUnknownStringList(parsed.folders),
+      folders: parseFolderPathList(parsed.folders),
       entries: entries.length ? entries : undefined,
     };
   } catch {

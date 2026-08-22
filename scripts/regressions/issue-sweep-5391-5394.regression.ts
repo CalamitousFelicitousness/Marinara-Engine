@@ -10,7 +10,11 @@ import {
   getCustomLorebookBackfillSettings,
 } from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
 import { parseCharacterCommands } from "../../packages/server/src/services/conversation/character-commands.js";
-import { ensureLorebookFolderPaths } from "../../packages/server/src/services/generation/professor-mari-command-runtime.js";
+import {
+  ensureLorebookFolderPaths,
+  handleProfessorMariCommand,
+  MAX_LOREBOOK_FOLDER_PATH_REQUESTS,
+} from "../../packages/server/src/services/generation/professor-mari-command-runtime.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -41,6 +45,80 @@ const folderResult = await ensureLorebookFolderPaths(
 assert.equal(folderResult.createdCount, 4);
 assert.equal(folderResult.folderIds.get("characters/luna/background"), "folder-3");
 
+const strictFolderCommand = parseCharacterCommands(
+  '<create_lorebook>{"name":"Strict paths","folders":[{},"Characters/Luna"]}</create_lorebook>',
+).commands[0];
+assert.equal(strictFolderCommand?.type, "create_lorebook");
+if (strictFolderCommand?.type === "create_lorebook") {
+  assert.deepEqual(strictFolderCommand.folders, ["Characters/Luna"]);
+}
+
+let overLimitWriteCount = 0;
+await handleProfessorMariCommand({
+  command: {
+    type: "create_lorebook",
+    name: "Too many folders",
+    folders: Array.from({ length: MAX_LOREBOOK_FOLDER_PATH_REQUESTS + 1 }, (_, index) => `Folder ${index}`),
+  },
+  characterId: null,
+  chatId: "chat-1",
+  sourceChatMetadata: null,
+  isHomeProfessorMariAssistantChat: true,
+  db: {} as never,
+  stores: {
+    chars: {},
+    chats: {},
+    presets: {},
+    lorebooksStore: {
+      async create() {
+        overLimitWriteCount += 1;
+        return null;
+      },
+      async createEntry() {
+        overLimitWriteCount += 1;
+        return null;
+      },
+    },
+  },
+  sendAssistantAction() {},
+});
+assert.equal(overLimitWriteCount, 0, "An over-limit folder request must be rejected before lorebook writes");
+
+await handleProfessorMariCommand({
+  command: {
+    type: "update_lorebook",
+    name: "Existing book",
+    folders: Array.from({ length: MAX_LOREBOOK_FOLDER_PATH_REQUESTS + 1 }, (_, index) => `Folder ${index}`),
+  },
+  characterId: null,
+  chatId: "chat-1",
+  sourceChatMetadata: null,
+  isHomeProfessorMariAssistantChat: true,
+  db: {} as never,
+  stores: {
+    chars: {},
+    chats: {},
+    presets: {},
+    lorebooksStore: {
+      async list() {
+        return [{ id: "lorebook-1", name: "Existing book" }];
+      },
+      async update() {
+        overLimitWriteCount += 1;
+      },
+      async updateEntry() {
+        overLimitWriteCount += 1;
+      },
+      async createEntry() {
+        overLimitWriteCount += 1;
+        return null;
+      },
+    },
+  },
+  sendAssistantAction() {},
+});
+assert.equal(overLimitWriteCount, 0, "An over-limit folder request must be rejected before entry moves");
+
 const messages = [
   { id: "user-1", role: "user", content: "First turn" },
   { id: "assistant-1", role: "assistant", content: "First reply" },
@@ -67,17 +145,35 @@ assert.equal(
 );
 assert.deepEqual(
   getCustomLorebookBackfillChunk(messages, 0, null, 1)?.messages.map((message) => message.id),
-  ["user-1", "assistant-1"],
+  ["assistant-1"],
 );
 assert.deepEqual(
   getCustomLorebookBackfillChunk(messages, 0, "assistant-1", 1)?.messages.map((message) => message.id),
-  ["user-2", "assistant-2"],
+  ["assistant-2"],
 );
 assert.equal(
   getCustomLorebookBackfillChunk(messages, 0, null, 3)?.target.id,
   "assistant-1",
   "Backfill chunk size counts chat messages rather than assistant replies",
 );
+const visibleMessages = messages.filter((message) => message.id !== "assistant-1");
+assert.equal(
+  getCustomLorebookBackfillChunk(visibleMessages, 0, "assistant-1", 1, messages)?.target.id,
+  "assistant-2",
+  "A hidden cursor keeps its position from unfiltered history",
+);
+assert.equal(
+  getCustomLorebookBackfillChunk(visibleMessages, 0, "missing-cursor", 1, messages),
+  null,
+  "An unknown cursor must not restart backfill",
+);
+
+const longGapMessages = [
+  ...Array.from({ length: 150 }, (_, index) => ({ id: `user-gap-${index}`, role: "user", content: "Continue" })),
+  { id: "assistant-after-gap", role: "assistant", content: "Finally" },
+];
+assert.equal(getCustomLorebookBackfillChunk(longGapMessages, 0, null, 1)?.messages.length, 1);
+assert.equal(getCustomLorebookBackfillChunk(longGapMessages, 0, null, 1)?.target.id, "assistant-after-gap");
 
 const summaryEntries = [
   { id: "source-a", enabled: true, hiddenMessageIds: ["message-a", "message-shared"] },
@@ -94,6 +190,6 @@ const summaryPopoverSource = readFileSync(
   "utf8",
 );
 assert.match(summaryPopoverSource, /deleteSummaryEntry\.mutateAsync\(\{ chatId, entryIds \}\)/u);
-assert.match(summaryPopoverSource, /new Set\(displayEntries\.map\(\(entry\) => entry\.id\)\)/u);
+assert.match(summaryPopoverSource, /new Set\(visiblePersistedEntries\.map\(\(entry\) => entry\.id\)\)/u);
 
 console.info("Issue sweep #5391/#5394 regression checks passed");

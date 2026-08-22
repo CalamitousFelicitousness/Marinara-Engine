@@ -548,24 +548,29 @@ export function SummaryPopover({
       }),
     [summary, summaryEntries],
   );
+  const enabledEntryCount = displayEntries.filter((entry) => entry.enabled).length;
+  const inactiveEntryCount = displayEntries.length - enabledEntryCount;
+  const visiblePersistedEntries = useMemo(
+    () => (showInactiveSummaries ? displayEntries : displayEntries.filter((entry) => entry.enabled)),
+    [displayEntries, showInactiveSummaries],
+  );
   const selectedEntries = useMemo(
-    () => displayEntries.filter((entry) => selectedEntryIds.has(entry.id)),
-    [displayEntries, selectedEntryIds],
+    () => visiblePersistedEntries.filter((entry) => selectedEntryIds.has(entry.id)),
+    [selectedEntryIds, visiblePersistedEntries],
   );
   useEffect(() => {
     setSelectedEntryIds((current) => {
-      const existingIds = new Set(displayEntries.map((entry) => entry.id));
-      const next = new Set([...current].filter((id) => existingIds.has(id)));
+      const visibleIds = new Set(visiblePersistedEntries.map((entry) => entry.id));
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
       return next.size === current.size ? current : next;
     });
-  }, [displayEntries]);
-  const enabledEntryCount = displayEntries.filter((entry) => entry.enabled).length;
-  const inactiveEntryCount = displayEntries.length - enabledEntryCount;
+  }, [visiblePersistedEntries]);
   const visibleEntries = useMemo(() => {
-    const filteredEntries = showInactiveSummaries ? displayEntries : displayEntries.filter((entry) => entry.enabled);
-    if (!draftEntry || filteredEntries.some((entry) => entry.id === draftEntry.id)) return filteredEntries;
-    return [...filteredEntries, draftEntry];
-  }, [displayEntries, draftEntry, showInactiveSummaries]);
+    if (!draftEntry || visiblePersistedEntries.some((entry) => entry.id === draftEntry.id)) {
+      return visiblePersistedEntries;
+    }
+    return [...visiblePersistedEntries, draftEntry];
+  }, [draftEntry, visiblePersistedEntries]);
   const enabledTokenEstimate = displayEntries.reduce(
     (total, entry) => (entry.enabled ? total + entry.tokenEstimate : total),
     0,
@@ -798,11 +803,11 @@ export function SummaryPopover({
 
   const handleToggleSelectAllEntries = useCallback(() => {
     setSelectedEntryIds((current) =>
-      displayEntries.every((entry) => current.has(entry.id))
+      visiblePersistedEntries.every((entry) => current.has(entry.id))
         ? new Set()
-        : new Set(displayEntries.map((entry) => entry.id)),
+        : new Set(visiblePersistedEntries.map((entry) => entry.id)),
     );
-  }, [displayEntries]);
+  }, [visiblePersistedEntries]);
 
   const commitSummaryEntryReorder = useCallback(
     async (sourceIndex: number, targetGapIndex: number) => {
@@ -1957,10 +1962,10 @@ export function SummaryPopover({
                     <button
                       type="button"
                       onClick={handleToggleSelectAllEntries}
-                      disabled={entryMutationPending}
+                      disabled={entryMutationPending || visiblePersistedEntries.length === 0}
                       className="rounded-md px-1 py-0.5 text-[0.625rem] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {selectedEntries.length === displayEntries.length
+                      {visiblePersistedEntries.length > 0 && selectedEntries.length === visiblePersistedEntries.length
                         ? localizeUi("ui.chat.summarypopover.clearSelection")
                         : localizeUi("ui.chat.summarypopover.selectAll")}
                     </button>

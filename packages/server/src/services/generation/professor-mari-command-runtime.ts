@@ -296,11 +296,20 @@ function normalizeLorebookFolderPath(value: string): string {
     .join("/");
 }
 
+export const MAX_LOREBOOK_FOLDER_PATH_REQUESTS = 200;
+
+function assertLorebookFolderPathLimit(requestedPaths: string[]): void {
+  if (requestedPaths.length > MAX_LOREBOOK_FOLDER_PATH_REQUESTS) {
+    throw new Error(`Lorebook commands support at most ${MAX_LOREBOOK_FOLDER_PATH_REQUESTS} folder paths`);
+  }
+}
+
 export async function ensureLorebookFolderPaths(
   lorebooksStore: ProfessorMariCommandStores["lorebooksStore"],
   lorebookId: string,
   requestedPaths: string[],
 ): Promise<{ folderIds: Map<string, string>; createdCount: number }> {
+  assertLorebookFolderPathLimit(requestedPaths);
   const folders = (await lorebooksStore.listFolders(lorebookId)) as Array<{
     id: string;
     name: string;
@@ -312,7 +321,7 @@ export async function ensureLorebookFolderPaths(
   const folderIds = new Map<string, string>();
   let createdCount = 0;
 
-  for (const rawPath of requestedPaths.slice(0, 200)) {
+  for (const rawPath of requestedPaths) {
     const path = normalizeLorebookFolderPath(rawPath);
     if (!path) continue;
     let parentFolderId: string | null = null;
@@ -347,6 +356,8 @@ function resolveLorebookEntryFolderId(folderIds: Map<string, string>, path: stri
 
 async function createLorebook(command: CreateLorebookCommand, args: Parameters<typeof handleProfessorMariCommand>[0]) {
   try {
+    const folderPaths = [...(command.folders ?? []), ...(command.entries ?? []).flatMap((entry) => entry.path ?? [])];
+    assertLorebookFolderPathLimit(folderPaths);
     const category = ["character", "world", "npc", "spellbook"].includes(command.category ?? "")
       ? command.category
       : "uncategorized";
@@ -361,7 +372,6 @@ async function createLorebook(command: CreateLorebookCommand, args: Parameters<t
     });
     if (!created) return;
 
-    const folderPaths = [...(command.folders ?? []), ...(command.entries ?? []).flatMap((entry) => entry.path ?? [])];
     const { folderIds, createdCount: folderCount } = await ensureLorebookFolderPaths(
       args.stores.lorebooksStore,
       created.id,
@@ -417,6 +427,9 @@ async function updateLorebook(command: UpdateLorebookCommand, args: Parameters<t
       return;
     }
 
+    const folderPaths = [...(command.folders ?? []), ...(command.entries ?? []).flatMap((entry) => entry.path ?? [])];
+    assertLorebookFolderPathLimit(folderPaths);
+
     const category = ["character", "world", "npc", "spellbook", "uncategorized"].includes(command.category ?? "")
       ? command.category
       : undefined;
@@ -430,7 +443,6 @@ async function updateLorebook(command: UpdateLorebookCommand, args: Parameters<t
     }
 
     const existingEntries = (await args.stores.lorebooksStore.listEntries(targetLorebook.id)) as any[];
-    const folderPaths = [...(command.folders ?? []), ...(command.entries ?? []).flatMap((entry) => entry.path ?? [])];
     const { folderIds, createdCount: folderCount } = await ensureLorebookFolderPaths(
       args.stores.lorebooksStore,
       targetLorebook.id,

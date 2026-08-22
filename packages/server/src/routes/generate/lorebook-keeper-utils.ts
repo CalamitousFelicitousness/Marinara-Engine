@@ -281,6 +281,7 @@ export function getCustomLorebookBackfillChunk<T extends { id: string; role: str
   readBehindMessages: number,
   lastProcessedMessageId: string | null,
   chunkSize: number,
+  cursorMessages: T[] = messages,
 ): { messages: T[]; target: T } | null {
   const normalizedChunkSize = Math.max(
     1,
@@ -290,20 +291,26 @@ export function getCustomLorebookBackfillChunk<T extends { id: string; role: str
       MAX_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE,
     ),
   );
-  const targets = getLorebookKeeperBackfillTargets(messages, readBehindMessages, lastProcessedMessageId);
-  const previousIndex = lastProcessedMessageId
-    ? messages.findIndex((message) => message.id === lastProcessedMessageId)
-    : -1;
-  const chunkEndIndex = previousIndex + normalizedChunkSize;
-  const messageIndexes = new Map(messages.map((message, index) => [message.id, index]));
-  const target =
-    [...targets].reverse().find((candidate) => (messageIndexes.get(candidate.id) ?? Infinity) <= chunkEndIndex) ??
-    targets[0];
+  const cursorIndexes = new Map(cursorMessages.map((message, index) => [message.id, index]));
+  const previousIndex = lastProcessedMessageId ? (cursorIndexes.get(lastProcessedMessageId) ?? -1) : -1;
+  // A deleted cursor has no safe recovery position. Stopping is preferable to
+  // silently replaying already-applied lorebook history from the beginning.
+  if (lastProcessedMessageId && previousIndex < 0) return null;
+
+  const assistants = getAssistantMessages(messages);
+  const eligibleCount = Math.max(assistants.length - Math.max(readBehindMessages, 0), 0);
+  const targets = assistants
+    .slice(0, eligibleCount)
+    .filter((message) => (cursorIndexes.get(message.id) ?? Infinity) > previousIndex);
+  const pendingMessages = messages.filter((message) => (cursorIndexes.get(message.id) ?? Infinity) > previousIndex);
+  const firstWindowIds = new Set(pendingMessages.slice(0, normalizedChunkSize).map((message) => message.id));
+  const target = [...targets].reverse().find((candidate) => firstWindowIds.has(candidate.id)) ?? targets[0];
   if (!target) return null;
 
-  const targetIndex = messageIndexes.get(target.id) ?? -1;
+  const targetIndex = pendingMessages.findIndex((message) => message.id === target.id);
+  const startIndex = Math.max(0, targetIndex - normalizedChunkSize + 1);
   return {
-    messages: messages.slice(previousIndex + 1, targetIndex + 1),
+    messages: pendingMessages.slice(startIndex, targetIndex + 1),
     target,
   };
 }

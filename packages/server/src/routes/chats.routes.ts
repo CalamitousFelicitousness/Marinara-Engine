@@ -1294,27 +1294,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Unsupported summary entry operation" });
     }
 
-    // For delete: restore visibility of the messages this entry covered (except
-    // any still covered by another enabled entry) BEFORE removing the entry.
-    // Unhiding first is what keeps this safe without a transaction: if the
-    // metadata write below fails, the messages are visible and the entry still
-    // exists (a benign, self-consistent state) — never hidden with no entry to
-    // justify them. So no rollback bookkeeping is needed.
-    if (body.operation === "delete") {
-      const current = await storage.getById(req.params.id);
-      if (!current) return reply.status(404).send({ error: "Chat not found" });
-      const currentMeta = parseExtra(current.metadata) as Record<string, unknown>;
-      const currentEntries = normalizeChatSummaryEntries(currentMeta.summaryEntries, {
-        legacySummary: typeof currentMeta.summary === "string" ? currentMeta.summary : null,
-      });
-      const toUnhide = getChatSummaryMessageIdsToUnhideAfterDelete(currentEntries, new Set(deleteEntryIds));
-      if (toUnhide.length > 0) {
-        await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
-      }
-    }
-
     let reorderConflict = false;
-    const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
+    const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
       const entries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
         legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
       });
@@ -1339,6 +1320,14 @@ export async function chatsRoutes(app: FastifyInstance) {
           : [...entries, replacement];
       } else if (body.operation === "delete") {
         const deletedIds = new Set(deleteEntryIds);
+        // Restore visibility from the same serialized metadata snapshot we
+        // remove from. Unhiding first leaves a benign visible+summarised state
+        // if the later metadata write fails, never hidden messages with no
+        // retained summary to justify them.
+        const toUnhide = getChatSummaryMessageIdsToUnhideAfterDelete(entries, deletedIds);
+        if (toUnhide.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
+        }
         nextEntries = entries.filter((entry) => !deletedIds.has(entry.id));
       } else if (body.operation === "toggle") {
         const now = new Date().toISOString();

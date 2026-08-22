@@ -8730,25 +8730,17 @@ export function ChatSettingsDrawer({
                                   <div className="flex flex-col gap-1 mb-1.5">
                                     {activeInCat.map((agent) => {
                                       const tokenEst = agentLoadCost.tokensByType.get(agent.id);
+                                      const hasSettingsTarget =
+                                        agent.id === "hierarchical-maps" ||
+                                        agent.id === "long-term-memory" ||
+                                        agent.id === "beholder" ||
+                                        agent.id === STORYBOARD_AGENT_ID ||
+                                        chatSettingsPackageByAgentId.has(agent.id);
                                       return (
                                         <div
                                           key={agent.id}
-                                          id={
-                                            agent.id === "hierarchical-maps" ||
-                                            agent.id === "long-term-memory" ||
-                                            agent.id === "beholder" ||
-                                            agent.id === STORYBOARD_AGENT_ID
-                                              ? getAgentSettingsMenuId(chat.id, agent.id)
-                                              : undefined
-                                          }
-                                          tabIndex={
-                                            agent.id === "hierarchical-maps" ||
-                                            agent.id === "long-term-memory" ||
-                                            agent.id === "beholder" ||
-                                            agent.id === STORYBOARD_AGENT_ID
-                                              ? -1
-                                              : undefined
-                                          }
+                                          id={hasSettingsTarget ? getAgentSettingsMenuId(chat.id, agent.id) : undefined}
+                                          tabIndex={hasSettingsTarget ? -1 : undefined}
                                           data-chat-agent-entry={agent.id}
                                           className="scroll-mt-3 rounded-lg bg-[var(--primary)]/10 px-3 py-2 ring-1 ring-[var(--primary)]/30 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/60"
                                         >

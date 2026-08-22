@@ -5,11 +5,22 @@ import { getCapabilityService } from "./capability-service-registry.service.js";
 
 const SERVICE_PREFIX = "agent-runtime:";
 
+export function assertCapabilityAgentRuntimeServiceRegistration(
+  packageId: string,
+  permissions: readonly string[],
+  key: string,
+): void {
+  if (!key.startsWith(SERVICE_PREFIX)) return;
+  if (!permissions.includes("agent-runtime")) {
+    throw new Error(`Capability package ${packageId} must declare the "agent-runtime" permission`);
+  }
+  if (key !== `${SERVICE_PREFIX}${packageId}`) {
+    throw new Error(`Capability package ${packageId} cannot register an agent runtime for another package`);
+  }
+}
+
 export interface CapabilityAgentRuntimeService {
-  prepareContext?(input: {
-    agent: AgentExecConfig;
-    context: AgentContext;
-  }): Promise<unknown> | unknown;
+  prepareContext?(input: { agent: AgentExecConfig; context: AgentContext }): Promise<unknown> | unknown;
   finalizeResult?(input: {
     agent: AgentExecConfig;
     context: AgentContext;
@@ -55,9 +66,7 @@ export async function finalizeCapabilityAgentResults(
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const prepared = context.memory._capabilityAgentContexts;
   const preparedByType =
-    prepared && typeof prepared === "object" && !Array.isArray(prepared)
-      ? (prepared as Record<string, unknown>)
-      : {};
+    prepared && typeof prepared === "object" && !Array.isArray(prepared) ? (prepared as Record<string, unknown>) : {};
 
   return Promise.all(
     results.map(async (result) => {

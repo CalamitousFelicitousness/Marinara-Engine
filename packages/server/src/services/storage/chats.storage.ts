@@ -140,6 +140,111 @@ function mergeMetadataPatch(current: MetadataPatch, patch: MetadataPatch): Metad
   return merged;
 }
 
+// ── Per-chat write ordering (#5406) ──────────────────────────────────────────
+// A game-surface Experience keeps its save in two stores: the per-anchor
+// game_engine_state row (the authority, rewinds with the story) and a top-level chat-metadata
+// key it maintains as a boot cache (chat-global, never rewinds). Nothing let a client tell
+// "metadata is ahead because the last session degraded to metadata-only writes" from "the row
+// is behind because the player swiped back", so a degraded session's play was simply lost.
+//
+// The fix is one counter both paths draw from: `chats.writeOrdinalCounter`. Every allocation
+// is a read-and-bump of that column performed INSIDE the per-chat metadata patch queue
+// (`withChatMetadataPatchQueue`), which is what makes the sequence monotonic even though the
+// two writers hold different locks — the experience-state route holds its own per-chat write
+// lock and then calls `allocateWriteOrdinal`, which takes the metadata queue on top. The lock
+// order is always experience-lock -> metadata-queue and never the reverse, so there is no
+// deadlock, and because every allocation funnels through the one queue no two writes can read
+// the same counter value. Crashing between an allocation and the write it stamps burns an
+// ordinal; the contract is strict ordering, not density, so gaps are fine.
+
+/** Engine-owned metadata key holding `{ "<top-level metadata key>": <write ordinal> }` (#5406). */
+export const METADATA_WRITE_ORDINALS_KEY = "metadataWriteOrdinals";
+
+function nextWriteOrdinal(counter: unknown): number {
+  return (typeof counter === "number" && Number.isSafeInteger(counter) && counter > 0 ? counter : 0) + 1;
+}
+
+/** Read a stored mirror defensively — it can predate #5406 or have been clobbered by a
+ *  whole-blob `updateMetadata`, and only positive safe integers are usable ordinals. */
+function readOrdinalMirror(value: unknown): Map<string, number> {
+  const entries = new Map<string, number>();
+  if (!isPlainRecord(value)) return entries;
+  for (const [key, ordinal] of Object.entries(value)) {
+    if (key === METADATA_WRITE_ORDINALS_KEY) continue;
+    if (typeof ordinal === "number" && Number.isSafeInteger(ordinal) && ordinal > 0) entries.set(key, ordinal);
+  }
+  return entries;
+}
+
+/**
+ * Did this patch actually write a new value for the key? Reference equality is the fast path
+ * and the important one: the `{ ...current, changedKey }` updater shape used throughout this
+ * file re-supplies every key with the SAME object reference, and stamping those would falsely
+ * advance the ordinal of a package's untouched key — which is precisely the false "metadata is
+ * newer" reading that would clobber a good save. Anything not reference-equal falls back to a
+ * value comparison so a structurally identical re-send is not counted as a write either.
+ */
+function metadataValueChanged(before: unknown, after: unknown): boolean {
+  if (Object.is(before, after)) return false;
+  if (before === undefined || after === undefined) return true;
+  if (before === null || after === null || typeof before !== "object" || typeof after !== "object") return true;
+  try {
+    return JSON.stringify(before) !== JSON.stringify(after);
+  } catch {
+    // Cyclic or otherwise unserializable: treat it as a write rather than silently skipping.
+    return true;
+  }
+}
+
+/**
+ * Strip the engine-owned mirror out of an incoming patch. Ordinals are only ever server-
+ * assigned; the whole point of #5406 is that a client cannot forge or freeze the ordering,
+ * and function updaters that spread `current` would otherwise write the mirror back verbatim.
+ */
+function stripOrdinalMirrorKey(patch: MetadataPatch): MetadataPatch {
+  if (!Object.prototype.hasOwnProperty.call(patch, METADATA_WRITE_ORDINALS_KEY)) return patch;
+  const { [METADATA_WRITE_ORDINALS_KEY]: _discarded, ...rest } = patch;
+  return rest;
+}
+
+type OrdinalStamp = { ordinal: number; mirror: Record<string, number> };
+
+/**
+ * Allocate one ordinal for this patch and stamp it onto every top-level key the patch actually
+ * changed. All keys in one patch share the ordinal because they were written in the same atomic
+ * row update — there is no meaningful order among them. Returns null when nothing changed, so a
+ * no-op patch neither burns an ordinal nor rewrites the mirror.
+ */
+function stampMetadataWriteOrdinals(
+  counter: unknown,
+  current: MetadataPatch,
+  merged: MetadataPatch,
+  patch: MetadataPatch,
+): OrdinalStamp | null {
+  const changed = Object.keys(patch).filter(
+    (key) => key !== METADATA_WRITE_ORDINALS_KEY && metadataValueChanged(current[key], merged[key]),
+  );
+  if (changed.length === 0) return null;
+
+  const ordinal = nextWriteOrdinal(counter);
+  const mirror = readOrdinalMirror(current[METADATA_WRITE_ORDINALS_KEY]);
+  for (const key of changed) mirror.set(key, ordinal);
+  // Drop ordinals for keys the merged metadata no longer carries (a patch value of `undefined`
+  // is how callers delete): there is nothing left to order, and this keeps the mirror bounded
+  // by the live key set instead of growing with every key the chat has ever held.
+  for (const key of [...mirror.keys()]) if (merged[key] === undefined) mirror.delete(key);
+  // fromEntries, not literal assignment: a metadata key of "__proto__" must land as an own
+  // data property rather than reaching the prototype setter.
+  return { ordinal, mirror: Object.fromEntries(mirror) };
+}
+
+/** Apply a stamp to the merged metadata in place. */
+function applyOrdinalStamp(merged: MetadataPatch, stamp: OrdinalStamp | null): void {
+  if (!stamp) return;
+  if (Object.keys(stamp.mirror).length > 0) merged[METADATA_WRITE_ORDINALS_KEY] = stamp.mirror;
+  else delete merged[METADATA_WRITE_ORDINALS_KEY];
+}
+
 function readUnreadCount(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
@@ -1000,12 +1105,67 @@ export function createChatsStorage(db: DB) {
       );
     },
 
+    /**
+     * Whole-blob metadata replace, outside the patch queue and NOT write-ordinal stamped
+     * (#5406). Host-internal callers use this to rewrite a metadata object they just read, so
+     * the mirror rides along in the blob unchanged and no key's ordinal moves — correct,
+     * because a verbatim rewrite is not a new value. Anything that needs to be orderable by a
+     * client (everything a capability package can reach, which is only the metadata PATCH
+     * route) must go through `patchMetadata` instead.
+     */
     async updateMetadata(id: string, metadata: Record<string, unknown>) {
       await db
         .update(chats)
         .set({ metadata: JSON.stringify(metadata), updatedAt: now() })
         .where(eq(chats.id, id));
       return this.getById(id);
+    },
+
+    /**
+     * Allocate the chat's next write ordinal (#5406) — the shared sequence behind both
+     * `game_engine_state.writeOrdinal` and `metadata.metadataWriteOrdinals`. Returns null only
+     * when the chat no longer exists.
+     *
+     * The read-and-bump runs inside the per-chat metadata patch queue so it serializes against
+     * every other allocation, including the ones `patchMetadata` performs inline. Callers that
+     * already hold that queue MUST pass `metadataQueueHeld` — the queue is not reentrant.
+     * Callers holding a different per-chat lock (the experience-state write lock) may call this
+     * directly: the lock order is always their-lock -> metadata-queue, never the reverse.
+     */
+    async allocateWriteOrdinal(id: string, opts: { metadataQueueHeld?: boolean } = {}): Promise<number | null> {
+      const allocate = async () => {
+        const [row] = await db
+          .select({ writeOrdinalCounter: chats.writeOrdinalCounter })
+          .from(chats)
+          .where(eq(chats.id, id));
+        if (!row) return null;
+        const ordinal = nextWriteOrdinal(row.writeOrdinalCounter);
+        // Counter only — allocating an ordinal is not a user-visible chat edit, so it must not
+        // reorder the chat list the way a touched updatedAt would.
+        await db.update(chats).set({ writeOrdinalCounter: ordinal }).where(eq(chats.id, id));
+        return ordinal;
+      };
+      return opts.metadataQueueHeld ? allocate() : withChatMetadataPatchQueue(id, allocate);
+    },
+
+    /**
+     * Raise a chat's write-ordinal counter to at least `floor`, never lowering it (#5406).
+     * Chat branching copies the source chat's metadata verbatim — mirror included — so the
+     * branch must also inherit the source's counter, or its first allocation would sit below
+     * the inherited stamps and invert the ordering for the branch's whole life. Idempotent.
+     */
+    async raiseWriteOrdinalFloor(id: string, floor: number | null | undefined): Promise<void> {
+      if (typeof floor !== "number" || !Number.isSafeInteger(floor) || floor <= 0) return;
+      await withChatMetadataPatchQueue(id, async () => {
+        const [row] = await db
+          .select({ writeOrdinalCounter: chats.writeOrdinalCounter })
+          .from(chats)
+          .where(eq(chats.id, id));
+        if (!row) return;
+        const current = row.writeOrdinalCounter;
+        if (typeof current === "number" && current >= floor) return;
+        await db.update(chats).set({ writeOrdinalCounter: floor }).where(eq(chats.id, id));
+      });
     },
 
     async patchMetadata(
@@ -1018,13 +1178,21 @@ export function createChatsStorage(db: DB) {
         if (!existing) return null;
 
         const current = parseMetadata(existing.metadata);
-        const patch = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...current }) : patchOrUpdater;
+        const raw = typeof patchOrUpdater === "function" ? await patchOrUpdater({ ...current }) : patchOrUpdater;
+        const patch = stripOrdinalMirrorKey(raw);
         const merged = mergeMetadataPatch(current, patch);
+        // #5406: allocate inline rather than through allocateWriteOrdinal — the queue is
+        // already held here, and folding the counter into the same row update makes the stamp
+        // and the counter bump one atomic write, so a crash can never leave a mirror entry
+        // whose ordinal the counter never advanced past.
+        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch);
+        applyOrdinalStamp(merged, stamp);
 
         await db
           .update(chats)
           .set({
             metadata: JSON.stringify(merged),
+            ...(stamp && { writeOrdinalCounter: stamp.ordinal }),
             ...(opts.touchUpdatedAt !== false && { updatedAt: now() }),
           })
           .where(eq(chats.id, id));
@@ -1055,14 +1223,18 @@ export function createChatsStorage(db: DB) {
         if (!existing) return null;
 
         const current = parseMetadata(existing.metadata);
-        const { metadata: patch, characterIds } = await updater({ ...current });
+        const { metadata: raw, characterIds } = await updater({ ...current });
+        const patch = stripOrdinalMirrorKey(raw);
         const merged = mergeMetadataPatch(current, patch);
+        const stamp = stampMetadataWriteOrdinals(existing.writeOrdinalCounter, current, merged, patch);
+        applyOrdinalStamp(merged, stamp);
 
         await db
           .update(chats)
           .set({
             metadata: JSON.stringify(merged),
             characterIds: JSON.stringify(characterIds),
+            ...(stamp && { writeOrdinalCounter: stamp.ordinal }),
             ...(opts.touchUpdatedAt !== false && { updatedAt: now() }),
           })
           .where(eq(chats.id, id));

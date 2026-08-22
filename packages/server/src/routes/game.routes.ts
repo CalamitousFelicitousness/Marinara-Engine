@@ -10113,7 +10113,15 @@ export async function gameRoutes(app: FastifyInstance) {
     // the latest committed save — the world continues rather than resetting.
     const row = await storage.getForGeneration(req.params.chatId, { visibleAnchor: anchor, gameType });
     if (!row)
-      return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
+      return {
+        exists: false,
+        state: null,
+        schemaVersion: null,
+        anchor: null,
+        committed: false,
+        writeOrdinal: null,
+        createdAt: null,
+      };
 
     let state: unknown = null;
     try {
@@ -10134,6 +10142,13 @@ export async function gameRoutes(app: FastifyInstance) {
       // that would rather refuse than continue a mismatched world can check this.
       anchorMatched: !!anchor && row.messageId === anchor.messageId && row.swipeIndex === anchor.swipeIndex,
       committed: row.committed === 1,
+      // #5406: the returned ROW's ordinal, not the chat's high-water mark — swiping back must
+      // surface the ordinal of the save the reader is actually looking at. Compare it against
+      // `metadata.metadataWriteOrdinals["<your key>"]`: the higher value is the later write,
+      // which is the whole boot-time "which store is newer" decision in one line. Null on rows
+      // written before #5406 (and on clones of them); treat null as "unorderable" and fall back
+      // to whatever conservative rule the package used before.
+      writeOrdinal: row.writeOrdinal,
       createdAt: row.createdAt,
     };
   });
@@ -10189,6 +10204,13 @@ export async function gameRoutes(app: FastifyInstance) {
         const messages = await chats.listMessages(req.params.chatId);
         const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
         const storage = createGameEngineStateStorage(app.db);
+        // #5406: allocate the shared per-chat ordinal INSIDE this write lock, so the value the
+        // response reports is the one the row carries and two overlapping saves can never
+        // report the same number. The allocator takes the metadata patch queue on top of this
+        // lock (never the reverse), which is what serializes it against a metadata PATCH
+        // allocating at the same moment. Null only if the chat vanished between the lookup
+        // above and here; the save still lands, just unorderable.
+        const writeOrdinal = await chats.allocateWriteOrdinal(req.params.chatId);
         const id = await storage.create({
           chatId: req.params.chatId,
           messageId: anchor.messageId,
@@ -10197,9 +10219,10 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: body.schemaVersion,
           state: serialized,
           committed: body.committed,
+          writeOrdinal,
         });
         await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
-        return { ok: true, id, anchor };
+        return { ok: true, id, anchor, writeOrdinal };
       });
     },
   );
@@ -13807,6 +13830,11 @@ export async function gameRoutes(app: FastifyInstance) {
         return [];
       }
     })();
+    // #5406: a restored row gets a FRESH ordinal, never the captured one. Reusing the captured
+    // value would hand the same number out twice, and semantically the restore IS the newest
+    // write to the experience store — which is exactly what stops a boot comparison from
+    // deciding a stale chat-metadata copy (whose mirror kept advancing while the player was on
+    // a later turn) is newer than the world the user just restored.
     if (capturedEngineStates.length > 0) {
       for (const captured of capturedEngineStates) {
         await engineStore.create({
@@ -13817,6 +13845,7 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
           state: captured.state,
           committed: true,
+          writeOrdinal: await chats.allocateWriteOrdinal(input.chatId),
         });
       }
     } else {
@@ -13832,6 +13861,7 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: cpEngineRow.schemaVersion,
           state: cpEngineRow.state,
           committed: true,
+          writeOrdinal: await chats.allocateWriteOrdinal(input.chatId),
         });
       }
     }

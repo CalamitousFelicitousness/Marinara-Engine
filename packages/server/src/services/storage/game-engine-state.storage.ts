@@ -30,6 +30,18 @@ export interface CreateGameEngineStateInput {
   /** Already JSON-stringified engine state. */
   state: string;
   committed?: boolean;
+  /**
+   * Per-chat write ordinal from `chats.writeOrdinalCounter` (#5406). Omit (null) for writers
+   * with a single store — turn-games have nothing to order this row against.
+   *
+   * A value passed here is only ever valid inside ONE chat's counter space. Checkpoint restore
+   * therefore ALLOCATES a fresh ordinal rather than replaying the captured one (which would
+   * hand the same value out twice, and would also under-state a restore that is genuinely the
+   * newest write). Chat branching is the one case that copies an ordinal verbatim, and only
+   * because it inherits the source chat's whole counter alongside it via
+   * `chats.raiseWriteOrdinalFloor` — same counter space, so the copies keep their order.
+   */
+  writeOrdinal?: number | null;
 }
 
 export function createGameEngineStateStorage(db: DB) {
@@ -213,6 +225,7 @@ export function createGameEngineStateStorage(db: DB) {
         schemaVersion: input.schemaVersion,
         state: input.state,
         committed: input.committed ? 1 : 0,
+        writeOrdinal: input.writeOrdinal ?? null,
         createdAt: now(),
       });
       return id;

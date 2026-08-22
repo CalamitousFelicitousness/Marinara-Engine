@@ -40,7 +40,10 @@ assert.equal(mergeTrackerNamedEntries([{ name: "Outfit" }], [{ name: "  outfit  
 assert.equal(mergeTrackerNamedEntries([{ name: "HP" }], [{ name: "ＨＰ" }]).length, 1);
 
 // An empty preset is a pass-through, and blank names never become fields.
-assert.deepEqual(mergeTrackerNamedEntries([], [{ name: "Solo" }]).map((e) => e.name), ["Solo"]);
+assert.deepEqual(
+  mergeTrackerNamedEntries([], [{ name: "Solo" }]).map((e) => e.name),
+  ["Solo"],
+);
 assert.deepEqual(mergeTrackerNamedEntries([{ name: "  " }], []), []);
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-tracker-presets-"));
@@ -210,11 +213,7 @@ try {
     ],
   });
   await applyTrackerPresetToChat(app as never, { chatId: chat.id, mode: "roleplay", characterIds: [card.id] });
-  assert.deepEqual(Object.keys((await latestCharacters(chat.id))[0]!.customFields), [
-    "Outfit",
-    "Injuries",
-    "Scent",
-  ]);
+  assert.deepEqual(Object.keys((await latestCharacters(chat.id))[0]!.customFields), ["Outfit", "Injuries", "Scent"]);
 
   // ── A card edited after the chat exists is picked up by Apply ──
   // The card-owned seeding pass in chats.routes.ts runs only at chat creation
@@ -253,6 +252,53 @@ try {
     ["Stamina", "Resolve"],
     "enabling RPG Stats on the card contributes its pools behind the preset's",
   );
+
+  // ── Build a preset draft from a chat's live tracker ──
+  // The point of the extractor: names come from what the tracker agent has
+  // actually been filling, so they match the tracker prompt exactly. Values are
+  // dropped and bars reset to full, because a preset seeds new chats.
+  const draft = await app.inject({ method: "GET", url: `/api/tracker-presets/from-chat/${chat.id}` });
+  assert.equal(draft.statusCode, 200);
+  const extracted = draft.json() as {
+    characterFields: Array<{ name: string; value: string }>;
+    characterStats: Array<{ name: string; value: number; max: number }>;
+    characters: number;
+  };
+
+  assert.deepEqual(
+    extracted.characterFields.map((field) => field.name),
+    ["Outfit", "Injuries", "Scent", "Familiar"],
+    "every field the tracker currently holds is offered, in tracker order",
+  );
+  assert.ok(
+    extracted.characterFields.every((field) => field.value === ""),
+    "play state is not a default: 'soaked raincoat' must not become every character's starting outfit",
+  );
+  assert.deepEqual(
+    extracted.characterStats.map((stat) => stat.name),
+    ["Stamina", "Resolve"],
+  );
+  const stamina = extracted.characterStats.find((stat) => stat.name === "Stamina")!;
+  assert.equal(stamina.value, stamina.max, "a depleted bar is offered full, not mid-story");
+  assert.equal(extracted.characters, 1);
+
+  const missingChat = await app.inject({ method: "GET", url: "/api/tracker-presets/from-chat/nope" });
+  assert.equal(missingChat.statusCode, 404);
+
+  // A chat with no tracker snapshot yields empty lists rather than an error.
+  const blank = await chats.create({
+    name: "Blank",
+    mode: "roleplay",
+    characterIds: [],
+    groupId: null,
+    personaId: null,
+    promptPresetId: null,
+    connectionId: null,
+  });
+  assert.ok(blank);
+  const blankDraft = await app.inject({ method: "GET", url: `/api/tracker-presets/from-chat/${blank.id}` });
+  assert.equal(blankDraft.statusCode, 200);
+  assert.deepEqual(blankDraft.json().characterFields, []);
 
   // ── Chat override beats the global selection; null opts out entirely ──
   const optedOut = await applyTrackerPresetToChat(app as never, {

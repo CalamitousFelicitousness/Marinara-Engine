@@ -13,6 +13,7 @@ import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createTrackerPresetsStorage } from "../services/storage/tracker-presets.storage.js";
 import {
   applyTrackerPresetToChat,
+  extractTrackerPresetFromChat,
   readChatCharacterIds,
   readChatTrackerPresetId,
 } from "../services/tracker/tracker-preset.service.js";
@@ -67,6 +68,17 @@ export async function trackerPresetsRoutes(app: FastifyInstance) {
       includeCharacters: input.characters,
       includePersona: input.persona,
     });
+  });
+
+  /**
+   * Derive preset rows from a chat's live tracker. Pure read; the caller
+   * reviews and saves. Not gated on chat mode: reading a snapshot is harmless
+   * and the rows are shown before anything is written.
+   */
+  app.get<{ Params: { chatId: string } }>("/from-chat/:chatId", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    return extractTrackerPresetFromChat(app, chat.id);
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {

@@ -310,6 +310,17 @@ Covered by `scripts/regressions/tracker-presets.regression.ts`, which runs the r
 service against real storage and pins the additive merge, idempotent re-apply, chat override
 versus global fallback, persona seeding, and the cleared pointer on delete.
 
+**Build from this chat.** The preset editor can derive its rows from a chat's live tracker:
+`GET /api/tracker-presets/from-chat/:chatId` reads the latest game-state snapshot and returns the
+union of `presentCharacters[].customFields` keys, `presentCharacters[].stats` names,
+`playerStats.customTrackerFields`, and `personaStats`, which is a 1:1 map onto a preset's four
+lists. Deterministic rather than model-driven on purpose: the tracker agent's accumulated output
+already names every field, and those names must match the tracker prompt exactly, so a generated
+guess would be strictly worse than reading what is there. Field values are dropped and stat bars
+reset to full, because mid-story play state is not a default for every future chat. The button
+only appends rows the draft does not already name, so pressing it twice is a no-op and it never
+rewrites a hand-tuned value. Pure read; the user still saves explicitly.
+
 `tracker_presets` is registered in both table lists: `FILE_BACKED_TABLES` in
 `db/file-backed-store.ts` and the hand-maintained `SHARDED_TABLES` copy in
 `scripts/protect-launcher-data.mjs`, which `launcher/format-guard.regression.mjs` pins

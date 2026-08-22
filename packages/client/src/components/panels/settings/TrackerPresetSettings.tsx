@@ -8,13 +8,15 @@
 // Saving is explicit. The draft is local until Save, matching the author's-note
 // preset panel, so switching rows never writes a half-typed field name.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Layers, Loader2, Plus, Trash2, Wand2, X } from "lucide-react";
+import { Copy, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { CharacterTrackerCustomFieldDefault, RPGStatPool, TrackerPreset } from "@marinara-engine/shared";
+import { comparableTrackerName } from "@marinara-engine/shared";
 import {
   useActiveTrackerPresetId,
   useApplyTrackerPreset,
+  useExtractTrackerPreset,
   useCreateTrackerPreset,
   useDeleteTrackerPreset,
   useSetActiveTrackerPreset,
@@ -56,6 +58,21 @@ function toDraft(preset: TrackerPreset): PresetDraft {
     personaFields: [...(preset.personaFields ?? [])],
     personaStats: [...(preset.personaStats ?? [])],
   };
+}
+
+/**
+ * Append extracted rows the draft does not already name.
+ *
+ * Additive on purpose: the button never rewrites a row you typed, so pressing
+ * it twice is a no-op and it cannot clobber a hand-tuned starting value.
+ */
+function appendNewRows<T extends { name: string }>(draftRows: T[], incoming: T[]): T[] {
+  const known = new Set(draftRows.map((row) => comparableTrackerName(row.name)).filter(Boolean));
+  const added = incoming.filter((row) => {
+    const key = comparableTrackerName(row.name);
+    return key && !known.has(key);
+  });
+  return added.length > 0 ? [...draftRows, ...added] : draftRows;
 }
 
 /** Drop half-typed rows so a nameless field never reaches the tracker. */
@@ -203,6 +220,7 @@ export function TrackerPresetSettings() {
   const updatePreset = useUpdateTrackerPreset();
   const deletePreset = useDeleteTrackerPreset();
   const applyPreset = useApplyTrackerPreset();
+  const extractPreset = useExtractTrackerPreset();
   const updateChatMetadata = useUpdateChatMetadata();
   const setGameState = useGameStateStore((s) => s.setGameState);
 
@@ -288,6 +306,34 @@ export function TrackerPresetSettings() {
       toast.error(localizeUi("ui.panels.trackerpresetsettings.applyFailed"));
     }
   }, [activeChatId, applyPreset, localizeUi, setGameState]);
+
+  const handleBuildFromChat = useCallback(async () => {
+    if (!activeChatId || !draft) return;
+    try {
+      const extracted = await extractPreset.mutateAsync(activeChatId);
+      const next: PresetDraft = {
+        ...draft,
+        characterFields: appendNewRows(draft.characterFields, extracted.characterFields),
+        characterStats: appendNewRows(draft.characterStats, extracted.characterStats),
+        personaFields: appendNewRows(draft.personaFields, extracted.personaFields),
+        personaStats: appendNewRows(draft.personaStats, extracted.personaStats),
+      };
+      const added =
+        next.characterFields.length -
+        draft.characterFields.length +
+        (next.characterStats.length - draft.characterStats.length) +
+        (next.personaFields.length - draft.personaFields.length) +
+        (next.personaStats.length - draft.personaStats.length);
+      if (added === 0) {
+        toast.info(localizeUi("ui.panels.trackerpresetsettings.nothingNewToBuildFrom"));
+        return;
+      }
+      setDraft(next);
+      toast.success(localizeUi("ui.panels.trackerpresetsettings.addedValue1RowsFromThisChat", { value1: added }));
+    } catch {
+      toast.error(localizeUi("ui.panels.trackerpresetsettings.buildFailed"));
+    }
+  }, [activeChatId, draft, extractPreset, localizeUi]);
 
   const isRoleplayChat = !!activeChatId && activeChat?.mode === "roleplay";
 
@@ -465,6 +511,27 @@ export function TrackerPresetSettings() {
               className={INPUT}
             />
           </label>
+
+          {activeChatId && (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={handleBuildFromChat}
+                disabled={extractPreset.isPending}
+                className={GHOST_BUTTON}
+              >
+                {extractPreset.isPending ? (
+                  <Loader2 size="0.625rem" className="animate-spin" />
+                ) : (
+                  <Sparkles size="0.625rem" />
+                )}
+                {localizeUi("ui.panels.trackerpresetsettings.buildFromThisChat")}
+              </button>
+              <p className="px-0.5 text-[0.5625rem] leading-relaxed text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.trackerpresetsettings.buildFromThisChatHint")}
+              </p>
+            </div>
+          )}
 
           <Group
             label={localizeUi("ui.panels.trackerpresetsettings.characterFields")}

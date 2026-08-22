@@ -17,6 +17,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   characterTrackerCustomFieldDefaultsToRecord,
+  comparableTrackerName,
   mergeTrackerNamedEntries,
   normalizePersonaStats,
   normalizeCharacterTrackerCustomFieldDefaults,
@@ -24,8 +25,11 @@ import {
   type CharacterData,
   type CharacterStat,
   type CustomTrackerField,
+  type CharacterTrackerCustomFieldDefault,
+  type PersonaStatBar,
   type PlayerStats,
   type PresentCharacter,
+  type RPGStatPool,
   type RPGStatsConfig,
   type TrackerPreset,
 } from "@marinara-engine/shared";
@@ -385,5 +389,114 @@ export async function applyTrackerPresetToChat(
     presetName: preset.name,
     characters: touchedCharacters,
     persona: touchedPersona,
+  };
+}
+
+// ──────────────────────────────────────────────
+// Extraction: build a preset draft from a chat's live tracker
+// ──────────────────────────────────────────────
+
+export interface ExtractedTrackerPreset {
+  characterFields: CharacterTrackerCustomFieldDefault[];
+  characterStats: RPGStatPool[];
+  personaFields: CharacterTrackerCustomFieldDefault[];
+  personaStats: PersonaStatBar[];
+  /** Present characters that contributed at least one row. */
+  characters: number;
+}
+
+const EMPTY_EXTRACTION: ExtractedTrackerPreset = {
+  characterFields: [],
+  characterStats: [],
+  personaFields: [],
+  personaStats: [],
+  characters: 0,
+};
+
+/** First spelling of a name wins; later case or spacing variants collapse into it. */
+function collectNames(names: Iterable<unknown>): CharacterTrackerCustomFieldDefault[] {
+  const seen = new Set<string>();
+  const rows: CharacterTrackerCustomFieldDefault[] = [];
+  for (const raw of names) {
+    if (typeof raw !== "string") continue;
+    const name = raw.trim();
+    const key = comparableTrackerName(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    // Names only. The chat's current text is play state, not a default that
+    // belongs on every future character.
+    rows.push({ name, value: "" });
+  }
+  return rows;
+}
+
+/** Keeps each bar's max and color, but starts it full rather than mid-story. */
+function collectStats(sources: Iterable<unknown>): RPGStatPool[] {
+  const seen = new Set<string>();
+  const rows: RPGStatPool[] = [];
+  for (const raw of sources) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const stat = raw as Partial<CharacterStat>;
+    const name = typeof stat.name === "string" ? stat.name.trim() : "";
+    const key = comparableTrackerName(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const max = Number.isFinite(stat.max) ? Math.max(1, Number(stat.max)) : 100;
+    rows.push({
+      name,
+      value: max,
+      max,
+      color: typeof stat.color === "string" && /^#[0-9a-f]{6}$/i.test(stat.color) ? stat.color : "#a78bfa",
+    });
+  }
+  return rows;
+}
+
+/**
+ * Read a chat's latest tracker snapshot and derive the preset rows it uses.
+ *
+ * Deterministic on purpose: the tracker agent's accumulated output already
+ * names every field, so extracting it beats asking a model to guess names that
+ * must match the tracker prompt exactly. Values are dropped and stat bars reset
+ * to full, because a preset seeds new chats and mid-story values are not
+ * defaults.
+ *
+ * Pure read. Nothing is written, and the caller reviews before saving.
+ */
+export async function extractTrackerPresetFromChat(
+  app: FastifyInstance,
+  chatId: string,
+): Promise<ExtractedTrackerPreset> {
+  const latest = await createGameStateStorage(app.db).getLatest(chatId);
+  if (!latest) return EMPTY_EXTRACTION;
+
+  const presentCharacters = parseSnapshotList<PresentCharacter>(latest.presentCharacters, []);
+  const playerStats = parseSnapshotRecord<PlayerStats>(latest.playerStats);
+
+  const fieldNames: string[] = [];
+  const statRows: unknown[] = [];
+  let characters = 0;
+  for (const character of presentCharacters) {
+    const fields =
+      character?.customFields && typeof character.customFields === "object" && !Array.isArray(character.customFields)
+        ? Object.keys(character.customFields as Record<string, string>)
+        : [];
+    const stats = Array.isArray(character?.stats) ? character.stats : [];
+    if (fields.length === 0 && stats.length === 0) continue;
+    fieldNames.push(...fields);
+    statRows.push(...stats);
+    characters += 1;
+  }
+
+  const personaFieldRows = Array.isArray(playerStats?.customTrackerFields)
+    ? (playerStats.customTrackerFields as CustomTrackerField[])
+    : [];
+
+  return {
+    characterFields: collectNames(fieldNames),
+    characterStats: collectStats(statRows),
+    personaFields: collectNames(personaFieldRows.map((field) => field?.name)),
+    personaStats: collectStats(parseSnapshotList<CharacterStat>(latest.personaStats, [])),
+    characters,
   };
 }

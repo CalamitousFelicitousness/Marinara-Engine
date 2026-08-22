@@ -2,7 +2,14 @@
 // Hooks: Tracker Presets (React Query)
 // ──────────────────────────────────────────────
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CreateTrackerPresetInput, TrackerPreset, UpdateTrackerPresetInput } from "@marinara-engine/shared";
+import type {
+  CharacterTrackerCustomFieldDefault,
+  CreateTrackerPresetInput,
+  PersonaStatBar,
+  RPGStatPool,
+  TrackerPreset,
+  UpdateTrackerPresetInput,
+} from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
 
 const trackerPresetKeys = {
@@ -86,5 +93,24 @@ export function useApplyTrackerPreset() {
   return useMutation({
     mutationFn: (input: { chatId: string; presetId?: string; characters?: boolean; persona?: boolean }) =>
       api.post<TrackerPresetApplyResult>("/tracker-presets/apply", input),
+  });
+}
+
+export interface ExtractedTrackerPreset {
+  characterFields: CharacterTrackerCustomFieldDefault[];
+  characterStats: RPGStatPool[];
+  personaFields: CharacterTrackerCustomFieldDefault[];
+  personaStats: PersonaStatBar[];
+  characters: number;
+}
+
+/**
+ * Derive preset rows from a chat's live tracker. Pure read on the server, so
+ * nothing is invalidated; the caller merges the result into its draft and the
+ * user saves explicitly.
+ */
+export function useExtractTrackerPreset() {
+  return useMutation({
+    mutationFn: (chatId: string) => api.get<ExtractedTrackerPreset>(`/tracker-presets/from-chat/${chatId}`),
   });
 }

@@ -5515,6 +5515,9 @@ export async function generateRoutes(app: FastifyInstance) {
         let fullResponse = "";
         let fullThinking = "";
         let providerThinking = "";
+        let generationStartedAt: number | null = null;
+        let reasoningDurationMs: number | null = null;
+        let receivedThinking = false;
         let allResponses: string[] = [];
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         let continuedMessageRewriteSource: string | null = null;
@@ -5532,6 +5535,7 @@ export async function generateRoutes(app: FastifyInstance) {
         const onThinking = (chunk: string) => {
           providerThinking += chunk;
           if (showThoughts) {
+            receivedThinking = true;
             fullThinking += chunk;
             sendSseEvent(reply, { type: "thinking", data: chunk });
           }
@@ -5559,13 +5563,25 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
         };
+        const recordReasoningDuration = (text: string) => {
+          if (text.trim() && receivedThinking && generationStartedAt !== null && reasoningDurationMs === null) {
+            reasoningDurationMs = Math.max(1, Date.now() - generationStartedAt);
+          }
+        };
         const sendTokenTextChunked = async (text: string) => {
           const visibleText = spatialDirectiveStreamFilter?.push(text) ?? text;
-          if (visibleText) await emitTokenTextChunked(visibleText);
+          if (visibleText) {
+            recordReasoningDuration(visibleText);
+            await emitTokenTextChunked(visibleText);
+          }
         };
         const writeContentChunked = async (text: string) => {
           fullResponse += text;
-          if (!holdForTextRewrite) await sendTokenTextChunked(text);
+          if (holdForTextRewrite) {
+            recordReasoningDuration(text);
+          } else {
+            await sendTokenTextChunked(text);
+          }
         };
 
         const resolveMessageSpeakerName = (message: any): string => {
@@ -6243,6 +6259,9 @@ export async function generateRoutes(app: FastifyInstance) {
           fullResponse = "";
           fullThinking = "";
           providerThinking = "";
+          generationStartedAt = null;
+          reasoningDurationMs = null;
+          receivedThinking = false;
           if (
             tailMessages.assistantPrefillInjected &&
             !tailMessages.googleUserRegenerationInjected &&
@@ -6258,6 +6277,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
           // Track timing and usage
           const genStartTime = Date.now();
+          generationStartedAt = genStartTime;
           let usage: LLMUsage | undefined;
           let finishReason: string | undefined;
 
@@ -6342,6 +6362,7 @@ export async function generateRoutes(app: FastifyInstance) {
               }
               fullResponse += chunk;
               if (holdForTextRewrite) {
+                recordReasoningDuration(chunk);
                 return;
               }
               await sendTokenTextChunked(chunk);
@@ -6694,6 +6715,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 // so the client sees progressive streaming.
                 const val = result.value;
                 if (holdForTextRewrite) {
+                  recordReasoningDuration(val);
                   result = await withLlmRequestTimeout(chatGenerationTimeoutMs, () => gen.next());
                   continue;
                 }
@@ -6726,7 +6748,10 @@ export async function generateRoutes(app: FastifyInstance) {
 
           if (!holdForTextRewrite) {
             const pendingSpatialText = spatialDirectiveStreamFilter?.flush() ?? "";
-            if (pendingSpatialText) await emitTokenTextChunked(pendingSpatialText);
+            if (pendingSpatialText) {
+              recordReasoningDuration(pendingSpatialText);
+              await emitTokenTextChunked(pendingSpatialText);
+            }
           }
 
           const durationMs = Date.now() - genStartTime;
@@ -7403,6 +7428,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 tokensCachedPrompt: usage?.cachedPromptTokens ?? null,
                 tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
                 durationMs,
+                reasoningDurationMs,
                 finishReason: finishReason ?? null,
               },
             };

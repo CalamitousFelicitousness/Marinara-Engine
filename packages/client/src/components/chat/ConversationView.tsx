@@ -22,7 +22,12 @@ import { SceneBanner, EndSceneBar } from "./SceneBanner";
 import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
-import { ChatToolbarButton, ChatToolbarMenu, getChatToolbarButtonClass } from "./ChatToolbarControls";
+import {
+  CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
+  ChatToolbarButton,
+  ChatToolbarMenu,
+  getChatToolbarButtonClass,
+} from "./ChatToolbarControls";
 import { ChatHelpButton } from "./ChatHelpButton";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
@@ -437,7 +442,14 @@ export function ConversationView({
     (item) =>
       item.status === "active" && item.manifest.kind.includes("conversation-calls") && item.manifest.entrypoints.client,
   );
-  const callCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
+  const callCapabilityProps = {
+    chatId,
+    metadata: chatMeta,
+    characterMap,
+    chatCharIds,
+    personaInfo,
+    toolbarButtonClass: getChatToolbarButtonClass({ sizeClassName: CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS }),
+  };
   const activeAgentIds = chatMeta.activeAgentIds;
   const enabledConversationCapabilities =
     chatMeta.enableAgents === true
@@ -530,7 +542,8 @@ export function ConversationView({
               packageId={callsPackage.id}
               view="toolbar"
               capabilityProps={callCapabilityProps}
-              className="contents"
+              // ponytail: This direct-child size bridge supports Calls <=1.0.11; remove it once 1.0.12 is the minimum.
+              className="contents [&>button]:!h-8 [&>button]:!w-8 max-md:[&>button]:!h-9 max-md:[&>button]:!w-9"
             />
           </span>
         )}

@@ -107,7 +107,7 @@ import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
-import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { SettingsSwitch, SettingsSwitchTrack } from "../panels/settings/SettingControls";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
 import { SecretPlotPanel } from "../agents/SecretPlotPanel";
 import { SummariesEditorModal } from "./SummariesEditorModal";
@@ -904,6 +904,7 @@ export function ChatSettingsDrawer({
         })
       }
       disabled={updateMeta.isPending}
+      aria-pressed={noodleTimelineContextEnabled}
       className={cn(
         "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60",
         noodleTimelineContextEnabled
@@ -919,19 +920,10 @@ export function ChatSettingsDrawer({
           {localizeUi("ui.chat.chatsettingsdrawer.timelineRefreshesMayIncludeRecentMessagesFromThisChat")}
         </p>
       </div>
-      <div
-        className={cn(
-          "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-          noodleTimelineContextEnabled ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
-        )}
-      >
-        <div
-          className={cn(
-            "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-            noodleTimelineContextEnabled && "translate-x-3.5",
-          )}
-        />
-      </div>
+      <SettingsSwitchTrack
+        checked={noodleTimelineContextEnabled}
+        className={cn("mari-chat-option-switch", noodleTimelineContextEnabled && "mari-chat-option-switch--active")}
+      />
     </button>
   );
   const { data: currentPromptPresetFull } = usePresetFull(isRoleplayMode ? (chat.promptPresetId ?? null) : null);
@@ -3987,40 +3979,20 @@ export function ChatSettingsDrawer({
     const effectiveValue = metadata.enableMemoryRecall !== undefined ? metadata.enableMemoryRecall === true : defaultOn;
     return (
       <div className="space-y-2">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={effectiveValue}
-          onClick={() => {
-            updateMeta.mutate({ id: chat.id, enableMemoryRecall: !effectiveValue });
-          }}
+        <SettingsSwitch
+          label={localizeUi("ui.chat.chatsettingsdrawer.enableMemoryRecall")}
+          description={localizeUi("ui.chat.chatsettingsdrawer.recallRelevantFragmentsFromEarlierInThisChatAnd")}
+          checked={effectiveValue}
+          onChange={(enableMemoryRecall) => updateMeta.mutate({ id: chat.id, enableMemoryRecall })}
+          labelPosition="start"
           className={cn(
-            "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
-            effectiveValue && "mari-chat-option-field--active",
+            "justify-between rounded-md px-3 py-2.5 text-left",
+            effectiveValue
+              ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+              : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
           )}
-        >
-          <div className="flex-1 min-w-0">
-            <span className="text-[0.6875rem] font-medium">
-              {localizeUi("ui.chat.chatsettingsdrawer.enableMemoryRecall")}
-            </span>
-            <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.chatsettingsdrawer.recallRelevantFragmentsFromEarlierInThisChatAnd")}
-            </p>
-          </div>
-          <div
-            className={cn(
-              "mari-chat-option-switch h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-              effectiveValue && "mari-chat-option-switch--active",
-            )}
-          >
-            <div
-              className={cn(
-                "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                effectiveValue && "translate-x-3.5",
-              )}
-            />
-          </div>
-        </button>
+          labelClassName="text-[0.6875rem] font-medium"
+        />
         <button
           type="button"
           onClick={() => setShowMemoriesModal(true)}
@@ -4318,21 +4290,13 @@ export function ChatSettingsDrawer({
                     {localizeUi("ui.chat.hapticsetupfields.tinyTapsForAccidentalBrushesAndBumps")}
                   </span>
                 </span>
-                <span
+                <SettingsSwitchTrack
+                  checked={metadata.hapticIncidentalContact === true}
                   className={cn(
-                    "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                    metadata.hapticIncidentalContact === true
-                      ? "bg-[var(--primary)]"
-                      : "bg-[var(--muted-foreground)]/50",
+                    "mari-chat-option-switch",
+                    metadata.hapticIncidentalContact === true && "mari-chat-option-switch--active",
                   )}
-                >
-                  <span
-                    className={cn(
-                      "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                      metadata.hapticIncidentalContact === true && "translate-x-3.5",
-                    )}
-                  />
-                </span>
+                />
               </button>
             </div>
             <HapticConnectionPanel
@@ -5655,6 +5619,7 @@ export function ChatSettingsDrawer({
                 <div className="mt-2">
                   <button
                     onClick={() => updateMeta.mutate({ id: chat.id, groupSpeakerColors: !metadata.groupSpeakerColors })}
+                    aria-pressed={Boolean(metadata.groupSpeakerColors)}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.groupSpeakerColors && "mari-chat-option-field--active",
@@ -5670,19 +5635,13 @@ export function ChatSettingsDrawer({
                         )}
                       </p>
                     </div>
-                    <div
+                    <SettingsSwitchTrack
+                      checked={Boolean(metadata.groupSpeakerColors)}
                       className={cn(
-                        "mari-chat-option-switch h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                        "mari-chat-option-switch",
                         metadata.groupSpeakerColors && "mari-chat-option-switch--active",
                       )}
-                    >
-                      <div
-                        className={cn(
-                          "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                          metadata.groupSpeakerColors && "translate-x-3.5",
-                        )}
-                      />
-                    </div>
+                    />
                   </button>
                 </div>
               )}
@@ -5748,6 +5707,7 @@ export function ChatSettingsDrawer({
                         groupTurnPromptEnabled: metadata.groupTurnPromptEnabled === false,
                       })
                     }
+                    aria-pressed={metadata.groupTurnPromptEnabled !== false}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.groupTurnPromptEnabled !== false && "mari-chat-option-field--active",
@@ -5765,19 +5725,13 @@ export function ChatSettingsDrawer({
                           : localizeUi("ui.chat.chatsettingsdrawer.individualTurnsRelyOnContextWithoutAddingATurn")}
                       </p>
                     </div>
-                    <div
+                    <SettingsSwitchTrack
+                      checked={metadata.groupTurnPromptEnabled !== false}
                       className={cn(
-                        "mari-chat-option-switch ml-3 h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                        "mari-chat-option-switch ml-3",
                         metadata.groupTurnPromptEnabled !== false && "mari-chat-option-switch--active",
                       )}
-                    >
-                      <div
-                        className={cn(
-                          "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                          metadata.groupTurnPromptEnabled !== false && "translate-x-3.5",
-                        )}
-                      />
-                    </div>
+                    />
                   </button>
                   {!isConversation && (
                     <button
@@ -5787,6 +5741,7 @@ export function ChatSettingsDrawer({
                           groupSpeakerNamesInHistory: metadata.groupSpeakerNamesInHistory !== true,
                         })
                       }
+                      aria-pressed={metadata.groupSpeakerNamesInHistory === true}
                       className={cn(
                         "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                         metadata.groupSpeakerNamesInHistory === true && "mari-chat-option-field--active",
@@ -5802,19 +5757,13 @@ export function ChatSettingsDrawer({
                             : localizeUi("ui.chat.chatsettingsdrawer.historyTurnsKeepTheirStoredTextBeforeRoleMerging")}
                         </p>
                       </div>
-                      <div
+                      <SettingsSwitchTrack
+                        checked={metadata.groupSpeakerNamesInHistory === true}
                         className={cn(
-                          "mari-chat-option-switch ml-3 h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                          "mari-chat-option-switch ml-3",
                           metadata.groupSpeakerNamesInHistory === true && "mari-chat-option-switch--active",
                         )}
-                      >
-                        <div
-                          className={cn(
-                            "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                            metadata.groupSpeakerNamesInHistory === true && "translate-x-3.5",
-                          )}
-                        />
-                      </div>
+                      />
                     </button>
                   )}
                 </div>
@@ -5891,6 +5840,7 @@ export function ChatSettingsDrawer({
                     onClick={() => {
                       updateMeta.mutate({ id: chat.id, autonomousMessages: !metadata.autonomousMessages });
                     }}
+                    aria-pressed={Boolean(metadata.autonomousMessages)}
                     className="flex w-full items-center justify-between px-3 py-2.5 text-left"
                   >
                     <div className="flex-1 min-w-0">
@@ -5901,19 +5851,13 @@ export function ChatSettingsDrawer({
                         {localizeUi("ui.chat.chatsettingsdrawer.charactersMessageYouWhenYouReInactiveEvenWithout")}
                       </p>
                     </div>
-                    <div
+                    <SettingsSwitchTrack
+                      checked={Boolean(metadata.autonomousMessages)}
                       className={cn(
-                        "mari-chat-option-switch h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                        "mari-chat-option-switch",
                         metadata.autonomousMessages && "mari-chat-option-switch--active",
                       )}
-                    >
-                      <div
-                        className={cn(
-                          "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                          metadata.autonomousMessages && "translate-x-3.5",
-                        )}
-                      />
-                    </div>
+                    />
                   </button>
 
                   {metadata.autonomousMessages && (
@@ -5972,6 +5916,7 @@ export function ChatSettingsDrawer({
                     onClick={() => {
                       updateMeta.mutate({ id: chat.id, characterExchanges: !metadata.characterExchanges });
                     }}
+                    aria-pressed={Boolean(metadata.characterExchanges)}
                     className={cn(
                       "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                       metadata.characterExchanges && "mari-chat-option-field--active",
@@ -5985,19 +5930,13 @@ export function ChatSettingsDrawer({
                         {localizeUi("ui.chat.chatsettingsdrawer.charactersChatWithEachOtherInGroupChats")}
                       </p>
                     </div>
-                    <div
+                    <SettingsSwitchTrack
+                      checked={Boolean(metadata.characterExchanges)}
                       className={cn(
-                        "mari-chat-option-switch h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                        "mari-chat-option-switch",
                         metadata.characterExchanges && "mari-chat-option-switch--active",
                       )}
-                    >
-                      <div
-                        className={cn(
-                          "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                          metadata.characterExchanges && "translate-x-3.5",
-                        )}
-                      />
-                    </div>
+                    />
                   </button>
                 )}
 
@@ -6015,6 +5954,7 @@ export function ChatSettingsDrawer({
                     }
                     updateMeta.mutate({ id: chat.id, conversationSchedulesEnabled: nextEnabled });
                   }}
+                  aria-pressed={conversationSchedulesEnabled}
                   className={cn(
                     "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                     conversationSchedulesEnabled && "mari-chat-option-field--active",
@@ -6026,19 +5966,13 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.optionalCharacterRoutinesForAvailabilityAndDelays")}
                     </p>
                   </div>
-                  <div
+                  <SettingsSwitchTrack
+                    checked={conversationSchedulesEnabled}
                     className={cn(
-                      "mari-chat-option-switch h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                      "mari-chat-option-switch",
                       conversationSchedulesEnabled && "mari-chat-option-switch--active",
                     )}
-                  >
-                    <div
-                      className={cn(
-                        "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                        conversationSchedulesEnabled && "translate-x-3.5",
-                      )}
-                    />
-                  </div>
+                  />
                 </button>
 
                 <div ref={scheduleControlsRef} className="scroll-mt-2 space-y-2">
@@ -6485,6 +6419,7 @@ export function ChatSettingsDrawer({
                       crossChatAwareness: metadata.crossChatAwareness === false ? true : false,
                     });
                   }}
+                  aria-pressed={metadata.crossChatAwareness !== false}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                     metadata.crossChatAwareness !== false
@@ -6500,19 +6435,13 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.charactersKnowWhatHappensInTheirOtherChats")}
                     </p>
                   </div>
-                  <div
+                  <SettingsSwitchTrack
+                    checked={metadata.crossChatAwareness !== false}
                     className={cn(
-                      "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                      metadata.crossChatAwareness !== false ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
+                      "mari-chat-option-switch",
+                      metadata.crossChatAwareness !== false && "mari-chat-option-switch--active",
                     )}
-                  >
-                    <div
-                      className={cn(
-                        "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                        metadata.crossChatAwareness !== false && "translate-x-3.5",
-                      )}
-                    />
-                  </div>
+                  />
                 </button>
                 {chat.connectedChatId ? (
                   (() => {
@@ -6657,6 +6586,7 @@ export function ChatSettingsDrawer({
                       roleplayDmCommandsEnabled: metadata.roleplayDmCommandsEnabled !== true,
                     })
                   }
+                  aria-pressed={metadata.roleplayDmCommandsEnabled === true}
                   className={cn(
                     "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
                     metadata.roleplayDmCommandsEnabled === true
@@ -6672,21 +6602,13 @@ export function ChatSettingsDrawer({
                       {localizeUi("ui.chat.chatsettingsdrawer.addsAShortHiddenCommandReminderSoCharactersCan")}
                     </p>
                   </div>
-                  <div
+                  <SettingsSwitchTrack
+                    checked={metadata.roleplayDmCommandsEnabled === true}
                     className={cn(
-                      "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                      metadata.roleplayDmCommandsEnabled === true
-                        ? "bg-[var(--primary)]"
-                        : "bg-[var(--muted-foreground)]/50",
+                      "mari-chat-option-switch",
+                      metadata.roleplayDmCommandsEnabled === true && "mari-chat-option-switch--active",
                     )}
-                  >
-                    <div
-                      className={cn(
-                        "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                        metadata.roleplayDmCommandsEnabled === true && "translate-x-3.5",
-                      )}
-                    />
-                  </div>
+                  />
                 </button>
                 <DiscordMirrorControls
                   className="space-y-2"
@@ -6999,47 +6921,35 @@ export function ChatSettingsDrawer({
                           const manuallyTriggered = activeManualTrackerTypes.has(agent.id);
                           const globallyManual = metadata.manualTrackers === true;
                           return (
-                            <button
+                            <SettingsSwitch
                               key={agent.id}
-                              type="button"
-                              onClick={() => toggleManualTrackerAgent(agent.id)}
+                              label={
+                                <span className="flex min-w-0 items-center gap-2">
+                                  {renderRoleplayAgentMenuIcon(agent.id, "chip")}
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-[0.625rem] font-medium">{agent.name}</span>
+                                    <span className="block truncate text-[0.5625rem] text-[var(--muted-foreground)]">
+                                      {globallyManual
+                                        ? localizeUi("ui.chat.chatsettingsdrawer.controlledByManualTrackers")
+                                        : manuallyTriggered
+                                          ? localizeUi("ui.chat.chatsettingsdrawer.runsOnlyFromHudControls")
+                                          : localizeUi("ui.chat.chatsettingsdrawer.runsAutomatically")}
+                                    </span>
+                                  </span>
+                                </span>
+                              }
+                              checked={manuallyTriggered}
+                              onChange={() => toggleManualTrackerAgent(agent.id)}
                               disabled={globallyManual}
-                              aria-pressed={manuallyTriggered}
+                              labelPosition="start"
                               className={cn(
-                                "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                                "justify-between rounded-md px-2 py-1.5 text-left",
                                 manuallyTriggered
                                   ? "bg-[var(--primary)]/10 text-[var(--foreground)] ring-1 ring-[var(--primary)]/25"
                                   : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                                globallyManual && "cursor-not-allowed opacity-70",
                               )}
-                            >
-                              <span className="flex min-w-0 items-center gap-2">
-                                {renderRoleplayAgentMenuIcon(agent.id, "chip")}
-                                <span className="min-w-0">
-                                  <span className="block truncate text-[0.625rem] font-medium">{agent.name}</span>
-                                  <span className="block truncate text-[0.5625rem] text-[var(--muted-foreground)]">
-                                    {globallyManual
-                                      ? localizeUi("ui.chat.chatsettingsdrawer.controlledByManualTrackers")
-                                      : manuallyTriggered
-                                        ? localizeUi("ui.chat.chatsettingsdrawer.runsOnlyFromHudControls")
-                                        : localizeUi("ui.chat.chatsettingsdrawer.runsAutomatically")}
-                                  </span>
-                                </span>
-                              </span>
-                              <span
-                                className={cn(
-                                  "h-4 w-7 shrink-0 rounded-full p-0.5 transition-colors",
-                                  manuallyTriggered ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    "block h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-                                    manuallyTriggered && "translate-x-3",
-                                  )}
-                                />
-                              </span>
-                            </button>
+                              labelClassName="min-w-0"
+                            />
                           );
                         })}
                       </div>
@@ -7180,8 +7090,9 @@ export function ChatSettingsDrawer({
                               key={provider}
                               type="button"
                               onClick={() => void changeMusicDjProvider(provider)}
+                              aria-pressed={active}
                               className={cn(
-                                "rounded-lg px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
+                                "rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
                                 active
                                   ? "bg-[var(--primary)]/18 text-[var(--foreground)] shadow-sm"
                                   : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
@@ -7942,8 +7853,9 @@ export function ChatSettingsDrawer({
                                   key={provider}
                                   type="button"
                                   onClick={() => void changeMusicDjProvider(provider)}
+                                  aria-pressed={active}
                                   className={cn(
-                                    "rounded-lg px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
+                                    "rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition-colors",
                                     active
                                       ? "bg-[var(--primary)]/18 text-[var(--foreground)] shadow-sm"
                                       : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
@@ -8497,6 +8409,7 @@ export function ChatSettingsDrawer({
                                           });
                                         }
                                       }}
+                                      aria-pressed={active}
                                       className={cn(
                                         "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
                                         active
@@ -8512,19 +8425,13 @@ export function ChatSettingsDrawer({
                                           </span>
                                         ) : null}
                                       </div>
-                                      <div
+                                      <SettingsSwitchTrack
+                                        checked={active}
                                         className={cn(
-                                          "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                                          active ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
+                                          "mari-chat-option-switch",
+                                          active && "mari-chat-option-switch--active",
                                         )}
-                                      >
-                                        <div
-                                          className={cn(
-                                            "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                                            active && "translate-x-3.5",
-                                          )}
-                                        />
-                                      </div>
+                                      />
                                     </button>
                                     {active && knowledgeAgentType && (
                                       <KnowledgeAgentSettingsCard

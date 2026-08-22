@@ -2922,8 +2922,9 @@ export function AgentEditor() {
                         key={provider}
                         type="button"
                         onClick={() => handleMusicProviderChange(provider)}
+                        aria-pressed={active}
                         className={cn(
-                          "rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                          "rounded-md px-3 py-2 text-xs font-medium transition-all",
                           active
                             ? "bg-white/12 text-white shadow-sm"
                             : "text-white/45 hover:bg-white/8 hover:text-white/75",

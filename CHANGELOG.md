@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Roleplay Appearance settings can now place model thinking in a collapsible field above each response, stream it live, optionally keep it expanded, and style its stable disclosure header with Chat Chrome Text Color (#5381).
 - Conversation, Roleplay, and Game chats now provide a responsive Help overlay that labels available chat controls, opens automatically after the first chat setup in each mode, and can be reopened from the toolbar or hidden permanently from the overlay or App Behavior settings (#5390).
 - Fresh Professor Mari chats on Home now explain how to select a connection until the first message is sent (#5375).
 - Online character browsing now provides an exact page selector alongside the current page and total (#5361).
@@ -22,6 +23,13 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Settings and Chat Settings switches now share one track and thumb design, keeping every toggle the same size, shape, travel distance, and vertical alignment on desktop and mobile.
+- Game widget edit icons and Game log deletion actions now follow Chat Chrome Text Color instead of the app accent.
+- The Conversation Start Call button now matches the adjacent participant control height on desktop and mobile.
+- Conversation message actions now sit in a compact row below each message on desktop hover and mobile tap, starting beneath the avatar column and following Chat Chrome Text Color without covering the next message.
+- Generic active, focus, notification, avatar-glow, and editor-reticle styling now follows the configured app accent instead of falling back to legacy fixed pink, while chat setup connection gates follow Chat Chrome Text Color and close before opening Connections; semantic mode, category, status, artwork, and color-picker palettes keep their intentional colors.
+- Chat IDs in Roleplay Chat Settings are now copied by clicking the ID row, with visible click guidance, and compact option buttons across the UI use the unified square shape.
+- Memory Recall and individual Tracker schedules now use the established Chat Settings toggle colors, with consistently centered toggle thumbs.
 - Recreated Docker and Podman containers can now recover a storage lock left after an interrupted shutdown even when the replacement reuses the same internal PID (#5389).
 - The in-field Macro reference and `/macro` help now show the supported `!=`, `is not`, `not contains`, and `not includes` conditional operators (#5383).
 - Bot-browser character author notes now render their HTML and CSS through the same sanitizer and style containment as chat messages, with scripts, event handlers, links, and global page styling blocked (#5377).

@@ -11155,7 +11155,7 @@ function GameSurfaceComponent({
               type="button"
               onClick={() => setSessionPanelTab(tab)}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[0.6875rem] font-medium transition-colors",
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                 sessionPanelTab === tab
                   ? "bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-highlight-text)]"
                   : "text-[var(--marinara-chat-chrome-panel-muted)] hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)] hover:text-[var(--marinara-chat-chrome-highlight-text)]",
@@ -12747,7 +12747,7 @@ function GameSurfaceComponent({
                                       Math.min(combatLogEntries.length, current + combatLogPageSize),
                                     );
                                   }}
-                                  className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                                  className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
                                 >
                                   {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                                   {hiddenCombatLogCount})

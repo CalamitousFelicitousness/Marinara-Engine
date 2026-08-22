@@ -2117,12 +2117,14 @@ export function LorebookEditor() {
                       return (
                         <button
                           key={opt.value}
+                          type="button"
                           onClick={() => {
                             setFormCategory(opt.value);
                             markLorebookDirty();
                           }}
+                          aria-pressed={formCategory === opt.value}
                           className={cn(
-                            "flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all",
+                            "flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-all",
                             formCategory === opt.value
                               ? "mari-chrome-accent-surface mari-accent-animated"
                               : "mari-editor-action text-[var(--marinara-editor-muted)]",

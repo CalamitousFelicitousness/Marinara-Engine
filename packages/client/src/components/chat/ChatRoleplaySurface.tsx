@@ -305,6 +305,8 @@ function CrossfadeBackground({
   );
 }
 
+const hasVisibleStreamText = (text: string) => /\S/u.test(text);
+
 function RoleplayLiveStreamText({
   chatId,
   emptyLabel,
@@ -346,7 +348,7 @@ function RoleplayLiveStreamText({
     };
   }, [chatId]);
 
-  return <>{text ? renderText(text) : emptyLabel}</>;
+  return <>{hasVisibleStreamText(text) ? renderText(text) : emptyLabel}</>;
 }
 
 function StreamingIndicator({
@@ -370,6 +372,9 @@ function StreamingIndicator({
 }) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    hasVisibleStreamText(s.streamBuffers.get(activeChatId) ?? (s.activeChatId === activeChatId ? s.streamBuffer : "")),
+  );
   const streamingCharacterId = useChatStore((s) => s.streamingCharacterId);
 
   return (
@@ -392,6 +397,7 @@ function StreamingIndicator({
           createdAt: new Date().toISOString(),
         }}
         isStreaming
+        streamingOutputStarted={streamingOutputStarted}
         streamingContent={(renderText) => (
           <RoleplayLiveStreamText
             chatId={activeChatId}
@@ -419,6 +425,9 @@ function RegeneratingMessageContent({
 } & Omit<ComponentProps<typeof ChatMessage>, "message" | "isStreaming">) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    hasVisibleStreamText(s.streamBuffers.get(msg.chatId) ?? (s.activeChatId === msg.chatId ? s.streamBuffer : "")),
+  );
   // Strip old-swipe attachments so a previous illustration doesn't linger
   // while the new swipe's text is streaming in. The same applies to old
   // reasoning: expose the action only after this swipe receives its first
@@ -429,6 +438,7 @@ function RegeneratingMessageContent({
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
+      streamingOutputStarted={streamingOutputStarted}
       streamingContent={(renderText) => (
         <RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} renderText={renderText} />
       )}
@@ -1816,133 +1826,135 @@ export function ChatRoleplaySurface({
         <div className="relative flex flex-1 overflow-hidden">
           <div className="relative flex flex-1 flex-col overflow-hidden">
             <div ref={topChromeRef} className="pointer-events-none absolute inset-x-0 top-0 z-40">
-              <div
-                data-tracker-panel-anchor="roleplay-hud"
-                className={cn(
-                  "pointer-events-none relative z-40 items-center py-2 max-md:hidden",
-                  centerCompact ? "hidden" : "flex",
-                )}
-                style={{
-                  paddingLeft: "calc(1rem + var(--tracker-panel-hud-clear-left, 0px))",
-                  paddingRight: "calc(1rem + var(--tracker-panel-hud-clear-right, 0px))",
-                }}
-              >
-                {chat && chatMeta.enableAgents && (
-                  <div data-chat-help="agents" className="pointer-events-auto flex-1 overflow-x-auto">
-                    <Suspense fallback={null}>
-                      <RoleplayHUD
-                        chatId={chat.id}
-                        isStreaming={isStreaming}
-                        onRetriggerTrackers={onRerunTrackers}
-                        onRetryFailedAgents={onRetryFailedAgents}
-                        onRerunSingleTracker={onRerunSingleTracker}
-                        enabledAgentTypes={enabledAgentTypes}
-                        manualTrackers={manualTrackersActive}
-                        injectionSourceMessages={messages}
-                      />
-                    </Suspense>
-                  </div>
-                )}
+              {!centerCompact && (
                 <div
-                  data-roleplay-top-controls="right"
-                  className={cn("pointer-events-auto ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
+                  data-tracker-panel-anchor="roleplay-hud"
+                  className="pointer-events-none relative z-40 hidden items-center py-2 md:flex"
+                  style={{
+                    paddingLeft: "calc(1rem + var(--tracker-panel-hud-clear-left, 0px))",
+                    paddingRight: "calc(1rem + var(--tracker-panel-hud-clear-right, 0px))",
+                  }}
                 >
-                  <ChatHelpButton mode="roleplay" className="hidden md:flex" />
-                  {conversationToolbarPackages.map((item) => (
-                    <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
-                      <CapabilityElement
-                        packageId={item.id}
-                        view="toolbar"
-                        capabilityProps={{
-                          ...conversationCapabilityProps,
-                          toolbarButtonClass: getChatToolbarButtonClass(),
-                        }}
-                        className="contents"
-                      />
-                    </span>
-                  ))}
-                  <ChatBranchSelector
-                    activeChatId={activeChatId}
-                    activeChatName={chat?.name}
-                    groupId={chat?.groupId ?? null}
-                    variant="roleplay"
-                  />
-                  <ChatToolbarMenu openSummaryOnRequest>
-                    <ChatHelpButton mode="roleplay" className="md:hidden" />
-                    <SummaryButton
-                      chatId={chat?.id ?? null}
-                      summary={chatMeta.summary ?? null}
-                      summaryEntries={
-                        Array.isArray(chatMeta.summaryEntries) ? (chatMeta.summaryEntries as ChatSummaryEntry[]) : []
-                      }
-                      summaryContextSize={summaryContextSize}
-                      summaryPromptTemplates={
-                        Array.isArray(chatMeta.summaryPromptTemplates) ? chatMeta.summaryPromptTemplates : []
-                      }
-                      activeSummaryPromptTemplateId={
-                        typeof chatMeta.activeSummaryPromptTemplateId === "string"
-                          ? chatMeta.activeSummaryPromptTemplateId
-                          : null
-                      }
-                      longTermMemorySummaryPromptAvailable={longTermMemorySummaryPromptAvailable}
-                      summaryConnectionId={
-                        typeof chatMeta.summaryConnectionId === "string" ? chatMeta.summaryConnectionId : null
-                      }
-                      summaryMaxTokens={summaryMaxTokens}
-                      automaticSummaryEnabled={automaticSummaryEnabled}
-                      semanticSummaryRetrievalEnabled={semanticSummaryRetrievalEnabled}
-                      activeAgentIds={summaryActiveAgentIds}
-                      summaryRunInterval={summaryRunInterval}
-                      hideSummarisedMessages={hideSummarisedMessages}
-                      summaryTailMessages={summaryTailMessages}
-                      automaticSummariesAvailable={chatMode === "roleplay"}
-                      totalMessageCount={totalMessageCount}
-                      promptPresetId={typeof chat?.promptPresetId === "string" ? chat.promptPresetId : null}
-                    />
-                    <ActiveContextLinksButton
-                      chat={chat}
-                      chatMeta={chatMeta}
-                      chatCharIds={chatCharIds}
-                      characterMap={characterMap}
-                    />
-                    <AuthorNotesButton
-                      chatId={chat?.id ?? null}
-                      chatMeta={chatMeta}
-                      open={!compactToolbarOwnsAuthorNotes && expandedAuthorNotesOpen}
-                      onOpenChange={
-                        compactToolbarOwnsAuthorNotes ? setCompactAuthorNotesOpen : setExpandedAuthorNotesOpen
-                      }
-                      renderPanel={!compactToolbarOwnsAuthorNotes}
-                      mobilePanel={false}
-                    />
-                    <ChatToolbarButton
-                      icon={<Image size="0.875rem" />}
-                      title={t("chat.toolbar.gallery")}
-                      panelAction="gallery"
-                      onClick={onOpenGallery}
-                    />
-                    {chat?.connectedChatId && (
-                      <ChatToolbarButton
-                        icon={<ArrowRightLeft size="0.875rem" />}
-                        helpTarget="connected-chat"
-                        title={
-                          linkedChatName
-                            ? t("chat.toolbar.switchTo", { name: linkedChatName })
-                            : t("chat.toolbar.connectedChat")
-                        }
-                        onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
-                      />
+                  {chat && chatMeta.enableAgents && (
+                    <div data-chat-help="agents" className="pointer-events-auto flex-1 overflow-x-auto">
+                      <Suspense fallback={null}>
+                        <RoleplayHUD
+                          chatId={chat.id}
+                          isStreaming={isStreaming}
+                          onRetriggerTrackers={onRerunTrackers}
+                          onRetryFailedAgents={onRetryFailedAgents}
+                          onRerunSingleTracker={onRerunSingleTracker}
+                          enabledAgentTypes={enabledAgentTypes}
+                          manualTrackers={manualTrackersActive}
+                          injectionSourceMessages={messages}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
+                  <div
+                    data-roleplay-top-controls="right"
+                    className={cn(
+                      "pointer-events-auto ml-auto flex shrink-0 items-center",
+                      CHAT_TOOLBAR_ICON_GAP_CLASS,
                     )}
-                    <ChatMessageSearch chatId={activeChatId} />
-                    <ChatToolbarButton
-                      icon={<Settings2 size="0.875rem" />}
-                      title={t("chat.toolbar.settings")}
-                      panelAction="settings"
-                      onClick={onOpenSettings}
+                  >
+                    <ChatHelpButton mode="roleplay" className="hidden md:flex" />
+                    {conversationToolbarPackages.map((item) => (
+                      <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+                        <CapabilityElement
+                          packageId={item.id}
+                          view="toolbar"
+                          capabilityProps={{
+                            ...conversationCapabilityProps,
+                            toolbarButtonClass: getChatToolbarButtonClass(),
+                          }}
+                          className="contents"
+                        />
+                      </span>
+                    ))}
+                    <ChatBranchSelector
+                      activeChatId={activeChatId}
+                      activeChatName={chat?.name}
+                      groupId={chat?.groupId ?? null}
+                      variant="roleplay"
                     />
-                  </ChatToolbarMenu>
+                    <ChatToolbarMenu openSummaryOnRequest>
+                      <ChatHelpButton mode="roleplay" className="md:hidden" />
+                      <SummaryButton
+                        chatId={chat?.id ?? null}
+                        summary={chatMeta.summary ?? null}
+                        summaryEntries={
+                          Array.isArray(chatMeta.summaryEntries) ? (chatMeta.summaryEntries as ChatSummaryEntry[]) : []
+                        }
+                        summaryContextSize={summaryContextSize}
+                        summaryPromptTemplates={
+                          Array.isArray(chatMeta.summaryPromptTemplates) ? chatMeta.summaryPromptTemplates : []
+                        }
+                        activeSummaryPromptTemplateId={
+                          typeof chatMeta.activeSummaryPromptTemplateId === "string"
+                            ? chatMeta.activeSummaryPromptTemplateId
+                            : null
+                        }
+                        longTermMemorySummaryPromptAvailable={longTermMemorySummaryPromptAvailable}
+                        summaryConnectionId={
+                          typeof chatMeta.summaryConnectionId === "string" ? chatMeta.summaryConnectionId : null
+                        }
+                        summaryMaxTokens={summaryMaxTokens}
+                        automaticSummaryEnabled={automaticSummaryEnabled}
+                        semanticSummaryRetrievalEnabled={semanticSummaryRetrievalEnabled}
+                        activeAgentIds={summaryActiveAgentIds}
+                        summaryRunInterval={summaryRunInterval}
+                        hideSummarisedMessages={hideSummarisedMessages}
+                        summaryTailMessages={summaryTailMessages}
+                        automaticSummariesAvailable={chatMode === "roleplay"}
+                        totalMessageCount={totalMessageCount}
+                        promptPresetId={typeof chat?.promptPresetId === "string" ? chat.promptPresetId : null}
+                      />
+                      <ActiveContextLinksButton
+                        chat={chat}
+                        chatMeta={chatMeta}
+                        chatCharIds={chatCharIds}
+                        characterMap={characterMap}
+                      />
+                      <AuthorNotesButton
+                        chatId={chat?.id ?? null}
+                        chatMeta={chatMeta}
+                        open={!compactToolbarOwnsAuthorNotes && expandedAuthorNotesOpen}
+                        onOpenChange={
+                          compactToolbarOwnsAuthorNotes ? setCompactAuthorNotesOpen : setExpandedAuthorNotesOpen
+                        }
+                        renderPanel={!compactToolbarOwnsAuthorNotes}
+                        mobilePanel={false}
+                      />
+                      <ChatToolbarButton
+                        icon={<Image size="0.875rem" />}
+                        title={t("chat.toolbar.gallery")}
+                        panelAction="gallery"
+                        onClick={onOpenGallery}
+                      />
+                      {chat?.connectedChatId && (
+                        <ChatToolbarButton
+                          icon={<ArrowRightLeft size="0.875rem" />}
+                          helpTarget="connected-chat"
+                          title={
+                            linkedChatName
+                              ? t("chat.toolbar.switchTo", { name: linkedChatName })
+                              : t("chat.toolbar.connectedChat")
+                          }
+                          onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+                        />
+                      )}
+                      <ChatMessageSearch chatId={activeChatId} />
+                      <ChatToolbarButton
+                        icon={<Settings2 size="0.875rem" />}
+                        title={t("chat.toolbar.settings")}
+                        panelAction="settings"
+                        onClick={onOpenSettings}
+                      />
+                    </ChatToolbarMenu>
+                  </div>
                 </div>
-              </div>
+              )}
               <div
                 data-tracker-panel-anchor={centerCompact ? "roleplay-hud" : undefined}
                 className={cn(

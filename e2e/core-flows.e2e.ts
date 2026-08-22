@@ -6905,9 +6905,18 @@ test("the first conversation opens Help once after setup", async ({ page, reques
       )
       .toBe(true);
 
-    await page.waitForTimeout(1_100);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}") as {
+            state?: { chatHelpSeenModes?: string[] };
+          };
+          return persisted.state?.chatHelpSeenModes?.includes("conversation") ?? false;
+        }),
+      )
+      .toBe(true);
     await page.reload();
-    await page.waitForTimeout(900);
+    await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
     await expect(overlay).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${chat.id}`);

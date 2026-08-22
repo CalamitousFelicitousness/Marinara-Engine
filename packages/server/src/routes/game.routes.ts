@@ -11,7 +11,7 @@ import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
-import { createChatsStorage } from "../services/storage/chats.storage.js";
+import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
@@ -20,7 +20,10 @@ import { createGalleryStorage } from "../services/storage/gallery.storage.js";
 import { createGameSceneVideosStorage } from "../services/storage/game-scene-videos.storage.js";
 import { createGameStoryboardsStorage } from "../services/storage/game-storyboards.storage.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
-import { createGameEngineStateStorage } from "../services/storage/game-engine-state.storage.js";
+import {
+  createGameEngineStateStorage,
+  EXPERIENCE_GAME_TYPE_PREFIX,
+} from "../services/storage/game-engine-state.storage.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { formatOwnerSpatialBreadcrumb, resolveOwnerSpatialProjection } from "../services/spatial-context/projection.js";
 import {
@@ -7198,6 +7201,12 @@ export async function gameRoutes(app: FastifyInstance) {
         gameSceneAmbient: _previousSceneAmbient,
         gameRecentMusic: _previousRecentMusic,
         gameRecentSpotifyTracks: _previousRecentSpotifyTracks,
+        // #5406: the write-ordinal mirror is per-chat and never travels. A new session clones no
+        // engine rows, so it has nothing to order against — carrying the previous session's
+        // stamps into a chat whose counter starts at null would just make its first real writes
+        // compare as older than the inherited ones. (allocateWriteOrdinal's mirror floor covers
+        // the same hazard, but the mirror is meaningless here regardless.)
+        [METADATA_WRITE_ORDINALS_KEY]: _previousWriteOrdinals,
         ...carryMeta
       } = prevMeta;
 
@@ -10154,7 +10163,15 @@ export async function gameRoutes(app: FastifyInstance) {
     // the latest committed save — the world continues rather than resetting.
     const row = await storage.getForGeneration(req.params.chatId, { visibleAnchor: anchor, gameType });
     if (!row)
-      return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
+      return {
+        exists: false,
+        state: null,
+        schemaVersion: null,
+        anchor: null,
+        committed: false,
+        writeOrdinal: null,
+        createdAt: null,
+      };
 
     let state: unknown = null;
     // Set ONLY when the stored value is unreadable — `stateUnparseable: true` is the
@@ -10197,6 +10214,13 @@ export async function gameRoutes(app: FastifyInstance) {
       // that would rather refuse than continue a mismatched world can check this.
       anchorMatched: !!anchor && row.messageId === anchor.messageId && row.swipeIndex === anchor.swipeIndex,
       committed: row.committed === 1,
+      // #5406: the returned ROW's ordinal, not the chat's high-water mark — swiping back must
+      // surface the ordinal of the save the reader is actually looking at. Compare it against
+      // `metadata.metadataWriteOrdinals["<your key>"]`: the higher value is the later write,
+      // which is the whole boot-time "which store is newer" decision in one line. Null on rows
+      // written before #5406 (and on clones of them); treat null as "unorderable" and fall back
+      // to whatever conservative rule the package used before.
+      writeOrdinal: row.writeOrdinal,
       createdAt: row.createdAt,
     };
   });
@@ -10252,6 +10276,13 @@ export async function gameRoutes(app: FastifyInstance) {
         const messages = await chats.listMessages(req.params.chatId);
         const anchor = resolveVisibleGameStateAnchor(messages) ?? { messageId: "", swipeIndex: 0 };
         const storage = createGameEngineStateStorage(app.db);
+        // #5406: allocate the shared per-chat ordinal INSIDE this write lock, so the value the
+        // response reports is the one the row carries and two overlapping saves can never
+        // report the same number. The allocator takes the metadata patch queue on top of this
+        // lock (never the reverse), which is what serializes it against a metadata PATCH
+        // allocating at the same moment. Null only if the chat vanished between the lookup
+        // above and here; the save still lands, just unorderable.
+        const writeOrdinal = await chats.allocateWriteOrdinal(req.params.chatId);
         const id = await storage.create({
           chatId: req.params.chatId,
           messageId: anchor.messageId,
@@ -10260,6 +10291,7 @@ export async function gameRoutes(app: FastifyInstance) {
           schemaVersion: body.schemaVersion,
           state: serialized,
           committed: body.committed,
+          writeOrdinal,
           // Strictly newer than the namespace's current newest, not just now() (#5405). Two
           // saves inside the same millisecond — a package saving twice in one narration turn,
           // or a scripted loop — otherwise TIE on createdAt, and a tie is not resolved in
@@ -10272,7 +10304,7 @@ export async function gameRoutes(app: FastifyInstance) {
           ).toISOString(),
         });
         await storage.pruneToNewestAnchors(req.params.chatId, gameType, EXPERIENCE_STATE_KEEP_ANCHORS);
-        return { ok: true, id, anchor };
+        return { ok: true, id, anchor, writeOrdinal };
       });
     },
   );
@@ -10595,6 +10627,14 @@ export async function gameRoutes(app: FastifyInstance) {
               schemaVersion: row.schemaVersion,
               state: row.state,
               committed: row.committed,
+              // #5406: an import is an experience-store write like any other, so each row is
+              // allocated a fresh ordinal here (in array order, inside this lock — strictly
+              // increasing alongside the createdAt stamps). Leaving these null would make a
+              // freshly imported campaign LOSE the boot comparison to the destination chat's
+              // stale metadata mirror, resurrecting the pre-import world — the exact clobber
+              // the ordinal exists to prevent. The exported writeOrdinal (a foreign chat's
+              // counter space) is deliberately never honored, same as the exported createdAt.
+              writeOrdinal: await chats.allocateWriteOrdinal(req.params.chatId),
               createdAt: new Date(base + index).toISOString(),
             }),
           );
@@ -14232,44 +14272,64 @@ export async function gameRoutes(app: FastifyInstance) {
         return [];
       }
     })();
-    if (capturedEngineStates.length > 0) {
-      for (const captured of capturedEngineStates) {
-        // Restore clones take the same monotonic stamp as the save/import family —
-        // an unstamped now() here could tie a concurrent save in the same millisecond,
-        // and ties resolve differently in-process vs after a shard reload, so the NEXT
-        // checkpoint's capture could flip between the restored blob and the newer save
-        // across a restart. (A narrow race remains until this write also holds the
-        // experience write lock — tracked with #5406's ordinal work, which locks this
-        // block; the stamp closes the deterministic half.)
-        await engineStore.create({
-          chatId: input.chatId,
-          messageId: restoreMsg.id,
-          swipeIndex: 0,
-          gameType: captured.gameType,
-          schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
-          state: captured.state,
-          committed: true,
-          createdAt: new Date(
-            experienceStateStampBase(await engineStore.getLatest(input.chatId, captured.gameType)),
-          ).toISOString(),
-        });
+    // #5406: a restored row gets a FRESH ordinal, never the captured one. Reusing the captured
+    // value would hand the same number out twice, and semantically the restore IS the newest
+    // write to the experience store — which is exactly what stops a boot comparison from
+    // deciding a stale chat-metadata copy (whose mirror kept advancing while the player was on
+    // a later turn) is newer than the world the user just restored.
+    //
+    // The whole block runs inside the experience-state write lock, the same one the PUT holds.
+    // Outside it, an autosave PUT landing at the restore anchor can allocate a HIGHER ordinal
+    // than the restore and still lose the delete-then-insert race, leaving the surviving row
+    // carrying the lower number — at which point the next boot comparison prefers the stale
+    // chat-metadata copy and resurrects the pre-restore world, the exact clobber #5406 exists
+    // to prevent. Lock order stays experience-lock -> metadata-queue: allocateWriteOrdinal takes
+    // the metadata queue from inside this lock, never the reverse. (This lock also closes the
+    // narrow race the #5405 stamp comment below tracked.)
+    await withExperienceStateWriteLock(input.chatId, async () => {
+      // Only experience rows are ordered: a turn-game keeps a single store, so it has nothing to
+      // compare against and its rows stay null (see game_engine_state.writeOrdinal).
+      const restoreOrdinal = async (gameType: string) =>
+        gameType.startsWith(EXPERIENCE_GAME_TYPE_PREFIX) ? await chats.allocateWriteOrdinal(input.chatId) : null;
+      if (capturedEngineStates.length > 0) {
+        for (const captured of capturedEngineStates) {
+          // Restore clones take the same monotonic stamp as the save/import family (#5405) —
+          // an unstamped now() here could tie a concurrent save in the same millisecond,
+          // and ties resolve differently in-process vs after a shard reload, so the NEXT
+          // checkpoint's capture could flip between the restored blob and the newer save
+          // across a restart.
+          await engineStore.create({
+            chatId: input.chatId,
+            messageId: restoreMsg.id,
+            swipeIndex: 0,
+            gameType: captured.gameType,
+            schemaVersion: typeof captured.schemaVersion === "number" ? captured.schemaVersion : 1,
+            state: captured.state,
+            committed: true,
+            writeOrdinal: await restoreOrdinal(captured.gameType),
+            createdAt: new Date(
+              experienceStateStampBase(await engineStore.getLatest(input.chatId, captured.gameType)),
+            ).toISOString(),
+          });
+        }
+      } else {
+        // No usable capture (pre-#5102 checkpoint, empty chat at capture time, or a
+        // corrupt blob): the createdAt re-lookup is strictly better than nothing.
+        const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
+        if (cpEngineRow) {
+          await engineStore.create({
+            chatId: input.chatId,
+            messageId: restoreMsg.id,
+            swipeIndex: 0,
+            gameType: cpEngineRow.gameType,
+            schemaVersion: cpEngineRow.schemaVersion,
+            state: cpEngineRow.state,
+            committed: true,
+            writeOrdinal: await restoreOrdinal(cpEngineRow.gameType),
+          });
+        }
       }
-    } else {
-      // No usable capture (pre-#5102 checkpoint, empty chat at capture time, or a
-      // corrupt blob): the createdAt re-lookup is strictly better than nothing.
-      const cpEngineRow = await engineStore.getLatestAtOrBefore(input.chatId, cp.createdAt);
-      if (cpEngineRow) {
-        await engineStore.create({
-          chatId: input.chatId,
-          messageId: restoreMsg.id,
-          swipeIndex: 0,
-          gameType: cpEngineRow.gameType,
-          schemaVersion: cpEngineRow.schemaVersion,
-          state: cpEngineRow.state,
-          committed: true,
-        });
-      }
-    }
+    });
 
     // Restore chat metadata fields from checkpoint
     if (cp.gameState) {

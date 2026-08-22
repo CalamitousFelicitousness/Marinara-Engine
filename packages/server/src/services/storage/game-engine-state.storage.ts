@@ -31,6 +31,19 @@ export interface CreateGameEngineStateInput {
   state: string;
   committed?: boolean;
   /**
+   * Per-chat write ordinal from `chats.writeOrdinalCounter` (#5406). Omit (null) for writers
+   * with a single store — turn-games have nothing to order this row against.
+   *
+   * A value passed here is only ever valid inside ONE chat's counter space. Checkpoint restore
+   * therefore ALLOCATES a fresh ordinal for its experience rows rather than replaying the
+   * captured one (which would hand the same value out twice, and would also under-state a
+   * restore that is genuinely the newest write); its turn-game rows stay null. Chat branching is
+   * the one case that copies an ordinal verbatim, and only because it raises the branch's counter
+   * above every ordinal it copied via `chats.raiseWriteOrdinalFloor` — same counter space, so the
+   * copies keep their order and the branch's next allocation still beats all of them.
+   */
+  writeOrdinal?: number | null;
+  /**
    * Override the row's creation timestamp (#5405). Only the experience-state writers use this
    * (the PUT save and the bulk import): `createdAt` is the sole recency key every read orders
    * by, and a `desc(createdAt).limit(1)` read of a TIED group does not return the newest write
@@ -241,6 +254,7 @@ export function createGameEngineStateStorage(db: DB) {
         schemaVersion: input.schemaVersion,
         state: input.state,
         committed: input.committed ? 1 : 0,
+        writeOrdinal: input.writeOrdinal ?? null,
         createdAt: input.createdAt ?? now(),
       });
       return id;

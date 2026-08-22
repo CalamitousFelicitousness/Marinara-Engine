@@ -493,6 +493,10 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
         .set({ committed: 1 })
         .where(and(eq(gameStateSnapshots.id, snapshotId), eq(gameStateSnapshots.chatId, chatId)));
     },
+    // Both metadata writers below replace the WHOLE blob and are not write-ordinal stamped
+    // (#5406) — same category as `chats.updateMetadata`: the mirror rides through untouched, so
+    // a key written here keeps a stale ordinal. Safe only while the keys packages order against
+    // are reachable solely through the chat metadata PATCH path.
     async updateChatActivity(input: CapabilityChatActivityUpdate) {
       await db.transaction(async (transaction) => {
         const rows = input.metadata

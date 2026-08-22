@@ -448,6 +448,11 @@ Keyboard handling and the `role="separator"` / `aria-valuenow` markup were alrea
 and are preserved, with arrow directions now derived from which edge the panel is anchored to.
 Double-click resets to the nearest preset.
 
+The handle is not rendered when the gutter cannot reach `TRACKER_PANEL_WIDTH_MIN`: there is nothing
+to drag, and showing one would advertise an `aria-valuemax` the panel can never reach. Verified in a
+browser at both widths -- at 2400px the drag tracks the pointer, commits, and persists past the
+store's 1s write debounce; at 1500px the gutter is 89px and no handle appears.
+
 `resolveTrackerPanelGutterWidth` is split out of `resolveTrackerPanelDesktopWidth` so the drag can be
 clamped to the room actually available beside the chat column; without it, dragging past the edge
 would snap back on release.

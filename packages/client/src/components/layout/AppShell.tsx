@@ -394,6 +394,10 @@ export function AppShell() {
   const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
   const [trackerPanelGutterWidth, setTrackerPanelGutterWidth] = useState(TRACKER_PANEL_WIDTH_MAX);
   const shellRootRef = useRef<HTMLDivElement>(null);
+  const trackerPanelResizeMax = Math.min(TRACKER_PANEL_WIDTH_MAX, trackerPanelGutterWidth);
+  // A gutter too narrow to reach the minimum leaves nothing to drag. Showing a
+  // handle there advertises an aria-valuemax the panel can never reach.
+  const trackerPanelResizable = trackerPanelResizeMax > TRACKER_PANEL_WIDTH_MIN;
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);
   const trackerPanelWindowTargetRef = useRef<TrackerPanelWindowTarget | null>(null);
   const trackerPanelDockingPopupRef = useRef<TrackerPanelWindowTarget["popup"] | null>(null);
@@ -668,8 +672,8 @@ export function AppShell() {
     min: TRACKER_PANEL_WIDTH_MIN,
     // The gutter beside the chat column is the real ceiling; without it a drag
     // past the edge would snap back on release.
-    max: Math.max(TRACKER_PANEL_WIDTH_MIN, Math.min(TRACKER_PANEL_WIDTH_MAX, trackerPanelGutterWidth)),
-    disabled: shellOverlayMode,
+    max: Math.max(TRACKER_PANEL_WIDTH_MIN, trackerPanelResizeMax),
+    disabled: shellOverlayMode || !trackerPanelResizable,
     label: localizeUi("ui.layout.appshell.resizeTrackerPanel"),
     onCommit: setTrackerPanelWidth,
     // No onPreview: the panel follows this custom property so a drag never
@@ -1323,10 +1327,9 @@ export function AppShell() {
 
       <AnimatePresence initial={false} mode="wait">
         {!shellOverlayMode && trackerPanelSurfaceAvailable && trackerPanelDesktop(trackerPanelSide)}
-        {!shellOverlayMode && trackerPanelVisible && trackerPanelWidthMeasured && (
+        {!shellOverlayMode && trackerPanelVisible && trackerPanelWidthMeasured && trackerPanelResizable && (
           <div
             {...trackerPanelResize.separatorProps}
-            aria-valuenow={Math.round(trackerPanelResolvedWidth)}
             className={cn(
               "fixed z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block",
               trackerPanelResize.dragging && "bg-[var(--primary)]/40",

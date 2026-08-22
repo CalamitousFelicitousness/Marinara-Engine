@@ -457,6 +457,25 @@ That contract changed deliberately, so the assertion now pins width and density 
 still red on the pre-existing upstream `ConnectionEditor.tsx` failure recorded in the
 marinara-validation skill.
 
+### Tracker sidebar crashed the app shell on a character with no card
+
+`normalizeLookupCharacterIds` in the tracker sprite lookup trimmed every id it was handed. It is fed
+`presentCharacters.map((c) => c.characterId)`, and `PresentCharacter.characterId` is typed string but
+arrives as agent JSON -- a character with no card of its own carries none. One such character made the
+sidebar throw inside a `useMemo`, which the app recovery boundary caught as
+`Cannot read properties of undefined (reading 'trim')`, replacing the whole screen.
+
+Reproduced from a real snapshot: one present character across 128 had no `characterId`, so that chat
+crashed deterministically whenever its tracker was open.
+
+The normalizer moved to `lib/sprite-expressions.ts`, which is React-free and already owns
+`isSpriteLookupCharacterId`, so `scripts/regressions/tracker-sprite-lookup.regression.ts` can pin it.
+Mutation-verified. Every other `characterId` trim in the feature was already optional-chained; this
+was the only hole.
+
+Same class as the featured card's `character.name.trim()`, fixed alongside it: fields the type system
+calls `string` that are really untrusted model output.
+
 ### Detached tracker panel leaves the docked panel unresponsive
 
 `AppShell.tsx` created one `trackerPanelHost` div for the lifetime of the shell and physically moved

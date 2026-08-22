@@ -6,6 +6,25 @@ export function isSpriteLookupCharacterId(characterId: string | null | undefined
   return !!id && !id.startsWith("manual-") && !id.startsWith("party-npc:") && !id.startsWith("npc:");
 }
 
+/**
+ * `PresentCharacter.characterId` is typed string but arrives as agent JSON, and
+ * a character with no card of its own has none. An unguarded trim here crashed
+ * the whole app shell for any chat carrying one.
+ */
+export function normalizeLookupCharacterIds(characterIds: ReadonlyArray<string | null | undefined>) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const id of characterIds) {
+    const trimmed = typeof id === "string" ? id.trim() : "";
+    if (!isSpriteLookupCharacterId(trimmed) || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
 export function getSpriteExpressionForCharacter(
   expressions: Record<string, string>,
   character: PresentCharacter,

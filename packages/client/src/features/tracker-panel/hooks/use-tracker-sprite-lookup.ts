@@ -10,7 +10,7 @@ import {
   useTrackerCardColorPreviews,
 } from "../../../lib/tracker-card-colors";
 import type { TrackerSpriteLookup } from "../tracker-panel.types";
-import { isSpriteLookupCharacterId } from "../lib/sprite-expressions";
+import { isSpriteLookupCharacterId, normalizeLookupCharacterIds } from "../lib/sprite-expressions";
 import { buildCharacterLookupMap, normalizeLookupText } from "../lib/tracker-metadata";
 import { getCharacterProfileColors } from "../lib/tracker-profile-style";
 
@@ -25,20 +25,6 @@ interface TrackerLookupCharacterRow {
   data: unknown;
   comment?: string | null;
   avatarPath?: string | null;
-}
-
-function normalizeLookupCharacterIds(characterIds: string[]) {
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-
-  for (const id of characterIds) {
-    const trimmed = id.trim();
-    if (!isSpriteLookupCharacterId(trimmed) || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    normalized.push(trimmed);
-  }
-
-  return normalized;
 }
 
 function isTrackerLookupCharacterRow(value: unknown): value is TrackerLookupCharacterRow {

@@ -345,6 +345,50 @@ rewrites a hand-tuned value. Pure read; the user still saves explicitly.
 never been registered there, fixed separately; see that commit for why the omission loses data.
 Every future table added to `FILE_BACKED_TABLES` needs the same entry at the same position.
 
+### Nested tracker data from custom Character Tracker prompts
+
+A custom Character Tracker prompt can define a schema richer than
+`PresentCharacter`: clothing layers with heel type and height, body state, action traces. The
+agent's output was already persisted verbatim into the game-state snapshot, but only
+`customFields` and `stats` were ever read back, so everything else rendered nowhere and vanished
+on any turn the agent omitted it. Confirmed against a live snapshot whose character carried
+six prompt-defined top-level keys alongside an empty `customFields`.
+
+`packages/shared/src/utils/tracker-extras.ts` makes those keys first class. Every key not in
+`KNOWN_PRESENT_CHARACTER_KEYS` is an "extra", a JSON tree that is rendered, edited, locked, and
+preserved on omission. A denylist rather than a required `extras` container, because prompts
+already in use emit their schema at the top level of each character and a container would break
+every one of them.
+
+Three rules, each pinned by `scripts/regressions/tracker-extras.regression.ts`:
+
+- **Preserve on omission**, matching `customFields`. A key the agent stops mentioning keeps its
+  previous value. Arrays take their length from the agent, which is authoritative about list
+  membership, but surviving elements merge by index so an element's unmentioned sub-keys persist.
+- **Lock by dotted path**, reusing the existing lock-key scheme:
+  `characters.id:amy.extra.clothing.footwear.0.heel_height_cm`. Locking a container freezes its
+  subtree. The `extra` namespace segment keeps a prompt-defined key named `stats` clear of the
+  real stat locks, and segments are URI-encoded so a dot inside a key cannot fracture the path.
+- **Edit immutably**, cloning only the touched spine, with add and remove for array members. A new
+  row copies the first element's shape with its leaves blanked rather than being an empty object
+  the agent has to infer.
+
+`CharacterTrackerExtras.tsx` renders the tree generically, driven by the data rather than by any
+schema, since the shape belongs to the user's prompt. Numbers stay numbers on edit so a heel
+height does not silently become a string.
+
+Patches to upstream files, 39 added lines and no deletions across three:
+`packages/shared/src/utils/tracker-field-locks.ts` (extras lock application inside
+`mergeCharactersWithLocks`), `packages/server/src/routes/generate/generate-route-utils.ts`
+(extras merge inside `preserveTrackerCharacterUiFields`, so both the post-turn and re-run paths
+get it), and `CharacterTrackerCard.tsx` (one mount). `tracker-extras.ts` keeps its own copy of the
+private `encodeSegment` from `tracker-field-locks.ts` rather than importing it: that module
+imports this one, and closing the cycle risks a bundler TDZ failure. The regression pins the two
+encodings equal.
+
+Both upstream patches are verified by mutation: removing either the merge or the lock application
+fails the lane.
+
 ### Message action row wraps on narrow phones
 
 `ChatMessage.tsx` renders the per-message action row (copy, edit, branch, delete, and the

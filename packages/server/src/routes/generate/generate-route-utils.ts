@@ -24,6 +24,8 @@ import {
   type MacroContext,
   type PlayerStats,
   type WrapFormat,
+  mergeTrackerExtras,
+  readCharacterExtras,
 } from "@marinara-engine/shared";
 import { wrapContent } from "../../services/prompt/format-engine.js";
 import {
@@ -1623,6 +1625,14 @@ export function preserveTrackerCharacterUiFields(
       character.customFields = { ...previousCustomFields, ...(nextCustomFields ?? {}) };
     }
     character.stats = mergeTrackerStats(previous?.stats, character.stats);
+    // Fork: nested extras a custom tracker prompt emits (clothing, body, ...).
+    // Same preserve-on-omission rule as customFields, one level deeper.
+    if (previous) {
+      Object.assign(
+        character,
+        mergeTrackerExtras(readCharacterExtras(previous), readCharacterExtras(character)) as Record<string, unknown>,
+      );
+    }
     if (
       (typeof character.avatarPath !== "string" || !character.avatarPath.trim()) &&
       isNpcTrackerAvatarPath(previousAvatarPath)

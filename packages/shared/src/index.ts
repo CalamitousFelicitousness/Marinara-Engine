@@ -129,6 +129,7 @@ export * from "./utils/lorebook-keyword-matching.js";
 export * from "./utils/regex-safety.js";
 export * from "./utils/game-state-text.js";
 export * from "./utils/custom-tracker-fields.js";
+export * from "./utils/tracker-extras.js";
 export * from "./utils/illustrator-generation-count.js";
 export * from "./utils/multi-swipe.js";
 export * from "./utils/tracker-field-locks.js";

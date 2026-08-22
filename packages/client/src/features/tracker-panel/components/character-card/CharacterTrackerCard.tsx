@@ -4,6 +4,8 @@ import {
   characterCustomFieldTrackerLockKey,
   characterStatTrackerLockKey,
   characterTrackerLockKey,
+  characterTrackerLockPrefix,
+  readCharacterExtras,
   isTrackerFieldHidden,
   isTrackerFieldLocked,
   normalizeTrackerFieldLocks,
@@ -31,6 +33,7 @@ import {
 import { StatList } from "../controls/StatList";
 import { useTrackerFieldLock, useTrackerLockContext } from "../TrackerLockContext";
 import { CharacterTrackerAvatar } from "./CharacterTrackerAvatar";
+import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
 import { COMPACT_CHARACTER_MOOD_EDIT_CLASS, CompactCharacterField } from "./CharacterTrackerField";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -192,6 +195,9 @@ export function CharacterTrackerCard({
     ([name, value]) => [name, value, trackerEditableText(value)] as const,
   );
   const characterStats = Array.isArray(character.stats) ? character.stats : [];
+  // Nested keys a custom tracker prompt emits. They live at the top level of the
+  // character object, so writing them back is a spread rather than a nested set.
+  const characterExtras = readCharacterExtras(character);
   const avatarMedia = characterPicture ?? character.avatarPath ?? null;
   const compactAvatarUpload = characterPicture ? undefined : onUploadAvatar;
   const characterFieldKey = (field: HideableCharacterField) =>
@@ -515,6 +521,19 @@ export function CharacterTrackerCard({
           )}
         </div>
       )}
+
+      <CharacterTrackerExtras
+        extras={characterExtras}
+        lockPrefix={characterTrackerLockPrefix(character, characterIndex)}
+        deleteMode={deleteMode}
+        onChange={(nextExtras) => {
+          // Replace the whole extras surface: a removed key must not survive as
+          // a leftover on the spread character object.
+          const base: Record<string, unknown> = { ...character };
+          for (const key of Object.keys(characterExtras)) delete base[key];
+          onUpdate({ ...base, ...nextExtras } as unknown as PresentCharacter);
+        }}
+      />
     </article>
   );
 }

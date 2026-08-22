@@ -1,3 +1,4 @@
+import { applyTrackerExtraLocks, readCharacterExtras, trackerExtraLockKey } from "./tracker-extras.js";
 import type {
   CharacterStat,
   CustomTrackerField,
@@ -1031,6 +1032,15 @@ function mergeCharactersWithLocks(
       currentIndex,
     );
     if (customFields !== undefined) next.customFields = customFields;
+    // Nested extras from a custom tracker prompt lock by dotted path, same as
+    // the flat fields above. Locking a container freezes its whole subtree.
+    const extraPrefix = characterTrackerLockPrefix(currentCharacter, currentIndex);
+    Object.assign(
+      next,
+      applyTrackerExtraLocks(readCharacterExtras(currentCharacter), readCharacterExtras(next), (path) =>
+        isTrackerFieldLocked(locks, trackerExtraLockKey(extraPrefix, path)),
+      ) as Record<string, unknown>,
+    );
     return next;
   });
   current.forEach((character, index) => {

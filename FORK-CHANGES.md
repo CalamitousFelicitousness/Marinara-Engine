@@ -408,6 +408,27 @@ Follow-up, after the first render landed and the tree proved unreadable against 
   rendered extras, so a featured character showed none of the data the API returned. This is a
   fourth upstream file patched.
 
+### Tracker panel width and density become independent
+
+`trackerPanelSizeProfile` picked both the panel's pixel width and its type scale, so widening the
+panel enlarged its text instead of showing more of it. That is also why a resize handle would have
+been pointless: more width bought nothing.
+
+Width and density are now separate persisted settings. `packages/client/src/lib/tracker-panel-size.ts`
+is a new store-free module holding the whole model -- clamping, preset pairing, legacy migration --
+so it is unit-testable (`ui.store.ts` touches `localStorage` at module load and cannot be imported
+from a regression) and so the upstream-hot store shrinks to re-exports plus state.
+
+- The three profiles survive as one-click presets that set both fields. `resolveTrackerPanelPreset`
+  returns null once the user drags off a preset, so no button falsely claims to be active.
+- Drag range is 240-640px, deliberately wider than the 280/340/420 presets.
+  `resolveTrackerPanelDesktopWidth` still clamps to the gutter actually available.
+- Persist migration v95 -> v96. The old `migrate` ended with an unconditional
+  `delete persisted.trackerPanelWidth` from when upstream removed free width; leaving it would have
+  wiped the new field on every rehydrate, so it is gone.
+
+Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
+
 ### Detached tracker panel leaves the docked panel unresponsive
 
 `AppShell.tsx` created one `trackerPanelHost` div for the lifetime of the shell and physically moved

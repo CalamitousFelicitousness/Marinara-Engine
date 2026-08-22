@@ -6,7 +6,12 @@ import {
   toggleTrackerFieldLock,
   type TrackerHiddenFields,
 } from "@marinara-engine/shared";
-import { TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR, useUIStore } from "../../../stores/ui.store";
+import {
+  nearestTrackerPanelPreset,
+  resolveTrackerPanelPreset,
+  TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
+  useUIStore,
+} from "../../../stores/ui.store";
 import { useChatStore } from "../../../stores/chat.store";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import { createEmptyGameState, useGameStatePatcher } from "../../../hooks/use-game-state-patcher";
@@ -86,7 +91,10 @@ export function TrackerDataSidebar({
   const trackerPanelThoughtBubbleDisplay = useUIStore((s) => s.trackerPanelThoughtBubbleDisplay);
   const trackerStatDisplayMode = useUIStore((s) => s.trackerStatDisplayMode);
   const trackerPanelDockedThoughtsAlwaysVisible = useUIStore((s) => s.trackerPanelDockedThoughtsAlwaysVisible);
-  const trackerPanelSizeProfile = useUIStore((s) => s.trackerPanelSizeProfile);
+  const trackerPanelWidth = useUIStore((s) => s.trackerPanelWidth);
+  const trackerPanelDensity = useUIStore((s) => s.trackerPanelDensity);
+  const trackerPanelSizeProfile =
+    resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity) ?? nearestTrackerPanelPreset(trackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
   const toggleTrackerPanelSectionCollapsed = useUIStore((s) => s.toggleTrackerPanelSectionCollapsed);

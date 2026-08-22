@@ -11,6 +11,7 @@ import {
   getDefaultChatChromeTextColor,
   getDefaultChatTextColor,
   getTrackerPanelWidthForProfile,
+  resolveTrackerPanelPreset,
   type ConversationAvatarShape,
   type ConversationMessageStyle,
   type GameDialogueDisplayMode,
@@ -2356,7 +2357,10 @@ function TrackerPanelAppearanceDrawer() {
   const setTrackerPanelDockedThoughtsAlwaysVisible = useUIStore(
     (state) => state.setTrackerPanelDockedThoughtsAlwaysVisible,
   );
-  const trackerPanelSizeProfile = useUIStore((state) => state.trackerPanelSizeProfile);
+  const trackerPanelWidth = useUIStore((state) => state.trackerPanelWidth);
+  const trackerPanelDensity = useUIStore((state) => state.trackerPanelDensity);
+  // null once the user drags off a preset, so no button claims to be active.
+  const trackerPanelSizeProfile = resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity);
   const setTrackerPanelSizeProfile = useUIStore((state) => state.setTrackerPanelSizeProfile);
   const trackerPanelBackgroundColor = useUIStore((state) => state.trackerPanelBackgroundColor);
   const setTrackerPanelBackgroundColor = useUIStore((state) => state.setTrackerPanelBackgroundColor);

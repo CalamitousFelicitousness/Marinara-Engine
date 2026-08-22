@@ -22,6 +22,35 @@ import { detectConversationTimeZone, normalizeConversationTimeZone } from "../li
 import { BASIC_PANEL_SORT_OPTIONS, normalizeBasicPanelSort, type BasicPanelSort } from "../lib/panel-sort";
 import { resetProfessorMariNavigator } from "../lib/professor-mari-navigation";
 import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-types";
+import {
+  clampTrackerPanelWidth,
+  migrateTrackerPanelSize,
+  normalizeTrackerPanelDensity,
+  normalizeTrackerPanelSizeProfile,
+  TRACKER_PANEL_PRESETS,
+  TRACKER_PANEL_WIDTH_DEFAULT,
+  type TrackerPanelDensity,
+  type TrackerPanelSizeProfile,
+} from "../lib/tracker-panel-size";
+
+export {
+  clampTrackerPanelWidth,
+  getTrackerPanelWidthForProfile,
+  migrateTrackerPanelSize,
+  nearestTrackerPanelPreset,
+  normalizeTrackerPanelDensity,
+  normalizeTrackerPanelSizeProfile,
+  resolveTrackerPanelPreset,
+  TRACKER_PANEL_DENSITIES,
+  TRACKER_PANEL_PRESETS,
+  TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
+  TRACKER_PANEL_SIZE_PROFILES,
+  TRACKER_PANEL_WIDTH_DEFAULT,
+  TRACKER_PANEL_WIDTH_MAX,
+  TRACKER_PANEL_WIDTH_MIN,
+  type TrackerPanelDensity,
+  type TrackerPanelSizeProfile,
+} from "../lib/tracker-panel-size";
 
 export type Panel =
   | "chat"
@@ -74,8 +103,6 @@ export type MusicPlayerSource = "spotify" | "youtube" | "custom";
 export const TRACKER_TEMPERATURE_UNITS = ["celsius", "fahrenheit"] as const;
 export type TrackerTemperatureUnit = (typeof TRACKER_TEMPERATURE_UNITS)[number];
 export const QUICK_REPLIES_SETTINGS_CONTROL_ID = "quick-replies" as const;
-export const TRACKER_PANEL_SIZE_PROFILES = ["compact", "standard", "expanded"] as const;
-export type TrackerPanelSizeProfile = (typeof TRACKER_PANEL_SIZE_PROFILES)[number];
 export type TrackerDataPanelSection = "world" | "persona" | "characters" | "inventory" | "quests" | "custom";
 export type TrackerPanelCollapsedSections = Partial<Record<TrackerDataPanelSection, boolean>>;
 export type TrackerPanelSectionOrder = TrackerDataPanelSection[];
@@ -130,11 +157,6 @@ export const SIDEBAR_WIDTH_MIN = 240;
 export const SIDEBAR_WIDTH_MAX = 480;
 export const RIGHT_PANEL_WIDTH_MIN = 280;
 export const RIGHT_PANEL_WIDTH_MAX = 520;
-export const TRACKER_PANEL_SIZE_PROFILE_WIDTHS: Record<TrackerPanelSizeProfile, number> = {
-  compact: 280,
-  standard: 340,
-  expanded: 420,
-};
 
 function normalizeEchoChamberSize(value: unknown): EchoChamberSize | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -223,9 +245,6 @@ function shouldFlushUiStorageImmediately(previousValue: string | null, nextValue
     previous.echoChamberSizes !== next.echoChamberSizes
   );
 }
-export const TRACKER_PANEL_WIDTH_DEFAULT = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard;
-export const TRACKER_PANEL_WIDTH_MIN = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.compact;
-export const TRACKER_PANEL_WIDTH_MAX = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.expanded;
 export const TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR = "#09090b";
 export const DEFAULT_APP_BACKGROUND_DARK = "#050312";
 export const DEFAULT_APP_BACKGROUND_LIGHT = "#faf8ff";
@@ -368,30 +387,6 @@ function normalizeChatChromeTextColor(value: unknown) {
 function clampImageDimension(value: number) {
   const rounded = Number.isFinite(value) ? Math.round(value) : 0;
   return Math.max(IMAGE_DIMENSION_MIN, Math.min(IMAGE_DIMENSION_MAX, rounded));
-}
-
-function clampTrackerPanelWidth(value: unknown) {
-  const width = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : TRACKER_PANEL_WIDTH_DEFAULT;
-  return Math.max(TRACKER_PANEL_WIDTH_MIN, Math.min(TRACKER_PANEL_WIDTH_MAX, width));
-}
-
-export function getTrackerPanelWidthForProfile(profile: TrackerPanelSizeProfile) {
-  return TRACKER_PANEL_SIZE_PROFILE_WIDTHS[profile] ?? TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard;
-}
-
-export function normalizeTrackerPanelSizeProfile(value: unknown, legacyWidth?: unknown): TrackerPanelSizeProfile {
-  if (TRACKER_PANEL_SIZE_PROFILES.includes(value as TrackerPanelSizeProfile)) {
-    return value as TrackerPanelSizeProfile;
-  }
-
-  const width =
-    typeof legacyWidth === "number" && Number.isFinite(legacyWidth) ? clampTrackerPanelWidth(legacyWidth) : null;
-  if (width !== null) {
-    if (width <= 300) return "compact";
-    if (width >= 380) return "expanded";
-  }
-
-  return "standard";
 }
 
 export function normalizeTrackerPanelCollapsedSections(value: unknown): TrackerPanelCollapsedSections {
@@ -553,7 +548,8 @@ interface UIState {
   trackerPanelThoughtBubbleDisplay: TrackerThoughtBubbleDisplay;
   trackerStatDisplayMode: TrackerStatDisplayMode;
   trackerPanelDockedThoughtsAlwaysVisible: boolean;
-  trackerPanelSizeProfile: TrackerPanelSizeProfile;
+  trackerPanelWidth: number;
+  trackerPanelDensity: TrackerPanelDensity;
   trackerPanelBackgroundColor: string;
   trackerTemperatureUnit: TrackerTemperatureUnit;
   trackerPanelCollapsedSections: TrackerPanelCollapsedSections;
@@ -948,7 +944,10 @@ interface UIState {
   setTrackerPanelThoughtBubbleDisplay: (display: TrackerThoughtBubbleDisplay) => void;
   setTrackerStatDisplayMode: (display: TrackerStatDisplayMode) => void;
   setTrackerPanelDockedThoughtsAlwaysVisible: (visible: boolean) => void;
+  /** Applies a preset: sets width and density together. */
   setTrackerPanelSizeProfile: (profile: TrackerPanelSizeProfile) => void;
+  setTrackerPanelWidth: (width: number) => void;
+  setTrackerPanelDensity: (density: TrackerPanelDensity) => void;
   setTrackerPanelBackgroundColor: (color: string) => void;
   setTrackerTemperatureUnit: (unit: TrackerTemperatureUnit) => void;
   setTrackerPanelSectionOrder: (order: TrackerPanelSectionOrder) => void;
@@ -1241,7 +1240,8 @@ export function pickSyncedSettings(state: UIState) {
     trackerPanelThoughtBubbleDisplay: state.trackerPanelThoughtBubbleDisplay,
     trackerStatDisplayMode: state.trackerStatDisplayMode,
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
-    trackerPanelSizeProfile: state.trackerPanelSizeProfile,
+    trackerPanelWidth: state.trackerPanelWidth,
+    trackerPanelDensity: state.trackerPanelDensity,
     trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
     trackerTemperatureUnit: state.trackerTemperatureUnit,
     trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,
@@ -1390,7 +1390,8 @@ export const useUIStore = create<UIState>()(
       trackerPanelThoughtBubbleDisplay: "inline" as TrackerThoughtBubbleDisplay,
       trackerStatDisplayMode: "bars" as TrackerStatDisplayMode,
       trackerPanelDockedThoughtsAlwaysVisible: false,
-      trackerPanelSizeProfile: "standard" as TrackerPanelSizeProfile,
+      trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
+      trackerPanelDensity: "standard" as TrackerPanelDensity,
       trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
       trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
       trackerPanelCollapsedSections: {},
@@ -1662,7 +1663,12 @@ export const useUIStore = create<UIState>()(
       setTrackerPanelDockedThoughtsAlwaysVisible: (visible) =>
         set({ trackerPanelDockedThoughtsAlwaysVisible: visible }),
       setTrackerPanelSizeProfile: (profile) =>
-        set({ trackerPanelSizeProfile: normalizeTrackerPanelSizeProfile(profile) }),
+        set(() => {
+          const preset = TRACKER_PANEL_PRESETS[normalizeTrackerPanelSizeProfile(profile)];
+          return { trackerPanelWidth: preset.width, trackerPanelDensity: preset.density };
+        }),
+      setTrackerPanelWidth: (width) => set({ trackerPanelWidth: clampTrackerPanelWidth(width) }),
+      setTrackerPanelDensity: (density) => set({ trackerPanelDensity: normalizeTrackerPanelDensity(density) }),
       setTrackerPanelBackgroundColor: (color) =>
         set({ trackerPanelBackgroundColor: normalizeTrackerPanelBackgroundColor(color) }),
       setTrackerTemperatureUnit: (unit) => set({ trackerTemperatureUnit: normalizeTrackerTemperatureUnit(unit) }),
@@ -2386,7 +2392,8 @@ export const useUIStore = create<UIState>()(
           trackerPanelThoughtBubbleDisplay: "inline" as TrackerThoughtBubbleDisplay,
           trackerStatDisplayMode: "bars" as TrackerStatDisplayMode,
           trackerPanelDockedThoughtsAlwaysVisible: false,
-          trackerPanelSizeProfile: "standard" as TrackerPanelSizeProfile,
+          trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
+          trackerPanelDensity: "standard" as TrackerPanelDensity,
           trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
           trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
           trackerPanelCollapsedSections: {},
@@ -2544,7 +2551,7 @@ export const useUIStore = create<UIState>()(
       name: "marinara-engine-ui",
       // v94 -> v95: move only the untouched mobile music-player default below Home bookmarks.
       // The version bump ensures existing stores run the exact-coordinate migration below.
-      version: 95,
+      version: 96,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2816,10 +2823,13 @@ export const useUIStore = create<UIState>()(
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
-        persisted.trackerPanelSizeProfile = normalizeTrackerPanelSizeProfile(
-          persisted.trackerPanelSizeProfile,
-          persisted.trackerPanelWidth,
-        );
+        // v95 -> v96: panel width and content density become independent settings.
+        {
+          const size = migrateTrackerPanelSize(persisted);
+          persisted.trackerPanelWidth = size.width;
+          persisted.trackerPanelDensity = size.density;
+          delete persisted.trackerPanelSizeProfile;
+        }
         persisted.trackerTemperatureUnit = normalizeTrackerTemperatureUnit(persisted.trackerTemperatureUnit);
         if (persisted.trackerPanelDockedThoughtsAlwaysVisible === undefined) {
           persisted.trackerPanelDockedThoughtsAlwaysVisible = false;
@@ -3135,7 +3145,6 @@ export const useUIStore = create<UIState>()(
           typeof persisted.defaultDialogueColor === "string" ? persisted.defaultDialogueColor : "";
         persisted.chatChromeTextColor = normalizeChatChromeTextColor(persisted.chatChromeTextColor);
         persisted.defaultRoleplayBackground = normalizeDefaultRoleplayBackground(persisted.defaultRoleplayBackground);
-        delete persisted.trackerPanelWidth;
         return persisted;
       },
       partialize: (state) => ({
@@ -3186,7 +3195,8 @@ export const useUIStore = create<UIState>()(
         trackerPanelThoughtBubbleDisplay: state.trackerPanelThoughtBubbleDisplay,
         trackerStatDisplayMode: state.trackerStatDisplayMode,
         trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
-        trackerPanelSizeProfile: state.trackerPanelSizeProfile,
+        trackerPanelWidth: state.trackerPanelWidth,
+        trackerPanelDensity: state.trackerPanelDensity,
         trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
         trackerTemperatureUnit: state.trackerTemperatureUnit,
         trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,

@@ -11,8 +11,9 @@ import { ProfessorMariFloatingAssistantHost } from "../chat/ProfessorMariFloatin
 import { ChatResourceMobileDropDock } from "../chat/ChatResourceMobileDropDock";
 import { hasProfessorMariFloatingFollowup } from "../chat/professor-mari-floating-events";
 import {
-  getTrackerPanelWidthForProfile,
   MOBILE_SHELL_MEDIA_QUERY,
+  nearestTrackerPanelPreset,
+  resolveTrackerPanelPreset,
   RIGHT_PANEL_WIDTH_MAX,
   RIGHT_PANEL_WIDTH_MIN,
   SIDEBAR_WIDTH_MAX,
@@ -348,7 +349,8 @@ export function AppShell() {
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
-  const trackerPanelSizeProfile = useUIStore((s) => s.trackerPanelSizeProfile);
+  const trackerPanelStoredWidth = useUIStore((s) => s.trackerPanelWidth);
+  const trackerPanelDensity = useUIStore((s) => s.trackerPanelDensity);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const spatialMapDetailChatId = useUIStore((s) => s.spatialMapDetailChatId);
   const pendingSpatialMapDraftReview = useUIStore((s) => s.pendingSpatialMapDraftReview);
@@ -389,7 +391,10 @@ export function AppShell() {
   );
   const liveSidebarWidth = sidebarDragWidth ?? rightPanelDragWidth ?? sharedSidebarWidth;
   const liveRightPanelWidth = rightPanelDragWidth ?? sidebarDragWidth ?? sharedSidebarWidth;
-  const trackerPanelWidth = getTrackerPanelWidthForProfile(trackerPanelSizeProfile);
+  const trackerPanelWidth = trackerPanelStoredWidth;
+  // Derived only for the props still typed on the old profile.
+  const trackerPanelSizeProfile =
+    resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity) ?? nearestTrackerPanelPreset(trackerPanelWidth);
   const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
   const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
   const [trackerPanelWindowTarget, setTrackerPanelWindowTarget] = useState<TrackerPanelWindowTarget | null>(null);

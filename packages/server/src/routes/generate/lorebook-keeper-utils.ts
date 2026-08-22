@@ -104,8 +104,11 @@ export function customAgentUsesLorebookBackfill(agent: {
   return getCustomLorebookBackfillSettings(agent.settings).enabled && customAgentCanProcessLorebookHistory(agent);
 }
 
-export function customLorebookReadBehindRunKey(chatId: string, agentId: string, messageId: string): string {
-  return `${chatId}:${agentId}:${messageId}`;
+export function customLorebookReadBehindRunKey(chatId: string, agentId: string, _messageId?: string): string {
+  // One chat-and-agent lease covers the complete historical run. A target-based
+  // key permits the next chunk to start while the previous chunk is still
+  // applying lorebook effects.
+  return `${chatId}:${agentId}`;
 }
 
 export function tryClaimCustomLorebookReadBehindRun(activeRuns: Set<string>, runKey: string): boolean {

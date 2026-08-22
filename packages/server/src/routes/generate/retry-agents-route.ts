@@ -4267,6 +4267,15 @@ export async function registerRetryAgentsRoute(
         if (entries.length === 0) return;
         const context = toolInputs.agentContext;
         const toolAgents = entries.map((entry) => entry.resolved);
+        if (customLorebookBackfill) {
+          for (const agent of toolAgents) {
+            const enabledTools = Array.isArray(agent.settings.enabledTools) ? agent.settings.enabledTools : [];
+            agent.settings = {
+              ...agent.settings,
+              enabledTools: enabledTools.filter((toolName) => toolName === "save_lorebook_entry"),
+            };
+          }
+        }
         if (activeMusicPlayerSource === null) {
           const spotifyToolNames = new Set(DEFAULT_AGENT_TOOLS.spotify ?? []);
           for (const agent of toolAgents) {
@@ -4673,22 +4682,6 @@ export async function registerRetryAgentsRoute(
         new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.messageId])),
         abortController.signal,
       );
-      if (customLorebookBackfillTarget) {
-        const successful = permittedResults.some(
-          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
-        );
-        if (successful) {
-          // Claim completion before applying effects. If persistence fails, no
-          // lorebook effect has run; if a later effect fails, the successful
-          // agent result remains at-most-once instead of being duplicated.
-          await agentsStore.setMemory(
-            customLorebookBackfillTarget.agentConfigId,
-            chatId,
-            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
-            customLorebookBackfillTarget.messageId,
-          );
-        }
-      }
       for (const entry of lorebookKeeperRunEntries) {
         if (abortController.signal.aborted) return;
         try {
@@ -4711,7 +4704,9 @@ export async function registerRetryAgentsRoute(
         retryMessageId,
         retrySwipeIndex,
         generationId,
-        results: permittedResults,
+        results: customLorebookBackfillTarget
+          ? permittedResults.filter((result) => result.type === "lorebook_update")
+          : permittedResults,
         agentContext,
         mainResponseRaw: (lastAssistant?.content as string) ?? "",
         lorebooksStore,
@@ -4728,6 +4723,22 @@ export async function registerRetryAgentsRoute(
         secretPlotRerollMode,
         signal: abortController.signal,
       });
+
+      if (customLorebookBackfillTarget) {
+        const successful = permittedResults.some(
+          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
+        );
+        if (successful) {
+          // Backfill exposes only idempotent lorebook writes, so a cursor write
+          // failure can safely retry this chunk without duplicating effects.
+          await agentsStore.setMemory(
+            customLorebookBackfillTarget.agentConfigId,
+            chatId,
+            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
+            customLorebookBackfillTarget.messageId,
+          );
+        }
+      }
 
       if (abortController.signal.aborted) return;
       sendSseEvent(reply, { type: "done", data: "" });

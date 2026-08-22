@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import type { ChatSummaryEntry } from "../../packages/shared/src/types/chat.js";
 import { getChatSummaryMessageIdsToUnhideAfterDelete } from "../../packages/shared/src/utils/chat-summary-entries.js";
 import {
+  customLorebookReadBehindRunKey,
   customAgentUsesLorebookBackfill,
   getCustomLorebookBackfillChunk,
   getCustomLorebookBackfillSettings,
+  tryClaimCustomLorebookReadBehindRun,
 } from "../../packages/server/src/routes/generate/lorebook-keeper-utils.js";
 import { parseCharacterCommands } from "../../packages/server/src/services/conversation/character-commands.js";
 import {
@@ -175,6 +177,13 @@ const longGapMessages = [
 assert.equal(getCustomLorebookBackfillChunk(longGapMessages, 0, null, 1)?.messages.length, 1);
 assert.equal(getCustomLorebookBackfillChunk(longGapMessages, 0, null, 1)?.target.id, "assistant-after-gap");
 
+const backfillRuns = new Set<string>();
+const firstBackfillLease = customLorebookReadBehindRunKey("chat-1", "agent-1", "assistant-1");
+const nextBackfillLease = customLorebookReadBehindRunKey("chat-1", "agent-1", "assistant-2");
+assert.equal(firstBackfillLease, nextBackfillLease, "The backfill lease must cover the chat and agent, not one target");
+assert.equal(tryClaimCustomLorebookReadBehindRun(backfillRuns, firstBackfillLease), true);
+assert.equal(tryClaimCustomLorebookReadBehindRun(backfillRuns, nextBackfillLease), false);
+
 const summaryEntries = [
   { id: "source-a", enabled: true, hiddenMessageIds: ["message-a", "message-shared"] },
   { id: "source-b", enabled: true, hiddenMessageIds: ["message-b"] },
@@ -191,5 +200,19 @@ const summaryPopoverSource = readFileSync(
 );
 assert.match(summaryPopoverSource, /deleteSummaryEntry\.mutateAsync\(\{ chatId, entryIds \}\)/u);
 assert.match(summaryPopoverSource, /new Set\(visiblePersistedEntries\.map\(\(entry\) => entry\.id\)\)/u);
+
+const chatRoutesSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/routes/chats.routes.ts"), "utf8");
+assert.match(chatRoutesSource, /withChatMetadataPatchQueue\(req\.params\.id,[\s\S]*metadataQueueHeld: true/u);
+
+const retryRouteSource = readFileSync(
+  join(REPOSITORY_ROOT, "packages/server/src/routes/generate/retry-agents-route.ts"),
+  "utf8",
+);
+assert.match(retryRouteSource, /toolName === "save_lorebook_entry"/u);
+assert.match(
+  retryRouteSource,
+  /await applyRetryResultEffects\([\s\S]*CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY/u,
+  "Backfill effects must finish before cursor advancement",
+);
 
 console.info("Issue sweep #5391/#5394 regression checks passed");

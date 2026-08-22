@@ -469,6 +469,52 @@ const callTool = async (agent: ResolvedAgent, name: string, args: Record<string,
     }),
   ) as Record<string, unknown>;
 };
+
+const idempotentWriter = makeAgent("idempotent-writer", "custom-idempotent-writer", {
+  enabledTools: ["save_lorebook_entry"],
+  writableLorebookId: "book-write",
+});
+let storedWriterEntry: Record<string, unknown> | null = null;
+let writerCreateCount = 0;
+await resolveAgentGenerationTools({
+  requestBody: {},
+  chatId: "retry-chat",
+  chatMetadata: { ...metadata, agentWriteApprovalRequired: false },
+  chats: {
+    getMessage: async () => null,
+    updateMessageContent: async () => ({}),
+    patchMetadata: async (_chatId, patcher) => ({ metadata: await patcher(metadata) }),
+  },
+  agentsStore: createSpotifyAgentsStore([]),
+  customToolsStore: { listEnabled: async () => [] },
+  lorebooksStore: {
+    listActiveEntries: async () => [],
+    getById: async () => ({ id: "book-write", name: "Writable" }),
+    listEntries: async () => (storedWriterEntry ? [storedWriterEntry] : []),
+    createEntry: async (entry) => {
+      writerCreateCount += 1;
+      storedWriterEntry = { ...entry, id: "entry-1" };
+      return storedWriterEntry;
+    },
+    updateEntry: async () => storedWriterEntry,
+  },
+  resolvedAgents: [idempotentWriter],
+  enabledConfigs: [],
+  promptCharacterIds: [],
+  personaId: null,
+  activeLorebookIds: [],
+  excludedLorebookIds: [],
+  excludedSourceAgentIds: [],
+  gameState: null,
+  gameSpotifyMusicEnabled: false,
+  agentContext: historicalContext,
+  emitMetadataPatch: () => {},
+});
+const createWriterEntry = { name: "Timeline", content: "Turn seven", keys: ["timeline"], mode: "create" };
+assert.equal((await callTool(idempotentWriter, "save_lorebook_entry", createWriterEntry)).action, "created");
+assert.equal((await callTool(idempotentWriter, "save_lorebook_entry", createWriterEntry)).action, "exists");
+assert.equal(writerCreateCount, 1, "Retrying a create-mode lorebook write must not duplicate the entry");
+
 const rollResult = await callTool(composedAgent, "roll_dice", { notation: "1d2" });
 assert.equal(rollResult.notation, "1d2", "built-in collision handling must preserve the built-in implementation");
 assert.equal(typeof rollResult.total, "number");

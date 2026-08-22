@@ -887,6 +887,8 @@ interface UIState {
   hasCompletedOnboarding: boolean;
   /** Chat modes whose first-chat help overlay has already been dismissed. */
   chatHelpSeenModes: ChatModeShortcut[];
+  /** Removes the chat Help button and suppresses automatic help overlays. */
+  chatHelpButtonHidden: boolean;
 
   // ── Dismissals ──
   linkApiBannerDismissed: boolean;
@@ -1155,6 +1157,7 @@ interface UIState {
   clearLegacyCustomThemes: () => void;
   setHasCompletedOnboarding: (v: boolean) => void;
   markChatHelpSeen: (mode: ChatModeShortcut) => void;
+  setChatHelpButtonHidden: (v: boolean) => void;
   dismissLinkApiBanner: () => void;
   toggleEchoChamber: () => void;
   setEchoChamberSide: (side: EchoChamberSide) => void;
@@ -1338,6 +1341,7 @@ export function pickSyncedSettings(state: UIState) {
     weatherEffects: state.weatherEffects,
     hasCompletedOnboarding: state.hasCompletedOnboarding,
     chatHelpSeenModes: state.chatHelpSeenModes,
+    chatHelpButtonHidden: state.chatHelpButtonHidden,
     linkApiBannerDismissed: state.linkApiBannerDismissed,
     echoChamberOpen: state.echoChamberOpen,
     echoChamberSide: state.echoChamberSide,
@@ -1566,6 +1570,7 @@ export const useUIStore = create<UIState>()(
       hasMigratedCustomThemesToServer: false,
       hasCompletedOnboarding: false,
       chatHelpSeenModes: [],
+      chatHelpButtonHidden: false,
       linkApiBannerDismissed: false,
       echoChamberOpen: true,
       echoChamberSide: "bottom-right" as EchoChamberSide,
@@ -2493,6 +2498,11 @@ export const useUIStore = create<UIState>()(
           const seenModes = state.chatHelpSeenModes ?? [];
           return seenModes.includes(mode) ? state : { chatHelpSeenModes: [...seenModes, mode] };
         }),
+      setChatHelpButtonHidden: (v) =>
+        set((state) => ({
+          chatHelpButtonHidden: v,
+          chatHelpSeenModes: v ? ["conversation", "roleplay", "game"] : state.chatHelpSeenModes,
+        })),
       dismissLinkApiBanner: () => set({ linkApiBannerDismissed: true }),
       toggleEchoChamber: () => set((s) => ({ echoChamberOpen: !s.echoChamberOpen })),
       setEchoChamberSide: (side) => set({ echoChamberSide: side }),
@@ -3299,6 +3309,7 @@ export const useUIStore = create<UIState>()(
         customThemes: state.customThemes,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         chatHelpSeenModes: state.chatHelpSeenModes,
+        chatHelpButtonHidden: state.chatHelpButtonHidden,
         linkApiBannerDismissed: state.linkApiBannerDismissed,
         echoChamberOpen: state.echoChamberOpen,
         echoChamberSide: state.echoChamberSide,

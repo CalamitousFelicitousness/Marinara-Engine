@@ -542,6 +542,14 @@ const SETTINGS_SECTION_BY_ID = new Map(SETTINGS_SECTIONS.map((section) => [secti
 
 const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
   {
+    id: "hide-chat-help-button",
+    sectionId: "application",
+    label: "Hide chat Help button",
+    description: "Remove the Help button from Conversation, Roleplay, and Game chats.",
+    aliases: ["help", "guide", "tutorial", "overlay", "question mark"],
+    kind: "Toggle",
+  },
+  {
     id: "language",
     sectionId: "application",
     label: "Language",
@@ -3370,6 +3378,8 @@ function GeneralSettings() {
   const setEnterToSendProfessorMari = useUIStore((s) => s.setEnterToSendProfessorMari);
   const confirmBeforeDelete = useUIStore((s) => s.confirmBeforeDelete);
   const setConfirmBeforeDelete = useUIStore((s) => s.setConfirmBeforeDelete);
+  const chatHelpButtonHidden = useUIStore((s) => s.chatHelpButtonHidden ?? false);
+  const setChatHelpButtonHidden = useUIStore((s) => s.setChatHelpButtonHidden);
   const achievementsEnabled = useUIStore((s) => s.achievementsEnabled);
   const setAchievementsEnabled = useUIStore((s) => s.setAchievementsEnabled);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
@@ -3418,6 +3428,14 @@ function GeneralSettings() {
         {...getSettingsSectionAnchorProps("application")}
       >
         <div className="flex flex-col gap-2.5">
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("hide-chat-help-button")}
+            label={localizeUi("settings.controls.hideChatHelpButton.label")}
+            checked={chatHelpButtonHidden}
+            onChange={setChatHelpButtonHidden}
+            help={localizeUi("settings.controls.hideChatHelpButton.help")}
+          />
+
           <label id={getSettingsControlAnchorId("language")} className="flex scroll-mt-3 flex-col gap-1">
             <span className="inline-flex items-center gap-1 text-xs font-medium">
               {t("settings.application.language.label")}

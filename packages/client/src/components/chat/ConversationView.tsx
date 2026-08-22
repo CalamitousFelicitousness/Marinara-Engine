@@ -457,6 +457,7 @@ export function ConversationView({
   const conversationCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
   const renderToolbarActions = (compact = false) => (
     <>
+      <ChatHelpButton mode="conversation" compact={compact} />
       <ChatBranchSelector
         activeChatId={chatId}
         activeChatName={chatName}
@@ -490,7 +491,6 @@ export function ConversationView({
         panelAction="settings"
         onClick={onOpenSettings}
       />
-      <ChatHelpButton mode="conversation" compact={compact} />
     </>
   );
   const renderHeader = () => (
@@ -506,6 +506,11 @@ export function ConversationView({
       />
 
       <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-2">
+        <ChatToolbarMenu
+          className="flex-1"
+          desktopChildren={renderToolbarActions()}
+          mobileChildren={renderToolbarActions(true)}
+        />
         {conversationToolbarPackages.map((item) => (
           <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
             <CapabilityElement
@@ -529,11 +534,6 @@ export function ConversationView({
             />
           </span>
         )}
-        <ChatToolbarMenu
-          className="flex-1"
-          desktopChildren={renderToolbarActions()}
-          mobileChildren={renderToolbarActions(true)}
-        />
       </div>
     </div>
   );

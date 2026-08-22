@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ChatMode } from "@marinara-engine/shared";
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
@@ -60,6 +60,13 @@ interface MeasuredTarget extends HelpTargetDefinition {
   rect: Rect;
 }
 
+const HELP_TARGET: HelpTargetDefinition = {
+  id: "help",
+  selector: '[data-chat-help="help"]',
+  titleKey: "chat.help.targets.help.title",
+  bodyKey: "chat.help.targets.help.body",
+};
+
 const COMMON_TOOLBAR_TARGETS: HelpTargetDefinition[] = [
   {
     id: "branches",
@@ -103,12 +110,6 @@ const COMMON_TOOLBAR_TARGETS: HelpTargetDefinition[] = [
     titleKey: "chat.help.targets.settings.title",
     bodyKey: "chat.help.targets.settings.body",
   },
-  {
-    id: "help",
-    selector: '[data-chat-help="help"]',
-    titleKey: "chat.help.targets.help.title",
-    bodyKey: "chat.help.targets.help.body",
-  },
 ];
 
 const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
@@ -119,14 +120,14 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       titleKey: "chat.help.targets.identity.title",
       bodyKey: "chat.help.targets.identity.body",
     },
-    ...COMMON_TOOLBAR_TARGETS.slice(0, 1),
+    HELP_TARGET,
+    ...COMMON_TOOLBAR_TARGETS,
     {
       id: "call",
       selector: '[data-chat-help="call"]',
       titleKey: "chat.help.targets.call.title",
       bodyKey: "chat.help.targets.call.body",
     },
-    ...COMMON_TOOLBAR_TARGETS.slice(1),
     {
       id: "messages",
       virtual: "messages",
@@ -147,6 +148,7 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       titleKey: "chat.help.targets.agents.title",
       bodyKey: "chat.help.targets.agents.body",
     },
+    HELP_TARGET,
     ...COMMON_TOOLBAR_TARGETS.slice(0, 2),
     {
       id: "summary",
@@ -194,6 +196,7 @@ const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
       titleKey: "chat.help.targets.sceneMedia.title",
       bodyKey: "chat.help.targets.sceneMedia.body",
     },
+    HELP_TARGET,
     ...COMMON_TOOLBAR_TARGETS.slice(0, 1),
     {
       id: "retry",
@@ -366,7 +369,9 @@ export function ChatHelpOverlay({
 }) {
   const { t } = useTranslation();
   const seenModes = useUIStore((state) => state.chatHelpSeenModes ?? []);
+  const chatHelpButtonHidden = useUIStore((state) => state.chatHelpButtonHidden ?? false);
   const markChatHelpSeen = useUIStore((state) => state.markChatHelpSeen);
+  const setChatHelpButtonHidden = useUIStore((state) => state.setChatHelpButtonHidden);
   const [open, setOpen] = useState(false);
   const [rootRect, setRootRect] = useState<Rect | null>(null);
   const [targets, setTargets] = useState<MeasuredTarget[]>([]);
@@ -378,7 +383,7 @@ export function ChatHelpOverlay({
 
   useEffect(() => {
     const handleOpen = (event: Event) => {
-      if (readChatHelpEventMode(event) !== mode) return;
+      if (chatHelpButtonHidden || readChatHelpEventMode(event) !== mode) return;
       setOpen(true);
     };
     const handleClose = (event: Event) => {
@@ -390,10 +395,16 @@ export function ChatHelpOverlay({
       window.removeEventListener(CHAT_HELP_OPEN_REQUEST_EVENT, handleOpen);
       window.removeEventListener(CHAT_HELP_CLOSE_EVENT, handleClose);
     };
-  }, [mode]);
+  }, [chatHelpButtonHidden, mode]);
 
   useEffect(() => {
-    if (autoOpenBlocked || !isFirstChat || seenModes.includes(mode) || autoOpenedChatRef.current === activeChatId) {
+    if (
+      chatHelpButtonHidden ||
+      autoOpenBlocked ||
+      !isFirstChat ||
+      seenModes.includes(mode) ||
+      autoOpenedChatRef.current === activeChatId
+    ) {
       return;
     }
     const root = document.querySelector<HTMLElement>(`[data-chat-mode="${mode}"]`);
@@ -403,7 +414,7 @@ export function ChatHelpOverlay({
       requestChatHelp(mode);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [activeChatId, autoOpenBlocked, isFirstChat, mode, seenModes]);
+  }, [activeChatId, autoOpenBlocked, chatHelpButtonHidden, isFirstChat, mode, seenModes]);
 
   useEffect(() => {
     if (!open) return;
@@ -442,6 +453,10 @@ export function ChatHelpOverlay({
     markChatHelpSeen(mode);
     closeChatHelp(mode);
   }, [markChatHelpSeen, mode]);
+  const hideHelpButton = useCallback(() => {
+    setChatHelpButtonHidden(true);
+    closeChatHelp(mode);
+  }, [mode, setChatHelpButtonHidden]);
 
   const legendStyle = useMemo(() => (rootRect ? getLegendStyle(rootRect) : undefined), [rootRect]);
 
@@ -488,6 +503,7 @@ export function ChatHelpOverlay({
       {targets.map(({ id, rect }, index) => (
         <div
           key={id}
+          data-chat-help-highlight={id}
           className="pointer-events-none fixed rounded-[0.625rem] ring-2 ring-[var(--marinara-chat-chrome-focus-ring)] shadow-[0_0_18px_color-mix(in_srgb,var(--marinara-chat-chrome-focus-ring)_45%,transparent)]"
           style={{
             top: rect.top - TARGET_PADDING,
@@ -503,18 +519,30 @@ export function ChatHelpOverlay({
       ))}
 
       <div
-        className="pointer-events-none fixed flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-lg border border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--card)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-lg"
+        className="pointer-events-none fixed flex max-w-[calc(100vw-1.5rem)] flex-col items-center gap-1.5"
         style={{
           top: rootRect.top + 10,
           left: Math.max(rootRect.left + 12, rootRect.left + rootRect.width / 2),
           transform: "translateX(-50%)",
         }}
       >
-        <CircleHelp size="0.875rem" className="shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]" />
-        <span>{t("chat.help.exitInstruction")}</span>
+        <div className="flex items-center gap-2 rounded-lg border border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--card)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-lg">
+          <CircleHelp size="0.875rem" className="shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]" />
+          <span>{t("chat.help.exitInstruction")}</span>
+        </div>
+        <button
+          type="button"
+          className="mari-chrome-control pointer-events-auto min-h-7 px-2.5 text-[0.625rem] shadow-lg"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={hideHelpButton}
+        >
+          <EyeOff size="0.6875rem" />
+          {t("chat.help.hidePermanently")}
+        </button>
       </div>
 
       <div
+        data-chat-help-legend
         className={cn(
           NEUTRAL_PANEL_SHELL,
           "pointer-events-none fixed min-h-0 overflow-hidden border-[var(--marinara-chat-chrome-button-border-active)] shadow-xl",
@@ -529,7 +557,7 @@ export function ChatHelpOverlay({
         </div>
         <ol className="max-h-[inherit] space-y-2 overflow-y-auto overscroll-contain px-3 py-2.5">
           {targets.map((target, index) => (
-            <li key={target.id} className="flex gap-2.5">
+            <li key={target.id} data-chat-help-entry={target.id} className="flex gap-2.5">
               <span className="mt-0.5 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-button-bg-active)] px-1 text-[0.5625rem] font-bold text-[var(--marinara-chat-chrome-button-text-active)]">
                 {index + 1}
               </span>

@@ -1847,6 +1847,7 @@ export function ChatRoleplaySurface({
                   data-roleplay-top-controls="right"
                   className={cn("pointer-events-auto ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                 >
+                  <ChatHelpButton mode="roleplay" className="hidden md:flex" />
                   {conversationToolbarPackages.map((item) => (
                     <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
                       <CapabilityElement
@@ -1867,6 +1868,7 @@ export function ChatRoleplaySurface({
                     variant="roleplay"
                   />
                   <ChatToolbarMenu openSummaryOnRequest>
+                    <ChatHelpButton mode="roleplay" className="md:hidden" />
                     <SummaryButton
                       chatId={chat?.id ?? null}
                       summary={chatMeta.summary ?? null}
@@ -1938,7 +1940,6 @@ export function ChatRoleplaySurface({
                       panelAction="settings"
                       onClick={onOpenSettings}
                     />
-                    <ChatHelpButton mode="roleplay" />
                   </ChatToolbarMenu>
                 </div>
               </div>
@@ -1976,6 +1977,7 @@ export function ChatRoleplaySurface({
                       data-roleplay-top-controls="right"
                       className={cn("ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                     >
+                      <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                       {conversationToolbarPackages.map((item) => (
                         <span key={`${item.id}-compact-toolbar`} data-chat-help="agent-controls" className="contents">
                           <CapabilityElement
@@ -1990,6 +1992,7 @@ export function ChatRoleplaySurface({
                         </span>
                       ))}
                       <ChatToolbarMenu openSummaryOnRequest>
+                        <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                         <ChatBranchSelector
                           activeChatId={activeChatId}
                           activeChatName={chat?.name}
@@ -2068,7 +2071,6 @@ export function ChatRoleplaySurface({
                           panelAction="settings"
                           onClick={onOpenSettings}
                         />
-                        <ChatHelpButton mode="roleplay" compact />
                       </ChatToolbarMenu>
                     </div>
                   </div>
@@ -2077,7 +2079,9 @@ export function ChatRoleplaySurface({
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
+                    <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                     <ChatToolbarMenu openSummaryOnRequest>
+                      <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                       <ChatBranchSelector
                         activeChatId={activeChatId}
                         activeChatName={chat?.name}
@@ -2154,7 +2158,6 @@ export function ChatRoleplaySurface({
                         panelAction="settings"
                         onClick={onOpenSettings}
                       />
-                      <ChatHelpButton mode="roleplay" compact />
                     </ChatToolbarMenu>
                   </div>
                 )}

@@ -11562,6 +11562,7 @@ function GameSurfaceComponent({
               >
                 {/* Desktop controls */}
                 <div className={cn("pointer-events-auto hidden items-center md:flex", CHAT_TOOLBAR_ICON_GAP_CLASS)}>
+                  <ChatHelpButton mode="game" />
                   {renderStoryboardBackgroundControls()}
                   <ChatBranchSelector
                     activeChatId={activeChatId}
@@ -11776,7 +11777,6 @@ function GameSurfaceComponent({
                   >
                     <Settings2 size={14} />
                   </button>
-                  <ChatHelpButton mode="game" />
                 </div>
 
                 {/* Mobile controls */}
@@ -11809,6 +11809,7 @@ function GameSurfaceComponent({
 
                     {mobileActionsOpen && (
                       <div data-chat-toolbar-overflow-menu className={GAME_MOBILE_ACTIONS_MENU}>
+                        <ChatHelpButton mode="game" compact />
                         {renderStoryboardBackgroundControls(true)}
                         <ChatBranchSelector
                           activeChatId={activeChatId}
@@ -12077,7 +12078,6 @@ function GameSurfaceComponent({
                         >
                           <Settings2 size={14} />
                         </button>
-                        <ChatHelpButton mode="game" compact />
                       </div>
                     )}
                   </div>

@@ -40,6 +40,8 @@ const { createGameEngineStateStorage } =
 const { createCapabilityPersistenceHost } =
   await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
 const { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } = await import("../../packages/server/src/db/file-backed-store.js");
+const { messageSwipes } = await import("../../packages/server/src/db/schema/index.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
 
 const db = await createFileNativeDB();
 const GAME_TYPE = "experience:imported-anchor-test";
@@ -121,7 +123,6 @@ try {
   const host = createCapabilityPersistenceHost(db);
   const reservedChat = await chats.create({ name: "reserved prefix chat", mode: "game", characterIds: [] });
   const baseMessage = {
-    swipeId: "swipe-reserved",
     chatId: reservedChat.id,
     role: "assistant" as const,
     characterId: null,
@@ -129,19 +130,30 @@ try {
     extra: {},
     createdAt: new Date().toISOString(),
   };
+  const swipesFor = async (messageId: string) =>
+    db.select().from(messageSwipes).where(eq(messageSwipes.messageId, messageId));
+
+  const forgedId = `${IMPORTED_GAME_ENGINE_ANCHOR_PREFIX}forged`;
   await assert.rejects(
-    () => host.createMessageWithSwipe({ ...baseMessage, id: `${IMPORTED_GAME_ENGINE_ANCHOR_PREFIX}forged` }),
+    () => host.createMessageWithSwipe({ ...baseMessage, id: forgedId, swipeId: "swipe-reserved" }),
     /reserved/i,
     "a caller-supplied message id under the reserved prefix is refused",
   );
-  assert.equal(
-    (await chats.listMessages(reservedChat.id)).length,
-    0,
-    "and the refusal writes nothing — no message, no swipe",
-  );
+  // Both tables, because the guard's whole claim is that it runs BEFORE the transaction opens.
+  // Checking only `messages` would leave the swipe half of that claim unproven.
+  assert.equal((await chats.listMessages(reservedChat.id)).length, 0, "the refusal writes no message");
+  assert.equal((await swipesFor(forgedId)).length, 0, "and no swipe");
+
   // The reservation is a prefix rule, not a ban on the word: an ordinary id is still accepted.
-  const allowed = await host.createMessageWithSwipe({ ...baseMessage, id: "not-imported:forged" });
+  const allowed = await host.createMessageWithSwipe({
+    ...baseMessage,
+    id: "not-imported:forged",
+    swipeId: "swipe-allowed",
+  });
   assert.equal(allowed.id, "not-imported:forged", "an id that merely CONTAINS the prefix is fine");
+  // Keeps the zero above honest: a swipe lookup that could never return a row would make it
+  // vacuous, so pin that the same query DOES see the accepted write's swipe.
+  assert.equal((await swipesFor(allowed.id)).length, 1, "and an accepted write really does store its swipe");
 
   console.log("experience-state imported-anchor validate regression passed");
 } finally {

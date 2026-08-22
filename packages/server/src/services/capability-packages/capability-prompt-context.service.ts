@@ -19,6 +19,8 @@ export interface CapabilityPromptContextRequest {
   targetCharacterIds?: string[];
   /** Active persona for this generation, when one is selected. */
   personaId?: string | null;
+  /** Agent-data sections already placed by the active preset. */
+  placedAgentTypes?: string[];
 }
 
 /** Built-in game systems an experience can declare it replaces. Open set — undeclared stays built-in. */
@@ -46,6 +48,7 @@ export type CapabilityPromptContextContributor = (
 /** What the collector hands the turn: the text blocks plus the union of every `provides` declaration. */
 export interface CapabilityPromptContextResult {
   blocks: string[];
+  packageBlocks: Array<{ packageId: string; text: string }>;
   provides: CapabilityProvidedGameSystems;
 }
 
@@ -100,8 +103,9 @@ function withDeadline<T>(value: Promise<T> | T, packageId: string): Promise<T> {
 export async function collectCapabilityPromptContext(
   request: CapabilityPromptContextRequest,
 ): Promise<CapabilityPromptContextResult> {
-  if (contributorsByPackage.size === 0) return { blocks: [], provides: {} };
+  if (contributorsByPackage.size === 0) return { blocks: [], packageBlocks: [], provides: {} };
   const blocks: string[] = [];
+  const packageBlocks: Array<{ packageId: string; text: string }> = [];
   const provides: CapabilityProvidedGameSystems = {};
   const activeExperienceId =
     typeof request.chatMeta.gameExperienceId === "string" ? request.chatMeta.gameExperienceId : null;
@@ -110,7 +114,11 @@ export async function collectCapabilityPromptContext(
       const contribution = await withDeadline(contribute(request), packageId);
       if (contribution === null || contribution === undefined) continue;
       const text = typeof contribution === "string" ? contribution : contribution.text;
-      if (typeof text === "string" && text.trim().length > 0) blocks.push(text.trim());
+      if (typeof text === "string" && text.trim().length > 0) {
+        const normalized = text.trim();
+        blocks.push(normalized);
+        packageBlocks.push({ packageId, text: normalized });
+      }
       // Only the experience recorded on this game may replace its built-in systems. Other packages may
       // still contribute prompt context, but cannot hide Classic inventory from unrelated games.
       if (
@@ -125,5 +133,5 @@ export async function collectCapabilityPromptContext(
       logger.warn(error, "[capability] prompt-context contributor failed for %s", packageId);
     }
   }
-  return { blocks, provides };
+  return { blocks, packageBlocks, provides };
 }

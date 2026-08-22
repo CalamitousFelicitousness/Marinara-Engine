@@ -1267,6 +1267,40 @@ export function ChatSettingsDrawer({
     (item) =>
       item.status === "active" && item.manifest.kind.includes("conversation-calls") && item.manifest.entrypoints.client,
   );
+  const chatSettingsPackageByAgentId = useMemo(() => {
+    const packages = new Map<string, (typeof installedCapabilities)[number]>();
+    for (const item of installedCapabilities) {
+      if (
+        item.status === "active" &&
+        item.manifest.entrypoints.client &&
+        item.manifest.contributions?.slots?.includes("chat-settings")
+      ) {
+        packages.set(item.id, item);
+      }
+    }
+    return packages;
+  }, [installedCapabilities]);
+  const renderDownloadedAgentChatSettings = (agent: { id: string; name: string; description: string }) => {
+    if (agent.id === "hierarchical-maps" || agent.id === "long-term-memory") return null;
+    const capabilityPackage = chatSettingsPackageByAgentId.get(agent.id);
+    if (!capabilityPackage) return null;
+    return (
+      <CapabilityElement
+        packageId={capabilityPackage.id}
+        view="settings"
+        capabilityProps={{
+          chatId: chat.id,
+          chatMode,
+          debugMode,
+          agent,
+          connections: chatGenerationConnectionsList,
+          onDirtyChange: setEditorDirty,
+          confirmAction: showConfirmDialog,
+        }}
+        className="mt-2 block overflow-hidden rounded-lg"
+      />
+    );
+  };
   const availableConversationCommandOptions = useMemo(() => {
     return CONVERSATION_COMMAND_TOGGLE_OPTIONS.filter((command) => {
       const agentId = CONVERSATION_COMMAND_AGENT_IDS[command.id];
@@ -8825,6 +8859,7 @@ export function ChatSettingsDrawer({
                                               className="mt-2 block overflow-hidden rounded-lg"
                                             />
                                           )}
+                                          {renderDownloadedAgentChatSettings(agent)}
                                           {agent.id === STORYBOARD_AGENT_ID && (
                                             <Suspense fallback={null}>
                                               <StoryboardChatSettingsPanel

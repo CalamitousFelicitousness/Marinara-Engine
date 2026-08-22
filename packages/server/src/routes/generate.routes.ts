@@ -231,6 +231,10 @@ import {
   recordLongTermMemoryPromptAccepted,
   type LongTermMemoryRecallReceipt,
 } from "../services/generation/long-term-memory-runtime.js";
+import {
+  finalizeCapabilityAgentResults,
+  prepareCapabilityAgentContexts,
+} from "../services/capability-packages/capability-agent-runtime.service.js";
 import { newId } from "../utils/id-generator.js";
 import {
   appendGenerationTailMessages,
@@ -3491,8 +3495,18 @@ export async function generateRoutes(app: FastifyInstance) {
             mode,
             targetCharacterIds,
             personaId: selectedPersonaId,
+            placedAgentTypes: [...runtimeAgentSectionTypes],
           });
-          const blocks = [...promptContext.blocks];
+          const placedPackageIds = new Set<string>();
+          for (const block of promptContext.packageBlocks) {
+            const tokens = runtimeAgentSectionTokens.get(block.packageId);
+            if (tokens && replaceRuntimeAgentSection(messages, tokens, block.text)) {
+              placedPackageIds.add(block.packageId);
+            }
+          }
+          const blocks = promptContext.packageBlocks
+            .filter((block) => !placedPackageIds.has(block.packageId))
+            .map((block) => block.text);
           const eventBlock = await collectRoleplayEventContext(db, input.chatId, targetCharacterIds);
           if (eventBlock) blocks.push(eventBlock);
           if (blocks.length > 0) {
@@ -4910,11 +4924,16 @@ export async function generateRoutes(app: FastifyInstance) {
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
           return { ...trackerContext, memory };
         };
+        let preparedCapabilityPostContext: AgentContext | null = null;
         const pipeline = createAgentPipeline(
           pipelineAgents,
           agentContext,
           sendAgentEventAfterMainStream,
           resolveAgentContext,
+          async (agents, context) => {
+            preparedCapabilityPostContext = await prepareCapabilityAgentContexts(agents, context);
+            return preparedCapabilityPostContext;
+          },
         );
         let directorSecretPlotResults: AgentResult[] = [];
         let directorSecretPlotArcForPrompt: unknown = directorSecretPlotMemory.overarchingArc;
@@ -8380,6 +8399,12 @@ export async function generateRoutes(app: FastifyInstance) {
           }
 
           postResults = postResults.map(markLorebookResultForApproval);
+
+          postResults = await finalizeCapabilityAgentResults(
+            postResults,
+            resolvedAgents,
+            preparedCapabilityPostContext ?? postAgentContext,
+          );
 
           // Finalize expression results before streaming/persisting them so
           // required persona/character entries are visible immediately.

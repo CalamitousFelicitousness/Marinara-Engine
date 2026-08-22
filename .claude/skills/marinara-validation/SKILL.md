@@ -207,11 +207,31 @@ Observed identically before and after that merge, so none are the sync's doing:
 | `prompt.regression.ts`                        | upstream, see above                                                              |
 | `manual-agent-retry-resolution.regression.ts` | pins `emitMetadataPatch:` by source shape in `retry-agents-route.ts`             |
 | `agent-runtime.regression.ts`                 | fails on "agent result vocabulary must retain its exact public values and order" |
-| `launcher/format-guard.regression.mjs`        | not investigated                                                                 |
-| `launcher/update.regression.mjs`              | not investigated                                                                 |
+| `launcher/format-guard.regression.mjs`        | was the fork's own bug, fixed 2026-08-21, see below                              |
+| `launcher/update.regression.mjs`              | the fork's pnpm 11 migration, permanent, see below                               |
 
-The last four were observed failing but not traced to a side; do not assume they
-are upstream's without checking.
+The middle two were observed failing but not traced to a side; do not assume
+they are upstream's without checking. The two launcher lanes have since been
+traced, and neither was upstream's.
+
+**`launcher/format-guard.regression.mjs` was this fork's bug, now fixed.**
+`SHARDED_TABLES` in `scripts/protect-launcher-data.mjs` is a hand-maintained
+copy of `FILE_BACKED_TABLES` in `db/file-backed-store.ts`, and the lane pins the
+two as `deepEqual`, order included. The fork's author's-note-presets work added
+`author_note_presets` to the store list and not to the launcher copy, so the
+lane had been failing on the fork's own omission the whole time, not on
+anything upstream did. The consequence was real rather than cosmetic: the
+unshard step folds sharded tables back into a monolith for a downgraded build,
+and a table missing from that list is silently dropped, so a launcher downgrade
+would have destroyed the fork's author's note presets. It is now in the
+launcher copy and the lane passes. Any future table added to
+`FILE_BACKED_TABLES` must be added there too, at the same position.
+
+**`launcher/update.regression.mjs` fails by fork design and will keep failing.**
+It asserts `packageManager` pins pnpm exactly `10.34.5`
+(`update.regression.mjs:25`), which upstream's launcher expects. This fork
+migrated to pnpm 11 on purpose, see `FORK-CHANGES.md`. Making the lane pass
+means reverting that migration, so leave it red.
 
 `open-issues.regression.ts` arrived failing with the 2026-08-21 merge, at
 `Changing media providers must clear stale remote LoRA choices`. It is a

@@ -26,29 +26,34 @@
 //  11. Turn-game resign wipes turn-game rows but never experience rows.
 //  12. Checkpoint restore recovers the capture-time world even after the same anchor is
 //      rewritten post-checkpoint (the ordering that invalidated the createdAt re-lookup).
-//  13. DELETE wipes only the chat's experience namespace — a foreign-namespace row in the
+//  13. A row whose stored value is unreadable (unparseable text, or a non-string column)
+//      returns exists:true / state:null / stateUnparseable:true PLUS the raw text (capped,
+//      flagged when truncated); healthy rows carry none of the three keys.
+//  14. DELETE wipes only the chat's experience namespace — a foreign-namespace row in the
 //      same chat survives — and reports the number of rows it removed (#5405).
-//  14. Export → delete → import round-trips a campaign: same states, same anchors, same
+//  15. Export → delete → import round-trips a campaign: same states, same anchors, same
 //      order, and the restored campaign reads back through the normal GET (#5405).
-//  15. Import bounds: over the row cap or over the per-row state cap is a clean 422 with
+//  16. Import bounds: over the row cap or over the per-row state cap is a clean 422 with
 //      nothing written, including when one bad row rides along with good ones (#5405).
-//  16. Import recency: rows are re-stamped with strictly increasing createdAt in array
+//  17. Import recency: rows are re-stamped with strictly increasing createdAt in array
 //      order, so the newest imported row wins fallback reads even against a pre-existing
 //      row that was newer than the import (the store resolves a createdAt tie to the
 //      FIRST-inserted row, which is pinned here too) (#5405).
-//  17. Import stamps FORWARD of everything already in the namespace, so the post-import
+//  18. Import stamps FORWARD of everything already in the namespace, so the post-import
 //      prune can never delete the import's own rows, and the response counts survivors
 //      rather than intentions (#5405).
-//  18. Cross-chat safety: an anchor that is not a message of the destination chat is stored
+//  19. Cross-chat safety: an anchor that is not a message of the destination chat is stored
 //      under a synthetic "imported:" id, so the SOURCE chat's message deletions cannot reach
 //      it through the store's chatId-agnostic messageId cascade (#5405).
-//  19. Duplicate anchors inside one batch are a clean 422 naming both indices instead of a
+//  20. Duplicate anchors inside one batch are a clean 422 naming both indices instead of a
 //      silent collapse; the same messageId at a different swipeIndex stays legal (#5405).
-//  20. Corrupt rows: export flags an unparseable row, and import refuses to store a flagged
-//      row rather than laundering on-disk corruption into a legitimate null save (#5405).
-//  21. The PUT stamps strictly past the namespace's newest row, so a save always wins the
+//  21. Unreadable rows: export emits the single-row GET's stateUnparseable/rawState/
+//      rawStateTruncated shape (typeof-guarded, so a null state COLUMN is not laundered),
+//      and import restores an untruncated rawState VERBATIM while skipping truncated
+//      captures (#5405).
+//  22. The PUT stamps strictly past the namespace's newest row, so a save always wins the
 //      recency read and no two saves can tie (#5405).
-//  22. Export/import share a dedicated rate-limit class; the per-turn GET/PUT save does not
+//  23. Export/import share a dedicated rate-limit class; the per-turn GET/PUT save does not
 //      fall into it (#5405).
 import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
@@ -420,7 +425,133 @@ try {
     );
   }
 
-  // ── 13. DELETE wipes only the experience namespace, and counts what it removed ──
+  // ── 13. A row whose stored text will not parse hands the raw bytes back (#5407) ──
+  // The client's repair for a corrupt row is a replacing PUT, which destroys the evidence,
+  // and `state: null` on its own is indistinguishable from a legitimately stored null — so
+  // the unparseable text rides along on the failure path only, letting a package quarantine
+  // it first. Corruption is written straight through the storage layer here because the PUT
+  // can only ever store JSON.stringify output.
+  {
+    const chat = await createExperienceChat("experience corrupt row");
+    const m1 = await addAssistantMessage(chat.id, "turn 1");
+    const CORRUPT = '{"zone":"village","x":5';
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: m1.id,
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: CORRUPT,
+      committed: true,
+    });
+
+    const get = await getState(chat.id);
+    assert.equal(get.statusCode, 200, "a corrupt row is still a 200, not a 500");
+    const body = get.json();
+    assert.equal(body.exists, true, "a corrupt row still reports exists:true");
+    assert.equal(body.state, null, "unparseable state still reads as null");
+    assert.equal(body.stateUnparseable, true, "the corruption signal is an always-truthy boolean");
+    assert.equal(body.rawState, CORRUPT, "a corrupt row hands back its raw stored text verbatim");
+    assert.equal(body.rawStateTruncated, false, "stored text within the ceiling is returned whole");
+
+    // Healthy rows must not carry the keys at all — their presence IS the corruption signal.
+    const healthy = await createExperienceChat("experience healthy row");
+    await addAssistantMessage(healthy.id, "turn 1");
+    await putState(healthy.id, { state: { fine: true } });
+    const healthyBody = (await getState(healthy.id)).json();
+    assert.deepEqual(healthyBody.state, { fine: true });
+    assert.ok(!("rawState" in healthyBody), "a healthy row carries no rawState key");
+    assert.ok(!("rawStateTruncated" in healthyBody), "a healthy row carries no rawStateTruncated key");
+    assert.ok(!("stateUnparseable" in healthyBody), "a healthy row carries no stateUnparseable key");
+
+    // The catch must never re-assume the type it exists to distrust: a NON-STRING state
+    // column (a hand-repaired shard holding a real object, or a missing key reading back
+    // as null through the store's default path) is corruption too — a 200 with a STRING
+    // rawState, never a 500 and never a silent state:null that masquerades as legitimate.
+    const objectRow = await createExperienceChat("experience object-state row");
+    const m3 = await addAssistantMessage(objectRow.id, "turn 1");
+    await engineStore.create({
+      chatId: objectRow.id,
+      messageId: m3.id,
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: { zone: "village", x: 5 } as unknown as string,
+      committed: true,
+    });
+    const objectGet = await getState(objectRow.id);
+    assert.equal(objectGet.statusCode, 200, "a non-string state column is a 200, not a 500");
+    const objectBody = objectGet.json();
+    assert.equal(objectBody.stateUnparseable, true, "a non-string state column reports corruption");
+    assert.equal(typeof objectBody.rawState, "string", "rawState is a string under every on-disk shape");
+    assert.deepEqual(
+      JSON.parse(objectBody.rawState),
+      { zone: "village", x: 5 },
+      "the object round-trips as its JSON text",
+    );
+
+    const nullRow = await createExperienceChat("experience null-state row");
+    const m4 = await addAssistantMessage(nullRow.id, "turn 1");
+    await engineStore.create({
+      chatId: nullRow.id,
+      messageId: m4.id,
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: null as unknown as string,
+      committed: true,
+    });
+    const nullColBody = (await getState(nullRow.id)).json();
+    assert.equal(nullColBody.stateUnparseable, true, "a null state COLUMN is corruption, not a stored null");
+    assert.equal(nullColBody.rawState, "null", "and its rawState is the stringified column");
+
+    // An empty-string stored state is unparseable and its rawState is falsy — which is
+    // exactly why the discriminator is stateUnparseable, not truthiness of rawState.
+    const emptyRow = await createExperienceChat("experience empty-state row");
+    const m5 = await addAssistantMessage(emptyRow.id, "turn 1");
+    await engineStore.create({
+      chatId: emptyRow.id,
+      messageId: m5.id,
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: "",
+      committed: true,
+    });
+    const emptyBody = (await getState(emptyRow.id)).json();
+    assert.equal(emptyBody.stateUnparseable, true, "an empty-string row reports corruption");
+    assert.equal(emptyBody.rawState, "", "with its (falsy) raw text intact");
+
+    // ...which is what makes a legitimately stored null distinguishable from corruption.
+    const storedNull = await createExperienceChat("experience stored null");
+    await addAssistantMessage(storedNull.id, "turn 1");
+    await putState(storedNull.id, { state: null });
+    const storedNullBody = (await getState(storedNull.id)).json();
+    assert.equal(storedNullBody.state, null);
+    assert.ok(!("rawState" in storedNullBody), "a legitimately stored null is not reported as corrupt");
+
+    // On-disk damage is not bounded by the PUT's ceiling, so the response is: the raw text
+    // is capped at MAX_EXPERIENCE_STATE_CHARS (262_144) and flagged rather than inflating it.
+    const oversize = await createExperienceChat("experience corrupt oversize");
+    const m2 = await addAssistantMessage(oversize.id, "turn 1");
+    const HUGE = `{"blob":"${"x".repeat(300_000)}`; // unterminated → unparseable
+    await engineStore.create({
+      chatId: oversize.id,
+      messageId: m2.id,
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: HUGE,
+      committed: true,
+    });
+    const oversizeBody = (await getState(oversize.id)).json();
+    assert.equal(oversizeBody.state, null);
+    assert.equal(oversizeBody.rawStateTruncated, true, "an oversize corrupt row is flagged as truncated");
+    assert.equal(oversizeBody.rawState.length, 262_144, "the raw text is capped at MAX_EXPERIENCE_STATE_CHARS");
+    assert.ok(HUGE.startsWith(oversizeBody.rawState), "the truncated text is a prefix of the stored text");
+  }
+
+  // ── 14. DELETE wipes only the experience namespace, and counts what it removed ──
   {
     const chat = await createExperienceChat("experience delete scope");
     const m1 = await addAssistantMessage(chat.id, "turn 1");
@@ -457,12 +588,12 @@ try {
     assert.deepEqual(again.json(), { ok: true, deleted: 0 }, "deleting an already-empty namespace is a no-op 0");
   }
 
-  // ── 14. Export → delete → import round-trips a campaign ──
+  // ── 15. Export → delete → import round-trips a campaign ──
   {
     const chat = await createExperienceChat("experience export round trip");
     const anchors: string[] = [];
     // No wall-clock spacing between the saves on purpose: the PUT stamps each row strictly
-    // past the namespace's newest (case 21), so "oldest write first" holds by construction
+    // past the namespace's newest (case 22), so "oldest write first" holds by construction
     // rather than by hoping three saves land in three different milliseconds.
     for (const turn of [1, 2, 3]) {
       const message = await addAssistantMessage(chat.id, `turn ${turn}`);
@@ -520,8 +651,16 @@ try {
     assert.equal(read.json().anchorMatched, true, "anchors survived the round trip");
     assert.equal(read.json().schemaVersion, 7);
 
-    // A re-import over a live campaign replaces same-anchor rows rather than duplicating.
-    await importState(chat.id, { rows });
+    // A re-import over a live campaign replaces same-anchor rows rather than duplicating —
+    // and reports pruned: 0, because replacing the row at an incoming anchor is the intended
+    // write, not a cap eviction (the counter once mistook these replacements for prunes).
+    const reImported = await importState(chat.id, { rows });
+    assert.equal(reImported.statusCode, 200, reImported.body);
+    assert.deepEqual(
+      reImported.json(),
+      { ok: true, imported: 3, retained: 3, pruned: 0, skipped: 0 },
+      "same-anchor replacements are not reported as pruned",
+    );
     assert.equal(
       (await exportState(chat.id)).json().rows.length,
       3,
@@ -529,7 +668,7 @@ try {
     );
   }
 
-  // ── 15. Import bounds: over-cap and oversized rows are refused whole ──
+  // ── 16. Import bounds: over-cap and oversized rows are refused whole ──
   {
     const chat = await createExperienceChat("experience import bounds");
     const trivial = (index: number) => ({ messageId: `anchor-${index}`, swipeIndex: 0, state: { index } });
@@ -558,7 +697,7 @@ try {
     assert.equal(await engineStore.getLatest(chat.id, GAME_TYPE), null, "the refused import wrote nothing");
   }
 
-  // ── 16. Import recency: monotonic re-stamping, and the tie rule it defends against ──
+  // ── 17. Import recency: monotonic re-stamping, and the tie rule it defends against ──
   {
     // 16a. Pin the store fact the import has to work around: createdAt is the only recency
     // key the reads order by, and a desc(createdAt) read of a tied group returns its
@@ -617,7 +756,7 @@ try {
     assert.deepEqual(read.json().state, { step: "newest" }, "the newest imported row wins fallback reads");
 
     const stored = await engineStore.listForChat(chat.id, GAME_TYPE);
-    // "imported:" because none of these anchors is a message of this chat — see case 18.
+    // "imported:" because none of these anchors is a message of this chat — see case 19.
     const campaign = stored.filter((row) => row.messageId.startsWith("imported:campaign-"));
     assert.deepEqual(
       campaign.map((row) => JSON.parse(row.state).step),
@@ -632,11 +771,11 @@ try {
     }
 
     // Anchors that do not exist as messages in this chat are still imported (under the
-    // synthetic id case 18 pins) and still serve through the fallback path.
+    // synthetic id case 19 pins) and still serve through the fallback path.
     assert.equal(campaign.length, 3, "rows anchored to messages this chat never had are still imported");
   }
 
-  // ── 17. Import stamps FORWARD, so its own rows cannot be pruned away ──
+  // ── 18. Import stamps FORWARD, so its own rows cannot be pruned away ──
   // The data-loss shape: stamping backwards from the base put the batch's earliest rows
   // BEHIND a recent pre-existing row, and the post-import prune — which keeps the newest
   // anchors — then deleted the import's oldest saves while the response still claimed them.
@@ -678,7 +817,7 @@ try {
     assert.equal(stored.length, 100, "the cap prunes the oldest row in the namespace");
   }
 
-  // ── 18. An imported anchor cannot be destroyed by the SOURCE chat's message deletions ──
+  // ── 19. An imported anchor cannot be destroyed by the SOURCE chat's message deletions ──
   // The store's messages -> game_engine_state cascade matches messageId GLOBALLY (it is
   // never scoped by chatId), so a campaign replayed into another chat would otherwise be
   // silently wiped when the original chat's message was deleted.
@@ -718,7 +857,7 @@ try {
     );
   }
 
-  // ── 19. Duplicate anchors in one batch are refused, not silently collapsed ──
+  // ── 20. Duplicate anchors in one batch are refused, not silently collapsed ──
   {
     const chat = await createExperienceChat("experience import duplicates");
     const duplicate = await importState(chat.id, {
@@ -747,45 +886,93 @@ try {
     assert.deepEqual(swipes.json(), { ok: true, imported: 2, retained: 2, pruned: 0, skipped: 0 });
   }
 
-  // ── 20. A corrupt row is flagged by the export and skipped by the import ──
-  // Without the flag the round trip laundered on-disk corruption into a legitimate stored
-  // null, which every later export then handed back as a genuine (empty) save.
+  // ── 21. An unreadable row round-trips through export/import via rawState ──
+  // The export is the last copy a player may ever have, so a row whose stored bytes will
+  // not parse carries the same stateUnparseable/rawState/rawStateTruncated shape the
+  // single-row GET emits — and the import restores an untruncated rawState VERBATIM,
+  // neither laundering the null into a legitimate save nor dropping the bytes.
   {
-    const chat = await createExperienceChat("experience corrupt row");
+    const chat = await createExperienceChat("experience unreadable export");
+    const RAW = "{not json";
     await engineStore.create({
       chatId: chat.id,
       messageId: "corrupt-anchor",
       swipeIndex: 0,
       gameType: GAME_TYPE,
       schemaVersion: 1,
-      state: "{not json",
+      state: RAW,
+      committed: true,
+    });
+    // A null state COLUMN is the trap the typeof guard exists for: JSON.parse(null)
+    // coerces and returns null WITHOUT throwing, so a bare try/catch would export it
+    // as a legitimate stored null on the one verb meant to be the backup.
+    await engineStore.create({
+      chatId: chat.id,
+      messageId: "null-column-anchor",
+      swipeIndex: 0,
+      gameType: GAME_TYPE,
+      schemaVersion: 1,
+      state: null as unknown as string,
       committed: true,
     });
 
-    const exported = (await exportState(chat.id)).json().rows as { state: unknown; corrupt?: boolean }[];
-    assert.equal(exported.length, 1);
-    assert.equal(exported[0]!.corrupt, true, "export flags a row whose stored state does not parse");
-    assert.equal(exported[0]!.state, null, "and still exports it as null so the anchor is visible");
+    const exported = (await exportState(chat.id)).json().rows as {
+      messageId: string;
+      state: unknown;
+      stateUnparseable?: boolean;
+      rawState?: string;
+      rawStateTruncated?: boolean;
+    }[];
+    assert.equal(exported.length, 2);
+    const flagged = exported.find((row) => row.messageId === "corrupt-anchor")!;
+    assert.equal(flagged.stateUnparseable, true, "export flags a row whose stored state does not parse");
+    assert.equal(flagged.state, null, "and still exports state:null so the anchor is visible");
+    assert.equal(flagged.rawState, RAW, "with the stored text riding along verbatim");
+    assert.equal(flagged.rawStateTruncated, false, "text within the ceiling is carried whole");
+    const nullCol = exported.find((row) => row.messageId === "null-column-anchor")!;
+    assert.equal(nullCol.stateUnparseable, true, "a null state COLUMN is flagged, not laundered");
+    assert.equal(nullCol.rawState, "null", "as its stringified column text");
 
-    const fresh = await createExperienceChat("experience corrupt import");
-    const refused = await importState(fresh.id, { rows: exported });
-    assert.equal(refused.statusCode, 200, refused.body);
+    // The restore: an untruncated flagged row lands verbatim and still reads as unparseable
+    // afterward — a faithful backup restores what was there, evidence intact.
+    const fresh = await createExperienceChat("experience unreadable import");
+    const restored = await importState(fresh.id, { rows: [flagged] });
+    assert.equal(restored.statusCode, 200, restored.body);
     assert.deepEqual(
-      refused.json(),
-      { ok: true, imported: 0, retained: 0, pruned: 0, skipped: 1 },
-      "a corrupt-flagged row is reported as skipped, not imported",
+      restored.json(),
+      { ok: true, imported: 1, retained: 1, pruned: 0, skipped: 0 },
+      "an untruncated unreadable row is restored, not skipped",
     );
-    assert.equal(await engineStore.getLatest(fresh.id, GAME_TYPE), null, "nothing was stored for the corrupt row");
+    const roundTrip = (await getState(fresh.id)).json();
+    assert.equal(roundTrip.stateUnparseable, true, "the restored row still reads as unparseable");
+    assert.equal(roundTrip.rawState, RAW, "with byte-identical raw text");
 
-    // A healthy row riding alongside a corrupt one still lands — the skip is per row.
-    const mixed = await importState(fresh.id, {
-      rows: [...exported, { messageId: "healthy-anchor", swipeIndex: 0, state: { ok: true } }],
+    // A truncated capture is missing bytes and cannot be restored faithfully: skipped and
+    // counted, never stored short — while healthy rows in the same batch still land.
+    const truncTarget = await createExperienceChat("experience truncated import");
+    const skippedRes = await importState(truncTarget.id, {
+      rows: [
+        {
+          messageId: "trunc-anchor",
+          swipeIndex: 0,
+          state: null,
+          stateUnparseable: true,
+          rawState: "{cut off",
+          rawStateTruncated: true,
+        },
+        { messageId: "healthy-anchor", swipeIndex: 0, state: { ok: true } },
+      ],
     });
-    assert.deepEqual(mixed.json(), { ok: true, imported: 1, retained: 1, pruned: 0, skipped: 1 });
-    assert.deepEqual((await getState(fresh.id)).json().state, { ok: true });
+    assert.equal(skippedRes.statusCode, 200, skippedRes.body);
+    assert.deepEqual(
+      skippedRes.json(),
+      { ok: true, imported: 1, retained: 1, pruned: 0, skipped: 1 },
+      "a truncated capture is skipped while healthy rows still land",
+    );
+    assert.deepEqual((await getState(truncTarget.id)).json().state, { ok: true });
   }
 
-  // ── 21. The PUT stamps strictly past the namespace's newest row ──
+  // ── 22. The PUT stamps strictly past the namespace's newest row ──
   // createdAt is the only recency key the reads order by, and neither tie-break the store can
   // apply returns the newest write (first-inserted in-process, lowest row id after a shard
   // reload), so two saves inside one millisecond would make recency arbitrary. The guard is
@@ -831,7 +1018,7 @@ try {
     );
   }
 
-  // ── 22. Export/import sit in their own rate-limit class ──
+  // ── 23. Export/import sit in their own rate-limit class ──
   // Both serialize or rewrite the chat's whole namespace (up to ~100 x 256K), so a package
   // loop must hit a dedicated wall rather than the 600/min default. The hook runs on a
   // separate Fastify instance so its buckets never throttle the functional cases above, and

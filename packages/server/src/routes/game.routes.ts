@@ -10111,6 +10111,22 @@ export async function gameRoutes(app: FastifyInstance) {
    * A bulk writer adds its row index to the returned base so the whole batch stays strictly
    * increasing.
    */
+  /** The unified unreadable-row payload every read surface in this family emits
+   * (single-row GET and the export alike): `stateUnparseable: true` is the always-truthy
+   * discriminator (rawState can legitimately be ""), rawState is the stored value as a
+   * STRING whatever shape the disk held, and the cap is the PUT's own ceiling. */
+  const unreadableStatePayload = (
+    value: unknown,
+  ): { stateUnparseable: true; rawState: string; rawStateTruncated: boolean } => {
+    const raw = typeof value === "string" ? value : (JSON.stringify(value) ?? "undefined");
+    const rawStateTruncated = raw.length > MAX_EXPERIENCE_STATE_CHARS;
+    return {
+      stateUnparseable: true,
+      rawState: rawStateTruncated ? raw.slice(0, MAX_EXPERIENCE_STATE_CHARS) : raw,
+      rawStateTruncated,
+    };
+  };
+
   const experienceStateStampBase = (newest: { createdAt: string } | null): number => {
     const newestMs = newest ? Date.parse(newest.createdAt) : Number.NaN;
     // An unparseable stored stamp cannot order anything; fall back to the clock rather than NaN.
@@ -10141,16 +10157,38 @@ export async function gameRoutes(app: FastifyInstance) {
       return { exists: false, state: null, schemaVersion: null, anchor: null, committed: false, createdAt: null };
 
     let state: unknown = null;
-    try {
-      state = JSON.parse(row.state);
-    } catch {
-      // The PUT below always stores JSON.stringify output, so this indicates
-      // on-disk corruption; surface an empty save rather than a 500.
-      logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+    // Set ONLY when the stored value is unreadable — `stateUnparseable: true` is the
+    // corruption signal (always truthy, unlike `rawState`, which can legitimately be
+    // an empty string). It keeps a corrupt row distinguishable from a legitimately
+    // stored null: the PUT always stores JSON.stringify output, so a stored null is
+    // the four-character string "null", never a missing or non-string column.
+    let corrupt: { stateUnparseable: true; rawState: string; rawStateTruncated: boolean } | null = null;
+    // The catch below exists because the stored value may not be what its type says —
+    // so nothing in this block may re-assume it is a string. A missing key reads back
+    // as null through the store's default path, and a hand-repaired shard can hold a
+    // real object; both are corruption, and both must yield a 200 with a STRING
+    // rawState rather than a 500 or a shape surprise.
+    const storedIsString = typeof row.state === "string";
+    if (!storedIsString) {
+      logger.error("Non-string experience state on disk for chat %s (%s)", req.params.chatId, gameType);
+      corrupt = unreadableStatePayload(row.state);
+    } else {
+      try {
+        state = JSON.parse(row.state);
+      } catch (err) {
+        // On-disk corruption; surface an empty save rather than a 500. Hand the
+        // unparseable text back (#5407): the package's own repair is a replacing PUT,
+        // so without this the damaged bytes are destroyed unseen; with it a package
+        // can preserve a bounded excerpt (a few KB in metadata, or a bug-report copy)
+        // before repairing — the full blob does not belong in hot chat metadata.
+        logger.error(err, "Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+        corrupt = unreadableStatePayload(row.state);
+      }
     }
     return {
       exists: true,
       state,
+      ...(corrupt ?? {}),
       schemaVersion: row.schemaVersion,
       anchor: { messageId: row.messageId, swipeIndex: row.swipeIndex },
       // False when the returned row is a fallback rather than the visible anchor's own
@@ -10305,15 +10343,23 @@ export async function gameRoutes(app: FastifyInstance) {
       return {
         rows: rows.map((row) => {
           let state: unknown = null;
-          let corrupt = false;
-          try {
-            state = JSON.parse(row.state);
-          } catch {
-            // Same tolerance as the single-row GET: the PUT only ever stores
-            // JSON.stringify output, so an unparseable row is on-disk corruption.
-            // Export it as null rather than failing the whole campaign's export.
-            corrupt = true;
-            logger.warn("Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+          let unreadable: ReturnType<typeof unreadableStatePayload> | null = null;
+          // Same discipline as the single-row GET, same discriminator, same payload:
+          // nothing here may re-assume the stored value is a string (JSON.parse(null)
+          // coerces to "null" and returns null WITHOUT throwing, which would launder a
+          // damaged null COLUMN into a legitimate stored null on the very verb that
+          // exists to be the backup). An export is the last copy a player may ever
+          // have, so unreadable rows carry their raw bytes rather than dropping them.
+          if (typeof row.state !== "string") {
+            logger.error("Non-string experience state on disk for chat %s (%s)", req.params.chatId, gameType);
+            unreadable = unreadableStatePayload(row.state);
+          } else {
+            try {
+              state = JSON.parse(row.state);
+            } catch (err) {
+              logger.error(err, "Unparseable experience state for chat %s (%s)", req.params.chatId, gameType);
+              unreadable = unreadableStatePayload(row.state);
+            }
           }
           return {
             messageId: row.messageId,
@@ -10322,11 +10368,10 @@ export async function gameRoutes(app: FastifyInstance) {
             schemaVersion: row.schemaVersion,
             committed: row.committed === 1,
             createdAt: row.createdAt,
-            // Present only on rows that failed to parse, so a reader can tell "this save was
-            // corrupt on disk" from "this save really is null". The import refuses to store a
-            // flagged row: without the flag a round trip would launder on-disk corruption into
-            // a legitimate stored null and the campaign would silently lose that turn's world.
-            ...(corrupt ? { corrupt: true as const } : {}),
+            // Present only on unreadable rows. The import restores an untruncated
+            // rawState VERBATIM (the row stays flagged on future reads — a faithful
+            // backup restores what was there); a truncated one is skipped and counted.
+            ...(unreadable ?? {}),
           };
         }),
       };
@@ -10372,11 +10417,15 @@ export async function gameRoutes(app: FastifyInstance) {
         /** Accepted so an export round-trips without stripping fields, but never stored —
          *  see the stamping note in the handler. */
         createdAt: z.string().max(64).optional(),
-        /** The export's marker for a row whose stored state would not parse. Such a row is
-         *  SKIPPED rather than stored: its exported `state` is null only because the bytes on
-         *  disk were unreadable, and storing that null would launder on-disk corruption into a
-         *  legitimate save. */
-        corrupt: z.boolean().optional(),
+        /** The export's discriminator for a row whose stored bytes were unreadable (the same
+         *  shape the single-row GET emits). Its `state` is null only because the disk bytes
+         *  would not parse; the restorable copy is `rawState`. */
+        stateUnparseable: z.boolean().optional(),
+        /** The stored value verbatim, as a string, capped at the PUT's own ceiling. */
+        rawState: z.string().max(MAX_EXPERIENCE_STATE_CHARS).optional(),
+        /** True when the capture hit the cap — such a row is missing bytes and cannot be
+         *  restored faithfully, so the import skips it. */
+        rawStateTruncated: z.boolean().optional(),
       }),
     ),
   });
@@ -10438,17 +10487,31 @@ export async function gameRoutes(app: FastifyInstance) {
       }[] = [];
       let skipped = 0;
       for (const [index, row] of body.rows.entries()) {
-        if (row.corrupt) {
+        if (row.stateUnparseable) {
           // The export could not parse this row's stored bytes, so its `state: null` is an
-          // absence of data, not data. Storing it would turn on-disk corruption into a
-          // legitimate empty save that later exports would then hand back as genuine.
-          skipped += 1;
-          logger.warn(
-            "Skipping corrupt-flagged experience-state row %d for chat %s (%s)",
-            index,
-            req.params.chatId,
-            gameType,
-          );
+          // absence of data, not data — storing it would launder on-disk corruption into a
+          // legitimate empty save. A faithful backup restores `rawState` VERBATIM instead:
+          // the row stays flagged on future reads, but nothing is lost and nothing lies.
+          // A truncated capture is missing bytes and CANNOT be restored faithfully, so it
+          // is skipped and counted rather than stored short.
+          if (typeof row.rawState === "string" && !row.rawStateTruncated) {
+            pending.push({
+              index,
+              messageId: row.messageId,
+              swipeIndex: row.swipeIndex,
+              state: row.rawState,
+              schemaVersion: row.schemaVersion,
+              committed: row.committed,
+            });
+          } else {
+            skipped += 1;
+            logger.warn(
+              "Skipping unrestorable unparseable experience-state row %d for chat %s (%s)",
+              index,
+              req.params.chatId,
+              gameType,
+            );
+          }
           continue;
         }
         const serialized = JSON.stringify(row.state);
@@ -10510,7 +10573,16 @@ export async function gameRoutes(app: FastifyInstance) {
         // Stamping backwards from the base instead would push the batch's earliest rows
         // BEHIND a pre-existing recent row, and the post-write prune below — which keeps the
         // newest anchors — would then delete the import's own oldest saves.
-        const existingBefore = (await storage.listForChat(req.params.chatId, gameType)).length;
+        // Only pre-existing rows at anchors this batch does NOT touch can count as
+        // "pruned": replacing the row at an incoming anchor is the intended write
+        // (create() is delete-then-insert per anchor), not a cap eviction, so a
+        // same-chat re-import must report pruned: 0. Key form matches anchorFirstSeen.
+        const incomingAnchors = new Set(resolved.map((row) => JSON.stringify([row.messageId, row.swipeIndex])));
+        const evictionCandidateIds = new Set(
+          (await storage.listForChat(req.params.chatId, gameType))
+            .filter((row) => !incomingAnchors.has(JSON.stringify([row.messageId, row.swipeIndex])))
+            .map((row) => row.id),
+        );
         const base = experienceStateStampBase(await storage.getLatest(req.params.chatId, gameType));
         const writtenIds = new Set<string>();
         for (const [index, row] of resolved.entries()) {
@@ -10538,8 +10610,11 @@ export async function gameRoutes(app: FastifyInstance) {
         // Pre-existing rows the merge evicted through the anchor cap. Named in the
         // response because an import onto a full campaign can evict ALL of them, and
         // a success payload that stays silent about that is a lie of omission.
-        const survivingExisting = surviving.length - retained;
-        const pruned = Math.max(0, existingBefore - survivingExisting);
+        const survivingCandidates = surviving.reduce(
+          (count, row) => count + (evictionCandidateIds.has(row.id) ? 1 : 0),
+          0,
+        );
+        const pruned = evictionCandidateIds.size - survivingCandidates;
         logger.info(
           "Imported %d experience-state row(s) (%d retained, %d pre-existing pruned, %d skipped) for chat %s (%s)",
           writtenIds.size,

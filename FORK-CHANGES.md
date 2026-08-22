@@ -457,6 +457,31 @@ That contract changed deliberately, so the assertion now pins width and density 
 still red on the pre-existing upstream `ConnectionEditor.tsx` failure recorded in the
 marinara-validation skill.
 
+### Game-state characters are repaired at the boundary
+
+`PresentCharacter` declares `characterId`, `name`, `emoji`, `mood`, `customFields` and `stats` as
+non-nullable, but a snapshot is agent JSON: a custom tracker prompt omits whatever it never mentions,
+and a character with no card of its own has no id. TypeScript then vouches for values that are not
+there, so `strictNullChecks` gives no protection exactly where the data is least trustworthy. Two
+crashes came from this in one session.
+
+An audit of the stored snapshots found the live violations: 1 character of 128 with no `characterId`,
+3 with no `emoji` or `mood`, and 3 with neither `stats` nor `customFields`. Every consumer of those
+last five happened to be guarded; `characterId` was not.
+
+Rather than keep guarding consumers, `packages/client/src/lib/game-state-normalize.ts` repairs the
+character list inside `normalizeGameState`, the single store action all 37 writers funnel through.
+
+Two constraints it must respect, both mutation-verified:
+
+- **Unknown keys survive.** A custom prompt's nested output lives directly on the character and is
+  read back by `readCharacterExtras`; rebuilding from known keys would delete it.
+- **Untouched objects keep their identity**, so downstream memoization does not churn on every
+  snapshot.
+
+Nullable fields are deliberately left alone: their declared type already admits null, consumers
+handle it, and rewriting `undefined` to `null` would risk overwriting on a write-back.
+
 ### Tracker sidebar crashed the app shell on a character with no card
 
 `normalizeLookupCharacterIds` in the tracker sprite lookup trimmed every id it was handed. It is fed

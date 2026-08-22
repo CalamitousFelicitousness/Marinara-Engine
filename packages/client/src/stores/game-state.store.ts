@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { create } from "zustand";
 import { coerceGameStateTextFields, type GameState } from "@marinara-engine/shared";
+import { normalizeGameStateCharacters } from "../lib/game-state-normalize";
 
 interface GameStateStore {
   current: GameState | null;
@@ -27,7 +28,13 @@ const flushPatchCallbacks = new Map<string, () => Promise<void>>();
 
 function normalizeGameState(state: GameState | null): GameState | null {
   if (!state) return null;
-  return { ...state, ...coerceGameStateTextFields(state as unknown as Record<string, unknown>) };
+  // presentCharacters is agent JSON wearing a non-nullable type. Repair it here,
+  // at the one action every writer funnels through, instead of guarding each
+  // consumer -- an omitted characterId used to crash the whole app shell.
+  return normalizeGameStateCharacters({
+    ...state,
+    ...coerceGameStateTextFields(state as unknown as Record<string, unknown>),
+  });
 }
 
 function buildFlushPatch() {

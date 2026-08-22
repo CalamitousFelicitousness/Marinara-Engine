@@ -45,6 +45,7 @@ async function prepareFreshClient(page: Page) {
           hasCompletedOnboarding: true,
           rightPanelOpen: false,
           sidebarOpen: false,
+          chatHelpSeenModes: ["conversation", "roleplay", "game"],
         },
         version: 65,
       }),
@@ -6716,6 +6717,255 @@ test("chat toolbar panels close when their trigger is clicked again across modes
       request.delete(`/api/chats/${conversationChat.id}`),
       request.delete(`/api/chats/${gameChat.id}`),
     ]);
+  }
+});
+
+test("chat Help overlay labels visible controls in every mode", async ({ page, request }, testInfo) => {
+  const mobile = testInfo.project.name.includes("mobile");
+  const chats: Array<{ id: string; mode: "conversation" | "roleplay" | "game" }> = [];
+
+  try {
+    for (const mode of ["roleplay", "conversation", "game"] as const) {
+      const response = await request.post("/api/chats", {
+        data: { name: `${mode} Help Overlay Smoke`, mode, characterIds: [] },
+      });
+      expect(response.ok()).toBeTruthy();
+      const chat = (await response.json()) as { id: string };
+      chats.push({ id: chat.id, mode });
+
+      if (mode === "game") {
+        const metadataResponse = await request.patch(`/api/chats/${chat.id}/metadata`, {
+          data: {
+            gameId: "help-overlay-smoke-game",
+            gameSessionStatus: "active",
+            gameSessionNumber: 1,
+            gameIntroPresented: true,
+          },
+        });
+        expect(metadataResponse.ok()).toBeTruthy();
+        const messageResponse = await request.post(`/api/chats/${chat.id}/messages`, {
+          data: { role: "assistant", content: "The Help overlay test game begins." },
+        });
+        expect(messageResponse.ok()).toBeTruthy();
+      }
+    }
+
+    await page.addInitScript((activeChatId) => {
+      localStorage.setItem("marinara-active-chat-id", activeChatId);
+      const storageKey = "marinara-engine-ui";
+      const persisted = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as {
+        state?: Record<string, unknown>;
+        version?: number;
+      };
+      persisted.state = {
+        ...(persisted.state ?? {}),
+        chatHelpSeenModes: ["conversation", "roleplay", "game"],
+      };
+      localStorage.setItem(storageKey, JSON.stringify(persisted));
+    }, chats[0]!.id);
+    await page.goto("/");
+
+    const setActiveChat = async (chatId: string) => {
+      await page.evaluate(async (nextChatId) => {
+        const module = await import("/src/stores/chat.store.ts");
+        module.useChatStore.getState().setActiveChatId(nextChatId);
+      }, chatId);
+    };
+
+    for (const [index, chat] of chats.entries()) {
+      if (index > 0) await setActiveChat(chat.id);
+      await expect(page.locator(`[data-chat-mode="${chat.mode}"]`)).toBeVisible();
+
+      if (chat.mode === "conversation") {
+        await page.evaluate(() => {
+          const root = document.querySelector<HTMLElement>('[data-chat-mode="conversation"]');
+          if (!root || root.querySelector('[data-chat-help="call"]')) return;
+          const optionalCall = document.createElement("button");
+          optionalCall.type = "button";
+          optionalCall.dataset.chatHelp = "call";
+          optionalCall.setAttribute("aria-label", "Optional voice call fixture");
+          optionalCall.style.cssText = "position:absolute;top:3.5rem;right:1rem;width:2rem;height:2rem";
+          root.append(optionalCall);
+        });
+      }
+
+      if (mobile) {
+        const overflowName = chat.mode === "game" ? "Game actions" : "More options";
+        await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
+      }
+
+      const helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
+      await expect(helpButton).toHaveCount(1);
+      if (mobile) {
+        await expect(
+          page.locator("[data-chat-toolbar-overflow-menu]").getByRole("button").first(),
+        ).toHaveAccessibleName("Help");
+      } else {
+        const helpBox = await helpButton.boundingBox();
+        const branchesBox = await page
+          .locator(`[data-chat-mode="${chat.mode}"] [data-chat-help="branches"]`)
+          .filter({ visible: true })
+          .boundingBox();
+        expect(helpBox).not.toBeNull();
+        expect(branchesBox).not.toBeNull();
+        expect(helpBox!.x).toBeLessThan(branchesBox!.x);
+      }
+      await helpButton.click();
+
+      const overlay = page.locator(`[data-chat-help-overlay="${chat.mode}"]`);
+      await expect(overlay).toBeVisible();
+      await expect(overlay.getByText("Click or tap anywhere to exit help overlay.", { exact: true })).toBeVisible();
+      await expect(overlay.locator('[data-chat-help-highlight="branches"]')).toBeVisible();
+      await expect(overlay.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
+      await expect(overlay.locator('[data-chat-help-highlight="help"]')).toBeVisible();
+
+      if (chat.mode === "conversation") {
+        await expect(overlay.locator('[data-chat-help-highlight="call"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
+      } else if (chat.mode === "roleplay") {
+        await expect(overlay.locator('[data-chat-help-highlight="summary"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
+      } else {
+        await expect(overlay.locator('[data-chat-help-highlight="retry"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
+      }
+
+      const legend = overlay.locator("[data-chat-help-legend]");
+      const legendBox = await legend.boundingBox();
+      expect(legendBox).not.toBeNull();
+      expect(legendBox!.x).toBeGreaterThanOrEqual(0);
+      expect(legendBox!.y).toBeGreaterThanOrEqual(0);
+      expect(legendBox!.x + legendBox!.width).toBeLessThanOrEqual(testInfo.project.use.viewport!.width);
+      expect(legendBox!.y + legendBox!.height).toBeLessThanOrEqual(testInfo.project.use.viewport!.height);
+      expect(await overlay.locator("[data-chat-help-entry]").count()).toBeGreaterThanOrEqual(7);
+
+      await overlay.dispatchEvent("pointerdown");
+      await expect(overlay).toHaveCount(0);
+    }
+  } finally {
+    await Promise.allSettled(chats.map((chat) => request.delete(`/api/chats/${chat.id}`)));
+  }
+});
+
+test("the first conversation opens Help once after setup", async ({ page, request }, testInfo) => {
+  const response = await request.post("/api/chats", {
+    data: { name: "First Conversation Help Smoke", mode: "conversation", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+
+  await page.route(/\/api\/chats(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    const upstream = await route.fetch();
+    const chats = (await upstream.json()) as Array<{ id: string }>;
+    await route.fulfill({ response: upstream, json: chats.filter((candidate) => candidate.id === chat.id) });
+  });
+  await page.addInitScript((activeChatId) => {
+    localStorage.setItem("marinara-active-chat-id", activeChatId);
+    const storageKey = "marinara-engine-ui";
+    const persisted = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as {
+      state?: Record<string, unknown>;
+      version?: number;
+    };
+    persisted.state = {
+      ...(persisted.state ?? {}),
+      chatHelpSeenModes: ["roleplay", "game"],
+    };
+    localStorage.setItem(storageKey, JSON.stringify(persisted));
+  }, chat.id);
+
+  try {
+    await page.goto("/");
+    await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+    await page.evaluate(async () => {
+      const module = await import("/src/stores/ui.store.ts");
+      module.useUIStore.setState({ chatHelpSeenModes: ["roleplay", "game"] });
+    });
+    const overlay = page.locator('[data-chat-help-overlay="conversation"]');
+    await expect(overlay).toBeVisible({ timeout: 5_000 });
+    await expect(overlay.locator('[data-chat-help-highlight="help"]')).toBeVisible();
+    if (testInfo.project.name.includes("mobile")) {
+      await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
+    }
+
+    await overlay.dispatchEvent("pointerdown");
+    await expect(overlay).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const module = await import("/src/stores/ui.store.ts");
+          return module.useUIStore.getState().chatHelpSeenModes.includes("conversation");
+        }),
+      )
+      .toBe(true);
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}") as {
+            state?: { chatHelpSeenModes?: string[] };
+          };
+          return persisted.state?.chatHelpSeenModes?.includes("conversation") ?? false;
+        }),
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+    await expect(overlay).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
+  }
+});
+
+test("chat Help can be hidden permanently from the overlay or App Behavior", async ({ page, request }, testInfo) => {
+  const response = await request.post("/api/chats", {
+    data: { name: "Hide Conversation Help Smoke", mode: "conversation", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+  await page.addInitScript((activeChatId) => localStorage.setItem("marinara-active-chat-id", activeChatId), chat.id);
+
+  try {
+    await page.goto("/");
+    await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+    if (testInfo.project.name.includes("mobile")) {
+      await page.getByRole("button", { name: "More options", exact: true }).filter({ visible: true }).click();
+    }
+
+    await page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true }).click();
+    const overlay = page.locator('[data-chat-help-overlay="conversation"]');
+    await expect(overlay).toBeVisible();
+    await overlay.getByRole("button", { name: "Hide Help button permanently", exact: true }).click();
+    await expect(overlay).toHaveCount(0);
+    await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
+
+    const settingsButton = page.locator('[data-tour="panel-settings"]');
+    await settingsButton.click();
+    const settingRow = page.locator("#settings-control-hide-chat-help-button");
+    await expect(settingRow).toBeVisible();
+    const settingToggle = settingRow.locator('input[type="checkbox"]');
+    await expect(settingToggle).toBeChecked();
+    const rowBox = await settingRow.boundingBox();
+    const confirmBox = await page.locator("#settings-control-confirm-before-delete").boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(confirmBox).not.toBeNull();
+    expect(rowBox!.y).toBeGreaterThan(confirmBox!.y);
+
+    await settingRow.getByText("Hide chat Help button", { exact: true }).click();
+    await expect(settingToggle).not.toBeChecked();
+    await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(1);
+
+    await settingRow.getByText("Hide chat Help button", { exact: true }).click();
+    await expect(settingToggle).toBeChecked();
+    await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}`);
   }
 });
 

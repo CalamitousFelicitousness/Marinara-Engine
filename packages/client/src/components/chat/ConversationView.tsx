@@ -23,6 +23,7 @@ import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
 import { ChatToolbarButton, ChatToolbarMenu, getChatToolbarButtonClass } from "./ChatToolbarControls";
+import { ChatHelpButton } from "./ChatHelpButton";
 import { ConversationPresenceCard } from "./ConversationPresenceCard";
 import { PendingTypingDots } from "./PendingTypingDots";
 import { TranscriptWindowControls } from "./TranscriptWindowControls";
@@ -456,6 +457,7 @@ export function ConversationView({
   const conversationCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
   const renderToolbarActions = (compact = false) => (
     <>
+      <ChatHelpButton mode="conversation" compact={compact} />
       <ChatBranchSelector
         activeChatId={chatId}
         activeChatName={chatName}
@@ -473,6 +475,7 @@ export function ConversationView({
       {onSwitchChat && (
         <ChatToolbarButton
           icon={<ArrowRightLeft size="0.875rem" />}
+          helpTarget="connected-chat"
           title={
             connectedChatName
               ? t("chat.toolbar.switchTo", { name: connectedChatName })
@@ -503,31 +506,34 @@ export function ConversationView({
       />
 
       <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-2">
-        {conversationToolbarPackages.map((item) => (
-          <CapabilityElement
-            key={`${item.id}-toolbar`}
-            packageId={item.id}
-            view="toolbar"
-            capabilityProps={{
-              ...conversationCapabilityProps,
-              toolbarButtonClass: getChatToolbarButtonClass(),
-            }}
-            className="contents"
-          />
-        ))}
-        {callsPackage && (
-          <CapabilityElement
-            packageId={callsPackage.id}
-            view="toolbar"
-            capabilityProps={callCapabilityProps}
-            className="contents"
-          />
-        )}
         <ChatToolbarMenu
           className="flex-1"
           desktopChildren={renderToolbarActions()}
           mobileChildren={renderToolbarActions(true)}
         />
+        {conversationToolbarPackages.map((item) => (
+          <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+            <CapabilityElement
+              packageId={item.id}
+              view="toolbar"
+              capabilityProps={{
+                ...conversationCapabilityProps,
+                toolbarButtonClass: getChatToolbarButtonClass(),
+              }}
+              className="contents"
+            />
+          </span>
+        ))}
+        {callsPackage && (
+          <span data-chat-help="call" className="contents">
+            <CapabilityElement
+              packageId={callsPackage.id}
+              view="toolbar"
+              capabilityProps={callCapabilityProps}
+              className="contents"
+            />
+          </span>
+        )}
       </div>
     </div>
   );

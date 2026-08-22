@@ -139,8 +139,12 @@ import {
 } from "./generate-route-utils.js";
 import {
   buildHistoricalLorebookKeeperContext,
+  CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
+  customAgentUsesLorebookBackfill,
   customAgentUsesLorebookReadBehind,
   customLorebookReadBehindRunKey,
+  getCustomLorebookBackfillChunk,
+  getCustomLorebookBackfillSettings,
   getCustomLorebookReadBehindMessages,
   getLorebookKeeperBackfillTargets,
   getLorebookNamingScheme,
@@ -3921,6 +3925,7 @@ export async function registerRetryAgentsRoute(
       /** Force image generation for retried custom image agents' results (snapshot button, #4682). */
       forceImageGeneration?: boolean;
       lorebookKeeperBackfill?: boolean;
+      customLorebookBackfill?: boolean;
       /** When set, scope history and game state to this assistant message (as at original generation), not the latest turn. */
       forMessageId?: string;
       musicPlayerSource?: "spotify" | "youtube" | "custom";
@@ -3942,6 +3947,7 @@ export async function registerRetryAgentsRoute(
       illustratorRetryTargets: rawIllustratorRetryTargets,
       forceImageGeneration = false,
       lorebookKeeperBackfill = false,
+      customLorebookBackfill = false,
       forMessageId,
       musicPlayerSource = "spotify",
       musicPlayerEnabled = true,
@@ -3962,6 +3968,9 @@ export async function registerRetryAgentsRoute(
     }
     if (illustratorRetryTargets && !agentTypes.includes("illustrator")) {
       return reply.status(400).send({ error: "Illustrator retry targets require an Illustrator retry" });
+    }
+    if (customLorebookBackfill && (agentTypes.length !== 1 || lorebookKeeperBackfill || forMessageId)) {
+      return reply.status(400).send({ error: "Custom lorebook backfill requires exactly one custom agent" });
     }
     const isManualIllustratorBackgroundRequest = isExclusiveIllustratorRetryTarget(
       illustratorRetryTargets,
@@ -4067,8 +4076,8 @@ export async function registerRetryAgentsRoute(
           swipeIndex: preGenerationLastAssistant.activeSwipeIndex ?? 0,
         };
       }
-      const retryMessageId = lastAssistant?.id ?? "";
-      const retrySwipeIndex = lastAssistant?.activeSwipeIndex ?? 0;
+      let retryMessageId = lastAssistant?.id ?? "";
+      let retrySwipeIndex = lastAssistant?.activeSwipeIndex ?? 0;
       activeAgentRun.messageId = retryMessageId || null;
       activeAgentRun.swipeIndex = retryMessageId ? retrySwipeIndex : null;
 
@@ -4093,6 +4102,55 @@ export async function registerRetryAgentsRoute(
           onFallback,
         }),
       );
+      let customLorebookBackfillTarget: { agentConfigId: string; messageId: string; swipeIndex: number } | null = null;
+      if (customLorebookBackfill) {
+        const entry = resolvedAgents[0];
+        if (!entry || resolvedAgents.length !== 1 || !customAgentUsesLorebookBackfill(entry.resolved)) {
+          throw new Error("This custom agent is not configured for lorebook history backfill");
+        }
+        const settings = getCustomLorebookBackfillSettings(entry.resolved.settings);
+        const memory = await runRetrySetupPhase(abortController.signal, () =>
+          agentsStore.getMemory(entry.resolved.id, chatId),
+        );
+        const cursor =
+          typeof memory[CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY] === "string"
+            ? (memory[CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY] as string)
+            : null;
+        const chunk = getCustomLorebookBackfillChunk(
+          recentMessages,
+          getCustomLorebookReadBehindMessages(entry.resolved.settings),
+          cursor,
+          settings.chunkSize,
+        );
+        if (!chunk) {
+          sendSseEvent(reply, {
+            type: "custom_lorebook_backfill_empty",
+            data: { agentType: entry.resolved.type },
+          });
+          sendSseEvent(reply, { type: "done", data: "" });
+          return;
+        }
+        const runKey = customLorebookReadBehindRunKey(chatId, entry.resolved.id, chunk.target.id);
+        if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) {
+          throw new Error("This custom agent backfill chunk is already running");
+        }
+        customLorebookReadBehindRunKeys.add(runKey);
+        recentMessages = chunk.messages;
+        lastAssistant = chunk.target;
+        retryMessageId = chunk.target.id;
+        retrySwipeIndex = chunk.target.activeSwipeIndex ?? 0;
+        activeAgentRun.messageId = retryMessageId;
+        activeAgentRun.swipeIndex = retrySwipeIndex;
+        historicalGameStateAnchor = resolveLorebookKeeperRetryAnchor(chunk.target);
+        entry.resolved.settings = {
+          ...entry.resolved.settings,
+          contextSize: Math.max(1, chunk.messages.length),
+        };
+        customLorebookBackfillTarget = {
+          agentConfigId: entry.resolved.id,
+          ...resolveLorebookKeeperRetryAnchor(chunk.target),
+        };
+      }
       const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
       const retryWrapFormat = await runRetrySetupPhase(abortController.signal, () =>
         resolveRetryAgentWrapFormat({
@@ -4346,6 +4404,20 @@ export async function registerRetryAgentsRoute(
       >();
       const nonLorebookAgents = resolvedAgents.filter((entry) => {
         if (entry.resolved.type === "lorebook-keeper") return false;
+        if (customLorebookBackfillTarget) {
+          const context = buildHistoricalLorebookKeeperContext(
+            agentContext,
+            recentMessages,
+            customLorebookBackfillTarget.messageId,
+          );
+          if (!context || entry.resolved.id !== customLorebookBackfillTarget.agentConfigId) return false;
+          customLorebookReadBehindTargets.set(entry.resolved.id, {
+            context,
+            messageId: customLorebookBackfillTarget.messageId,
+            swipeIndex: customLorebookBackfillTarget.swipeIndex,
+          });
+          return true;
+        }
         const readBehindMessages = getCustomLorebookReadBehindMessages(entry.resolved.settings);
         const usesCustomLorebookReadBehind = customAgentUsesLorebookReadBehind(entry.resolved);
         if (!usesCustomLorebookReadBehind) return true;
@@ -4637,6 +4709,20 @@ export async function registerRetryAgentsRoute(
         secretPlotRerollMode,
         signal: abortController.signal,
       });
+
+      if (customLorebookBackfillTarget) {
+        const successful = permittedResults.some(
+          (result) => result.agentId === customLorebookBackfillTarget.agentConfigId && result.success,
+        );
+        if (successful) {
+          await agentsStore.setMemory(
+            customLorebookBackfillTarget.agentConfigId,
+            chatId,
+            CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY,
+            customLorebookBackfillTarget.messageId,
+          );
+        }
+      }
 
       if (abortController.signal.aborted) return;
       sendSseEvent(reply, { type: "done", data: "" });

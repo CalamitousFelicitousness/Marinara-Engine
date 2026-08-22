@@ -17,6 +17,7 @@ import {
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
   estimateChatSummaryTokens,
+  getChatSummaryMessageIdsToUnhideAfterDelete,
   markAutonomousUnreadSchema,
   nameToXmlTag,
   normalizeChatSummaryEntries,
@@ -340,7 +341,7 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
 }
 type SummaryEntriesPatchBody =
   | { operation: "replace"; entry: Partial<ChatSummaryEntry> & { id: string; content: string } }
-  | { operation: "delete"; entryId: string }
+  | { operation: "delete"; entryId?: string; entryIds?: string[] }
   | { operation: "toggle"; entryId: string; enabled: boolean }
   | { operation: "reorder"; entryIds: string[] };
 
@@ -1252,6 +1253,7 @@ export async function chatsRoutes(app: FastifyInstance) {
   // Update rolling summary entries without replacing unrelated chat metadata.
   app.patch<{ Params: { id: string }; Body: SummaryEntriesPatchBody }>("/:id/summary-entries", async (req, reply) => {
     const body = req.body;
+    let deleteEntryIds: string[] = [];
     if (!body || typeof body !== "object" || !("operation" in body)) {
       return reply.status(400).send({ error: "Invalid summary entry operation" });
     }
@@ -1266,9 +1268,15 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "replace requires entry.id and entry.content" });
       }
     } else if (body.operation === "delete") {
-      if (typeof body.entryId !== "string" || !body.entryId.trim()) {
-        return reply.status(400).send({ error: "delete requires entryId" });
+      const requestedIds = Array.isArray(body.entryIds) ? body.entryIds : [body.entryId];
+      if (
+        requestedIds.length === 0 ||
+        !requestedIds.every((id) => typeof id === "string" && id.trim()) ||
+        new Set(requestedIds).size !== requestedIds.length
+      ) {
+        return reply.status(400).send({ error: "delete requires entryId or unique entryIds" });
       }
+      deleteEntryIds = requestedIds as string[];
     } else if (body.operation === "toggle") {
       if (typeof body.entryId !== "string" || !body.entryId.trim() || typeof body.enabled !== "boolean") {
         return reply.status(400).send({ error: "toggle requires entryId and enabled" });
@@ -1299,20 +1307,9 @@ export async function chatsRoutes(app: FastifyInstance) {
       const currentEntries = normalizeChatSummaryEntries(currentMeta.summaryEntries, {
         legacySummary: typeof currentMeta.summary === "string" ? currentMeta.summary : null,
       });
-      const target = currentEntries.find((entry) => entry.id === body.entryId);
-      if (target) {
-        // Restore exactly what this entry hid. `hiddenMessageIds` records the
-        // precise hidden subset; older entries without it fall back to messageIds.
-        const covered = target.hiddenMessageIds ?? target.messageIds ?? [];
-        const stillCovered = new Set<string>();
-        for (const entry of currentEntries) {
-          if (entry.id === body.entryId || !entry.enabled) continue;
-          for (const id of entry.hiddenMessageIds ?? entry.messageIds ?? []) stillCovered.add(id);
-        }
-        const toUnhide = covered.filter((id) => !stillCovered.has(id));
-        if (toUnhide.length > 0) {
-          await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
-        }
+      const toUnhide = getChatSummaryMessageIdsToUnhideAfterDelete(currentEntries, new Set(deleteEntryIds));
+      if (toUnhide.length > 0) {
+        await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
       }
     }
 
@@ -1341,7 +1338,8 @@ export async function chatsRoutes(app: FastifyInstance) {
           ? entries.map((entry) => (entry.id === replacement.id ? replacement : entry))
           : [...entries, replacement];
       } else if (body.operation === "delete") {
-        nextEntries = entries.filter((entry) => entry.id !== body.entryId);
+        const deletedIds = new Set(deleteEntryIds);
+        nextEntries = entries.filter((entry) => !deletedIds.has(entry.id));
       } else if (body.operation === "toggle") {
         const now = new Date().toISOString();
         nextEntries = entries.map((entry) =>

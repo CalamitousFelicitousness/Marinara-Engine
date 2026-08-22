@@ -12,6 +12,11 @@ export interface LorebookKeeperSettings {
   readBehindMessages: number;
 }
 
+export interface CustomLorebookBackfillSettings {
+  enabled: boolean;
+  chunkSize: number;
+}
+
 export interface ExistingLorebookEntrySummary {
   id: string;
   name: string;
@@ -37,6 +42,9 @@ type LorebookKeeperMessage = {
 };
 
 export const MAX_READ_BEHIND_MESSAGES = 100;
+export const DEFAULT_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE = 25;
+export const MAX_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE = 100;
+export const CUSTOM_LOREBOOK_BACKFILL_CURSOR_KEY = "_lorebookBackfillLastMessageId";
 
 function normalizeNonNegativeInteger(value: unknown, fallback: number, max: number): number {
   const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
@@ -48,18 +56,26 @@ export function getCustomLorebookReadBehindMessages(settings: Record<string, unk
   return normalizeNonNegativeInteger(settings.lorebookReadBehindMessages, 0, MAX_READ_BEHIND_MESSAGES);
 }
 
-export function customAgentUsesLorebookReadBehind(agent: {
+export function getCustomLorebookBackfillSettings(settings: Record<string, unknown>): CustomLorebookBackfillSettings {
+  return {
+    enabled: settings.lorebookBackfillEnabled === true,
+    chunkSize: Math.max(
+      1,
+      normalizeNonNegativeInteger(
+        settings.lorebookBackfillChunkSize,
+        DEFAULT_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE,
+        MAX_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE,
+      ),
+    ),
+  };
+}
+
+function customAgentCanProcessLorebookHistory(agent: {
   phase: string;
   isCustomAgent?: boolean;
   settings: Record<string, unknown>;
 }): boolean {
-  if (
-    agent.phase !== "post_processing" ||
-    agent.isCustomAgent !== true ||
-    getCustomLorebookReadBehindMessages(agent.settings) <= 0
-  ) {
-    return false;
-  }
+  if (agent.phase !== "post_processing" || agent.isCustomAgent !== true) return false;
 
   const canEditLorebooks = customAgentHasCapability(agent.settings, "edit_lorebooks");
   const canCreateLorebooks = customAgentHasCapability(agent.settings, "create_lorebooks");
@@ -70,6 +86,22 @@ export function customAgentUsesLorebookReadBehind(agent: {
     agent.settings.resultType === "lorebook_update" && (canEditLorebooks || canCreateLorebooks);
 
   return writesLorebookEntries || emitsLorebookUpdates;
+}
+
+export function customAgentUsesLorebookReadBehind(agent: {
+  phase: string;
+  isCustomAgent?: boolean;
+  settings: Record<string, unknown>;
+}): boolean {
+  return getCustomLorebookReadBehindMessages(agent.settings) > 0 && customAgentCanProcessLorebookHistory(agent);
+}
+
+export function customAgentUsesLorebookBackfill(agent: {
+  phase: string;
+  isCustomAgent?: boolean;
+  settings: Record<string, unknown>;
+}): boolean {
+  return getCustomLorebookBackfillSettings(agent.settings).enabled && customAgentCanProcessLorebookHistory(agent);
 }
 
 export function customLorebookReadBehindRunKey(chatId: string, agentId: string, messageId: string): string {
@@ -242,6 +274,38 @@ export function getLorebookKeeperBackfillTargets<T extends { id: string; role: s
   const eligibleAssistants = assistants.slice(0, eligibleCount);
   const lastProcessedIndex = findMessageIndex(eligibleAssistants, lastProcessedMessageId);
   return lastProcessedIndex >= 0 ? eligibleAssistants.slice(lastProcessedIndex + 1) : eligibleAssistants;
+}
+
+export function getCustomLorebookBackfillChunk<T extends { id: string; role: string }>(
+  messages: T[],
+  readBehindMessages: number,
+  lastProcessedMessageId: string | null,
+  chunkSize: number,
+): { messages: T[]; target: T } | null {
+  const normalizedChunkSize = Math.max(
+    1,
+    normalizeNonNegativeInteger(
+      chunkSize,
+      DEFAULT_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE,
+      MAX_CUSTOM_LOREBOOK_BACKFILL_CHUNK_SIZE,
+    ),
+  );
+  const targets = getLorebookKeeperBackfillTargets(messages, readBehindMessages, lastProcessedMessageId);
+  const previousIndex = lastProcessedMessageId
+    ? messages.findIndex((message) => message.id === lastProcessedMessageId)
+    : -1;
+  const chunkEndIndex = previousIndex + normalizedChunkSize;
+  const messageIndexes = new Map(messages.map((message, index) => [message.id, index]));
+  const target =
+    [...targets].reverse().find((candidate) => (messageIndexes.get(candidate.id) ?? Infinity) <= chunkEndIndex) ??
+    targets[0];
+  if (!target) return null;
+
+  const targetIndex = messageIndexes.get(target.id) ?? -1;
+  return {
+    messages: messages.slice(previousIndex + 1, targetIndex + 1),
+    target,
+  };
 }
 
 export function buildHistoricalLorebookKeeperContext<T extends LorebookKeeperMessage>(

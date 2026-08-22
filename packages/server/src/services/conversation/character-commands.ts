@@ -32,8 +32,8 @@
 // - [create_character: name="...", description="...", personality="...", first_message="...", scenario="...", backstory="...", appearance="...", about_me="...", mes_example="...", creator_notes="...", system_prompt="...", post_history_instructions="...", creator="...", character_version="...", tags="tag1, tag2", alternate_greetings="hello || hi", talkativeness=0.5, fav=true, world="...", depth_prompt="...", depth_prompt_depth=4, depth_prompt_role="system"]
 // - [update_character: name="...", description="...", personality="...", first_message="...", scenario="...", backstory="...", appearance="...", about_me="...", mes_example="...", creator_notes="...", system_prompt="...", post_history_instructions="...", creator="...", character_version="...", tags="tag1, tag2", alternate_greetings="hello || hi", talkativeness=0.5, fav=true, world="...", depth_prompt="...", depth_prompt_depth=4, depth_prompt_role="system"]
 // - [update_persona: name="...", description="...", personality="...", appearance="...", scenario="...", backstory="...", about_me="..."]
-// - <create_lorebook>{"name":"...","description":"...","category":"...","tags":["..."],"entries":[{"name":"...","content":"...","keys":["..."],"tag":"..."}]}</create_lorebook>
-// - <update_lorebook>{"name":"Existing","description":"...","entries":[{"name":"Entry","content":"refined content","keys":["..."]}]}</update_lorebook>
+// - <create_lorebook>{"name":"...","folders":["Characters/Ada"],"entries":[{"name":"...","path":"Characters/Ada","content":"..."}]}</create_lorebook>
+// - <update_lorebook>{"name":"Existing","folders":["Places/Arcadia"],"entries":[{"name":"Entry","path":"Places/Arcadia","content":"refined content"}]}</update_lorebook>
 // - <create_preset>{"name":"...","description":"...","sections":[{"name":"...","content":"...","role":"system"}],"choiceBlocks":[{"variableName":"...","question":"...","options":[{"label":"...","value":"..."}]}]}</create_preset>
 // - <suggestions>[{"label":"...","prompt":"...","entity":"characters"}]</suggestions>
 // - [create_chat: character="...", mode="conversation|roleplay"]
@@ -276,6 +276,8 @@ export interface UpdatePersonaCommand {
 
 export interface CreateLorebookEntryCommand {
   name: string;
+  /** Forward-slash folder path inside the lorebook. Missing folders are created. */
+  path?: string;
   content?: string;
   description?: string;
   keys?: string[];
@@ -296,6 +298,7 @@ export interface CreateLorebookCommand {
   description?: string;
   category?: string;
   tags?: string[];
+  folders?: string[];
   entries?: CreateLorebookEntryCommand[];
 }
 
@@ -308,6 +311,7 @@ export interface UpdateLorebookCommand {
   description?: string;
   category?: string;
   tags?: string[];
+  folders?: string[];
   entries?: UpdateLorebookEntryCommand[];
 }
 
@@ -784,6 +788,7 @@ function parseLorebookBlock(raw: string): CreateLorebookCommand | null {
         if (!entryName) return null;
         return {
           name: entryName,
+          path: typeof data.path === "string" ? data.path.trim() : undefined,
           content: typeof data.content === "string" ? data.content : "",
           description: typeof data.description === "string" ? data.description : undefined,
           keys: parseUnknownStringList(data.keys),
@@ -801,6 +806,7 @@ function parseLorebookBlock(raw: string): CreateLorebookCommand | null {
       description: typeof parsed.description === "string" ? parsed.description : undefined,
       category: typeof parsed.category === "string" ? parsed.category : undefined,
       tags: parseUnknownStringList(parsed.tags),
+      folders: parseUnknownStringList(parsed.folders),
       entries: entries.length ? entries : undefined,
     };
   } catch {
@@ -830,6 +836,12 @@ function parseUpdateLorebookBlock(raw: string): UpdateLorebookCommand | null {
         return {
           name: entryName,
           matchName: typeof data.matchName === "string" ? data.matchName.trim() : undefined,
+          path:
+            typeof data.path === "string"
+              ? data.path.trim()
+              : typeof nestedEntry.path === "string"
+                ? nestedEntry.path.trim()
+                : undefined,
           content:
             typeof data.content === "string"
               ? data.content
@@ -869,6 +881,7 @@ function parseUpdateLorebookBlock(raw: string): UpdateLorebookCommand | null {
       description: typeof parsed.description === "string" ? parsed.description : undefined,
       category: typeof parsed.category === "string" ? parsed.category : undefined,
       tags: parseUnknownStringList(parsed.tags),
+      folders: parseUnknownStringList(parsed.folders),
       entries: entries.length ? entries : undefined,
     };
   } catch {

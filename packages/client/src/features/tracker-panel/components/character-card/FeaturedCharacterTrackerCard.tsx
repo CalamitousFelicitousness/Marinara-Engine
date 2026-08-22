@@ -22,7 +22,7 @@ import type {
 } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
-import { trackerEditableText } from "../../lib/tracker-display";
+import { trackerEditableText, visibleText } from "../../lib/tracker-display";
 import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
 import { useTrackerWindow } from "../TrackerWindowContext";
 import {
@@ -304,7 +304,10 @@ export function FeaturedCharacterTrackerCard({
             className={FEATURED_REMOVE_BUTTON_CLASS}
             title={localizeUi("ui.trackerPanel.charactertrackercard.removeCharacter")}
             aria-label={localizeUi("ui.trackerPanel.charactertrackercard.removeValue1", {
-              value1: character.name.trim() || localizeUi("ui.noodle.noodlehome.character"),
+              // PresentCharacter.name is typed string but arrives as agent JSON,
+              // so an omitted name would crash this render. The compact card
+              // already guards the same label through visibleText.
+              value1: visibleText(character.name, localizeUi("ui.noodle.noodlehome.character")),
             })}
           >
             <X size="0.6875rem" />

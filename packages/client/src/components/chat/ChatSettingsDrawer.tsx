@@ -363,6 +363,20 @@ function getAgentSettingsMenuId(chatId: string, agentId: string): string {
   return `chat-settings-agent-menu-${chatId}-${agentId}`.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
+const ACTIVE_AGENT_SETUP_DESCRIPTION_MARKERS = [
+  "Add the Agent in Chat Settings",
+  "Add as both a Command and an Agent in Chat Settings",
+  "Enable it per chat from Chat Settings",
+] as const;
+
+function getActiveAgentMenuDescription(description: string): string {
+  const cutoff = ACTIVE_AGENT_SETUP_DESCRIPTION_MARKERS.reduce((earliest, marker) => {
+    const index = description.indexOf(marker);
+    return index >= 0 ? Math.min(earliest, index) : earliest;
+  }, description.length);
+  return description.slice(0, cutoff).trim();
+}
+
 const GAME_VIDEO_BUILT_IN_PROMPT_TEMPLATE_IDS = new Set(
   GAME_VIDEO_BUILT_IN_PROMPT_TEMPLATES.map((template) => template.id),
 );
@@ -1609,9 +1623,10 @@ export function ChatSettingsDrawer({
       const available = availableAgents.find((agent) => agent.id === agentId);
       const builtIn = installedAgentManifests.find((agent) => agent.id === agentId);
       const config = agentConfigsByType.get(agentId);
+      const description = available?.description ?? config?.description ?? builtIn?.description ?? fallback.description;
       return {
         name: available?.name ?? builtIn?.name ?? config?.name ?? fallback.name,
-        description: available?.description ?? config?.description ?? builtIn?.description ?? fallback.description,
+        description: getActiveAgentMenuDescription(description),
       };
     },
     [agentConfigsByType, availableAgents, installedAgentManifests],
@@ -3095,7 +3110,11 @@ export function ChatSettingsDrawer({
         id={getAgentSettingsMenuId(chat.id, agent.id)}
         icon={renderRoleplayAgentMenuIcon(agent.id)}
         title={agent.name}
-        description={agent.id === "hierarchical-maps" ? worldMapsSettingsDescription : agent.description}
+        description={
+          agent.id === "hierarchical-maps"
+            ? worldMapsSettingsDescription
+            : getActiveAgentMenuDescription(agent.description)
+        }
         order={getRoleplayAgentSettingsOrder(agent.id)}
         onRemove={getRoleplayAgentMenuRemoveHandler(agent.id, agent.name)}
       >
@@ -6504,7 +6523,7 @@ export function ChatSettingsDrawer({
 
                     {ltmPackage ? (
                       <AgentSettingsCard
-                        icon={<Brain size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
+                        icon={<Archive size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
                         title={localizeUi("ui.chat.chatsettingsdrawer.longTermMemory")}
                         description={localizeUi("ui.chat.chatsettingsdrawer.enableLongTermMemoryForThisConversation")}
                       >
@@ -7425,7 +7444,7 @@ export function ChatSettingsDrawer({
                                   onClose();
                                   useUIStore.getState().openAgentDetail("lorebook-keeper");
                                 }}
-                                className="h-8 w-full whitespace-nowrap sm:w-auto"
+                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 sm:w-auto"
                               >
                                 <Settings2 size="0.75rem" />
                                 <span>{localizeUi("ui.chat.chatsettingsdrawer.openSetup")}</span>
@@ -7433,7 +7452,7 @@ export function ChatSettingsDrawer({
                               <AgentSettingsActionButton
                                 onClick={handleLorebookKeeperBackfill}
                                 disabled={agentProcessing}
-                                className="h-8 w-full whitespace-nowrap sm:w-auto"
+                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 sm:w-auto"
                                 variant="primary"
                               >
                                 <RefreshCw size="0.75rem" className={cn(agentProcessing && "animate-spin")} />
@@ -8496,9 +8515,9 @@ export function ChatSettingsDrawer({
                                   return (
                                     <div key={agent.id} data-chat-agent-entry={agent.id} className="space-y-1.5">
                                       <AgentSettingsCard
-                                        icon={<Brain size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
+                                        icon={<Archive size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
                                         title={agent.name}
-                                        description={agent.description}
+                                        description={getActiveAgentMenuDescription(agent.description)}
                                       >
                                         <CapabilityElement
                                           packageId={ltmPackage.id}
@@ -8537,7 +8556,7 @@ export function ChatSettingsDrawer({
                                       <AgentSettingsCard
                                         icon={renderRoleplayAgentMenuIcon(agent.id)}
                                         title={agent.name}
-                                        description={agent.description}
+                                        description={getActiveAgentMenuDescription(agent.description)}
                                       >
                                         <Suspense fallback={null}>
                                           <StoryboardChatSettingsPanel
@@ -8597,7 +8616,7 @@ export function ChatSettingsDrawer({
                                       <KnowledgeAgentSettingsCard
                                         agentType={knowledgeAgentType}
                                         title={agent.name}
-                                        description={agent.description}
+                                        description={getActiveAgentMenuDescription(agent.description)}
                                         lorebooks={(lorebooks ?? []) as Lorebook[]}
                                         settings={getKnowledgeAgentSourceSettings(knowledgeAgentType)}
                                         onChange={(patch) =>
@@ -8622,7 +8641,7 @@ export function ChatSettingsDrawer({
                                       <AgentSettingsCard
                                         icon={<Paintbrush size="0.75rem" className="mt-0.5 text-[var(--primary)]" />}
                                         title={agent.name}
-                                        description={agent.description}
+                                        description={getActiveAgentMenuDescription(agent.description)}
                                       >
                                         <AgentPromptTemplateSelect
                                           options={getPromptOptionsForAgent(agent.id)}

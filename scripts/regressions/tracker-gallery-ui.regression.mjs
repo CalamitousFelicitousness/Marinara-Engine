@@ -13,6 +13,9 @@ const roleplayHud = readSource("packages/client/src/components/chat/RoleplayHUD.
 const chatGallery = readSource("packages/client/src/components/chat/ChatGallery.tsx");
 const chatSettingsDrawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
 const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
+const translationSection = readSource(
+  "packages/client/src/features/chat-settings/sections/TranslationSection.tsx",
+);
 
 assert.doesNotMatch(
   trackerSidebar,
@@ -48,6 +51,23 @@ assert.match(
   agentSettingsControls,
   /<div className="flex h-full flex-col gap-1">[\s\S]*?"flex-1 justify-between rounded-md/u,
   "paired agent setting toggles must stretch to the same height",
+);
+assert.match(
+  chatSettingsDrawer,
+  /function getActiveAgentMenuDescription/u,
+  "active agent menus must strip package installation instructions from their descriptions",
+);
+assert.match(chatSettingsDrawer, /"Add the Agent in Chat Settings"/u);
+assert.match(chatSettingsDrawer, /"Enable it per chat from Chat Settings"/u);
+assert.equal(
+  (chatSettingsDrawer.match(/!h-8 !min-h-8 w-full whitespace-nowrap !py-0/gu) ?? []).length,
+  2,
+  "Lorebook Keeper actions must share one explicit height",
+);
+assert.match(
+  translationSection,
+  /className="mari-chrome-field mt-0\.5 w-full !rounded-md px-3 py-2 text-xs"/u,
+  "the shared Translation language field must use the canonical Chat Settings input style",
 );
 
 process.stdout.write("Tracker and Gallery UI regression passed\n");

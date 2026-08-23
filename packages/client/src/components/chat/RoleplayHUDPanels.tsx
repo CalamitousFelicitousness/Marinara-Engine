@@ -73,6 +73,7 @@ import { WorldCustomFieldIcon } from "../../features/tracker-panel/lib/world-cus
 import { trackerEditableText } from "../../features/tracker-panel/lib/tracker-display";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { InventoryTrackerPanel as InventoryTrackerGridPanel } from "../../features/tracker-panel/components/sections/InventoryTrackerPanel";
+import { CapabilityElement } from "../capabilities/CapabilityElement";
 
 export function RoleplayInventoryTrackerPanel({
   currencies,
@@ -123,6 +124,9 @@ interface CombinedPlayerPanelProps {
   showPersona: boolean;
   showCharacters: boolean;
   showQuests: boolean;
+  showInventory: boolean;
+  memoryNagPackageIds: string[];
+  chatId: string;
   showCustomTracker: boolean;
   personaStats: CharacterStat[];
   onUpdatePersonaStats: (bars: CharacterStat[]) => void;
@@ -132,6 +136,12 @@ interface CombinedPlayerPanelProps {
   onUpdateCharacters: (chars: PresentCharacter[]) => void;
   quests: QuestProgress[];
   onUpdateQuests: (quests: QuestProgress[]) => void;
+  inventoryCurrencies: InventoryTrackerRow[];
+  inventoryEquipped: InventoryTrackerRow[];
+  inventory: InventoryTrackerRow[];
+  onUpdateInventoryCurrencies: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventoryEquipped: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventory: (rows: InventoryTrackerRow[]) => void;
   customTrackerFields: CustomTrackerField[];
   onUpdateCustomTracker: (fields: CustomTrackerField[]) => void;
   onClose: () => void;
@@ -275,6 +285,9 @@ export function CombinedPlayerPanel({
   showPersona,
   showCharacters,
   showQuests,
+  showInventory,
+  memoryNagPackageIds,
+  chatId,
   showCustomTracker,
   personaStats,
   onUpdatePersonaStats,
@@ -284,6 +297,12 @@ export function CombinedPlayerPanel({
   onUpdateCharacters,
   quests,
   onUpdateQuests,
+  inventoryCurrencies,
+  inventoryEquipped,
+  inventory,
+  onUpdateInventoryCurrencies,
+  onUpdateInventoryEquipped,
+  onUpdateInventory,
   customTrackerFields,
   onUpdateCustomTracker,
   onClose,
@@ -675,6 +694,29 @@ export function CombinedPlayerPanel({
             </div>
           </div>
         )}
+
+        {showInventory && (
+          <RoleplayInventoryTrackerPanel
+            currencies={inventoryCurrencies}
+            equipped={inventoryEquipped}
+            inventory={inventory}
+            onUpdateCurrencies={onUpdateInventoryCurrencies}
+            onUpdateEquipped={onUpdateInventoryEquipped}
+            onUpdateInventory={onUpdateInventory}
+            onRerunSingleTracker={onRerunSingleTracker}
+            isTrackerRetryBusy={isTrackerRetryBusy}
+          />
+        )}
+
+        {memoryNagPackageIds.map((packageId) => (
+          <CapabilityElement
+            key={`${packageId}-mobile-combined-tracker`}
+            packageId={packageId}
+            view="tracker"
+            capabilityProps={{ chatId, chatMode: "roleplay" }}
+            className="block"
+          />
+        ))}
 
         {showCustomTracker && (
           <div className="p-2">

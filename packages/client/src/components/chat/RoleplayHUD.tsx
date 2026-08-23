@@ -31,7 +31,10 @@ import { useUpdateMessageExtra } from "../../hooks/use-chats";
 import { discardPendingGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { useUIStore } from "../../stores/ui.store";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  partitionTrackerCapabilityPackages,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import {
   classifyWorldWeather,
@@ -140,11 +143,11 @@ export function RoleplayHUD({
       Boolean(item.manifest.entrypoints.client) &&
       item.manifest.contributions?.slots?.includes("roleplay-tracker"),
   );
-  const memoryNagTrackerPackages = roleplayTrackerPackages.filter((item) => item.id === "memory-nag");
-  const beholderTrackerPackages = roleplayTrackerPackages.filter((item) => item.id === "beholder");
-  const otherRoleplayTrackerPackages = roleplayTrackerPackages.filter(
-    (item) => item.id !== "memory-nag" && item.id !== "beholder",
-  );
+  const {
+    memoryNag: memoryNagTrackerPackages,
+    beholder: beholderTrackerPackages,
+    other: otherRoleplayTrackerPackages,
+  } = partitionTrackerCapabilityPackages(roleplayTrackerPackages);
 
   const thoughtBubbles = useAgentStore((s) => s.thoughtBubbles);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));

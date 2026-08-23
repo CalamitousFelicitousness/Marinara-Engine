@@ -383,6 +383,7 @@ import type {
   ChatOptions,
 } from "../../packages/server/src/services/llm/base-provider.js";
 import {
+  findInventoryTrackerAcquisitions,
   resolveGroupGenerationMode,
   shouldRestoreRegenerationCharacterTarget,
 } from "../../packages/server/src/routes/generate/generate-route-utils.js";
@@ -446,6 +447,27 @@ assert.equal(
   resolveFeatureAgentPackage({ id: "hierarchical-maps" } as BuiltInAgentManifest, [contributedFeaturePackage]),
   contributedFeaturePackage,
   "Feature detail contributions must remain a compatible ownership fallback",
+);
+
+const inventoryTrackerAcquisitions = findInventoryTrackerAcquisitions(
+  {
+    inventoryTrackerCurrencies: [{ name: "Mora", qty: 10 }],
+    inventoryTrackerEquipped: [],
+    inventoryTrackerInventory: [{ name: "Scalpel" }],
+  },
+  {
+    inventoryTrackerCurrencies: [{ name: "Mora", qty: 15 }],
+    inventoryTrackerEquipped: [{ name: "Scalpel" }],
+    inventoryTrackerInventory: [{ name: "Delusion", qty: 2 }],
+  },
+);
+assert.deepEqual(
+  inventoryTrackerAcquisitions,
+  [
+    { name: "Mora", quantity: 5 },
+    { name: "Delusion", quantity: 2 },
+  ],
+  "Inventory journal deltas must count quantity gains without treating equipped moves as acquisitions",
 );
 
 const existingCharacterCard = {
@@ -5435,8 +5457,8 @@ assert.match(
 );
 assert.equal(
   roleplayHudSource.match(/!reduceAmbientEffects && "animate-\[inventory-cycle_0\.4s_ease-out\]"/gu)?.length,
-  2,
-  "Roleplay tracker and inventory widgets must suppress mount animations with reduced ambient effects",
+  1,
+  "The dedicated Roleplay Inventory Tracker widget must suppress mount animations with reduced ambient effects",
 );
 assert.match(
   roleplayHudSource,
@@ -5561,7 +5583,7 @@ await Promise.all([firstMetadataSave, secondMetadataSave, pendingMetadataWait]);
 assert.deepEqual(metadataSaveOrder, ["first", "second"]);
 assert.match(
   conversationGroupSettingsSource,
-  /\{!isConversation && \(\s*<button[\s\S]{0,1500}ui\.chat\.chatsettingsdrawer\.namePrefixHistory/u,
+  /\{!isConversation && \(\s*<SettingsSwitch[\s\S]{0,700}ui\.chat\.chatsettingsdrawer\.namePrefixHistory/u,
   "Conversation group settings should not show the roleplay-only Name Prefix History toggle",
 );
 assert.match(

@@ -298,6 +298,7 @@ export function AgentSettingsTextarea({
         ariaLabel={label}
         onChange={onChange}
         onBlur={onBlur}
+        onExpandedClose={onBlur}
         className="mari-chrome-field min-h-[3.25rem] w-full !rounded-md px-2.5 py-2 pr-8 text-xs leading-relaxed"
       />
     </div>

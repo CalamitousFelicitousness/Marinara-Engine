@@ -25,7 +25,10 @@ import { TrackerSkeleton } from "./TrackerSkeleton";
 import { TrackerSidebarHeader } from "./TrackerSidebarHeader";
 import { TrackerLockProvider } from "./TrackerLockContext";
 import { Translation, useTranslation as useUiTranslation } from "react-i18next";
-import { useInstalledCapabilityPackages } from "../../../hooks/use-capability-packages";
+import {
+  partitionTrackerCapabilityPackages,
+  useInstalledCapabilityPackages,
+} from "../../../hooks/use-capability-packages";
 import { CapabilityElement } from "../../../components/capabilities/CapabilityElement";
 
 const TRACKER_PANEL_NEUTRAL_VARS =
@@ -127,11 +130,11 @@ export function TrackerDataSidebar({
       Boolean(item.manifest.entrypoints.client) &&
       item.manifest.contributions?.slots?.includes("tracker-panel"),
   );
-  const memoryNagTrackerPackages = capabilityTrackerPackages.filter((item) => item.id === "memory-nag");
-  const beholderTrackerPackages = capabilityTrackerPackages.filter((item) => item.id === "beholder");
-  const otherCapabilityTrackerPackages = capabilityTrackerPackages.filter(
-    (item) => item.id !== "memory-nag" && item.id !== "beholder",
-  );
+  const {
+    memoryNag: memoryNagTrackerPackages,
+    beholder: beholderTrackerPackages,
+    other: otherCapabilityTrackerPackages,
+  } = partitionTrackerCapabilityPackages(capabilityTrackerPackages);
   const renderCapabilityTrackerPackage = (item: (typeof capabilityTrackerPackages)[number]) => (
     <CapabilityElement
       key={`${item.id}-tracker-panel`}

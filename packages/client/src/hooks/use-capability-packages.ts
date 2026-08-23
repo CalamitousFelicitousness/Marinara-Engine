@@ -57,6 +57,19 @@ export function selectVisibleTrackerCapabilityAgents(
   return (agents ?? []).filter((agent) => agent.category === "tracker" && !agent.libraryHidden);
 }
 
+/** Keep special tracker packages at their canonical edges in every tracker surface. */
+export function partitionTrackerCapabilityPackages(packages: readonly InstalledCapabilityPackage[]) {
+  const memoryNag: InstalledCapabilityPackage[] = [];
+  const beholder: InstalledCapabilityPackage[] = [];
+  const other: InstalledCapabilityPackage[] = [];
+  for (const item of packages) {
+    if (item.id === "memory-nag") memoryNag.push(item);
+    else if (item.id === "beholder") beholder.push(item);
+    else other.push(item);
+  }
+  return { memoryNag, beholder, other };
+}
+
 /**
  * Installed packages that can provide a game's EXPERIENCE: runtime-ready, declaring the `game-surface`
  * slot, and carrying the client entrypoint that renders it. Shared so the setup chooser can only ever

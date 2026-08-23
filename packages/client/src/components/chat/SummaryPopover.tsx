@@ -1799,7 +1799,7 @@ export function SummaryPopover({
                               placeholder={localizeUi("ui.chat.summarypopover.promptInstructionsForSummaryGeneration")}
                               readOnly={promptSettingsSaveLocked}
                               wrapperClassName="min-w-0"
-                              className="mari-chrome-field max-h-48 !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed disabled:cursor-not-allowed disabled:opacity-50"
+                              className="mari-chrome-field max-h-48 !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed read-only:cursor-not-allowed read-only:opacity-50"
                             />
                             <div className="flex justify-end gap-1">
                               <button
@@ -1850,7 +1850,7 @@ export function SummaryPopover({
                         ariaLabel={localizeUi("ui.chat.summarypopover.combinePrompt")}
                         readOnly={!globalPromptSettingsReady || promptSettingsSaveLocked}
                         wrapperClassName="min-w-0"
-                        className="mari-chrome-field h-28 resize-none !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed disabled:cursor-not-allowed disabled:opacity-50"
+                        className="mari-chrome-field h-28 resize-none !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed read-only:cursor-not-allowed read-only:opacity-50"
                       />
                     ) : (
                       <div className="h-28 overflow-y-auto whitespace-pre-wrap rounded-md bg-[var(--background)]/25 px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">

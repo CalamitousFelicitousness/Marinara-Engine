@@ -197,6 +197,40 @@ const INVENTORY_TRACKER_PLAYER_STATS_FIELDS = [
 ] as const;
 
 type InventoryTrackerPlayerStatsField = (typeof INVENTORY_TRACKER_PLAYER_STATS_FIELDS)[number];
+type InventoryTrackerPlayerStats = Pick<PlayerStats, InventoryTrackerPlayerStatsField>;
+
+function inventoryTrackerQuantityMap(
+  playerStats: InventoryTrackerPlayerStats,
+): Map<string, { name: string; quantity: number }> {
+  const quantities = new Map<string, { name: string; quantity: number }>();
+  for (const field of INVENTORY_TRACKER_PLAYER_STATS_FIELDS) {
+    for (const row of normalizeInventoryTrackerRows(playerStats[field])) {
+      const key = normalizeTextForMatch(row.name);
+      if (!key) continue;
+      const existing = quantities.get(key);
+      quantities.set(key, {
+        name: row.name,
+        quantity: (existing?.quantity ?? 0) + (row.qty ?? 1),
+      });
+    }
+  }
+  return quantities;
+}
+
+/** New owned quantities only; moving an item between tracker groups is not an acquisition. */
+export function findInventoryTrackerAcquisitions(
+  previousPlayerStats: InventoryTrackerPlayerStats,
+  nextPlayerStats: InventoryTrackerPlayerStats,
+): Array<{ name: string; quantity: number }> {
+  const previous = inventoryTrackerQuantityMap(previousPlayerStats);
+  const next = inventoryTrackerQuantityMap(nextPlayerStats);
+  const acquisitions: Array<{ name: string; quantity: number }> = [];
+  for (const [key, item] of next) {
+    const quantity = item.quantity - (previous.get(key)?.quantity ?? 0);
+    if (quantity > 0) acquisitions.push({ name: item.name, quantity });
+  }
+  return acquisitions;
+}
 
 // `clampInventoryTrackerQty` and `normalizeInventoryTrackerRows` now live in
 // `@marinara-engine/shared` so the hand-edit paths (tracker panel, HUD popover,

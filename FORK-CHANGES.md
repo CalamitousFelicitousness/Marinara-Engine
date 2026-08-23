@@ -429,6 +429,35 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Tracker rows are read-only until edit mode
+
+Every tracker value used to be editable all the time, while "add mode" gated only the `+ Add row`
+affordances. The mode therefore guarded the harmless action and left the destructive one -- typing
+over a value -- permanently live, and the add rows appeared whether or not the mode was on.
+
+`TrackerEditMode` drops `add` for `edit`, which turns on inline editing and reveals the add rows
+together. `delete` stays its own mode so a row cannot be removed by mistake while editing. The
+toolbar button keeps its position and becomes a pencil.
+
+The gate rides `TrackerLockContext`, which every tracker surface already consumes, rather than a new
+prop through the twenty call sites that pass `lockMode` by hand. `InlineEdit` and `InlineNumber` read
+it themselves.
+
+One subtlety worth keeping: both check `editMode === false`, never `!editMode`. Both controls are also
+used by `RoleplayHUDPanels`, which sits outside `TrackerLockProvider` and so reads `undefined` --
+under a truthiness check that would silently make the HUD read-only. The regression lane pins the
+explicit comparison, and pins that the lock toggle is still checked before the read-only gate so lock
+mode keeps working.
+
+Verified in a browser: inside edit mode, one add row and one live input; outside, zero of each.
+
+The four retired `...AddMode` catalog keys are removed from `en.json`, `ko.json` and `zh-Hans.json` --
+a locale carrying a key `en.json` lacks fails `check-locales` as an unknown key.
+
+Still to do: hide and lock remain their own toggles. Folding them into edit mode as per-row buttons
+needs hidden-field keys for the world, persona, quest and inventory surfaces, which only have lock
+keys today.
+
 ### Featured card fields size to their own content
 
 The previous entry stopped the compact card truncating, but the featured card kept cutting off, for

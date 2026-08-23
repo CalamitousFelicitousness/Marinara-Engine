@@ -138,7 +138,8 @@ export function TrackerDataSidebar({
   });
   const [activeEditMode, setActiveEditMode] = useState<TrackerEditMode | null>(null);
   const deleteMode = activeEditMode === "delete";
-  const addMode = activeEditMode === "add";
+  // One mode: rows become editable and their add rows appear together.
+  const addMode = activeEditMode === "edit";
   const lockMode = activeEditMode === "lock";
   const hideMode = activeEditMode === "hide";
   // Both normalizers allocate on every call. Held at their previous reference
@@ -216,6 +217,7 @@ export function TrackerDataSidebar({
     >
       <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.11] [background-image:linear-gradient(color-mix(in_srgb,var(--foreground)_12%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--foreground)_9%,transparent)_1px,transparent_1px)] [background-size:8px_8px]" />
       <TrackerLockProvider
+        editMode={addMode}
         fieldLocks={fieldLocks}
         hiddenTrackerFields={hiddenTrackerFields}
         lockMode={lockMode}

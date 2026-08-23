@@ -6,6 +6,7 @@ import { getNumberValueWidth } from "../../lib/tracker-display";
 import { coerceStatNumber } from "../../lib/tracker-stat-layout";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useTrackerWindow } from "../TrackerWindowContext";
+import { useTrackerLockContext } from "../TrackerLockContext";
 
 export function FittedText({
   children,
@@ -140,6 +141,9 @@ export function InlineEdit({
   const scrollMeasureRef = useRef<HTMLSpanElement>(null);
   const committedRef = useRef(false);
   const lockToggleActive = lockMode && !!onToggleLock;
+  // Tracker rows accept edits only in edit mode. `editMode` is undefined outside
+  // TrackerLockProvider, which is how the Roleplay HUD's fields stay editable.
+  const readOnly = useTrackerLockContext().editMode === false && !lockToggleActive;
 
   useEffect(() => {
     if (!editing) setDraft(currentValue);
@@ -210,6 +214,7 @@ export function InlineEdit({
           onToggleLock?.();
           return;
         }
+        if (readOnly) return;
         setEditing(true);
       }}
       onMouseEnter={measureScrollOverflow}
@@ -235,7 +240,8 @@ export function InlineEdit({
       }
       aria-pressed={lockToggleActive ? locked : undefined}
       className={cn(
-        "group group/inline relative flex min-w-0 rounded px-0.5 text-left transition-colors hover:bg-[var(--accent)]/55",
+        "group group/inline relative flex min-w-0 rounded px-0.5 text-left transition-colors",
+        readOnly ? "cursor-default" : "hover:bg-[var(--accent)]/55",
         multilinePreviewLineCount ? "items-start overflow-hidden" : "items-center",
         locked &&
           "bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] text-[var(--foreground)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_30%,transparent)]",
@@ -307,7 +313,7 @@ export function InlineEdit({
         <Pencil
           className={cn(
             "pointer-events-none absolute right-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 shrink-0 text-[color:var(--tracker-inline-muted,var(--muted-foreground))] opacity-0 transition-opacity group-hover/inline:opacity-60",
-            (!showEditHint || fullPreview) && "hidden",
+            (!showEditHint || fullPreview || readOnly) && "hidden",
           )}
         />
       )}
@@ -335,6 +341,7 @@ export function InlineNumber({
   onToggleLock?: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const numberEditModeReadOnly = useTrackerLockContext().editMode === false;
   const numericValue = coerceStatNumber(value);
   const [draft, setDraft] = useState(String(numericValue));
   const [focused, setFocused] = useState(false);
@@ -384,6 +391,10 @@ export function InlineNumber({
     if (next !== numericValue) onChange(next);
   };
 
+  // Same gate as InlineEdit: undefined outside the tracker provider, so the
+  // Roleplay HUD's numbers stay editable.
+  const readOnly = numberEditModeReadOnly && !(lockMode && onToggleLock);
+
   if (lockMode && onToggleLock) {
     return (
       <button
@@ -427,6 +438,8 @@ export function InlineNumber({
       }}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
+      readOnly={readOnly}
+      tabIndex={readOnly ? -1 : undefined}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
         if (event.key === "Escape") {
@@ -439,7 +452,8 @@ export function InlineNumber({
       aria-label={title}
       style={{ width }}
       className={cn(
-        "rounded bg-transparent px-1 py-0.5 text-right text-[length:var(--tracker-fs-0-625)] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none transition-colors hover:bg-[var(--accent)]/45 focus:bg-[var(--background)] focus:ring-1 focus:ring-[var(--border)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+        "rounded bg-transparent px-1 py-0.5 text-right text-[length:var(--tracker-fs-0-625)] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none transition-colors focus:bg-[var(--background)] focus:ring-1 focus:ring-[var(--border)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+        readOnly ? "cursor-default" : "hover:bg-[var(--accent)]/45",
         locked &&
           "bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_30%,transparent)]",
         className,

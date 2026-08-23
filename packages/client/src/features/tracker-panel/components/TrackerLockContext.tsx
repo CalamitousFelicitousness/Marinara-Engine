@@ -5,6 +5,9 @@ import type { TrackerFieldLocksUpdater } from "../hooks/use-tracker-field-lock-u
 type TrackerHiddenFieldsUpdater = (hiddenFields: TrackerHiddenFields | null | undefined) => TrackerHiddenFields;
 
 interface TrackerLockContextValue {
+  /** Rows accept edits only while this is true. Undefined outside the provider,
+   *  which is how InlineEdit stays editable on the Roleplay HUD. */
+  editMode?: boolean;
   fieldLocks?: TrackerFieldLocks | null;
   hiddenTrackerFields?: TrackerHiddenFields | null;
   lockMode: boolean;
@@ -19,6 +22,7 @@ const TrackerLockContext = createContext<TrackerLockContextValue>({ lockMode: fa
 
 export function TrackerLockProvider({
   children,
+  editMode,
   fieldLocks,
   hiddenTrackerFields,
   lockMode,
@@ -30,6 +34,7 @@ export function TrackerLockProvider({
 }: TrackerLockContextValue & { children: ReactNode }) {
   const value = useMemo(
     () => ({
+      editMode,
       fieldLocks,
       hiddenTrackerFields,
       lockMode,
@@ -40,6 +45,7 @@ export function TrackerLockProvider({
       onUpdateHiddenFields,
     }),
     [
+      editMode,
       fieldLocks,
       hiddenTrackerFields,
       lockMode,

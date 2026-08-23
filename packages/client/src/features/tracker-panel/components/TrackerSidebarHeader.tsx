@@ -7,7 +7,7 @@ import {
   Lock,
   PanelLeft,
   PanelRight,
-  Plus,
+  Pencil,
   Settings2,
   Trash2,
   Unlock,
@@ -76,7 +76,7 @@ export function TrackerSidebarHeader({
   const [toolbarFocusIndex, setToolbarFocusIndex] = useState(0);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const addMode = activeEditMode === "add";
+  const editMode = activeEditMode === "edit";
   const deleteMode = activeEditMode === "delete";
   const hideMode = activeEditMode === "hide";
   const lockMode = activeEditMode === "lock";
@@ -354,26 +354,26 @@ export function TrackerSidebarHeader({
         <button
           {...getToolbarItemProps("add")}
           type="button"
-          onClick={() => onSetEditMode(addMode ? null : "add")}
+          onClick={() => onSetEditMode(editMode ? null : "edit")}
           title={
-            addMode
-              ? localizeUi("ui.trackerPanel.trackersidebarheader.exitAddMode")
-              : localizeUi("ui.trackerPanel.trackersidebarheader.enterAddMode")
+            editMode
+              ? localizeUi("ui.trackerPanel.trackersidebarheader.exitEditMode")
+              : localizeUi("ui.trackerPanel.trackersidebarheader.enterEditMode")
           }
           aria-label={
-            addMode
-              ? localizeUi("ui.trackerPanel.trackersidebarheader.exitTrackerAddMode")
-              : localizeUi("ui.trackerPanel.trackersidebarheader.enterTrackerAddMode")
+            editMode
+              ? localizeUi("ui.trackerPanel.trackersidebarheader.exitTrackerEditMode")
+              : localizeUi("ui.trackerPanel.trackersidebarheader.enterTrackerEditMode")
           }
-          aria-pressed={addMode}
+          aria-pressed={editMode}
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-sm transition-all ring-1 active:scale-90",
-            addMode
+            editMode
               ? "bg-[var(--foreground)]/12 text-[var(--foreground)] ring-[var(--foreground)]/24"
               : "text-[var(--muted-foreground)]/55 ring-transparent hover:bg-[var(--accent)] hover:text-[var(--muted-foreground)] hover:ring-[var(--border)]",
           )}
         >
-          <Plus size="0.875rem" />
+          <Pencil size="0.875rem" />
         </button>
         <button
           {...getToolbarItemProps("delete")}

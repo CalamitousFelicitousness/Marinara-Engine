@@ -141,7 +141,7 @@ export function TrackerDataSidebar({
       packageId={item.id}
       view="tracker"
       capabilityProps={{ chatId: activeChatId, chatMode: "roleplay", detached }}
-      className="block [--tracker-profile-icon:var(--marinara-chat-chrome-accent)]"
+      className="block"
     />
   );
   const resolveStatIcon = useStatIcons({

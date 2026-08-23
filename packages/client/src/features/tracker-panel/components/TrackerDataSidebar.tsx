@@ -127,6 +127,20 @@ export function TrackerDataSidebar({
       Boolean(item.manifest.entrypoints.client) &&
       item.manifest.contributions?.slots?.includes("tracker-panel"),
   );
+  const memoryNagTrackerPackages = capabilityTrackerPackages.filter((item) => item.id === "memory-nag");
+  const beholderTrackerPackages = capabilityTrackerPackages.filter((item) => item.id === "beholder");
+  const otherCapabilityTrackerPackages = capabilityTrackerPackages.filter(
+    (item) => item.id !== "memory-nag" && item.id !== "beholder",
+  );
+  const renderCapabilityTrackerPackage = (item: (typeof capabilityTrackerPackages)[number]) => (
+    <CapabilityElement
+      key={`${item.id}-tracker-panel`}
+      packageId={item.id}
+      view="tracker"
+      capabilityProps={{ chatId: activeChatId, chatMode: "roleplay", detached }}
+      className="block [--tracker-profile-icon:var(--marinara-chat-chrome-accent)]"
+    />
+  );
   const resolveStatIcon = useStatIcons({
     activeChatId,
     trackerStatIconOverrides,
@@ -228,7 +242,7 @@ export function TrackerDataSidebar({
         />
 
         <div className={cn("relative z-10", fillHeight && "min-h-0 flex-1 overflow-y-auto")}>
-          {displayedGameState && orderedTrackerSections.length > 0 ? (
+          {displayedGameState && (orderedTrackerSections.length > 0 || capabilityTrackerPackages.length > 0) ? (
             <TrackerPanelErrorBoundary
               resetKey={`${activeChatId}:${displayedGameState.id || "empty"}:${displayedGameState.createdAt}`}
             >
@@ -263,20 +277,24 @@ export function TrackerDataSidebar({
                 addMode={addMode}
                 queuePersonaPortraitSave={queuePersonaPortraitSave}
                 flushPersonaPortraitSave={flushPersonaPortraitSave}
+                beforeCustomSections={
+                  activeChatId ? memoryNagTrackerPackages.map(renderCapabilityTrackerPackage) : null
+                }
+                afterCustomSections={
+                  activeChatId
+                    ? [...otherCapabilityTrackerPackages, ...beholderTrackerPackages].map(
+                        renderCapabilityTrackerPackage,
+                      )
+                    : null
+                }
               />
             </TrackerPanelErrorBoundary>
           ) : null}
 
-          {activeChatId
-            ? capabilityTrackerPackages.map((item) => (
-                <CapabilityElement
-                  key={`${item.id}-tracker-panel`}
-                  packageId={item.id}
-                  view="tracker"
-                  capabilityProps={{ chatId: activeChatId, chatMode: "roleplay", detached }}
-                  className="block"
-                />
-              ))
+          {activeChatId && !displayedGameState
+            ? [...memoryNagTrackerPackages, ...otherCapabilityTrackerPackages, ...beholderTrackerPackages].map(
+                renderCapabilityTrackerPackage,
+              )
             : null}
 
           {!activeChatId ? (

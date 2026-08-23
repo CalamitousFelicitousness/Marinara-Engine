@@ -49,7 +49,7 @@ function nextPlaceholderName(rows: InventoryTrackerRow[], base: string): string 
  * `cn` merges by Tailwind group and this is passed last, so it wins over the control's
  * own classes without touching the shared component.
  */
-const LOCK_SURFACE_RESET = "rounded-full bg-transparent ring-0";
+const LOCK_SURFACE_RESET = "rounded-sm bg-transparent ring-0";
 
 const LOCK_GLYPH = <Lock size="0.5rem" className="shrink-0 opacity-70" aria-hidden="true" />;
 
@@ -133,7 +133,7 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
           return (
             <div
               key={`${row.name}-${index}`}
-              className="flex min-h-6 min-w-0 max-w-full items-center gap-1 rounded-full border border-[var(--tracker-profile-slot-rule)] bg-[image:var(--tracker-profile-slot-surface)] px-1.5 shadow-[inset_0_1px_2px_var(--tracker-profile-slot-shadow)] [@media(pointer:coarse)]:min-h-7"
+              className="flex min-h-6 min-w-0 max-w-full items-center gap-1 rounded-md border border-[var(--tracker-profile-slot-rule)] bg-[image:var(--tracker-profile-slot-surface)] px-1.5 shadow-[inset_0_1px_2px_var(--tracker-profile-slot-shadow)] [@media(pointer:coarse)]:min-h-7"
             >
               {nameLocked && LOCK_GLYPH}
               <InlineEdit
@@ -225,6 +225,7 @@ export function InventoryTrackerPanel({
           action={action}
           collapsed={collapsed}
           onToggle={onToggleCollapsed}
+          className="[--tracker-profile-icon:var(--marinara-chat-chrome-accent)]"
         />
         {!collapsed && (
           // Groups stack full-width. Splitting the panel into three columns gave the

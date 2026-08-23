@@ -19,7 +19,6 @@ import {
   type GameState,
   type GenerationParameterSendMap,
   type GenerationParameters,
-  type InventoryItem,
   type InventoryTrackerRow,
   type MacroContext,
   type PlayerStats,
@@ -287,19 +286,15 @@ function parseSnapshotPersonaStats(snapshot: { personaStats?: unknown } | null |
 export function buildLockedPersonaTrackerPatch({
   stats,
   status,
-  inventory,
   hasStats,
   hasStatus,
-  hasInventory,
   snapshot,
   lockState,
 }: {
   stats: CharacterStat[];
   status: string;
-  inventory: InventoryItem[];
   hasStats?: boolean;
   hasStatus?: boolean;
-  hasInventory?: boolean;
   snapshot: { personaStats?: unknown; playerStats?: unknown } | null | undefined;
   lockState: GameState | null | undefined;
 }) {
@@ -308,7 +303,6 @@ export function buildLockedPersonaTrackerPatch({
 
   const rawPlayerStatsPatch: Record<string, unknown> = {};
   if (hasStatus ?? !!status) rawPlayerStatsPatch.status = status;
-  if (hasInventory ?? inventory.length > 0) rawPlayerStatsPatch.inventory = inventory;
   if (Object.keys(rawPlayerStatsPatch).length > 0) rawPatch.playerStats = rawPlayerStatsPatch;
 
   const patch = applyTrackerFieldLocksToGameStatePatch(rawPatch, lockState);
@@ -328,19 +322,11 @@ export function buildLockedPersonaTrackerPatch({
     playerStats.status = typeof lockedPlayerStatsPatch.status === "string" ? lockedPlayerStatsPatch.status : "";
     hasPlayerStatsPatch = true;
   }
-  if (Array.isArray(lockedPlayerStatsPatch.inventory)) {
-    playerStats.inventory = lockedPlayerStatsPatch.inventory as InventoryItem[];
-    hasPlayerStatsPatch = true;
-  }
-
   const playerStatsChanged = hasPlayerStatsPatch && !isDeepStrictEqual(playerStats, existingPlayerStats);
   if (playerStatsChanged) updates.playerStats = JSON.stringify(playerStats);
 
   return {
     changed: personaStatsChanged || playerStatsChanged,
-    inventory: Array.isArray(lockedPlayerStatsPatch.inventory)
-      ? (lockedPlayerStatsPatch.inventory as InventoryItem[])
-      : [],
     patch,
     updates,
   };

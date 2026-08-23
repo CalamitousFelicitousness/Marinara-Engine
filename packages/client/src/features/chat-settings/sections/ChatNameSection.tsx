@@ -39,13 +39,13 @@ export function ChatNameSection({
               onChange={(e) => onNameValueChange(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && onSaveName()}
               autoFocus
-              className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--primary)]/40"
+              className="mari-chrome-field min-w-0 flex-1 !rounded-md px-3 py-2 text-xs"
             />
             <button
               type="button"
               aria-label={localizeUi("ui.chatSettings.chatnamesection.saveChatName")}
               onClick={onSaveName}
-              className="rounded-lg bg-[var(--primary)] px-3 py-2 text-xs text-white"
+              className="mari-agent-settings-action mari-agent-settings-action--primary shrink-0 !rounded-md px-3 py-2 text-xs"
             >
               <Check size="0.75rem" />
             </button>
@@ -54,7 +54,7 @@ export function ChatNameSection({
           <button
             type="button"
             onClick={onBeginEdit}
-            className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--accent)]"
+            className="mari-chrome-field w-full !rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
           >
             {chatName}
           </button>

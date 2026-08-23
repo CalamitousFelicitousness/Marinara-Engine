@@ -30,9 +30,9 @@ import {
   Settings2,
   Info,
   ArrowRightLeft,
+  Archive,
   Unlink,
   Brain,
-  Maximize2,
   Vibrate,
   Feather,
   Paintbrush,
@@ -89,7 +89,7 @@ import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { showAlertDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { HelpTooltip } from "../ui/HelpTooltip";
-import { ExpandedTextarea } from "../ui/ExpandedTextarea";
+import { MacroTextarea } from "../ui/MacroTextarea";
 import { Modal } from "../ui/Modal";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import {
@@ -444,7 +444,7 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
     case "haptic":
       return <Vibrate size={size} className={className} />;
     case "long-term-memory":
-      return <Brain size={size} className={className} />;
+      return <Archive size={size} className={className} />;
     case "memory-nag":
       return <MessageSquareQuote size={size} className={className} />;
     case "hierarchical-maps":
@@ -922,36 +922,21 @@ export function ChatSettingsDrawer({
   );
   const noodleTimelineContextEnabled = metadata.noodleTimelineContextEnabled === true;
   const renderNoodleTimelineContextToggle = () => (
-    <button
-      type="button"
-      onClick={() =>
-        updateMeta.mutate({
-          id: chat.id,
-          noodleTimelineContextEnabled: !noodleTimelineContextEnabled,
-        })
-      }
+    <SettingsSwitch
+      label={localizeUi("ui.chat.chatsettingsdrawer.allowNoodleReferences")}
+      description={localizeUi("ui.chat.chatsettingsdrawer.timelineRefreshesMayIncludeRecentMessagesFromThisChat")}
+      checked={noodleTimelineContextEnabled}
+      onChange={(checked) => updateMeta.mutate({ id: chat.id, noodleTimelineContextEnabled: checked })}
       disabled={updateMeta.isPending}
-      aria-pressed={noodleTimelineContextEnabled}
+      labelPosition="start"
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60",
+        "justify-between rounded-md px-3 py-2.5 text-left",
         noodleTimelineContextEnabled
           ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
           : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
       )}
-    >
-      <div className="min-w-0 flex-1">
-        <span className="text-[0.6875rem] font-medium">
-          {localizeUi("ui.chat.chatsettingsdrawer.allowNoodleReferences")}
-        </span>
-        <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-          {localizeUi("ui.chat.chatsettingsdrawer.timelineRefreshesMayIncludeRecentMessagesFromThisChat")}
-        </p>
-      </div>
-      <SettingsSwitchTrack
-        checked={noodleTimelineContextEnabled}
-        className={cn("mari-chat-option-switch", noodleTimelineContextEnabled && "mari-chat-option-switch--active")}
-      />
-    </button>
+      labelClassName="text-[0.6875rem] font-medium"
+    />
   );
   const { data: currentPromptPresetFull } = usePresetFull(isRoleplayMode ? (chat.promptPresetId ?? null) : null);
   const promptPresetOptionsLoaded = Array.isArray(presets);
@@ -3546,7 +3531,6 @@ export function ChatSettingsDrawer({
   const [scenePromptExpanded, setScenePromptExpanded] = useState(false);
   const [scenePromptDraft, setScenePromptDraft] = useState(metadata.sceneSystemPrompt ?? "");
   const [groupScenarioDraft, setGroupScenarioDraft] = useState((metadata.groupScenarioText as string) ?? "");
-  const [groupScenarioExpanded, setGroupScenarioExpanded] = useState(false);
   const gameAgentPool = useMemo(
     () =>
       availableAgents.filter(
@@ -5880,32 +5864,22 @@ export function ChatSettingsDrawer({
               {/* Merged mode: speaker color option */}
               {!isConversation && (metadata.groupChatMode ?? "merged") === "merged" && (
                 <div className="mt-2">
-                  <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, groupSpeakerColors: !metadata.groupSpeakerColors })}
-                    aria-pressed={Boolean(metadata.groupSpeakerColors)}
-                    className={cn(
-                      "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
-                      metadata.groupSpeakerColors && "mari-chat-option-field--active",
+                  <SettingsSwitch
+                    label={localizeUi("ui.chat.chatsettingsdrawer.colorDialogues")}
+                    description={localizeUi(
+                      "ui.chat.chatsettingsdrawer.colorCharacterDialoguesDifferentlyUsingTheSpecialTagsThe",
                     )}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[0.6875rem] font-medium">
-                        {localizeUi("ui.chat.chatsettingsdrawer.colorDialogues")}
-                      </span>
-                      <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                        {localizeUi(
-                          "ui.chat.chatsettingsdrawer.colorCharacterDialoguesDifferentlyUsingTheSpecialTagsThe",
-                        )}
-                      </p>
-                    </div>
-                    <SettingsSwitchTrack
-                      checked={Boolean(metadata.groupSpeakerColors)}
-                      className={cn(
-                        "mari-chat-option-switch",
-                        metadata.groupSpeakerColors && "mari-chat-option-switch--active",
-                      )}
-                    />
-                  </button>
+                    checked={Boolean(metadata.groupSpeakerColors)}
+                    onChange={(checked) => updateMeta.mutate({ id: chat.id, groupSpeakerColors: checked })}
+                    labelPosition="start"
+                    className={cn(
+                      "justify-between rounded-md px-3 py-2.5 text-left",
+                      metadata.groupSpeakerColors
+                        ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                        : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
+                    )}
+                    labelClassName="text-[0.6875rem] font-medium"
+                  />
                 </div>
               )}
 
@@ -5997,37 +5971,24 @@ export function ChatSettingsDrawer({
                     />
                   </button>
                   {!isConversation && (
-                    <button
-                      onClick={() =>
-                        updateMeta.mutate({
-                          id: chat.id,
-                          groupSpeakerNamesInHistory: metadata.groupSpeakerNamesInHistory !== true,
-                        })
+                    <SettingsSwitch
+                      label={localizeUi("ui.chat.chatsettingsdrawer.namePrefixHistory")}
+                      description={
+                        metadata.groupSpeakerNamesInHistory === true
+                          ? localizeUi("ui.chat.chatsettingsdrawer.historyTurnsAreSentAsNameMessageBeforeMerged")
+                          : localizeUi("ui.chat.chatsettingsdrawer.historyTurnsKeepTheirStoredTextBeforeRoleMerging")
                       }
-                      aria-pressed={metadata.groupSpeakerNamesInHistory === true}
+                      checked={metadata.groupSpeakerNamesInHistory === true}
+                      onChange={(checked) => updateMeta.mutate({ id: chat.id, groupSpeakerNamesInHistory: checked })}
+                      labelPosition="start"
                       className={cn(
-                        "mari-chat-option-field flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-all",
-                        metadata.groupSpeakerNamesInHistory === true && "mari-chat-option-field--active",
+                        "justify-between rounded-md px-3 py-2.5 text-left",
+                        metadata.groupSpeakerNamesInHistory === true
+                          ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                          : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
                       )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[0.6875rem] font-medium">
-                          {localizeUi("ui.chat.chatsettingsdrawer.namePrefixHistory")}
-                        </span>
-                        <p className="mt-0.5 text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                          {metadata.groupSpeakerNamesInHistory === true
-                            ? localizeUi("ui.chat.chatsettingsdrawer.historyTurnsAreSentAsNameMessageBeforeMerged")
-                            : localizeUi("ui.chat.chatsettingsdrawer.historyTurnsKeepTheirStoredTextBeforeRoleMerging")}
-                        </p>
-                      </div>
-                      <SettingsSwitchTrack
-                        checked={metadata.groupSpeakerNamesInHistory === true}
-                        className={cn(
-                          "mari-chat-option-switch ml-3",
-                          metadata.groupSpeakerNamesInHistory === true && "mari-chat-option-switch--active",
-                        )}
-                      />
-                    </button>
+                      labelClassName="text-[0.6875rem] font-medium"
+                    />
                   )}
                 </div>
               )}
@@ -6038,44 +5999,25 @@ export function ChatSettingsDrawer({
                   <label className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
                     {localizeUi("ui.chat.chatsettingsdrawer.scenarioOverride")}
                   </label>
-                  <div className="relative">
-                    <textarea
-                      value={groupScenarioDraft}
-                      onChange={(e) => setGroupScenarioDraft(e.target.value)}
-                      onBlur={() => {
-                        if (groupScenarioDraft !== (metadata.groupScenarioText ?? "")) {
-                          updateMeta.mutate({ id: chat.id, groupScenarioText: groupScenarioDraft });
-                        }
-                      }}
-                      placeholder={localizeUi(
-                        "ui.chat.chatsettingsdrawer.replaceIndividualCharacterScenariosWithASharedScenarioFor",
-                      )}
-                      rows={4}
-                      className="w-full resize-y rounded-lg bg-[var(--secondary)] px-3 py-2 pr-8 text-xs leading-relaxed outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
-                    />
-                    <button
-                      onClick={() => setGroupScenarioExpanded(true)}
-                      className="absolute right-1.5 top-1.5 rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-                      title={localizeUi("ui.chat.chatsettingsdrawer.expandEditor")}
-                    >
-                      <Maximize2 size="0.75rem" />
-                    </button>
-                  </div>
-                  <ExpandedTextarea
-                    open={groupScenarioExpanded}
-                    onClose={() => {
-                      setGroupScenarioExpanded(false);
+                  <MacroTextarea
+                    title={localizeUi("ui.chat.chatsettingsdrawer.groupScenarioOverride")}
+                    value={groupScenarioDraft}
+                    onChange={setGroupScenarioDraft}
+                    onBlur={() => {
                       if (groupScenarioDraft !== (metadata.groupScenarioText ?? "")) {
                         updateMeta.mutate({ id: chat.id, groupScenarioText: groupScenarioDraft });
                       }
                     }}
-                    title={localizeUi("ui.chat.chatsettingsdrawer.groupScenarioOverride")}
-                    value={groupScenarioDraft}
-                    onChange={setGroupScenarioDraft}
+                    onExpandedClose={() => {
+                      if (groupScenarioDraft !== (metadata.groupScenarioText ?? "")) {
+                        updateMeta.mutate({ id: chat.id, groupScenarioText: groupScenarioDraft });
+                      }
+                    }}
                     placeholder={localizeUi(
                       "ui.chat.chatsettingsdrawer.replaceIndividualCharacterScenariosWithASharedScenarioFor",
                     )}
-                    surface="chat"
+                    rows={4}
+                    className="mari-chrome-field min-h-[6rem] !rounded-md px-3 py-2 pr-8 text-xs leading-relaxed"
                   />
                 </div>
               )}
@@ -6841,38 +6783,20 @@ export function ChatSettingsDrawer({
 
                 {renderNoodleTimelineContextToggle()}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateMeta.mutate({
-                      id: chat.id,
-                      roleplayDmCommandsEnabled: metadata.roleplayDmCommandsEnabled !== true,
-                    })
-                  }
-                  aria-pressed={metadata.roleplayDmCommandsEnabled === true}
+                <SettingsSwitch
+                  label={localizeUi("ui.chat.chatsettingsdrawer.allowCharacterDms")}
+                  description={localizeUi("ui.chat.chatsettingsdrawer.addsAShortHiddenCommandReminderSoCharactersCan")}
+                  checked={metadata.roleplayDmCommandsEnabled === true}
+                  onChange={(checked) => updateMeta.mutate({ id: chat.id, roleplayDmCommandsEnabled: checked })}
+                  labelPosition="start"
                   className={cn(
-                    "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                    "justify-between rounded-md px-3 py-2.5 text-left",
                     metadata.roleplayDmCommandsEnabled === true
                       ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
                       : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
                   )}
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[0.6875rem] font-medium">
-                      {localizeUi("ui.chat.chatsettingsdrawer.allowCharacterDms")}
-                    </span>
-                    <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                      {localizeUi("ui.chat.chatsettingsdrawer.addsAShortHiddenCommandReminderSoCharactersCan")}
-                    </p>
-                  </div>
-                  <SettingsSwitchTrack
-                    checked={metadata.roleplayDmCommandsEnabled === true}
-                    className={cn(
-                      "mari-chat-option-switch",
-                      metadata.roleplayDmCommandsEnabled === true && "mari-chat-option-switch--active",
-                    )}
-                  />
-                </button>
+                  labelClassName="text-[0.6875rem] font-medium"
+                />
                 <DiscordMirrorControls
                   className="space-y-2"
                   webhookUrl={(metadata.discordWebhookUrl as string) ?? ""}
@@ -7188,7 +7112,7 @@ export function ChatSettingsDrawer({
                               key={agent.id}
                               label={
                                 <span className="flex min-w-0 items-center gap-2">
-                                  {renderRoleplayAgentMenuIcon(agent.id, "chip")}
+                                  <Sparkles size="0.75rem" className="shrink-0 text-[var(--primary)]" />
                                   <span className="min-w-0">
                                     <span className="block truncate text-[0.625rem] font-medium">{agent.name}</span>
                                     <span className="block truncate text-[0.5625rem] text-[var(--muted-foreground)]">
@@ -7500,7 +7424,7 @@ export function ChatSettingsDrawer({
                                   onClose();
                                   useUIStore.getState().openAgentDetail("lorebook-keeper");
                                 }}
-                                className="w-full sm:w-auto"
+                                className="h-8 w-full whitespace-nowrap sm:w-auto"
                               >
                                 <Settings2 size="0.75rem" />
                                 <span>{localizeUi("ui.chat.chatsettingsdrawer.openSetup")}</span>
@@ -7508,7 +7432,7 @@ export function ChatSettingsDrawer({
                               <AgentSettingsActionButton
                                 onClick={handleLorebookKeeperBackfill}
                                 disabled={agentProcessing}
-                                className="w-full sm:w-auto"
+                                className="h-8 w-full whitespace-nowrap sm:w-auto"
                                 variant="primary"
                               >
                                 <RefreshCw size="0.75rem" className={cn(agentProcessing && "animate-spin")} />

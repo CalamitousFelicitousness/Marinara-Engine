@@ -1511,10 +1511,8 @@ function SectionsTab({
           onClick={() => setShowGroupsPanel(!showGroupsPanel)}
           aria-expanded={showGroupsPanel}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium ring-1 transition-all active:scale-[0.98]",
-            showGroupsPanel
-              ? "mari-chrome-accent-surface mari-accent-animated"
-              : "mari-editor-action text-[var(--marinara-editor-muted)]",
+            "mari-editor-action mari-editor-action--primary inline-flex",
+            showGroupsPanel && "mari-chrome-accent-surface mari-accent-animated",
           )}
         >
           <FolderOpen size="0.8125rem" /> {localizeUi("ui.presets.sectionstab.groups")}

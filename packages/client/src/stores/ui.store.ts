@@ -245,6 +245,14 @@ export const TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
   "world",
   "persona",
   "characters",
+  "quests",
+  "inventory",
+  "custom",
+];
+const LEGACY_TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
+  "world",
+  "persona",
+  "characters",
   "inventory",
   "quests",
   "custom",
@@ -417,6 +425,10 @@ export function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelS
 
   for (const section of TRACKER_DATA_PANEL_SECTIONS) {
     if (!seen.has(section)) order.push(section);
+  }
+
+  if (order.every((section, index) => section === LEGACY_TRACKER_DATA_PANEL_SECTIONS[index])) {
+    return [...TRACKER_DATA_PANEL_SECTIONS];
   }
 
   return order;

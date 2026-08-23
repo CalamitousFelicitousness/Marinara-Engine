@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
+  BarChart3,
   CheckCircle2,
   Circle,
   Clock,
@@ -18,7 +19,6 @@ import {
   ImagePlus,
   Lock,
   MapPin,
-  Package,
   Pencil,
   Plus,
   Scroll,
@@ -41,7 +41,6 @@ import { coerceStatNumber, getStatPercent } from "../../features/tracker-panel/l
 import type {
   CharacterStat,
   CustomTrackerField,
-  InventoryItem,
   InventoryTrackerRow,
   PresentCharacter,
   QuestProgress,
@@ -54,8 +53,6 @@ import {
   characterTrackerLockPrefix,
   customTrackerFieldLockPrefix,
   customTrackerLockKey,
-  inventoryItemTrackerLockPrefix,
-  inventoryTrackerLockKey,
   isTrackerFieldHidden,
   isTrackerFieldLocked,
   personaStatTrackerLockPrefix,
@@ -133,9 +130,6 @@ interface CombinedPlayerPanelProps {
   onUpdatePersonaStatus?: (status: string) => void;
   characters: PresentCharacter[];
   onUpdateCharacters: (chars: PresentCharacter[]) => void;
-  inventory: InventoryItem[];
-  onUpdateInventory: (items: InventoryItem[]) => void;
-  onRemoveInventoryItem?: (index: number) => void;
   quests: QuestProgress[];
   onUpdateQuests: (quests: QuestProgress[]) => void;
   customTrackerFields: CustomTrackerField[];
@@ -288,9 +282,6 @@ export function CombinedPlayerPanel({
   onUpdatePersonaStatus,
   characters,
   onUpdateCharacters,
-  inventory,
-  onUpdateInventory,
-  onRemoveInventoryItem,
   quests,
   onUpdateQuests,
   customTrackerFields,
@@ -362,35 +353,6 @@ export function CombinedPlayerPanel({
     const next = [...characters];
     next[idx] = updated;
     onUpdateCharacters(next);
-  };
-
-  const addItem = () => {
-    onUpdateInventory([...inventory, { name: "New Item", description: "", quantity: 1, location: "on_person" }]);
-  };
-  const removeItem = (idx: number) => {
-    if (onRemoveInventoryItem) {
-      onRemoveInventoryItem(idx);
-      return;
-    }
-    onUpdateFieldLocks?.((locks) =>
-      removeTrackerFieldLockPrefix(locks, inventoryItemTrackerLockPrefix(inventory[idx]!, idx)),
-    );
-    onUpdateInventory(inventory.filter((_, i) => i !== idx));
-  };
-  const updateItem = (idx: number, updated: InventoryItem) => {
-    const previous = inventory[idx];
-    if (previous && previous.name !== updated.name) {
-      onUpdateFieldLocks?.((locks) =>
-        renameTrackerFieldLockPrefix(
-          locks,
-          inventoryItemTrackerLockPrefix(previous, idx),
-          inventoryItemTrackerLockPrefix(updated, idx),
-        ),
-      );
-    }
-    const next = [...inventory];
-    next[idx] = updated;
-    onUpdateInventory(next);
   };
 
   const addQuest = () => {
@@ -470,7 +432,8 @@ export function CombinedPlayerPanel({
               onToggleLock={personaStatusLock.onToggle}
             />
             <div className="flex items-center justify-between px-1 pb-1">
-              <span className="text-[0.625rem] font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
+              <span className="flex items-center gap-1 text-[0.625rem] font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
+                <BarChart3 size="0.5625rem" className="text-[var(--marinara-chat-chrome-accent)]" />
                 {localizeUi("ui.chat.personastatswidget.personaStats")}
               </span>
               <TrackerSectionRefresh
@@ -676,79 +639,11 @@ export function CombinedPlayerPanel({
           </div>
         )}
 
-        {showPersona && (
-          <div className="p-2">
-            <div className="flex items-center justify-between px-1 pb-1">
-              <span className={TRACKER_SECTION_TITLE}>
-                <Package size="0.5625rem" className="text-amber-400/80" />{" "}
-                {localizeUi("ui.chat.combinedplayerpanel.inventory")}
-                {inventory.length})
-              </span>
-              <button onClick={addItem} className={TRACKER_SECTION_ACTION}>
-                <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}
-              </button>
-            </div>
-            <div className="space-y-1">
-              {inventory.length === 0 && (
-                <div className={EMPTY_STATE}>{localizeUi("ui.chat.combinedplayerpanel.inventoryEmpty")}</div>
-              )}
-              {inventory.map((item, idx) => {
-                const nameLock = lockFor(inventoryTrackerLockKey(item, "name", idx));
-                const quantityLock = lockFor(inventoryTrackerLockKey(item, "quantity", idx));
-                return (
-                  <div
-                    key={idx}
-                    className="group/field flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/20 px-2 py-1.5"
-                  >
-                    <Package size="0.625rem" className="shrink-0 text-amber-400/60" />
-                    <InlineEdit
-                      value={item.name}
-                      onSave={(value) => updateItem(idx, { ...item, name: value })}
-                      className="flex-1"
-                      placeholder={localizeUi("ui.chat.combinedplayerpanel.itemName")}
-                      locked={nameLock.locked}
-                    />
-                    <HudFieldLockButton
-                      {...nameLock}
-                      label={localizeUi("ui.chat.combinedplayerpanel.value1Name", {
-                        value1: item.name || localizeUi("ui.chat.databaseworkspaceapprovalcard.item"),
-                      })}
-                    />
-                    <input
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(idx, { ...item, quantity: Math.max(0, Number(e.target.value)) })}
-                      className={cn(
-                        "w-8 rounded bg-transparent text-center text-[0.5625rem] text-[var(--foreground)]/60 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                        quantityLock.locked && HUD_LOCKED_FIELD_CLASS,
-                      )}
-                      title={localizeUi("ui.chat.combinedplayerpanel.quantity")}
-                    />
-                    <HudFieldLockButton
-                      {...quantityLock}
-                      label={localizeUi("ui.chat.combinedplayerpanel.value1Quantity", {
-                        value1: item.name || localizeUi("ui.chat.databaseworkspaceapprovalcard.item"),
-                      })}
-                    />
-                    <button
-                      onClick={() => removeItem(idx)}
-                      className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
-                      title={localizeUi("ui.chat.combinedplayerpanel.removeItem")}
-                    >
-                      <X size="0.5625rem" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {showQuests && (
           <div className="p-2">
             <div className="flex items-center justify-between px-1 pb-1">
               <span className={TRACKER_SECTION_TITLE}>
-                <Scroll size="0.5625rem" className="text-emerald-400/80" />{" "}
+                <Scroll size="0.5625rem" className="text-[var(--marinara-chat-chrome-accent)]" />{" "}
                 {localizeUi("ui.chat.combinedplayerpanel.quests")}
                 {quests.length})
               </span>
@@ -785,7 +680,7 @@ export function CombinedPlayerPanel({
           <div className="p-2">
             <div className="flex items-center justify-between px-1 pb-1">
               <span className={TRACKER_SECTION_TITLE}>
-                <SlidersHorizontal size="0.5625rem" className="text-[var(--muted-foreground)]" />{" "}
+                <SlidersHorizontal size="0.5625rem" className="text-[var(--marinara-chat-chrome-accent)]" />{" "}
                 {localizeUi("ui.chat.combinedplayerpanel.customValue1", { value1: customTrackerFields.length })}
               </span>
               <span className="flex items-center gap-1">
@@ -915,7 +810,10 @@ export function PersonaStatsPanel({
         />
       </div>
       <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
-        <span className={NEUTRAL_PANEL_TITLE}>{localizeUi("ui.chat.personastatswidget.personaStats")}</span>
+        <span className={NEUTRAL_PANEL_TITLE}>
+          <BarChart3 size="0.625rem" className="text-[var(--marinara-chat-chrome-accent)]" />
+          {localizeUi("ui.chat.personastatswidget.personaStats")}
+        </span>
         <span className="flex items-center gap-1">
           <TrackerSectionRefresh
             agentType="persona-stats"
@@ -1297,119 +1195,6 @@ export function CharactersPanel({
   );
 }
 
-interface InventoryPanelProps {
-  items: InventoryItem[];
-  onUpdate: (items: InventoryItem[]) => void;
-  onRemoveItem?: (index: number) => void;
-}
-
-export function InventoryPanel({ items, onUpdate, onRemoveItem }: InventoryPanelProps) {
-  const { t: localizeUi } = useUiTranslation();
-  const { onUpdateFieldLocks } = useTrackerLockContext();
-  const addItem = () => {
-    onUpdate([...items, { name: "New Item", description: "", quantity: 1, location: "on_person" }]);
-  };
-
-  const removeItem = (idx: number) => {
-    if (onRemoveItem) {
-      onRemoveItem(idx);
-      return;
-    }
-    onUpdateFieldLocks?.((locks) =>
-      removeTrackerFieldLockPrefix(locks, inventoryItemTrackerLockPrefix(items[idx]!, idx)),
-    );
-    onUpdate(items.filter((_, i) => i !== idx));
-  };
-
-  const updateItem = (idx: number, updated: InventoryItem) => {
-    const previous = items[idx];
-    if (previous && previous.name !== updated.name) {
-      onUpdateFieldLocks?.((locks) =>
-        renameTrackerFieldLockPrefix(
-          locks,
-          inventoryItemTrackerLockPrefix(previous, idx),
-          inventoryItemTrackerLockPrefix(updated, idx),
-        ),
-      );
-    }
-    const next = [...items];
-    next[idx] = updated;
-    onUpdate(next);
-  };
-  const lockFor = useHudFieldLockResolver();
-
-  return (
-    <>
-      <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
-        <span className={NEUTRAL_PANEL_TITLE}>
-          <Package size="0.625rem" className="text-amber-400/80" />{" "}
-          {localizeUi("ui.chat.combinedplayerpanel.inventory")}
-          {items.length})
-        </span>
-        <span className="flex items-center gap-1">
-          <HudLockModeToggle />
-          <button onClick={addItem} className={TRACKER_SECTION_ACTION}>
-            <Plus size="0.625rem" /> {localizeUi("ui.characters.metadatatab.add")}
-          </button>
-        </span>
-      </div>
-      <div className="p-2 space-y-1">
-        {items.length === 0 && (
-          <div className={cn(EMPTY_STATE, "py-2")}>{localizeUi("ui.chat.combinedplayerpanel.inventoryEmpty")}</div>
-        )}
-        {items.map((item, idx) => {
-          const nameLock = lockFor(inventoryTrackerLockKey(item, "name", idx));
-          const quantityLock = lockFor(inventoryTrackerLockKey(item, "quantity", idx));
-          return (
-            <div
-              key={idx}
-              className="group/field flex items-center gap-1.5 rounded-lg bg-[var(--muted)]/20 px-2 py-1.5"
-            >
-              <Package size="0.625rem" className="shrink-0 text-amber-400/60" />
-              <InlineEdit
-                value={item.name}
-                onSave={(value) => updateItem(idx, { ...item, name: value })}
-                className="flex-1 min-w-0"
-                placeholder={localizeUi("ui.chat.combinedplayerpanel.itemName")}
-                locked={nameLock.locked}
-              />
-              <HudFieldLockButton
-                {...nameLock}
-                label={localizeUi("ui.chat.combinedplayerpanel.value1Name", {
-                  value1: item.name || localizeUi("ui.chat.databaseworkspaceapprovalcard.item"),
-                })}
-              />
-              <input
-                type="number"
-                value={item.quantity}
-                onChange={(e) => updateItem(idx, { ...item, quantity: Math.max(0, Number(e.target.value)) })}
-                className={cn(
-                  "w-8 rounded bg-transparent text-center text-[0.5625rem] text-[var(--foreground)]/60 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                  quantityLock.locked && HUD_LOCKED_FIELD_CLASS,
-                )}
-                title={localizeUi("ui.chat.combinedplayerpanel.quantity")}
-              />
-              <HudFieldLockButton
-                {...quantityLock}
-                label={localizeUi("ui.chat.combinedplayerpanel.value1Quantity", {
-                  value1: item.name || localizeUi("ui.chat.databaseworkspaceapprovalcard.item"),
-                })}
-              />
-              <button
-                onClick={() => removeItem(idx)}
-                className="text-[var(--muted-foreground)]/40 hover:text-red-500 transition-colors shrink-0"
-                title={localizeUi("ui.chat.combinedplayerpanel.removeItem")}
-              >
-                <X size="0.5625rem" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
 interface QuestsPanelProps {
   quests: QuestProgress[];
   onUpdate: (quests: QuestProgress[]) => void;
@@ -1449,7 +1234,8 @@ export function QuestsPanel({ quests, onUpdate, onRerunSingleTracker, isTrackerR
     <>
       <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
         <span className={NEUTRAL_PANEL_TITLE}>
-          <Scroll size="0.625rem" className="text-emerald-400/80" /> {localizeUi("ui.chat.combinedplayerpanel.quests")}
+          <Scroll size="0.625rem" className="text-[var(--marinara-chat-chrome-accent)]" />{" "}
+          {localizeUi("ui.chat.combinedplayerpanel.quests")}
           {quests.length})
         </span>
         <span className="flex items-center gap-1">
@@ -1530,7 +1316,7 @@ export function CustomTrackerPanel({
     <>
       <div className={cn(NEUTRAL_PANEL_HEADER, "flex items-center justify-between")}>
         <span className={NEUTRAL_PANEL_TITLE}>
-          <SlidersHorizontal size="0.625rem" className="text-[var(--muted-foreground)]" />{" "}
+          <SlidersHorizontal size="0.625rem" className="text-[var(--marinara-chat-chrome-accent)]" />{" "}
           {localizeUi("ui.chat.customtrackerpanel.customTrackerValue1", { value1: fields.length })}
         </span>
         <span className="flex items-center gap-1">

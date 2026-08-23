@@ -485,7 +485,7 @@ import {
   resolveLorebookTokenBudget,
 } from "../services/generation/lorebook-generation-runtime.js";
 import { createAgentLorebookTriggerResolver } from "../services/generation/agent-lorebook-triggers.js";
-import { addLocationEntry, addInventoryEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
+import { addLocationEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
 import { updateJournal } from "../services/generation/game-journal-runtime.js";
 import { buildGmFormatReminder } from "../services/game/gm-prompts.js";
 import {
@@ -9110,10 +9110,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 const psData = result.data as Record<string, unknown>;
                 const hasStats = Array.isArray(psData.stats);
                 const hasStatus = typeof psData.status === "string";
-                const hasInventory = Array.isArray(psData.inventory);
                 const bars = hasStats ? (psData.stats as any[]) : [];
                 const status = hasStatus ? (psData.status as string) : "";
-                const inventory = hasInventory ? (psData.inventory as any[]) : [];
 
                 // Ensure a snapshot exists for this (messageId, swipeIndex).
                 // If world-state didn't create one, updateByMessage clones the
@@ -9129,10 +9127,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 const personaPatch = buildLockedPersonaTrackerPatch({
                   stats: bars,
                   status,
-                  inventory,
                   hasStats,
                   hasStatus,
-                  hasInventory,
                   snapshot: snap,
                   lockState: personaLockState,
                 });
@@ -9145,23 +9141,6 @@ export async function generateRoutes(app: FastifyInstance) {
                 if (personaPatch.changed) {
                   logger.debug("[game_state_patch] persona-stats: %j", personaPatch.patch);
                   sendSseEvent(reply, { type: "game_state_patch", data: personaPatch.patch });
-                }
-
-                // Auto-populate journal: inventory changes
-                if (snap && personaPatch.inventory.length > 0) {
-                  const existingInv = snap?.playerStats
-                    ? typeof snap.playerStats === "string"
-                      ? ((JSON.parse(snap.playerStats) as any).inventory ?? [])
-                      : ((snap.playerStats as any).inventory ?? [])
-                    : [];
-                  const oldNames = new Set((existingInv as any[]).map((i: any) => i.name));
-                  for (const item of personaPatch.inventory) {
-                    if (!oldNames.has(item.name)) {
-                      updateJournal(app.db, input.chatId, (j) =>
-                        addInventoryEntry(j, item.name, "acquired", item.quantity ?? 1),
-                      );
-                    }
-                  }
                 }
               } catch (err) {
                 logger.error(err, "[generate] Failed to apply persona-stats tracker update");

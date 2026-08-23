@@ -2890,19 +2890,15 @@ async function applyRetryResultEffects(args: {
         const psData = result.data as Record<string, unknown>;
         const hasStats = Array.isArray(psData.stats);
         const hasStatus = typeof psData.status === "string";
-        const hasInventory = Array.isArray(psData.inventory);
         const bars = hasStats ? (psData.stats as any[]) : [];
         const status = hasStatus ? (psData.status as string) : "";
-        const inventory = hasInventory ? (psData.inventory as any[]) : [];
         const latest = await loadRetryTargetGameStateSnapshot();
         assertRetryActive();
         const personaPatch = buildLockedPersonaTrackerPatch({
           stats: bars,
           status,
-          inventory,
           hasStats,
           hasStatus,
-          hasInventory,
           snapshot: latest,
           lockState: latest ? parseGameStateRow(latest as Record<string, unknown>) : null,
         });

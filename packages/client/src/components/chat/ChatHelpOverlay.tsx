@@ -330,13 +330,21 @@ function unionRects(rects: Rect[]): Rect | null {
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function readVisibleRect(element: Element): Rect | null {
+function readVisibleRect(element: Element, preferInteractive = false): Rect | null {
   const ownRect = rectFromDomRect((element as HTMLElement).getBoundingClientRect());
-  if (ownRect.width > 1 && ownRect.height > 1) return ownRect;
-  const childRects = Array.from(element.querySelectorAll<HTMLElement>("button, [role='button'], input, textarea"))
+  if (!preferInteractive && ownRect.width > 1 && ownRect.height > 1) return ownRect;
+
+  const interactive = element.matches("button, [role='button'], input, textarea")
+    ? [element as HTMLElement]
+    : Array.from(element.querySelectorAll<HTMLElement>("button, [role='button'], input, textarea"));
+  const interactiveRects = interactive
     .map((child) => rectFromDomRect(child.getBoundingClientRect()))
     .filter((rect) => rect.width > 1 && rect.height > 1);
-  return unionRects(childRects);
+  const interactiveRect = unionRects(interactiveRects);
+  if (interactiveRect) return interactiveRect;
+
+  if (ownRect.width > 1 && ownRect.height > 1) return ownRect;
+  return null;
 }
 
 function clipRect(rect: Rect, viewportWidth: number, viewportHeight: number): Rect | null {
@@ -367,7 +375,7 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mod
         '[data-chat-help="identity"], [data-roleplay-top-controls="right"], [data-chat-help="agents"]',
       ),
     )
-      .map(readVisibleRect)
+      .map((element) => readVisibleRect(element, true))
       .filter((rect): rect is Rect => rect !== null);
     const top = Math.max(scrollRect.top + 8, ...topControls.map((rect) => rect.top + rect.height + 8));
     const bottom = Math.min(scrollRect.top + scrollRect.height - 8, (composerRect?.top ?? Infinity) - 8);
@@ -385,22 +393,23 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mod
   }
 
   if (!definition.selector) return null;
+  const preferInteractive = definition.selector.startsWith("[data-chat-help=");
   const rects = Array.from(document.querySelectorAll(definition.selector))
-    .map(readVisibleRect)
+    .map((element) => readVisibleRect(element, preferInteractive))
     .filter((rect): rect is Rect => rect !== null);
   return definition.mergeMatches ? unionRects(rects) : (rects[0] ?? null);
 }
 
-function expandRectWithin(rect: Rect, bounds: Rect): Rect {
-  const left = Math.max(bounds.left, rect.left - TARGET_PADDING);
-  const top = Math.max(bounds.top, rect.top - TARGET_PADDING);
-  const right = Math.min(bounds.left + bounds.width, rect.left + rect.width + TARGET_PADDING);
-  const bottom = Math.min(bounds.top + bounds.height, rect.top + rect.height + TARGET_PADDING);
+function expandRectWithin(rect: Rect, bounds: Rect, padding: number): Rect {
+  const left = Math.max(bounds.left, rect.left - padding);
+  const top = Math.max(bounds.top, rect.top - padding);
+  const right = Math.min(bounds.left + bounds.width, rect.left + rect.width + padding);
+  const bottom = Math.min(bounds.top + bounds.height, rect.top + rect.height + padding);
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function separateHighlightRects(targets: MeasuredTarget[], bounds: Rect): MeasuredTarget[] {
-  const separated = targets.map((target) => ({ ...target, rect: expandRectWithin(target.rect, bounds) }));
+function separateHighlightRects(targets: MeasuredTarget[], bounds: Rect, padding = TARGET_PADDING): MeasuredTarget[] {
+  const separated = targets.map((target) => ({ ...target, rect: expandRectWithin(target.rect, bounds, padding) }));
   for (let firstIndex = 0; firstIndex < separated.length; firstIndex += 1) {
     for (let secondIndex = firstIndex + 1; secondIndex < separated.length; secondIndex += 1) {
       const first = separated[firstIndex]!;
@@ -468,7 +477,8 @@ function measureTargets(mode: ChatMode) {
     const rect = measured ? clipRect(measured, viewportWidth, viewportHeight) : null;
     return rect ? [{ ...definition, rect }] : [];
   });
-  return { rootRect, targets: rootRect ? separateHighlightRects(targets, rootRect) : targets };
+  const highlightPadding = window.innerWidth < 768 ? 0 : TARGET_PADDING;
+  return { rootRect, targets: rootRect ? separateHighlightRects(targets, rootRect, highlightPadding) : targets };
 }
 
 function getLegendStyle(rootRect: Rect): CSSProperties {

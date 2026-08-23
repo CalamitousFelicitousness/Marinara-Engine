@@ -35,6 +35,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Roleplay now places Beholder directly beside Tracker Panel before Agents, groups Inventory and Memory Nag into the combined mobile tracker control, and preserves full mobile touch-target bounds in the chat Help overlay (#5457, Pasta-Devs/Marinara-Agents#533).
 - Downloadable Roleplay tracker buttons now keep the built-in mobile size; Memory Nag and Inventory headers inherit the neutral Tracker Panel icon treatment; Gallery and Translation language fields reuse the standard chat field; active agent drawers omit redundant installation instructions; Storyboards toggles and Lorebook Keeper actions align evenly; Long-Term Memory uses its archive icon in every mode; and Narrative Director and Expression Engine have distinct clapperboard and theatre-mask icons (#5452, Pasta-Devs/Marinara-Agents#528, Pasta-Devs/Marinara-Agents#530, Pasta-Devs/Marinara-Agents#531).
 - Roleplay tracker controls and Chat Settings now share canonical ordering, icons, labels, toggles, fields, badges, and compact actions; Memory Nag and Beholder integrate with the Tracker Panel, while Persona Stats no longer duplicates Inventory Tracker ownership and dedicated inventory changes continue filling the journal (#5450, Pasta-Devs/Marinara-Agents#525).
 - Image Connection model controls now stay inside narrow Android viewports, and long message editors expand to their content on desktop while retaining the mobile height cap (#5447, #5448).

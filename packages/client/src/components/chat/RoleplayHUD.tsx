@@ -290,6 +290,8 @@ export function RoleplayHUD({
     enabledAgentTypes.has("quest") ||
     enabledAgentTypes.has("custom-tracker");
   const hasInventoryTracker = enabledAgentTypes.has("inventory-tracker");
+  const hasMobilePlayerTrackerSections =
+    hasPlayerTrackerSections || hasInventoryTracker || memoryNagTrackerPackages.length > 0;
 
   // If mobileCompact, widgets are even narrower and action buttons are not cut off
 
@@ -307,6 +309,15 @@ export function RoleplayHUD({
         {trackerPanelEnabled && !trackerPanelOpen && (
           <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
         )}
+
+        {beholderTrackerPackages.map((item) => (
+          <RoleplayTrackerCapability
+            key={`${item.id}-beholder-launcher`}
+            packageId={item.id}
+            chatId={chatId}
+            compact={mobileCompact}
+          />
+        ))}
 
         {/* Actions (Agents + Clear) */}
         <ActionsGroup
@@ -359,11 +370,14 @@ export function RoleplayHUD({
               />
             )}
 
-            {hasPlayerTrackerSections && (
+            {hasMobilePlayerTrackerSections && (
               <CombinedPlayerWidget
                 showPersona={hasPersonaStatsTracker}
                 showCharacters={enabledAgentTypes.has("character-tracker")}
                 showQuests={enabledAgentTypes.has("quest")}
+                showInventory={hasInventoryTracker}
+                memoryNagPackageIds={memoryNagTrackerPackages.map((item) => item.id)}
+                chatId={chatId}
                 showCustomTracker={enabledAgentTypes.has("custom-tracker")}
                 personaStats={personaStatBars}
                 onUpdatePersonaStats={(bars) => patchField("personaStats", bars)}
@@ -373,6 +387,12 @@ export function RoleplayHUD({
                 onUpdateCharacters={(chars) => patchField("presentCharacters", chars)}
                 quests={activeQuests}
                 onUpdateQuests={(q) => patchPlayerStats("activeQuests", q)}
+                inventoryCurrencies={inventoryTrackerCurrencies}
+                inventoryEquipped={inventoryTrackerEquipped}
+                inventory={inventoryTrackerInventory}
+                onUpdateInventoryCurrencies={(rows) => editInventoryTracker("currencies", rows)}
+                onUpdateInventoryEquipped={(rows) => editInventoryTracker("equipped", rows)}
+                onUpdateInventory={(rows) => editInventoryTracker("inventory", rows)}
                 customTrackerFields={customTrackerFields}
                 onUpdateCustomTracker={(fields) => patchPlayerStats("customTrackerFields", fields)}
                 onRerunSingleTracker={onRerunSingleTracker}
@@ -380,20 +400,7 @@ export function RoleplayHUD({
               />
             )}
 
-            {hasInventoryTracker && (
-              <InventoryTrackerWidget
-                currencies={inventoryTrackerCurrencies}
-                equipped={inventoryTrackerEquipped}
-                inventory={inventoryTrackerInventory}
-                onUpdateCurrencies={(rows) => editInventoryTracker("currencies", rows)}
-                onUpdateEquipped={(rows) => editInventoryTracker("equipped", rows)}
-                onUpdateInventory={(rows) => editInventoryTracker("inventory", rows)}
-                onRerunSingleTracker={onRerunSingleTracker}
-                isTrackerRetryBusy={isTrackerBusy}
-              />
-            )}
-
-            {[...memoryNagTrackerPackages, ...otherRoleplayTrackerPackages, ...beholderTrackerPackages].map((item) => (
+            {otherRoleplayTrackerPackages.map((item) => (
               <RoleplayTrackerCapability
                 key={`${item.id}-roleplay-tracker-mobile`}
                 packageId={item.id}
@@ -502,10 +509,6 @@ export function RoleplayHUD({
             )}
 
             {otherRoleplayTrackerPackages.map((item) => (
-              <RoleplayTrackerCapability key={`${item.id}-roleplay-tracker`} packageId={item.id} chatId={chatId} />
-            ))}
-
-            {beholderTrackerPackages.map((item) => (
               <RoleplayTrackerCapability key={`${item.id}-roleplay-tracker`} packageId={item.id} chatId={chatId} />
             ))}
 
@@ -810,6 +813,9 @@ function CombinedPlayerWidget({
   showPersona,
   showCharacters,
   showQuests,
+  showInventory,
+  memoryNagPackageIds,
+  chatId,
   showCustomTracker,
   personaStats,
   onUpdatePersonaStats,
@@ -819,6 +825,12 @@ function CombinedPlayerWidget({
   onUpdateCharacters,
   quests,
   onUpdateQuests,
+  inventoryCurrencies,
+  inventoryEquipped,
+  inventory,
+  onUpdateInventoryCurrencies,
+  onUpdateInventoryEquipped,
+  onUpdateInventory,
   customTrackerFields,
   onUpdateCustomTracker,
   onRerunSingleTracker,
@@ -827,6 +839,9 @@ function CombinedPlayerWidget({
   showPersona: boolean;
   showCharacters: boolean;
   showQuests: boolean;
+  showInventory: boolean;
+  memoryNagPackageIds: string[];
+  chatId: string;
   showCustomTracker: boolean;
   personaStats: CharacterStat[];
   onUpdatePersonaStats: (bars: CharacterStat[]) => void;
@@ -836,6 +851,12 @@ function CombinedPlayerWidget({
   onUpdateCharacters: (chars: PresentCharacter[]) => void;
   quests: QuestProgress[];
   onUpdateQuests: (quests: QuestProgress[]) => void;
+  inventoryCurrencies: InventoryTrackerRow[];
+  inventoryEquipped: InventoryTrackerRow[];
+  inventory: InventoryTrackerRow[];
+  onUpdateInventoryCurrencies: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventoryEquipped: (rows: InventoryTrackerRow[]) => void;
+  onUpdateInventory: (rows: InventoryTrackerRow[]) => void;
   customTrackerFields: CustomTrackerField[];
   onUpdateCustomTracker: (fields: CustomTrackerField[]) => void;
   onRerunSingleTracker?: (agentType: string) => void;
@@ -872,6 +893,9 @@ function CombinedPlayerWidget({
             showPersona={showPersona}
             showCharacters={showCharacters}
             showQuests={showQuests}
+            showInventory={showInventory}
+            memoryNagPackageIds={memoryNagPackageIds}
+            chatId={chatId}
             showCustomTracker={showCustomTracker}
             personaStats={personaStats}
             onUpdatePersonaStats={onUpdatePersonaStats}
@@ -881,6 +905,12 @@ function CombinedPlayerWidget({
             onUpdateCharacters={onUpdateCharacters}
             quests={quests}
             onUpdateQuests={onUpdateQuests}
+            inventoryCurrencies={inventoryCurrencies}
+            inventoryEquipped={inventoryEquipped}
+            inventory={inventory}
+            onUpdateInventoryCurrencies={onUpdateInventoryCurrencies}
+            onUpdateInventoryEquipped={onUpdateInventoryEquipped}
+            onUpdateInventory={onUpdateInventory}
             customTrackerFields={customTrackerFields}
             onUpdateCustomTracker={onUpdateCustomTracker}
             onClose={() => setOpen(false)}

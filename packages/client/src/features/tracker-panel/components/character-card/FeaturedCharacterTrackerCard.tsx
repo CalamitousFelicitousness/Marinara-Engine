@@ -8,6 +8,7 @@ import type {
   TrackerThoughtBubbleDisplay,
 } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
+import { useRenderTimer } from "../../../../lib/perf-diagnostics";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { visibleText } from "../../lib/tracker-display";
 import { useCharacterCardMutations } from "../../hooks/use-character-card-mutations";
@@ -110,6 +111,7 @@ export function FeaturedCharacterTrackerCard({
   onToggleFeatured: () => void;
   onUploadAvatar: () => void;
 }) {
+  useRenderTimer(`tracker-featured:${characterIndex}`); // [#3104 diagnostic]
   const { t: localizeUi } = useUiTranslation();
   const trackerWindow = useTrackerWindow();
   const trackerDocument = trackerWindow.document;

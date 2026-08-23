@@ -5970,7 +5970,11 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
       persisted.state.trackerPanelEnabled = true;
       persisted.state.trackerPanelOpen = false;
       persisted.state.trackerPanelSide = "left";
-      persisted.state.trackerPanelSizeProfile = "expanded";
+      // Fork: the size profile became a free width, and shrinking type to fit is
+      // now the opt-in `scale` placement rather than the default. This spec
+      // covers that mode; the default `dock` placement reflows instead.
+      persisted.state.trackerPanelWidth = 420;
+      persisted.state.trackerPanelPlacement = "scale";
       persisted.state.trackerPanelHideHudWidgets = false;
       localStorage.setItem("marinara-engine-ui", JSON.stringify(persisted));
       localStorage.setItem("marinara-active-chat-id", chatId);
@@ -6026,11 +6030,16 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     expect(Math.abs(appliedScale - expectedScale)).toBeLessThanOrEqual(0.001);
     const emptyTrackerText = tracker.getByText("No enabled tracker panels.", { exact: true });
     await expect(emptyTrackerText).toBeVisible();
-    const [emptyTextFontSize, rootFontSize] = await emptyTrackerText.evaluate((element) => [
+    // Fork: panel type is a token multiplied by two scales -- the Text size
+    // control and, under the `scale` placement only, the fit-to-gutter scale.
+    // Read the control's factor rather than hardcoding it, so retuning the size
+    // steps does not silently invalidate this assertion.
+    const [emptyTextFontSize, rootFontSize, textScale] = await emptyTrackerText.evaluate((element) => [
       parseFloat(getComputedStyle(element).fontSize),
       parseFloat(getComputedStyle(document.documentElement).fontSize),
+      parseFloat(getComputedStyle(element).getPropertyValue("--tracker-text-scale")) || 1,
     ]);
-    expect(Math.abs(emptyTextFontSize - rootFontSize * 0.6875 * expectedScale)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(emptyTextFontSize - rootFontSize * 0.6875 * textScale * expectedScale)).toBeLessThanOrEqual(0.1);
 
     const trackerContentBox = await trackerContent.boundingBox();
     expect(trackerContentBox).not.toBeNull();

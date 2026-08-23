@@ -16,6 +16,7 @@ import {
 import { useChatStore } from "../../../stores/chat.store";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import { createEmptyGameState, useGameStatePatcher } from "../../../hooks/use-game-state-patcher";
+import { useStableRecord } from "../../../hooks/use-stable-record";
 import { getCssBackgroundStyle, getCssColorFallback, isCssGradient } from "../../../lib/css-colors";
 import { useRenderTimer } from "../../../lib/perf-diagnostics";
 import { cn } from "../../../lib/utils";
@@ -140,12 +141,15 @@ export function TrackerDataSidebar({
   const addMode = activeEditMode === "add";
   const lockMode = activeEditMode === "lock";
   const hideMode = activeEditMode === "hide";
-  const fieldLocks = currentGameState
-    ? normalizeTrackerFieldLocksForState(currentGameState.fieldLocks, currentGameState)
-    : null;
-  const hiddenTrackerFields = currentGameState
-    ? normalizeTrackerHiddenFields(currentGameState.hiddenTrackerFields)
-    : null;
+  // Both normalizers allocate on every call. Held at their previous reference
+  // while their content is unchanged, or the lock context's identity churns
+  // every render and re-renders every card through context.
+  const fieldLocks = useStableRecord(
+    currentGameState ? normalizeTrackerFieldLocksForState(currentGameState.fieldLocks, currentGameState) : null,
+  );
+  const hiddenTrackerFields = useStableRecord(
+    currentGameState ? normalizeTrackerHiddenFields(currentGameState.hiddenTrackerFields) : null,
+  );
   const updateFieldLocks = useTrackerFieldLockUpdater({ chatId: activeChatId, fieldLocks, patchField });
   const updateHiddenTrackerFields = useCallback(
     (updater: (hiddenFields: TrackerHiddenFields | null | undefined) => TrackerHiddenFields) => {

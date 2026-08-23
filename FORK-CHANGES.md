@@ -429,6 +429,80 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### One changed character no longer re-renders every card
+
+Measured with the repo's own `mari-perf` diagnostic, six characters present, adding a seventh:
+
+| | Cards that re-rendered | Card renders |
+| --- | --- | --- |
+| Before | 7 of 7 | 8 |
+| After | 1 of 7 | 2 |
+
+The six untouched cards were re-rendering their whole subtree -- portrait, stats, custom fields and
+the recursive extras tree -- on a patch that changed none of them. The waste scales with the cast,
+and issue #3104 is a freeze report from chats running the tracker agents.
+
+Four independent causes, all of which had to go together. Any one left in place restores the full
+fan-out, and none of them fails visibly:
+
+1. **The card map built four closures per card per render.** `onUpdate`, `onRemove`,
+   `onToggleFeatured` and `onUploadAvatar` were fresh identities every time, so a `React.memo` on the
+   card would have compared them, found them different, and re-rendered anyway. `useCallback` is not
+   available in a `.map`, so the index moved into memoized `CompactCharacterCardSlot` /
+   `FeaturedCharacterCardSlot` components that build their own callbacks from index-taking parents.
+2. **The lock context churned every render.** `normalizeTrackerFieldLocks` allocates on every call
+   and `TrackerDataSidebar` called it unconditionally, so `TrackerLockProvider`'s memoized value
+   changed identity every render. Context updates bypass `React.memo` entirely, so this alone would
+   have made the memo boundaries measure as zero improvement. `useStableRecord` now holds both lock
+   records at their previous reference while their content is unchanged.
+3. **`StatIconLookup` was rebuilt every render.** It returned a bare object literal, and it is a prop
+   on every card. It is an API over moving state rather than a derived value, so it is now memoized
+   with no dependencies and resolves against a single `latest` ref at call time.
+4. **The character mutations closed over the rendered snapshot.** `updateCharacter`,
+   `removeCharacter` and the featured-card toggles listed `presentCharacters` (or a `Set` rebuilt
+   from chat metadata) in their dependencies, so every patch changed their identity. They read those
+   through refs now. That is equivalent rather than approximate: a card that did not re-render holds
+   the same character object the ref does, because a changed object would have re-rendered it.
+
+The memo boundary is the slot, not the card. Same effect, and it keeps the change out of
+`CharacterTrackerCard.tsx` and `FeaturedCharacterTrackerCard.tsx`, which upstream edits often.
+
+`contain-intrinsic-size` moves from `10rem` to `auto 10rem`. The bare value is a fixed guess for a
+card whose height varies with its stats, custom fields and extras, so off-screen cards reserved the
+wrong space and the list jumped as they scrolled in. `auto` reuses each card's last rendered height
+and keeps the `content-visibility` saving.
+
+Both cards keep a permanent `useRenderTimer` under the existing `// [#3104 diagnostic]` convention.
+To re-measure: `localStorage.mariPerfVerbose = "1"`, reload, and watch the `[mari-perf]
+tracker-card:<n>` lines while a tracker turn streams. It is inert unless that key is set.
+
+`shallowRecordEqual` moves to `lib/shallow-record-equal.ts`; `use-tracker-mutations.ts` had its own
+copy and `useStableRecord` needed the same thing.
+
+`scripts/regressions/tracker-render-cost.regression.ts` pins all four causes plus the containment
+placeholder, and covers `shallowRecordEqual` directly. Verified non-vacuous by removing a memo
+boundary, which fails the lane.
+
+The prop-drilling-to-selectors item from the plan was dropped. The props `TrackerSectionList` passes
+are mostly stable store values already; the churn came from the four causes above, so converting
+them would have carried a large merge cost against upstream-edited files for no measured gain.
+
+Three stale assertions from earlier fork phases were fixed in the same pass, each a real failure this
+work surfaced rather than caused:
+
+- `roleplay-streaming.regression.ts` pinned `version: 95` in `ui.store.ts`; three tracker migrations
+  have since taken it to 98.
+- `open-issues.regression.ts` expected a migrated `trackerPanelTextSize` of `s`; the default became
+  `l` when the size steps widened.
+- The `desktop Tracker scales into either Roleplay gutter` e2e spec seeded `trackerPanelSizeProfile`,
+  which is no longer persisted, and asserted a font size that predates the independent Text size
+  axis. It now seeds `trackerPanelWidth` plus `trackerPanelPlacement: "scale"` -- the mode it
+  actually covers -- and reads `--tracker-text-scale` instead of hardcoding it.
+
+Every file except the three new ones is upstream-edited, so a merge can revert these call sites. The
+memo boundaries and the ref reads are the parts that fail silently if lost, which is what the
+regression lane is for.
+
 ### Character cards share one section tail and one set of mutations
 
 `CharacterTrackerCard.tsx` and `FeaturedCharacterTrackerCard.tsx` each carried their own copy of

@@ -6741,7 +6741,9 @@ assert.deepEqual(trackerMigrationProjection(currentTrackerSettings), {
   },
   trackerPanelThoughtBubbleDisplay: "floating",
   trackerPanelWidth: 280,
-  trackerPanelTextSize: "s",
+  // Fork: no legacy density in the fixture, so this is TRACKER_PANEL_TEXT_SIZE_DEFAULT.
+  // It is "l" because S through L all rendered smaller than the chat body.
+  trackerPanelTextSize: "l",
   trackerPanelPlacement: "dock",
   trackerPanelSizeProfile: undefined,
   trackerTemperatureUnit: "celsius",

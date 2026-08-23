@@ -211,82 +211,115 @@ export function useStatIcons({
 
   const personaOwner = activePersona ? `persona:${activePersona.id}` : null;
 
-  return {
-    resolvePersonaStatIcon: (statName, occurrence) => {
-      const writableOverrides = getWritableOverrides();
-      const value = personaOwner
-        ? resolveStatIconAssignment(writableOverrides[personaOwner] ?? [], statName, occurrence)
-        : undefined;
-      const fallback = resolveStatIconAssignment(personaProfileIcons, statName, occurrence) ?? null;
-      return { value, displayIcon: value === undefined ? fallback : value };
-    },
-    setPersonaStatIcon: (statName, occurrence, icon) => {
-      if (!personaOwner) return;
-      persistOwner((currentOverrides) => {
-        const nextOverrides = { ...currentOverrides };
-        const assignments = setStatIconAssignment(currentOverrides[personaOwner] ?? [], statName, occurrence, icon);
-        if (assignments.length > 0) nextOverrides[personaOwner] = assignments;
-        else delete nextOverrides[personaOwner];
-        return nextOverrides;
-      });
-    },
-    remapPersonaStatIcons: (previousStats, nextStats, previousIndexForNext) => {
-      if (!personaOwner) return;
-      persistOwner((currentOverrides) => {
-        const nextOverrides = { ...currentOverrides };
-        const assignments = remapStatIconAssignments(
-          currentOverrides[personaOwner] ?? [],
-          previousStats,
-          nextStats,
-          previousIndexForNext,
-        );
-        if (assignments.length > 0) nextOverrides[personaOwner] = assignments;
-        else delete nextOverrides[personaOwner];
-        return nextOverrides;
-      });
-    },
-    resolveCharacterStatIcon: (character, characterIndex, statName, occurrence) => {
-      const owners = characterOwnerKeys(character, characterIndex, presentCharacters);
-      const { assignments } = resolveOwnerAssignments(getWritableOverrides(), owners);
-      const value = resolveStatIconAssignment(assignments, statName, occurrence);
-      const profileCharacterId = resolveProfileCharacterId(character);
-      const fallback = profileCharacterId
-        ? (resolveStatIconAssignment(
-            characterProfileColorsById[profileCharacterId]?.trackerCardColors?.statIcons ?? [],
-            statName,
-            occurrence,
-          ) ?? null)
-        : null;
-      return { value, displayIcon: value === undefined ? fallback : value };
-    },
-    setCharacterStatIcon: (character, characterIndex, statName, occurrence, icon) => {
-      const owners = characterOwnerKeys(character, characterIndex, presentCharacters);
-      persistOwner((currentOverrides) => {
-        const source = resolveOwnerAssignments(currentOverrides, owners);
-        const nextOverrides = { ...currentOverrides };
-        if (source.owner !== owners.primary) delete nextOverrides[source.owner];
-        const assignments = setStatIconAssignment(source.assignments, statName, occurrence, icon);
-        if (assignments.length > 0) nextOverrides[owners.primary] = assignments;
-        else delete nextOverrides[owners.primary];
-        return nextOverrides;
-      });
-    },
-    remapCharacterStatIcons: (character, characterIndex, previousStats, nextStats, previousIndexForNext) => {
-      const owners = characterOwnerKeys(character, characterIndex, presentCharacters);
-      persistOwner((currentOverrides) => {
-        const source = resolveOwnerAssignments(currentOverrides, owners);
-        const nextOverrides = { ...currentOverrides };
-        if (source.owner !== owners.primary) delete nextOverrides[source.owner];
-        const assignments = remapStatIconAssignments(
-          source.assignments,
-          previousStats,
-          nextStats,
-          previousIndexForNext,
-        );
-        if (assignments.length > 0) nextOverrides[owners.primary] = assignments;
-        else delete nextOverrides[owners.primary];
-        return nextOverrides;
-      });
-    },
+  // StatIconLookup is a stable API over moving state, not a derived value: every
+  // method resolves against whatever is current when it is called, and nothing
+  // it returns is read during the render that produced it.
+  //
+  // Holding these in one ref keeps the lookup's identity fixed for the lifetime
+  // of the hook. In the memo deps they rebuilt it on every game-state patch, and
+  // it is a prop on every character card -- so one changed character re-rendered
+  // all of them. Add a new input here rather than to the deps below.
+  const latest = useRef({
+    characterProfileColorsById,
+    getWritableOverrides,
+    personaOwner,
+    personaProfileIcons,
+    persistOwner,
+    presentCharacters,
+    resolveProfileCharacterId,
+  });
+  latest.current = {
+    characterProfileColorsById,
+    getWritableOverrides,
+    personaOwner,
+    personaProfileIcons,
+    persistOwner,
+    presentCharacters,
+    resolveProfileCharacterId,
   };
+
+  return useMemo<StatIconLookup>(
+    () => ({
+      resolvePersonaStatIcon: (statName, occurrence) => {
+        const { getWritableOverrides: readOverrides, personaOwner } = latest.current;
+        const writableOverrides = readOverrides();
+        const value = personaOwner
+          ? resolveStatIconAssignment(writableOverrides[personaOwner] ?? [], statName, occurrence)
+          : undefined;
+        const fallback = resolveStatIconAssignment(latest.current.personaProfileIcons, statName, occurrence) ?? null;
+        return { value, displayIcon: value === undefined ? fallback : value };
+      },
+      setPersonaStatIcon: (statName, occurrence, icon) => {
+        const personaOwner = latest.current.personaOwner;
+        if (!personaOwner) return;
+        latest.current.persistOwner((currentOverrides) => {
+          const nextOverrides = { ...currentOverrides };
+          const assignments = setStatIconAssignment(currentOverrides[personaOwner] ?? [], statName, occurrence, icon);
+          if (assignments.length > 0) nextOverrides[personaOwner] = assignments;
+          else delete nextOverrides[personaOwner];
+          return nextOverrides;
+        });
+      },
+      remapPersonaStatIcons: (previousStats, nextStats, previousIndexForNext) => {
+        const personaOwner = latest.current.personaOwner;
+        if (!personaOwner) return;
+        latest.current.persistOwner((currentOverrides) => {
+          const nextOverrides = { ...currentOverrides };
+          const assignments = remapStatIconAssignments(
+            currentOverrides[personaOwner] ?? [],
+            previousStats,
+            nextStats,
+            previousIndexForNext,
+          );
+          if (assignments.length > 0) nextOverrides[personaOwner] = assignments;
+          else delete nextOverrides[personaOwner];
+          return nextOverrides;
+        });
+      },
+      resolveCharacterStatIcon: (character, characterIndex, statName, occurrence) => {
+        const owners = characterOwnerKeys(character, characterIndex, latest.current.presentCharacters);
+        const { assignments } = resolveOwnerAssignments(latest.current.getWritableOverrides(), owners);
+        const value = resolveStatIconAssignment(assignments, statName, occurrence);
+        const profileCharacterId = latest.current.resolveProfileCharacterId(character);
+        const fallback = profileCharacterId
+          ? (resolveStatIconAssignment(
+              latest.current.characterProfileColorsById[profileCharacterId]?.trackerCardColors?.statIcons ?? [],
+              statName,
+              occurrence,
+            ) ?? null)
+          : null;
+        return { value, displayIcon: value === undefined ? fallback : value };
+      },
+      setCharacterStatIcon: (character, characterIndex, statName, occurrence, icon) => {
+        const owners = characterOwnerKeys(character, characterIndex, latest.current.presentCharacters);
+        latest.current.persistOwner((currentOverrides) => {
+          const source = resolveOwnerAssignments(currentOverrides, owners);
+          const nextOverrides = { ...currentOverrides };
+          if (source.owner !== owners.primary) delete nextOverrides[source.owner];
+          const assignments = setStatIconAssignment(source.assignments, statName, occurrence, icon);
+          if (assignments.length > 0) nextOverrides[owners.primary] = assignments;
+          else delete nextOverrides[owners.primary];
+          return nextOverrides;
+        });
+      },
+      remapCharacterStatIcons: (character, characterIndex, previousStats, nextStats, previousIndexForNext) => {
+        const owners = characterOwnerKeys(character, characterIndex, latest.current.presentCharacters);
+        latest.current.persistOwner((currentOverrides) => {
+          const source = resolveOwnerAssignments(currentOverrides, owners);
+          const nextOverrides = { ...currentOverrides };
+          if (source.owner !== owners.primary) delete nextOverrides[source.owner];
+          const assignments = remapStatIconAssignments(
+            source.assignments,
+            previousStats,
+            nextStats,
+            previousIndexForNext,
+          );
+          if (assignments.length > 0) nextOverrides[owners.primary] = assignments;
+          else delete nextOverrides[owners.primary];
+          return nextOverrides;
+        });
+      },
+    }),
+    [],
+  );
 }

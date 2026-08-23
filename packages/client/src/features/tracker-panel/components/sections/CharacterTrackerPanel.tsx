@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { Users } from "lucide-react";
 import type { PresentCharacter } from "@marinara-engine/shared";
 import type {
@@ -20,7 +20,146 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 const COMPACT_CHARACTER_GHOST_SLOT_CLASS =
   "pointer-events-none relative hidden min-h-0 self-stretch overflow-hidden rounded-md border border-[color-mix(in_srgb,var(--border)_28%,transparent)] bg-[var(--tracker-panel-card-background,linear-gradient(135deg,color-mix(in_srgb,var(--card)_18%,transparent),color-mix(in_srgb,var(--background)_12%,transparent)_48%,transparent))] opacity-55 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_3%,transparent),inset_0_-1px_0_color-mix(in_srgb,var(--background)_18%,transparent)] @min-[260px]:block before:pointer-events-none before:absolute before:left-0 before:right-2 before:top-0.5 before:h-5 before:rounded-l-[4px] before:rounded-r-[2px] before:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--background)_78%,var(--card)_22%),color-mix(in_srgb,var(--card)_42%,transparent))] before:opacity-65 after:pointer-events-none after:absolute after:inset-1 after:rounded-[4px] after:bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--border)_12%,transparent)_0_1px,transparent_1px_7px)] after:opacity-35";
 const COMPACT_CHARACTER_CARD_SLOT_CLASS = "min-h-0 h-full";
-const CHARACTER_CARD_RENDER_CONTAINMENT_CLASS = "[content-visibility:auto] [contain-intrinsic-size:10rem]";
+// `auto` keeps each card's last rendered height as its placeholder. A bare
+// `10rem` is a fixed guess for a card whose height varies with its stats, custom
+// fields and extras, so off-screen cards reserved the wrong space and the list
+// jumped as they scrolled in.
+const CHARACTER_CARD_RENDER_CONTAINMENT_CLASS = "[content-visibility:auto] [contain-intrinsic-size:auto_10rem]";
+
+/**
+ * Index-taking callbacks, shared by both slots.
+ *
+ * The card map used to build four closures per card per render, which made a
+ * memo boundary on the card worthless: new identities every time, so every card
+ * re-rendered on every patch. Holding the index in a memoized slot lets the
+ * parent pass callbacks that stay stable across renders.
+ */
+type CharacterCardSlotCallbacks = {
+  onUpdateCharacter: (index: number, character: PresentCharacter) => void;
+  onRemoveCharacter: (index: number) => void;
+  onToggleFeatured: (key: string) => void;
+  onUploadAvatar: (index: number) => void;
+};
+
+function useCharacterSlotCallbacks(
+  characterIndex: number,
+  cardKey: string,
+  { onUpdateCharacter, onRemoveCharacter, onToggleFeatured, onUploadAvatar }: CharacterCardSlotCallbacks,
+) {
+  return {
+    onUpdate: useCallback(
+      (updated: PresentCharacter) => onUpdateCharacter(characterIndex, updated),
+      [characterIndex, onUpdateCharacter],
+    ),
+    onRemove: useCallback(() => onRemoveCharacter(characterIndex), [characterIndex, onRemoveCharacter]),
+    onToggleFeatured: useCallback(() => onToggleFeatured(cardKey), [cardKey, onToggleFeatured]),
+    onUploadAvatar: useCallback(() => onUploadAvatar(characterIndex), [characterIndex, onUploadAvatar]),
+  };
+}
+
+const CompactCharacterCardSlot = memo(function CompactCharacterCardSlot({
+  character,
+  characterIndex,
+  cardKey,
+  characterPicture,
+  profileColors,
+  trackerPanelSizeProfile,
+  statDisplayMode,
+  resolveStatIcon,
+  deleteMode,
+  addMode,
+  ...callbacks
+}: {
+  character: PresentCharacter;
+  characterIndex: number;
+  cardKey: string;
+  characterPicture?: string;
+  profileColors?: TrackerProfileColors;
+  trackerPanelSizeProfile: TrackerPanelSizeProfile;
+  statDisplayMode: TrackerStatDisplayMode;
+  resolveStatIcon: StatIconLookup;
+  deleteMode: boolean;
+  addMode: boolean;
+} & CharacterCardSlotCallbacks) {
+  const slot = useCharacterSlotCallbacks(characterIndex, cardKey, callbacks);
+  return (
+    <div className={cn(COMPACT_CHARACTER_CARD_SLOT_CLASS, CHARACTER_CARD_RENDER_CONTAINMENT_CLASS)}>
+      <CharacterTrackerCard
+        character={character}
+        characterPicture={characterPicture}
+        profileColors={profileColors}
+        trackerPanelSizeProfile={trackerPanelSizeProfile}
+        statDisplayMode={statDisplayMode}
+        resolveStatIcon={resolveStatIcon}
+        characterIndex={characterIndex}
+        deleteMode={deleteMode}
+        addMode={addMode}
+        {...slot}
+      />
+    </div>
+  );
+});
+
+const FeaturedCharacterCardSlot = memo(function FeaturedCharacterCardSlot({
+  character,
+  characterIndex,
+  cardKey,
+  spriteCharacterId,
+  spriteExpression,
+  expressionSpritesEnabled,
+  characterPicture,
+  profileColors,
+  trackerPanelSide,
+  trackerPanelSizeProfile,
+  thoughtBubbleDisplay,
+  statDisplayMode,
+  resolveStatIcon,
+  dockedThoughtsAlwaysVisible,
+  deleteMode,
+  addMode,
+  ...callbacks
+}: {
+  character: PresentCharacter;
+  characterIndex: number;
+  cardKey: string;
+  spriteCharacterId: string | null;
+  spriteExpression?: string;
+  expressionSpritesEnabled: boolean;
+  characterPicture?: string;
+  profileColors?: TrackerProfileColors;
+  trackerPanelSide: TrackerPanelSide;
+  trackerPanelSizeProfile: TrackerPanelSizeProfile;
+  thoughtBubbleDisplay: TrackerThoughtBubbleDisplay;
+  statDisplayMode: TrackerStatDisplayMode;
+  resolveStatIcon: StatIconLookup;
+  dockedThoughtsAlwaysVisible: boolean;
+  deleteMode: boolean;
+  addMode: boolean;
+} & CharacterCardSlotCallbacks) {
+  const slot = useCharacterSlotCallbacks(characterIndex, cardKey, callbacks);
+  return (
+    <div className={CHARACTER_CARD_RENDER_CONTAINMENT_CLASS}>
+      <FeaturedCharacterTrackerCard
+        character={character}
+        spriteCharacterId={spriteCharacterId}
+        spriteExpression={spriteExpression}
+        expressionSpritesEnabled={expressionSpritesEnabled}
+        characterPicture={characterPicture}
+        profileColors={profileColors}
+        trackerPanelSide={trackerPanelSide}
+        trackerPanelSizeProfile={trackerPanelSizeProfile}
+        thoughtBubbleDisplay={thoughtBubbleDisplay}
+        statDisplayMode={statDisplayMode}
+        resolveStatIcon={resolveStatIcon}
+        dockedThoughtsAlwaysVisible={dockedThoughtsAlwaysVisible}
+        characterIndex={characterIndex}
+        deleteMode={deleteMode}
+        addMode={addMode}
+        {...slot}
+      />
+    </div>
+  );
+});
 
 export function CharacterTrackerPanel({
   activeChatId,
@@ -103,55 +242,52 @@ export function CharacterTrackerPanel({
     const useCompactCardColumns = trackerPanelSizeProfile !== "compact";
     const shouldRenderCompactGhostSlot = useCompactCardColumns && compactEntries.length % 2 === 1;
     const renderCompactCharacterCard = (entry: (typeof characterEntries)[number]) => (
-      <div
+      <CompactCharacterCardSlot
         key={getCharacterEntryKey(entry)}
-        className={cn(COMPACT_CHARACTER_CARD_SLOT_CLASS, CHARACTER_CARD_RENDER_CONTAINMENT_CLASS)}
-      >
-        <CharacterTrackerCard
-          character={entry.character}
-          characterPicture={entry.characterPicture}
-          profileColors={entry.profileColors}
-          trackerPanelSizeProfile={trackerPanelSizeProfile}
-          statDisplayMode={statDisplayMode}
-          resolveStatIcon={resolveStatIcon}
-          onUpdate={(updated) => onUpdateCharacter(entry.index, updated)}
-          onRemove={() => onRemoveCharacter(entry.index)}
-          characterIndex={entry.index}
-          deleteMode={deleteMode}
-          addMode={addMode}
-          onToggleFeatured={() => onToggleFeatured(entry.cardKey)}
-          onUploadAvatar={() => onUploadAvatar(entry.index)}
-        />
-      </div>
+        character={entry.character}
+        characterIndex={entry.index}
+        cardKey={entry.cardKey}
+        characterPicture={entry.characterPicture}
+        profileColors={entry.profileColors}
+        trackerPanelSizeProfile={trackerPanelSizeProfile}
+        statDisplayMode={statDisplayMode}
+        resolveStatIcon={resolveStatIcon}
+        deleteMode={deleteMode}
+        addMode={addMode}
+        onUpdateCharacter={onUpdateCharacter}
+        onRemoveCharacter={onRemoveCharacter}
+        onToggleFeatured={onToggleFeatured}
+        onUploadAvatar={onUploadAvatar}
+      />
     );
     const renderFeaturedCharacterCard = (entry: (typeof characterEntries)[number]) => (
-      <div key={getCharacterEntryKey(entry)} className={CHARACTER_CARD_RENDER_CONTAINMENT_CLASS}>
-        <FeaturedCharacterTrackerCard
-          character={entry.character}
-          spriteCharacterId={entry.spriteCharacterId}
-          spriteExpression={
-            expressionSpritesEnabled
-              ? getSpriteExpressionForCharacter(spriteExpressions, entry.character, entry.spriteCharacterId)
-              : undefined
-          }
-          expressionSpritesEnabled={expressionSpritesEnabled}
-          characterPicture={entry.characterPicture}
-          profileColors={entry.profileColors}
-          trackerPanelSide={trackerPanelSide}
-          trackerPanelSizeProfile={trackerPanelSizeProfile}
-          thoughtBubbleDisplay={thoughtBubbleDisplay}
-          statDisplayMode={statDisplayMode}
-          resolveStatIcon={resolveStatIcon}
-          dockedThoughtsAlwaysVisible={dockedThoughtsAlwaysVisible}
-          onUpdate={(updated) => onUpdateCharacter(entry.index, updated)}
-          onRemove={() => onRemoveCharacter(entry.index)}
-          characterIndex={entry.index}
-          deleteMode={deleteMode}
-          addMode={addMode}
-          onToggleFeatured={() => onToggleFeatured(entry.cardKey)}
-          onUploadAvatar={() => onUploadAvatar(entry.index)}
-        />
-      </div>
+      <FeaturedCharacterCardSlot
+        key={getCharacterEntryKey(entry)}
+        character={entry.character}
+        characterIndex={entry.index}
+        cardKey={entry.cardKey}
+        spriteCharacterId={entry.spriteCharacterId}
+        spriteExpression={
+          expressionSpritesEnabled
+            ? getSpriteExpressionForCharacter(spriteExpressions, entry.character, entry.spriteCharacterId)
+            : undefined
+        }
+        expressionSpritesEnabled={expressionSpritesEnabled}
+        characterPicture={entry.characterPicture}
+        profileColors={entry.profileColors}
+        trackerPanelSide={trackerPanelSide}
+        trackerPanelSizeProfile={trackerPanelSizeProfile}
+        thoughtBubbleDisplay={thoughtBubbleDisplay}
+        statDisplayMode={statDisplayMode}
+        resolveStatIcon={resolveStatIcon}
+        dockedThoughtsAlwaysVisible={dockedThoughtsAlwaysVisible}
+        deleteMode={deleteMode}
+        addMode={addMode}
+        onUpdateCharacter={onUpdateCharacter}
+        onRemoveCharacter={onRemoveCharacter}
+        onToggleFeatured={onToggleFeatured}
+        onUploadAvatar={onUploadAvatar}
+      />
     );
 
     return (

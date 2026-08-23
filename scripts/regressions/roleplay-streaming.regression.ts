@@ -424,7 +424,9 @@ assert.match(
   "active Roleplay tracker agents should expose their saved prompt templates",
 );
 assert.match(reducedAmbientEffectsHookSource, /manualPreference \|\| systemPreference/u);
-assert.match(uiStoreSource, /version: 95/u);
+// Fork: 95 upstream, plus three tracker-panel migrations (width/density split,
+// reflow placement, always-float). Bump deliberately when adding a migration.
+assert.match(uiStoreSource, /version: 98/u);
 assert.match(globalStylesSource, /data-marinara-reduced-effects/u);
 const accentTransitionStyles =
   globalStylesSource.match(

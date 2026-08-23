@@ -8,6 +8,7 @@ import {
 } from "@marinara-engine/shared";
 import type { TrackerPanelSizeProfile, TrackerStatDisplayMode } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
+import { useRenderTimer } from "../../../../lib/perf-diagnostics";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { visibleText } from "../../lib/tracker-display";
 import {
@@ -166,6 +167,7 @@ export function CharacterTrackerCard({
   onToggleFeatured: () => void;
   onUploadAvatar: () => void;
 }) {
+  useRenderTimer(`tracker-card:${characterIndex}`); // [#3104 diagnostic]
   const { t: localizeUi } = useUiTranslation();
   const { fieldLocks, hideMode = false, lockMode, onToggleFieldLock } = useTrackerLockContext();
   const mutations = useCharacterCardMutations({ character, characterIndex, onUpdate });

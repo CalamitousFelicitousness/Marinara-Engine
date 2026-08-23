@@ -18,6 +18,7 @@ import {
   renameTrackerFieldLockPrefix,
 } from "@marinara-engine/shared";
 import { api } from "../../../lib/api-client";
+import { shallowRecordEqual } from "../../../lib/shallow-record-equal";
 import { useGameStateStore } from "../../../stores/game-state.store";
 import type { GameStatePatchField } from "../../../hooks/use-game-state-patcher";
 import { getCharacterFeatureKey, resolveCharacterTargetIndex } from "../lib/character-tracker-data";
@@ -29,18 +30,6 @@ function makeManualTrackerId() {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return `manual-${id}`;
-}
-
-function shallowRecordEqual(left: unknown, right: unknown) {
-  if (Object.is(left, right)) return true;
-  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const keys = new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)]);
-  for (const key of keys) {
-    if (!Object.is(leftRecord[key], rightRecord[key])) return false;
-  }
-  return true;
 }
 
 function mergeChangedRecord<T extends Record<string, unknown>>(live: T, rendered: T | undefined, updated: T): T {
@@ -143,6 +132,16 @@ export function useTrackerMutations({
     [activeChatId, patchField],
   );
 
+  // The rendered snapshot, read through a ref so the character mutations keep a
+  // stable identity across a game-state patch. They are props on every card, so
+  // in the deps one changed character re-renders all of them.
+  //
+  // Equivalent to closing over it: a card that did not re-render holds the same
+  // character object this ref does, because a changed object would have
+  // re-rendered it.
+  const renderedCharactersRef = useRef(presentCharacters);
+  renderedCharactersRef.current = presentCharacters;
+
   const readCurrentGameState = useCallback(() => {
     if (!activeChatId) return null;
     const current = useGameStateStore.getState().current;
@@ -150,8 +149,8 @@ export function useTrackerMutations({
   }, [activeChatId]);
 
   const readPresentCharacters = useCallback(
-    () => readCurrentGameState()?.presentCharacters ?? presentCharacters,
-    [presentCharacters, readCurrentGameState],
+    () => readCurrentGameState()?.presentCharacters ?? renderedCharactersRef.current,
+    [readCurrentGameState],
   );
   const readPlayerStats = useCallback(() => readCurrentGameState()?.playerStats ?? null, [readCurrentGameState]);
   const readInventory = useCallback(() => readPlayerStats()?.inventory ?? inventory, [inventory, readPlayerStats]);
@@ -164,12 +163,13 @@ export function useTrackerMutations({
 
   const openAvatarUpload = useCallback(
     (index: number) => {
-      const characterId = presentCharacters[index]?.characterId ?? readPresentCharacters()[index]?.characterId ?? null;
+      const characterId =
+        renderedCharactersRef.current[index]?.characterId ?? readPresentCharacters()[index]?.characterId ?? null;
       if (!characterId) return;
       setAvatarUpload({ characterId, index });
       avatarFileInputRef.current?.click();
     },
-    [presentCharacters, readPresentCharacters],
+    [readPresentCharacters],
   );
 
   const handleAvatarUpload = useCallback(
@@ -241,7 +241,7 @@ export function useTrackerMutations({
   const updateCharacter = useCallback(
     (index: number, character: PresentCharacter) => {
       const liveCharacters = readPresentCharacters();
-      const renderedCharacter = presentCharacters[index];
+      const renderedCharacter = renderedCharactersRef.current[index];
       const targetCharacterId = character.characterId || renderedCharacter?.characterId;
       const targetIndex = resolveCharacterTargetIndex(liveCharacters, targetCharacterId, index);
       if (targetIndex < 0) return;
@@ -272,13 +272,13 @@ export function useTrackerMutations({
       next[targetIndex] = nextCharacter;
       patchField("presentCharacters", next);
     },
-    [patchField, presentCharacters, readPresentCharacters, updateFieldLocks, updateHiddenTrackerFields],
+    [patchField, readPresentCharacters, updateFieldLocks, updateHiddenTrackerFields],
   );
 
   const removeCharacter = useCallback(
     (index: number) => {
       const liveCharacters = readPresentCharacters();
-      const renderedCharacter = presentCharacters[index];
+      const renderedCharacter = renderedCharactersRef.current[index];
       const targetIndex = resolveCharacterTargetIndex(liveCharacters, renderedCharacter?.characterId, index);
       if (targetIndex < 0) return;
 
@@ -293,14 +293,7 @@ export function useTrackerMutations({
         liveCharacters.filter((_, characterIndex) => characterIndex !== targetIndex),
       );
     },
-    [
-      patchField,
-      presentCharacters,
-      readPresentCharacters,
-      removeFeaturedCharacterCard,
-      updateFieldLocks,
-      updateHiddenTrackerFields,
-    ],
+    [patchField, readPresentCharacters, removeFeaturedCharacterCard, updateFieldLocks, updateHiddenTrackerFields],
   );
 
   const addCharacter = useCallback(() => {

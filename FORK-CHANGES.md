@@ -429,6 +429,52 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Character cards share one section tail and one set of mutations
+
+`CharacterTrackerCard.tsx` and `FeaturedCharacterTrackerCard.tsx` each carried their own copy of
+`updateCustomField`, `addCustomField`, `removeCustomField` and `addCharacterStat`. The copies had
+already drifted: the compact `removeCustomField` typed its working object `Record<string, unknown>`
+while the featured one cast at the `onUpdate` call, and the featured card kept a thoughts-only
+specialisation of the compact card's generic hidden-field toggle.
+
+That duplication had already shipped a bug. `CharacterTrackerExtras` was mounted in the compact card
+only, so a featured card rendered none of the nested data the tracker agent had already stored.
+
+Two new files own what was duplicated:
+
+- `hooks/use-character-card-mutations.ts` -- the four handlers, the extras write, and the
+  hidden-field toggle. Lock and hidden-field updaters come from `TrackerLockContext` rather than
+  arguments, since both cards already consume that context.
+- `components/character-card/CharacterCardSections.tsx` -- custom fields then nested extras, the two
+  sections that trail the card body in both layouts. A third trailing section can now only be added
+  once. Per-variant chrome sits in three `Record<CharacterCardVariant, ...>` tables in that file, so
+  the compact and featured styling are read side by side.
+
+Stats deliberately stay out of the shared tail. The featured card places its `StatList` inside the
+portrait grid rather than after the body, so sharing it would mean parameterising layout, not
+sharing it.
+
+Two behaviour changes fall out of unifying:
+
+- Featured custom-field values now honour the readable density (`twoLinePreview` at expanded width)
+  instead of always scrolling one line on hover. The featured card's own extras already used that
+  expression; its custom fields had simply never been given it.
+- Hiding a field is now cleared through a per-field function rather than a value lookup. `mood` is
+  `string` while `appearance`, `outfit` and `thoughts` are `string | null`, and a computed-key spread
+  (`{ ...character, [field]: value }`) widens, so the compiler would not have caught `mood: null`.
+  Each literal key is checked.
+
+Net line count is roughly flat -- 342 lines leave the two cards, 331 arrive in the two shared files.
+The win is that each behaviour exists once, not that there is less code.
+
+`scripts/regressions/character-card-sections.regression.ts` pins the de-duplication: both cards mount
+the shared tail, neither mounts `CharacterTrackerExtras` or renders field rows itself, neither
+re-declares a handler, and the per-field clearers keep their types. Verified non-vacuous by
+reintroducing the original bug, which fails the lane on the extras assertion.
+
+Both card files are upstream-edited, so a merge can revert the call sites. The two new files are
+fork-only and cannot collide.
+
 ### Clearing trackers now actually clears them, plus a global reset
 
 "Clear trackers" wrote an empty snapshot and stopped there, which does not retire anything: every

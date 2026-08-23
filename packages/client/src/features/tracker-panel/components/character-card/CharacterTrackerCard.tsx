@@ -1,31 +1,22 @@
 import type { ReactNode } from "react";
 import { Eye, HeartPulse, Maximize2, Shirt, X } from "lucide-react";
 import {
-  characterCustomFieldTrackerLockKey,
   characterStatTrackerLockKey,
   characterTrackerLockKey,
-  characterTrackerLockPrefix,
-  readCharacterExtras,
-  isTrackerFieldHidden,
   isTrackerFieldLocked,
-  normalizeTrackerFieldLocks,
-  normalizeTrackerHiddenFields,
-  removeTrackerFieldLockPrefix,
-  renameTrackerFieldLockPrefix,
   type PresentCharacter,
 } from "@marinara-engine/shared";
 import type { TrackerPanelSizeProfile, TrackerStatDisplayMode } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
-import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/tracker-row-layout";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
-import { trackerEditableText, visibleText } from "../../lib/tracker-display";
+import { visibleText } from "../../lib/tracker-display";
 import {
-  makeUniqueCharacterCustomFieldName,
-  normalizeCharacterCustomFieldName,
-  resolveCharacterCustomFieldName,
-} from "../../lib/character-custom-field-names";
+  readCharacterCustomFieldEntries,
+  useCharacterCardMutations,
+  type HideableCharacterField,
+} from "../../hooks/use-character-card-mutations";
 import { getCharacterAmbienceStyle, type TrackerProfileColors } from "../../lib/tracker-profile-style";
-import { InlineAddRow, InlineEdit } from "../controls/InlineControls";
+import { InlineEdit } from "../controls/InlineControls";
 import {
   TrackerProfileDisplayWash,
   TrackerProfileEdgeHighlight,
@@ -33,8 +24,8 @@ import {
 } from "../controls/TrackerProfileChrome";
 import { StatList } from "../controls/StatList";
 import { useTrackerFieldLock, useTrackerLockContext } from "../TrackerLockContext";
+import { CharacterCardSections } from "./CharacterCardSections";
 import { CharacterTrackerAvatar } from "./CharacterTrackerAvatar";
-import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
 import { COMPACT_CHARACTER_MOOD_EDIT_CLASS, CompactCharacterField } from "./CharacterTrackerField";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -73,12 +64,6 @@ const CHARACTER_NAME_EDIT_CLASS =
 const CHARACTER_DETAIL_ROWS_CLASS = "relative z-[1] mt-0.5 grid grid-cols-1 gap-px px-px pb-px";
 const CHARACTER_STAT_BLOCK_CLASS =
   "group/statbox relative z-[1] mt-1 border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1";
-const CHARACTER_CUSTOM_FIELD_LIST_CLASS =
-  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[length:var(--tracker-fs-0-5625)] @min-[176px]:text-[length:var(--tracker-fs-0-625)]";
-const CHARACTER_CUSTOM_FIELD_ROW_CLASS = TRACKER_ROW_CLASS;
-
-type HideableCharacterField = "mood" | "appearance" | "outfit" | "thoughts";
-
 function CompactCharacterNameplate({ children }: { children: ReactNode }) {
   return (
     <div className={CHARACTER_NAMEPLATE_CLASS}>
@@ -182,45 +167,13 @@ export function CharacterTrackerCard({
   onUploadAvatar: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const {
-    fieldLocks,
-    hiddenTrackerFields,
-    hideMode = false,
-    lockMode,
-    onToggleFieldLock,
-    onUpdateFieldLocks,
-    onUpdateHiddenFields,
-  } = useTrackerLockContext();
-  const customFields = Object.entries((character.customFields ?? {}) as Record<string, unknown>).map(
-    ([name, value]) => [name, value, trackerEditableText(value)] as const,
-  );
+  const { fieldLocks, hideMode = false, lockMode, onToggleFieldLock } = useTrackerLockContext();
+  const mutations = useCharacterCardMutations({ character, characterIndex, onUpdate });
+  const customFields = readCharacterCustomFieldEntries(character);
   const characterStats = Array.isArray(character.stats) ? character.stats : [];
-  // Nested keys a custom tracker prompt emits. They live at the top level of the
-  // character object, so writing them back is a spread rather than a nested set.
-  const characterExtras = readCharacterExtras(character);
   const avatarMedia = characterPicture ?? character.avatarPath ?? null;
   const compactAvatarUpload = characterPicture ? undefined : onUploadAvatar;
-  const characterFieldKey = (field: HideableCharacterField) =>
-    characterTrackerLockKey(character, characterIndex, field);
-  const fieldHidden = (field: HideableCharacterField) =>
-    isTrackerFieldHidden(hiddenTrackerFields, characterFieldKey(field));
-  const toggleCharacterFieldHidden = (field: HideableCharacterField) => {
-    const key = characterFieldKey(field);
-    const nextHidden = !isTrackerFieldHidden(hiddenTrackerFields, key);
-    onUpdateHiddenFields?.((hiddenFields) => {
-      const next = normalizeTrackerHiddenFields(hiddenFields);
-      if (nextHidden) next[key] = true;
-      else delete next[key];
-      return next;
-    });
-    onUpdateFieldLocks?.((locks) => {
-      const next = normalizeTrackerFieldLocks(locks);
-      if (nextHidden) next[key] = true;
-      else delete next[key];
-      return next;
-    });
-    if (nextHidden) onUpdate({ ...character, [field]: field === "mood" ? "" : null });
-  };
+  const fieldHidden = (field: HideableCharacterField) => mutations.isFieldHidden(field);
   const moodHidden = fieldHidden("mood");
   const appearanceHidden = fieldHidden("appearance");
   const outfitHidden = fieldHidden("outfit");
@@ -238,53 +191,6 @@ export function CharacterTrackerCard({
     ? "z-[5] mt-0 w-[clamp(2.25rem,28%,3rem)] -translate-y-0.5"
     : "z-[5] mt-0 w-[clamp(3rem,36%,3.75rem)] -translate-y-0.5";
   const avatarSocketSize = hasDenseContent ? "dense" : "regular";
-  const updateCustomField = (oldName: string, nextName: string, nextValue: unknown) => {
-    const nextFields: Record<string, unknown> = { ...(character.customFields ?? {}) };
-    const trimmedName = resolveCharacterCustomFieldName(nextName, oldName);
-    if (
-      trimmedName !== oldName &&
-      Object.keys(nextFields).some(
-        (name) =>
-          name !== oldName &&
-          normalizeCharacterCustomFieldName(name) === normalizeCharacterCustomFieldName(trimmedName),
-      )
-    ) {
-      return;
-    }
-    if (trimmedName !== oldName) {
-      onUpdateFieldLocks?.((locks) =>
-        renameTrackerFieldLockPrefix(
-          locks,
-          characterCustomFieldTrackerLockKey(character, characterIndex, oldName, "name").replace(/\.name$/, ""),
-          characterCustomFieldTrackerLockKey(character, characterIndex, trimmedName, "name").replace(/\.name$/, ""),
-        ),
-      );
-    }
-    delete nextFields[oldName];
-    nextFields[trimmedName] = nextValue;
-    onUpdate({ ...character, customFields: nextFields as Record<string, string> });
-  };
-  const addCharacterStat = () => {
-    onUpdate({
-      ...character,
-      stats: [...characterStats, { name: "New Stat", value: 0, max: 100, color: "var(--primary)" }],
-    });
-  };
-  const addCustomField = () => {
-    const name = makeUniqueCharacterCustomFieldName(character.customFields);
-    onUpdate({ ...character, customFields: { ...(character.customFields ?? {}), [name]: "" } });
-  };
-  const removeCustomField = (name: string) => {
-    const nextFields = { ...(character.customFields ?? {}) };
-    delete nextFields[name];
-    onUpdateFieldLocks?.((locks) =>
-      removeTrackerFieldLockPrefix(
-        locks,
-        characterCustomFieldTrackerLockKey(character, characterIndex, name, "name").replace(/\.name$/, ""),
-      ),
-    );
-    onUpdate({ ...character, customFields: nextFields });
-  };
   return (
     <article className={CHARACTER_CARD_CLASS} style={getCharacterAmbienceStyle(character, profileColors)}>
       <div className={CHARACTER_CARD_TONE_OVERLAY_CLASS} />
@@ -360,7 +266,7 @@ export function CharacterTrackerCard({
               lockKey={characterTrackerLockKey(character, characterIndex, "thoughts")}
               hidden={thoughtsHidden}
               hideMode={hideMode}
-              onToggleHidden={() => toggleCharacterFieldHidden("thoughts")}
+              onToggleHidden={() => mutations.toggleFieldHidden("thoughts")}
             />
           )}
           {!showThoughts && <div className={CHARACTER_HEADER_FILLER_CLASS} />}
@@ -382,7 +288,7 @@ export function CharacterTrackerCard({
               lockKey={characterTrackerLockKey(character, characterIndex, "mood")}
               hidden={moodHidden}
               hideMode={hideMode}
-              onToggleHidden={() => toggleCharacterFieldHidden("mood")}
+              onToggleHidden={() => mutations.toggleFieldHidden("mood")}
             />
           )}
           {showAppearance && (
@@ -397,7 +303,7 @@ export function CharacterTrackerCard({
               lockKey={characterTrackerLockKey(character, characterIndex, "appearance")}
               hidden={appearanceHidden}
               hideMode={hideMode}
-              onToggleHidden={() => toggleCharacterFieldHidden("appearance")}
+              onToggleHidden={() => mutations.toggleFieldHidden("appearance")}
             />
           )}
           {showOutfit && (
@@ -412,7 +318,7 @@ export function CharacterTrackerCard({
               lockKey={characterTrackerLockKey(character, characterIndex, "outfit")}
               hidden={outfitHidden}
               hideMode={hideMode}
-              onToggleHidden={() => toggleCharacterFieldHidden("outfit")}
+              onToggleHidden={() => mutations.toggleFieldHidden("outfit")}
             />
           )}
         </div>
@@ -423,7 +329,7 @@ export function CharacterTrackerCard({
           <StatList
             stats={characterStats}
             onUpdate={(stats) => onUpdate({ ...character, stats })}
-            onAdd={addCharacterStat}
+            onAdd={mutations.addCharacterStat}
             deleteMode={deleteMode}
             addMode={addMode}
             displayMode={statDisplayMode}
@@ -449,87 +355,14 @@ export function CharacterTrackerCard({
         </div>
       )}
 
-      {(customFields.length > 0 || addMode) && (
-        <div className={CHARACTER_CUSTOM_FIELD_LIST_CLASS}>
-          {customFields.map(([name, rawValue, displayValue]) => (
-            <div
-              key={name}
-              className={cn(CHARACTER_CUSTOM_FIELD_ROW_CLASS, deleteMode && TRACKER_ROW_WITH_ACTION_CLASS)}
-            >
-              <InlineEdit
-                value={name}
-                onSave={(nextName) => updateCustomField(name, nextName, rawValue)}
-                placeholder={localizeUi("ui.trackerPanel.charactertrackercard.field")}
-                ariaLabel={`${name} field name`}
-                className="min-w-0 px-0.5 py-0 font-medium"
-                scrollOnHover
-                locked={isTrackerFieldLocked(
-                  fieldLocks,
-                  characterCustomFieldTrackerLockKey(character, characterIndex, name, "name"),
-                )}
-                lockMode={lockMode}
-                onToggleLock={
-                  onToggleFieldLock
-                    ? () =>
-                        onToggleFieldLock(characterCustomFieldTrackerLockKey(character, characterIndex, name, "name"))
-                    : undefined
-                }
-              />
-              <InlineEdit
-                value={displayValue}
-                onSave={(nextValue) => updateCustomField(name, name, nextValue)}
-                placeholder={localizeUi("ui.trackerPanel.charactertrackercard.value")}
-                ariaLabel={`${name} value`}
-                className="min-w-0 px-0.5 py-0"
-                scrollOnHover={!readableCustomFields}
-                twoLinePreview={readableCustomFields}
-                locked={isTrackerFieldLocked(
-                  fieldLocks,
-                  characterCustomFieldTrackerLockKey(character, characterIndex, name, "value"),
-                )}
-                lockMode={lockMode}
-                onToggleLock={
-                  onToggleFieldLock
-                    ? () =>
-                        onToggleFieldLock(characterCustomFieldTrackerLockKey(character, characterIndex, name, "value"))
-                    : undefined
-                }
-              />
-              {deleteMode && (
-                <button
-                  type="button"
-                  onClick={() => removeCustomField(name)}
-                  title={localizeUi("ui.trackerPanel.charactertrackercard.removeValue1", { value1: name })}
-                  aria-label={localizeUi("ui.trackerPanel.charactertrackercard.removeValue1", { value1: name })}
-                  className="flex h-5 w-5 items-center justify-center justify-self-end rounded text-[var(--destructive)] transition-all hover:bg-[var(--destructive)]/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)] active:scale-90 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
-                >
-                  <X size="0.625rem" />
-                </button>
-              )}
-            </div>
-          ))}
-          {addMode && (
-            <InlineAddRow
-              title={localizeUi("ui.trackerPanel.charactertrackercard.addCustomField")}
-              onClick={addCustomField}
-              className="col-span-full"
-            />
-          )}
-        </div>
-      )}
-
-      <CharacterTrackerExtras
-        extras={characterExtras}
-        lockPrefix={characterTrackerLockPrefix(character, characterIndex)}
+      <CharacterCardSections
+        character={character}
+        characterIndex={characterIndex}
+        mutations={mutations}
+        variant="compact"
         deleteMode={deleteMode}
+        addMode={addMode}
         readable={readableCustomFields}
-        onChange={(nextExtras) => {
-          // Replace the whole extras surface: a removed key must not survive as
-          // a leftover on the spread character object.
-          const base: Record<string, unknown> = { ...character };
-          for (const key of Object.keys(characterExtras)) delete base[key];
-          onUpdate({ ...base, ...nextExtras } as unknown as PresentCharacter);
-        }}
       />
     </article>
   );

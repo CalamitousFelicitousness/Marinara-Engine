@@ -454,6 +454,12 @@ Verified in a browser: inside edit mode, one add row and one live input; outside
 The four retired `...AddMode` catalog keys are removed from `en.json`, `ko.json` and `zh-Hans.json` --
 a locale carrying a key `en.json` lacks fails `check-locales` as an unknown key.
 
+The nested-extras `+ Add row` was the one add control the mode did not govern: it was gated on the
+node being an array and nothing else, so it showed in every mode and had done since extras shipped.
+`CharacterTrackerExtras` never received `addMode`. It does now, through the shared section tail, so
+one gate covers both card layouts. An audit of the other six `AddRowButton` sites and the quest
+objective button found them already gated; the regression lane pins all of them.
+
 Still to do: hide and lock remain their own toggles. Folding them into edit mode as per-row buttons
 needs hidden-field keys for the world, persona, quest and inventory surfaces, which only have lock
 keys today.

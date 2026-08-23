@@ -89,6 +89,7 @@ interface ExtrasNodeProps {
   prefix: string;
   fieldLocks: TrackerFieldLocks | null | undefined;
   depth: number;
+  addMode: boolean;
   deleteMode: boolean;
   readable: boolean;
   label: string;
@@ -103,6 +104,7 @@ function ExtrasNode({
   prefix,
   fieldLocks,
   depth,
+  addMode,
   deleteMode,
   readable,
   label,
@@ -211,6 +213,7 @@ function ExtrasNode({
               prefix={prefix}
               fieldLocks={fieldLocks}
               depth={depth + 1}
+              addMode={addMode}
               deleteMode={deleteMode}
               readable={readable}
               label={typeof segment === "number" ? arrayItemLabel(value, segment) : segmentLabel(segment)}
@@ -219,7 +222,7 @@ function ExtrasNode({
               onAdd={onAdd}
             />
           ))}
-          {Array.isArray(node) && (
+          {addMode && Array.isArray(node) && (
             <button
               type="button"
               onClick={() => onAdd(path)}
@@ -238,12 +241,14 @@ function ExtrasNode({
 export function CharacterTrackerExtras({
   extras,
   lockPrefix,
+  addMode,
   deleteMode,
   readable = false,
   onChange,
 }: {
   extras: Record<string, unknown>;
   lockPrefix: string;
+  addMode: boolean;
   deleteMode: boolean;
   readable?: boolean;
   onChange: (nextExtras: Record<string, unknown>) => void;
@@ -282,6 +287,7 @@ export function CharacterTrackerExtras({
           prefix={lockPrefix}
           fieldLocks={fieldLocks}
           depth={0}
+          addMode={addMode}
           deleteMode={deleteMode}
           readable={readable}
           label={segmentLabel(key)}

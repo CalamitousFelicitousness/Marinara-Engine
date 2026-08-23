@@ -58,6 +58,29 @@ assert.match(
   "the lock toggle is checked before the read-only gate",
 );
 
+// ── Every add affordance follows edit mode ──
+// The nested-extras "Add row" was gated only on the node being an array, so it
+// showed in every mode -- the one add control the mode did not govern. It reaches
+// both card layouts through the shared section tail, so this is a single gate.
+const extras = readClient("features/tracker-panel/components/character-card/CharacterTrackerExtras.tsx");
+const sections = readClient("features/tracker-panel/components/character-card/CharacterCardSections.tsx");
+assert.equal(extras.includes("{addMode && Array.isArray(node) && ("), true, "the extras add row is gated on edit mode");
+assert.equal(sections.includes("addMode={addMode}"), true, "the shared section tail passes edit mode to extras");
+
+// Every other add control was already gated; keep it that way.
+for (const file of [
+  "sections/CharacterTrackerPanel.tsx",
+  "sections/CustomTrackerPanel.tsx",
+  "sections/InventoryTrackerPanel.tsx",
+  "sections/PersonaInventoryPanel.tsx",
+  "sections/quest-tracker/QuestBoard.tsx",
+  "sections/WorldStatePanel.tsx",
+]) {
+  const source = readClient(`features/tracker-panel/components/${file}`);
+  const gated = /addMode (\?|&&)[\s\S]{0,120}?<AddRowButton/u.test(source);
+  assert.equal(gated, true, `${file} gates its AddRowButton on edit mode`);
+}
+
 // ── Toolbar wording ──
 for (const key of ["enterEditMode", "exitEditMode", "enterTrackerEditMode", "exitTrackerEditMode"]) {
   assert.equal(typeof en[`ui.trackerPanel.trackersidebarheader.${key}`], "string", `${key} is localized`);

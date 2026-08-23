@@ -94,6 +94,7 @@ export function CharacterCardSections({
     <CharacterTrackerExtras
       extras={characterExtras}
       lockPrefix={characterTrackerLockPrefix(character, characterIndex)}
+      addMode={addMode}
       deleteMode={deleteMode}
       readable={readable}
       onChange={mutations.replaceExtras}

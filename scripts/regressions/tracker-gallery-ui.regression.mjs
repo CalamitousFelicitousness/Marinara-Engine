@@ -12,6 +12,7 @@ const inventoryTracker = readSource(
 const roleplayHud = readSource("packages/client/src/components/chat/RoleplayHUD.tsx");
 const chatGallery = readSource("packages/client/src/components/chat/ChatGallery.tsx");
 const chatSettingsDrawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
+const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
 
 assert.doesNotMatch(
   trackerSidebar,
@@ -42,6 +43,11 @@ assert.match(
   chatSettingsDrawer,
   /case "expression":\s*return <VenetianMask/u,
   "Expression Engine must use a distinct theatre-mask icon in Chat Settings",
+);
+assert.match(
+  agentSettingsControls,
+  /<div className="flex h-full flex-col gap-1">[\s\S]*?"flex-1 justify-between rounded-md/u,
+  "paired agent setting toggles must stretch to the same height",
 );
 
 process.stdout.write("Tracker and Gallery UI regression passed\n");

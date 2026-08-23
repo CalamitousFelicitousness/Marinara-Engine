@@ -323,7 +323,7 @@ export function AgentSettingsToggle({
   surface?: "card" | "secondary";
 }) {
   return (
-    <div className="space-y-1">
+    <div className="flex h-full flex-col gap-1">
       <SettingsSwitch
         label={label}
         description={description}
@@ -331,7 +331,7 @@ export function AgentSettingsToggle({
         onChange={() => onToggle()}
         labelPosition="start"
         className={cn(
-          "justify-between rounded-md px-3 py-2.5 text-left",
+          "flex-1 justify-between rounded-md px-3 py-2.5 text-left",
           enabled
             ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
             : surface === "secondary"

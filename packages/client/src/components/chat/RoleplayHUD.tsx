@@ -559,7 +559,10 @@ function RoleplayTrackerCapability({
         chatId,
         chatMode: "roleplay",
         mobileCompact: compact,
-        toolbarButtonClass: getChatToolbarButtonClass({ compact }),
+        toolbarButtonClass: getChatToolbarButtonClass({
+          compact,
+          className: compact ? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined,
+        }),
       }}
       className="contents"
     />

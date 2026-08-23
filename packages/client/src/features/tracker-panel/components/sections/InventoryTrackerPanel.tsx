@@ -225,7 +225,6 @@ export function InventoryTrackerPanel({
           action={action}
           collapsed={collapsed}
           onToggle={onToggleCollapsed}
-          className="[--tracker-profile-icon:var(--marinara-chat-chrome-accent)]"
         />
         {!collapsed && (
           // Groups stack full-width. Splitting the panel into three columns gave the

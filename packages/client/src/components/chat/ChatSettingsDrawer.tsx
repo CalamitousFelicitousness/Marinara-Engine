@@ -26,6 +26,7 @@ import {
   Bot,
   CalendarClock,
   Camera,
+  Clapperboard,
   RefreshCw,
   Settings2,
   Info,
@@ -422,7 +423,7 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
     case "prose-guardian":
       return <Feather size={size} className={className} />;
     case "director":
-      return <Sparkles size={size} className={className} />;
+      return <Clapperboard size={size} className={className} />;
     case "continuity":
       return <ShieldCheck size={size} className={className} />;
     case "html":
@@ -432,7 +433,7 @@ function renderRoleplayAgentMenuIcon(agentId: string, variant: "card" | "chip" =
     case "knowledge-router":
       return <ArrowRightLeft size={size} className={className} />;
     case "expression":
-      return <Image size={size} className={className} />;
+      return <VenetianMask size={size} className={className} />;
     case "echo-chamber":
       return <MessageCircle size={size} className={className} />;
     case "illustrator":

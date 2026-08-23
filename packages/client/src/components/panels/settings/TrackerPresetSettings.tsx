@@ -13,6 +13,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { CharacterTrackerCustomFieldDefault, RPGStatPool, TrackerPreset } from "@marinara-engine/shared";
 import { comparableTrackerName } from "@marinara-engine/shared";
+import { useUIStore } from "../../../stores/ui.store";
 import {
   useActiveTrackerPresetId,
   useApplyTrackerPreset,
@@ -221,6 +222,15 @@ export function TrackerPresetSettings() {
   const setActive = useSetActiveTrackerPreset();
   const { data: autoAdopt } = useTrackerAutoAdopt();
   const setAutoAdopt = useSetTrackerAutoAdopt();
+  // Comma-separated while typing so a half-written entry is not normalized away
+  // on every keystroke; committed on blur or Enter.
+  const trackerBlankValues = useUIStore((state) => state.trackerBlankValues);
+  const setTrackerBlankValues = useUIStore((state) => state.setTrackerBlankValues);
+  const [blankValuesDraft, setBlankValuesDraft] = useState(() => trackerBlankValues.join(", "));
+  useEffect(() => {
+    setBlankValuesDraft(trackerBlankValues.join(", "));
+  }, [trackerBlankValues]);
+  const commitBlankValues = () => setTrackerBlankValues(blankValuesDraft.split(","));
   const createPreset = useCreateTrackerPreset();
   const updatePreset = useUpdateTrackerPreset();
   const deletePreset = useDeleteTrackerPreset();
@@ -415,6 +425,26 @@ export function TrackerPresetSettings() {
         onChange={(enabled) => setAutoAdopt.mutate(enabled)}
         help={localizeUi("ui.panels.trackerpresetsettings.autoAdoptHelp")}
       />
+
+      <label className="grid gap-1">
+        <span className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.panels.trackerpresetsettings.blankValues")}
+        </span>
+        <input
+          type="text"
+          value={blankValuesDraft}
+          onChange={(event) => setBlankValuesDraft(event.target.value)}
+          onBlur={commitBlankValues}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          placeholder={localizeUi("ui.panels.trackerpresetsettings.blankValuesPlaceholder")}
+          className={INPUT}
+        />
+        <span className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+          {localizeUi("ui.panels.trackerpresetsettings.blankValuesHelp")}
+        </span>
+      </label>
 
       {isRoleplayChat && (
         <>

@@ -18,6 +18,7 @@ import { X } from "lucide-react";
 import {
   characterCustomFieldTrackerLockKey,
   characterTrackerLockPrefix,
+  isBlankTrackerValue,
   isTrackerFieldLocked,
   readCharacterExtras,
   type PresentCharacter,
@@ -28,6 +29,7 @@ import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/trac
 import { readCharacterCustomFieldEntries, type CharacterCardMutations } from "../../hooks/use-character-card-mutations";
 import { InlineAddRow, InlineEdit } from "../controls/InlineControls";
 import { useTrackerLockContext } from "../TrackerLockContext";
+import { useTrackerBlankValues } from "../../hooks/use-tracker-blank-values";
 import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
 
 export type CharacterCardVariant = "compact" | "featured";
@@ -77,7 +79,12 @@ export function CharacterCardSections({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { fieldLocks, lockMode, onToggleFieldLock } = useTrackerLockContext();
-  const customFields = readCharacterCustomFieldEntries(character);
+  // A prompt-authored field that does not apply comes back as a placeholder
+  // rather than absent. Edit mode still shows them so they can be typed over.
+  const blanks = useTrackerBlankValues();
+  const customFields = readCharacterCustomFieldEntries(character).filter(
+    ([, rawValue]) => addMode || !isBlankTrackerValue(rawValue, blanks),
+  );
   const characterExtras = readCharacterExtras(character);
   const extrasWrapperClass = EXTRAS_WRAPPER_CLASS[variant];
 

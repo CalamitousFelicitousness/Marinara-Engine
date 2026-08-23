@@ -429,6 +429,44 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Placeholder tracker rows can be filtered out
+
+A tracker prompt emits a fixed schema, so a field that does not apply comes back as a placeholder
+rather than absent. Footwear on a barefoot character is six rows of `-`, `brak` and `0` that say
+nothing, and a wide schema fills the card with them.
+
+`trackerBlankValues` is a user-editable list of values that read as "nothing here". The list is the
+user's rather than a shipped one on purpose: placeholder conventions live in their prompt and follow
+its language, and no built-in set covers `brak`. Defaults are the language-neutral placeholders (a
+hyphen, a double hyphen, an em dash, `n/a`, `none`, `null`); an empty or whitespace-only value is
+always blank with no configuring.
+
+Matching is whole-value after trim and lowercase, never substring, so `brak` does not also hide
+`brakuje`. Numbers match only when listed, so a real `0` on a heel height or a charge count survives
+the defaults and collapses only once the user adds `0` themselves.
+
+Blankness cascades: a container whose every descendant is blank is itself blank. That is what turns
+the six-row footwear group into nothing rather than into six empty rows, and it reuses the renderer's
+existing "no visible children" path rather than adding a parallel one.
+
+**Edit mode reveals them.** Without that a placeholder could never be typed over, which would make
+the filter a trap. It composes with the read-only edit mode from the previous entry.
+
+Scope is extras and custom fields, the prompt-authored surfaces where placeholders happen. Stat bars
+are left alone: they are gauges rather than rows, and `0` is meaningful there.
+
+The setting lives in the UI store, not server app settings: nothing about the stored data changes, so
+it is a display preference and rides the existing settings sync. Its editor sits beside the
+auto-adopt toggle in Tracker preset settings.
+
+One consequence worth knowing: a newly added custom field has an empty value, so it disappears when
+edit mode is switched off until something is typed into it.
+
+`scripts/regressions/tracker-blank-values.regression.ts` covers the predicates directly, including
+the footwear case both with and without `0` in the list, plus that edit mode reveals blank rows and
+that the lookup Set stays memoized, since it is passed down the extras tree past a memo boundary.
+Verified in a browser: a custom field with an empty value renders in edit mode and not outside.
+
 ### Tracker rows are read-only until edit mode
 
 Every tracker value used to be editable all the time, while "add mode" gated only the `+ Add row`

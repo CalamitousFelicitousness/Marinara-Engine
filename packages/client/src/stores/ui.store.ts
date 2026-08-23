@@ -9,6 +9,8 @@ import {
   normalizeImageStyleProfileSettings,
   normalizeMultiSwipeCandidateCount,
   normalizeQuoteFormat,
+  normalizeTrackerBlankValues,
+  TRACKER_BLANK_VALUE_DEFAULTS,
   type ImageStyleProfileSettings,
   type GenerateSpatialMapDraftResponse,
   type LorebookCategory,
@@ -558,6 +560,8 @@ interface UIState {
   trackerPanelUseExpressionSprites: boolean;
   trackerPanelThoughtBubbleDisplay: TrackerThoughtBubbleDisplay;
   trackerStatDisplayMode: TrackerStatDisplayMode;
+  /** Values that read as "nothing here", hiding their tracker row outside edit mode. */
+  trackerBlankValues: string[];
   trackerPanelDockedThoughtsAlwaysVisible: boolean;
   trackerPanelWidth: number;
   trackerPanelTextSize: TrackerPanelTextSize;
@@ -955,6 +959,7 @@ interface UIState {
   setTrackerPanelUseExpressionSprites: (enabled: boolean) => void;
   setTrackerPanelThoughtBubbleDisplay: (display: TrackerThoughtBubbleDisplay) => void;
   setTrackerStatDisplayMode: (display: TrackerStatDisplayMode) => void;
+  setTrackerBlankValues: (values: string[]) => void;
   setTrackerPanelDockedThoughtsAlwaysVisible: (visible: boolean) => void;
   /** Applies a preset: sets width and density together. */
   setTrackerPanelSizeProfile: (profile: TrackerPanelSizeProfile) => void;
@@ -1252,6 +1257,7 @@ export function pickSyncedSettings(state: UIState) {
     trackerPanelUseExpressionSprites: state.trackerPanelUseExpressionSprites,
     trackerPanelThoughtBubbleDisplay: state.trackerPanelThoughtBubbleDisplay,
     trackerStatDisplayMode: state.trackerStatDisplayMode,
+    trackerBlankValues: state.trackerBlankValues,
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
     trackerPanelWidth: state.trackerPanelWidth,
     trackerPanelTextSize: state.trackerPanelTextSize,
@@ -1403,6 +1409,7 @@ export const useUIStore = create<UIState>()(
       trackerPanelUseExpressionSprites: false,
       trackerPanelThoughtBubbleDisplay: "inline" as TrackerThoughtBubbleDisplay,
       trackerStatDisplayMode: "bars" as TrackerStatDisplayMode,
+      trackerBlankValues: [...TRACKER_BLANK_VALUE_DEFAULTS] as string[],
       trackerPanelDockedThoughtsAlwaysVisible: false,
       trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
       trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
@@ -1675,6 +1682,7 @@ export const useUIStore = create<UIState>()(
       setTrackerPanelThoughtBubbleDisplay: (display) =>
         set({ trackerPanelThoughtBubbleDisplay: normalizeTrackerThoughtBubbleDisplay(display) }),
       setTrackerStatDisplayMode: (display) => set({ trackerStatDisplayMode: normalizeTrackerStatDisplayMode(display) }),
+      setTrackerBlankValues: (values) => set({ trackerBlankValues: normalizeTrackerBlankValues(values) }),
       setTrackerPanelDockedThoughtsAlwaysVisible: (visible) =>
         set({ trackerPanelDockedThoughtsAlwaysVisible: visible }),
       setTrackerPanelSizeProfile: (profile) =>
@@ -3212,6 +3220,7 @@ export const useUIStore = create<UIState>()(
         trackerPanelUseExpressionSprites: state.trackerPanelUseExpressionSprites,
         trackerPanelThoughtBubbleDisplay: state.trackerPanelThoughtBubbleDisplay,
         trackerStatDisplayMode: state.trackerStatDisplayMode,
+        trackerBlankValues: state.trackerBlankValues,
         trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
         trackerPanelWidth: state.trackerPanelWidth,
         trackerPanelTextSize: state.trackerPanelTextSize,

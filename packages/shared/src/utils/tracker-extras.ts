@@ -249,3 +249,65 @@ export function countTrackerExtraLeaves(value: unknown, limit = 64, depth = 0): 
   }
   return total;
 }
+
+// ──────────────────────────────────────────────
+// Blank-value filtering
+// ──────────────────────────────────────────────
+// A tracker prompt emits a fixed schema, so a field that does not apply comes
+// back as a placeholder rather than absent: "-", "brak", "n/a", "". A whole
+// subtree can be nothing but placeholders -- footwear with no shoes on -- and
+// renders as rows carrying no information.
+//
+// The list is the user's, not a shipped one. Placeholder conventions are written
+// into their prompt and follow its language, so no built-in set can cover them.
+
+/** Placeholders that need no configuring. Deliberately excludes "0", which is a real value. */
+export const TRACKER_BLANK_VALUE_DEFAULTS = ["-", "--", "—", "n/a", "none", "null"] as const;
+
+/** Trim, lowercase, drop blanks and duplicates. Order is the user's. */
+export function normalizeTrackerBlankValues(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of source) {
+    if (typeof entry !== "string") continue;
+    const normalized = entry.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+/**
+ * True when a leaf reads as "nothing here".
+ *
+ * Whole-value equality after trim and lowercase, never substring: "brak" must not
+ * also match "brakuje". An empty or whitespace-only string is always blank, with
+ * no configuring. Numbers match only if the user listed them, so a real 0 stays.
+ */
+export function isBlankTrackerValue(value: unknown, blanks: ReadonlySet<string>): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "" || blanks.has(normalized);
+  }
+  if (typeof value === "number" || typeof value === "boolean") return blanks.has(String(value).toLowerCase());
+  return false;
+}
+
+/**
+ * True when nothing under `value` is worth showing.
+ *
+ * Cascades, which is the point: a container whose every descendant is blank is
+ * itself blank, so a footwear subtree of six placeholders collapses to nothing
+ * rather than to six empty rows. An already-empty container stays blank too, so
+ * this one predicate replaces `isEmptyTrackerExtraContainer` at render sites.
+ */
+export function isBlankTrackerNode(value: unknown, blanks: ReadonlySet<string>, depth = 0): boolean {
+  if (depth >= TRACKER_EXTRA_MAX_DEPTH) return false;
+  if (isTrackerExtraLeaf(value)) return isBlankTrackerValue(value, blanks);
+  const entries = Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [];
+  // An empty container has nothing to show, matching isEmptyTrackerExtraContainer.
+  return entries.every((entry) => isBlankTrackerNode(entry, blanks, depth + 1));
+}

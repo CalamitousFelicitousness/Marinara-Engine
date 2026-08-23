@@ -17,6 +17,7 @@ import { ChevronRight, Plus, X } from "lucide-react";
 import {
   blankTrackerExtraTemplate,
   countTrackerExtraLeaves,
+  isBlankTrackerNode,
   isEmptyTrackerExtraContainer,
   isTrackerExtraLeaf,
   isTrackerFieldLocked,
@@ -34,6 +35,7 @@ import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/trac
 import { trackerEditableText } from "../../lib/tracker-display";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerLockContext } from "../TrackerLockContext";
+import { useTrackerBlankValues } from "../../hooks/use-tracker-blank-values";
 
 // Matches CHARACTER_CUSTOM_FIELD_LIST_CLASS so extras read at the same size as
 // the custom-field rows above them. `rem` resolves against the app's root size,
@@ -44,6 +46,16 @@ const EXTRAS_LIST_CLASS =
 /** Subtrees at or below these sizes unfold on first render. */
 const OPEN_BY_DEFAULT_TOP_LEVEL = 24;
 const OPEN_BY_DEFAULT_NESTED = 8;
+
+/**
+ * Hidden when the container holds nothing, or -- outside edit mode -- when
+ * everything under it reads as blank. Edit mode reveals the blank ones so a
+ * placeholder can still be typed over.
+ */
+function isHiddenExtra(value: unknown, blanks: ReadonlySet<string>, editMode: boolean): boolean {
+  if (isEmptyTrackerExtraContainer(value)) return true;
+  return !editMode && isBlankTrackerNode(value, blanks);
+}
 
 /** Numbers stay numbers so a heel height does not silently become a string. */
 function coerceLeaf(previous: unknown, next: string): unknown {
@@ -87,6 +99,7 @@ interface ExtrasNodeProps {
   node: unknown;
   path: TrackerExtraPath;
   prefix: string;
+  blanks: ReadonlySet<string>;
   fieldLocks: TrackerFieldLocks | null | undefined;
   depth: number;
   addMode: boolean;
@@ -102,6 +115,7 @@ function ExtrasNode({
   node,
   path,
   prefix,
+  blanks,
   fieldLocks,
   depth,
   addMode,
@@ -159,7 +173,7 @@ function ExtrasNode({
       : [];
   // An empty container is noise: a chevron over nothing. The agent re-emits the
   // key every turn, so hiding it loses no data and costs no round trip.
-  const visible = entries.filter(([, value]) => !isEmptyTrackerExtraContainer(value));
+  const visible = entries.filter(([, value]) => !isHiddenExtra(value, blanks, addMode));
   if (visible.length === 0) return null;
 
   return (
@@ -211,6 +225,7 @@ function ExtrasNode({
               node={value}
               path={[...path, segment]}
               prefix={prefix}
+              blanks={blanks}
               fieldLocks={fieldLocks}
               depth={depth + 1}
               addMode={addMode}
@@ -254,7 +269,8 @@ export function CharacterTrackerExtras({
   onChange: (nextExtras: Record<string, unknown>) => void;
 }) {
   const { fieldLocks, onUpdateFieldLocks } = useTrackerLockContext();
-  const sections = Object.entries(extras).filter(([, value]) => !isEmptyTrackerExtraContainer(value));
+  const blanks = useTrackerBlankValues();
+  const sections = Object.entries(extras).filter(([, value]) => !isHiddenExtra(value, blanks, addMode));
   if (sections.length === 0) return null;
 
   const edit = (path: TrackerExtraPath, value: unknown) => {
@@ -285,6 +301,7 @@ export function CharacterTrackerExtras({
           node={value}
           path={[key]}
           prefix={lockPrefix}
+          blanks={blanks}
           fieldLocks={fieldLocks}
           depth={0}
           addMode={addMode}

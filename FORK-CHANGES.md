@@ -452,6 +452,21 @@ Note for anyone writing a regression here: `createFileNativeDB()` takes test hoo
 reads `FILE_STORAGE_DIR`, so a directory passed as its argument is silently ignored and the real
 install is opened instead. The writer lease refused that here, but only because a server was running.
 
+### Thought bubbles follow the text-size control
+
+Thought text is sized fluidly against its own container with `cqw`, as six hardcoded `clamp()` values
+in inline styles rather than Tailwind classes, so the token migration did not reach it. It stayed at a
+fixed size at every step of the Text size control, and at XL it rendered *smaller* than the rows
+around it: 14.9px against 15.9px.
+
+Each clamp is now multiplied by the same two scales the tokens use, which keeps the fluid
+container-query behaviour and restores the ~1.4x ratio the bubble was designed to have against a row.
+Measured across the control: 13.8 / 16.4 / 19.3 / 22.3px against rows of 9.8 / 11.7 / 13.8 / 15.9px,
+where before it was 14.9px at all four.
+
+`WorldEditableTile` also sizes itself in JS, but reads the inherited computed size, so it already
+followed the tokens.
+
 ### Tracker panel reflows instead of shrinking its text
 
 The panel adapted to a narrow gutter by scaling type down, floored at 0.65. Measured on a 1600px

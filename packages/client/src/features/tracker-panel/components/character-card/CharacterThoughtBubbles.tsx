@@ -83,12 +83,22 @@ function getThoughtBubbleSize(text: string): ThoughtBubbleSize {
   return "long";
 }
 
+/**
+ * Thought text is sized fluidly against its own container with `cqw`, so it
+ * cannot use the panel's font-size tokens. Multiply the fluid result by the same
+ * two scales those tokens use, or the bubble ignores the Text size control and
+ * renders smaller than every row around it.
+ */
+function scaleThoughtFontSize(size: string) {
+  return `calc(${size} * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1))`;
+}
+
 function getThoughtTextFit(text: string, bubbleSize: ThoughtBubbleSize): ThoughtTextFit {
   const length = text.length;
 
   if (bubbleSize === "short") {
     return {
-      fontSize: "clamp(0.75rem, calc(0.59rem + 2.35cqw), 0.875rem)",
+      fontSize: scaleThoughtFontSize("clamp(0.75rem, calc(0.59rem + 2.35cqw), 0.875rem)"),
       lineHeight: 1.12,
       editMinHeightClassName: "min-h-6",
       previewClassName: "text-center",
@@ -99,8 +109,8 @@ function getThoughtTextFit(text: string, bubbleSize: ThoughtBubbleSize): Thought
     return {
       fontSize:
         length <= 62
-          ? "clamp(0.71875rem, calc(0.55rem + 1.55cqw), 0.84375rem)"
-          : "clamp(0.6875rem, calc(0.54rem + 1.25cqw), 0.78125rem)",
+          ? scaleThoughtFontSize("clamp(0.71875rem, calc(0.55rem + 1.55cqw), 0.84375rem)")
+          : scaleThoughtFontSize("clamp(0.6875rem, calc(0.54rem + 1.25cqw), 0.78125rem)"),
       lineHeight: 1.12,
       editMinHeightClassName: length <= 58 ? "min-h-8" : "min-h-[3.5rem]",
     };
@@ -108,14 +118,14 @@ function getThoughtTextFit(text: string, bubbleSize: ThoughtBubbleSize): Thought
 
   if (length <= 180) {
     return {
-      fontSize: "clamp(0.71875rem, calc(0.58rem + 2cqw), 0.8125rem)",
+      fontSize: scaleThoughtFontSize("clamp(0.71875rem, calc(0.58rem + 2cqw), 0.8125rem)"),
       lineHeight: 1.08,
       editMinHeightClassName: "min-h-[3.75rem]",
     };
   }
 
   return {
-    fontSize: "clamp(0.65625rem, calc(0.54rem + 1.15cqw), 0.75rem)",
+    fontSize: scaleThoughtFontSize("clamp(0.65625rem, calc(0.54rem + 1.15cqw), 0.75rem)"),
     lineHeight: 1.1,
     editMinHeightClassName: "min-h-[3.75rem]",
   };
@@ -287,7 +297,7 @@ export function InlineThoughtBubble({
   const thoughtText = visibleText(value, "Thoughts").replace(/\s+/g, " ");
   const previewLineCount = thoughtText.length <= 70 ? 2 : 3;
   const thoughtTextStyle: CSSProperties = {
-    fontSize: "clamp(0.65625rem, calc(0.56rem + 0.85cqw), 0.75rem)",
+    fontSize: scaleThoughtFontSize("clamp(0.65625rem, calc(0.56rem + 0.85cqw), 0.75rem)"),
     lineHeight: 1.12,
   };
   const editMinHeightClassName = previewLineCount === 2 ? "min-h-[1.9rem]" : "min-h-[2.5rem]";

@@ -165,6 +165,8 @@ import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { inspectCharacterFilesForEmbeddedLorebooks } from "../../lib/character-import";
 import { detectBrowserGpu, formatSupportDiagnostics, resolveClientOs } from "../../lib/support-diagnostics";
+import { getApiErrorMessage } from "../../lib/api-client";
+import { useGameStateStore } from "../../stores/game-state.store";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import {
@@ -2501,6 +2503,39 @@ function TrackerPanelAppearanceDrawer() {
                 );
               })}
             </div>
+          </div>
+          <div className="mt-2 grid gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">
+              {localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerData")}
+              <HelpTooltip text={localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataHelp")} />
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                const confirmed = await showConfirmDialog({
+                  title: localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerData"),
+                  message: localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataConfirm"),
+                  confirmLabel: localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataConfirmLabel"),
+                  tone: "destructive",
+                });
+                if (!confirmed) return;
+                try {
+                  await api.post("/admin/expunge", { confirm: true, scopes: ["trackers"] });
+                  useGameStateStore.getState().setGameState(null);
+                  toast.success(localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataDone"));
+                } catch (error) {
+                  toast.error(
+                    getApiErrorMessage(
+                      error,
+                      localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataFailed"),
+                    ),
+                  );
+                }
+              }}
+              className="flex min-h-8 items-center justify-center rounded-md border border-[var(--destructive)]/45 px-2 text-[0.6875rem] font-semibold text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10"
+            >
+              {localizeUi("ui.panels.trackerpanelappearancedrawer.resetTrackerDataAction")}
+            </button>
           </div>
           <div className="mt-2 grid gap-1.5">
             <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">

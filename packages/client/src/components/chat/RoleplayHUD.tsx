@@ -178,6 +178,10 @@ export function RoleplayHUD({
     };
   }, [chatId, setGameState]);
 
+  // Clearing the live snapshot alone does not retire a field: every tracker run
+  // merges over `characterTrackerHistory`, built from this chat's recent
+  // snapshots, so an omitted field comes straight back. Deleting the chat's
+  // snapshots is the only thing that makes a clear actually stick.
   const clearGameState = useCallback(() => {
     const cleared = {
       date: null,
@@ -217,7 +221,15 @@ export function RoleplayHUD({
         ...cleared,
       } as GameState);
     }
-    api.patch(`/chats/${chatId}/game-state`, { ...cleared, manual: true, clearOverrides: true }).catch(() => {});
+    void (async () => {
+      try {
+        // Snapshots first: a patch written after this would just be deleted.
+        await api.delete(`/chats/${chatId}/game-state`);
+        await api.patch(`/chats/${chatId}/game-state`, { ...cleared, manual: true, clearOverrides: true });
+      } catch {
+        // Leave the cleared client state in place; the next run rebuilds it.
+      }
+    })();
     // Clear committed agent runs & memory from DB + reset client state
     api.delete(`/agents/runs/${chatId}`).catch(() => {});
     resetAgentStore();

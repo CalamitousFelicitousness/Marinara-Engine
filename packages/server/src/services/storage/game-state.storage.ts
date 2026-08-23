@@ -550,5 +550,20 @@ export function createGameStateStorage(db: DB) {
     async deleteForChat(chatId: string) {
       await db.delete(gameStateSnapshots).where(eq(gameStateSnapshots.chatId, chatId));
     },
+
+    /**
+     * Drop every tracker snapshot in the install.
+     *
+     * Deleting the live state is not enough to retire a tracker schema: each run
+     * merges over `characterTrackerHistory`, built from the chat's recent
+     * snapshots, so an omitted field is restored rather than dropped. Only
+     * removing the snapshots themselves lets a new schema start clean.
+     */
+    async deleteAll() {
+      const rows = (await db.select().from(gameStateSnapshots)) as Array<{ id?: unknown }> | undefined;
+      const removed = rows?.length ?? 0;
+      if (removed > 0) await db.delete(gameStateSnapshots);
+      return { removed };
+    },
   };
 }

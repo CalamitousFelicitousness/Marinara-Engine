@@ -429,6 +429,29 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Clearing trackers now actually clears them, plus a global reset
+
+"Clear trackers" wrote an empty snapshot and stopped there, which does not retire anything: every
+tracker run merges its output over `characterTrackerHistory`, built from `getRecent(chatId, 100)`, so
+a field the prompt stops emitting is restored from history on the very next turn. The button looked
+like it worked and did not.
+
+- **Per chat.** The menu action now deletes the chat's snapshots via `DELETE /chats/:id/game-state`
+  before writing the cleared state, behind a destructive confirm. Messages are untouched.
+- **Globally.** Settings gains "Reset all tracker data", which posts the existing admin expunge with a
+  new narrow `trackers` scope. The `chats` scope already dropped `game_state_snapshots`, but it takes
+  every message and chat with it, which is not what retiring a tracker schema needs.
+
+The use case is switching a tracker prompt to another language: without a purge the old field names
+survive forever through the merge, so the panel ends up bilingual.
+
+Pinned by `scripts/regressions/tracker-data-reset.regression.ts`, mutation-verified that the per-chat
+purge stays scoped to its chat.
+
+Note for anyone writing a regression here: `createFileNativeDB()` takes test hooks, not a path. It
+reads `FILE_STORAGE_DIR`, so a directory passed as its argument is silently ignored and the real
+install is opened instead. The writer lease refused that here, but only because a server was running.
+
 ### Tracker panel reflows instead of shrinking its text
 
 The panel adapted to a narrow gutter by scaling type down, floored at 0.65. Measured on a 1600px

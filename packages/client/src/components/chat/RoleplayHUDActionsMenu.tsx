@@ -11,6 +11,7 @@ import {
 } from "../../lib/agent-failures";
 import { ContextInjectionPanel } from "../agents/ContextInjectionPanel";
 import { ContinuityIssueChecklist } from "../agents/ContinuityIssueChecklist";
+import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface ThoughtBubble {
@@ -297,7 +298,16 @@ export function RoleplayHUDActionsMenu({
           )}
           {showTrackerActions && (
             <button
-              onClick={() => {
+              onClick={async () => {
+                // Destructive now that it deletes the chat's snapshots as well:
+                // without that the next run restores every field from history.
+                const confirmed = await showConfirmDialog({
+                  title: localizeUi("ui.chat.roleplayhudactionsmenu.clearTrackers"),
+                  message: localizeUi("ui.chat.roleplayhudactionsmenu.clearTrackersConfirm"),
+                  confirmLabel: localizeUi("ui.chat.roleplayhudactionsmenu.clearTrackers"),
+                  tone: "destructive",
+                });
+                if (!confirmed) return;
                 clearGameState();
                 onClose();
               }}

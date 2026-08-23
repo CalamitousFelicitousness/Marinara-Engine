@@ -30,7 +30,8 @@ type ExpungeScope =
   | "presets"
   | "connections"
   | "automation"
-  | "media";
+  | "media"
+  | "trackers";
 
 const GRACEFUL_RESTART_TIMEOUT_MS = 30_000;
 
@@ -43,6 +44,7 @@ const ALL_EXPUNGE_SCOPES: ExpungeScope[] = [
   "connections",
   "automation",
   "media",
+  "trackers",
 ];
 
 function clearDirectory(dirPath: string) {
@@ -152,6 +154,14 @@ export async function adminRoutes(app: FastifyInstance) {
         tablesCleared[name] = tablesCleared[name] ?? 0;
       }
     };
+
+    // Tracker snapshots only. Narrower than "chats" on purpose: retiring a
+    // tracker schema needs the snapshots gone, because each run merges over
+    // characterTrackerHistory and would otherwise restore every retired field.
+    // Messages and chats are untouched.
+    if (requestedScopes.includes("trackers") && !requestedScopes.includes("chats")) {
+      await runDelete("game_state_snapshots", () => db.delete(schema.gameStateSnapshots).run());
+    }
 
     if (requestedScopes.includes("chats")) {
       await runDelete("message_swipes", () => db.delete(schema.messageSwipes).run());

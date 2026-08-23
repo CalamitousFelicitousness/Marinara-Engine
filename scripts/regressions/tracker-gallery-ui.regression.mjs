@@ -13,19 +13,27 @@ const roleplayHud = readSource("packages/client/src/components/chat/RoleplayHUD.
 const chatGallery = readSource("packages/client/src/components/chat/ChatGallery.tsx");
 const chatSettingsDrawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
 const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
-const translationSection = readSource(
-  "packages/client/src/features/chat-settings/sections/TranslationSection.tsx",
-);
+const translationSection = readSource("packages/client/src/features/chat-settings/sections/TranslationSection.tsx");
 
 assert.doesNotMatch(
   trackerSidebar,
   /className="block \[--tracker-profile-icon:var\(--marinara-chat-chrome-accent\)\]"/u,
   "downloadable Tracker Panel sections must inherit the shared neutral header icon color",
 );
+assert.match(
+  trackerSidebar,
+  /className="block"/u,
+  "downloadable Tracker Panel sections must retain block display styling",
+);
 assert.doesNotMatch(
   inventoryTracker,
   /className="\[--tracker-profile-icon:var\(--marinara-chat-chrome-accent\)\]"/u,
   "Inventory must inherit the same header icon color as other Tracker Panel sections",
+);
+assert.match(
+  inventoryTracker,
+  /<section className="@container relative z-10 overflow-hidden border-b/u,
+  "Inventory must retain the shared Tracker Panel section wrapper",
 );
 assert.match(
   roleplayHud,

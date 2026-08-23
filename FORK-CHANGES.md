@@ -464,12 +464,22 @@ size on the panel root, each multiplied by both the user's text scale and the le
 88 occurrences across 25 files moved onto those tokens. `rem` rather than `em` on purpose: the extras
 tree nests arbitrarily deep and `em` would compound at every level.
 
-The old behaviour survives as a setting, "When the panel does not fit" -> "Shrink the text", which is
-the only thing that lets `--tracker-panel-font-scale` differ from 1.
+Placement is a three-way setting, since the question turned out to be where the panel sits rather than
+only what happens when it does not fit:
+
+| Value | Behaviour |
+| --- | --- |
+| `dock` (default) | Beside the chat, reflowing as it narrows; floats only below a 176px gutter. |
+| `float` | Always over the chat column at its own width, whatever the gutter. |
+| `scale` | Always docked, shrinking type to fit. The pre-reflow behaviour, kept as an opt-out, and the only value that lets `--tracker-panel-font-scale` differ from 1. |
+
+Measured in a browser at a 249px gutter, with the settings-sync fetch blocked so local state was
+authoritative: `dock` renders 249px with no overlap and scale 1.0, `float` renders 340px overlapping
+the chat by 83px at scale 1.0, and `scale` renders 249px at scale 0.7324 (249/340). A drag under
+`float` is bounded by the main area rather than the gutter.
 
 Verified in a browser: at 1500px, where the gutter is 89px, the panel now renders at 340px with
-11.7px labels and two-column rows instead of an 89px sliver at 5.9px. Cycling text size moves labels
-between 9.8px and 13.3px. The opt-out branch is typechecked but not exercised at runtime.
+11.7px labels and two-column rows instead of an 89px sliver at 5.9px.
 
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text

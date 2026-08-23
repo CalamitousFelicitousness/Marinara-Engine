@@ -57,10 +57,25 @@ export const TRACKER_PANEL_TEXT_SCALES: Record<TrackerPanelTextSize, number> = {
 
 export const TRACKER_PANEL_TEXT_SIZE_DEFAULT: TrackerPanelTextSize = "l";
 
-/** What to do when the gutter beside the chat column cannot hold the panel. */
-export const TRACKER_PANEL_NARROW_BEHAVIORS = ["overlay", "scale"] as const;
-export type TrackerPanelNarrowBehavior = (typeof TRACKER_PANEL_NARROW_BEHAVIORS)[number];
-export const TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT: TrackerPanelNarrowBehavior = "overlay";
+/**
+ * Where the panel sits relative to the chat column.
+ *
+ *   dock   beside the chat, reflowing as it narrows, floating only when the
+ *          gutter drops below TRACKER_PANEL_MIN_DOCK_WIDTH. The default.
+ *   float  always over the chat column, at whatever width the panel is set to,
+ *          regardless of how much gutter there is.
+ *   scale  always docked, shrinking type to fit. The behaviour that shipped
+ *          before reflow existed, kept as an opt-out.
+ */
+export const TRACKER_PANEL_PLACEMENTS = ["dock", "float", "scale"] as const;
+export type TrackerPanelPlacement = (typeof TRACKER_PANEL_PLACEMENTS)[number];
+export const TRACKER_PANEL_PLACEMENT_DEFAULT: TrackerPanelPlacement = "dock";
+
+/** The short-lived narrow-behaviour setting this replaced. */
+const LEGACY_NARROW_BEHAVIOR_PLACEMENTS: Record<string, TrackerPanelPlacement> = {
+  overlay: "dock",
+  scale: "scale",
+};
 
 /**
  * Below this the docked panel cannot show a usable row at any type size, so
@@ -120,10 +135,12 @@ export function normalizeTrackerPanelTextSize(value: unknown, legacyDensity?: un
   return TRACKER_PANEL_TEXT_SIZE_DEFAULT;
 }
 
-export function normalizeTrackerPanelNarrowBehavior(value: unknown): TrackerPanelNarrowBehavior {
-  return TRACKER_PANEL_NARROW_BEHAVIORS.includes(value as TrackerPanelNarrowBehavior)
-    ? (value as TrackerPanelNarrowBehavior)
-    : TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT;
+export function normalizeTrackerPanelPlacement(value: unknown, legacyNarrowBehavior?: unknown): TrackerPanelPlacement {
+  if (TRACKER_PANEL_PLACEMENTS.includes(value as TrackerPanelPlacement)) return value as TrackerPanelPlacement;
+  if (typeof legacyNarrowBehavior === "string" && legacyNarrowBehavior in LEGACY_NARROW_BEHAVIOR_PLACEMENTS) {
+    return LEGACY_NARROW_BEHAVIOR_PLACEMENTS[legacyNarrowBehavior]!;
+  }
+  return TRACKER_PANEL_PLACEMENT_DEFAULT;
 }
 
 /** Next step in the header's cycle button, wrapping at the end. */
@@ -157,9 +174,10 @@ export function migrateTrackerPanelSize(persisted: {
   trackerPanelWidth?: unknown;
   trackerPanelTextSize?: unknown;
   trackerPanelDensity?: unknown;
+  trackerPanelPlacement?: unknown;
   trackerPanelNarrowBehavior?: unknown;
   trackerPanelSizeProfile?: unknown;
-}): { width: number; textSize: TrackerPanelTextSize; narrowBehavior: TrackerPanelNarrowBehavior } {
+}): { width: number; textSize: TrackerPanelTextSize; placement: TrackerPanelPlacement } {
   const legacyProfile = normalizeTrackerPanelSizeProfile(
     persisted.trackerPanelSizeProfile,
     persisted.trackerPanelWidth,
@@ -168,6 +186,6 @@ export function migrateTrackerPanelSize(persisted: {
     // An explicit width from before the profile era still wins.
     width: clampTrackerPanelWidth(persisted.trackerPanelWidth ?? TRACKER_PANEL_SIZE_PROFILE_WIDTHS[legacyProfile]),
     textSize: normalizeTrackerPanelTextSize(persisted.trackerPanelTextSize, persisted.trackerPanelDensity),
-    narrowBehavior: normalizeTrackerPanelNarrowBehavior(persisted.trackerPanelNarrowBehavior),
+    placement: normalizeTrackerPanelPlacement(persisted.trackerPanelPlacement, persisted.trackerPanelNarrowBehavior),
   };
 }

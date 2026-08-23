@@ -13,7 +13,7 @@ import {
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
   nextTrackerPanelTextSize,
-  normalizeTrackerPanelNarrowBehavior,
+  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelTextSize,
   resolveTrackerPanelPreset,
   TRACKER_PANEL_MIN_DOCK_WIDTH,
@@ -83,10 +83,14 @@ assert.equal(normalizeTrackerPanelTextSize(undefined), TRACKER_PANEL_TEXT_SIZE_D
 assert.equal(normalizeTrackerPanelTextSize(undefined, "compact"), "s");
 assert.equal(normalizeTrackerPanelTextSize(undefined, "comfortable"), "l");
 
-// ── Narrow behaviour ──
-assert.equal(normalizeTrackerPanelNarrowBehavior(undefined), "overlay", "reflow-and-overlay is the default");
-assert.equal(normalizeTrackerPanelNarrowBehavior("scale"), "scale", "shrinking type stays available as an opt-out");
-assert.equal(normalizeTrackerPanelNarrowBehavior("zoom"), "overlay");
+// ── Placement ──
+assert.equal(normalizeTrackerPanelPlacement(undefined), "dock", "docking with a float fallback is the default");
+assert.equal(normalizeTrackerPanelPlacement("float"), "float", "always-float is its own choice, not a fallback");
+assert.equal(normalizeTrackerPanelPlacement("scale"), "scale", "shrinking type stays available as an opt-out");
+assert.equal(normalizeTrackerPanelPlacement("zoom"), "dock");
+// The short-lived narrow-behaviour setting maps onto the placement it became.
+assert.equal(normalizeTrackerPanelPlacement(undefined, "overlay"), "dock");
+assert.equal(normalizeTrackerPanelPlacement(undefined, "scale"), "scale");
 // The dock threshold is the same width at which a label and a value stop
 // sharing a line, which is what makes overlaying the right answer below it.
 assert.equal(TRACKER_PANEL_MIN_DOCK_WIDTH, 176);
@@ -112,17 +116,18 @@ assert.equal(clampTrackerPanelWidth(Number.NaN), TRACKER_PANEL_WIDTH_DEFAULT);
 assert.deepEqual(migrateTrackerPanelSize({ trackerPanelSizeProfile: "expanded" }), {
   width: 420,
   textSize: "l",
-  narrowBehavior: "overlay",
+  placement: "dock",
 });
 assert.deepEqual(migrateTrackerPanelSize({}), {
   width: TRACKER_PANEL_WIDTH_DEFAULT,
   textSize: "l",
-  narrowBehavior: "overlay",
+  placement: "dock",
 });
 // A store that already migrated to the density step keeps its choice.
 assert.equal(migrateTrackerPanelSize({ trackerPanelDensity: "compact" }).textSize, "s");
 assert.equal(migrateTrackerPanelSize({ trackerPanelTextSize: "xl" }).textSize, "xl");
-assert.equal(migrateTrackerPanelSize({ trackerPanelNarrowBehavior: "scale" }).narrowBehavior, "scale");
+assert.equal(migrateTrackerPanelSize({ trackerPanelNarrowBehavior: "scale" }).placement, "scale");
+assert.equal(migrateTrackerPanelSize({ trackerPanelPlacement: "float" }).placement, "float");
 
 // A pre-profile store kept a free width; it wins, and density comes from the
 // profile that width implies.
@@ -133,7 +138,7 @@ assert.equal(migrateTrackerPanelSize({ trackerPanelWidth: 400 }).width, 400);
 assert.deepEqual(migrateTrackerPanelSize({ trackerPanelWidth: 512, trackerPanelTextSize: "s" }), {
   width: 512,
   textSize: "s",
-  narrowBehavior: "overlay",
+  placement: "dock",
 });
 
 // A junk width does not poison the result.

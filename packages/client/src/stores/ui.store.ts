@@ -25,14 +25,14 @@ import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-t
 import {
   clampTrackerPanelWidth,
   migrateTrackerPanelSize,
-  normalizeTrackerPanelNarrowBehavior,
+  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelSizeProfile,
   normalizeTrackerPanelTextSize,
-  TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
+  TRACKER_PANEL_PLACEMENT_DEFAULT,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_TEXT_SIZE_DEFAULT,
   TRACKER_PANEL_WIDTH_DEFAULT,
-  type TrackerPanelNarrowBehavior,
+  type TrackerPanelPlacement,
   type TrackerPanelSizeProfile,
   type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
@@ -43,13 +43,13 @@ export {
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
   nextTrackerPanelTextSize,
-  normalizeTrackerPanelNarrowBehavior,
+  normalizeTrackerPanelPlacement,
   normalizeTrackerPanelSizeProfile,
   normalizeTrackerPanelTextSize,
   resolveTrackerPanelPreset,
   TRACKER_PANEL_MIN_DOCK_WIDTH,
-  TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
-  TRACKER_PANEL_NARROW_BEHAVIORS,
+  TRACKER_PANEL_PLACEMENT_DEFAULT,
+  TRACKER_PANEL_PLACEMENTS,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_SIZE_PROFILES,
   TRACKER_PANEL_TEXT_SCALES,
@@ -58,7 +58,7 @@ export {
   TRACKER_PANEL_WIDTH_DEFAULT,
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
-  type TrackerPanelNarrowBehavior,
+  type TrackerPanelPlacement,
   type TrackerPanelSizeProfile,
   type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
@@ -561,7 +561,7 @@ interface UIState {
   trackerPanelDockedThoughtsAlwaysVisible: boolean;
   trackerPanelWidth: number;
   trackerPanelTextSize: TrackerPanelTextSize;
-  trackerPanelNarrowBehavior: TrackerPanelNarrowBehavior;
+  trackerPanelPlacement: TrackerPanelPlacement;
   trackerPanelBackgroundColor: string;
   trackerTemperatureUnit: TrackerTemperatureUnit;
   trackerPanelCollapsedSections: TrackerPanelCollapsedSections;
@@ -960,7 +960,7 @@ interface UIState {
   setTrackerPanelSizeProfile: (profile: TrackerPanelSizeProfile) => void;
   setTrackerPanelWidth: (width: number) => void;
   setTrackerPanelTextSize: (size: TrackerPanelTextSize) => void;
-  setTrackerPanelNarrowBehavior: (behavior: TrackerPanelNarrowBehavior) => void;
+  setTrackerPanelPlacement: (placement: TrackerPanelPlacement) => void;
   setTrackerPanelBackgroundColor: (color: string) => void;
   setTrackerTemperatureUnit: (unit: TrackerTemperatureUnit) => void;
   setTrackerPanelSectionOrder: (order: TrackerPanelSectionOrder) => void;
@@ -1255,7 +1255,7 @@ export function pickSyncedSettings(state: UIState) {
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
     trackerPanelWidth: state.trackerPanelWidth,
     trackerPanelTextSize: state.trackerPanelTextSize,
-    trackerPanelNarrowBehavior: state.trackerPanelNarrowBehavior,
+    trackerPanelPlacement: state.trackerPanelPlacement,
     trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
     trackerTemperatureUnit: state.trackerTemperatureUnit,
     trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,
@@ -1406,7 +1406,7 @@ export const useUIStore = create<UIState>()(
       trackerPanelDockedThoughtsAlwaysVisible: false,
       trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
       trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
-      trackerPanelNarrowBehavior: TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
+      trackerPanelPlacement: TRACKER_PANEL_PLACEMENT_DEFAULT,
       trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
       trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
       trackerPanelCollapsedSections: {},
@@ -1681,8 +1681,8 @@ export const useUIStore = create<UIState>()(
         set({ trackerPanelWidth: TRACKER_PANEL_SIZE_PROFILE_WIDTHS[normalizeTrackerPanelSizeProfile(profile)] }),
       setTrackerPanelWidth: (width) => set({ trackerPanelWidth: clampTrackerPanelWidth(width) }),
       setTrackerPanelTextSize: (size) => set({ trackerPanelTextSize: normalizeTrackerPanelTextSize(size) }),
-      setTrackerPanelNarrowBehavior: (behavior) =>
-        set({ trackerPanelNarrowBehavior: normalizeTrackerPanelNarrowBehavior(behavior) }),
+      setTrackerPanelPlacement: (placement) =>
+        set({ trackerPanelPlacement: normalizeTrackerPanelPlacement(placement) }),
       setTrackerPanelBackgroundColor: (color) =>
         set({ trackerPanelBackgroundColor: normalizeTrackerPanelBackgroundColor(color) }),
       setTrackerTemperatureUnit: (unit) => set({ trackerTemperatureUnit: normalizeTrackerTemperatureUnit(unit) }),
@@ -2408,7 +2408,7 @@ export const useUIStore = create<UIState>()(
           trackerPanelDockedThoughtsAlwaysVisible: false,
           trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
           trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
-          trackerPanelNarrowBehavior: TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
+          trackerPanelPlacement: TRACKER_PANEL_PLACEMENT_DEFAULT,
           trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
           trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
           trackerPanelCollapsedSections: {},
@@ -2566,7 +2566,7 @@ export const useUIStore = create<UIState>()(
       name: "marinara-engine-ui",
       // v94 -> v95: move only the untouched mobile music-player default below Home bookmarks.
       // The version bump ensures existing stores run the exact-coordinate migration below.
-      version: 97,
+      version: 98,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2838,12 +2838,13 @@ export const useUIStore = create<UIState>()(
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
-        // v95 -> v97: width, text size, and narrow-panel behaviour become independent.
+        // v95 -> v98: width, text size, and placement become independent settings.
         {
           const size = migrateTrackerPanelSize(persisted);
           persisted.trackerPanelWidth = size.width;
           persisted.trackerPanelTextSize = size.textSize;
-          persisted.trackerPanelNarrowBehavior = size.narrowBehavior;
+          persisted.trackerPanelPlacement = size.placement;
+          delete persisted.trackerPanelNarrowBehavior;
           delete persisted.trackerPanelSizeProfile;
           delete persisted.trackerPanelDensity;
         }
@@ -3214,7 +3215,7 @@ export const useUIStore = create<UIState>()(
         trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
         trackerPanelWidth: state.trackerPanelWidth,
         trackerPanelTextSize: state.trackerPanelTextSize,
-        trackerPanelNarrowBehavior: state.trackerPanelNarrowBehavior,
+        trackerPanelPlacement: state.trackerPanelPlacement,
         trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
         trackerTemperatureUnit: state.trackerTemperatureUnit,
         trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,

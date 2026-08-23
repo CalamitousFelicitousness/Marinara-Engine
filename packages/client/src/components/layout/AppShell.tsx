@@ -347,7 +347,7 @@ export function AppShell() {
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
   const trackerPanelStoredWidth = useUIStore((s) => s.trackerPanelWidth);
-  const trackerPanelNarrowBehavior = useUIStore((s) => s.trackerPanelNarrowBehavior);
+  const trackerPanelPlacement = useUIStore((s) => s.trackerPanelPlacement);
   const setTrackerPanelWidth = useUIStore((s) => s.setTrackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const spatialMapDetailChatId = useUIStore((s) => s.spatialMapDetailChatId);
@@ -396,7 +396,11 @@ export function AppShell() {
   const [trackerPanelGutterWidth, setTrackerPanelGutterWidth] = useState(TRACKER_PANEL_WIDTH_MAX);
   const [trackerPanelMainWidth, setTrackerPanelMainWidth] = useState(0);
   const shellRootRef = useRef<HTMLDivElement>(null);
-  const trackerPanelResizeMax = Math.min(TRACKER_PANEL_WIDTH_MAX, trackerPanelGutterWidth);
+  const trackerPanelResizeMax = Math.min(
+    TRACKER_PANEL_WIDTH_MAX,
+    // Floating over the chat column means the gutter no longer bounds the drag.
+    trackerPanelPlacement === "float" ? Math.max(0, trackerPanelMainWidth - 16) : trackerPanelGutterWidth,
+  );
   // A gutter too narrow to reach the minimum leaves nothing to drag. Showing a
   // handle there advertises an aria-valuemax the panel can never reach.
   const trackerPanelResizable = trackerPanelResizeMax > TRACKER_PANEL_WIDTH_MIN;
@@ -1091,17 +1095,18 @@ export function AppShell() {
       ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
       : 0;
   const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
-  // Below the minimum dock width the gutter cannot hold a usable row, so the
-  // panel stops docking and floats over the chat column at its own width.
+  // "float" always sits over the chat column. "dock" only gives up and floats
+  // once the gutter cannot hold a usable row.
   const trackerPanelOverlaid =
-    trackerPanelNarrowBehavior === "overlay" && trackerPanelGutterWidth < TRACKER_PANEL_MIN_DOCK_WIDTH;
+    trackerPanelPlacement === "float" ||
+    (trackerPanelPlacement === "dock" && trackerPanelGutterWidth < TRACKER_PANEL_MIN_DOCK_WIDTH);
   const trackerPanelRenderWidth = trackerPanelOverlaid
     ? Math.min(trackerPanelWidth, Math.max(TRACKER_PANEL_MIN_DOCK_WIDTH, trackerPanelMainWidth - 16))
     : trackerPanelResolvedWidth;
   // Shrinking type is now the opt-out, not the default: with reflow doing the
   // adapting there is nothing left for a width-derived scale to fix.
   const trackerPanelContentScale =
-    trackerPanelNarrowBehavior === "scale"
+    trackerPanelPlacement === "scale"
       ? resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth)
       : 1;
   const trackerPanelPortal =

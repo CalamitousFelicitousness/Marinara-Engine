@@ -259,6 +259,36 @@ restore matches.
 
 ## Traps that produce false results
 
+### Never assume which server is running - detect it
+
+Before driving a browser at this app, find the server. Assuming either one
+wastes a whole debugging cycle, and it has already cost two: first assuming the
+built server, then assuming the dev server.
+
+```powershell
+Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -in 7870,7871 } |
+  Select-Object LocalAddress,LocalPort,OwningProcess
+```
+
+| Listener | What it is | What to know |
+| --- | --- | --- |
+| `7870` | built server, serves `packages/client/dist` | `@fastify/static` runs with `wildcard:false`, so it enumerates `dist` **once at registration**. Any `pnpm check` or `pnpm build` after it started gives it a stale file list, and changed chunks 404. Needs a restart to see a rebuild. |
+| `7871` | Vite dev server | Serves modules from source, so it is always current and immune to rebuilds. Unminified, so stack traces name real components. |
+
+Two traps in that table:
+
+- **Vite often binds IPv6 loopback only.** `LocalAddress` reads `::1`, and every
+  `curl http://127.0.0.1:7871` returns connection-refused while the server is
+  running perfectly. Use `http://[::1]:7871`.
+- **A 404 on 7870 does not mean the user is seeing stale UI.** It means that
+  server's static index is stale. If they are on the dev server, or a service
+  worker is serving from precache, their browser is fine. Report what was
+  measured, not what it seems to imply.
+
+Prefer 7871 when both are up: current source, no asset-hash shim, readable
+stacks. Decoding a minified helper out of a bundle to find a crash is a sign the
+probe was pointed at the wrong server.
+
 ### Piping a run to `tail` destroys its exit code
 
 ```bash

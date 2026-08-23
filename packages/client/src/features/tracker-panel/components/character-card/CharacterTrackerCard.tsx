@@ -186,7 +186,6 @@ export function CharacterTrackerCard({
   const showThoughts = !thoughtsHidden || hideMode;
   const hasDetailRows = showMood || showAppearance || showOutfit;
   const hasDenseContent = characterStats.length > 0 || customFields.length > 0 || addMode;
-  const readableDetailRows = hasDenseContent;
   const readableCustomFields = trackerPanelSizeProfile === "expanded";
   const emojiLockKey = characterTrackerLockKey(character, characterIndex, "emoji");
   const avatarSize = hasDenseContent
@@ -285,7 +284,6 @@ export function CharacterTrackerCard({
               placeholder={localizeUi("ui.trackerPanel.charactertrackercard.mood")}
               onSave={(mood) => onUpdate({ ...character, mood })}
               tone="mood"
-              readable={readableDetailRows}
               valueClassName={COMPACT_CHARACTER_MOOD_EDIT_CLASS}
               lockKey={characterTrackerLockKey(character, characterIndex, "mood")}
               hidden={moodHidden}
@@ -301,7 +299,6 @@ export function CharacterTrackerCard({
               placeholder={localizeUi("chat.settings.inlineEditor.fields.appearance")}
               onSave={(appearance) => onUpdate({ ...character, appearance: appearance || null })}
               tone="appearance"
-              readable={readableDetailRows}
               lockKey={characterTrackerLockKey(character, characterIndex, "appearance")}
               hidden={appearanceHidden}
               hideMode={hideMode}
@@ -316,7 +313,6 @@ export function CharacterTrackerCard({
               placeholder={localizeUi("ui.trackerPanel.charactertrackercard.outfit")}
               onSave={(outfit) => onUpdate({ ...character, outfit: outfit || null })}
               tone="outfit"
-              readable={readableDetailRows}
               lockKey={characterTrackerLockKey(character, characterIndex, "outfit")}
               hidden={outfitHidden}
               hideMode={hideMode}

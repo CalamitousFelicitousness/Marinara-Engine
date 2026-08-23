@@ -8942,6 +8942,11 @@ export async function generateRoutes(app: FastifyInstance) {
                   const name = normalizeTextForMatch(npc.name);
                   if (name && npc.avatarUrl) storedNpcAvatarByName.set(name, npc.avatarUrl);
                 }
+                // The persona is not a character card, so it is in none of the
+                // lookups below. A unified tracker prompt that lists the user as
+                // a present character would otherwise get the initial placeholder.
+                const personaAvatarName = persona?.name ? normalizeTextForMatch(persona.name) : "";
+                const personaAvatarPath = typeof persona?.avatarPath === "string" ? persona.avatarPath.trim() : "";
 
                 for (const char of chars) {
                   if (isManualTrackerCharacterId(char.characterId)) continue;
@@ -8949,12 +8954,21 @@ export async function generateRoutes(app: FastifyInstance) {
                   const name = (char.name as string) ?? "";
                   // Try matching against the chat's character cards (case-insensitive)
                   const matched = charInfo.find((c) => normalizeTextForMatch(c.name) === normalizeTextForMatch(name));
+                  // A chat character card stays more specific than the persona on
+                  // a name collision, but the persona beats the fuzzy library match.
+                  const isPersonaCharacter = !!personaAvatarName && normalizeTextForMatch(name) === personaAvatarName;
                   if (!char.avatarCrop && matched?.avatarCrop) {
                     char.avatarCrop = matched.avatarCrop;
+                  } else if (!char.avatarCrop && isPersonaCharacter && persona?.avatarCrop) {
+                    char.avatarCrop = persona.avatarCrop;
                   }
                   if (char.avatarPath) continue; // already set
                   if (matched?.avatarPath) {
                     char.avatarPath = matched.avatarPath;
+                    continue;
+                  }
+                  if (isPersonaCharacter && personaAvatarPath) {
+                    char.avatarPath = personaAvatarPath;
                     continue;
                   }
                   const libraryAvatar = findCharAvatarFuzzy(name, libraryAvatarByName);

@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
+import { TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerFieldLock } from "../TrackerLockContext";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -23,7 +24,6 @@ export function CompactCharacterField({
   placeholder,
   onSave,
   tone,
-  readable = false,
   className,
   valueClassName,
   lockKey,
@@ -37,7 +37,6 @@ export function CompactCharacterField({
   placeholder: string;
   onSave: (value: string) => void;
   tone: CompactCharacterFieldTone;
-  readable?: boolean;
   className?: string;
   valueClassName?: string;
   lockKey?: string;
@@ -53,7 +52,7 @@ export function CompactCharacterField({
     <div
       className={cn(
         "group/field relative isolate grid min-h-[1rem] min-w-0 grid-cols-[0.9375rem_minmax(0,1fr)] items-center gap-1 overflow-hidden rounded-[4px] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[image:var(--tracker-profile-field-material)] px-1 py-px text-[length:var(--tracker-fs-0-5625)] leading-[0.875rem] text-[color:var(--tracker-profile-muted-text)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_1.5%,transparent)] transition-colors [background-blend-mode:var(--tracker-profile-field-material-blend)] before:pointer-events-none before:absolute before:inset-0 before:z-0 before:bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--tracker-profile-rule)_10%,transparent)_0_1px,transparent_1px_7px)] before:opacity-24 before:mix-blend-soft-light before:content-[''] after:pointer-events-none after:absolute after:bottom-px after:right-px after:z-[1] after:h-3 after:w-[60%] after:origin-bottom-right after:-skew-x-6 after:bg-[linear-gradient(90deg,transparent_0%,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_62%,transparent)_30%,color-mix(in_srgb,var(--tracker-profile-accent-solid)_24%,transparent)_82%,transparent_100%),linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_54%,transparent)_42%,color-mix(in_srgb,var(--tracker-profile-accent-solid)_22%,transparent)_86%,transparent_100%)] after:bg-no-repeat after:[background-position:right_bottom,right_bottom] after:[background-size:100%_1px,1px_78%] after:opacity-[var(--tracker-profile-accent-highlight-opacity,0.42)] after:[mask-image:linear-gradient(90deg,transparent_0%,black_22%,black_100%)] after:content-[''] hover:border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_36%,transparent)] @min-[176px]:min-h-[1.125rem] @min-[176px]:grid-cols-[1rem_minmax(0,1fr)] @min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[176px]:leading-4",
-        readable && "items-start pb-px pt-0.5",
+        "items-start pb-px pt-0.5",
         hidden && "border-[var(--foreground)]/20 opacity-60 grayscale",
         className,
       )}
@@ -92,15 +91,14 @@ export function CompactCharacterField({
           }
           aria-pressed={hidden}
           className={cn(
-            "relative z-[1] flex min-w-0 rounded px-0 py-0 text-left text-[length:var(--tracker-fs-0-5625)] leading-[0.875rem] transition-colors hover:bg-[var(--accent)]/20 @min-[176px]:text-[length:var(--tracker-fs-0-625)]",
-            readable ? "min-h-7 leading-[1.12] @min-[176px]:leading-[1.15]" : "h-3.5 @min-[176px]:h-4",
+            "relative z-[1] flex min-h-3.5 min-w-0 rounded px-0 py-0 text-left text-[length:var(--tracker-fs-0-5625)] leading-[1.14] transition-colors hover:bg-[var(--accent)]/20 @min-[176px]:min-h-4 @min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[176px]:leading-[1.15]",
             hidden
               ? "italic text-[color-mix(in_srgb,var(--tracker-profile-muted-text)_62%,transparent)]"
               : "text-[color:var(--tracker-profile-text)]",
             valueClassName,
           )}
         >
-          <span className={cn("min-w-0", readable ? "line-clamp-2 whitespace-normal break-words" : "truncate")}>
+          <span className={cn("min-w-0 whitespace-normal break-words", TRACKER_DETAIL_VALUE_CLAMP_CLASS)}>
             {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : visibleText(value, placeholder)}
           </span>
         </button>
@@ -110,14 +108,11 @@ export function CompactCharacterField({
           onSave={onSave}
           placeholder={placeholder}
           className={cn(
-            "relative z-[1] w-full min-w-0 px-0 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[0.875rem] text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/14 @min-[176px]:text-[length:var(--tracker-fs-0-625)]",
-            readable
-              ? "min-h-7 leading-[1.12] @min-[176px]:leading-[1.15]"
-              : "h-3.5 @min-[176px]:h-4 @min-[176px]:leading-4",
+            "relative z-[1] w-full min-h-3.5 min-w-0 px-0 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[1.14] text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/14 @min-[176px]:min-h-4 @min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[176px]:leading-[1.15]",
             valueClassName,
           )}
-          scrollOnHover={!readable}
-          twoLinePreview={readable}
+          previewLineCount="full"
+          previewClassName={TRACKER_DETAIL_VALUE_CLAMP_CLASS}
           showEditHint={false}
           {...lock}
         />

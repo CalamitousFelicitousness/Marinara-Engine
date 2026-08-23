@@ -9,6 +9,7 @@ import {
 } from "@marinara-engine/shared";
 import type { TrackerPanelSizeProfile } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
+import { TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
 import { visibleText } from "../../lib/tracker-display";
 import { InlineEdit } from "../controls/InlineControls";
 import { TRACKER_PROFILE_FIELD_TILE_CLASS } from "../controls/TrackerProfileChrome";
@@ -36,11 +37,6 @@ const FEATURED_FIELD_TEXT_CLASS_BY_PROFILE = {
   standard: "text-[length:var(--tracker-fs-0-625)] leading-[1.16]",
   expanded: "text-[length:var(--tracker-fs-0-6875)] leading-[1.18]",
 } satisfies Record<TrackerPanelSizeProfile, string>;
-const FEATURED_FIELD_PREVIEW_LINES_BY_PROFILE = {
-  compact: 2,
-  standard: 3,
-  expanded: 3,
-} satisfies Record<TrackerPanelSizeProfile, 2 | 3>;
 function FeaturedFieldTile({
   icon,
   accessibleLabel,
@@ -71,7 +67,6 @@ function FeaturedFieldTile({
   if (hidden && !hideMode) return null;
   const displayValue = visibleText(value, placeholder);
   const textClass = FEATURED_FIELD_TEXT_CLASS_BY_PROFILE[sizeProfile];
-  const previewLines = FEATURED_FIELD_PREVIEW_LINES_BY_PROFILE[sizeProfile];
 
   return (
     <div
@@ -119,9 +114,7 @@ function FeaturedFieldTile({
               : "text-[color:var(--tracker-profile-text)]",
           )}
         >
-          <span
-            className={cn("break-words [align-content:start]", previewLines === 2 ? "line-clamp-2" : "line-clamp-3")}
-          >
+          <span className={cn("break-words [align-content:start]", TRACKER_DETAIL_VALUE_CLAMP_CLASS)}>
             {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : displayValue}
           </span>
         </button>
@@ -134,7 +127,8 @@ function FeaturedFieldTile({
             "w-full min-w-0 self-center px-0 py-0 text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/25",
             textClass,
           )}
-          previewLineCount={previewLines}
+          previewLineCount="full"
+          previewClassName={TRACKER_DETAIL_VALUE_CLAMP_CLASS}
           {...lock}
         />
       )}

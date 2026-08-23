@@ -33,3 +33,22 @@ export const TRACKER_ROW_WITH_ACTION_CLASS =
  * single scrolling line reads better than a stack of fragments.
  */
 export const TRACKER_VALUE_CLAMP_CLASS = "@min-[260px]:line-clamp-2 @min-[260px]:whitespace-normal";
+
+/**
+ * Line budget for the character detail fields (mood, appearance, outfit).
+ *
+ * They used to truncate to one line unless the card also carried stats or custom
+ * fields, which is backwards: the sparse card is the one with room to spare. Any
+ * value longer than a word or two was cut off with no way to read it in place.
+ *
+ * Bounded rather than unbounded so one verbose field cannot push the rest of the
+ * card out of view -- compact cards share a grid row, so a tall card makes its
+ * neighbour tall too.
+ *
+ * Breakpoints are the card's own width, not the panel's. Compact cards sit two
+ * to a row, so a 420px panel gives each card roughly 200px and lands it on the
+ * middle tier; the widest tier is for single-column and featured cards. Measured
+ * at ~30 characters per line on the middle tier, so six lines covers about 180
+ * characters of outfit or mood.
+ */
+export const TRACKER_DETAIL_VALUE_CLAMP_CLASS = "line-clamp-4 @min-[176px]:line-clamp-6 @min-[260px]:line-clamp-8";

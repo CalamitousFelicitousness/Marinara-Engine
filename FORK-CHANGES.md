@@ -429,6 +429,50 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Detail fields flex, and the persona resolves a tracker portrait
+
+Two changes that make a single unified Character Tracker prompt -- one that lists the user's persona
+as a present character -- work as well as it should.
+
+**Mood, appearance and outfit truncated to one line.** `CompactCharacterField` gated wrapping on a
+`readable` prop wired to `hasDenseContent` (`stats.length > 0 || customFields.length > 0 || addMode`),
+so a detail value only wrapped when the card *also* carried stats or custom fields. That is backwards:
+the sparse card is the one with room to spare. Anything longer than a word or two was cut off with no
+way to read it in place, and a fixed `h-3.5` / `h-4` on the value would have clipped a wrap anyway.
+
+Detail values now always wrap, from a min-height rather than a fixed one, with the line budget in one
+shared `TRACKER_DETAIL_VALUE_CLAMP_CLASS`. The budget follows the *card's* container width, not the
+panel-width preset -- `FeaturedCharacterFields` still keyed its 2-or-3 line count off
+`TrackerPanelSizeProfile`, which is the width/density coupling the size split removed.
+
+Measured in a browser: the value box goes from a fixed 15px to 93px on a long outfit, `white-space`
+from `nowrap` to `normal`, `text-overflow` from `ellipsis` to `clip`. Compact cards sit two to a grid
+row, so a 420px panel gives each card roughly 200px and lands it on the middle (6-line) tier; the
+8-line tier is for single-column and featured cards. Six lines is about 180 characters of outfit.
+
+Still bounded rather than unbounded, deliberately: compact cards share a grid row, so one verbose
+field would make its neighbour tall too. Raising `TRACKER_DETAIL_VALUE_CLAMP_CLASS`, or dropping the
+clamp from it entirely, is a one-line change if a prompt legitimately needs more.
+
+**The persona had no tracker portrait.** Avatar enrichment in `generate.routes.ts` walks chat
+character cards, then a fuzzy library match, then stored NPC avatars. A persona is none of those, so
+a persona tracked as a present character fell back to the initial placeholder. It is now matched by
+normalized name -- the tracker agent emits names -- and slots between the chat card and the fuzzy
+library match: a card in this chat stays more specific than the persona, but the persona beats a
+fuzzy hit on a similarly named library character. `avatarCrop` follows the same order.
+
+This was the one practical obstacle to folding the persona into the Character Tracker prompt instead
+of building persona/character parity in code. Seeding already covers both sides
+(`collectAdoptedTrackerRows` gathers `personaFields` and `personaStats`), but the persona path has no
+row-level preserve-on-omission and no nested extras -- tracking the persona as a character sidesteps
+both rather than duplicating them.
+
+`scripts/regressions/tracker-field-flex.regression.ts` pins the clamp's three rising tiers, that
+neither card truncates a detail value or reintroduces a fixed row height, and the position of the
+persona avatar lookup in the chain. Verified non-vacuous by restoring `truncate`.
+
+`generate.routes.ts` and both card files are upstream-edited.
+
 ### One changed character no longer re-renders every card
 
 Measured with the repo's own `mari-perf` diagnostic, six characters present, adding a seventh:

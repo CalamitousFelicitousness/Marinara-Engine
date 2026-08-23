@@ -42,10 +42,28 @@ assert.equal(resolveTrackerPanelPreset(280), "compact");
 // the reflow work exists to fix.
 assert.deepEqual([...TRACKER_PANEL_TEXT_SIZES], ["s", "m", "l", "xl"]);
 assert.equal(TRACKER_PANEL_TEXT_SIZE_DEFAULT, "l");
+// Both ends are anchored to real numbers rather than picked by feel. The panel's
+// row token is 0.625rem, the app's default root is 17px, and the chat body is
+// 16px (chatFontSize default).
+const ROW_TOKEN_PX = 0.625 * 17;
+const CHAT_BODY_PX = 16;
 assert.ok(
-  Math.min(...Object.values(TRACKER_PANEL_TEXT_SCALES)) * 9 > 8,
-  "no step may render base labels at 8px or smaller",
+  TRACKER_PANEL_TEXT_SCALES.s * ROW_TOKEN_PX > 9,
+  "S is the floor and must stay legible, not drift back toward the 6px state this replaced",
 );
+assert.ok(
+  Math.abs(TRACKER_PANEL_TEXT_SCALES.xl * ROW_TOKEN_PX - CHAT_BODY_PX) < 1,
+  "XL must reach the chat body size; smaller than the prose beside it is what made it feel wrong",
+);
+// Each press is the same proportional jump, so the control feels even.
+{
+  const scales = TRACKER_PANEL_TEXT_SIZES.map((size) => TRACKER_PANEL_TEXT_SCALES[size]);
+  const ratios = scales.slice(1).map((value, index) => value / scales[index]!);
+  assert.ok(
+    Math.max(...ratios) - Math.min(...ratios) < 0.08,
+    `steps should be near-geometric, got ratios ${ratios.map((r) => r.toFixed(3)).join(", ")}`,
+  );
+}
 // Monotonic, so the header's cycle button always moves in one direction.
 {
   const scales = TRACKER_PANEL_TEXT_SIZES.map((size) => TRACKER_PANEL_TEXT_SCALES[size]);

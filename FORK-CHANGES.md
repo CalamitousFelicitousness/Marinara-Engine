@@ -448,6 +448,12 @@ Three changes, chosen from an interactive width explorer built for the decision:
   Spacing and line clamps ride along, so one control moves the whole card. There is deliberately no XS:
   it would land near 7.6px labels, the state this work exists to fix.
 
+  Both ends of the scale are anchored to measured numbers rather than picked by feel. The panel's row
+  token is `0.625rem` and the app's default root is 17px, so S (0.925) lands at 9.8px. XL is 1.5, which
+  puts row text at 15.9px, level with the 16px chat body (`chatFontSize` default) -- XL previously
+  stopped at 13.3px and read as smaller than the prose beside it. The middle steps are geometric, so
+  every press is the same proportional jump.
+
 The nine-rule font-size allowlist in `globals.css` is gone. It matched literal Tailwind class strings
 such as `[class~="text-[0.5625rem]"]`, so it silently missed any size not listed -- `0.4375rem`,
 `0.5rem` and `0.875rem` were all in use and none of them scaled. Type now comes from one token per

@@ -36,12 +36,23 @@ export type TrackerPanelTextSize = (typeof TRACKER_PANEL_TEXT_SIZES)[number];
  * Multiplier applied to the panel's type and spacing tokens. Spacing rides along
  * with type so one control moves the whole card; splitting them lets a user
  * build large type in tight rows, which only ever looks broken.
+ *
+ * Anchored at both ends rather than picked by feel:
+ *
+ *   S   0.925  the floor, unchanged. The panel's row token is 0.625rem, so at
+ *              the app's 17px root this is ~9.8px -- small but legible.
+ *   XL  1.5    lands row text at ~15.9px, level with the 16px chat body
+ *              (`chatFontSize` default). XL previously stopped at ~13.3px,
+ *              which read as smaller than the prose beside it.
+ *
+ * The two middle steps are geometric between those, so each press is the same
+ * proportional jump rather than a flat one.
  */
 export const TRACKER_PANEL_TEXT_SCALES: Record<TrackerPanelTextSize, number> = {
   s: 0.925,
-  m: 1,
-  l: 1.1,
-  xl: 1.25,
+  m: 1.1,
+  l: 1.3,
+  xl: 1.5,
 };
 
 export const TRACKER_PANEL_TEXT_SIZE_DEFAULT: TrackerPanelTextSize = "l";

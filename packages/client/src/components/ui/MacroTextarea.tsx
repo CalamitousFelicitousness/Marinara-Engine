@@ -302,6 +302,7 @@ export interface MacroTextareaProps {
   rows?: number;
   title?: string;
   ariaLabel?: string;
+  ariaInvalid?: boolean;
   placeholder?: string;
   className?: string;
   wrapperClassName?: string;
@@ -331,6 +332,7 @@ export function MacroTextarea({
   rows = 6,
   title = "Edit text",
   ariaLabel,
+  ariaInvalid,
   placeholder,
   className,
   wrapperClassName,
@@ -415,6 +417,7 @@ export function MacroTextarea({
             onKeyDown={handleKeyDown}
             rows={rows}
             aria-label={ariaLabel}
+            aria-invalid={ariaInvalid || undefined}
             placeholder={placeholder}
             spellCheck={spellCheck}
             readOnly={readOnly}

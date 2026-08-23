@@ -1790,13 +1790,16 @@ export function SummaryPopover({
                               placeholder={localizeUi("ui.chat.summarypopover.templateName")}
                               className="w-full rounded-md bg-[var(--card)] px-2 py-1 text-[0.6875rem] font-semibold text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
                             />
-                            <textarea
+                            <MacroTextarea
                               value={templatePromptDraft}
-                              onChange={(event) => setTemplatePromptDraft(event.target.value)}
-                              disabled={promptSettingsSaveLocked}
+                              onChange={setTemplatePromptDraft}
                               rows={8}
+                              title={localizeUi("ui.chat.summarypopover.chatSummaryPrompt")}
+                              ariaLabel={localizeUi("ui.chat.summarypopover.promptInstructionsForSummaryGeneration")}
                               placeholder={localizeUi("ui.chat.summarypopover.promptInstructionsForSummaryGeneration")}
-                              className="max-h-48 w-full resize-y rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
+                              readOnly={promptSettingsSaveLocked}
+                              wrapperClassName="min-w-0"
+                              className="mari-chrome-field max-h-48 !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed read-only:cursor-not-allowed read-only:opacity-50"
                             />
                             <div className="flex justify-end gap-1">
                               <button
@@ -1830,21 +1833,24 @@ export function SummaryPopover({
                       {localizeUi("ui.chat.summarypopover.combinePrompt")}
                     </span>
                     {combinePromptEditorOpen ? (
-                      <textarea
+                      <MacroTextarea
                         value={combinePromptDraft}
                         onFocus={() => {
                           combinePromptFocused.current = true;
                         }}
-                        onChange={(event) => {
-                          combinePromptDraftRef.current = event.target.value;
-                          setCombinePromptDraft(event.target.value);
+                        onChange={(value) => {
+                          const nextValue = value.slice(0, CHAT_SUMMARY_PROMPT_MAX_LENGTH);
+                          combinePromptDraftRef.current = nextValue;
+                          setCombinePromptDraft(nextValue);
                         }}
                         onBlur={() => void handleCombinePromptBlur()}
-                        maxLength={CHAT_SUMMARY_PROMPT_MAX_LENGTH}
+                        onExpandedClose={() => void handleCombinePromptBlur()}
                         rows={5}
-                        disabled={!globalPromptSettingsReady || promptSettingsSaveLocked}
-                        aria-label={localizeUi("ui.chat.summarypopover.combinePrompt")}
-                        className="h-28 w-full resize-none rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed text-[var(--foreground)] ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
+                        title={localizeUi("ui.chat.summarypopover.combinePrompt")}
+                        ariaLabel={localizeUi("ui.chat.summarypopover.combinePrompt")}
+                        readOnly={!globalPromptSettingsReady || promptSettingsSaveLocked}
+                        wrapperClassName="min-w-0"
+                        className="mari-chrome-field h-28 resize-none !rounded-md bg-[var(--card)] px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed read-only:cursor-not-allowed read-only:opacity-50"
                       />
                     ) : (
                       <div className="h-28 overflow-y-auto whitespace-pre-wrap rounded-md bg-[var(--background)]/25 px-2 py-1.5 font-mono text-[0.625rem] leading-relaxed text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">

@@ -25,7 +25,10 @@ import { TrackerSkeleton } from "./TrackerSkeleton";
 import { TrackerSidebarHeader } from "./TrackerSidebarHeader";
 import { TrackerLockProvider } from "./TrackerLockContext";
 import { Translation, useTranslation as useUiTranslation } from "react-i18next";
-import { useInstalledCapabilityPackages } from "../../../hooks/use-capability-packages";
+import {
+  partitionTrackerCapabilityPackages,
+  useInstalledCapabilityPackages,
+} from "../../../hooks/use-capability-packages";
 import { CapabilityElement } from "../../../components/capabilities/CapabilityElement";
 
 const TRACKER_PANEL_NEUTRAL_VARS =
@@ -126,6 +129,20 @@ export function TrackerDataSidebar({
       enabledAgentTypes.has(item.id) &&
       Boolean(item.manifest.entrypoints.client) &&
       item.manifest.contributions?.slots?.includes("tracker-panel"),
+  );
+  const {
+    memoryNag: memoryNagTrackerPackages,
+    beholder: beholderTrackerPackages,
+    other: otherCapabilityTrackerPackages,
+  } = partitionTrackerCapabilityPackages(capabilityTrackerPackages);
+  const renderCapabilityTrackerPackage = (item: (typeof capabilityTrackerPackages)[number]) => (
+    <CapabilityElement
+      key={`${item.id}-tracker-panel`}
+      packageId={item.id}
+      view="tracker"
+      capabilityProps={{ chatId: activeChatId, chatMode: "roleplay", detached }}
+      className="block [--tracker-profile-icon:var(--marinara-chat-chrome-accent)]"
+    />
   );
   const resolveStatIcon = useStatIcons({
     activeChatId,
@@ -228,7 +245,7 @@ export function TrackerDataSidebar({
         />
 
         <div className={cn("relative z-10", fillHeight && "min-h-0 flex-1 overflow-y-auto")}>
-          {displayedGameState && orderedTrackerSections.length > 0 ? (
+          {displayedGameState && (orderedTrackerSections.length > 0 || capabilityTrackerPackages.length > 0) ? (
             <TrackerPanelErrorBoundary
               resetKey={`${activeChatId}:${displayedGameState.id || "empty"}:${displayedGameState.createdAt}`}
             >
@@ -263,20 +280,24 @@ export function TrackerDataSidebar({
                 addMode={addMode}
                 queuePersonaPortraitSave={queuePersonaPortraitSave}
                 flushPersonaPortraitSave={flushPersonaPortraitSave}
+                beforeCustomSections={
+                  activeChatId ? memoryNagTrackerPackages.map(renderCapabilityTrackerPackage) : null
+                }
+                afterCustomSections={
+                  activeChatId
+                    ? [...otherCapabilityTrackerPackages, ...beholderTrackerPackages].map(
+                        renderCapabilityTrackerPackage,
+                      )
+                    : null
+                }
               />
             </TrackerPanelErrorBoundary>
           ) : null}
 
-          {activeChatId
-            ? capabilityTrackerPackages.map((item) => (
-                <CapabilityElement
-                  key={`${item.id}-tracker-panel`}
-                  packageId={item.id}
-                  view="tracker"
-                  capabilityProps={{ chatId: activeChatId, chatMode: "roleplay", detached }}
-                  className="block"
-                />
-              ))
+          {activeChatId && !displayedGameState
+            ? [...memoryNagTrackerPackages, ...otherCapabilityTrackerPackages, ...beholderTrackerPackages].map(
+                renderCapabilityTrackerPackage,
+              )
             : null}
 
           {!activeChatId ? (

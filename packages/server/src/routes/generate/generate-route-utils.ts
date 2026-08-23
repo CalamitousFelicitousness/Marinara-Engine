@@ -19,7 +19,6 @@ import {
   type GameState,
   type GenerationParameterSendMap,
   type GenerationParameters,
-  type InventoryItem,
   type InventoryTrackerRow,
   type MacroContext,
   type PlayerStats,
@@ -198,6 +197,40 @@ const INVENTORY_TRACKER_PLAYER_STATS_FIELDS = [
 ] as const;
 
 type InventoryTrackerPlayerStatsField = (typeof INVENTORY_TRACKER_PLAYER_STATS_FIELDS)[number];
+type InventoryTrackerPlayerStats = Pick<PlayerStats, InventoryTrackerPlayerStatsField>;
+
+function inventoryTrackerQuantityMap(
+  playerStats: InventoryTrackerPlayerStats,
+): Map<string, { name: string; quantity: number }> {
+  const quantities = new Map<string, { name: string; quantity: number }>();
+  for (const field of INVENTORY_TRACKER_PLAYER_STATS_FIELDS) {
+    for (const row of normalizeInventoryTrackerRows(playerStats[field])) {
+      const key = normalizeTextForMatch(row.name);
+      if (!key) continue;
+      const existing = quantities.get(key);
+      quantities.set(key, {
+        name: row.name,
+        quantity: (existing?.quantity ?? 0) + (row.qty ?? 1),
+      });
+    }
+  }
+  return quantities;
+}
+
+/** New owned quantities only; moving an item between tracker groups is not an acquisition. */
+export function findInventoryTrackerAcquisitions(
+  previousPlayerStats: InventoryTrackerPlayerStats,
+  nextPlayerStats: InventoryTrackerPlayerStats,
+): Array<{ name: string; quantity: number }> {
+  const previous = inventoryTrackerQuantityMap(previousPlayerStats);
+  const next = inventoryTrackerQuantityMap(nextPlayerStats);
+  const acquisitions: Array<{ name: string; quantity: number }> = [];
+  for (const [key, item] of next) {
+    const quantity = item.quantity - (previous.get(key)?.quantity ?? 0);
+    if (quantity > 0) acquisitions.push({ name: item.name, quantity });
+  }
+  return acquisitions;
+}
 
 // `clampInventoryTrackerQty` and `normalizeInventoryTrackerRows` now live in
 // `@marinara-engine/shared` so the hand-edit paths (tracker panel, HUD popover,
@@ -287,19 +320,15 @@ function parseSnapshotPersonaStats(snapshot: { personaStats?: unknown } | null |
 export function buildLockedPersonaTrackerPatch({
   stats,
   status,
-  inventory,
   hasStats,
   hasStatus,
-  hasInventory,
   snapshot,
   lockState,
 }: {
   stats: CharacterStat[];
   status: string;
-  inventory: InventoryItem[];
   hasStats?: boolean;
   hasStatus?: boolean;
-  hasInventory?: boolean;
   snapshot: { personaStats?: unknown; playerStats?: unknown } | null | undefined;
   lockState: GameState | null | undefined;
 }) {
@@ -308,7 +337,6 @@ export function buildLockedPersonaTrackerPatch({
 
   const rawPlayerStatsPatch: Record<string, unknown> = {};
   if (hasStatus ?? !!status) rawPlayerStatsPatch.status = status;
-  if (hasInventory ?? inventory.length > 0) rawPlayerStatsPatch.inventory = inventory;
   if (Object.keys(rawPlayerStatsPatch).length > 0) rawPatch.playerStats = rawPlayerStatsPatch;
 
   const patch = applyTrackerFieldLocksToGameStatePatch(rawPatch, lockState);
@@ -328,19 +356,11 @@ export function buildLockedPersonaTrackerPatch({
     playerStats.status = typeof lockedPlayerStatsPatch.status === "string" ? lockedPlayerStatsPatch.status : "";
     hasPlayerStatsPatch = true;
   }
-  if (Array.isArray(lockedPlayerStatsPatch.inventory)) {
-    playerStats.inventory = lockedPlayerStatsPatch.inventory as InventoryItem[];
-    hasPlayerStatsPatch = true;
-  }
-
   const playerStatsChanged = hasPlayerStatsPatch && !isDeepStrictEqual(playerStats, existingPlayerStats);
   if (playerStatsChanged) updates.playerStats = JSON.stringify(playerStats);
 
   return {
     changed: personaStatsChanged || playerStatsChanged,
-    inventory: Array.isArray(lockedPlayerStatsPatch.inventory)
-      ? (lockedPlayerStatsPatch.inventory as InventoryItem[])
-      : [],
     patch,
     updates,
   };

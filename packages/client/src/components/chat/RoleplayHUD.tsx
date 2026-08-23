@@ -9,7 +9,6 @@ import { createPortal } from "react-dom";
 import {
   MapPin,
   Users,
-  Package,
   Backpack,
   Scroll,
   Sparkles,
@@ -32,7 +31,10 @@ import { useUpdateMessageExtra } from "../../hooks/use-chats";
 import { discardPendingGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { useUIStore } from "../../stores/ui.store";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  partitionTrackerCapabilityPackages,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import {
   classifyWorldWeather,
@@ -55,7 +57,6 @@ import type {
   GameState,
   PresentCharacter,
   CharacterStat,
-  InventoryItem,
   InventoryTrackerGroup,
   InventoryTrackerRow,
   QuestProgress,
@@ -65,17 +66,14 @@ import type {
   TrackerHiddenFields,
 } from "@marinara-engine/shared";
 import {
-  inventoryItemTrackerLockPrefix,
   normalizeTrackerFieldLocksForState,
   normalizeTrackerHiddenFields,
-  removeTrackerFieldLockPrefix,
   toggleTrackerFieldLock,
 } from "@marinara-engine/shared";
 import type { TrackerTemperatureUnit } from "../../stores/ui.store";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 const ACTIONS_DROPDOWN_WIDTH_PX = 288;
-const EMPTY_INVENTORY: InventoryItem[] = [];
 const EMPTY_AGENT_TYPE_SET = new Set<string>();
 
 interface RoleplayHUDProps {
@@ -104,9 +102,6 @@ const PersonaStatsPanel = lazy(async () =>
 );
 const CharactersPanel = lazy(async () =>
   import("./RoleplayHUDPanels").then((module) => ({ default: module.CharactersPanel })),
-);
-const InventoryPanel = lazy(async () =>
-  import("./RoleplayHUDPanels").then((module) => ({ default: module.InventoryPanel })),
 );
 const RoleplayInventoryTrackerPanel = lazy(async () =>
   import("./RoleplayHUDPanels").then((module) => ({ default: module.RoleplayInventoryTrackerPanel })),
@@ -148,6 +143,11 @@ export function RoleplayHUD({
       Boolean(item.manifest.entrypoints.client) &&
       item.manifest.contributions?.slots?.includes("roleplay-tracker"),
   );
+  const {
+    memoryNag: memoryNagTrackerPackages,
+    beholder: beholderTrackerPackages,
+    other: otherRoleplayTrackerPackages,
+  } = partitionTrackerCapabilityPackages(roleplayTrackerPackages);
 
   const thoughtBubbles = useAgentStore((s) => s.thoughtBubbles);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
@@ -255,7 +255,6 @@ export function RoleplayHUD({
   const personaStatBars = gameState?.personaStats ?? [];
   const playerStats = gameState?.playerStats ?? null;
   const personaStatus = playerStats?.status ?? "";
-  const inventory = playerStats?.inventory ?? EMPTY_INVENTORY;
   const activeQuests = playerStats?.activeQuests ?? [];
   const customTrackerFields = playerStats?.customTrackerFields ?? [];
   const inventoryTrackerCurrencies = playerStats?.inventoryTrackerCurrencies ?? [];
@@ -277,19 +276,6 @@ export function RoleplayHUD({
       patchField("hiddenTrackerFields", updater(base));
     },
     [chatId, hiddenTrackerFields, patchField],
-  );
-  const updateInventoryItems = useCallback(
-    (items: InventoryItem[]) => patchPlayerStats("inventory", items),
-    [patchPlayerStats],
-  );
-  const removeInventoryItem = useCallback(
-    (index: number) => {
-      updateInventoryItems(inventory.filter((_, itemIndex) => itemIndex !== index));
-      updateFieldLocks((locks) =>
-        removeTrackerFieldLockPrefix(locks, inventoryItemTrackerLockPrefix(inventory[index]!, index)),
-      );
-    },
-    [inventory, updateFieldLocks, updateInventoryItems],
   );
   const toggleFieldLock = useCallback(
     (key: string) => {
@@ -321,21 +307,6 @@ export function RoleplayHUD({
         {trackerPanelEnabled && !trackerPanelOpen && (
           <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
         )}
-
-        {roleplayTrackerPackages.map((item) => (
-          <CapabilityElement
-            key={`${item.id}-roleplay-tracker`}
-            packageId={item.id}
-            view="toolbar"
-            capabilityProps={{
-              chatId,
-              chatMode: "roleplay",
-              mobileCompact: mobileCompact === true,
-              toolbarButtonClass: getChatToolbarButtonClass({ compact: mobileCompact === true }),
-            }}
-            className="contents"
-          />
-        ))}
 
         {/* Actions (Agents + Clear) */}
         <ActionsGroup
@@ -400,9 +371,6 @@ export function RoleplayHUD({
                 onUpdatePersonaStatus={(status) => patchPlayerStats("status", status)}
                 characters={presentCharacters}
                 onUpdateCharacters={(chars) => patchField("presentCharacters", chars)}
-                inventory={inventory}
-                onUpdateInventory={updateInventoryItems}
-                onRemoveInventoryItem={removeInventoryItem}
                 quests={activeQuests}
                 onUpdateQuests={(q) => patchPlayerStats("activeQuests", q)}
                 customTrackerFields={customTrackerFields}
@@ -424,6 +392,15 @@ export function RoleplayHUD({
                 isTrackerRetryBusy={isTrackerBusy}
               />
             )}
+
+            {[...memoryNagTrackerPackages, ...otherRoleplayTrackerPackages, ...beholderTrackerPackages].map((item) => (
+              <RoleplayTrackerCapability
+                key={`${item.id}-roleplay-tracker-mobile`}
+                packageId={item.id}
+                chatId={chatId}
+                compact
+              />
+            ))}
 
             {/* Manual tracker trigger button (mobile) */}
             {manualTrackers && onRetriggerTrackers && (
@@ -489,23 +466,10 @@ export function RoleplayHUD({
               />
             )}
 
-            {hasPersonaStatsTracker && (
-              <InventoryWidget items={inventory} onUpdate={updateInventoryItems} onRemoveItem={removeInventoryItem} />
-            )}
-
             {enabledAgentTypes.has("quest") && (
               <QuestsWidget
                 quests={activeQuests}
                 onUpdate={(q) => patchPlayerStats("activeQuests", q)}
-                onRerunSingleTracker={onRerunSingleTracker}
-                isTrackerRetryBusy={isTrackerBusy}
-              />
-            )}
-
-            {enabledAgentTypes.has("custom-tracker") && (
-              <CustomTrackerWidget
-                fields={customTrackerFields}
-                onUpdate={(fields) => patchPlayerStats("customTrackerFields", fields)}
                 onRerunSingleTracker={onRerunSingleTracker}
                 isTrackerRetryBusy={isTrackerBusy}
               />
@@ -523,6 +487,27 @@ export function RoleplayHUD({
                 isTrackerRetryBusy={isTrackerBusy}
               />
             )}
+
+            {memoryNagTrackerPackages.map((item) => (
+              <RoleplayTrackerCapability key={`${item.id}-roleplay-tracker`} packageId={item.id} chatId={chatId} />
+            ))}
+
+            {enabledAgentTypes.has("custom-tracker") && (
+              <CustomTrackerWidget
+                fields={customTrackerFields}
+                onUpdate={(fields) => patchPlayerStats("customTrackerFields", fields)}
+                onRerunSingleTracker={onRerunSingleTracker}
+                isTrackerRetryBusy={isTrackerBusy}
+              />
+            )}
+
+            {otherRoleplayTrackerPackages.map((item) => (
+              <RoleplayTrackerCapability key={`${item.id}-roleplay-tracker`} packageId={item.id} chatId={chatId} />
+            ))}
+
+            {beholderTrackerPackages.map((item) => (
+              <RoleplayTrackerCapability key={`${item.id}-roleplay-tracker`} packageId={item.id} chatId={chatId} />
+            ))}
 
             {/* Manual tracker trigger button (desktop) */}
             {manualTrackers && onRetriggerTrackers && (
@@ -556,6 +541,30 @@ export function RoleplayHUD({
 /** Common mobile HUD button sizing – used by all four strip buttons */
 const HUD_ICON_BUTTON = getChatToolbarButtonClass({ compact: true });
 const MOBILE_HUD_BTN = cn(HUD_ICON_BUTTON, CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS, "cursor-pointer select-none");
+
+function RoleplayTrackerCapability({
+  packageId,
+  chatId,
+  compact = false,
+}: {
+  packageId: string;
+  chatId: string;
+  compact?: boolean;
+}) {
+  return (
+    <CapabilityElement
+      packageId={packageId}
+      view="toolbar"
+      capabilityProps={{
+        chatId,
+        chatMode: "roleplay",
+        mobileCompact: compact,
+        toolbarButtonClass: getChatToolbarButtonClass({ compact }),
+      }}
+      className="contents"
+    />
+  );
+}
 
 function DeferredHUDPanelFallback({ label }: { label: string }) {
   return <div className="px-3 py-4 text-center text-[0.625rem] text-[var(--muted-foreground)]/60">{label}</div>;
@@ -791,7 +800,7 @@ function ActionsGroup({
 
 // ═══════════════════════════════════════════════
 // Combined Player Widget — merges Persona, Chars,
-// Inventory, and Quests into a single expandable panel
+// Quests, and custom fields into a single expandable panel
 // ═══════════════════════════════════════════════
 
 function CombinedPlayerWidget({
@@ -805,9 +814,6 @@ function CombinedPlayerWidget({
   onUpdatePersonaStatus,
   characters,
   onUpdateCharacters,
-  inventory,
-  onUpdateInventory,
-  onRemoveInventoryItem,
   quests,
   onUpdateQuests,
   customTrackerFields,
@@ -825,9 +831,6 @@ function CombinedPlayerWidget({
   onUpdatePersonaStatus: (status: string) => void;
   characters: PresentCharacter[];
   onUpdateCharacters: (chars: PresentCharacter[]) => void;
-  inventory: InventoryItem[];
-  onUpdateInventory: (items: InventoryItem[]) => void;
-  onRemoveInventoryItem?: (index: number) => void;
   quests: QuestProgress[];
   onUpdateQuests: (quests: QuestProgress[]) => void;
   customTrackerFields: CustomTrackerField[];
@@ -873,9 +876,6 @@ function CombinedPlayerWidget({
             onUpdatePersonaStatus={onUpdatePersonaStatus}
             characters={characters}
             onUpdateCharacters={onUpdateCharacters}
-            inventory={inventory}
-            onUpdateInventory={onUpdateInventory}
-            onRemoveInventoryItem={onRemoveInventoryItem}
             quests={quests}
             onUpdateQuests={onUpdateQuests}
             customTrackerFields={customTrackerFields}
@@ -1196,91 +1196,6 @@ function CustomTrackerWidget({
             onRerunSingleTracker={onRerunSingleTracker}
             isTrackerRetryBusy={isTrackerRetryBusy}
           />
-        </Suspense>
-      </WidgetPopover>
-    </div>
-  );
-}
-
-// ── Inventory Widget ─────────────────────────
-
-function InventoryWidget({
-  items,
-  onUpdate,
-  onRemoveItem,
-}: {
-  items: InventoryItem[];
-  onUpdate: (items: InventoryItem[]) => void;
-  onRemoveItem?: (index: number) => void;
-}) {
-  const { t: localizeUi } = useUiTranslation();
-  const reduceAmbientEffects = useReducedAmbientEffects();
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [cycleIdx, setCycleIdx] = useState(0);
-  const [animKey, setAnimKey] = useState(0);
-
-  // Cycle through items every 3 seconds
-  useEffect(() => {
-    if (reduceAmbientEffects || items.length <= 1) return;
-    const timer = setInterval(() => {
-      setCycleIdx((prev) => (prev + 1) % items.length);
-      setAnimKey((k) => k + 1);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [items.length, reduceAmbientEffects]);
-
-  // Reset index if items shrink
-  useEffect(() => {
-    if (cycleIdx >= items.length) setCycleIdx(0);
-  }, [items.length, cycleIdx]);
-
-  const currentItem = items[cycleIdx];
-
-  // Auto-shrink font so the longest word fits on one line within ~36px usable width
-  const itemLabel = currentItem
-    ? currentItem.quantity > 1
-      ? `${currentItem.name} ×${currentItem.quantity}`
-      : currentItem.name
-    : "";
-  const longestWord = itemLabel.split(/\s+/).reduce((max, w) => Math.max(max, w.length), 0);
-  // ~0.6em per char at a given font size; widget inner ≈ 36px → fontSize ≤ 60/longestWord
-  const itemFontSize = Math.max(3.5, Math.min(6, 60 / Math.max(longestWord, 1)));
-
-  return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        onClick={() => setOpen(!open)}
-        className={WIDGET}
-        title={localizeUi("ui.chat.inventorywidget.inventory")}
-      >
-        {items.length > 0 && currentItem ? (
-          <span
-            key={animKey}
-            className={cn(
-              "w-full px-0.5 text-center font-semibold leading-[1.2]",
-              !reduceAmbientEffects && "animate-[inventory-cycle_0.4s_ease-out]",
-            )}
-            style={{ fontSize: `${itemFontSize}px` }}
-          >
-            {itemLabel}
-          </span>
-        ) : (
-          <Package size="0.875rem" className="max-md:h-3 max-md:w-3" />
-        )}
-      </button>
-
-      <WidgetPopover
-        open={open}
-        onClose={() => setOpen(false)}
-        anchorRef={buttonRef}
-        className="w-64 max-h-80 overflow-y-auto"
-      >
-        <Suspense
-          fallback={<DeferredHUDPanelFallback label={localizeUi("ui.chat.inventorywidget.loadingInventory")} />}
-        >
-          <InventoryPanel items={items} onUpdate={onUpdate} onRemoveItem={onRemoveItem} />
         </Suspense>
       </WidgetPopover>
     </div>

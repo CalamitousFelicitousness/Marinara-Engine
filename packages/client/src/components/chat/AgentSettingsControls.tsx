@@ -5,6 +5,7 @@ import type { AgentPromptTemplateOption } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { MacroTextarea } from "../ui/MacroTextarea";
 
 export const AGENT_SETTINGS_SURFACE_CLASS = "border border-[var(--border)] bg-[var(--secondary)]/70";
 
@@ -287,17 +288,20 @@ export function AgentSettingsTextarea({
   onBlur?: () => void;
 }) {
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <span className="text-[0.625rem] font-medium text-[var(--foreground)]">{label}</span>
-      <textarea
+      <MacroTextarea
         value={value}
         placeholder={placeholder}
         rows={rows ?? 3}
-        onChange={(event) => onChange(event.target.value)}
+        title={label}
+        ariaLabel={label}
+        onChange={onChange}
         onBlur={onBlur}
-        className="min-h-[3.25rem] w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/45 focus:border-[var(--primary)]/50"
+        onExpandedClose={onBlur}
+        className="mari-chrome-field min-h-[3.25rem] w-full !rounded-md px-2.5 py-2 pr-8 text-xs leading-relaxed"
       />
-    </label>
+    </div>
   );
 }
 

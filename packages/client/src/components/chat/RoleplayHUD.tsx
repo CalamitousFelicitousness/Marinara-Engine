@@ -240,10 +240,10 @@ export function RoleplayHUD({
     }
     resetAgentStore();
   }, [chatId, injectionSourceMessages, resetAgentStore, setGameState, updateMessageExtra]);
-  const stopAgents = useCallback(
-    () => api.post("/generate/abort", { chatId, agentsOnly: true }).then(() => undefined),
-    [chatId],
-  );
+  const stopAgents = useCallback(async () => {
+    const result = await api.post<{ aborted: boolean }>("/generate/abort", { chatId, agentsOnly: true });
+    if (!result.aborted) throw new Error("No active agent run was found");
+  }, [chatId]);
 
   const date = gameState?.date ?? null;
   const time = gameState?.time ?? null;
@@ -601,7 +601,7 @@ function TrackerPanelToggleButton({ onToggle }: { onToggle: () => void }) {
       title={localizeUi("ui.chat.trackerpaneltogglebutton.showTrackerPanel")}
       aria-label={localizeUi("ui.chat.trackerpaneltogglebutton.showTrackerPanel")}
     >
-      <TrackerPanelIcon size="1.05rem" className="shrink-0" />
+      <TrackerPanelIcon size="1.05rem" className="shrink-0 text-[var(--marinara-app-accent-static)]" />
       <span className="sr-only">{localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}</span>
     </button>
   );

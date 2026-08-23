@@ -30,6 +30,7 @@ import {
 } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../../../lib/utils";
+import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/tracker-row-layout";
 import { trackerEditableText } from "../../lib/tracker-display";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerLockContext } from "../TrackerLockContext";
@@ -38,13 +39,7 @@ import { useTrackerLockContext } from "../TrackerLockContext";
 // the custom-field rows above them. `rem` resolves against the app's root size,
 // which the panel scales down, so a per-row override lands near 6px.
 const EXTRAS_LIST_CLASS =
-  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[0.5625rem] @min-[176px]:text-[0.625rem]";
-
-// Stacked while the card is narrow, label/value columns once there is room.
-const EXTRAS_ROW_CLASS =
-  "grid min-w-0 grid-cols-1 items-start gap-x-0.5 @min-[176px]:grid-cols-[minmax(2.35rem,0.42fr)_minmax(0,1fr)] @min-[176px]:items-center @min-[176px]:gap-x-1";
-const EXTRAS_ROW_DELETE_CLASS =
-  "grid-cols-[minmax(0,1fr)_1.25rem] @min-[176px]:grid-cols-[minmax(2.35rem,0.38fr)_minmax(0,1fr)_1.25rem]";
+  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[length:var(--tracker-fs-0-5625)] @min-[176px]:text-[length:var(--tracker-fs-0-625)]";
 
 /** Subtrees at or below these sizes unfold on first render. */
 const OPEN_BY_DEFAULT_TOP_LEVEL = 24;
@@ -122,7 +117,7 @@ function ExtrasNode({
 
   if (isTrackerExtraLeaf(node)) {
     return (
-      <div className={cn(EXTRAS_ROW_CLASS, deleteMode && EXTRAS_ROW_DELETE_CLASS)}>
+      <div className={cn(TRACKER_ROW_CLASS, deleteMode && TRACKER_ROW_WITH_ACTION_CLASS)}>
         <span
           className="truncate px-0.5 font-medium text-[color:var(--tracker-inline-muted,var(--muted-foreground))]"
           title={String(path[path.length - 1] ?? "")}

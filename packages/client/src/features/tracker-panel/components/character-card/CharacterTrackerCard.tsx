@@ -16,6 +16,7 @@ import {
 } from "@marinara-engine/shared";
 import type { TrackerPanelSizeProfile, TrackerStatDisplayMode } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
+import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/tracker-row-layout";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { trackerEditableText, visibleText } from "../../lib/tracker-display";
 import {
@@ -68,14 +69,13 @@ const CHARACTER_AVATAR_SOCKET_SIZE_CLASS = {
 const CHARACTER_HEADER_FILLER_CLASS =
   "pointer-events-none mt-1 h-3 w-[86%] bg-[repeating-linear-gradient(180deg,color-mix(in_srgb,var(--tracker-profile-nameplate-rule)_16%,transparent)_0_1px,transparent_1px_6px)] opacity-45 [mask-image:linear-gradient(90deg,black_0%,transparent_100%)]";
 const CHARACTER_NAME_EDIT_CLASS =
-  "h-full w-full min-w-0 overflow-hidden px-0 py-0 text-[0.75rem] font-bold leading-[1.35rem] text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.38)] hover:bg-transparent";
+  "h-full w-full min-w-0 overflow-hidden px-0 py-0 text-[length:var(--tracker-fs-0-75)] font-bold leading-[1.35rem] text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.38)] hover:bg-transparent";
 const CHARACTER_DETAIL_ROWS_CLASS = "relative z-[1] mt-0.5 grid grid-cols-1 gap-px px-px pb-px";
 const CHARACTER_STAT_BLOCK_CLASS =
   "group/statbox relative z-[1] mt-1 border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1";
 const CHARACTER_CUSTOM_FIELD_LIST_CLASS =
-  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[0.5625rem] @min-[176px]:text-[0.625rem]";
-const CHARACTER_CUSTOM_FIELD_ROW_CLASS =
-  "grid min-w-0 grid-cols-[minmax(2.05rem,0.42fr)_minmax(0,1fr)] items-center gap-0.5 @min-[176px]:grid-cols-[minmax(2.35rem,0.42fr)_minmax(0,1fr)] @min-[176px]:gap-1";
+  "relative z-[1] mt-1 grid gap-px border-t border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] pt-1 text-[length:var(--tracker-fs-0-5625)] @min-[176px]:text-[length:var(--tracker-fs-0-625)]";
+const CHARACTER_CUSTOM_FIELD_ROW_CLASS = TRACKER_ROW_CLASS;
 
 type HideableCharacterField = "mood" | "appearance" | "outfit" | "thoughts";
 
@@ -128,7 +128,7 @@ function CompactThoughtBubble({
                   : localizeUi("ui.trackerPanel.thoughtbubble.hideThoughts")
               }
               aria-pressed={hidden}
-              className="min-h-4 w-full min-w-0 rounded px-0 py-0 text-left text-[0.59375rem] font-medium italic leading-[1.05] text-[color-mix(in_srgb,var(--tracker-profile-text)_72%,transparent)] transition-colors hover:bg-[var(--tracker-profile-accent-solid)]/10"
+              className="min-h-4 w-full min-w-0 rounded px-0 py-0 text-left text-[length:var(--tracker-fs-0-59375)] font-medium italic leading-[1.05] text-[color-mix(in_srgb,var(--tracker-profile-text)_72%,transparent)] transition-colors hover:bg-[var(--tracker-profile-accent-solid)]/10"
             >
               <span className="line-clamp-3 break-words tracking-[0]">
                 {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : thoughtText}
@@ -139,7 +139,7 @@ function CompactThoughtBubble({
               value={value ?? ""}
               onSave={onSave}
               placeholder={localizeUi("ui.trackerPanel.thoughtbubble.thoughts")}
-              className="min-h-4 w-full min-w-0 px-0 py-0 text-[0.59375rem] font-medium italic leading-[1.05] [--foreground:color-mix(in_srgb,var(--tracker-profile-text)_90%,var(--tracker-profile-accent-solid)_10%)] [--muted-foreground:color-mix(in_srgb,var(--tracker-profile-muted-text)_82%,var(--tracker-profile-accent-solid)_18%)] hover:bg-[var(--tracker-profile-accent-solid)]/10"
+              className="min-h-4 w-full min-w-0 px-0 py-0 text-[length:var(--tracker-fs-0-59375)] font-medium italic leading-[1.05] [--foreground:color-mix(in_srgb,var(--tracker-profile-text)_90%,var(--tracker-profile-accent-solid)_10%)] [--muted-foreground:color-mix(in_srgb,var(--tracker-profile-muted-text)_82%,var(--tracker-profile-accent-solid)_18%)] hover:bg-[var(--tracker-profile-accent-solid)]/10"
               showEditHint={false}
               previewLineCount={3}
               previewClassName="tracking-[0]"
@@ -454,11 +454,7 @@ export function CharacterTrackerCard({
           {customFields.map(([name, rawValue, displayValue]) => (
             <div
               key={name}
-              className={cn(
-                CHARACTER_CUSTOM_FIELD_ROW_CLASS,
-                deleteMode &&
-                  "grid-cols-[minmax(2.05rem,0.38fr)_minmax(0,1fr)_1.25rem] @min-[176px]:grid-cols-[minmax(2.35rem,0.38fr)_minmax(0,1fr)_1.25rem]",
-              )}
+              className={cn(CHARACTER_CUSTOM_FIELD_ROW_CLASS, deleteMode && TRACKER_ROW_WITH_ACTION_CLASS)}
             >
               <InlineEdit
                 value={name}

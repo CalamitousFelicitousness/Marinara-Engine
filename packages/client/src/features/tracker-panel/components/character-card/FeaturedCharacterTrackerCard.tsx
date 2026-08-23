@@ -21,6 +21,7 @@ import type {
   TrackerThoughtBubbleDisplay,
 } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
+import { TRACKER_ROW_CLASS, TRACKER_ROW_WITH_ACTION_CLASS } from "../../lib/tracker-row-layout";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { trackerEditableText, visibleText } from "../../lib/tracker-display";
 import { CharacterTrackerExtras } from "./CharacterTrackerExtras";
@@ -88,9 +89,11 @@ const FEATURED_STAT_SHELF_CLASS = cn(
   "max-h-[7.75rem] @min-[380px]:max-h-[9.25rem]",
 );
 const FEATURED_CUSTOM_FIELD_LIST_CLASS =
-  "relative z-[1] mx-1 mb-1 mt-1 grid gap-px border-t border-[var(--tracker-profile-rule)] pt-0.5 text-[0.625rem]";
-const FEATURED_CUSTOM_FIELD_ROW_CLASS =
-  "grid min-w-0 grid-cols-[minmax(3rem,0.42fr)_minmax(0,1fr)] items-center gap-1 border-b border-[var(--tracker-profile-rule)] px-0.5 py-px last:border-b-0";
+  "relative z-[1] mx-1 mb-1 mt-1 grid gap-px border-t border-[var(--tracker-profile-rule)] pt-0.5 text-[length:var(--tracker-fs-0-625)]";
+const FEATURED_CUSTOM_FIELD_ROW_CLASS = cn(
+  TRACKER_ROW_CLASS,
+  "border-b border-[var(--tracker-profile-rule)] px-0.5 py-px last:border-b-0",
+);
 
 export function FeaturedCharacterTrackerCard({
   character,
@@ -448,10 +451,7 @@ export function FeaturedCharacterTrackerCard({
           {customFields.map(([name, rawValue, displayValue]) => (
             <div
               key={name}
-              className={cn(
-                FEATURED_CUSTOM_FIELD_ROW_CLASS,
-                deleteMode && "grid-cols-[minmax(3rem,0.38fr)_minmax(0,1fr)_1.25rem]",
-              )}
+              className={cn(FEATURED_CUSTOM_FIELD_ROW_CLASS, deleteMode && TRACKER_ROW_WITH_ACTION_CLASS)}
             >
               <InlineEdit
                 value={name}

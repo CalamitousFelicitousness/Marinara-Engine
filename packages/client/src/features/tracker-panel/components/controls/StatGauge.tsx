@@ -33,23 +33,27 @@ const GAUGE_SIZE_CLASS = {
 } satisfies Record<StatGaugeSize, string>;
 
 const GAUGE_ICON_CLASS = {
-  large: "text-[0.875rem] @min-[380px]:text-[1.0625rem] @min-[520px]:text-xl",
-  medium: "text-[0.6875rem] @min-[380px]:text-[0.8125rem]",
-  compact: "text-[0.625rem] @min-[380px]:text-[0.6875rem]",
+  large:
+    "text-[length:var(--tracker-fs-0-875)] @min-[380px]:text-[length:var(--tracker-fs-1-0625)] @min-[520px]:text-xl",
+  medium: "text-[length:var(--tracker-fs-0-6875)] @min-[380px]:text-[length:var(--tracker-fs-0-8125)]",
+  compact: "text-[length:var(--tracker-fs-0-625)] @min-[380px]:text-[length:var(--tracker-fs-0-6875)]",
 } satisfies Record<StatGaugeSize, string>;
 
 const GAUGE_NAME_CLASS = {
   large:
-    "text-[0.625rem] leading-3 @min-[380px]:text-[0.6875rem] @min-[380px]:leading-[0.875rem] @min-[520px]:text-xs @min-[520px]:leading-4",
-  medium: "text-[0.5rem] leading-[0.625rem] @min-[380px]:text-[0.5625rem] @min-[380px]:leading-[0.6875rem]",
-  compact: "text-[0.4375rem] leading-[0.5625rem] @min-[380px]:text-[0.5rem] @min-[380px]:leading-[0.625rem]",
+    "text-[length:var(--tracker-fs-0-625)] leading-3 @min-[380px]:text-[length:var(--tracker-fs-0-6875)] @min-[380px]:leading-[0.875rem] @min-[520px]:text-xs @min-[520px]:leading-4",
+  medium:
+    "text-[length:var(--tracker-fs-0-5)] leading-[0.625rem] @min-[380px]:text-[length:var(--tracker-fs-0-5625)] @min-[380px]:leading-[0.6875rem]",
+  compact:
+    "text-[length:var(--tracker-fs-0-4375)] leading-[0.5625rem] @min-[380px]:text-[length:var(--tracker-fs-0-5)] @min-[380px]:leading-[0.625rem]",
 } satisfies Record<StatGaugeSize, string>;
 
 const GAUGE_NUMBER_CLASS = {
   large:
-    "text-[0.5625rem] leading-[0.6875rem] @min-[380px]:text-[0.625rem] @min-[380px]:leading-3 @min-[520px]:text-[0.6875rem] @min-[520px]:leading-[0.875rem]",
-  medium: "text-[0.4375rem] leading-[0.5625rem] @min-[380px]:text-[0.5rem] @min-[380px]:leading-[0.625rem]",
-  compact: "text-[0.4375rem] leading-[0.5625rem]",
+    "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem] @min-[380px]:text-[length:var(--tracker-fs-0-625)] @min-[380px]:leading-3 @min-[520px]:text-[length:var(--tracker-fs-0-6875)] @min-[520px]:leading-[0.875rem]",
+  medium:
+    "text-[length:var(--tracker-fs-0-4375)] leading-[0.5625rem] @min-[380px]:text-[length:var(--tracker-fs-0-5)] @min-[380px]:leading-[0.625rem]",
+  compact: "text-[length:var(--tracker-fs-0-4375)] leading-[0.5625rem]",
 } satisfies Record<StatGaugeSize, string>;
 
 export function StatGauge({

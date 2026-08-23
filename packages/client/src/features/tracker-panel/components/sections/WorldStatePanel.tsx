@@ -298,7 +298,7 @@ function WorldCustomFieldPlate({
               onSave={updateName}
               placeholder={localizeUi("ui.trackerPanel.charactertrackercard.field")}
               ariaLabel={`${name} field name`}
-              className="min-w-0 px-0.5 py-0 text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)]/88"
+              className="min-w-0 px-0.5 py-0 text-[length:var(--tracker-fs-0-625)] font-semibold uppercase text-[var(--muted-foreground)]/88"
               previewClassName="truncate"
               scrollOnHover
               showEditHint={false}
@@ -310,7 +310,7 @@ function WorldCustomFieldPlate({
         {!addMode && (
           <dt
             dir="auto"
-            className="line-clamp-2 min-w-0 whitespace-normal break-words px-0.5 text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)]/88"
+            className="line-clamp-2 min-w-0 whitespace-normal break-words px-0.5 text-[length:var(--tracker-fs-0-625)] font-semibold uppercase text-[var(--muted-foreground)]/88"
             title={name}
           >
             {name}
@@ -323,11 +323,15 @@ function WorldCustomFieldPlate({
             onSave={(value) => onUpdate({ ...field, value })}
             placeholder={localizeUi("ui.trackerPanel.worldcustomfieldplate.notRecorded")}
             className="min-h-8 min-w-0 max-w-full pr-3 text-left font-bold text-[var(--foreground)]/92 drop-shadow-sm"
-            inputClassName="text-left text-[0.75rem]"
+            inputClassName="text-left text-[length:var(--tracker-fs-0-75)]"
             showEditHint={!deleteMode}
             {...valueLock}
           >
-            <WorldValueText value={field.value} maxLines={3} className="text-[0.75rem] leading-4" />
+            <WorldValueText
+              value={field.value}
+              maxLines={3}
+              className="text-[length:var(--tracker-fs-0-75)] leading-4"
+            />
           </WorldRenderedEdit>
         </dd>
       </div>

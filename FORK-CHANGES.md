@@ -429,6 +429,46 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Tracker panel reflows instead of shrinking its text
+
+The panel adapted to a narrow gutter by scaling type down, floored at 0.65. Measured on a 1600px
+viewport that produced 6.2px labels; at 1500px the gutter is 89px and nothing readable fits at any
+size. It also made the resize handle pointless, because more width bought bigger glyphs rather than
+more content.
+
+Three changes, chosen from an interactive width explorer built for the decision:
+
+- **Reflow.** `lib/tracker-row-layout.ts` holds one label/value grid shared by the compact card, the
+  featured card, and the nested extras tree: stacked below 176px, tight two-column to 259px, roomy at
+  260px+. Narrowing now costs columns, not legibility.
+- **Overlay.** Below a 176px gutter the panel stops docking and floats over the chat column at its own
+  width. 176px is also the stacked/two-column breakpoint, which is the point: it is the width at which
+  a label and a value stop sharing a line.
+- **Text size**, a four-step S/M/L/XL control in the panel header beside the width control, default L.
+  Spacing and line clamps ride along, so one control moves the whole card. There is deliberately no XS:
+  it would land near 7.6px labels, the state this work exists to fix.
+
+The nine-rule font-size allowlist in `globals.css` is gone. It matched literal Tailwind class strings
+such as `[class~="text-[0.5625rem]"]`, so it silently missed any size not listed -- `0.4375rem`,
+`0.5rem` and `0.875rem` were all in use and none of them scaled. Type now comes from one token per
+size on the panel root, each multiplied by both the user's text scale and the legacy width scale:
+
+    --tracker-fs-0-5625: calc(0.5625rem * var(--tracker-text-scale) * var(--tracker-panel-font-scale))
+
+88 occurrences across 25 files moved onto those tokens. `rem` rather than `em` on purpose: the extras
+tree nests arbitrarily deep and `em` would compound at every level.
+
+The old behaviour survives as a setting, "When the panel does not fit" -> "Shrink the text", which is
+the only thing that lets `--tracker-panel-font-scale` differ from 1.
+
+Verified in a browser: at 1500px, where the gutter is 89px, the panel now renders at 340px with
+11.7px labels and two-column rows instead of an 89px sliver at 5.9px. Cycling text size moves labels
+between 9.8px and 13.3px. The opt-out branch is typechecked but not exercised at runtime.
+
+Persist migration v96 -> v97 folds the short-lived density setting into the text scale
+(compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
+size would re-conflate the axes this work separated.
+
 ### One drag-resize primitive, and a resizable tracker panel
 
 `AppShell.tsx` carried two near-identical inline resize implementations (~40 lines each) for the left

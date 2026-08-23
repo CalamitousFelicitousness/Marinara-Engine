@@ -65,9 +65,9 @@ const SECONDARY_CONTROL_WASH_CLASS_BY_SIDE = {
     "right-0 bg-[linear-gradient(270deg,color-mix(in_srgb,var(--tracker-profile-accent-solid)_6%,transparent),transparent)]",
 } satisfies Record<TrackerProfileSide, string>;
 const NAME_EDIT_CLASS =
-  "relative z-[1] h-5 w-full min-w-0 overflow-hidden px-0 py-0 text-[0.75rem] font-bold leading-5 text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.42)] @min-[340px]:text-[0.8125rem] @min-[380px]:justify-center @min-[380px]:text-center";
+  "relative z-[1] h-5 w-full min-w-0 overflow-hidden px-0 py-0 text-[length:var(--tracker-fs-0-75)] font-bold leading-5 text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.42)] @min-[340px]:text-[length:var(--tracker-fs-0-8125)] @min-[380px]:justify-center @min-[380px]:text-center";
 const NAME_PREVIEW_CLASS =
-  "relative z-[1] w-full text-[0.75rem] font-bold leading-5 text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.42)] @min-[340px]:text-[0.8125rem]";
+  "relative z-[1] w-full text-[length:var(--tracker-fs-0-75)] font-bold leading-5 text-[color:var(--tracker-profile-nameplate-text)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.42)] @min-[340px]:text-[length:var(--tracker-fs-0-8125)]";
 
 export const TRACKER_PROFILE_NAMEPLATE_ICON_BUTTON_CLASS =
   "flex h-4 w-4 items-center justify-center rounded-full border border-transparent bg-[color-mix(in_srgb,var(--background)_18%,transparent)] text-[var(--tracker-profile-icon)]/54 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--tracker-profile-dialogue-border)_20%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_6%,transparent)] transition-all hover:border-[color-mix(in_srgb,var(--foreground)_24%,transparent)] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)] active:scale-95";

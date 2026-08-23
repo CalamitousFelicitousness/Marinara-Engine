@@ -403,7 +403,7 @@ export function InlineNumber({
         aria-pressed={locked}
         style={{ width }}
         className={cn(
-          "inline-flex min-w-0 items-center justify-end rounded bg-transparent px-0 py-0.5 text-right text-[0.625rem] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none ring-1 transition-colors hover:bg-[var(--accent)]/45 focus:ring-[var(--border)]",
+          "inline-flex min-w-0 items-center justify-end rounded bg-transparent px-0 py-0.5 text-right text-[length:var(--tracker-fs-0-625)] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none ring-1 transition-colors hover:bg-[var(--accent)]/45 focus:ring-[var(--border)]",
           locked
             ? "bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_30%,transparent)]"
             : "opacity-90 ring-transparent hover:ring-[var(--border)]/60",
@@ -439,7 +439,7 @@ export function InlineNumber({
       aria-label={title}
       style={{ width }}
       className={cn(
-        "rounded bg-transparent px-1 py-0.5 text-right text-[0.625rem] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none transition-colors hover:bg-[var(--accent)]/45 focus:bg-[var(--background)] focus:ring-1 focus:ring-[var(--border)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+        "rounded bg-transparent px-1 py-0.5 text-right text-[length:var(--tracker-fs-0-625)] tabular-nums text-[color:var(--tracker-inline-number,var(--tracker-inline-foreground,var(--foreground)))] outline-none transition-colors hover:bg-[var(--accent)]/45 focus:bg-[var(--background)] focus:ring-1 focus:ring-[var(--border)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
         locked &&
           "bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_30%,transparent)]",
         className,

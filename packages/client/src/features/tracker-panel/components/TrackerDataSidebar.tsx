@@ -9,6 +9,7 @@ import {
 import {
   nearestTrackerPanelPreset,
   resolveTrackerPanelPreset,
+  TRACKER_PANEL_TEXT_SCALES,
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
   useUIStore,
 } from "../../../stores/ui.store";
@@ -92,15 +93,16 @@ export function TrackerDataSidebar({
   const trackerStatDisplayMode = useUIStore((s) => s.trackerStatDisplayMode);
   const trackerPanelDockedThoughtsAlwaysVisible = useUIStore((s) => s.trackerPanelDockedThoughtsAlwaysVisible);
   const trackerPanelWidth = useUIStore((s) => s.trackerPanelWidth);
-  const trackerPanelDensity = useUIStore((s) => s.trackerPanelDensity);
+  const trackerPanelTextSize = useUIStore((s) => s.trackerPanelTextSize);
   const trackerPanelSizeProfile =
-    resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity) ?? nearestTrackerPanelPreset(trackerPanelWidth);
+    resolveTrackerPanelPreset(trackerPanelWidth) ?? nearestTrackerPanelPreset(trackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
   const toggleTrackerPanelSectionCollapsed = useUIStore((s) => s.toggleTrackerPanelSectionCollapsed);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
   const setTrackerPanelSide = useUIStore((s) => s.setTrackerPanelSide);
   const setTrackerPanelSizeProfile = useUIStore((s) => s.setTrackerPanelSizeProfile);
+  const setTrackerPanelTextSize = useUIStore((s) => s.setTrackerPanelTextSize);
   const setTrackerStatDisplayMode = useUIStore((s) => s.setTrackerStatDisplayMode);
   const { currentGameState, gameStateLoadStatus, gameStateRefreshing, retryGameState } =
     useTrackerGameState(activeChatId);
@@ -192,14 +194,21 @@ export function TrackerDataSidebar({
   return (
     <section
       data-component="TrackerDataSidebar"
-      data-tracker-size-profile={trackerPanelSizeProfile}
+      // Carries the type tokens. On the panel root rather than the shell so the
+      // scale travels with the portal into the detached window.
+      data-tracker-text-size={trackerPanelTextSize}
       className={cn(
         "@container relative flex flex-col bg-zinc-950/95 text-zinc-100 backdrop-blur-sm",
         TRACKER_PANEL_NEUTRAL_VARS,
         fillHeight ? "overflow-hidden" : "overflow-visible",
         fillHeight ? "h-full" : "min-h-0",
       )}
-      style={trackerPanelSurfaceStyle}
+      style={
+        {
+          ...trackerPanelSurfaceStyle,
+          "--tracker-text-scale": TRACKER_PANEL_TEXT_SCALES[trackerPanelTextSize],
+        } as CSSProperties
+      }
     >
       <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.11] [background-image:linear-gradient(color-mix(in_srgb,var(--foreground)_12%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--foreground)_9%,transparent)_1px,transparent_1px)] [background-size:8px_8px]" />
       <TrackerLockProvider
@@ -220,6 +229,8 @@ export function TrackerDataSidebar({
           onSetEditMode={setActiveEditMode}
           onSetSide={setTrackerPanelSide}
           onSetSizeProfile={setTrackerPanelSizeProfile}
+          textSize={trackerPanelTextSize}
+          onSetTextSize={setTrackerPanelTextSize}
           onSetStatDisplayMode={setTrackerStatDisplayMode}
           onToggleDetached={onToggleDetached}
           onClose={() => setTrackerPanelOpen(false, activeChatId)}

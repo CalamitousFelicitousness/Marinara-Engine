@@ -34,8 +34,8 @@ const WORLD_DATE_TIME_PROFILE_STYLES: Record<
     clock: "h-5 w-5 opacity-85",
     calendar: "h-4 w-4 opacity-[0.62]",
     edit: "px-1",
-    time: "text-[1.0625rem] leading-5",
-    date: "text-[0.8125rem] leading-4",
+    time: "text-[length:var(--tracker-fs-1-0625)] leading-5",
+    date: "text-[length:var(--tracker-fs-0-8125)] leading-4",
   },
   expanded: {
     shell: "pr-1",
@@ -43,7 +43,7 @@ const WORLD_DATE_TIME_PROFILE_STYLES: Record<
     clock: "h-6 w-6 opacity-85",
     calendar: "h-5 w-5 opacity-[0.62]",
     edit: "px-1",
-    time: "text-[1.1875rem] leading-6",
+    time: "text-[length:var(--tracker-fs-1-1875)] leading-6",
     date: "text-sm leading-5",
   },
 };

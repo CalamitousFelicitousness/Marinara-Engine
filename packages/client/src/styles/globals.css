@@ -3969,54 +3969,55 @@ strong {
   scrollbar-color: color-mix(in srgb, var(--primary) 42%, transparent) transparent;
 }
 
-/* Keep constrained desktop Tracker typography in normal layout flow. Scaling the
-   panel's whole rendering canvas causes its far edge to be clipped by the shell. */
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] {
-  font-size: calc(1rem * var(--tracker-panel-font-scale));
+/* ──────────────────────────────────────────────
+   Tracker type scale
+   ──────────────────────────────────────────────
+   Every font size the panel uses, as one token each, multiplied by two
+   independent scales:
+
+     --tracker-text-scale        the user's Text size setting (S/M/L/XL)
+     --tracker-panel-font-scale  the legacy width-derived shrink, which is 1
+                                 unless narrow behaviour is set to "scale"
+
+   This replaces a nine-rule allowlist that matched literal Tailwind class
+   strings such as [class~="text-[0.5625rem]"]. That design silently missed any
+   size not listed - 0.4375rem, 0.5rem and 0.875rem were all in use and none of
+   them scaled - and tied global CSS to utility spelling. Adding a size now
+   means adding one token here, nothing else.
+
+   rem rather than em on purpose: the extras tree nests arbitrarily deep, and em
+   would compound at every level. */
+[data-tracker-text-size] {
+  --tracker-fs-0-4375: calc(0.4375rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-5: calc(0.5rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-5625: calc(0.5625rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-59375: calc(0.59375rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-625: calc(0.625rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-6875: calc(0.6875rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-75: calc(0.75rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-8125: calc(0.8125rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-0-875: calc(0.875rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-1-0625: calc(1.0625rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
+  --tracker-fs-1-1875: calc(1.1875rem * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1));
 }
 
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.5625rem]"] {
-  font-size: calc(0.5625rem * var(--tracker-panel-font-scale));
+/* Tailwind's own size utilities inside the panel follow the same scales. */
+[data-tracker-text-size] :is(.text-xs, .text-sm, .text-lg, .text-2xl) {
+  font-size: calc(
+    var(--tracker-panel-base-font-size) * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1)
+  );
 }
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.59375rem]"] {
-  font-size: calc(0.59375rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.625rem]"] {
-  font-size: calc(0.625rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.6875rem]"] {
-  font-size: calc(0.6875rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.75rem]"] {
-  font-size: calc(0.75rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[0.8125rem]"] {
-  font-size: calc(0.8125rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[1.0625rem]"] {
-  font-size: calc(1.0625rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] [class~="text-[1.1875rem]"] {
-  font-size: calc(1.1875rem * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] :is(.text-xs, .text-sm, .text-lg, .text-2xl) {
-  font-size: calc(var(--tracker-panel-base-font-size) * var(--tracker-panel-font-scale));
-}
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] .text-xs {
+[data-tracker-text-size] .text-xs {
   --tracker-panel-base-font-size: 0.75rem;
 }
-
-.mari-tracker-panel-scroll[data-tracker-content-constrained="true"] .text-sm {
+[data-tracker-text-size] .text-sm {
   --tracker-panel-base-font-size: 0.875rem;
+}
+[data-tracker-text-size] .text-lg {
+  --tracker-panel-base-font-size: 1.125rem;
+}
+[data-tracker-text-size] .text-2xl {
+  --tracker-panel-base-font-size: 1.5rem;
 }
 
 .mari-tracker-panel-scroll[data-tracker-content-constrained="true"] .text-lg {

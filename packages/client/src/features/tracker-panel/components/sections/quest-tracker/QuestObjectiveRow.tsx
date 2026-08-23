@@ -9,12 +9,13 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 type QuestObjective = QuestProgress["objectives"][number];
 
 const OBJECTIVE_ROW_CLASS =
-  "relative grid min-h-4 gap-1 rounded-[2px] px-0.5 text-[0.6875rem] transition-colors hover:bg-[var(--accent)]/14";
+  "relative grid min-h-4 gap-1 rounded-[2px] px-0.5 text-[length:var(--tracker-fs-0-6875)] transition-colors hover:bg-[var(--accent)]/14";
 const OBJECTIVE_ROW_WRAPPED_CLASS = "items-start py-0.5 leading-[1.15]";
 const OBJECTIVE_ROW_SINGLE_LINE_CLASS = "items-center leading-4";
 const OBJECTIVE_TOGGLE_BUTTON_CLASS =
   "flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-emerald-400/60 transition-colors hover:bg-emerald-400/10 hover:text-emerald-300";
-const OBJECTIVE_EDIT_CLASS = "w-full min-w-0 overflow-hidden px-0.5 py-0 text-[0.6875rem] hover:bg-[var(--accent)]/20";
+const OBJECTIVE_EDIT_CLASS =
+  "w-full min-w-0 overflow-hidden px-0.5 py-0 text-[length:var(--tracker-fs-0-6875)] hover:bg-[var(--accent)]/20";
 const OBJECTIVE_EDIT_WRAPPED_CLASS = "min-h-4 py-0.5 leading-[1.15]";
 const OBJECTIVE_EDIT_SINGLE_LINE_CLASS = "h-4 leading-4";
 const OBJECTIVE_REMOVE_BUTTON_CLASS =

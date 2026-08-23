@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { TrackerPanelIcon } from "../../../components/ui/TrackerPanelIcon";
 import { TrackerSizeTierIcon } from "../../../components/ui/TrackerSizeTierIcon";
+import { nextTrackerPanelTextSize, type TrackerPanelTextSize } from "../../../lib/tracker-panel-size";
 import type { TrackerPanelSide, TrackerPanelSizeProfile, TrackerStatDisplayMode } from "../../../stores/ui.store";
 import { cn } from "../../../lib/utils";
 import type { TrackerEditMode } from "../tracker-panel.types";
@@ -25,7 +26,17 @@ const TRACKER_PANEL_SIZE_LABELS: Record<TrackerPanelSizeProfile, string> = {
   standard: "Standard",
   expanded: "Expanded",
 };
-const TRACKER_TOOLBAR_ITEM_ORDER = ["detach", "side", "size", "statDisplay", "hide", "lock", "add", "delete"] as const;
+const TRACKER_TOOLBAR_ITEM_ORDER = [
+  "detach",
+  "side",
+  "size",
+  "textSize",
+  "statDisplay",
+  "hide",
+  "lock",
+  "add",
+  "delete",
+] as const;
 type TrackerToolbarItem = (typeof TRACKER_TOOLBAR_ITEM_ORDER)[number];
 
 const isToolbarButton = (target: EventTarget | null): target is HTMLButtonElement =>
@@ -40,6 +51,8 @@ export function TrackerSidebarHeader({
   onSetEditMode,
   onSetSide,
   onSetSizeProfile,
+  textSize,
+  onSetTextSize,
   onSetStatDisplayMode,
   onToggleDetached,
   onClose,
@@ -52,6 +65,8 @@ export function TrackerSidebarHeader({
   onSetEditMode: (mode: TrackerEditMode | null) => void;
   onSetSide: (side: TrackerPanelSide) => void;
   onSetSizeProfile: (profile: TrackerPanelSizeProfile) => void;
+  textSize: TrackerPanelTextSize;
+  onSetTextSize: (size: TrackerPanelTextSize) => void;
   onSetStatDisplayMode: (mode: TrackerStatDisplayMode) => void;
   onToggleDetached?: () => void;
   onClose: () => void;
@@ -74,6 +89,13 @@ export function TrackerSidebarHeader({
   const sizeLabel = TRACKER_PANEL_SIZE_LABELS[sizeProfile];
   const nextSizeLabel = TRACKER_PANEL_SIZE_LABELS[nextSizeProfile];
   const sizeTitle = `Tracker panel size: ${sizeLabel}. Click for ${nextSizeLabel}.`;
+  // Text size sits beside the width control because it is adjusted while
+  // reading the data, not hunted for in Settings.
+  const nextTextSize = nextTrackerPanelTextSize(textSize);
+  const textSizeTitle = localizeUi("ui.trackerPanel.trackersidebarheader.textSizeValue1Value2", {
+    value1: textSize.toUpperCase(),
+    value2: nextTextSize.toUpperCase(),
+  });
   const gaugesSelected = statDisplayMode === "gauges";
   const statDisplayTitle = localizeUi(
     gaugesSelected
@@ -244,6 +266,16 @@ export function TrackerSidebarHeader({
           className="flex h-6 w-6 items-center justify-center rounded-sm text-[var(--muted-foreground)]/62 ring-1 ring-transparent transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] hover:ring-[var(--border)] active:scale-90"
         >
           <TrackerSizeTierIcon sizeProfile={sizeProfile} />
+        </button>
+        <button
+          {...getToolbarItemProps("textSize")}
+          type="button"
+          onClick={() => onSetTextSize(nextTextSize)}
+          title={textSizeTitle}
+          aria-label={textSizeTitle}
+          className="flex h-6 min-w-6 items-center justify-center rounded-sm px-1 text-[0.625rem] font-semibold tracking-tight text-[var(--muted-foreground)]/62 ring-1 ring-transparent transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] hover:ring-[var(--border)] active:scale-90"
+        >
+          {textSize.toUpperCase()}
         </button>
         <button
           {...getToolbarItemProps("statDisplay")}

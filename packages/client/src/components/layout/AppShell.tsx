@@ -19,7 +19,8 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
-  TRACKER_PANEL_PRESETS,
+  TRACKER_PANEL_MIN_DOCK_WIDTH,
+  TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
   useUIStore,
@@ -346,7 +347,7 @@ export function AppShell() {
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
   const trackerPanelStoredWidth = useUIStore((s) => s.trackerPanelWidth);
-  const trackerPanelDensity = useUIStore((s) => s.trackerPanelDensity);
+  const trackerPanelNarrowBehavior = useUIStore((s) => s.trackerPanelNarrowBehavior);
   const setTrackerPanelWidth = useUIStore((s) => s.setTrackerPanelWidth);
   const trackerPanelBackgroundColor = useUIStore((s) => s.trackerPanelBackgroundColor);
   const spatialMapDetailChatId = useUIStore((s) => s.spatialMapDetailChatId);
@@ -389,10 +390,11 @@ export function AppShell() {
   const trackerPanelWidth = trackerPanelStoredWidth;
   // Derived only for the props still typed on the old profile.
   const trackerPanelSizeProfile =
-    resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity) ?? nearestTrackerPanelPreset(trackerPanelWidth);
+    resolveTrackerPanelPreset(trackerPanelWidth) ?? nearestTrackerPanelPreset(trackerPanelWidth);
   const [trackerPanelResolvedWidth, setTrackerPanelResolvedWidth] = useState(trackerPanelWidth);
   const [trackerPanelWidthMeasured, setTrackerPanelWidthMeasured] = useState(false);
   const [trackerPanelGutterWidth, setTrackerPanelGutterWidth] = useState(TRACKER_PANEL_WIDTH_MAX);
+  const [trackerPanelMainWidth, setTrackerPanelMainWidth] = useState(0);
   const shellRootRef = useRef<HTMLDivElement>(null);
   const trackerPanelResizeMax = Math.min(TRACKER_PANEL_WIDTH_MAX, trackerPanelGutterWidth);
   // A gutter too narrow to reach the minimum leaves nothing to drag. Showing a
@@ -680,7 +682,7 @@ export function AppShell() {
     // re-renders the tracker subtree.
     previewVariable: "--mari-tracker-drag-width",
     previewTarget: shellRootRef,
-    resetWidth: () => TRACKER_PANEL_PRESETS[nearestTrackerPanelPreset(trackerPanelWidth)].width,
+    resetWidth: () => TRACKER_PANEL_SIZE_PROFILE_WIDTHS[nearestTrackerPanelPreset(trackerPanelWidth)],
   });
 
   const rightPanelResize = usePanelResize({
@@ -1039,6 +1041,8 @@ export function AppShell() {
       });
       const nextWidth = Math.min(trackerPanelWidth, gutter);
       setTrackerPanelGutterWidth((current) => (current === gutter ? current : gutter));
+      const mainWidth = Math.round(mainRect.width);
+      setTrackerPanelMainWidth((current) => (current === mainWidth ? current : mainWidth));
       setTrackerPanelResolvedWidth((current) => (current === nextWidth ? current : nextWidth));
       setTrackerPanelWidthMeasured(true);
 
@@ -1087,7 +1091,19 @@ export function AppShell() {
       ? trackerPanelResolvedWidth + TRACKER_PANEL_HUD_GAP
       : 0;
   const trackerPanelHudClearance = trackerPanelHideHudWidgets ? trackerPanelOverlayClearance : 0;
-  const trackerPanelContentScale = resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth);
+  // Below the minimum dock width the gutter cannot hold a usable row, so the
+  // panel stops docking and floats over the chat column at its own width.
+  const trackerPanelOverlaid =
+    trackerPanelNarrowBehavior === "overlay" && trackerPanelGutterWidth < TRACKER_PANEL_MIN_DOCK_WIDTH;
+  const trackerPanelRenderWidth = trackerPanelOverlaid
+    ? Math.min(trackerPanelWidth, Math.max(TRACKER_PANEL_MIN_DOCK_WIDTH, trackerPanelMainWidth - 16))
+    : trackerPanelResolvedWidth;
+  // Shrinking type is now the opt-out, not the default: with reflow doing the
+  // adapting there is nothing left for a width-derived scale to fix.
+  const trackerPanelContentScale =
+    trackerPanelNarrowBehavior === "scale"
+      ? resolveTrackerPanelContentScale(trackerPanelWidth, trackerPanelResolvedWidth)
+      : 1;
   const trackerPanelPortal =
     trackerPanelActive &&
     trackerPanelModeAvailable &&
@@ -1156,11 +1172,12 @@ export function AppShell() {
           "mari-tracker-panel fixed z-30 hidden overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-zinc-700/80 backdrop-blur-2xl transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] md:block",
           side === "left" ? "rounded-r-xl" : "rounded-l-xl",
           trackerPanelResize.dragging && "!transition-none",
+          trackerPanelOverlaid && "z-40 shadow-[0_0_40px_rgba(0,0,0,0.55)]",
         )}
         style={{
           top: trackerPanelTop,
           maxHeight: `calc(100vh - ${trackerPanelTop + TRACKER_PANEL_EDGE_OFFSET}px)`,
-          width: `var(--mari-tracker-drag-width, ${trackerPanelResolvedWidth}px)`,
+          width: `var(--mari-tracker-drag-width, ${trackerPanelRenderWidth}px)`,
           transformOrigin: `${side === "left" ? "left" : "right"} ${Math.max(
             -56,
             Math.min(56, (trackerPanelToggleAnchorY ?? trackerPanelTop) - trackerPanelTop),
@@ -1346,7 +1363,7 @@ export function AppShell() {
                   : rightPanelOpen
                     ? liveRightPanelWidth
                     : 0
-              }px + var(--mari-tracker-drag-width, ${trackerPanelResolvedWidth}px))`,
+              }px + var(--mari-tracker-drag-width, ${trackerPanelRenderWidth}px))`,
             }}
           />
         )}

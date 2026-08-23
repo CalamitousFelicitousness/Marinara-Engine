@@ -22,7 +22,7 @@ export function AddRowButton({
       title={label}
       aria-label={label}
       className={cn(
-        "flex items-center justify-center rounded-sm bg-[var(--foreground)]/8 text-[0.625rem] font-medium text-[var(--foreground)]/70 ring-1 ring-[var(--border)]/70 transition-colors hover:bg-[var(--foreground)]/12 hover:text-[var(--foreground)] hover:ring-[var(--foreground)]/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)] active:scale-95",
+        "flex items-center justify-center rounded-sm bg-[var(--foreground)]/8 text-[length:var(--tracker-fs-0-625)] font-medium text-[var(--foreground)]/70 ring-1 ring-[var(--border)]/70 transition-colors hover:bg-[var(--foreground)]/12 hover:text-[var(--foreground)] hover:ring-[var(--foreground)]/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)] active:scale-95",
         children ? "min-h-6 gap-1 px-1.5 py-0.5" : "h-6 min-h-6 w-6 min-w-6 p-0",
         className,
       )}
@@ -155,7 +155,7 @@ export function SectionHeader({
         <div className="ml-0.5 flex min-h-6 shrink-0 items-center gap-0.5">
           {badge !== undefined && badge !== null && (
             <span
-              className="shrink-0 rounded-sm border border-[var(--border)]/26 bg-[var(--background)]/16 px-1 py-0.5 text-[0.5625rem] font-semibold uppercase leading-none tabular-nums text-[var(--foreground)]/62"
+              className="shrink-0 rounded-sm border border-[var(--border)]/26 bg-[var(--background)]/16 px-1 py-0.5 text-[length:var(--tracker-fs-0-5625)] font-semibold uppercase leading-none tabular-nums text-[var(--foreground)]/62"
               title={badgeTitle}
             >
               {badge}
@@ -173,7 +173,7 @@ export function EmptySection({ children, className }: { children: ReactNode; cla
   return (
     <div
       className={cn(
-        "rounded-sm border border-dashed border-[color-mix(in_srgb,var(--tracker-inline-rule,var(--border))_38%,transparent)] px-1 py-1 text-center text-[0.6875rem] text-[color-mix(in_srgb,var(--tracker-inline-muted,var(--muted-foreground))_66%,transparent)]",
+        "rounded-sm border border-dashed border-[color-mix(in_srgb,var(--tracker-inline-rule,var(--border))_38%,transparent)] px-1 py-1 text-center text-[length:var(--tracker-fs-0-6875)] text-[color-mix(in_srgb,var(--tracker-inline-muted,var(--muted-foreground))_66%,transparent)]",
         className,
       )}
     >

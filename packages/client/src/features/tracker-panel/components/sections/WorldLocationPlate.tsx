@@ -25,7 +25,7 @@ export function WorldLocationPlate({
       onSave={onSave}
       placeholder={localizeUi("ui.trackerPanel.worldlocationplate.setLocation")}
       className={cn("flex min-w-0 items-center gap-1.5 rounded-sm px-1 pb-0.5 pt-0 text-left", compact && "px-0.5")}
-      inputClassName={cn("text-left text-sm", compact && "text-[0.8125rem]")}
+      inputClassName={cn("text-left text-sm", compact && "text-[length:var(--tracker-fs-0-8125)]")}
       {...lock}
     >
       <WorldValueText
@@ -33,7 +33,7 @@ export function WorldLocationPlate({
         maxLines={2}
         className={cn(
           "min-w-0 text-sm font-semibold leading-5 text-[var(--foreground)]",
-          compact && "text-[0.8125rem] leading-4",
+          compact && "text-[length:var(--tracker-fs-0-8125)] leading-4",
         )}
       />
     </WorldRenderedEdit>

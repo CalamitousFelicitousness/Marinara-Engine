@@ -47,7 +47,7 @@ export function FeaturedCharacterNameplate({
       title={localizeUi("ui.trackerPanel.charactertrackeravatar.value1Emoji", {
         value1: character.name || localizeUi("ui.noodle.noodlehome.character"),
       })}
-      className="h-4 w-4 justify-center rounded-sm px-0 py-0 text-center text-[0.625rem] leading-4"
+      className="h-4 w-4 justify-center rounded-sm px-0 py-0 text-center text-[length:var(--tracker-fs-0-625)] leading-4"
       showEditHint={false}
       fitPreview
       fitAlign="center"

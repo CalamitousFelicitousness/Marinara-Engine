@@ -124,18 +124,22 @@ function StatBar({
   const isCondensed = isCompact || isTight;
   const isInstrument = visualTone === "instrument";
   const rowTextClass = isTight
-    ? "text-[0.5625rem] leading-[0.6875rem]"
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
     : isCompact
-      ? "text-[0.625rem] leading-3"
+      ? "text-[length:var(--tracker-fs-0-625)] leading-3"
       : TRACKER_TEXT_ROW;
   const inlineEditClass = isTight
-    ? "h-[0.6875rem] text-[0.5625rem] leading-[0.6875rem]"
+    ? "h-[0.6875rem] text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
     : isCompact
-      ? "h-3 text-[0.625rem] leading-3"
+      ? "h-3 text-[length:var(--tracker-fs-0-625)] leading-3"
       : cn("h-[0.875rem]", TRACKER_TEXT_ROW);
-  const compactNameClass = isTight ? "text-[0.5625rem] leading-[0.6875rem]" : "text-[0.625rem] leading-3";
+  const compactNameClass = isTight
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
+    : "text-[length:var(--tracker-fs-0-625)] leading-3";
   const nameInlineEditClass = compactNameRhythm ? cn(inlineEditClass, compactNameClass) : inlineEditClass;
-  const numberClass = isTight ? "text-[0.5625rem] leading-[0.6875rem]" : "text-[0.625rem] leading-3";
+  const numberClass = isTight
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
+    : "text-[length:var(--tracker-fs-0-625)] leading-3";
   const barClass = isInstrument
     ? isTight
       ? "h-[2px] rounded-[1px]"
@@ -406,9 +410,9 @@ export function StatList({
           title={localizeUi("ui.trackerPanel.statlist.addStat")}
           className={
             density === "tight"
-              ? "min-h-3 py-0 text-[0.5625rem] leading-[0.6875rem]"
+              ? "min-h-3 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
               : density === "compact"
-                ? "min-h-4 py-px text-[0.625rem] leading-3"
+                ? "min-h-4 py-px text-[length:var(--tracker-fs-0-625)] leading-3"
                 : undefined
           }
         />

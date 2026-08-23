@@ -32,9 +32,9 @@ const FEATURED_FIELD_TILE_CLASS_BY_PROFILE = {
   expanded: "py-1",
 } satisfies Record<TrackerPanelSizeProfile, string>;
 const FEATURED_FIELD_TEXT_CLASS_BY_PROFILE = {
-  compact: "text-[0.625rem] leading-[1.12]",
-  standard: "text-[0.625rem] leading-[1.16]",
-  expanded: "text-[0.6875rem] leading-[1.18]",
+  compact: "text-[length:var(--tracker-fs-0-625)] leading-[1.12]",
+  standard: "text-[length:var(--tracker-fs-0-625)] leading-[1.16]",
+  expanded: "text-[length:var(--tracker-fs-0-6875)] leading-[1.18]",
 } satisfies Record<TrackerPanelSizeProfile, string>;
 const FEATURED_FIELD_PREVIEW_LINES_BY_PROFILE = {
   compact: 2,

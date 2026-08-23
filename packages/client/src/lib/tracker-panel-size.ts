@@ -1,22 +1,23 @@
 // ──────────────────────────────────────────────
 // Tracker panel size model
 // ──────────────────────────────────────────────
-// Panel width and content density are independent settings. They used to be one
-// (`trackerPanelSizeProfile` picked both a pixel width and a type scale), which
-// meant widening the panel enlarged its text instead of showing more of it, and
-// made a resize handle pointless.
+// Three independent axes, deliberately not derived from one another:
+//
+//   width           dragged or set from a preset
+//   text size       a legibility preference, its own header control
+//   narrow behavior what happens when the gutter cannot hold the panel
+//
+// They used to be one setting. `trackerPanelSizeProfile` picked both a pixel
+// width and a type scale, so widening the panel enlarged its text instead of
+// showing more of it, and a resize handle would have bought nothing.
 //
 // Store-free on purpose: this is pure data plus the persisted-state migration,
 // so a regression can assert it without booting a Zustand store, and ui.store.ts
 // -- a file upstream edits constantly -- keeps only state and re-exports.
 
 export const TRACKER_PANEL_SIZE_PROFILES = ["compact", "standard", "expanded"] as const;
-/** A named width+density pairing. A preset, not the storage model. */
+/** A named width. Presets set width only; text size is a separate axis. */
 export type TrackerPanelSizeProfile = (typeof TRACKER_PANEL_SIZE_PROFILES)[number];
-
-export const TRACKER_PANEL_DENSITIES = ["comfortable", "standard", "compact"] as const;
-/** Type and spacing scale. Never derived from width. */
-export type TrackerPanelDensity = (typeof TRACKER_PANEL_DENSITIES)[number];
 
 export const TRACKER_PANEL_SIZE_PROFILE_WIDTHS: Record<TrackerPanelSizeProfile, number> = {
   compact: 280,
@@ -24,11 +25,40 @@ export const TRACKER_PANEL_SIZE_PROFILE_WIDTHS: Record<TrackerPanelSizeProfile, 
   expanded: 420,
 };
 
-export const TRACKER_PANEL_PRESETS: Record<TrackerPanelSizeProfile, { width: number; density: TrackerPanelDensity }> = {
-  compact: { width: TRACKER_PANEL_SIZE_PROFILE_WIDTHS.compact, density: "compact" },
-  standard: { width: TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard, density: "standard" },
-  expanded: { width: TRACKER_PANEL_SIZE_PROFILE_WIDTHS.expanded, density: "comfortable" },
+/**
+ * Four steps, no smaller. An XS step would land near 7.6px labels, which is the
+ * unreadable state this whole change exists to fix.
+ */
+export const TRACKER_PANEL_TEXT_SIZES = ["s", "m", "l", "xl"] as const;
+export type TrackerPanelTextSize = (typeof TRACKER_PANEL_TEXT_SIZES)[number];
+
+/**
+ * Multiplier applied to the panel's type and spacing tokens. Spacing rides along
+ * with type so one control moves the whole card; splitting them lets a user
+ * build large type in tight rows, which only ever looks broken.
+ */
+export const TRACKER_PANEL_TEXT_SCALES: Record<TrackerPanelTextSize, number> = {
+  s: 0.925,
+  m: 1,
+  l: 1.1,
+  xl: 1.25,
 };
+
+export const TRACKER_PANEL_TEXT_SIZE_DEFAULT: TrackerPanelTextSize = "l";
+
+/** What to do when the gutter beside the chat column cannot hold the panel. */
+export const TRACKER_PANEL_NARROW_BEHAVIORS = ["overlay", "scale"] as const;
+export type TrackerPanelNarrowBehavior = (typeof TRACKER_PANEL_NARROW_BEHAVIORS)[number];
+export const TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT: TrackerPanelNarrowBehavior = "overlay";
+
+/**
+ * Below this the docked panel cannot show a usable row at any type size, so
+ * `overlay` stops docking and floats over the chat column instead. It is also
+ * the card's stacked/two-column container breakpoint, which is not a
+ * coincidence: it is the width at which a label and a value stop fitting side
+ * by side.
+ */
+export const TRACKER_PANEL_MIN_DOCK_WIDTH = 176;
 
 export const TRACKER_PANEL_WIDTH_DEFAULT = TRACKER_PANEL_SIZE_PROFILE_WIDTHS.standard;
 // Deliberately wider than the presets: presets are starting points, not limits.
@@ -64,52 +94,69 @@ export function normalizeTrackerPanelSizeProfile(value: unknown, legacyWidth?: u
   return "standard";
 }
 
-/** Density, falling back to the density half of a legacy profile so an upgrade looks unchanged. */
-export function normalizeTrackerPanelDensity(value: unknown, legacyProfile?: unknown): TrackerPanelDensity {
-  if (TRACKER_PANEL_DENSITIES.includes(value as TrackerPanelDensity)) return value as TrackerPanelDensity;
-  if (TRACKER_PANEL_SIZE_PROFILES.includes(legacyProfile as TrackerPanelSizeProfile)) {
-    return TRACKER_PANEL_PRESETS[legacyProfile as TrackerPanelSizeProfile].density;
+/** Maps the short-lived density setting onto the text-size scale it became. */
+const LEGACY_DENSITY_TEXT_SIZES: Record<string, TrackerPanelTextSize> = {
+  compact: "s",
+  standard: "m",
+  comfortable: "l",
+};
+
+export function normalizeTrackerPanelTextSize(value: unknown, legacyDensity?: unknown): TrackerPanelTextSize {
+  if (TRACKER_PANEL_TEXT_SIZES.includes(value as TrackerPanelTextSize)) return value as TrackerPanelTextSize;
+  if (typeof legacyDensity === "string" && legacyDensity in LEGACY_DENSITY_TEXT_SIZES) {
+    return LEGACY_DENSITY_TEXT_SIZES[legacyDensity]!;
   }
-  return "standard";
+  return TRACKER_PANEL_TEXT_SIZE_DEFAULT;
 }
 
-/** Which preset button is active, or null once the user has dragged off all of them. */
-export function resolveTrackerPanelPreset(width: number, density: TrackerPanelDensity): TrackerPanelSizeProfile | null {
+export function normalizeTrackerPanelNarrowBehavior(value: unknown): TrackerPanelNarrowBehavior {
+  return TRACKER_PANEL_NARROW_BEHAVIORS.includes(value as TrackerPanelNarrowBehavior)
+    ? (value as TrackerPanelNarrowBehavior)
+    : TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT;
+}
+
+/** Next step in the header's cycle button, wrapping at the end. */
+export function nextTrackerPanelTextSize(current: TrackerPanelTextSize): TrackerPanelTextSize {
+  const index = TRACKER_PANEL_TEXT_SIZES.indexOf(current);
+  return TRACKER_PANEL_TEXT_SIZES[(index + 1) % TRACKER_PANEL_TEXT_SIZES.length]!;
+}
+
+/** Which width preset is active, or null once the user has dragged off all of them. */
+export function resolveTrackerPanelPreset(width: number): TrackerPanelSizeProfile | null {
   const clamped = clampTrackerPanelWidth(width);
-  return (
-    TRACKER_PANEL_SIZE_PROFILES.find(
-      (profile) =>
-        TRACKER_PANEL_PRESETS[profile].width === clamped && TRACKER_PANEL_PRESETS[profile].density === density,
-    ) ?? null
-  );
+  return TRACKER_PANEL_SIZE_PROFILES.find((profile) => TRACKER_PANEL_SIZE_PROFILE_WIDTHS[profile] === clamped) ?? null;
 }
 
 /** Nearest preset by width, for the resize handle's double-click reset. */
 export function nearestTrackerPanelPreset(width: number): TrackerPanelSizeProfile {
   const clamped = clampTrackerPanelWidth(width);
   return TRACKER_PANEL_SIZE_PROFILES.reduce((closest, profile) =>
-    Math.abs(TRACKER_PANEL_PRESETS[profile].width - clamped) < Math.abs(TRACKER_PANEL_PRESETS[closest].width - clamped)
+    Math.abs(TRACKER_PANEL_SIZE_PROFILE_WIDTHS[profile] - clamped) <
+    Math.abs(TRACKER_PANEL_SIZE_PROFILE_WIDTHS[closest] - clamped)
       ? profile
       : closest,
   );
 }
 
 /**
- * Persisted-state migration for the width/density split.
- * Returns the two new fields from whatever the old store held.
+ * Persisted-state migration for the size model.
+ * Returns the three fields from whatever the old store held.
  */
 export function migrateTrackerPanelSize(persisted: {
   trackerPanelWidth?: unknown;
+  trackerPanelTextSize?: unknown;
   trackerPanelDensity?: unknown;
+  trackerPanelNarrowBehavior?: unknown;
   trackerPanelSizeProfile?: unknown;
-}): { width: number; density: TrackerPanelDensity } {
+}): { width: number; textSize: TrackerPanelTextSize; narrowBehavior: TrackerPanelNarrowBehavior } {
   const legacyProfile = normalizeTrackerPanelSizeProfile(
     persisted.trackerPanelSizeProfile,
     persisted.trackerPanelWidth,
   );
   return {
     // An explicit width from before the profile era still wins.
-    width: clampTrackerPanelWidth(persisted.trackerPanelWidth ?? TRACKER_PANEL_PRESETS[legacyProfile].width),
-    density: normalizeTrackerPanelDensity(persisted.trackerPanelDensity, legacyProfile),
+    width: clampTrackerPanelWidth(persisted.trackerPanelWidth ?? TRACKER_PANEL_SIZE_PROFILE_WIDTHS[legacyProfile]),
+    textSize: normalizeTrackerPanelTextSize(persisted.trackerPanelTextSize, persisted.trackerPanelDensity),
+    narrowBehavior: normalizeTrackerPanelNarrowBehavior(persisted.trackerPanelNarrowBehavior),
   };
 }

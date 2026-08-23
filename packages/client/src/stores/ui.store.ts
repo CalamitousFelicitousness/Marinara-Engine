@@ -25,12 +25,16 @@ import { DEFAULT_APP_LANGUAGE, type AppLanguage } from "../localization/locale-t
 import {
   clampTrackerPanelWidth,
   migrateTrackerPanelSize,
-  normalizeTrackerPanelDensity,
+  normalizeTrackerPanelNarrowBehavior,
   normalizeTrackerPanelSizeProfile,
-  TRACKER_PANEL_PRESETS,
+  normalizeTrackerPanelTextSize,
+  TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
+  TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
+  TRACKER_PANEL_TEXT_SIZE_DEFAULT,
   TRACKER_PANEL_WIDTH_DEFAULT,
-  type TrackerPanelDensity,
+  type TrackerPanelNarrowBehavior,
   type TrackerPanelSizeProfile,
+  type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
 
 export {
@@ -38,18 +42,25 @@ export {
   getTrackerPanelWidthForProfile,
   migrateTrackerPanelSize,
   nearestTrackerPanelPreset,
-  normalizeTrackerPanelDensity,
+  nextTrackerPanelTextSize,
+  normalizeTrackerPanelNarrowBehavior,
   normalizeTrackerPanelSizeProfile,
+  normalizeTrackerPanelTextSize,
   resolveTrackerPanelPreset,
-  TRACKER_PANEL_DENSITIES,
-  TRACKER_PANEL_PRESETS,
+  TRACKER_PANEL_MIN_DOCK_WIDTH,
+  TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
+  TRACKER_PANEL_NARROW_BEHAVIORS,
   TRACKER_PANEL_SIZE_PROFILE_WIDTHS,
   TRACKER_PANEL_SIZE_PROFILES,
+  TRACKER_PANEL_TEXT_SCALES,
+  TRACKER_PANEL_TEXT_SIZE_DEFAULT,
+  TRACKER_PANEL_TEXT_SIZES,
   TRACKER_PANEL_WIDTH_DEFAULT,
   TRACKER_PANEL_WIDTH_MAX,
   TRACKER_PANEL_WIDTH_MIN,
-  type TrackerPanelDensity,
+  type TrackerPanelNarrowBehavior,
   type TrackerPanelSizeProfile,
+  type TrackerPanelTextSize,
 } from "../lib/tracker-panel-size";
 
 export type Panel =
@@ -549,7 +560,8 @@ interface UIState {
   trackerStatDisplayMode: TrackerStatDisplayMode;
   trackerPanelDockedThoughtsAlwaysVisible: boolean;
   trackerPanelWidth: number;
-  trackerPanelDensity: TrackerPanelDensity;
+  trackerPanelTextSize: TrackerPanelTextSize;
+  trackerPanelNarrowBehavior: TrackerPanelNarrowBehavior;
   trackerPanelBackgroundColor: string;
   trackerTemperatureUnit: TrackerTemperatureUnit;
   trackerPanelCollapsedSections: TrackerPanelCollapsedSections;
@@ -947,7 +959,8 @@ interface UIState {
   /** Applies a preset: sets width and density together. */
   setTrackerPanelSizeProfile: (profile: TrackerPanelSizeProfile) => void;
   setTrackerPanelWidth: (width: number) => void;
-  setTrackerPanelDensity: (density: TrackerPanelDensity) => void;
+  setTrackerPanelTextSize: (size: TrackerPanelTextSize) => void;
+  setTrackerPanelNarrowBehavior: (behavior: TrackerPanelNarrowBehavior) => void;
   setTrackerPanelBackgroundColor: (color: string) => void;
   setTrackerTemperatureUnit: (unit: TrackerTemperatureUnit) => void;
   setTrackerPanelSectionOrder: (order: TrackerPanelSectionOrder) => void;
@@ -1241,7 +1254,8 @@ export function pickSyncedSettings(state: UIState) {
     trackerStatDisplayMode: state.trackerStatDisplayMode,
     trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
     trackerPanelWidth: state.trackerPanelWidth,
-    trackerPanelDensity: state.trackerPanelDensity,
+    trackerPanelTextSize: state.trackerPanelTextSize,
+    trackerPanelNarrowBehavior: state.trackerPanelNarrowBehavior,
     trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
     trackerTemperatureUnit: state.trackerTemperatureUnit,
     trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,
@@ -1391,7 +1405,8 @@ export const useUIStore = create<UIState>()(
       trackerStatDisplayMode: "bars" as TrackerStatDisplayMode,
       trackerPanelDockedThoughtsAlwaysVisible: false,
       trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
-      trackerPanelDensity: "standard" as TrackerPanelDensity,
+      trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
+      trackerPanelNarrowBehavior: TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
       trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
       trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
       trackerPanelCollapsedSections: {},
@@ -1663,12 +1678,11 @@ export const useUIStore = create<UIState>()(
       setTrackerPanelDockedThoughtsAlwaysVisible: (visible) =>
         set({ trackerPanelDockedThoughtsAlwaysVisible: visible }),
       setTrackerPanelSizeProfile: (profile) =>
-        set(() => {
-          const preset = TRACKER_PANEL_PRESETS[normalizeTrackerPanelSizeProfile(profile)];
-          return { trackerPanelWidth: preset.width, trackerPanelDensity: preset.density };
-        }),
+        set({ trackerPanelWidth: TRACKER_PANEL_SIZE_PROFILE_WIDTHS[normalizeTrackerPanelSizeProfile(profile)] }),
       setTrackerPanelWidth: (width) => set({ trackerPanelWidth: clampTrackerPanelWidth(width) }),
-      setTrackerPanelDensity: (density) => set({ trackerPanelDensity: normalizeTrackerPanelDensity(density) }),
+      setTrackerPanelTextSize: (size) => set({ trackerPanelTextSize: normalizeTrackerPanelTextSize(size) }),
+      setTrackerPanelNarrowBehavior: (behavior) =>
+        set({ trackerPanelNarrowBehavior: normalizeTrackerPanelNarrowBehavior(behavior) }),
       setTrackerPanelBackgroundColor: (color) =>
         set({ trackerPanelBackgroundColor: normalizeTrackerPanelBackgroundColor(color) }),
       setTrackerTemperatureUnit: (unit) => set({ trackerTemperatureUnit: normalizeTrackerTemperatureUnit(unit) }),
@@ -2393,7 +2407,8 @@ export const useUIStore = create<UIState>()(
           trackerStatDisplayMode: "bars" as TrackerStatDisplayMode,
           trackerPanelDockedThoughtsAlwaysVisible: false,
           trackerPanelWidth: TRACKER_PANEL_WIDTH_DEFAULT,
-          trackerPanelDensity: "standard" as TrackerPanelDensity,
+          trackerPanelTextSize: TRACKER_PANEL_TEXT_SIZE_DEFAULT,
+          trackerPanelNarrowBehavior: TRACKER_PANEL_NARROW_BEHAVIOR_DEFAULT,
           trackerPanelBackgroundColor: TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
           trackerTemperatureUnit: "celsius" as TrackerTemperatureUnit,
           trackerPanelCollapsedSections: {},
@@ -2551,7 +2566,7 @@ export const useUIStore = create<UIState>()(
       name: "marinara-engine-ui",
       // v94 -> v95: move only the untouched mobile music-player default below Home bookmarks.
       // The version bump ensures existing stores run the exact-coordinate migration below.
-      version: 96,
+      version: 97,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2823,12 +2838,14 @@ export const useUIStore = create<UIState>()(
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
-        // v95 -> v96: panel width and content density become independent settings.
+        // v95 -> v97: width, text size, and narrow-panel behaviour become independent.
         {
           const size = migrateTrackerPanelSize(persisted);
           persisted.trackerPanelWidth = size.width;
-          persisted.trackerPanelDensity = size.density;
+          persisted.trackerPanelTextSize = size.textSize;
+          persisted.trackerPanelNarrowBehavior = size.narrowBehavior;
           delete persisted.trackerPanelSizeProfile;
+          delete persisted.trackerPanelDensity;
         }
         persisted.trackerTemperatureUnit = normalizeTrackerTemperatureUnit(persisted.trackerTemperatureUnit);
         if (persisted.trackerPanelDockedThoughtsAlwaysVisible === undefined) {
@@ -3196,7 +3213,8 @@ export const useUIStore = create<UIState>()(
         trackerStatDisplayMode: state.trackerStatDisplayMode,
         trackerPanelDockedThoughtsAlwaysVisible: state.trackerPanelDockedThoughtsAlwaysVisible,
         trackerPanelWidth: state.trackerPanelWidth,
-        trackerPanelDensity: state.trackerPanelDensity,
+        trackerPanelTextSize: state.trackerPanelTextSize,
+        trackerPanelNarrowBehavior: state.trackerPanelNarrowBehavior,
         trackerPanelBackgroundColor: state.trackerPanelBackgroundColor,
         trackerTemperatureUnit: state.trackerTemperatureUnit,
         trackerPanelCollapsedSections: state.trackerPanelCollapsedSections,

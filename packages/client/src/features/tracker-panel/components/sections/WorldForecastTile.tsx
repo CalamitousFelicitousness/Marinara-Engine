@@ -26,14 +26,14 @@ const WORLD_FORECAST_PROFILE_STYLES: Record<
   standard: {
     shell: "px-0.5",
     edit: "px-1",
-    primary: "text-[1.0625rem] leading-5",
-    secondary: "text-[0.8125rem] leading-4",
+    primary: "text-[length:var(--tracker-fs-1-0625)] leading-5",
+    secondary: "text-[length:var(--tracker-fs-0-8125)] leading-4",
     thermometer: "h-5 w-[0.625rem]",
   },
   expanded: {
     shell: "px-1",
     edit: "px-1",
-    primary: "text-[1.1875rem] leading-6",
+    primary: "text-[length:var(--tracker-fs-1-1875)] leading-6",
     secondary: "text-sm leading-5",
     thermometer: "h-6 w-3",
   },

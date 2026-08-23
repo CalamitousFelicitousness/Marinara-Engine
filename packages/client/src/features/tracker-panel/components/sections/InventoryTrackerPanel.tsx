@@ -96,7 +96,7 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
   return (
     <div className="min-w-0 border-b border-[var(--border)]/25 p-1.5 last:border-0">
       <div className="mb-1 flex min-h-6 items-center justify-between gap-1 px-0.5">
-        <span className="truncate text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+        <span className="truncate text-[length:var(--tracker-fs-0-625)] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
           {label}
         </span>
         {addMode && (
@@ -142,7 +142,7 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
                   updateRow(index, { ...row, name: name || localizeUi("ui.trackerPanel.inventoryTracker.item") })
                 }
                 placeholder={localizeUi("ui.trackerPanel.inventoryTracker.item")}
-                className={cn("min-w-0 px-0.5 text-[0.625rem] font-medium", LOCK_SURFACE_RESET)}
+                className={cn("min-w-0 px-0.5 text-[length:var(--tracker-fs-0-625)] font-medium", LOCK_SURFACE_RESET)}
                 title={row.name}
                 showEditHint={false}
                 scrollOnHover
@@ -151,14 +151,17 @@ function InventoryGroup({ group, label, rows, onUpdate, deleteMode, addMode }: I
                 onToggleLock={() => onToggleFieldLock?.(nameKey)}
               />
               {showQuantity && (
-                <span className="flex shrink-0 items-center gap-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                <span className="flex shrink-0 items-center gap-0.5 text-[length:var(--tracker-fs-0-625)] text-[var(--muted-foreground)]">
                   {qtyLocked && LOCK_GLYPH}
                   <span aria-hidden="true">×</span>
                   <InlineNumber
                     value={quantity}
                     min={1}
                     onChange={(qty) => updateRow(index, qty > 1 ? { ...row, qty } : { name: row.name })}
-                    className={cn("px-0 text-right text-[0.625rem] tabular-nums", LOCK_SURFACE_RESET)}
+                    className={cn(
+                      "px-0 text-right text-[length:var(--tracker-fs-0-625)] tabular-nums",
+                      LOCK_SURFACE_RESET,
+                    )}
                     title={localizeUi("ui.trackerPanel.inventoryTracker.quantityFor", { item: row.name })}
                     locked={qtyLocked}
                     lockMode={lockMode}

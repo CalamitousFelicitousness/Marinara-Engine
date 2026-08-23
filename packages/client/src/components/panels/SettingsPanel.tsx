@@ -2358,9 +2358,10 @@ function TrackerPanelAppearanceDrawer() {
     (state) => state.setTrackerPanelDockedThoughtsAlwaysVisible,
   );
   const trackerPanelWidth = useUIStore((state) => state.trackerPanelWidth);
-  const trackerPanelDensity = useUIStore((state) => state.trackerPanelDensity);
   // null once the user drags off a preset, so no button claims to be active.
-  const trackerPanelSizeProfile = resolveTrackerPanelPreset(trackerPanelWidth, trackerPanelDensity);
+  const trackerPanelSizeProfile = resolveTrackerPanelPreset(trackerPanelWidth);
+  const trackerPanelNarrowBehavior = useUIStore((state) => state.trackerPanelNarrowBehavior);
+  const setTrackerPanelNarrowBehavior = useUIStore((state) => state.setTrackerPanelNarrowBehavior);
   const setTrackerPanelSizeProfile = useUIStore((state) => state.setTrackerPanelSizeProfile);
   const trackerPanelBackgroundColor = useUIStore((state) => state.trackerPanelBackgroundColor);
   const setTrackerPanelBackgroundColor = useUIStore((state) => state.setTrackerPanelBackgroundColor);
@@ -2496,6 +2497,38 @@ function TrackerPanelAppearanceDrawer() {
                       </span>
                       {opt.label}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">
+              {localizeUi("ui.panels.trackerpanelappearancedrawer.narrowBehavior")}
+              <HelpTooltip text={localizeUi("ui.panels.trackerpanelappearancedrawer.narrowBehaviorHelp")} />
+            </span>
+            <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/45 p-0.5">
+              {(
+                [
+                  ["overlay", "ui.panels.trackerpanelappearancedrawer.narrowBehaviorOverlay"],
+                  ["scale", "ui.panels.trackerpanelappearancedrawer.narrowBehaviorScale"],
+                ] as const
+              ).map(([value, labelKey]) => {
+                const selected = trackerPanelNarrowBehavior === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTrackerPanelNarrowBehavior(value)}
+                    aria-pressed={selected}
+                    className={cn(
+                      "flex min-h-8 items-center justify-center rounded-md px-1.5 text-[0.6875rem] font-semibold transition-all",
+                      selected
+                        ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/45"
+                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                    )}
+                  >
+                    {localizeUi(labelKey)}
                   </button>
                 );
               })}

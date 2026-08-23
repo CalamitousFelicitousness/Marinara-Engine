@@ -37,15 +37,30 @@ assert.ok(
 );
 assert.ok(tiers[0]! >= 3, "even the narrowest tier must clear a one-line truncate");
 
-// ── Both card layouts use it, and neither truncates a detail value ──
+// ── Neither layout truncates a detail value ──
 for (const [name, source] of [
   ["compact", compactField],
   ["featured", featuredFields],
 ] as const) {
-  assert.equal(source.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), true, `${name} detail fields use the shared clamp`);
-  assert.equal(source.includes('previewLineCount="full"'), true, `${name} lets the clamp class own the budget`);
+  assert.equal(source.includes('previewLineCount="full"'), true, `${name} sizes its preview from CSS, not a count`);
   assert.equal(source.includes('"truncate"'), false, `${name} detail values must not truncate to one line`);
 }
+
+// The compact card clamps because two cards share a grid row, so one long field
+// would make its neighbour tall too. The featured card owns its width.
+assert.equal(compactField.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), true, "compact values are clamped");
+assert.equal(
+  featuredFields.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"),
+  false,
+  "the featured card has the room to show a detail value in full",
+);
+
+// ── Featured rows size to their content ──
+// An inline repeat(N, minmax(0, 1fr)) forced every field to the same height, so an
+// empty mood tile stood as tall as a nine-line appearance. An inline style beats
+// any class, so this cannot be fixed anywhere else.
+assert.equal(featuredFields.includes("gridTemplateRows"), false, "the featured field list must not force equal rows");
+assert.equal(featuredFields.includes("content-start"), true, "featured rows pack at the top");
 
 // A fixed height clips a wrapped value no matter what the clamp says.
 assert.equal(compactField.includes("h-3.5 @min-[176px]:h-4"), false, "fixed row heights would clip the wrap");

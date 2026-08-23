@@ -17,7 +17,7 @@ import { useTrackerWindow } from "../TrackerWindowContext";
 import {
   TRACKER_PROFILE_PORTRAIT_MEDIA_STAGE_REM,
   TRACKER_PROFILE_PORTRAIT_ROOMY_MEDIA_STAGE_REM,
-  TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_MAX_CLASS,
+  TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_MIN_CLASS,
 } from "../../lib/tracker-panel.constants";
 import {
   TRACKER_PROFILE_GRID_CLASS,
@@ -61,8 +61,8 @@ const FEATURED_REMOVE_BUTTON_CLASS =
 const FEATURED_PORTRAIT_COLUMN_CLASS = "relative z-[1] min-w-0 self-start";
 const FEATURED_PORTRAIT_ANCHOR_CLASS = "relative min-w-0";
 const FEATURED_DETAILS_COLUMN_CLASS =
-  "relative z-[1] flex min-h-0 min-w-0 flex-col self-start overflow-hidden border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_46%,transparent)]";
-const FEATURED_DETAILS_FIELDS_CLASS = "relative min-h-0 flex-1 overflow-hidden";
+  "relative z-[1] flex min-h-0 min-w-0 flex-col self-start border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_46%,transparent)]";
+const FEATURED_DETAILS_FIELDS_CLASS = "relative min-h-0 flex-1";
 const FEATURED_DOCKED_THOUGHT_CLASS = "relative z-[2] order-3 col-span-full mx-1 mb-1 mt-1 shrink-0";
 const FEATURED_DOCKED_THOUGHT_SURFACE_CLASS = "scrollbar-hide overflow-hidden";
 const FEATURED_STAT_BAND_CLASS = "order-4 col-span-full mt-0 rounded-b-[5px]";
@@ -261,7 +261,7 @@ export function FeaturedCharacterTrackerCard({
         <div
           className={cn(
             FEATURED_DETAILS_COLUMN_CLASS,
-            TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_MAX_CLASS,
+            TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_MIN_CLASS,
             TRACKER_PROFILE_ORDER_CLASS_BY_SIDE[featuredDetailsSide],
             TRACKER_PROFILE_DETAILS_SEAM_BORDER_CLASS_BY_SIDE[featuredDetailsSide],
           )}

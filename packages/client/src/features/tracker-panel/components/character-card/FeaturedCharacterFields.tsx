@@ -9,14 +9,29 @@ import {
 } from "@marinara-engine/shared";
 import type { TrackerPanelSizeProfile } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
-import { TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
 import { visibleText } from "../../lib/tracker-display";
 import { InlineEdit } from "../controls/InlineControls";
 import { TRACKER_PROFILE_FIELD_TILE_CLASS } from "../controls/TrackerProfileChrome";
 import { useTrackerFieldLock, useTrackerLockContext } from "../TrackerLockContext";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
-const FEATURED_FIELD_LIST_CLASS = "relative z-[1] grid h-full min-h-0 grid-cols-1 gap-0.5 overflow-hidden px-1 py-0.5";
+// Matches the portrait stage when the fields are short, grows past it when they
+// are not. Two pieces make that work:
+//
+// The minimum is the stage height itself, not `min-h-full`. A percentage minimum
+// resolves against a parent this grid's own content sizes, and that cycle settles
+// on the stretched height rather than the content height.
+//
+// Rows size to their content and pack at the top.
+//
+// They used to be an inline `repeat(N, minmax(0, 1fr))`, which forced every field
+// to the same height: an empty mood tile stood as tall as a nine-line appearance,
+// and the column ran three times longer than its content. An inline style also
+// beats any class, so the equal rows survived every attempt to fix this in CSS.
+//
+// No minimum height either. The card's own grid row is already at least as tall
+// as the portrait beside it, so a short details column needs no filler to match.
+const FEATURED_FIELD_LIST_CLASS = "relative z-[1] grid grid-cols-1 content-start gap-0.5 px-1 py-0.5";
 const FEATURED_FIELD_ICON_CLASS =
   "relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[color-mix(in_srgb,var(--tracker-profile-icon)_58%,var(--tracker-profile-text)_42%)] opacity-[0.82] ring-1 ring-inset ring-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_18%,transparent)] transition-colors before:absolute before:inset-[3px] before:rounded-full before:bg-[color-mix(in_srgb,var(--tracker-profile-accent-solid)_3%,transparent)] before:content-[''] group-hover/field:text-[color-mix(in_srgb,var(--tracker-profile-icon)_78%,var(--tracker-profile-text)_22%)] group-hover/field:ring-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_34%,transparent)] group-hover/field:before:bg-[color-mix(in_srgb,var(--tracker-profile-accent-solid)_6%,transparent)] [&>svg]:relative [&>svg]:z-[1] [&>svg]:stroke-[1.85]";
 type FeaturedCharacterFieldKey = "mood" | "appearance" | "outfit";
@@ -72,6 +87,7 @@ function FeaturedFieldTile({
     <div
       className={cn(
         TRACKER_PROFILE_FIELD_TILE_CLASS,
+        "items-start overflow-visible",
         FEATURED_FIELD_TILE_CLASS_BY_PROFILE[sizeProfile],
         hidden && "opacity-60 grayscale",
       )}
@@ -107,14 +123,14 @@ function FeaturedFieldTile({
           }
           aria-pressed={hidden}
           className={cn(
-            "w-full min-w-0 self-center rounded px-0 py-0 text-left transition-colors hover:bg-[var(--accent)]/25",
+            "w-full min-w-0 self-start rounded px-0 py-0 text-left transition-colors hover:bg-[var(--accent)]/25",
             textClass,
             hidden
               ? "italic text-[color-mix(in_srgb,var(--tracker-profile-muted-text)_62%,transparent)]"
               : "text-[color:var(--tracker-profile-text)]",
           )}
         >
-          <span className={cn("break-words [align-content:start]", TRACKER_DETAIL_VALUE_CLAMP_CLASS)}>
+          <span className="break-words [align-content:start]">
             {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : displayValue}
           </span>
         </button>
@@ -124,11 +140,10 @@ function FeaturedFieldTile({
           onSave={onSave}
           placeholder={placeholder}
           className={cn(
-            "w-full min-w-0 self-center px-0 py-0 text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/25",
+            "w-full min-w-0 self-start px-0 py-0 text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/25",
             textClass,
           )}
           previewLineCount="full"
-          previewClassName={TRACKER_DETAIL_VALUE_CLAMP_CLASS}
           {...lock}
         />
       )}
@@ -198,7 +213,7 @@ export function FeaturedFieldList({
   ].filter((field) => !field.hidden || hideMode);
   if (fields.length === 0) return null;
   return (
-    <div className={FEATURED_FIELD_LIST_CLASS} style={{ gridTemplateRows: `repeat(${fields.length}, minmax(0, 1fr))` }}>
+    <div className={FEATURED_FIELD_LIST_CLASS}>
       {fields.map((field) => (
         <FeaturedFieldTile
           key={field.key}

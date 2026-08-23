@@ -429,6 +429,34 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Featured card fields size to their own content
+
+The previous entry stopped the compact card truncating, but the featured card kept cutting off, for
+two reasons that only its layout had.
+
+**Every field was forced to the same height.** `FeaturedFieldList` set
+`gridTemplateRows: repeat(N, minmax(0, 1fr))` as an inline style, so an empty mood tile stood as tall
+as a nine-line appearance and the details column ran three times longer than its content. Measured:
+mood 146.5px against 17px of actual content. Being an inline style, it beat every class, which is why
+`align-content`, `grid-auto-rows` and a definite minimum all failed to move it. Rows are `auto` now
+and pack with `content-start` -- mood drops to 27.5px and the long fields keep their full height.
+
+**The details column was capped at the portrait height.** `h-[9rem] max-h-[9rem]` plus
+`overflow-hidden` down the chain, with `items-center` on the tiles, so a long value was sliced at the
+top *and* the bottom rather than merely truncated. The column now has no fixed height, the tiles are
+top-aligned, and the card's own grid row keeps it at least as tall as the portrait.
+
+**No clamp on featured values.** The compact card keeps `TRACKER_DETAIL_VALUE_CLAMP_CLASS` because two
+cards share a grid row, so one long field makes its neighbour tall too. The featured card owns its
+width, so it shows the value in full.
+
+`TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_MIN_CLASS` is added beside the existing `_MAX_` constant;
+`PersonaInventoryPanel` still uses the max form, so its portrait stage is unchanged.
+
+Verified in a browser with a long Polish appearance and outfit: the details column grows from 179px
+to fit, neither field clips, and the empty mood tile no longer inflates. The regression lane pins that
+the featured list has no `gridTemplateRows` and that only the compact card clamps.
+
 ### Detail fields flex, and the persona resolves a tracker portrait
 
 Two changes that make a single unified Character Tracker prompt -- one that lists the user's persona

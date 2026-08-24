@@ -76,6 +76,38 @@ assert.equal(
   "the line budget follows the card, not the panel width preset",
 );
 
+// ── Thoughts read at the same size as the fields beside them ──
+// They used to size themselves fluidly against their own container, with the step
+// chosen by text length, so a short thought rendered larger than a long one and
+// neither matched the rows around it. Measured after: outfit and thoughts both
+// 13.81px on the compact card.
+const bubbles = readClient("features/tracker-panel/components/character-card/CharacterThoughtBubbles.tsx");
+const compactCard = readClient("features/tracker-panel/components/character-card/CharacterTrackerCard.tsx");
+for (const [name, source] of [
+  ["compact card", compactCard],
+  ["featured bubbles", bubbles],
+  ["compact fields", compactField],
+  ["featured fields", featuredFields],
+] as const) {
+  assert.equal(source.includes("TRACKER_DETAIL_TEXT_CLASS"), true, `${name} use the shared detail type scale`);
+}
+assert.equal(bubbles.includes("scaleThoughtFontSize"), false, "the length-keyed fluid font is gone");
+assert.equal(bubbles.includes("getThoughtPreviewClampClass"), false, "and its 2-or-3 line clamp with it");
+
+// Neither bubble may cap its height and hide the overflow.
+assert.equal(compactCard.includes("max-h-[2.95rem]"), false, "the compact bubble no longer cuts a long thought");
+assert.equal(bubbles.includes("max-h-[3.25rem]"), false, "nor does the floating one");
+for (const [name, source] of [
+  ["compact", compactCard],
+  ["featured", bubbles],
+] as const) {
+  assert.equal(source.includes('previewLineCount="full"'), true, `${name} thoughts size from CSS, not a line count`);
+}
+// The compact bubble clamps like the compact fields, since two cards share a grid
+// row; the featured bubbles are unclamped like the featured fields.
+assert.equal(compactCard.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), true, "compact thoughts clamp with their card");
+assert.equal(bubbles.includes("TRACKER_DETAIL_VALUE_CLAMP_CLASS"), false, "featured thoughts show in full");
+
 // ── Persona avatar sits between the chat card and the fuzzy library match ──
 const personaMatch = generateRoutes.indexOf("isPersonaCharacter && personaAvatarPath");
 const cardMatch = generateRoutes.indexOf("if (matched?.avatarPath) {");

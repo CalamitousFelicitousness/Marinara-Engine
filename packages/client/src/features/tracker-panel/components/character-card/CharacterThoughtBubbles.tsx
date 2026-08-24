@@ -4,6 +4,7 @@ import { motion, useReducedMotion, type MotionProps, type Transition } from "fra
 import type { TrackerPanelSide } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
+import { TRACKER_DETAIL_TEXT_CLASS } from "../../lib/tracker-row-layout";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerFieldLock } from "../TrackerLockContext";
 import { useTrackerWindow } from "../TrackerWindowContext";
@@ -12,8 +13,6 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 type ThoughtBubbleSize = "short" | "medium" | "long";
 
 type ThoughtTextFit = {
-  fontSize: string;
-  lineHeight: number;
   editMinHeightClassName: string;
   previewClassName?: string;
 };
@@ -73,62 +72,24 @@ function getFloatingThoughtBubbleMotion({
   };
 }
 
-function getThoughtPreviewClampClass(previewLineCount: 2 | 3) {
-  return previewLineCount === 2 ? "line-clamp-2" : "line-clamp-3";
-}
-
 function getThoughtBubbleSize(text: string): ThoughtBubbleSize {
   if (text.length <= 38) return "short";
   if (text.length <= 84) return "medium";
   return "long";
 }
 
-/**
- * Thought text is sized fluidly against its own container with `cqw`, so it
- * cannot use the panel's font-size tokens. Multiply the fluid result by the same
- * two scales those tokens use, or the bubble ignores the Text size control and
- * renders smaller than every row around it.
- */
-function scaleThoughtFontSize(size: string) {
-  return `calc(${size} * var(--tracker-text-scale, 1) * var(--tracker-panel-font-scale, 1))`;
-}
-
 function getThoughtTextFit(text: string, bubbleSize: ThoughtBubbleSize): ThoughtTextFit {
   const length = text.length;
 
   if (bubbleSize === "short") {
-    return {
-      fontSize: scaleThoughtFontSize("clamp(0.75rem, calc(0.59rem + 2.35cqw), 0.875rem)"),
-      lineHeight: 1.12,
-      editMinHeightClassName: "min-h-6",
-      previewClassName: "text-center",
-    };
+    return { editMinHeightClassName: "min-h-6", previewClassName: "text-center" };
   }
 
   if (bubbleSize === "medium") {
-    return {
-      fontSize:
-        length <= 62
-          ? scaleThoughtFontSize("clamp(0.71875rem, calc(0.55rem + 1.55cqw), 0.84375rem)")
-          : scaleThoughtFontSize("clamp(0.6875rem, calc(0.54rem + 1.25cqw), 0.78125rem)"),
-      lineHeight: 1.12,
-      editMinHeightClassName: length <= 58 ? "min-h-8" : "min-h-[3.5rem]",
-    };
+    return { editMinHeightClassName: length <= 58 ? "min-h-8" : "min-h-[3.5rem]" };
   }
 
-  if (length <= 180) {
-    return {
-      fontSize: scaleThoughtFontSize("clamp(0.71875rem, calc(0.58rem + 2cqw), 0.8125rem)"),
-      lineHeight: 1.08,
-      editMinHeightClassName: "min-h-[3.75rem]",
-    };
-  }
-
-  return {
-    fontSize: scaleThoughtFontSize("clamp(0.65625rem, calc(0.54rem + 1.15cqw), 0.75rem)"),
-    lineHeight: 1.1,
-    editMinHeightClassName: "min-h-[3.75rem]",
-  };
+  return { editMinHeightClassName: "min-h-[3.75rem]" };
 }
 
 function ThoughtBubble({
@@ -155,10 +116,6 @@ function ThoughtBubble({
   const thoughtText = visibleText(value, "Thoughts").replace(/\s+/g, " ");
   const thoughtBubbleSize = getThoughtBubbleSize(thoughtText);
   const thoughtTextFit = getThoughtTextFit(thoughtText, thoughtBubbleSize);
-  const thoughtTextStyle: CSSProperties = {
-    fontSize: thoughtTextFit.fontSize,
-    lineHeight: thoughtTextFit.lineHeight,
-  };
   const thoughtBubbleStyle: CSSProperties | undefined =
     thoughtBubbleSize === "long" ? { maxHeight: "min(22rem, calc(100vh - 1rem))" } : undefined;
   const compactThoughtBubble = thoughtBubbleSize !== "long";
@@ -236,7 +193,6 @@ function ThoughtBubble({
                 compactThoughtBubble && "w-fit max-w-full",
                 thoughtTextFit.editMinHeightClassName,
               )}
-              style={thoughtTextStyle}
             >
               <span className={cn("break-words", thoughtTextFit.previewClassName)}>
                 {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : thoughtText}
@@ -255,11 +211,9 @@ function ThoughtBubble({
                 thoughtBubbleSize === "long" && "min-w-0",
                 thoughtTextFit.editMinHeightClassName,
               )}
-              style={thoughtTextStyle}
               showEditHint={false}
               previewLineCount="full"
               previewClassName={thoughtTextFit.previewClassName}
-              previewStyle={thoughtTextStyle}
               {...lock}
             />
           )}
@@ -295,12 +249,7 @@ export function InlineThoughtBubble({
   const reducedMotion = useReducedMotion();
   if (hidden && !hideMode) return null;
   const thoughtText = visibleText(value, "Thoughts").replace(/\s+/g, " ");
-  const previewLineCount = thoughtText.length <= 70 ? 2 : 3;
-  const thoughtTextStyle: CSSProperties = {
-    fontSize: scaleThoughtFontSize("clamp(0.65625rem, calc(0.56rem + 0.85cqw), 0.75rem)"),
-    lineHeight: 1.12,
-  };
-  const editMinHeightClassName = previewLineCount === 2 ? "min-h-[1.9rem]" : "min-h-[2.5rem]";
+  const editMinHeightClassName = thoughtText.length <= 70 ? "min-h-[1.9rem]" : "min-h-[2.5rem]";
   const previewClassName = thoughtText.length <= 38 ? "text-center" : undefined;
 
   return (
@@ -315,7 +264,7 @@ export function InlineThoughtBubble({
     >
       <div
         className={cn(
-          "relative z-[1] max-h-[3.25rem] min-w-0 overflow-hidden rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--tracker-profile-surface-solid)_78%,var(--tracker-profile-display-solid)_12%)_0%,color-mix(in_srgb,var(--tracker-profile-surface-solid)_72%,var(--tracker-profile-accent-solid)_10%)_54%,color-mix(in_srgb,var(--background)_34%,var(--tracker-profile-surface-solid)_66%)_100%)] px-2.5 py-1 text-[color:var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]",
+          "relative z-[1] max-h-[min(22rem,calc(100vh-2rem))] min-w-0 overflow-y-auto rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--tracker-profile-surface-solid)_78%,var(--tracker-profile-display-solid)_12%)_0%,color-mix(in_srgb,var(--tracker-profile-surface-solid)_72%,var(--tracker-profile-accent-solid)_10%)_54%,color-mix(in_srgb,var(--background)_34%,var(--tracker-profile-surface-solid)_66%)_100%)] px-2.5 py-1 text-[color:var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]",
           surfaceClassName,
         )}
       >
@@ -338,11 +287,11 @@ export function InlineThoughtBubble({
               aria-pressed={hidden}
               className={cn(
                 "w-full px-0 py-0 text-left font-medium italic text-[color:var(--tracker-profile-text)] transition-colors hover:bg-[color-mix(in_srgb,var(--tracker-profile-accent-solid)_10%,transparent)]",
+                TRACKER_DETAIL_TEXT_CLASS,
                 editMinHeightClassName,
               )}
-              style={thoughtTextStyle}
             >
-              <span className={cn("break-words", getThoughtPreviewClampClass(previewLineCount))}>
+              <span className="break-words">
                 {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : thoughtText}
               </span>
             </button>
@@ -353,13 +302,12 @@ export function InlineThoughtBubble({
               placeholder={localizeUi("ui.trackerPanel.thoughtbubble.thoughts")}
               className={cn(
                 "w-full px-0 py-0 font-medium italic [--foreground:color-mix(in_srgb,var(--tracker-profile-text)_94%,var(--tracker-profile-accent-solid)_6%)] [--muted-foreground:color-mix(in_srgb,var(--tracker-profile-muted-text)_84%,var(--tracker-profile-text)_16%)] hover:bg-[color-mix(in_srgb,var(--tracker-profile-accent-solid)_10%,transparent)]",
+                TRACKER_DETAIL_TEXT_CLASS,
                 editMinHeightClassName,
               )}
-              style={thoughtTextStyle}
               showEditHint={false}
-              previewLineCount={previewLineCount}
+              previewLineCount="full"
               previewClassName={previewClassName}
-              previewStyle={thoughtTextStyle}
               {...lock}
             />
           )}

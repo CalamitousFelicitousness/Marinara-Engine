@@ -52,3 +52,18 @@ export const TRACKER_VALUE_CLAMP_CLASS = "@min-[260px]:line-clamp-2 @min-[260px]
  * characters of outfit or mood.
  */
 export const TRACKER_DETAIL_VALUE_CLAMP_CLASS = "line-clamp-4 @min-[176px]:line-clamp-6 @min-[260px]:line-clamp-8";
+
+/**
+ * Type scale for the character detail values: mood, appearance, outfit, thoughts.
+ *
+ * One scale for all four so a thought reads at the same size as the row above it.
+ * Thoughts used to size themselves fluidly against their own container, with the
+ * step chosen by text length, so a short thought rendered larger than a long one
+ * and neither matched the fields beside them.
+ *
+ * Keyed on the card's container, so the compact card (two to a grid row) lands a
+ * step below the featured card, which spans the panel.
+ */
+export const TRACKER_DETAIL_TEXT_CLASS =
+  "text-[length:var(--tracker-fs-0-5625)] leading-[1.15] " +
+  "@min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[260px]:text-[length:var(--tracker-fs-0-6875)]";

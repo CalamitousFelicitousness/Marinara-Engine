@@ -11,6 +11,7 @@ import { cn } from "../../../../lib/utils";
 import { useRenderTimer } from "../../../../lib/perf-diagnostics";
 import type { StatIconLookup } from "../../hooks/use-stat-icons";
 import { visibleText } from "../../lib/tracker-display";
+import { TRACKER_DETAIL_TEXT_CLASS, TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
 import {
   readCharacterCustomFieldEntries,
   useCharacterCardMutations,
@@ -96,7 +97,7 @@ function CompactThoughtBubble({
 
   return (
     <div className="relative z-[1] mt-0.5 w-full max-w-full">
-      <div className="relative z-[2] max-h-[2.95rem] min-h-5 w-full min-w-0 overflow-hidden rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--tracker-profile-surface-solid)_78%,var(--tracker-profile-display-solid)_12%)_0%,color-mix(in_srgb,var(--tracker-profile-surface-solid)_72%,var(--tracker-profile-accent-solid)_10%)_54%,color-mix(in_srgb,var(--background)_34%,var(--tracker-profile-surface-solid)_66%)_100%)] px-2.5 pb-px pt-0.5 text-[var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]">
+      <div className="relative z-[2] min-h-5 w-full min-w-0 rounded-[1.05rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_24%,transparent)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--tracker-profile-surface-solid)_78%,var(--tracker-profile-display-solid)_12%)_0%,color-mix(in_srgb,var(--tracker-profile-surface-solid)_72%,var(--tracker-profile-accent-solid)_10%)_54%,color-mix(in_srgb,var(--background)_34%,var(--tracker-profile-surface-solid)_66%)_100%)] px-2.5 pb-px pt-0.5 text-[var(--tracker-profile-text)] shadow-[0_3px_8px_color-mix(in_srgb,var(--background)_22%,transparent),0_0_6px_color-mix(in_srgb,var(--tracker-profile-accent-solid)_7%,transparent),inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_18%,color-mix(in_srgb,var(--foreground)_7%,transparent),transparent_34%),radial-gradient(circle_at_88%_92%,color-mix(in_srgb,var(--tracker-profile-accent-solid)_9%,transparent),transparent_46%),linear-gradient(180deg,transparent_52%,color-mix(in_srgb,var(--background)_18%,transparent)_100%)]" />
         <div className="relative z-[1] flex w-full max-w-full items-center">
           {hideMode ? (
@@ -114,9 +115,12 @@ function CompactThoughtBubble({
                   : localizeUi("ui.trackerPanel.thoughtbubble.hideThoughts")
               }
               aria-pressed={hidden}
-              className="min-h-4 w-full min-w-0 rounded px-0 py-0 text-left text-[length:var(--tracker-fs-0-59375)] font-medium italic leading-[1.05] text-[color-mix(in_srgb,var(--tracker-profile-text)_72%,transparent)] transition-colors hover:bg-[var(--tracker-profile-accent-solid)]/10"
+              className={cn(
+                "min-h-4 w-full min-w-0 rounded px-0 py-0 text-left font-medium italic text-[color-mix(in_srgb,var(--tracker-profile-text)_72%,transparent)] transition-colors hover:bg-[var(--tracker-profile-accent-solid)]/10",
+                TRACKER_DETAIL_TEXT_CLASS,
+              )}
             >
-              <span className="line-clamp-3 break-words tracking-[0]">
+              <span className={cn("break-words tracking-[0]", TRACKER_DETAIL_VALUE_CLAMP_CLASS)}>
                 {hidden ? localizeUi("ui.trackerPanel.thoughtbubble.hidden") : thoughtText}
               </span>
             </button>
@@ -125,10 +129,13 @@ function CompactThoughtBubble({
               value={value ?? ""}
               onSave={onSave}
               placeholder={localizeUi("ui.trackerPanel.thoughtbubble.thoughts")}
-              className="min-h-4 w-full min-w-0 px-0 py-0 text-[length:var(--tracker-fs-0-59375)] font-medium italic leading-[1.05] [--foreground:color-mix(in_srgb,var(--tracker-profile-text)_90%,var(--tracker-profile-accent-solid)_10%)] [--muted-foreground:color-mix(in_srgb,var(--tracker-profile-muted-text)_82%,var(--tracker-profile-accent-solid)_18%)] hover:bg-[var(--tracker-profile-accent-solid)]/10"
+              className={cn(
+                "min-h-4 w-full min-w-0 px-0 py-0 font-medium italic [--foreground:color-mix(in_srgb,var(--tracker-profile-text)_90%,var(--tracker-profile-accent-solid)_10%)] [--muted-foreground:color-mix(in_srgb,var(--tracker-profile-muted-text)_82%,var(--tracker-profile-accent-solid)_18%)] hover:bg-[var(--tracker-profile-accent-solid)]/10",
+                TRACKER_DETAIL_TEXT_CLASS,
+              )}
               showEditHint={false}
-              previewLineCount={3}
-              previewClassName="tracking-[0]"
+              previewLineCount="full"
+              previewClassName={cn("tracking-[0]", TRACKER_DETAIL_VALUE_CLAMP_CLASS)}
               {...lock}
             />
           )}

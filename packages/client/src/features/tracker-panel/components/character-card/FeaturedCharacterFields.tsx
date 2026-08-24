@@ -10,6 +10,7 @@ import {
 import type { TrackerPanelSizeProfile } from "../../../../stores/ui.store";
 import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
+import { TRACKER_DETAIL_TEXT_CLASS } from "../../lib/tracker-row-layout";
 import { InlineEdit } from "../controls/InlineControls";
 import { TRACKER_PROFILE_FIELD_TILE_CLASS } from "../controls/TrackerProfileChrome";
 import { useTrackerFieldLock, useTrackerLockContext } from "../TrackerLockContext";
@@ -47,11 +48,6 @@ const FEATURED_FIELD_TILE_CLASS_BY_PROFILE = {
   standard: "py-1",
   expanded: "py-1",
 } satisfies Record<TrackerPanelSizeProfile, string>;
-const FEATURED_FIELD_TEXT_CLASS_BY_PROFILE = {
-  compact: "text-[length:var(--tracker-fs-0-625)] leading-[1.12]",
-  standard: "text-[length:var(--tracker-fs-0-625)] leading-[1.16]",
-  expanded: "text-[length:var(--tracker-fs-0-6875)] leading-[1.18]",
-} satisfies Record<TrackerPanelSizeProfile, string>;
 function FeaturedFieldTile({
   icon,
   accessibleLabel,
@@ -81,7 +77,9 @@ function FeaturedFieldTile({
   const lock = useTrackerFieldLock(lockKey);
   if (hidden && !hideMode) return null;
   const displayValue = visibleText(value, placeholder);
-  const textClass = FEATURED_FIELD_TEXT_CLASS_BY_PROFILE[sizeProfile];
+  // Shared with the compact card and the thought bubbles so a detail value reads
+  // at one size everywhere, keyed on the card rather than the panel-width preset.
+  const textClass = TRACKER_DETAIL_TEXT_CLASS;
 
   return (
     <div

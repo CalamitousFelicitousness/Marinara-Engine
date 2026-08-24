@@ -429,6 +429,29 @@ from a regression) and so the upstream-hot store shrinks to re-exports plus stat
 
 Pinned by `scripts/regressions/tracker-panel-size.regression.ts`, mutation-verified.
 
+### Thoughts read at the size of the fields beside them, and stop being cut off
+
+Thought text sized itself fluidly against its own container with `cqw`, and picked the step from the
+text's length: `getThoughtTextFit` returned a bigger font for a short thought than a long one. So a
+bubble never matched the mood, appearance and outfit rows around it, and two thoughts on different
+characters did not match each other.
+
+All four detail values now share `TRACKER_DETAIL_TEXT_CLASS`, keyed on the card's own container
+rather than on text length or the panel-width preset. Measured on the compact card: outfit and
+thoughts both 13.81px, previously 13.81 against a length-dependent value.
+
+Both bubbles also capped their height and hid the overflow, so a long thought was simply cut:
+`max-h-[2.95rem]` on the compact one, `max-h-[3.25rem]` on the floating one. Both caps are gone. The
+floating bubble keeps a ceiling, but as `max-h-[min(22rem,calc(100vh-2rem))]` with `overflow-y-auto`,
+so it stays on screen and scrolls rather than truncating.
+
+Line budget follows the card, matching what the fields already do: the compact bubble clamps with
+`TRACKER_DETAIL_VALUE_CLAMP_CLASS` because two cards share a grid row and one long thought would make
+its neighbour tall too; the featured bubbles are unclamped, because that card owns its width.
+
+`FEATURED_FIELD_TEXT_CLASS_BY_PROFILE` is deleted with the rest of it, which removes the last of the
+featured card's type sizing keyed off `TrackerPanelSizeProfile`.
+
 ### Placeholder tracker rows can be filtered out
 
 A tracker prompt emits a fixed schema, so a field that does not apply comes back as a placeholder

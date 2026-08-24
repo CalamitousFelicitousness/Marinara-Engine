@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
-import { TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
+import { TRACKER_DETAIL_TEXT_CLASS, TRACKER_DETAIL_VALUE_CLAMP_CLASS } from "../../lib/tracker-row-layout";
 import { InlineEdit } from "../controls/InlineControls";
 import { useTrackerFieldLock } from "../TrackerLockContext";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -91,7 +91,8 @@ export function CompactCharacterField({
           }
           aria-pressed={hidden}
           className={cn(
-            "relative z-[1] flex min-h-3.5 min-w-0 rounded px-0 py-0 text-left text-[length:var(--tracker-fs-0-5625)] leading-[1.14] transition-colors hover:bg-[var(--accent)]/20 @min-[176px]:min-h-4 @min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[176px]:leading-[1.15]",
+            "relative z-[1] flex min-h-3.5 min-w-0 rounded px-0 py-0 text-left transition-colors hover:bg-[var(--accent)]/20 @min-[176px]:min-h-4",
+            TRACKER_DETAIL_TEXT_CLASS,
             hidden
               ? "italic text-[color-mix(in_srgb,var(--tracker-profile-muted-text)_62%,transparent)]"
               : "text-[color:var(--tracker-profile-text)]",
@@ -108,7 +109,8 @@ export function CompactCharacterField({
           onSave={onSave}
           placeholder={placeholder}
           className={cn(
-            "relative z-[1] w-full min-h-3.5 min-w-0 px-0 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[1.14] text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/14 @min-[176px]:min-h-4 @min-[176px]:text-[length:var(--tracker-fs-0-625)] @min-[176px]:leading-[1.15]",
+            "relative z-[1] w-full min-h-3.5 min-w-0 px-0 py-0 text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/14 @min-[176px]:min-h-4",
+            TRACKER_DETAIL_TEXT_CLASS,
             valueClassName,
           )}
           previewLineCount="full"

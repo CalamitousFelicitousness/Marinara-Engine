@@ -14,6 +14,8 @@ import {
   packagedAgentDefinitionsSchema,
   type CapabilityCatalog,
   type CapabilityCatalogPackage,
+  type StampedCapabilityCatalog,
+  type StampedCapabilityCatalogPackage,
   type PackagedAgentDefinition,
   type CapabilityPackageUpdate,
   type InstalledCapabilityPackage,
@@ -763,7 +765,7 @@ export const capabilityPackageManager = {
   async catalog(
     fetchCatalog: typeof safeFetch = safeFetch,
     previewCatalogUrl: string | null = PREVIEW_CATALOG_URL,
-  ): Promise<CapabilityCatalog> {
+  ): Promise<StampedCapabilityCatalog> {
     const response = await fetchCatalogDocument(CATALOG_URL, fetchCatalog);
     if (!response.ok) throw new Error(`Catalog request failed with HTTP ${response.status}`);
     // Per-entry tolerant: a catalog entry built for a NEWER Engine (unknown
@@ -795,9 +797,17 @@ export const capabilityPackageManager = {
       );
       return false;
     });
-    const decorate = (entry: CapabilityCatalogPackage, sourceUrl: string, preview: boolean) => ({
+    const decorate = (
+      entry: CapabilityCatalogPackage,
+      sourceUrl: string,
+      preview: boolean,
+    ): StampedCapabilityCatalogPackage => ({
       ...entry,
-      ...(preview ? { preview: true } : {}),
+      // Assigned here from the source URL and nowhere else. `preview` is absent
+      // from the strict downloaded-entry schema, so a published or custom
+      // catalog cannot ship an entry that claims preview provenance for itself
+      // and then ride through this spread.
+      ...(preview ? { preview: true as const } : {}),
       iconUrl: resolveCapabilityPackageIconUrl(entry, sourceUrl),
       artifact: {
         ...entry.artifact,

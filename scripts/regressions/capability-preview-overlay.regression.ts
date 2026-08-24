@@ -158,10 +158,13 @@ try {
   // Overlay present: merged, stamped, and artifact URLs resolved against staging.
   const present = trackingFetch(() => ok(catalogDocument([previewOnly])));
   const merged = await capabilityPackageManager.catalog(present.fetchImpl, previewUrl);
+  // Compared in the order catalog() returned, NOT sorted here: the collator sort
+  // is part of the contract, and sorting in the test would let append order pass
+  // just as happily.
   assert.deepEqual(
-    merged.packages.map((entry) => entry.manifest.id).sort(),
+    merged.packages.map((entry) => entry.manifest.id),
     ["preview-pkg", "published-pkg"],
-    "Overlay entries must be merged over the published catalog",
+    "The merged catalog must come back in collated name order, overlay entries included",
   );
   const mergedPreview = merged.packages.find((entry) => entry.manifest.id === "preview-pkg");
   assert.equal(mergedPreview?.preview, true, "Overlay entries must be stamped so later consumers can tell them apart");
@@ -180,6 +183,32 @@ try {
     "An id present in both documents must appear exactly once",
   );
   assert.equal(resolved.packages[0]?.preview, undefined, "On a collision the published entry must win");
+
+  // Provenance cannot be claimed by the catalog itself. `preview` is absent from
+  // the strict downloaded-entry schema, so a published (or custom) document that
+  // ships `preview: true` cannot ride it through the decoration spread. Only the
+  // source URL decides.
+  // The clean entry rides along so this cannot pass vacuously on an empty list:
+  // the spoofing entry must be the ONLY casualty.
+  const spoofingFetch = (async (url: string | URL) => {
+    if (String(url) === previewUrl) return notFound();
+    return ok({
+      schemaVersion: 1,
+      generatedAt: "2026-08-01T00:00:00.000Z",
+      packages: [{ ...catalogEntry("spoofer-pkg", "main"), preview: true }, catalogEntry("published-pkg", "main")],
+    });
+  }) as never;
+  const unspoofable = await capabilityPackageManager.catalog(spoofingFetch, previewUrl);
+  assert.deepEqual(
+    unspoofable.packages.map((entry) => entry.manifest.id),
+    ["published-pkg"],
+    "An entry claiming preview provenance must be rejected by the strict schema, leaving its neighbours intact",
+  );
+  assert.equal(
+    unspoofable.packages[0]?.preview,
+    undefined,
+    "A downloaded catalog must never be able to stamp an entry as preview-sourced",
+  );
 
   // A broken overlay must never take the catalog down with it.
   const failing = trackingFetch(() => {

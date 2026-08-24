@@ -24,6 +24,7 @@ import { createCharactersStorage, type PersonaStorageRow } from "../storage/char
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { wrapContent } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
+import { logger } from "../../lib/logger.js";
 
 type PersonaFields = NonNullable<MacroContext["personaFields"]>;
 
@@ -654,6 +655,16 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     : characterMacroData;
   const variables = input.variables ?? {};
 
+  // Load per-lorebook entry counts for {{lorebooksize::ID}}.
+  const lorebooks = createLorebooksStorage(input.db);
+  let lorebookEntryCounts: Record<string, number> = {};
+  try {
+    lorebookEntryCounts = await lorebooks.countAllEntriesByLorebook();
+  } catch (err) {
+    logger.warn(err, "Failed to load lorebook entry counts; using empty counts");
+    // If the count fails, continue with empty counts — {{lorebooksize::ID}} resolves to 0.
+  }
+
   return {
     user: input.personaName || "User",
     userPhonetic: input.personaPhoneticName || input.personaFields?.phoneticName || input.personaName || "User",
@@ -670,6 +681,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     lastGenerationType: input.lastGenerationType,
     idleDuration: input.idleDuration,
     timeZone: input.timeZone,
+    lorebookEntryCounts,
     characterFields: {
       ...(characterMacroData.primaryFields ?? {}),
       ...(input.groupScenarioOverrideText ? { scenario: input.groupScenarioOverrideText } : {}),

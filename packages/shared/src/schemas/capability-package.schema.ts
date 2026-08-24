@@ -304,6 +304,11 @@ export const capabilityCatalogPackageSchema = z
       .strict(),
     iconUrl: z.string().url().optional(),
     documentationUrl: z.string().url().optional(),
+    /** Stamped by the Engine when this entry came from the staging preview
+     *  overlay instead of the published lanes. A published catalog document
+     *  never carries it — it is declared here only so the strict entry schema
+     *  accepts the stamped value on the way back out. */
+    preview: z.boolean().optional(),
   })
   .strict();
 

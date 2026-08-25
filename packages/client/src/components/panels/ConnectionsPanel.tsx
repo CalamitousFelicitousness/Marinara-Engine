@@ -454,6 +454,11 @@ function SidecarCard() {
             title={
               expanded ? localizeUi("ui.panels.ttsconfigcard.collapse") : localizeUi("ui.panels.ttsconfigcard.expand")
             }
+            aria-label={
+              expanded ? localizeUi("ui.panels.ttsconfigcard.collapse") : localizeUi("ui.panels.ttsconfigcard.expand")
+            }
+            aria-expanded={expanded}
+            aria-controls="local-model-card-content"
           >
             {expanded ? <ChevronUp size="0.875rem" /> : <ChevronDown size="0.875rem" />}
           </button>
@@ -461,7 +466,7 @@ function SidecarCard() {
       </div>
       {/* Local model actions (only when model is downloaded) */}
       {expanded && (
-        <>
+        <div id="local-model-card-content">
           <div className="mt-2.5 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/10 p-2.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-[var(--warning)]">
               <AlertTriangle size="0.875rem" className="shrink-0" />
@@ -692,7 +697,7 @@ function SidecarCard() {
               </button>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

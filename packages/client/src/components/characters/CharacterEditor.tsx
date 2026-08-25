@@ -55,6 +55,7 @@ import {
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { ConvoProfileFields } from "./ConvoProfileFields";
+import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorModal";
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
@@ -73,6 +74,7 @@ import { CallClipGenerationModal } from "../ui/CallClipGenerationModal";
 import { ImageUploadDropzone } from "../ui/ImageUploadDropzone";
 import { CustomEmojiTagButton } from "../ui/CustomEmojiTagButton";
 import { CharacterRegexSection } from "./CharacterRegexSection";
+import { NameAliasesSection } from "../ui/NameAliasesSection";
 import {
   ArrowDown,
   ArrowLeft,
@@ -113,7 +115,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn, copyToClipboard, generateClientId, getAvatarCropStyle } from "../../lib/utils";
-import { normalizeAvatarCrop } from "@marinara-engine/shared";
+import { normalizeAvatarCrop, type WeekSchedule } from "@marinara-engine/shared";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
 import { buildCardAssetMarkdown } from "../../lib/card-asset-links";
 import { HelpTooltip } from "../ui/HelpTooltip";
@@ -127,7 +129,7 @@ import { Modal } from "../ui/Modal";
 import { SpriteFrameEditor } from "../ui/SpriteFrameEditor";
 import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
-import { EditorTabRail } from "../ui/EditorTabRail";
+import { EditorTabNavigation } from "../ui/EditorTabNavigation";
 import { EditorSectionAnchor, EditorSectionJumps } from "../ui/EditorSectionJumps";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import {
@@ -904,7 +906,13 @@ export function CharacterEditor() {
 
   const headerActionButtonClass = "mari-editor-action inline-flex";
   const saveDisabled = !dirty || saving || avatarUploading || lorebookEmbedding;
-  const saveLabel = avatarUploading ? "Uploading…" : lorebookEmbedding ? "Embedding…" : saving ? "Saving…" : "Save";
+  const saveLabel = avatarUploading
+    ? localizeUi("editor.save.uploading")
+    : lorebookEmbedding
+      ? localizeUi("editor.save.embedding")
+      : saving
+        ? localizeUi("editor.save.saving")
+        : localizeUi("editor.save.action");
   const saveButtonClass = cn(
     "mari-editor-action mari-editor-action--primary mari-editor-action--save inline-flex",
     saveDisabled && "cursor-not-allowed opacity-50",
@@ -1032,8 +1040,8 @@ export function CharacterEditor() {
       />
 
       {/* ── Header ── */}
-      <div className="mari-editor-header">
-        <div className="mari-editor-header-main max-md:min-w-full">
+      <div className="mari-editor-header mari-editor-header--with-nav">
+        <div className="mari-editor-header-main mari-editor-header-main--identity">
           <button
             type="button"
             onClick={handleClose}
@@ -1113,10 +1121,19 @@ export function CharacterEditor() {
           </div>
         </div>
 
+        <EditorTabNavigation tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
+
         <div className="mari-editor-actions flex">
-          <button type="button" onClick={handleSave} disabled={saveDisabled} className={saveButtonClass}>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saveDisabled}
+            className={saveButtonClass}
+            aria-label={saveLabel}
+            title={saveLabel}
+          >
             <Save size="0.9375rem" />
-            <span>{saveLabel}</span>
+            <span className="mari-editor-save-label">{saveLabel}</span>
           </button>
           {headerActions}
         </div>
@@ -1159,10 +1176,8 @@ export function CharacterEditor() {
         </div>
       )}
 
-      {/* ── Body: Tabs + Content ── */}
-      <div className="mari-editor-body @max-5xl:flex-col">
-        <EditorTabRail tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
-
+      {/* ── Body ── */}
+      <div className="mari-editor-body">
         {/* Tab Content */}
         <div className="mari-editor-content @max-5xl:p-4">
           <div className="mari-editor-content-inner">
@@ -1443,29 +1458,82 @@ function ConvoTab({
   characterId?: string;
 }) {
   const ext = formData.extensions;
+  const { t: localizeUi } = useUiTranslation();
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  // The schedule is runtime state, not card content, so it saves on its own
+  // rather than through the editor form. Routing it through `updateExtension`
+  // would mark the card dirty and raise a discard prompt for a routine that is
+  // regenerated every week.
+  const updateCharacter = useUpdateCharacter();
+  const savedCharacter = useCharacter(characterId ?? null);
+  const savedData = (() => {
+    const rawData = (savedCharacter.data as { data?: unknown } | undefined)?.data;
+    if (!rawData) return undefined;
+    try {
+      return (typeof rawData === "string" ? JSON.parse(rawData) : rawData) as CharacterData;
+    } catch {
+      return undefined;
+    }
+  })();
+  const savedExtensions = savedData?.extensions;
+  // Read the saved card, not the form: the schedule saves on its own, so the
+  // in-progress form copy goes stale as soon as the editor writes one.
+  const schedule =
+    (savedExtensions?.conversationSchedule as WeekSchedule | undefined) ??
+    (ext.conversationSchedule as WeekSchedule | undefined);
   return (
     // Key by the edited character so transient edit state resets on switch. The
     // editor reuses this component instance while moving between characters.
-    <ConvoProfileFields
-      key={characterId ?? "new-character"}
-      kind={kind}
-      entityKey={characterId ?? "new-character"}
-      baseName={formData.name}
-      displayName={(ext.convoDisplayName as string) ?? ""}
-      onDisplayNameChange={(v) => updateExtension("convoDisplayName", v)}
-      displayNameInCard={ext.convoDisplayNameInCard === true}
-      onDisplayNameInCardChange={(v) => updateExtension("convoDisplayNameInCard", v)}
-      aboutMe={(ext.aboutMe as string) ?? ""}
-      onAboutMeChange={(v) => updateExtension("aboutMe", v)}
-      behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
-      onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
-      imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
-      onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
-      applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
-      onApplyImageInstructionsToNoodleChange={(value) =>
-        updateExtension("applyConversationImageInstructionsToNoodle", value)
-      }
-    />
+    <>
+      <ConvoProfileFields
+        key={characterId ?? "new-character"}
+        kind={kind}
+        entityKey={characterId ?? "new-character"}
+        baseName={formData.name}
+        displayName={(ext.convoDisplayName as string) ?? ""}
+        onDisplayNameChange={(v) => updateExtension("convoDisplayName", v)}
+        displayNameInCard={ext.convoDisplayNameInCard === true}
+        onDisplayNameInCardChange={(v) => updateExtension("convoDisplayNameInCard", v)}
+        aboutMe={(ext.aboutMe as string) ?? ""}
+        onAboutMeChange={(v) => updateExtension("aboutMe", v)}
+        behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
+        onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
+        imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
+        onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
+        applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
+        onApplyImageInstructionsToNoodleChange={(value) =>
+          updateExtension("applyConversationImageInstructionsToNoodle", value)
+        }
+        schedule={schedule}
+        onEditSchedule={kind === "character" && characterId ? () => setScheduleOpen(true) : undefined}
+      />
+      {/* No chatId: the schedule belongs to the character, so the editor works
+        without a chat open. The draft routes fall back to the default connection. */}
+      <CharacterScheduleEditorModal
+        open={scheduleOpen && !!characterId}
+        characterId={characterId ?? ""}
+        characterName={formData.name}
+        schedule={schedule}
+        onClose={() => setScheduleOpen(false)}
+        onSave={(savedCharacterId, updated) =>
+          updateCharacter.mutate(
+            {
+              id: savedCharacterId,
+              data: { extensions: { conversationSchedule: updated } },
+              skipVersionSnapshot: true,
+            },
+            {
+              onError: (error) =>
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : localizeUi("ui.chat.characterscheduleeditormodal.failedToSaveSchedule"),
+                ),
+            },
+          )
+        }
+      />
+    </>
   );
 }
 
@@ -1524,20 +1592,6 @@ function MetadataTab({
         helpText={CHARACTER_METADATA_HELP}
       />
 
-      <div className="space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {t("editor.avatar.label")}
-          <HelpTooltip text={t("editor.avatar.character.help")} />
-        </span>
-        <AvatarReplaceActions
-          hasAvatar={Boolean(avatarPreview)}
-          uploading={avatarUploading}
-          generationAvailable={imageGenerationAvailable}
-          onUpload={onSelectAvatar}
-          onGenerate={onGenerateAvatar}
-        />
-      </div>
-
       {characterId && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70 px-3 py-2">
           <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -1562,17 +1616,32 @@ function MetadataTab({
         </div>
       )}
 
-      {/* Avatar Crop */}
-      {avatarPreview && (
-        <AvatarCropWidget
-          src={avatarPreview}
-          alt={formData.name}
-          crop={savedCrop}
-          onChange={(next) => updateExtension("avatarCrop", next)}
-          onRemove={onRemoveAvatar}
-          removing={removingAvatar}
+      <div className="space-y-1.5">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {t("editor.avatar.label")}
+          <HelpTooltip text={t("editor.avatar.character.help")} />
+        </span>
+
+        {/* Avatar Crop */}
+        {avatarPreview && (
+          <AvatarCropWidget
+            src={avatarPreview}
+            alt={formData.name}
+            crop={savedCrop}
+            onChange={(next) => updateExtension("avatarCrop", next)}
+            onRemove={onRemoveAvatar}
+            removing={removingAvatar}
+          />
+        )}
+
+        <AvatarReplaceActions
+          hasAvatar={Boolean(avatarPreview)}
+          uploading={avatarUploading}
+          generationAvailable={imageGenerationAvailable}
+          onUpload={onSelectAvatar}
+          onGenerate={onGenerateAvatar}
         />
-      )}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1.5 sm:col-span-2">
@@ -1636,35 +1705,18 @@ function MetadataTab({
                 text={localizeUi("ui.characters.metadatatab.versionNumberForTrackingChangesToThisCharacterDefinition")}
               />
             </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={formData.extensions.versioningEnabled !== false}
-              onClick={() => {
-                const enabled = formData.extensions.versioningEnabled !== false;
-                updateExtension("versioningEnabled", !enabled);
-                if (enabled === false && !formData.character_version.trim()) updateField("character_version", "1.0");
+            <SettingsSwitch
+              checked={formData.extensions.versioningEnabled !== false}
+              onChange={(enabled) => {
+                updateExtension("versioningEnabled", enabled);
+                if (enabled && !formData.character_version.trim()) updateField("character_version", "1.0");
               }}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md px-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+              label={localizeUi("ui.cardversionhistory.automaticVersioning")}
+              labelPosition="end"
               title={localizeUi("ui.cardversionhistory.automaticVersioningDescription")}
-            >
-              <span
-                className={cn(
-                  "relative h-5 w-9 rounded-full border transition-colors",
-                  formData.extensions.versioningEnabled !== false
-                    ? "border-[var(--primary)] bg-[var(--primary)]"
-                    : "border-[var(--border)] bg-[var(--secondary)]",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[var(--background)] shadow-sm transition-transform",
-                    formData.extensions.versioningEnabled !== false && "translate-x-4",
-                  )}
-                />
-              </span>
-              {localizeUi("ui.cardversionhistory.automaticVersioning")}
-            </button>
+              className="min-h-11 gap-2 rounded-md px-1 py-0"
+              labelClassName="text-xs font-medium text-[var(--muted-foreground)]"
+            />
           </div>
           <input
             value={formData.character_version}
@@ -2872,8 +2924,9 @@ function CharacterGalleryTab({
               key={tab.id}
               type="button"
               onClick={() => setMediaTab(tab.id)}
+              aria-pressed={active}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
                 active
                   ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
                   : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
@@ -4065,8 +4118,9 @@ function SpritesTab({
           key={tab.id}
           type="button"
           onClick={() => setCategory(tab.id)}
+          aria-pressed={category === tab.id}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             category === tab.id
               ? "bg-[var(--primary)]/15 text-[var(--primary)]"
               : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -5136,6 +5190,7 @@ function ColorsTab({
   const nameColor = (formData.extensions.nameColor as string) ?? "";
   const dialogueColor = (formData.extensions.dialogueColor as string) ?? "";
   const boxColor = (formData.extensions.boxColor as string) ?? "";
+  const nameAliases = (formData.extensions.nameAliases as string[] | undefined) ?? [];
   const [extracting, setExtracting] = useState(false);
 
   const handleExtract = async () => {
@@ -5258,6 +5313,12 @@ function ColorsTab({
         onChange={(v) => updateExtension("boxColor", v)}
         label={localizeUi("ui.characters.colorstab.messageBoxColor")}
         helpText="Background color for this character's chat message bubbles. Use a semi-transparent color for best results (e.g. rgba)."
+      />
+      {/* Name Aliases */}
+      <NameAliasesSection
+        aliases={nameAliases}
+        onChange={(next) => updateExtension("nameAliases", next)}
+        nameColor={nameColor}
       />
     </div>
   );

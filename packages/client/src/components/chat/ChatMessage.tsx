@@ -44,7 +44,18 @@ import {
 } from "lucide-react";
 import { decodeEncodedSpeakerTags, formatTextQuotes, type Message, type QuoteFormat } from "@marinara-engine/shared";
 import type { GameTurnStoryboard, GameTurnStoryboardKeyframe } from "@marinara-engine/shared";
-import { memo, useState, useMemo, useRef, useEffect, useId, useLayoutEffect, useCallback, type ReactNode } from "react";
+import {
+  memo,
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useCallback,
+  cloneElement,
+  type ReactNode,
+} from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { chatKeys, rememberRecentMessageContentEdit } from "../../hooks/use-chats";
@@ -63,9 +74,15 @@ import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCa
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
-import { sanitizeChatMessageCss, scopeChatMessageCss } from "../../lib/chat-message-css";
+import { scopeChatMessageCss } from "../../lib/chat-message-css";
+import {
+  HTML_TAG_RE,
+  containsChatHtml,
+  decodeEncodedChatHtmlTags,
+  extractChatStyleBlocks,
+  sanitizeChatHtml,
+} from "../../lib/chat-html";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
-import DOMPurify from "dompurify";
 import type { CharacterMap, ExpressionAvatarResolver, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
   MESSAGE_SELECTION_CHECKBOX_CLASS,
@@ -78,9 +95,9 @@ import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
+import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionButton";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
 
-const MESSAGE_ACTION_ICON_SIZE = "1em";
 const MESSAGE_SWIPE_ICON_SIZE = "1.15em";
 const MESSAGE_DOUBLE_TAP_MS = 320;
 const MESSAGE_DOUBLE_TAP_DISTANCE_PX = 26;
@@ -342,7 +359,6 @@ function HideFromAIAction({
   hiddenCharacterIds,
   characters,
   onToggle,
-  dark,
   align = "left",
 }: {
   messageId: string;
@@ -350,7 +366,6 @@ function HideFromAIAction({
   hiddenCharacterIds: string[];
   characters: AIVisibilityCharacter[];
   onToggle: ToggleHiddenFromAI;
-  dark?: boolean;
   align?: "left" | "right";
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -412,7 +427,6 @@ function HideFromAIAction({
           hasRestriction && "mari-accent-animated",
         )}
         ariaPressed={hasRestriction}
-        dark={dark}
       />
 
       {open && isGroupChat && (
@@ -479,7 +493,6 @@ function ConversationStartAction({
   characterIds,
   characters,
   onToggle,
-  dark,
   align = "left",
 }: {
   messageId: string;
@@ -487,7 +500,6 @@ function ConversationStartAction({
   characterIds: string[];
   characters: AIVisibilityCharacter[];
   onToggle: ToggleConversationStart;
-  dark?: boolean;
   align?: "left" | "right";
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -542,7 +554,6 @@ function ConversationStartAction({
           hasStart && "mari-accent-animated",
         )}
         ariaPressed={hasStart}
-        dark={dark}
       />
 
       {open && isGroupChat && (
@@ -834,8 +845,8 @@ const EditTextarea = memo(function EditTextarea({
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50"
-        style={{ fontSize, lineHeight: 1.5, maxHeight: "min(60dvh, 32rem)" }}
+        className="relative z-0 w-full resize-none overflow-y-auto overscroll-contain rounded-lg bg-black/30 px-3 py-2 text-white outline-none ring-1 ring-white/20 focus:ring-blue-400/50 max-md:max-h-[min(60dvh,32rem)]"
+        style={{ fontSize, lineHeight: 1.5 }}
       />
       <div className="pointer-events-auto relative z-30 flex items-center justify-end gap-1.5">
         <button
@@ -867,6 +878,8 @@ const EditTextarea = memo(function EditTextarea({
 interface ChatMessageProps {
   message: Message & { swipes?: Array<{ id: string; content: string }> };
   isStreaming?: boolean;
+  /** Whether the live Roleplay response has begun emitting visible output. */
+  streamingOutputStarted?: boolean;
   /** Frame-throttled live content that receives the same formatter as committed messages. */
   streamingContent?: (renderText: (text: string) => ReactNode) => ReactNode;
   onDelete?: (messageId: string) => void;
@@ -909,6 +922,102 @@ const SPEAKER_TAG_RE = /<speaker="([^"]*)">([\s\S]*?)<\/speaker>/g;
 const INLINE_MARKDOWN_CONTAINER_RE =
   /\*\*\*[\s\S]+?\*\*\*|\*\*[\s\S]+?\*\*|__[\s\S]+?__|(?<!\*)\*(?!\*)[\s\S]+?(?<!\*)\*(?!\*)|==[\s\S]+?==|~~[\s\S]+?~~|(?<![_\w])_[^_]+?_(?![_\w])/g;
 
+function RoleplayThinkingDisclosure({
+  thinking,
+  summaryUnavailable,
+  isStreaming,
+  outputStarted,
+  keepExpanded,
+  durationMs,
+}: {
+  thinking: string | null;
+  summaryUnavailable: boolean;
+  isStreaming: boolean;
+  outputStarted: boolean;
+  keepExpanded: boolean;
+  durationMs: number | null;
+}) {
+  const { t } = useTranslation();
+  const contentId = useId();
+  const startedAtRef = useRef(Date.now());
+  const [expanded, setExpanded] = useState(isStreaming || keepExpanded);
+  const [liveDurationMs, setLiveDurationMs] = useState(0);
+  const [capturedReasoningDurationMs, setCapturedReasoningDurationMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isStreaming || outputStarted) return;
+    startedAtRef.current = Date.now();
+    setCapturedReasoningDurationMs(null);
+    const updateDuration = () => setLiveDurationMs(Date.now() - startedAtRef.current);
+    updateDuration();
+    const interval = window.setInterval(updateDuration, 1_000);
+    return () => window.clearInterval(interval);
+  }, [isStreaming, outputStarted]);
+
+  useLayoutEffect(() => {
+    if (!isStreaming || !outputStarted) return;
+    const elapsedMs = Date.now() - startedAtRef.current;
+    setLiveDurationMs(elapsedMs);
+    setCapturedReasoningDurationMs((current) => current ?? elapsedMs);
+    if (!keepExpanded) setExpanded(false);
+  }, [isStreaming, keepExpanded, outputStarted]);
+
+  const displayedDurationMs = capturedReasoningDurationMs ?? (isStreaming ? liveDurationMs : durationMs);
+  const durationLabel =
+    displayedDurationMs === null
+      ? t("chat.message.thoughts.durationUnknown")
+      : t("chat.message.thoughts.duration", {
+          count: Math.max(1, Math.round(displayedDurationMs / 1_000)),
+        });
+
+  return (
+    <div
+      data-message-thinking-inline
+      className="mb-2 overflow-hidden rounded-md border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-panel-text)]"
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={expanded ? contentId : undefined}
+        title={t(expanded ? "chat.message.thoughts.collapse" : "chat.message.thoughts.expand")}
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[0.75rem] font-medium text-[var(--marinara-chat-chrome-text)] transition-colors hover:bg-[var(--marinara-chat-chrome-button-bg-hover)]"
+      >
+        <Brain
+          size="0.875rem"
+          aria-hidden="true"
+          className={cn("shrink-0", isStreaming && !outputStarted && "animate-pulse")}
+        />
+        <span className="min-w-0 flex-1">{durationLabel}</span>
+        <ChevronRight
+          size="0.875rem"
+          aria-hidden="true"
+          className={cn("shrink-0 transition-transform", expanded && "rotate-90")}
+        />
+      </button>
+      {expanded && (
+        <div
+          id={contentId}
+          className="max-h-64 overflow-y-auto border-t border-[var(--marinara-chat-chrome-panel-border)] px-2.5 py-2 text-[0.75rem] leading-relaxed"
+        >
+          {summaryUnavailable ? (
+            <div>
+              <p className="font-medium text-[var(--marinara-chat-chrome-panel-title)]">
+                {t("chat.message.thoughts.unavailable.title")}
+              </p>
+              <p className="mt-1 text-[var(--marinara-chat-chrome-panel-muted)]">
+                {t("chat.message.thoughts.unavailable.description")}
+              </p>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-words font-[inherit]">{thinking}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Process speaker tags into ReactNodes with per-character dialogue coloring.
  * Non-speaker text gets the default dialogueColor.
@@ -921,7 +1030,7 @@ function renderWithSpeakerTags(
 ): ReactNode[] {
   const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
 
-  if (!speakerColorMap || !SPEAKER_TAG_RE.test(text)) {
+  if (!SPEAKER_TAG_RE.test(text)) {
     return renderLine(text, defaultDialogueColor);
   }
   SPEAKER_TAG_RE.lastIndex = 0;
@@ -938,7 +1047,7 @@ function renderWithSpeakerTags(
     }
     const speakerName = match[1]!;
     const dialogue = match[2]!;
-    const speakerColor = speakerColorMap.get(speakerName) ?? defaultDialogueColor;
+    const speakerColor = speakerColorMap?.get(speakerName) ?? defaultDialogueColor;
     // Render the dialogue content (without the tags) using the speaker's color
     nodes.push(<span key={`s${key++}`}>{renderLine(dialogue, speakerColor)}</span>);
     lastIndex = match.index + match[0].length;
@@ -1050,158 +1159,374 @@ function highlightDialogue(text: string, dialogueColor?: string, boldDialogue = 
   return result;
 }
 
-const HTML_TAG_NAME_SOURCE =
-  "div|span|style|table|p|br|img|a|ul|ol|li|h[1-6]|em|strong|b|i|pre|code|section|article|header|footer|nav|button|input|form|label|select|option|textarea|canvas|svg|video|audio|source|iframe|hr|blockquote|details|summary|figure|figcaption|main|aside|mark|small|sub|sup|del|ins|abbr|time|progress|meter|output|dialog|template|slot|ruby|rt|rp|bdi|bdo|wbr|area|map|track|embed|object|param|picture|portal|datalist|fieldset|legend|optgroup|caption|col|colgroup|thead|tbody|tfoot|th|td|dl|dt|dd|kbd|samp|var|cite|dfn|q|s|u|font|center";
-
-/** Check whether text contains meaningful HTML tags. */
-const HTML_TAG_RE = new RegExp(`<(?:${HTML_TAG_NAME_SOURCE})\\b[^>]*>`, "i");
-const ENCODED_HTML_TAG_RE = new RegExp(
-  `&(?:lt|#0*60|#x0*3c);(\\/?\\s*(?:${HTML_TAG_NAME_SOURCE})\\b[^<>]*?)&(?:gt|#0*62|#x0*3e);`,
-  "gi",
-);
-
-function decodeHtmlTagAttributeEntities(value: string): string {
-  return value.replace(/&quot;|&#0*34;|&#x0*22;/gi, '"').replace(/&apos;|&#0*39;|&#x0*27;/gi, "'");
-}
-
-function decodeEncodedChatHtmlTags(value: string): string {
-  return value.replace(
-    ENCODED_HTML_TAG_RE,
-    (_match, tagBody: string) => `<${decodeHtmlTagAttributeEntities(tagBody)}>`,
-  );
-}
-
-function containsChatHtml(value: string): boolean {
-  return HTML_TAG_RE.test(decodeEncodedChatHtmlTags(value));
-}
-
-const CHAT_HTML_ALLOWED_TAGS = [
-  "a",
-  "abbr",
-  "aside",
-  "b",
-  "bdi",
-  "bdo",
-  "blockquote",
-  "br",
-  "caption",
-  "center",
-  "cite",
-  "code",
-  "col",
-  "colgroup",
-  "dd",
-  "del",
-  "details",
-  "dfn",
-  "div",
-  "dl",
-  "dt",
-  "em",
-  "figcaption",
-  "figure",
-  "font",
-  "footer",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "header",
-  "hr",
-  "i",
-  "img",
-  "ins",
-  "kbd",
-  "li",
-  "main",
-  "mark",
-  "nav",
-  "ol",
-  "p",
-  "pre",
-  "q",
-  "s",
-  "samp",
-  "section",
-  "small",
-  "span",
-  "strong",
-  "sub",
-  "summary",
-  "sup",
-  "table",
-  "tbody",
-  "td",
-  "tfoot",
-  "th",
-  "thead",
-  "time",
-  "tr",
-  "u",
-  "ul",
-  "var",
-] as const;
-
-const CHAT_HTML_ALLOWED_ATTR = [
-  "alt",
-  "class",
-  "color",
-  "colspan",
-  "data-spk",
-  "decoding",
-  "href",
-  "id",
-  "loading",
-  "rel",
-  "rowspan",
-  "src",
-  "style",
-  "target",
-  "title",
-] as const;
-
-const CHAT_STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const MD_IMAGE_HTML_RE = /!\[([^\]]*)\]\(((?:https?:\/\/[^)\s]+|card:\/\/[^)\s]+|\/api\/[^)\s]+))\)/g;
 
 function escapeHtmlAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function sanitizeChatHtml(html: string, options: { allowStyle?: boolean } = {}) {
-  const allowedAttr = options.allowStyle
-    ? [...CHAT_HTML_ALLOWED_ATTR]
-    : CHAT_HTML_ALLOWED_ATTR.filter((attr) => attr !== "style");
-  const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [...CHAT_HTML_ALLOWED_TAGS],
-    ALLOWED_ATTR: allowedAttr,
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false,
-    FORBID_TAGS: ["animate", "embed", "foreignObject", "iframe", "math", "object", "script", "svg", "style"],
-    FORBID_ATTR: ["onerror", "onload", "onclick", "srcdoc"],
-  });
-  if (!options.allowStyle || typeof document === "undefined") return clean;
-  const template = document.createElement("template");
-  template.innerHTML = clean;
-  for (const element of template.content.querySelectorAll<HTMLElement>("[style]")) {
-    const style = sanitizeChatMessageCss(element.getAttribute("style") ?? "");
-    if (style) element.setAttribute("style", style);
-    else element.removeAttribute("style");
+/**
+ * Extract the brightest solid color from a gradient string.
+ * Handles formats like: gradient(linear-gradient(90deg, #ff6b6b, #4ecdc4))
+ * Parses all color stops, converts to RGB, and picks the one with highest
+ * perceived luminance (0.299*R + 0.587*G + 0.114*B).
+ * Falls back to a sensible default if extraction fails.
+ */
+function extractSolidColorFromGradient(gradientStr: string): string {
+  // Extract the inner gradient content
+  const inner = gradientStr.replace(/^gradient\(\s*/i, "").replace(/\s*\)$/i, "");
+
+  // Collect ALL color values from the gradient string
+  const colors: string[] = [];
+
+  // Hex colors (#rgb, #rrggbb, #rrggbbaa)
+  const hexMatches = inner.match(/#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g);
+  if (hexMatches) colors.push(...hexMatches);
+
+  // rgb/rgba colors
+  const rgbMatches = inner.match(/rgba?\([^)]+\)/gi);
+  if (rgbMatches) colors.push(...rgbMatches);
+
+  // hsl/hsla colors
+  const hslMatches = inner.match(/hsla?\([^)]+\)/gi);
+  if (hslMatches) colors.push(...hslMatches);
+
+  // Named CSS colors (extended list)
+  const namedMatches = inner.match(
+    /\b(red|blue|green|yellow|purple|orange|pink|cyan|magenta|white|black|gray|grey|brown|navy|teal|lime|gold|crimson|salmon|coral|turquoise|indigo|violet|silver|maroon|olive|aqua|fuchsia|azure|beige|chocolate|lavender|plum|orchid|tan|wheat|ivory|seashell|snow|linen|khaki|goldenrod|darkred|darkblue|darkgreen|lightblue|lightgreen|lightcoral|lightpink|lightsalmon|lightseagreen|skyblue|steelblue|royalblue|midnightblue|dodgerblue|deepskyblue|cornflowerblue|mediumslateblue|slateblue|darkslateblue|mediumpurple|rebeccapurple|darkorchid|darkviolet|mediumorchid|thistle|orchid|violet|indigo|darkmagenta|mediumvioletred|palevioletred|hotpink|deeppink|lightpink|pink|palegoldenrod|lemonchiffon|lightyellow|lightgoldenrodyellow)\b/gi,
+  );
+  if (namedMatches) colors.push(...namedMatches);
+
+  // No parseable stop (for example `var(--x)` or `color-mix()`): keep the original value.
+  if (colors.length === 0) return gradientStr;
+
+  // Convert any color string to {r, g, b}
+  const toRgb = (color: string): { r: number; g: number; b: number } | null => {
+    // Hex
+    if (color.startsWith("#")) {
+      let hex = color.slice(1);
+      if (hex.length === 3)
+        hex = hex
+          .split("")
+          .map((c) => c + c)
+          .join("");
+      if (hex.length === 4)
+        hex = hex
+          .slice(0, 3)
+          .split("")
+          .map((c) => c + c)
+          .join("");
+      if (hex.length >= 6) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+        };
+      }
+      return null;
+    }
+
+    // rgb/rgba
+    const rgbMatch = color.match(/rgba?\(([^)]+)\)/i);
+    if (rgbMatch) {
+      const parts = rgbMatch[1].split(",").map((p) => parseFloat(p.trim()));
+      if (parts.length >= 3) {
+        return { r: parts[0], g: parts[1], b: parts[2] };
+      }
+      return null;
+    }
+
+    // hsl/hsla
+    const hslMatch = color.match(/hsla?\(([^)]+)\)/i);
+    if (hslMatch) {
+      const parts = hslMatch[1].split(",").map((p) => parseFloat(p.trim().replace("%", "")));
+      if (parts.length >= 3) {
+        const h = parts[0] / 360;
+        const s = parts[1] / 100;
+        const l = parts[2] / 100;
+        const hue2rgb = (p: number, q: number, t: number) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return {
+          r: Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+          g: Math.round(hue2rgb(p, q, h) * 255),
+          b: Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+        };
+      }
+      return null;
+    }
+
+    // Named colors — use a canvas or a lookup table
+    // For simplicity, use the browser's color parser via a temporary element
+    if (typeof document !== "undefined") {
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = color;
+        const computed = ctx.fillStyle;
+        if (computed.startsWith("#")) {
+          return toRgb(computed);
+        }
+        if (computed.startsWith("rgb")) {
+          return toRgb(computed);
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Calculate perceived luminance: 0.299*R + 0.587*G + 0.114*B
+  const luminance = (rgb: { r: number; g: number; b: number }) => 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+
+  // Find the brightest color
+  let bestColor = colors[0];
+  let bestLuminance = -1;
+
+  for (const color of colors) {
+    const rgb = toRgb(color);
+    if (!rgb) continue;
+    const lum = luminance(rgb);
+    if (lum > bestLuminance) {
+      bestLuminance = lum;
+      bestColor = color;
+    }
   }
-  for (const media of template.content.querySelectorAll("img, audio, video")) {
-    media.setAttribute("referrerpolicy", "no-referrer");
+
+  // Return the brightest color, normalized to hex if it was rgb/hsl
+  const bestRgb = toRgb(bestColor);
+  if (bestRgb) {
+    return `#${bestRgb.r.toString(16).padStart(2, "0")}${bestRgb.g.toString(16).padStart(2, "0")}${bestRgb.b.toString(16).padStart(2, "0")}`;
   }
-  return template.innerHTML;
+
+  return bestColor;
+}
+/**
+ * Color character names in text, skipping any name that appears inside
+ * quotation marks (dialogue). Works on raw text before dialogue highlighting.
+ * Supports gradient colors via background-clip and bold weight.
+ */
+function colorNamesSkippingQuotes(text: string, nameColorMap: Map<string, string>, textShadow?: string): string {
+  if (!text || nameColorMap.size === 0) return text;
+  const names = Array.from(nameColorMap.keys());
+  if (names.length === 0) return text;
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).sort((a, b) => b.length - a.length);
+  const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+  // Quote pairs to track: straight, curly, guillemet, Japanese corner brackets
+  const openQuotes = ['"', "\u201C", "\u00AB", "\u300C", "\u300E"];
+  const closeQuotes = ['"', "\u201D", "\u00BB", "\u300D", "\u300F"];
+
+  const result: string[] = [];
+  let lastIndex = 0;
+  let inQuotes = false;
+  let activeQuoteIdx = -1;
+  let quoteStartPos = -1;
+  let i = 0;
+  // Cache the next match so the regex is not re-run for every character.
+  nameRegex.lastIndex = 0;
+  let nextMatch: RegExpExecArray | null = nameRegex.exec(text);
+
+  while (i < text.length) {
+    // Check for quote characters
+    const char = text[i];
+    if (!inQuotes) {
+      const openIdx = openQuotes.indexOf(char);
+      if (openIdx >= 0) {
+        inQuotes = true;
+        activeQuoteIdx = openIdx;
+        quoteStartPos = i;
+        i++;
+        continue;
+      }
+    } else {
+      // Check for the matching close quote (or any close quote for straight quotes)
+      const closeIdx =
+        activeQuoteIdx === 0
+          ? closeQuotes.indexOf(char, 0) // straight quotes — either direction matches
+          : closeQuotes.indexOf(char, activeQuoteIdx);
+      if (closeIdx >= 0 && (activeQuoteIdx === 0 || closeIdx === activeQuoteIdx)) {
+        inQuotes = false;
+        activeQuoteIdx = -1;
+        quoteStartPos = -1;
+        i++;
+        continue;
+      }
+    }
+    // Safety valve: unmatched quote — reset after 500 chars of "dialogue"
+    if (inQuotes && quoteStartPos >= 0 && i - quoteStartPos > 500) {
+      inQuotes = false;
+      activeQuoteIdx = -1;
+      quoteStartPos = -1;
+    }
+    // If not in quotes, try to match a name at this position
+    if (!inQuotes) {
+      while (nextMatch && nextMatch.index < i) {
+        nameRegex.lastIndex = i;
+        nextMatch = nameRegex.exec(text);
+      }
+      const match = nextMatch;
+      if (match && match.index === i && match[0].length > 0) {
+        // Push any text before this match
+        if (i > lastIndex) {
+          result.push(text.slice(lastIndex, i));
+        }
+        const matchedName = match[0];
+        const color = nameColorMap.get(matchedName.toLowerCase());
+        if (color) {
+          if (isGradientNameColor(color)) {
+            const style = gradientNameColorStyle(color);
+            const styleStr = Object.entries(style)
+              .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}:${v}`)
+              .join(";");
+            const dropShadow = textShadow ? `;text-shadow:none;filter:drop-shadow(${textShadow})` : ";text-shadow:none";
+            result.push(
+              `<span style="${styleStr};font-weight:700;-webkit-text-stroke:0px;paint-order:fill${dropShadow}">${matchedName}</span>`,
+            );
+          } else {
+            result.push(
+              `<span style="color:${color};-webkit-text-fill-color:${color};font-weight:700">${matchedName}</span>`,
+            );
+          }
+        } else {
+          result.push(matchedName);
+        }
+        i += matchedName.length;
+        lastIndex = i;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
+
+  return result.length > 0 ? result.join("") : text;
 }
 
-function extractChatStyleBlocks(html: string): { html: string; css: string } {
-  const cssBlocks: string[] = [];
-  const withoutStyles = html.replace(CHAT_STYLE_BLOCK_RE, (_match, css: string) => {
-    cssBlocks.push(css);
-    return "";
-  });
-  return { html: withoutStyles, css: cssBlocks.join("\n") };
+/**
+ * Color character names in React nodes, skipping any name inside a
+ * dialogue-colored span (which represents quoted text in the markdown path).
+ * Creates proper React <span> elements with style objects.
+ */
+function colorNamesInNodes(
+  nodes: ReactNode | ReactNode[],
+  nameColorMap: Map<string, string>,
+  textShadow?: string,
+): ReactNode | ReactNode[] {
+  if (!nodes || nameColorMap.size === 0) return nodes;
+  const names = Array.from(nameColorMap.keys());
+  if (names.length === 0) return nodes;
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).sort((a, b) => b.length - a.length);
+  const nameRegex = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+  const isCodeNode = (node: ReactNode): boolean => {
+    if (node && typeof node === "object" && "props" in node) {
+      const tagName = (node as React.ReactElement).type;
+      return tagName === "code" || tagName === "pre";
+    }
+    return false;
+  };
+
+  // Check if a node is a dialogue-colored context (skip names inside it)
+  const isColoredContext = (node: ReactNode): boolean => {
+    if (!node || typeof node !== "object" || !("props" in node)) return false;
+    const element = node as React.ReactElement;
+    const props = element.props as Record<string, unknown>;
+    if ("data-spk" in props) return true;
+    if (props.style && typeof props.style === "object") {
+      const style = props.style as Record<string, unknown>;
+      if ("color" in style || "WebkitTextFillColor" in style) return true;
+    }
+    if (element.type === "font") return true;
+    return false;
+  };
+
+  const processString = (str: string, nodeIdx: number): ReactNode => {
+    if (!str || str.length === 0) return str;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let k = 0;
+    nameRegex.lastIndex = 0;
+    while ((match = nameRegex.exec(str)) !== null) {
+      if (match[0].length === 0) {
+        nameRegex.lastIndex += 1;
+        continue;
+      }
+      if (match.index > lastIndex) parts.push(str.slice(lastIndex, match.index));
+      const matchedName = match[0];
+      const color = nameColorMap.get(matchedName.toLowerCase());
+      if (color) {
+        if (isGradientNameColor(color)) {
+          const style: React.CSSProperties = {
+            ...gradientNameColorStyle(color),
+            display: "inline",
+            fontWeight: 700,
+            WebkitTextStroke: "0px",
+            paintOrder: "fill",
+            textShadow: "none",
+            ...(textShadow ? { filter: `drop-shadow(${textShadow})` } : {}),
+          };
+          parts.push(
+            <span key={`name-color-${nodeIdx}-${k++}`} style={style}>
+              {matchedName}
+            </span>,
+          );
+        } else {
+          const style: React.CSSProperties = {
+            color,
+            WebkitTextFillColor: color,
+            fontWeight: 700,
+          };
+          parts.push(
+            <span key={`name-color-${nodeIdx}-${k++}`} style={style}>
+              {matchedName}
+            </span>,
+          );
+        }
+      } else {
+        parts.push(matchedName);
+      }
+      lastIndex = match.index + matchedName.length;
+    }
+    if (parts.length === 0) return str;
+    if (lastIndex < str.length) parts.push(str.slice(lastIndex));
+    return parts;
+  };
+
+  const processNode = (node: ReactNode, idx: number): ReactNode => {
+    if (node === null || node === undefined || typeof node === "boolean") return node;
+    if (typeof node === "string") return processString(node, idx);
+    if (typeof node === "number") return node;
+    if (isCodeNode(node) || isColoredContext(node)) return node;
+
+    if (node && typeof node === "object" && "props" in node) {
+      const element = node as React.ReactElement;
+      const props = element.props as Record<string, unknown>;
+      if (props.children !== undefined) {
+        const children = Array.isArray(props.children)
+          ? props.children.map((c: ReactNode, i: number) => processNode(c, i))
+          : processNode(props.children as ReactNode, 0);
+        return cloneElement(element, {}, children);
+      }
+    }
+    return node;
+  };
+
+  if (Array.isArray(nodes)) {
+    return nodes.map((n, i) => processNode(n, i));
+  }
+  return processNode(nodes, 0);
 }
 
 /**
@@ -1217,6 +1542,8 @@ function renderContent(
   quoteFormat: QuoteFormat = "straight",
   selfCharacterId?: string | null,
   galleryIndex?: ChatGalleryIndex | null,
+  nameColorMap?: Map<string, string> | null,
+  textShadow?: string,
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1229,21 +1556,32 @@ function renderContent(
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
 
-  if (!HTML_TAG_RE.test(withoutSpeakerTags)) {
-    // renderWithHeadings handles headings, *** and --- horizontal rules,
-    // and delegates the rest to speaker-tag / dialogue rendering.
-    return renderMarkdownBlocks(normalized, (seg, _kp) =>
+  const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
+
+  // Markdown path — renderWithHeadings handles headings, *** and --- horizontal rules,
+  // and delegates the rest to speaker-tag / dialogue rendering.
+  // Name coloring runs AFTER on the React tree so injected spans don't
+  // interfere with paragraph splitting or trigger the HTML path.
+  if (!isHtmlPath) {
+    const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue),
     );
+    if (nameColorMap && nameColorMap.size > 0) {
+      return colorNamesInNodes(markdownResult, nameColorMap, textShadow);
+    }
+    return markdownResult;
   }
+
+  const withNameColors =
+    nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
 
   // For HTML content, replace speaker tags with color-annotated spans (preserves per-character colors)
   const stripped = speakerColorMap
-    ? normalized.replace(SPEAKER_TAG_RE, (_, name, dialogue) => {
+    ? withNameColors.replace(SPEAKER_TAG_RE, (_, name, dialogue) => {
         const color = speakerColorMap.get(name as string);
         return color ? `<span data-spk="${color}">${dialogue as string}</span>` : (dialogue as string);
       })
-    : normalized.replace(SPEAKER_TAG_RE, "$2");
+    : withNameColors.replace(SPEAKER_TAG_RE, "$2");
 
   const { html: strippedWithoutStyleBlocks, css: rawStyleBlocks } = extractChatStyleBlocks(stripped);
 
@@ -1306,7 +1644,7 @@ function renderContent(
   // Convert *** and --- horizontal rules to <hr> tags in HTML path
   const withHr = withDialogue.replace(
     /(?:^|(?<=<br[^>]*>))\s*(?:\*{3,}|-{3,})\s*(?:$|(?=<br[^>]*>))/g,
-    '<hr style="margin:0.75em 0;border:0;border-top:1px solid var(--border)">',
+    '<hr class="mari-md-rule">',
   );
 
   // Apply markdown-style bold/italic in HTML path
@@ -1370,6 +1708,8 @@ export function RoleplayMessagePreview({
         htmlScopeClass,
         quoteFormat,
         selfCharacterId,
+        undefined, // nameColorMap
+        undefined, // textShadowStr
       ),
     [boldDialogue, content, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
   );
@@ -1414,6 +1754,7 @@ function NameColorText({ color, children }: { color?: string; children: ReactNod
 export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming,
+  streamingOutputStarted = false,
   streamingContent,
   onDelete,
   onRegenerate,
@@ -1459,12 +1800,16 @@ export const ChatMessage = memo(function ChatMessage({
     roleplayAvatarScale,
     roleplayAvatarsScrollable,
     roleplayNarratorAvatarCycling,
+    showRoleplayThinkingInMessages,
+    keepRoleplayThinkingExpanded,
     textStrokeWidth,
     textStrokeColor,
     showModelName,
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
+    colorInlineNames,
+    disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
     ttsLineVolume,
@@ -1480,12 +1825,16 @@ export const ChatMessage = memo(function ChatMessage({
       roleplayAvatarScale: s.roleplayAvatarScale,
       roleplayAvatarsScrollable: s.roleplayAvatarsScrollable,
       roleplayNarratorAvatarCycling: s.roleplayNarratorAvatarCycling,
+      showRoleplayThinkingInMessages: s.showRoleplayThinkingInMessages,
+      keepRoleplayThinkingExpanded: s.keepRoleplayThinkingExpanded,
       textStrokeWidth: s.textStrokeWidth,
       textStrokeColor: s.textStrokeColor,
       showModelName: s.showModelName,
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
+      colorInlineNames: s.colorInlineNames,
+      disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
       ttsLineVolume: s.ttsLineVolume,
@@ -1500,6 +1849,7 @@ export const ChatMessage = memo(function ChatMessage({
         : {},
     [textStrokeWidth, textStrokeColor],
   );
+  const textShadowStr = textStrokeWidth > 0 ? `0px 0px ${textStrokeWidth}px ${textStrokeColor}` : "";
   const messageTextStyle = useMemo<React.CSSProperties>(
     () => ({
       fontSize: chatFontSize,
@@ -1811,7 +2161,10 @@ export const ChatMessage = memo(function ChatMessage({
     summaryUnavailable: reasoningSummaryUnavailable,
     hasReasoning,
   } = resolveMessageReasoningDisplay(extra);
-  const showStreamingThinkingAction = !!isStreaming && hasReasoning && !isUser;
+  const showInlineThinking = isRoleplay && showRoleplayThinkingInMessages && hasReasoning && !isUser;
+  const showThinkingAction = hasReasoning && !isUser && !showInlineThinking;
+  const showStreamingThinkingAction = !!isStreaming && showThinkingAction;
+  const reasoningDurationMs = readPositiveNumber(extra.generationInfo?.reasoningDurationMs);
   const generationReplay = hasGenerationReplayDetails(extra.generationReplay) ? extra.generationReplay : null;
   const diceRollResult = isDiceRollResult(extra.diceRollResult) ? extra.diceRollResult : null;
   const canCreateNextSwipe = Boolean(onRegenerate && !isUser);
@@ -2175,6 +2528,7 @@ export const ChatMessage = memo(function ChatMessage({
     : isUser
       ? getAvatarCropStyle(personaAvatarCrop)
       : getAvatarCropStyle(resolvedCharacterInfo?.avatarCrop);
+  const isMergedGroup = groupChatMode === "merged" && !isUser && (chatCharacterIds?.length ?? 0) > 1;
 
   // Resolve colors: character colors for assistant, persona colors for user
   // Prefer per-message persona snapshot colors over current persona
@@ -2188,10 +2542,29 @@ export const ChatMessage = memo(function ChatMessage({
       : personaInfo
     : resolvedCharacterInfo;
   const fallbackDialogueColor = defaultDialogueColor || getDefaultChatTextColor(theme);
-  const dialogueColor = msgColors?.dialogueColor || fallbackDialogueColor;
+  const dialogueColor = isMergedGroup ? fallbackDialogueColor : msgColors?.dialogueColor || fallbackDialogueColor;
   const boxBgColor = msgColors?.boxColor;
   const msgNameColor = msgColors?.nameColor;
   const roleplayBubbleBg = boxBgColor ? boxBgColor : isUser ? userBubbleBg : assistantBubbleBg;
+  const nameColorMap = useMemo(() => {
+    if (!colorInlineNames || !scopedCharacterMap) return null;
+    const map = new Map<string, string>();
+    const addName = (name: string | undefined | null, color: string) => {
+      const key = name?.trim().toLowerCase();
+      if (key) map.set(key, color);
+    };
+    scopedCharacterMap.forEach((char) => {
+      const color = char.nameColor;
+      if (!color) return;
+      // If gradients are disabled, extract the first solid color from gradient strings
+      const effectiveColor =
+        disableInlineNameGradients && isGradientNameColor(color) ? extractSolidColorFromGradient(color) : color;
+      addName(char.name, effectiveColor);
+      addName(char.convoDisplayName, effectiveColor);
+      for (const alias of char.nameAliases ?? []) addName(alias, effectiveColor);
+    });
+    return map.size > 0 ? map : null;
+  }, [colorInlineNames, scopedCharacterMap, disableInlineNameGradients]);
 
   // Build speaker → dialogueColor map for group chat speaker tag coloring
   const speakerColorMap = useMemo(() => {
@@ -2209,7 +2582,6 @@ export const ChatMessage = memo(function ChatMessage({
   }, [personaInfo?.dialogueColor, personaInfo?.name, scopedCharacterMap]);
 
   // Merged group chat: cycling avatars + cycling name color
-  const isMergedGroup = groupChatMode === "merged" && !isUser && chatCharacterIds && chatCharacterIds.length > 1;
   const mergedCharacterIds = useMemo(
     () => mergedGroupCharacterIds ?? chatCharacterIds ?? [],
     [chatCharacterIds, mergedGroupCharacterIds],
@@ -2331,8 +2703,21 @@ export const ChatMessage = memo(function ChatMessage({
       quoteFormat,
       selfCharacterId,
       galleryIndex,
+      nameColorMap,
+      textShadowStr,
     );
-  }, [text, dialogueColor, speakerColorMap, boldDialogue, htmlScopeClass, quoteFormat, selfCharacterId, galleryIndex]);
+  }, [
+    text,
+    dialogueColor,
+    speakerColorMap,
+    boldDialogue,
+    htmlScopeClass,
+    quoteFormat,
+    selfCharacterId,
+    galleryIndex,
+    nameColorMap,
+    textShadowStr,
+  ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
       renderContent(
@@ -2344,8 +2729,20 @@ export const ChatMessage = memo(function ChatMessage({
         quoteFormat,
         selfCharacterId,
         galleryIndex,
+        nameColorMap,
+        textShadowStr,
       ),
-    [boldDialogue, dialogueColor, galleryIndex, htmlScopeClass, quoteFormat, selfCharacterId, speakerColorMap],
+    [
+      boldDialogue,
+      dialogueColor,
+      galleryIndex,
+      htmlScopeClass,
+      quoteFormat,
+      selfCharacterId,
+      speakerColorMap,
+      nameColorMap,
+      textShadowStr,
+    ],
   );
 
   // Translated text is rendered through the same markdown pipeline as the
@@ -2362,6 +2759,8 @@ export const ChatMessage = memo(function ChatMessage({
             quoteFormat,
             selfCharacterId,
             galleryIndex,
+            nameColorMap,
+            textShadowStr,
           )
         : null,
     [
@@ -2373,6 +2772,8 @@ export const ChatMessage = memo(function ChatMessage({
       quoteFormat,
       selfCharacterId,
       galleryIndex,
+      nameColorMap,
+      textShadowStr,
     ],
   );
   const translationDisplayOnly = useMemo(
@@ -2534,11 +2935,22 @@ export const ChatMessage = memo(function ChatMessage({
     />
   ) : (
     <>
+      {showInlineThinking && (
+        <RoleplayThinkingDisclosure
+          thinking={thinking}
+          summaryUnavailable={reasoningSummaryUnavailable}
+          isStreaming={!!isStreaming}
+          outputStarted={streamingOutputStarted}
+          keepExpanded={keepRoleplayThinkingExpanded}
+          durationMs={reasoningDurationMs}
+        />
+      )}
       <div
         className={cn("mari-message-content break-words", !isHtmlContent && "whitespace-pre-wrap")}
         style={messageTextStyle}
       >
-        {isStreaming && streamingContent ? (
+        {isStreaming && streamingContent && showInlineThinking && !streamingOutputStarted ? null : isStreaming &&
+          streamingContent ? (
           <>
             {streamingContent(renderStreamingText)}
             <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
@@ -3130,7 +3542,6 @@ export const ChatMessage = memo(function ChatMessage({
                 icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={handleCopy}
                 title={localizeUi("lorebook.editor.batch.copy")}
-                dark
               />
               <ActionBtn
                 icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
@@ -3140,13 +3551,11 @@ export const ChatMessage = memo(function ChatMessage({
                     ? localizeUi("ui.chat.chatmessage.hideTranslation")
                     : localizeUi("ui.chat.chatmessage.translate")
                 }
-                dark
               />
               <ActionBtn
                 icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={startEditing}
                 title={localizeUi("ui.noodle.noodlepostcard.edit")}
-                dark
               />
               {hasRewriteVersions && (
                 <ActionBtn
@@ -3165,10 +3574,9 @@ export const ChatMessage = memo(function ChatMessage({
                   }
                   className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
                   disabled={switchingRewriteVersion}
-                  dark
                 />
               )}
-              <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} dark />
+              <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -3176,7 +3584,6 @@ export const ChatMessage = memo(function ChatMessage({
                   characterIds={conversationStartForCharacterIds}
                   characters={aiVisibilityCharacters}
                   onToggle={onToggleConversationStart}
-                  dark
                   align={isUser ? "right" : "left"}
                 />
               )}
@@ -3187,7 +3594,6 @@ export const ChatMessage = memo(function ChatMessage({
                   hiddenCharacterIds={hiddenFromAICharacterIds}
                   characters={isRoleplay ? aiVisibilityCharacters : []}
                   onToggle={onToggleHiddenFromAI}
-                  dark
                   align={isUser ? "right" : "left"}
                 />
               )}
@@ -3196,7 +3602,6 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => onPeekPrompt?.()}
                   title={localizeUi("ui.chat.chatmessage.peekPrompt")}
-                  dark
                 />
               )}
               {generationReplay && (
@@ -3204,10 +3609,9 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowGenerationReplay(true)}
                   title={localizeUi("ui.chat.chatmessage.storedGuidance")}
-                  dark
                 />
               )}
-              {hasReasoning && !isUser && (
+              {showThinkingAction && (
                 <ActionBtn
                   icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => setShowThinking(true)}
@@ -3218,7 +3622,6 @@ export const ChatMessage = memo(function ChatMessage({
                   )}
                   thinkingAction
                   buttonRef={thinkingButtonRef}
-                  dark
                 />
               )}
               {onBranch && (
@@ -3226,7 +3629,6 @@ export const ChatMessage = memo(function ChatMessage({
                   icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
                   onClick={() => onBranch(message.id)}
                   title={localizeUi("ui.chat.chatmessage.branchFromHere")}
-                  dark
                 />
               )}
               {onCloneSceneFromHere && (
@@ -3235,14 +3637,12 @@ export const ChatMessage = memo(function ChatMessage({
                   onClick={() => onCloneSceneFromHere(message.id)}
                   title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
                   disabled={isCloneSceneFromHereDisabled}
-                  dark
                 />
               )}
               <ActionBtn
                 icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => onDelete?.(message.id)}
                 title={localizeUi("lorebook.editor.batch.delete")}
-                dark
               />
               {ttsEnabled && (
                 <>
@@ -3262,13 +3662,11 @@ export const ChatMessage = memo(function ChatMessage({
                             ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
                             : localizeUi("ui.chat.chatmessage.pauseSpeaking")
                         }
-                        dark
                       />
                       <ActionBtn
                         icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
                         onClick={handleRestartTTS}
                         title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                        dark
                       />
                     </>
                   )}
@@ -3293,7 +3691,6 @@ export const ChatMessage = memo(function ChatMessage({
                             : localizeUi("ui.chat.chatmessage.speak")
                     }
                     disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-                    dark
                   />
                   <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
                 </>
@@ -3303,7 +3700,7 @@ export const ChatMessage = memo(function ChatMessage({
         </div>
 
         {/* Thinking modal */}
-        {showThinking && hasReasoning && (
+        {showThinking && showThinkingAction && (
           <MessageThinkingModal
             thinking={thinking}
             summaryUnavailable={reasoningSummaryUnavailable}
@@ -3680,7 +4077,7 @@ export const ChatMessage = memo(function ChatMessage({
                 title={localizeUi("ui.chat.chatmessage.storedGuidance")}
               />
             )}
-            {hasReasoning && !isUser && (
+            {showThinkingAction && (
               <ActionBtn
                 icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
                 onClick={() => setShowThinking(true)}
@@ -3713,7 +4110,6 @@ export const ChatMessage = memo(function ChatMessage({
                 hiddenCharacterIds={hiddenFromAICharacterIds}
                 characters={isRoleplay ? aiVisibilityCharacters : []}
                 onToggle={onToggleHiddenFromAI}
-                dark
                 align={isUser ? "right" : "left"}
               />
             )}
@@ -3778,7 +4174,7 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
 
       {/* Thinking modal */}
-      {showThinking && hasReasoning && (
+      {showThinking && showThinkingAction && (
         <MessageThinkingModal
           thinking={thinking}
           summaryUnavailable={reasoningSummaryUnavailable}
@@ -3853,7 +4249,6 @@ function TTSLineVolumeControl({
         icon={muted ? <VolumeX size={MESSAGE_ACTION_ICON_SIZE} /> : <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />}
         onClick={() => setOpen((value) => !value)}
         title={label}
-        dark={dark}
         ariaPressed={open}
         className={
           open ? (dark ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : "bg-[var(--accent)] text-[var(--foreground)]") : undefined
@@ -3903,13 +4298,7 @@ function TTSLineVolumeControl({
 }
 
 // ── Action button ──
-const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
-  onClick,
-  dark,
-}: {
-  onClick: () => void;
-  dark?: boolean;
-}) {
+const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({ onClick }: { onClick: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   const guideGenerations = useUIStore((state) => state.guideGenerations);
   const isGuided = useChatStore((state) => guideGenerations && state.hasCurrentInput);
@@ -3925,7 +4314,6 @@ const GuidedRegenerateActionBtn = memo(function GuidedRegenerateActionBtn({
           ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30 hover:text-[var(--primary)]"
           : undefined
       }
-      dark={dark}
     />
   );
 });
@@ -3935,7 +4323,6 @@ function ActionBtn({
   onClick,
   title,
   className,
-  dark,
   disabled,
   ariaPressed,
   thinkingAction,
@@ -3945,32 +4332,22 @@ function ActionBtn({
   onClick: () => void;
   title: string;
   className?: string;
-  dark?: boolean;
   disabled?: boolean;
   ariaPressed?: boolean;
   thinkingAction?: boolean;
   buttonRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
-    <button
-      ref={buttonRef}
-      type="button"
+    <MessageActionButton
+      buttonRef={buttonRef}
+      icon={icon}
       onClick={onClick}
       title={title}
-      aria-label={title}
-      aria-pressed={ariaPressed}
-      data-message-thinking-action={thinkingAction || undefined}
+      className={className}
       disabled={disabled}
-      className={cn(
-        "inline-flex h-[1.7em] w-[1.7em] shrink-0 items-center justify-center rounded-md p-0 text-[0.8125rem] leading-none transition-all active:scale-90 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-30",
-        dark
-          ? "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-        className,
-      )}
-    >
-      {icon}
-    </button>
+      ariaPressed={ariaPressed}
+      thinkingAction={thinkingAction}
+    />
   );
 }
 

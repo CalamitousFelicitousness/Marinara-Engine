@@ -67,6 +67,10 @@ const capabilityPackageManifestBaseSchema = z
               "home-browser-tab",
               // Mounts the package's own game UI over the narration.
               "game-surface",
+              // Compact package-owned tracker controls in Roleplay chat chrome.
+              "roleplay-tracker",
+              // Package-owned content inside the detached or docked Tracker Panel.
+              "tracker-panel",
             ]),
           )
           .optional(),
@@ -181,7 +185,9 @@ const capabilityPackageManifestBaseSchema = z
 //        to fold the Game narration box down to its handle for a cutscene beat. It
 //        never writes the player's stored preference and the engine's safety rules
 //        still force the box open when it holds something to act on.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 13 } as const);
+// 1.14: roleplay-tracker and tracker-panel UI contribution slots, package-aware
+//        prompt placement, and package-agent post-processing lifecycle hooks.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 14 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -435,6 +441,20 @@ export const packagedAgentDefinitionsSchema = z.array(packagedAgentDefinitionSch
 export type CapabilityPackageManifest = z.infer<typeof capabilityPackageManifestSchema>;
 export type CapabilityCatalogPackage = z.infer<typeof capabilityCatalogPackageSchema>;
 export type CapabilityCatalog = z.infer<typeof capabilityCatalogSchema>;
+
+/** A catalog entry after the Engine has stamped where it came from.
+ *
+ *  `preview` marks an entry the Engine itself read from the staging preview
+ *  overlay. It is deliberately NOT part of the downloaded-entry schema above:
+ *  that schema is the contract for bytes we fetched, and accepting `preview`
+ *  there would let any published or custom catalog claim preview provenance for
+ *  its own entries. The Engine assigns it from the source URL and nowhere else,
+ *  so a value arriving on the wire is rejected by the strict entry schema and
+ *  can never reach a consumer. */
+export type StampedCapabilityCatalogPackage = CapabilityCatalogPackage & { preview?: true };
+export type StampedCapabilityCatalog = Omit<CapabilityCatalog, "packages"> & {
+  packages: StampedCapabilityCatalogPackage[];
+};
 export type InstalledCapabilityPackage = z.infer<typeof installedCapabilityPackageSchema>;
 export type PackagedAgentDefinition = z.infer<typeof packagedAgentDefinitionSchema>;
 

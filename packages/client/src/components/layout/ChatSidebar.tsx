@@ -896,6 +896,7 @@ export function ChatSidebar() {
   // ── Chat row renderer (shared between unfiled + folder sections) ──
   const renderChatRow = ({ chat, branchCount }: (typeof displayChats)[number]) => {
     const cfg = MODE_CONFIG[chat.mode] ?? MODE_CONFIG.conversation;
+    const displayName = chat.name;
     const isActive = activeChatId === chat.id || (chat.groupId != null && chat.groupId === activeGroupId);
     const isSelected = selectedChatIds.has(chat.id);
     const charIds = normalizeChatCharacterIds((chat as { characterIds?: unknown }).characterIds);
@@ -1207,7 +1208,7 @@ export function ChatSidebar() {
               isActive ? "mari-chrome-text-strong font-medium" : "mari-chrome-text",
             )}
           >
-            {chat.name}
+            {displayName}
           </span>
           {subtitle && (
             <span className="mari-chrome-accent-text-muted flex items-center gap-1 truncate text-[0.6875rem] leading-tight">
@@ -1237,13 +1238,13 @@ export function ChatSidebar() {
         {/* Delete button */}
         {!multiSelectMode && (
           <button
-            aria-label={localizeUi("chat.branches.deleteLabel", { name: chat.name })}
+            aria-label={localizeUi("chat.branches.deleteLabel", { name: displayName })}
             onClick={async (e) => {
               e.stopPropagation();
               if (branchCount > 1 && chat.groupId) {
                 setDeleteTarget({
                   chatId: chat.id,
-                  chatName: chat.name,
+                  chatName: displayName,
                   groupId: chat.groupId,
                   branchCount,
                 });
@@ -1251,7 +1252,7 @@ export function ChatSidebar() {
                 if (
                   await showConfirmDialog({
                     title: localizeUi("ui.layout.chatsidebar.deleteChat"),
-                    message: localizeUi("dialog.delete.namedPermanent", { name: chat.name }),
+                    message: localizeUi("dialog.delete.namedPermanent", { name: displayName }),
                     confirmLabel: localizeUi("lorebook.editor.batch.delete"),
                     tone: "destructive",
                   })

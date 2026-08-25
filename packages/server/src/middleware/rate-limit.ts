@@ -29,6 +29,11 @@ export const AVATAR_STORAGE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+export const ADMIN_RESTART_RATE_LIMIT = {
+  max: 5,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const BACKUP_RATE_LIMIT = {
   max: 60,
   timeWindow: 60_000,
@@ -54,6 +59,10 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
       windowMs: AVATAR_STORAGE_RATE_LIMIT.timeWindow,
     },
   },
+  {
+    pattern: /^\/api\/admin\/restart(?:\?|$)/,
+    rule: { key: "admin-restart", limit: ADMIN_RESTART_RATE_LIMIT.max, windowMs: ADMIN_RESTART_RATE_LIMIT.timeWindow },
+  },
   { pattern: /^\/api\/updates\/apply(?:\?|$)/, rule: { key: "updates-apply", limit: 5, windowMs: 60_000 } },
   {
     pattern: /^\/api\/sidecar\/(?:runtime\/install|reinstall|download|model|speech\/download|speech\/model)(?:\/|\?|$)/,
@@ -72,6 +81,16 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   {
     pattern: /^\/api\/game\/[^/]+\/experience-generation(?:\?|$)/,
     rule: { key: "game-experience-generation", limit: 20, windowMs: 60_000 },
+  },
+  // Same class for the experience-save transfer verbs (#5405): export serializes the
+  // chat's whole experience namespace (up to ~100 x 256K) and import rewrites it row by
+  // row, so both are heavy compared with the ordinary GET/PUT save. A package loop must
+  // hit a dedicated wall rather than the 600/min default. The GET/PUT save pair and the
+  // namespace DELETE share a path this pattern cannot separate by method, so they stay
+  // in the default class — they are the cheap, per-turn verbs.
+  {
+    pattern: /^\/api\/game\/[^/]+\/experience-state\/(?:export|import)(?:\?|$)/,
+    rule: { key: "game-experience-save-transfer", limit: 20, windowMs: 60_000 },
   },
   // Cap on extension routes so an XSS-driven mass install / spam can't
   // exploit the persistent storage path. 60/min covers React Query

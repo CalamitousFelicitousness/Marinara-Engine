@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           run_install: false
 
@@ -41,8 +41,11 @@ jobs:
       - name: Test dependency update handoff
         run: pnpm regression:launcher-update
 
-      - name: Test Android local authentication
-        run: pnpm regression:android-local-auth
+      - name: Run focused security regressions
+        run: pnpm regression:security
+
+      - name: Test release tag validation
+        run: pnpm regression:release
 
       - name: Validate pull request gate topology
         run: node scripts/validate-pr-triage.mjs

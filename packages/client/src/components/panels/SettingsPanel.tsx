@@ -542,6 +542,14 @@ const SETTINGS_SECTION_BY_ID = new Map(SETTINGS_SECTIONS.map((section) => [secti
 
 const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
   {
+    id: "hide-chat-help-button",
+    sectionId: "application",
+    label: "Hide chat Help button",
+    description: "Remove the Help button from Conversation, Roleplay, and Game chats.",
+    aliases: ["help", "guide", "tutorial", "overlay", "question mark"],
+    kind: "Toggle",
+  },
+  {
     id: "language",
     sectionId: "application",
     label: "Language",
@@ -776,6 +784,22 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Choose how quotation marks are unified.",
     aliases: ["quotes", "dialogue", "punctuation"],
     kind: "Button group",
+  },
+  {
+    id: "color-inline-names",
+    sectionId: "text-rules",
+    label: "Color Character Names in Text",
+    description: "Color character names and aliases inline in message text.",
+    aliases: ["names", "aliases", "color", "gradient", "characters"],
+    kind: "Toggle",
+  },
+  {
+    id: "disable-inline-name-gradients",
+    sectionId: "text-rules",
+    label: "Force Solid Colors for Inline Names",
+    description: "Replace gradient name colors with the brightest solid color inline.",
+    aliases: ["gradient", "solid", "names", "readability"],
+    kind: "Toggle",
   },
   {
     id: "game-instant-text-reveal",
@@ -1126,6 +1150,22 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Toggle",
   },
   {
+    id: "show-roleplay-thinking-in-messages",
+    sectionId: "roleplay-messages",
+    label: "Show Thinking In Messages",
+    description: "Show model reasoning above the response inside Roleplay message bubbles.",
+    aliases: ["roleplay", "reasoning", "thinking", "thoughts", "messages"],
+    kind: "Toggle",
+  },
+  {
+    id: "keep-roleplay-thinking-expanded",
+    sectionId: "roleplay-messages",
+    label: "Don't Collapse Thinking",
+    description: "Keep inline model reasoning expanded when the response starts.",
+    aliases: ["roleplay", "reasoning", "thinking", "collapse", "expanded"],
+    kind: "Toggle",
+  },
+  {
     id: "scrollable-avatars",
     sectionId: "roleplay-messages",
     label: "Scrollable Avatars",
@@ -1220,6 +1260,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Choose which release channel update checks follow.",
     aliases: ["updates", "branch", "version"],
     kind: "Select",
+  },
+  {
+    id: "restart-server",
+    sectionId: "admin-access",
+    label: "Restart Server",
+    description: "Gracefully restart the Marinara server from this browser.",
+    aliases: ["server", "restart", "maintenance", "remote"],
+    kind: "Button group",
   },
   {
     id: "copy-support-diagnostics",
@@ -1592,23 +1640,6 @@ const EXPUNGE_SCOPE_OPTIONS: Array<{ id: ExpungeScope; label: string; descriptio
     description: "Backgrounds, avatars, sprites, gallery items, fonts, and knowledge-source files.",
   },
 ];
-
-async function readSettingsResponseError(res: Response, fallback: string) {
-  const contentType = res.headers.get("content-type") ?? "";
-
-  try {
-    if (contentType.includes("application/json")) {
-      const payload = (await res.json()) as { error?: unknown; message?: unknown };
-      const message = typeof payload.message === "string" ? payload.message : payload.error;
-      return typeof message === "string" && message.trim() ? message : fallback;
-    }
-
-    const text = (await res.text()).trim();
-    return text ? text.slice(0, 500) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function formatStorageBytes(bytes: number): string {
   const safeBytes = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
@@ -2290,7 +2321,7 @@ function TrackerPanelCardOrderSetting() {
                   <button
                     type="button"
                     onClick={() => moveCard(section, -1)}
-                    disabled={index === 0}
+                    disabled={index === 0 || (section === "custom" && orderedSections[index - 1] === "inventory")}
                     title={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Up", {
                       value1: localizeUi(option.label),
                     })}
@@ -2304,7 +2335,10 @@ function TrackerPanelCardOrderSetting() {
                   <button
                     type="button"
                     onClick={() => moveCard(section, 1)}
-                    disabled={index === orderedSections.length - 1}
+                    disabled={
+                      index === orderedSections.length - 1 ||
+                      (section === "inventory" && orderedSections[index + 1] === "custom")
+                    }
                     title={localizeUi("ui.panels.trackerpanelcardordersetting.moveValue1Down", {
                       value1: localizeUi(option.label),
                     })}
@@ -2795,7 +2829,7 @@ export function SettingsPanel() {
                 tabIndex={settingsTab === tab.id ? 0 : -1}
                 onClick={() => setSettingsTab(tab.id)}
                 className={cn(
-                  "group relative isolate flex min-h-8 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg border px-1 py-0.5 text-center text-[0.625rem] font-semibold leading-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40",
+                  "group relative isolate flex min-h-8 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md border px-1 py-0.5 text-center text-[0.625rem] font-semibold leading-tight transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40",
                   active
                     ? "border-[var(--primary)]/35 bg-[var(--primary)]/10 text-[var(--foreground)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_11%,transparent)]"
                     : "border-transparent text-[var(--muted-foreground)] hover:border-[var(--border)]/80 hover:bg-[var(--secondary)]/60 hover:text-[var(--foreground)]",
@@ -3335,6 +3369,10 @@ function GeneralSettings() {
   const { t: localizeUi } = useUiTranslation();
   const { t, i18n: localization } = useTranslation();
   const localize = useLocalizedUiText();
+  const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
+  const musicDjInstalled = installedCapabilities.some(
+    (capability) => capability.id === "spotify" && capability.status === "active",
+  );
   const language = useUIStore((s) => s.language);
   const setLanguage = useUIStore((s) => s.setLanguage);
   const enableStreaming = useUIStore((s) => s.enableStreaming);
@@ -3359,12 +3397,18 @@ function GeneralSettings() {
   const setEnterToSendProfessorMari = useUIStore((s) => s.setEnterToSendProfessorMari);
   const confirmBeforeDelete = useUIStore((s) => s.confirmBeforeDelete);
   const setConfirmBeforeDelete = useUIStore((s) => s.setConfirmBeforeDelete);
+  const chatHelpButtonHidden = useUIStore((s) => s.chatHelpButtonHidden ?? false);
+  const setChatHelpButtonHidden = useUIStore((s) => s.setChatHelpButtonHidden);
   const achievementsEnabled = useUIStore((s) => s.achievementsEnabled);
   const setAchievementsEnabled = useUIStore((s) => s.setAchievementsEnabled);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
   const setMessagesPerPage = useUIStore((s) => s.setMessagesPerPage);
   const boldDialogue = useUIStore((s) => s.boldDialogue);
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
+  const colorInlineNames = useUIStore((s) => s.colorInlineNames);
+  const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
+  const disableInlineNameGradients = useUIStore((s) => s.disableInlineNameGradients);
+  const setDisableInlineNameGradients = useUIStore((s) => s.setDisableInlineNameGradients);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
@@ -3433,6 +3477,13 @@ function GeneralSettings() {
             onChange={setConfirmBeforeDelete}
             help={localizeUi("settings.controls.confirmBeforeDelete.help")}
           />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("hide-chat-help-button")}
+            label={localizeUi("settings.controls.hideChatHelpButton.label")}
+            checked={chatHelpButtonHidden}
+            onChange={setChatHelpButtonHidden}
+            help={localizeUi("settings.controls.hideChatHelpButton.help")}
+          />
           <AndroidStatusBarSetting />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("achievements")}
@@ -3444,9 +3495,12 @@ function GeneralSettings() {
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("music-player")}
             label={localizeUi("settings.controls.musicPlayer.label")}
-            checked={musicPlayerEnabled}
+            checked={musicDjInstalled && musicPlayerEnabled}
             onChange={setMusicPlayerEnabled}
-            help={localizeUi("settings.controls.musicPlayer.help")}
+            help={localizeUi(
+              musicDjInstalled ? "settings.controls.musicPlayer.help" : "settings.controls.musicPlayer.requiresMusicDj",
+            )}
+            disabled={!musicDjInstalled}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("mini-mari")}
@@ -3695,7 +3749,22 @@ function GeneralSettings() {
             onChange={setConvertLatexSymbols}
             help={localizeUi("ui.panels.generalsettings.turnsCommonModelWrittenLatexCommandsLikeRightarrowNeq")}
           />
-
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("color-inline-names")}
+            label={localizeUi("settings.controls.colorInlineNames.label")}
+            checked={colorInlineNames ?? false}
+            onChange={setColorInlineNames}
+            help={localizeUi("settings.controls.colorInlineNames.help")}
+          />
+          {colorInlineNames && (
+            <ToggleSetting
+              anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
+              label={localizeUi("settings.controls.disableInlineNameGradients.label")}
+              checked={disableInlineNameGradients ?? false}
+              onChange={setDisableInlineNameGradients}
+              help={localizeUi("settings.controls.disableInlineNameGradients.help")}
+            />
+          )}
           <div
             id={getSettingsControlAnchorId("quote-style")}
             className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--secondary)]/50"
@@ -4602,6 +4671,10 @@ function AppearanceSettings() {
   const setChatFontOpacity = useUIStore((s) => s.setChatFontOpacity);
   const roleplayReducedPaintEffects = useUIStore((s) => s.roleplayReducedPaintEffects);
   const setRoleplayReducedPaintEffects = useUIStore((s) => s.setRoleplayReducedPaintEffects);
+  const showRoleplayThinkingInMessages = useUIStore((s) => s.showRoleplayThinkingInMessages);
+  const setShowRoleplayThinkingInMessages = useUIStore((s) => s.setShowRoleplayThinkingInMessages);
+  const keepRoleplayThinkingExpanded = useUIStore((s) => s.keepRoleplayThinkingExpanded);
+  const setKeepRoleplayThinkingExpanded = useUIStore((s) => s.setKeepRoleplayThinkingExpanded);
   const roleplayAvatarStyle = useUIStore((s) => s.roleplayAvatarStyle);
   const setRoleplayAvatarStyle = useUIStore((s) => s.setRoleplayAvatarStyle);
   const roleplayAvatarScale = useUIStore((s) => s.roleplayAvatarScale);
@@ -5250,6 +5323,22 @@ function AppearanceSettings() {
             checked={roleplayReducedPaintEffects}
             onChange={setRoleplayReducedPaintEffects}
             help={localizeUi("settings.controls.reducedPaintEffects.help")}
+          />
+
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("show-roleplay-thinking-in-messages")}
+            label={localizeUi("settings.controls.showRoleplayThinkingInMessages.label")}
+            checked={showRoleplayThinkingInMessages}
+            onChange={setShowRoleplayThinkingInMessages}
+            help={localizeUi("settings.controls.showRoleplayThinkingInMessages.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("keep-roleplay-thinking-expanded")}
+            label={localizeUi("settings.controls.keepRoleplayThinkingExpanded.label")}
+            checked={keepRoleplayThinkingExpanded}
+            onChange={setKeepRoleplayThinkingExpanded}
+            disabled={!showRoleplayThinkingInMessages}
+            help={localizeUi("settings.controls.keepRoleplayThinkingExpanded.help")}
           />
 
           <div className="flex flex-col gap-2">
@@ -6218,7 +6307,7 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
                 })
               }
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition-all",
+                "flex items-center gap-2 rounded-md px-3 py-2 text-xs transition-all",
                 activeCustomTheme === null
                   ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/30"
                   : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
@@ -7298,6 +7387,13 @@ function AdvancedSettings() {
   const [exportProfileDialogOpen, setExportProfileDialogOpen] = useState(false);
   const [refreshingSpa, setRefreshingSpa] = useState(false);
   const [adminSecret, setAdminSecret] = useState(() => localStorage.getItem(ADMIN_SECRET_STORAGE_KEY) ?? "");
+  const restartServer = useMutation({
+    mutationFn: () => api.post<{ status: "restarting" }>("/admin/restart", { confirm: true }),
+    onSuccess: () => toast.success(localizeUi("settings.serverRestart.success")),
+    onError: (error) => {
+      toast.error(getPrivilegedActionErrorMessage(error, localizeUi("settings.serverRestart.error")));
+    },
+  });
   const { data: extensionPolicy, isLoading: extensionPolicyLoading } = usePersonalExtensionPolicy();
   const setExternalExtensionsEnabled = useSetExternalExtensionsEnabled();
   const { data: agentImportPolicy, isLoading: agentImportPolicyLoading } = useAgentImportPolicy();
@@ -7482,20 +7578,20 @@ function AdvancedSettings() {
   const [creatingBackup, setCreatingBackup] = useState(false);
 
   /**
-   * Download a full backup to a user-chosen location.
-   *
-   * Uses the File System Access API (`showSaveFilePicker`) when available so
-   * the browser opens a native "Save As" dialog — this is important on Android
-   * and iOS, where the server-side `data/backups/` folder isn't reachable
-   * without root. Falls back to an anchor-triggered download (which routes
-   * through the browser's default Downloads handling).
+   * Prepare a full backup, then hand its finished stream directly to the browser.
+   * Keeping the archive out of a page-held Blob lets Safari and memory-limited
+   * mobile browsers save large backups through their normal download handling.
    */
   const handleCreateBackup = async () => {
     setCreatingBackup(true);
     try {
       const started = await api.post<{ jobId: string; status: "preparing" }>("/backup/download/start");
       const deadline = Date.now() + 60 * 60 * 1_000;
-      let status: { status: "preparing" | "ready" | "failed"; error?: string } = { status: started.status };
+      let status: {
+        status: "preparing" | "ready" | "failed";
+        error?: string;
+        downloadUrl?: string;
+      } = { status: started.status };
       while (status.status === "preparing") {
         if (Date.now() >= deadline) {
           throw new Error(localizeUi("ui.panels.advancedsettings.backupPreparationTimedOut"));
@@ -7506,65 +7602,12 @@ function AdvancedSettings() {
       if (status.status === "failed") {
         throw new Error(status.error || localizeUi("ui.panels.advancedsettings.failedToCreateBackup"));
       }
-
-      const res = await api.raw(`/backup/download/file/${encodeURIComponent(started.jobId)}`);
-      if (!res.ok) {
-        throw new Error(
-          await readSettingsResponseError(res, localizeUi("ui.panels.advancedsettings.failedToCreateBackup")),
-        );
+      if (!status.downloadUrl) {
+        throw new Error(localizeUi("ui.panels.advancedsettings.failedToCreateBackup"));
       }
 
-      // Pull the filename from Content-Disposition if provided
-      const disposition = res.headers.get("content-disposition") ?? "";
-      const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-      const suggestedName = filenameMatch?.[1] ?? `marinara-backup-${timestamp}.zip`;
-
-      const blob = await res.blob();
-
-      // Preferred path: native "Save As" dialog (Chromium desktop, some Android)
-      const w = window as typeof window & {
-        showSaveFilePicker?: (options: {
-          suggestedName?: string;
-          types?: Array<{ description?: string; accept: Record<string, string[]> }>;
-        }) => Promise<{
-          createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }>;
-        }>;
-      };
-      if (typeof w.showSaveFilePicker === "function") {
-        try {
-          const handle = await w.showSaveFilePicker({
-            suggestedName,
-            types: [
-              {
-                description: "Marinara backup archive",
-                accept: { "application/zip": [".zip"] },
-              },
-            ],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          toast.success(localizeUi("ui.panels.advancedsettings.backupSaved"));
-          qc.invalidateQueries({ queryKey: ["backups"] });
-          return;
-        } catch (err) {
-          // User cancelled the native picker — treat as a silent no-op
-          if (err instanceof DOMException && err.name === "AbortError") return;
-          // Any other failure falls through to the anchor fallback
-        }
-      }
-
-      // Fallback: anchor download. On Android Chrome this routes through the
-      // system Downloads handler (which typically prompts the user or drops
-      // the file in the Downloads folder, both of which are user-accessible).
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = suggestedName;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success(localizeUi("ui.panels.advancedsettings.backupDownloaded"));
+      window.location.assign(status.downloadUrl);
+      toast.success(localizeUi("ui.panels.advancedsettings.backupDownloadStarted"));
       qc.invalidateQueries({ queryKey: ["backups"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : localizeUi("ui.panels.advancedsettings.failedToCreateBackup"));
@@ -7626,6 +7669,11 @@ function AdvancedSettings() {
     commit: string | null;
     build: string;
     serverOs: string;
+    memory: {
+      heapUsedMiB: number;
+      heapLimitMiB: number;
+      rssMiB: number;
+    };
   }>({
     queryKey: ["health"],
     queryFn: () => api.get("/health"),
@@ -7644,6 +7692,7 @@ function AdvancedSettings() {
         build: health.data?.build ?? APP_VERSION,
         commit: health.data?.commit ?? null,
         serverOs: health.data?.serverOs ?? "Unavailable",
+        serverMemory: health.data?.memory,
         clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
         browser: navigator.userAgent,
         gpu: detectBrowserGpu(),
@@ -7678,6 +7727,16 @@ function AdvancedSettings() {
     }
   }, [adminSecret, localizeUi]);
 
+  const handleRestartServer = useCallback(async () => {
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("settings.serverRestart.confirm.title"),
+      message: localizeUi("settings.serverRestart.confirm.message"),
+      confirmLabel: localizeUi("settings.serverRestart.action"),
+      cancelLabel: localizeUi("chat.delete.dialog.cancel"),
+    });
+    if (confirmed) restartServer.mutate();
+  }, [localizeUi, restartServer]);
+
   type UpdateChannelId = "stable" | "staging";
   const [updateChannel, setUpdateChannel] = useState<UpdateChannelId | null>(null);
   const updateCheck = useQuery<{
@@ -7706,7 +7765,7 @@ function AdvancedSettings() {
     releaseTag?: string;
     dockerImage?: string;
     dockerImageTag?: string;
-    dockerLiteImageTag?: string;
+    dockerLiteImageTag?: string | null;
     installType: "git" | "docker" | "standalone";
     serverPlatform?: "windows" | "macos" | "linux" | "android-termux" | "unknown";
     clientPlatform?: "ios" | "android" | "desktop" | "unknown";
@@ -7852,6 +7911,26 @@ function AdvancedSettings() {
               {localizeUi("ui.noodle.noodlehome.save")}
             </span>
           </button>
+          <SearchableSettingTarget controlId="restart-server" className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleRestartServer()}
+              disabled={restartServer.isPending}
+              className={cn(SETTINGS_BUTTON_CLASS, "w-full justify-center gap-1.5 px-3 py-2 text-xs")}
+            >
+              {restartServer.isPending ? (
+                <Loader2 size="0.8125rem" className="animate-spin" />
+              ) : (
+                <Power size="0.8125rem" />
+              )}
+              {restartServer.isPending
+                ? localizeUi("settings.serverRestart.restarting")
+                : localizeUi("settings.serverRestart.action")}
+            </button>
+            <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+              {localizeUi("settings.serverRestart.description")}
+            </p>
+          </SearchableSettingTarget>
         </div>
       </SettingsSection>
 
@@ -7935,15 +8014,19 @@ function AdvancedSettings() {
             <div className="flex flex-col gap-2 rounded-lg bg-[var(--secondary)] p-2.5 ring-1 ring-[var(--border)]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">
-                  {updateCheck.data.versionUpdate
-                    ? localizeUi("ui.panels.advancedsettings.vValue1Available", {
-                        value1: updateCheck.data.latestVersion,
+                  {updateCheck.data.channelSwitch
+                    ? localizeUi("ui.panels.advancedsettings.switchToValue1", {
+                        value1: updateCheck.data.channelLabel,
                       })
-                    : localizeUi("ui.panels.advancedsettings.value1CommitValue2BehindValue3", {
-                        value1: commitsBehind,
-                        value2: commitsBehind !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : "",
-                        value3: updateCheck.data.targetRef ?? localizeUi("ui.panels.advancedsettings.originMain"),
-                      })}
+                    : updateCheck.data.versionUpdate
+                      ? localizeUi("ui.panels.advancedsettings.vValue1Available", {
+                          value1: updateCheck.data.latestVersion,
+                        })
+                      : localizeUi("ui.panels.advancedsettings.value1CommitValue2BehindValue3", {
+                          value1: commitsBehind,
+                          value2: commitsBehind !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : "",
+                          value3: updateCheck.data.targetRef ?? localizeUi("ui.panels.advancedsettings.originMain"),
+                        })}
                 </span>
                 {updateCheck.data.versionUpdate && (
                   <a

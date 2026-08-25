@@ -410,6 +410,7 @@ export function ConnectionEditor() {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const modelSearchInputRef = useRef<HTMLInputElement>(null);
   const comfyWorkflowTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const fetchScopeRef = useRef(0);
 
   // Remote models fetched from provider API
   const [remoteModels, setRemoteModels] = useState<RemoteConnectionModel[]>([]);
@@ -570,11 +571,10 @@ export function ConnectionEditor() {
             { token: "%length_s%", label: "%length_s%", critical: false },
             { token: "%fps%", label: "%fps%", critical: false },
             { token: "%duration_seconds%", label: "%duration_seconds%", critical: false },
-            {
-              token: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
-              label: isSwarmUiVideoWorkflow ? "%reference_image%" : "%reference_image_name%",
-              critical: false,
-            },
+            { token: "%reference_image%", label: "%reference_image%", critical: false },
+            ...(!isSwarmUiVideoWorkflow
+              ? [{ token: "%reference_image_name%", label: "%reference_image_name%", critical: false }]
+              : []),
           ]
         : [
             { token: "%prompt%", label: "%prompt%", critical: true },
@@ -589,8 +589,12 @@ export function ConnectionEditor() {
     const hasReferenceImage = /%reference_image(?:_0[1-4])?%/.test(wf);
     const hasReferenceImageName = /%reference_image_name(?:_0[1-4])?%/.test(wf);
     const missing = KNOWN_SUBS.filter(({ token }) => {
-      if (token === "%reference_image%" && hasReferenceImageName) return false;
-      if (token === "%reference_image_name%" && hasReferenceImage) return false;
+      if (
+        (token === "%reference_image%" || token === "%reference_image_name%") &&
+        (hasReferenceImage || hasReferenceImageName)
+      ) {
+        return false;
+      }
       return !wf.includes(token);
     });
     return { parseError: false as const, missing };
@@ -692,8 +696,10 @@ export function ConnectionEditor() {
   // Model list for current provider
   const providerModels = useMemo(() => {
     if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
+    if (localProvider === "image_generation" && selectedImageService === "novelai")
+      return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-"));
     return MODEL_LISTS[localProvider] ?? [];
-  }, [localProvider, selectedVideoProvider]);
+  }, [localProvider, selectedVideoProvider, selectedImageService]);
 
   // Merge known models with remote models (remote first, deduped)
   const allModels = useMemo(() => {
@@ -723,8 +729,9 @@ export function ConnectionEditor() {
   useEffect(() => {
     setRemoteModels([]);
     setRemoteLoras([]);
+    fetchScopeRef.current++;
     setFetchError(null);
-  }, [localProvider]);
+  }, [localProvider, selectedImageService, connectionDetailId]);
 
   useEffect(() => {
     if (!showModelDropdown) return;
@@ -1240,6 +1247,8 @@ export function ConnectionEditor() {
 
   const handleFetchModels = useCallback(async () => {
     if (!connectionDetailId) return;
+    const requestScope = fetchScopeRef.current;
+    const requestConnectionId = connectionDetailId;
     setFetchError(null);
     // Save first if dirty so the server has the right baseUrl/apiKey/provider
     if (dirty) {
@@ -1249,8 +1258,10 @@ export function ConnectionEditor() {
         return;
       }
     }
-    fetchModels.mutate(connectionDetailId, {
+    if (fetchScopeRef.current !== requestScope) return;
+    fetchModels.mutate(requestConnectionId, {
       onSuccess: (data) => {
+        if (fetchScopeRef.current !== requestScope) return;
         const result = data as { models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] };
         setRemoteModels(result.models);
         setRemoteLoras(result.loras ?? []);
@@ -1261,6 +1272,7 @@ export function ConnectionEditor() {
         });
       },
       onError: (err) => {
+        if (fetchScopeRef.current !== requestScope) return;
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
       },
     });
@@ -1487,6 +1499,7 @@ export function ConnectionEditor() {
               {(Object.entries(PROVIDERS) as [APIProvider, typeof providerDef][]).map(([key, info]) => (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => {
                     if (key === localProvider) return;
                     const defaultModel = MODEL_LISTS[key]?.[0];
@@ -1524,8 +1537,9 @@ export function ConnectionEditor() {
                     setClearStoredApiKeyOnSave(true);
                     markDirty();
                   }}
+                  aria-pressed={localProvider === key}
                   className={cn(
-                    "truncate rounded-xl px-3 py-2.5 text-xs font-medium transition-all",
+                    "truncate rounded-md px-3 py-2.5 text-xs font-medium transition-all",
                     localProvider === key
                       ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
                       : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
@@ -2062,11 +2076,11 @@ export function ConnectionEditor() {
             help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
           >
             {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
-            <div ref={modelDropdownRef} className={cn("relative", showModelDropdown && "z-50")}>
+            <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
               <div
                 onClick={() => setShowModelDropdown(!showModelDropdown)}
                 className={cn(
-                  "relative flex cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
+                  "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
                   showModelDropdown && "z-50 ring-sky-400/50",
                 )}
               >
@@ -2076,13 +2090,15 @@ export function ConnectionEditor() {
                     ref={modelSearchInputRef}
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
-                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
                     placeholder={localizeUi("ui.connections.connectioneditor.searchModels")}
                     autoFocus
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className={cn("flex-1 text-sm", !localModel && "text-[var(--muted-foreground)]")}>
+                  <span
+                    className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
+                  >
                     {localModel
                       ? selectedModelInfo
                         ? localizeUi("ui.connections.connectioneditor.value1Value2", {
@@ -2105,36 +2121,37 @@ export function ConnectionEditor() {
               {showModelDropdown && (
                 <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
                   {/* Fetch from API button */}
-                  <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFetchModels();
-                      }}
-                      disabled={fetchModels.isPending}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
-                    >
-                      {fetchModels.isPending ? (
-                        <Loader2 size="0.75rem" className="animate-spin" />
-                      ) : (
-                        <Globe size="0.75rem" />
+                  {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
+                    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFetchModels();
+                        }}
+                        disabled={fetchModels.isPending}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {fetchModels.isPending ? (
+                          <Loader2 size="0.75rem" className="animate-spin" />
+                        ) : (
+                          <Globe size="0.75rem" />
+                        )}
+                        {fetchModels.isPending
+                          ? localizeUi("ui.connections.connectioneditor.fetching")
+                          : modelFetchButtonLabel}
+                      </button>
+                      {fetchError && (
+                        <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
                       )}
-                      {fetchModels.isPending
-                        ? localizeUi("ui.connections.connectioneditor.fetching")
-                        : modelFetchButtonLabel}
-                    </button>
-                    {fetchError && (
-                      <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
-                    )}
-                    {remoteModels.length > 0 && !fetchError && (
-                      <p className="mt-1 text-[0.625rem] text-emerald-400">
-                        {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
-                        {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
-                        {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
-                      </p>
-                    )}
-                  </div>
-
+                      {remoteModels.length > 0 && !fetchError && (
+                        <p className="mt-1 text-[0.625rem] text-emerald-400">
+                          {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
+                          {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
+                          {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {localProvider === "custom" ? (
                     <div className="p-3">
                       <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">
@@ -2239,13 +2256,13 @@ export function ConnectionEditor() {
 
             {/* Manual model ID input below dropdown */}
             {localProvider !== "custom" && (
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex min-w-0 items-center gap-2">
                 <input
                   value={localModel}
                   onChange={(e) => {
                     handleManualModelChange(e.target.value);
                   }}
-                  className="flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
+                  className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
                   placeholder={
                     isGrokSubscriptionProvider
                       ? localizeUi("ui.connections.connectioneditor.optionalTypeAGrokCliModelIdOrLeave")

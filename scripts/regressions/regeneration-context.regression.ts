@@ -5,7 +5,10 @@ import { join } from "node:path";
 
 import { createFileNativeDB } from "../../packages/server/src/db/file-backed-store.js";
 import { memoryChunks } from "../../packages/server/src/db/schema/index.js";
-import { resolveRoleplayChatSummary } from "../../packages/server/src/routes/generate/generate-route-utils.js";
+import {
+  resolveRoleplayChatSummary,
+  resolveRoleplayChatSummaryForPrompt,
+} from "../../packages/server/src/routes/generate/generate-route-utils.js";
 import { injectMemoryRecallContext } from "../../packages/server/src/services/generation/memory-recall-context.js";
 import {
   chunkAndEmbedMessages,
@@ -76,6 +79,103 @@ assert.equal(
   ),
   null,
   "regeneration must omit a legacy summary that cannot prove it excludes the discarded response",
+);
+
+const semanticSummaryEntries = [
+  {
+    id: "manual-anchor",
+    origin: "manual",
+    content: "Mari wrote down an unrelated relationship anchor.",
+    enabled: true,
+    createdAt: "2026-07-01T08:00:00.000Z",
+    updatedAt: "2026-07-01T08:00:00.000Z",
+  },
+  {
+    id: "relevant-manual-summary",
+    origin: "manual",
+    content: "The dragon pact was sealed beneath the red moon.",
+    enabled: true,
+    createdAt: "2026-07-02T08:00:00.000Z",
+    updatedAt: "2026-07-02T08:00:00.000Z",
+  },
+  {
+    id: "relevant-backfill-summary",
+    origin: "manual",
+    sourceMode: "range",
+    content: "The dragon pact requires a silver offering at dawn.",
+    enabled: true,
+    createdAt: "2026-07-03T08:00:00.000Z",
+    updatedAt: "2026-07-03T08:00:00.000Z",
+  },
+  {
+    id: "irrelevant-old-summary",
+    origin: "automated",
+    content: "They spent a quiet afternoon baking bread.",
+    enabled: true,
+    createdAt: "2026-07-04T08:00:00.000Z",
+    updatedAt: "2026-07-04T08:00:00.000Z",
+  },
+  {
+    id: "recent-summary-one",
+    origin: "automated",
+    content: "They reached the mountain pass.",
+    enabled: true,
+    createdAt: "2026-07-05T08:00:00.000Z",
+    updatedAt: "2026-07-05T08:00:00.000Z",
+  },
+  {
+    id: "recent-summary-two",
+    origin: "automated",
+    content: "A storm forced them into the same shelter.",
+    enabled: true,
+    createdAt: "2026-07-06T08:00:00.000Z",
+    updatedAt: "2026-07-06T08:00:00.000Z",
+  },
+];
+const semanticSummaryMetadata = {
+  summary: semanticSummaryEntries.map((entry) => entry.content).join("\n\n"),
+  summaryEntries: semanticSummaryEntries,
+  semanticSummaryRetrievalEnabled: true,
+};
+const semanticSummaryEmbeddingSource: MemoryRecallEmbeddingSource = {
+  label: "roleplay summary regression",
+  embed: async (texts, _signal, inputType) =>
+    texts.map((text) => {
+      if (inputType === "query") {
+        if (text.includes("dragon pact")) return [1, 0];
+        if (text.includes("recipe")) return [0, 1];
+        if (text.includes("spacecraft")) return [-1, 0];
+        return [0, -1];
+      }
+      return text.includes("dragon pact") ? [1, 0] : [0, 1];
+    }),
+};
+const selectedSemanticSummary = await resolveRoleplayChatSummaryForPrompt({
+  chatMode: "roleplay",
+  chatMetadata: semanticSummaryMetadata,
+  messages: [{ role: "user", content: "What did the dragon pact require?" }],
+  vectorizerAvailable: true,
+  embeddingOptions: { embeddingSource: semanticSummaryEmbeddingSource },
+});
+assert.equal(
+  selectedSemanticSummary,
+  [
+    semanticSummaryEntries[1]!.content,
+    semanticSummaryEntries[2]!.content,
+    semanticSummaryEntries[4]!.content,
+    semanticSummaryEntries[5]!.content,
+  ].join("\n\n"),
+  "semantic Roleplay summaries must retrieve relevant manual and backfilled entries while retaining recent entries",
+);
+assert.equal(
+  await resolveRoleplayChatSummaryForPrompt({
+    chatMode: "roleplay",
+    chatMetadata: semanticSummaryMetadata,
+    messages: [{ role: "user", content: "What did the dragon pact require?" }],
+    vectorizerAvailable: false,
+  }),
+  semanticSummaryMetadata.summary,
+  "Roleplay summary retrieval must keep the complete summary when embeddings are unavailable",
 );
 
 const storageDir = mkdtempSync(join(tmpdir(), "marinara-regeneration-context-"));
@@ -218,10 +318,9 @@ try {
   assert.deepEqual(retainedSwipeExtra.conversationStartForCharacterIds, ["new-character"]);
   assert.deepEqual(retainedSwipeExtra.hiddenFromAICharacterIds, ["private-character"]);
   await chatStorage.setActiveSwipe(swipeMetadataMessage.id, 1);
-  const switchedMessageExtra = JSON.parse((await chatStorage.getMessage(swipeMetadataMessage.id))!.extra as string) as Record<
-    string,
-    unknown
-  >;
+  const switchedMessageExtra = JSON.parse(
+    (await chatStorage.getMessage(swipeMetadataMessage.id))!.extra as string,
+  ) as Record<string, unknown>;
   assert.deepEqual(switchedMessageExtra.conversationStartForCharacterIds, ["new-character"]);
   assert.deepEqual(switchedMessageExtra.hiddenFromAICharacterIds, ["private-character"]);
   assert.equal(switchedMessageExtra.isConversationStart, true);

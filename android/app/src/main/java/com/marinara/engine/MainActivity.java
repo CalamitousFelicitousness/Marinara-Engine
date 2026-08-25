@@ -256,6 +256,7 @@ public class MainActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setTextZoom(100);
         settings.setUserAgentString(settings.getUserAgentString() + " MarinaraEngine/Android");
 
         webView.addJavascriptInterface(new MarinaraAndroidBridge(), "MarinaraAndroidNative");

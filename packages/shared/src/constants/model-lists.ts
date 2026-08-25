@@ -883,9 +883,12 @@ const IMAGE_GEN_MODELS: KnownModel[] = [
   ...ZAI_IMAGE_MODELS,
   ...ATLAS_CLOUD_IMAGE_MODELS,
   // NovelAI
-  { id: "nai-diffusion-4-curated-preview", name: "NAI Diffusion 4 Curated", context: 0, maxOutput: 0 },
-  { id: "nai-diffusion-4-5-full", name: "NAI Diffusion 4.5 Full", context: 0, maxOutput: 0 },
   { id: "nai-diffusion-3", name: "NAI Diffusion 3 (Anime V3)", context: 0, maxOutput: 0 },
+  { id: "nai-diffusion-4-curated-preview", name: "NAI Diffusion 4 Curated", context: 0, maxOutput: 0 },
+  { id: "nai-diffusion-4-5-curated", name: "NAI Diffusion 4.5 Curated", context: 0, maxOutput: 0 },
+  { id: "nai-diffusion-4-5-full", name: "NAI Diffusion 4.5 Full", context: 0, maxOutput: 0 },
+  { id: "nai-diffusion-5-curated", name: "NAI Diffusion 5 Curated", context: 0, maxOutput: 0 },
+  { id: "nai-diffusion-5-full", name: "NAI Diffusion 5 Full", context: 0, maxOutput: 0 },
   // Pollinations (model-free, but include as placeholder)
   { id: "pollinations", name: "Pollinations (Auto)", context: 0, maxOutput: 0 },
 ];

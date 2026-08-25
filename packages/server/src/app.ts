@@ -53,6 +53,7 @@ import { hostValidationHook } from "./middleware/host-validation.js";
 import { androidLocalAuthHook, androidLocalLoginRoute } from "./middleware/android-local-auth.js";
 import { arch, platform, release } from "node:os";
 import { execFileSync } from "node:child_process";
+import { getRuntimeMemorySnapshot } from "./utils/runtime-memory.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
 const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -86,6 +87,8 @@ const SERVER_OS = resolveServerOs();
 export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   const hadUserStateBeforeStartup = existsSync(join(getFileStorageDir(), "manifest.json"));
   const app = Fastify({
+    // Restart has its own bounded fallback; normal shutdown must not interrupt active generations.
+    forceCloseConnections: false,
     logger: {
       level: getLogLevel(),
       transport: getNodeEnv() !== "production" ? { target: "pino-pretty", options: { colorize: true } } : undefined,
@@ -316,6 +319,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
       commit,
       build: getBuildLabel(),
       serverOs: SERVER_OS,
+      memory: getRuntimeMemorySnapshot(),
       timestamp: new Date().toISOString(),
       capabilityPackages: {
         status: capabilityPackages

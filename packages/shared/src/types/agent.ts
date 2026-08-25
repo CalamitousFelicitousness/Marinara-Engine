@@ -47,6 +47,7 @@ export const AGENT_RESULT_TYPE_VALUES = [
   "director_event",
   "lorebook_update",
   "character_card_update",
+  "character_card_create",
   "background_change",
   "character_tracker_update",
   "persona_stats_update",
@@ -63,8 +64,10 @@ export const AGENT_RESULT_TYPE_VALUES = [
   "game_map_update",
   "game_state_transition",
   "prompt_patch",
+  "character_activity_update",
   "frontend_theme_update",
   "about_me_update",
+  "memory_nag",
 ] as const;
 
 /** The result type an agent can produce. */
@@ -273,7 +276,7 @@ export interface AgentResult {
   error: string | null;
 }
 
-export type AgentWriteApprovalKind = "lorebook_update" | "summary_update";
+export type AgentWriteApprovalKind = "character_card_create" | "lorebook_update" | "summary_update";
 
 export interface AgentWriteApprovalProposal {
   kind: AgentWriteApprovalKind;
@@ -361,6 +364,8 @@ export interface AgentContext {
   characters: Array<{
     id: string;
     name: string;
+    /** Persisted character-card world name, when configured. */
+    world?: string;
     description: string;
     personality?: string;
     scenario?: string;
@@ -374,6 +379,12 @@ export interface AgentContext {
     avatarPath?: string | null;
     avatarCrop?: unknown;
     rpgStats?: import("./character.js").RPGStatsConfig;
+  }>;
+  /** Every character attached to the chat, with only the data needed for activity routing. */
+  chatCharacters?: Array<{
+    id: string;
+    name: string;
+    active: boolean;
   }>;
   /** Latest known tracker entries, including recurring characters that are currently absent. */
   characterTrackerHistory?: import("./game-state.js").PresentCharacter[];
@@ -406,6 +417,8 @@ export interface AgentContext {
     id: string;
     content: string;
   }>;
+  /** Per-lorebook total entry counts (for {{lorebooksize::ID}} macro in agent prompts). */
+  lorebookEntryCounts?: Record<string, number>;
   /**
    * Semantic source material resolved for custom agents that opt into vector access.
    * The runtime keeps this out of ordinary agent prompts and injects it only for
@@ -533,6 +546,7 @@ export const MIN_AGENT_MAX_TOKENS = 128;
 export const MAX_AGENT_MAX_TOKENS = 32768;
 
 export const CUSTOM_AGENT_CAPABILITY_IDS = [
+  "create_characters",
   "create_lorebooks",
   "edit_lorebooks",
   "edit_messages",
@@ -546,6 +560,7 @@ export const CUSTOM_AGENT_CAPABILITY_IDS = [
   "trigger_image_generation",
   "access_vectors",
   "edit_main_prompt",
+  "manage_chat_characters",
 ] as const;
 
 export type CustomAgentCapability = (typeof CUSTOM_AGENT_CAPABILITY_IDS)[number];
@@ -612,6 +627,7 @@ export function createImportedAgentType(sourceType: string): string {
 const CUSTOM_AGENT_CAPABILITY_SET = new Set<string>(CUSTOM_AGENT_CAPABILITY_IDS);
 
 const CUSTOM_AGENT_RESULT_CAPABILITY: Partial<Record<AgentResultType, CustomAgentCapability>> = {
+  character_card_create: "create_characters",
   text_rewrite: "edit_messages",
   lorebook_update: "edit_lorebooks",
   character_tracker_update: "edit_trackers",
@@ -622,6 +638,7 @@ const CUSTOM_AGENT_RESULT_CAPABILITY: Partial<Record<AgentResultType, CustomAgen
   game_state_update: "edit_trackers",
   image_prompt: "trigger_image_generation",
   prompt_patch: "edit_main_prompt",
+  character_activity_update: "manage_chat_characters",
   frontend_theme_update: "change_frontend_styling",
   background_change: "change_backgrounds",
   sprite_change: "change_sprites",

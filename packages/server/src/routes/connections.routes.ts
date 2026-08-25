@@ -273,6 +273,19 @@ export function buildGoogleModelsPageUrl(baseUrl: string, modelsEndpoint: string
   return `${baseUrl}${modelsEndpoint}?pageSize=1000` + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
 }
 
+export function buildConnectionTestCatalogUrl(
+  baseUrl: string,
+  provider: string,
+  modelsEndpoint = "/models",
+  audioSource?: string | null,
+): string {
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  if (provider === "audio" && (audioSource || "elevenlabs") === "elevenlabs") {
+    return `${normalizedBaseUrl.replace(/\/v\d+$/, "")}/v1/models`;
+  }
+  return `${normalizedBaseUrl}${modelsEndpoint}`;
+}
+
 function normalizeConnectionTestBaseUrl(baseUrl: string, provider: string): string {
   if (provider === "google") return normalizeGoogleGenerativeLanguageBaseUrl(baseUrl);
   if (provider !== "image_generation") return baseUrl.replace(/\/+$/, "");
@@ -688,7 +701,12 @@ export async function connectionsRoutes(app: FastifyInstance) {
       } else if (conn.provider === "google_vertex") {
         testUrl = buildGoogleVertexModelUrl(baseUrl, conn.model, "models");
       } else {
-        testUrl = `${baseUrl}${provider?.modelsEndpoint || "/models"}`;
+        testUrl = buildConnectionTestCatalogUrl(
+          baseUrl,
+          conn.provider,
+          provider?.modelsEndpoint || "/models",
+          conn.audioSource,
+        );
       }
 
       const testHeaders =

@@ -121,7 +121,11 @@ Tracks each character's current clothing by body slot, held items, wounds, missi
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay only.
 - **Key settings**: add or remove it under **Chat Settings → Agents → Tracker Agents**; open **Configure Beholder** there to choose its connection, model, prompt, context, and output limits. **Add as Prompt Section** is on by default.
-- **Model recommendation**: use a SOTA model such as OpenAI GPT-5.5+, Claude Opus 4.8+, or Kimi K3+ for reliable full-state tracking.
+- **Model recommendation**: pick the prompt template that matches the model behind Beholder's connection. The two shipped templates are not interchangeable — each is written for a different kind of model.
+  - **SOTA model — one prompt** (default): one call covering every tracked field. Use a strong general model such as OpenAI GPT-5.5+, Claude Opus 4.8+, or Kimi K3+.
+  - **Beholder local model — five passes**: five narrow calls, one per tracked lane, for the purpose-trained [Beholder](https://huggingface.co/GetBeholder/Beholder-GGUF) extractor served locally (for example `Beholder-Q8_0.gguf` behind koboldcpp or llama.cpp). That model is trained to answer one lane at a time, so the single-prompt template is off-distribution for it and returns partial state. Engine unions the five per-lane results into one update. Runs fully offline at no cost.
+
+  Beholder cannot detect which model sits behind a connection, so this stays a manual choice. A mismatch is not fatal but degrades extraction: a SOTA model handles either template, while the local model needs the five-pass one.
 - **Origin**: adapted into Engine's native Agent runtime from [GetBeholder/Beholder-ME](https://github.com/GetBeholder/Beholder-ME), licensed AGPL-3.0-only. The official package does not load the legacy extension's DOM, polling, or local-storage runtime.
 
 ### Persona Stats
@@ -147,6 +151,18 @@ Tracks money, equipped gear, and carried items as three structured lists without
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay.
 - **Key settings**: **Add as Prompt Section** (on by default). The HUD and Tracker Panel let you edit and lock every name and quantity.
+
+### Memory Nag
+
+Keeps a short editable memory vault for each Roleplay chat. It scans the transcript in checkpointed batches, sorts memories by current and past character participants, and moves clearly settled memories to a restorable Resolved list. A memory may preserve a short dialogue line word for word when its exact wording matters.
+
+After each reply, deterministic word matching gives the tracker only the most relevant active memories for the involved characters. The tracker then decides whether the current situation actually calls for a nag and may choose only from those supplied memories; it cannot create a new memory during recall.
+
+- **Phase**: Post-Processing.
+- **Where it works**: Roleplay only.
+- **Key settings**: a separate **Vault scan connection** (default: the Agent connection), **Messages per batch** (20), **Maximum memories created per character** (10), **Maximum memories considered per character** (5), and **Maximum memories injected** (3). Use **Scan chat** for the initial backfill and **Open vault** to search, filter, add, edit, resolve, restore, or delete memories.
+- **Prompt placement**: without a preset marker, selected nags enter the next reply inside `<context><memory_nags>…</memory_nags></context>`. Add a Memory Nag Agent section to place them explicitly.
+- **Data lifecycle**: the vault belongs to one chat and remains stored if the package is disabled or uninstalled, so reinstalling can resume from the last checkpoint. Deleting a memory is permanent and always asks for confirmation.
 
 ### World Maps
 
@@ -203,7 +219,7 @@ Creates and updates lorebook entries from important facts in your chat, so your 
 
 - **Phase**: Post-Processing.
 - **Where it works**: Roleplay. In Game Mode, a session-end variant called **Game Session Keeper** does the same job at the end of a session.
-- **Key settings**: it runs once every 8 user and assistant messages by default. A **Target Lorebook** picker chooses where entries go, with an auto-select option.
+- **Key settings**: it runs once every 8 user and assistant messages by default. A **Target Lorebook** picker chooses where entries go, with an auto-select option. Advanced prompt configurations can return an exact writable lorebook name or a configured alias such as `world`, `npc`, `scene`, or `player`; missing alias destinations are created and linked to the current chat automatically. Omitting a destination keeps the existing single-lorebook behavior.
 
 ### Combat
 

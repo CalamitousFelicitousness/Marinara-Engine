@@ -22,6 +22,7 @@ import {
 import { chmod, copyFile, open, rename, unlink, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { dirname, join, resolve, sep } from "node:path";
 import { hostname, networkInterfaces } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -93,15 +94,17 @@ type TableSnapshotManifest = {
 };
 
 type StorageWriterLeaseRecord = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   pid: number;
   hostId: string | null;
+  scopeId?: string;
   hostname: string;
   token: string;
   acquiredAt: string;
 };
 
-type ActiveStorageWriterLease = { path: string; token: string };
+type WriterLeaseLiveness = { server: Server; sockets: Set<Socket>; scopeId: string };
+type ActiveStorageWriterLease = { path: string; token: string; liveness: WriterLeaseLiveness | null };
 
 type FileTransactionContext = {
   snapshots: Map<string, Row[]>;
@@ -144,8 +147,9 @@ function hardenPrivateStorageTree(rootDir: string) {
     for (const entry of entries) {
       const path = join(current, entry.name);
       if (entry.isDirectory()) pending.push(path);
-      else if (entry.isFile()) applyPrivateMode(path, PRIVATE_FILE_MODE);
-      else failures.push(new Error(`Storage contains an unsupported filesystem entry: ${path}`));
+      else if (entry.isFile() || (entry.isSocket() && path === writerLeaseLivenessPath(writerLeasePath(rootDir)))) {
+        applyPrivateMode(path, PRIVATE_FILE_MODE);
+      } else failures.push(new Error(`Storage contains an unsupported filesystem entry: ${path}`));
     }
   }
   if (failures.length > 0) {
@@ -190,6 +194,7 @@ export type FileNativeDB = {
 
 export type FileNativeStoreTestHooks = {
   beforeTableWrite?: (table: string, serializedRows: string) => Promise<void> | void;
+  writerLeaseScopeId?: string;
 };
 
 type SelectFromBuilder<TProjection extends Projection | undefined> = {
@@ -236,115 +241,12 @@ type InsertValuesBuilder = Executable<void> & {
 // Exported so regressions can pin behavior against the CURRENT version
 // without chasing literals on every bump. Must equal root storage-format.json
 // (the launcher-format-guard regression pins the pairing).
-export const STORAGE_VERSION = 4;
+export const STORAGE_VERSION = 5;
 export const STORAGE_WRITER_LEASE_FILENAME = ".writer-lease";
 export const STORAGE_WRITER_OWNER_FILENAME = "owner.json";
+export const STORAGE_WRITER_LIVENESS_FILENAME = "live.sock";
 const SAVE_DEBOUNCE_MS = 750;
 const SAFETY_SAVE_MS = 10_000;
-
-// #4708: tables persisted as one file PER CHAT (storage/tables/<table>/<key>.json)
-// instead of one monolith. On the per-message write path the monolith meant
-// every saved message re-serialized and rewrote the FULL history of every
-// chat — the dominant active-use cost on phone-hosted installs. These tables
-// stay in FILE_BACKED_TABLES (the master registry for schema/backup/query
-// machinery); only load/save/dirty plumbing consults this marker.
-// Order matters only for the first pair: messages must load/migrate before
-// message_swipes so the messageId -> chatId index exists when swipes resolve
-// their shard. Every other table shards by one of its own columns (see
-// SHARD_KEY_COLUMNS). Deliberately NOT sharded: `lorebooks` (nullable chatId
-// — a chat-linked library entity, not per-chat data) and
-// `game_turn_storyboard_keyframes` (no chat column; resolves only through
-// its parent storyboard — sharding it needs either a second parent index or
-// a denormalized chatId column, tracked as a follow-up on #4708).
-export const SHARDED_TABLES = [
-  "messages",
-  "message_swipes",
-  "memory_chunks",
-  "chat_images",
-  "agent_runs",
-  "agent_memory",
-  "conversation_call_sessions",
-  "conversation_call_messages",
-  "game_state_snapshots",
-  "game_engine_state",
-  "game_checkpoints",
-  "game_turn_storyboards",
-  "game_scene_videos",
-  "spatial_context_snapshots",
-  "ooc_influences",
-  "conversation_notes",
-] as const;
-
-/**
- * Tables whose per-chat shard key is not their `chatId` column. Influences
- * and notes are written by a conversation chat but READ (and injected) per
- * roleplay turn of the TARGET chat, so that is the access-pattern key.
- */
-const SHARD_KEY_COLUMNS: Record<string, string> = {
-  ooc_influences: "targetChatId",
-  conversation_notes: "targetChatId",
-};
-const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
-
-/**
- * Shard for child rows whose parent is unknown (orphans in corrupt installs).
- * Chosen to encode to itself for a readable filename; a real chat id equal to
- * this string would merely share the file — rows carry their own keys, so
- * grouping and loading stay unambiguous.
- */
-const UNASSIGNED_SHARD_KEY = "orphaned-rows";
-
-/** Sentinel file marking an in-progress monolith->shard migration (#4708). */
-const SHARD_MIGRATION_SENTINEL = ".migrating";
-
-const WINDOWS_RESERVED_BASENAMES = new Set([
-  "CON",
-  "PRN",
-  "AUX",
-  "NUL",
-  "COM1",
-  "COM2",
-  "COM3",
-  "COM4",
-  "COM5",
-  "COM6",
-  "COM7",
-  "COM8",
-  "COM9",
-  "LPT1",
-  "LPT2",
-  "LPT3",
-  "LPT4",
-  "LPT5",
-  "LPT6",
-  "LPT7",
-  "LPT8",
-  "LPT9",
-]);
-
-/**
- * Encodes a shard key (a chat id) into a safe filename component. This is a
- * SECURITY boundary, not cosmetics: profile import accepts arbitrary ids, so
- * a crafted id must never become a path escape. Every byte outside
- * [a-z0-9-] is percent-encoded — UPPERCASE INCLUDED, because NTFS and APFS
- * are case-insensitive and two ids differing only in case must never share a
- * file; overlong or Windows-reserved results fall back to a hash form.
- * Filenames are containers only — rows carry their own keys — so the encoding
- * never needs decoding.
- */
-export function encodeShardKey(rawKey: string): string {
-  if (!rawKey) return UNASSIGNED_SHARD_KEY;
-  let encoded = "";
-  for (const byte of Buffer.from(rawKey, "utf8")) {
-    const char = String.fromCharCode(byte);
-    encoded += /[a-z0-9-]/.test(char) ? char : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
-  }
-  const upper = encoded.toUpperCase();
-  if (encoded.length > 120 || WINDOWS_RESERVED_BASENAMES.has(upper) || encoded.endsWith(".") || encoded.endsWith(" ")) {
-    return `%h${createHash("sha256").update(rawKey, "utf8").digest("hex").slice(0, 32)}`;
-  }
-  return encoded;
-}
 
 export const FILE_BACKED_TABLES = [
   "chats",
@@ -432,9 +334,138 @@ export const FILE_BACKED_TABLES = [
 
 type FileBackedTable = (typeof FILE_BACKED_TABLES)[number];
 
+// #5302: every file-backed table uses the existing crash-safe shard pipeline.
+// Order remains significant for messages/swipes because swipe ownership is
+// resolved through the parent-message index.
+export const SHARDED_TABLES = FILE_BACKED_TABLES;
+
+/**
+ * Child tables group by their stable owner. Every unlisted table uses its
+ * declared primary key, which is the explicit one-record-per-key strategy.
+ */
+const SHARD_KEY_COLUMNS: Record<string, string> = {
+  messages: "chatId",
+  conversation_call_sessions: "chatId",
+  conversation_call_messages: "chatId",
+  character_card_versions: "characterId",
+  persona_card_versions: "personaId",
+  noodle_posts: "authorAccountId",
+  noodle_account_subscriptions: "creatorAccountId",
+  noodle_post_unlocks: "postId",
+  noodle_interactions: "postId",
+  noodler_creator_reply_claims: "postId",
+  noodler_prepared_posts: "creatorAccountId",
+  slurp_posts: "authorAccountId",
+  slurp_account_subscriptions: "creatorAccountId",
+  slurp_post_unlocks: "postId",
+  slurp_interactions: "postId",
+  slurp_creator_reply_claims: "postId",
+  slurp_prepared_posts: "creatorAccountId",
+  lorebook_character_links: "lorebookId",
+  lorebook_persona_links: "lorebookId",
+  lorebook_folders: "lorebookId",
+  lorebook_entries: "lorebookId",
+  prompt_groups: "presetId",
+  prompt_sections: "presetId",
+  choice_blocks: "presetId",
+  agent_runs: "chatId",
+  agent_memory: "chatId",
+  game_state_snapshots: "chatId",
+  spatial_context_snapshots: "chatId",
+  game_engine_state: "chatId",
+  game_checkpoints: "chatId",
+  game_scene_videos: "chatId",
+  game_turn_storyboards: "chatId",
+  game_turn_storyboard_keyframes: "storyboardId",
+  chat_images: "chatId",
+  character_images: "characterId",
+  persona_images: "personaId",
+  ooc_influences: "targetChatId",
+  conversation_notes: "targetChatId",
+  memory_chunks: "chatId",
+  mari_workspace_context: "chatId",
+};
+const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
+
+/**
+ * Shard for child rows whose parent is unknown (orphans in corrupt installs).
+ * Chosen to encode to itself for a readable filename; a real owner key equal
+ * to this string would merely share the file — rows carry their own keys, so
+ * grouping and loading stay unambiguous.
+ */
+const UNASSIGNED_SHARD_KEY = "orphaned-rows";
+
+/** Sentinel file marking an in-progress monolith->shard migration (#4708). */
+const SHARD_MIGRATION_SENTINEL = ".migrating";
+
+const WINDOWS_RESERVED_BASENAMES = new Set([
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9",
+]);
+
+/**
+ * Encodes an ownership key into a safe filename component. This is a
+ * SECURITY boundary, not cosmetics: profile import accepts arbitrary ids, so
+ * a crafted id must never become a path escape. Every byte outside
+ * [a-z0-9-] is percent-encoded — UPPERCASE INCLUDED, because NTFS and APFS
+ * are case-insensitive and two ids differing only in case must never share a
+ * file; overlong or Windows-reserved results fall back to a hash form.
+ * Filenames are containers only — rows carry their own keys — so the encoding
+ * never needs decoding.
+ */
+export function encodeShardKey(rawKey: string): string {
+  if (!rawKey) return UNASSIGNED_SHARD_KEY;
+  let encoded = "";
+  for (const byte of Buffer.from(rawKey, "utf8")) {
+    const char = String.fromCharCode(byte);
+    encoded += /[a-z0-9-]/.test(char) ? char : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  const upper = encoded.toUpperCase();
+  if (encoded.length > 120 || WINDOWS_RESERVED_BASENAMES.has(upper) || encoded.endsWith(".") || encoded.endsWith(" ")) {
+    return `%h${createHash("sha256").update(rawKey, "utf8").digest("hex").slice(0, 32)}`;
+  }
+  return encoded;
+}
+
 const FILE_BACKED_TABLE_SET = new Set<string>(FILE_BACKED_TABLES);
 const isWindows = process.platform === "win32";
 const warnedFlushFailures = new Set<string>();
+
+function migrateFileBackedRow(table: string, row: Row): Row {
+  if (table === "noodle_accounts") return migrateLegacyNoodleAccountRow(row);
+  if (table === "noodle_posts") return migrateLegacyNoodlePostAccessRow(row);
+  if ((RETIRED_CHAT_MODE_TABLES as readonly string[]).includes(table)) return migrateRetiredChatModeRow(row);
+  return row;
+}
+
+function fileBackedRowNeedsMigration(table: string, row: Row): boolean {
+  if (row.mode === "visual_novel" && (RETIRED_CHAT_MODE_TABLES as readonly string[]).includes(table)) return true;
+  if (table === "noodle_accounts") return row.platform === undefined;
+  if (table === "noodle_posts") {
+    return (row.access !== "public" && row.access !== "locked") || "ppvPrice" in row || "ppv_price" in row;
+  }
+  return false;
+}
 
 // Parent→child delete graph. Exported as the single source of truth: the Mari
 // DB CLI (services/mari-db) consumes it for cascade deletes and its
@@ -456,6 +487,35 @@ const DURABLE_ON_COMMIT_TABLES = new Set<string>([
   "slurp_prepared_posts",
   "slurp_fan_activity_state",
 ]);
+
+/**
+ * Anchor prefix an experience-state import stamps on a row whose exported anchor is not a
+ * message of the DESTINATION chat (#5405) — a campaign replayed into a different chat, or one
+ * whose anchor message was deleted before the re-import.
+ *
+ * Two properties make it load-bearing rather than cosmetic:
+ *   - The `messages -> game_engine_state` cascade below matches on `messageId` ALONE, never
+ *     scoped by chatId. Storing the caller-supplied id verbatim would let the SOURCE chat's
+ *     message deletions silently destroy the imported campaign in the destination chat.
+ *     A prefixed id can never equal a real `messages.id`, so no cascade can ever match it.
+ *   - The row is still perfectly usable: the experience-state GET falls back to the latest
+ *     committed/latest row when the visible anchor has no save of its own, which is exactly
+ *     how an imported campaign becomes playable.
+ * These anchors are therefore DANGLING BY DESIGN, which is why the
+ * `game_engine_state.messageId` cascade is listed in CASCADE_DANGLING_EXEMPT_PREFIXES below —
+ * otherwise `mari db validate` would report every imported row as an integrity error.
+ */
+export const IMPORTED_GAME_ENGINE_ANCHOR_PREFIX = "imported:";
+
+/**
+ * Child references that are DANGLING BY DESIGN and must not be reported as integrity errors.
+ * Keyed by `<child table>.<child key>` of the CASCADES entry they exempt; a ref starting with
+ * the mapped prefix is skipped by the dangling-reference walks in `MariDbService.validate` and
+ * `validateTouchedRows`. Keep this list tiny — the default must stay "a dangling ref is a bug".
+ */
+export const CASCADE_DANGLING_EXEMPT_PREFIXES: Readonly<Record<string, string>> = {
+  "game_engine_state.messageId": IMPORTED_GAME_ENGINE_ANCHOR_PREFIX,
+};
 
 export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; parentKey: string; childKey: string }> =
   [
@@ -565,6 +625,9 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "messages", child: "game_state_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "spatial_context_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "game_checkpoints", parentKey: "id", childKey: "messageId" },
+    // Matched on messageId ALONE — never scoped by chatId. See
+    // IMPORTED_GAME_ENGINE_ANCHOR_PREFIX above for why the experience-state import must not
+    // store a foreign chat's message ids verbatim, and for its validate() exemption.
     { parent: "messages", child: "game_engine_state", parentKey: "id", childKey: "messageId" },
     { parent: "game_state_snapshots", child: "game_checkpoints", parentKey: "id", childKey: "snapshotId" },
     { parent: "conversation_call_sessions", child: "conversation_call_messages", parentKey: "id", childKey: "callId" },
@@ -1042,6 +1105,10 @@ function writerLeaseOwnerPath(path: string) {
   return join(path, STORAGE_WRITER_OWNER_FILENAME);
 }
 
+function writerLeaseLivenessPath(path: string) {
+  return join(path, STORAGE_WRITER_LIVENESS_FILENAME);
+}
+
 const CURRENT_HOSTNAME = hostname();
 const CURRENT_LEGACY_HOST_ID = (() => {
   const machineId = ["/etc/machine-id", "/var/lib/dbus/machine-id"].flatMap((path) => {
@@ -1115,6 +1182,19 @@ const CURRENT_HOST_ID = (() => {
     .digest("hex");
 })();
 
+const CURRENT_CONTAINER_WRITER_SCOPE_ID = (() => {
+  if (process.platform !== "linux" || process.env.MARINARA_DOCKER !== "true") return null;
+  try {
+    const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    if (bootId) {
+      return createHash("sha256").update(`marinara-writer-lease-boot\n${bootId}`).digest("hex");
+    }
+  } catch {
+    return null;
+  }
+  return null;
+})();
+
 function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord) {
   if (record.version === 2) {
     return Boolean(CURRENT_HOST_ID && record.hostId === CURRENT_HOST_ID);
@@ -1126,6 +1206,94 @@ function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord) {
   // hostname fallback is intentionally limited to legacy macOS leases; v2
   // leases always require the stable platform UUID above.
   return process.platform === "darwin" && record.hostname === CURRENT_HOSTNAME;
+}
+
+async function startWriterLeaseLiveness(
+  path: string,
+  token: string,
+  scopeId: string | null,
+): Promise<WriterLeaseLiveness | null> {
+  if (process.platform === "win32" || !scopeId) return null;
+
+  const socketPath = writerLeaseLivenessPath(path);
+  // sockaddr_un is shortest on macOS (103 usable bytes). Stay below every
+  // supported POSIX limit instead of letting a platform silently truncate it.
+  if (Buffer.byteLength(socketPath) > 100) return null;
+
+  // Container PID namespaces can reuse the same internal PID after a recreation.
+  // A socket on the shared data mount remains reachable while its writer lives,
+  // and the kernel drops the listener even when that container is force-killed.
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    socket.end(token);
+  });
+  try {
+    await new Promise<void>((resolveListen, rejectListen) => {
+      const onError = (error: Error) => rejectListen(error);
+      server.once("error", onError);
+      server.listen(socketPath, () => {
+        server.off("error", onError);
+        resolveListen();
+      });
+    });
+  } catch (error) {
+    rmSync(socketPath, { force: true });
+    logger.debug(
+      { err: error, path: socketPath },
+      "[file-storage] Writer lease socket is unavailable; a stale container lease may require manual recovery.",
+    );
+    return null;
+  }
+
+  server.on("error", (error) => {
+    logger.error(error, "[file-storage] Writer lease socket failed");
+  });
+  server.unref();
+  return { server, sockets, scopeId };
+}
+
+async function stopWriterLeaseLiveness(liveness: WriterLeaseLiveness | null) {
+  if (!liveness) return;
+  for (const socket of liveness.sockets) socket.destroy();
+  await new Promise<void>((resolveClose, rejectClose) => {
+    liveness.server.close((error) => {
+      if (error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING") rejectClose(error);
+      else resolveClose();
+    });
+  });
+}
+
+async function probeWriterLeaseLiveness(path: string, token: string): Promise<"active" | "stale" | "uncertain"> {
+  if (process.platform === "win32") return "uncertain";
+
+  return new Promise((resolveProbe) => {
+    let response = "";
+    let settled = false;
+    let timeout: NodeJS.Timeout | null = null;
+    const socket = createConnection(writerLeaseLivenessPath(path));
+    const finish = (result: "active" | "stale" | "uncertain") => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      socket.destroy();
+      resolveProbe(result);
+    };
+    timeout = setTimeout(() => finish("uncertain"), 1_000);
+    timeout.unref();
+
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      response += chunk;
+      if (response.length > 128) finish("uncertain");
+    });
+    socket.on("end", () => finish(response === token ? "active" : "uncertain"));
+    socket.on("error", (error) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      finish(code === "ECONNREFUSED" ? "stale" : "uncertain");
+    });
+  });
 }
 
 class WriterLeasePendingError extends Error {}
@@ -1152,10 +1320,11 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
   try {
     const record = JSON.parse(raw) as StorageWriterLeaseRecord;
     if (
-      (record.version !== 1 && record.version !== 2) ||
+      (record.version !== 1 && record.version !== 2 && record.version !== 3) ||
       !Number.isSafeInteger(record.pid) ||
       record.pid <= 0 ||
       (record.hostId !== null && typeof record.hostId !== "string") ||
+      (record.version === 3 && (typeof record.scopeId !== "string" || record.scopeId.length === 0)) ||
       typeof record.hostname !== "string" ||
       typeof record.token !== "string" ||
       typeof record.acquiredAt !== "string"
@@ -1277,6 +1446,38 @@ function getMeta(table: Table | string) {
     throw new Error(`[file-storage] Unsupported table: ${tableName}`);
   }
   return meta;
+}
+
+export type FileTableShardStrategy =
+  | { kind: "parent"; column: string }
+  | { kind: "primary-key"; column: string }
+  | { kind: "message-parent"; column: "messageId" };
+
+const fileTableShardStrategies = new Map<FileBackedTable, FileTableShardStrategy>();
+
+export function getFileTableShardStrategy(table: FileBackedTable): FileTableShardStrategy {
+  const cached = fileTableShardStrategies.get(table);
+  if (cached) return cached;
+
+  let strategy: FileTableShardStrategy;
+  if (table === "message_swipes") {
+    strategy = { kind: "message-parent", column: "messageId" };
+  } else {
+    const configuredColumn = SHARD_KEY_COLUMNS[table];
+    const meta = getMeta(table);
+    if (configuredColumn) {
+      if (!meta.byKey.has(configuredColumn)) {
+        throw new Error(`[file-storage] ${table} has no shard-key column named ${configuredColumn}`);
+      }
+      strategy = { kind: "parent", column: configuredColumn };
+    } else {
+      const primaryKey = meta.primaryKey;
+      if (!primaryKey) throw new Error(`[file-storage] ${table} has no stable shard key`);
+      strategy = { kind: "primary-key", column: primaryKey };
+    }
+  }
+  fileTableShardStrategies.set(table, strategy);
+  return strategy;
 }
 
 function getColumnMeta(column: unknown): ColumnMeta | null {
@@ -1492,30 +1693,46 @@ class FileTableStore {
 
   private async acquireWriterLease() {
     const path = writerLeasePath(this.rootDir);
+    const writerScopeId = this.testHooks?.writerLeaseScopeId ?? CURRENT_CONTAINER_WRITER_SCOPE_ID;
     for (let attempt = 0; attempt < 10; attempt++) {
       const token = randomUUID();
       let created = false;
       try {
         mkdirSync(path, { mode: PRIVATE_DIRECTORY_MODE });
         created = true;
-        const record: StorageWriterLeaseRecord = {
-          version: 2,
-          pid: process.pid,
-          hostId: CURRENT_HOST_ID,
-          hostname: CURRENT_HOSTNAME,
-          token,
-          acquiredAt: new Date().toISOString(),
-        };
-        writeFileSync(writerLeaseOwnerPath(path), JSON.stringify(record, null, 2), {
-          encoding: "utf8",
-          flag: "wx",
-          mode: PRIVATE_FILE_MODE,
-        });
-        this.writerLease = { path, token };
-        return;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-          if (created) rmSync(path, { recursive: true, force: true });
+          throw new StorageWriterLeaseError(`Could not acquire the storage writer lease at ${path}.`, {
+            cause: err,
+          });
+        }
+      }
+
+      if (created) {
+        const liveness = await startWriterLeaseLiveness(path, token, writerScopeId);
+        try {
+          const record: StorageWriterLeaseRecord = {
+            version: liveness ? 3 : 2,
+            pid: process.pid,
+            hostId: CURRENT_HOST_ID,
+            ...(liveness ? { scopeId: liveness.scopeId } : {}),
+            hostname: CURRENT_HOSTNAME,
+            token,
+            acquiredAt: new Date().toISOString(),
+          };
+          writeFileSync(writerLeaseOwnerPath(path), JSON.stringify(record, null, 2), {
+            encoding: "utf8",
+            flag: "wx",
+            mode: PRIVATE_FILE_MODE,
+          });
+          this.writerLease = { path, token, liveness };
+          return;
+        } catch (err) {
+          try {
+            await stopWriterLeaseLiveness(liveness).catch(() => undefined);
+          } finally {
+            rmSync(path, { recursive: true, force: true });
+          }
           throw new StorageWriterLeaseError(`Could not acquire the storage writer lease at ${path}.`, {
             cause: err,
           });
@@ -1535,8 +1752,23 @@ class FileTableStore {
         }
         throw err;
       }
-      const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
-      if (!sameHost || !pidDefinitelyExited(existing.record.pid)) {
+
+      let staleReason: "liveness" | "pid" | null = null;
+      if (existing.record.version === 3) {
+        // A socket refusal is proof only within the same host kernel. Shared
+        // network storage may expose the socket path to a different machine.
+        if (
+          writerScopeId &&
+          existing.record.scopeId === writerScopeId &&
+          (await probeWriterLeaseLiveness(path, existing.record.token)) === "stale"
+        ) {
+          staleReason = "liveness";
+        }
+      } else {
+        const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
+        if (sameHost && pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
+      }
+      if (!staleReason) {
         throw new StorageWriterLeaseError(
           `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +
             `Close it before retrying. If it no longer exists, verify every process is stopped and remove only ${path}.`,
@@ -1565,16 +1797,19 @@ class FileTableStore {
       }
       rmSync(stalePath, { recursive: true });
       logger.warn(
-        { previousPid: existing.record.pid, path },
-        "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
+        { previousPid: existing.record.pid, path, staleReason },
+        staleReason === "liveness"
+          ? "[file-storage] Reclaimed the writer lease after confirming the previous owner was no longer listening."
+          : "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
       );
     }
     throw new StorageWriterLeaseError(`The storage writer lease at ${path} changed repeatedly; retry startup.`);
   }
 
-  private releaseWriterLease() {
+  private async releaseWriterLease() {
     const active = this.writerLease;
     if (!active) return;
+    await stopWriterLeaseLiveness(active.liveness);
     if (!existsSync(active.path)) {
       logger.warn({ path: active.path }, "[file-storage] The writer lease was already removed.");
       this.writerLease = null;
@@ -1644,7 +1879,7 @@ class FileTableStore {
       logger.info(`[file-storage] Using file-native storage at ${this.rootDir}`);
     } catch (err) {
       try {
-        this.releaseWriterLease();
+        await this.releaseWriterLease();
       } catch (releaseError) {
         throw new AggregateError([err, releaseError], "Storage initialization and writer-lease cleanup failed");
       }
@@ -1868,7 +2103,7 @@ class FileTableStore {
         table,
       );
     }
-    const normalized = source.map((row) => normalizeRow(meta, row));
+    const normalized = source.map((row) => normalizeRow(meta, migrateFileBackedRow(table, row)));
 
     const rowsByShard = new Map<string, Row[]>();
     for (const row of normalized) {
@@ -1879,7 +2114,7 @@ class FileTableStore {
       if (table === "message_swipes") {
         key = migrationIndex.get(row.messageId) ?? UNASSIGNED_SHARD_KEY;
       } else {
-        const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+        const value = row[getFileTableShardStrategy(table as FileBackedTable).column];
         key = typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
         if (table === "messages" && typeof row.id === "string" && typeof row.chatId === "string") {
           // Canonical key, never "": swipes must resolve to the same raw key
@@ -1922,7 +2157,7 @@ class FileTableStore {
     this.dirty = true;
     this.migratedTables.push(table);
     logger.info(
-      "[file-storage] Sharded %s: %d rows into %d per-chat files (originals preserved as .pre-shard)",
+      "[file-storage] Sharded %s: %d rows into %d ownership files (originals preserved as .pre-shard)",
       table,
       normalized.length,
       rowsByShard.size,
@@ -2279,13 +2514,13 @@ class FileTableStore {
       }
     } catch (err) {
       try {
-        this.releaseWriterLease();
+        await this.releaseWriterLease();
       } catch (releaseError) {
         throw new AggregateError([err, releaseError], "Storage shutdown and writer-lease release both failed");
       }
       throw err;
     }
-    this.releaseWriterLease();
+    await this.releaseWriterLease();
   }
 
   getQuarantinedTables() {
@@ -2345,10 +2580,9 @@ class FileTableStore {
   }
 
   /**
-   * Raw shard key for one row — the single source of truth for how a sharded
-   * table's rows map to per-chat files. Every table shards by one of its own
-   * columns (chatId unless SHARD_KEY_COLUMNS overrides it) except
-   * message_swipes, which resolves through the parent message.
+   * Raw shard key for one row — the single source of truth for how a table's
+   * rows map to ownership files. Child tables use SHARD_KEY_COLUMNS; standalone
+   * tables use their primary key; message swipes resolve through their parent.
    */
   private shardKeyForRow(table: string, row: Row): string {
     if (table === "message_swipes") {
@@ -2363,7 +2597,7 @@ class FileTableStore {
       }
       return chatId ?? UNASSIGNED_SHARD_KEY;
     }
-    const value = row[SHARD_KEY_COLUMNS[table] ?? "chatId"];
+    const value = row[getFileTableShardStrategy(table as FileBackedTable).column];
     return typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
   }
 
@@ -2533,14 +2767,17 @@ class FileTableStore {
     };
     const value = JSON.stringify(notice);
     const updatedAt = new Date().toISOString();
+    let noticeRow: Row;
     if (existing) {
-      existing.value = value;
-      existing.updatedAt = updatedAt;
+      noticeRow = existing;
+      noticeRow.value = value;
+      noticeRow.updatedAt = updatedAt;
     } else {
-      rows.push({ key: STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, value, updatedAt });
+      noticeRow = { key: STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, value, updatedAt };
+      rows.push(noticeRow);
       this.tables.set("app_settings", rows);
     }
-    this.markDirty("app_settings");
+    this.markDirty("app_settings", this.shardKeysForRows("app_settings", [noticeRow]));
   }
 
   /**
@@ -2645,15 +2882,7 @@ class FileTableStore {
         this.dirtyTables.add(table);
         this.dirty = true;
       }
-      const migrate =
-        table === "noodle_accounts"
-          ? migrateLegacyNoodleAccountRow
-          : table === "noodle_posts"
-            ? migrateLegacyNoodlePostAccessRow
-            : (RETIRED_CHAT_MODE_TABLES as readonly string[]).includes(table)
-              ? migrateRetiredChatModeRow
-              : null;
-      const normalized = source.map((row) => normalizeRow(meta, migrate ? migrate(row) : row));
+      const normalized = source.map((row) => normalizeRow(meta, migrateFileBackedRow(table, row)));
       this.tables.set(table, normalized);
       counts[table] = normalized.length;
       if (source.some((row) => row.mode === "visual_novel")) {
@@ -2661,16 +2890,8 @@ class FileTableStore {
         this.dirtyTables.add(table);
         this.dirty = true;
       }
-      const needsMigration =
-        table === "noodle_accounts"
-          ? source.some((row) => row.platform === undefined)
-          : table === "noodle_posts"
-            ? source.some(
-                (row) =>
-                  (row.access !== "public" && row.access !== "locked") || "ppvPrice" in row || "ppv_price" in row,
-              )
-            : false;
-      if (migrate && needsMigration) {
+      const needsMigration = source.some((row) => fileBackedRowNeedsMigration(table, row));
+      if (needsMigration) {
         // Persist the renamed keys on the next flush, alongside the `visibility` /
         // `publicAccountId` rollback mirrors the migration deliberately retains.
         this.dirtyTables.add(table);
@@ -2757,7 +2978,8 @@ class FileTableStore {
           );
           this.backupRecoveredPaths.add(path);
         }
-        const normalized = source.map((row) => normalizeRow(meta, row));
+        const needsRowMigration = source.some((row) => fileBackedRowNeedsMigration(table, row));
+        const normalized = source.map((row) => normalizeRow(meta, migrateFileBackedRow(table, row)));
         combined.push(...normalized);
         for (const row of normalized) rowSource.set(row, encoded);
         let quarantinedAway = false;
@@ -2777,7 +2999,8 @@ class FileTableStore {
         // and counting it would report a phantom shard in the manifest.
         if (!quarantinedAway && existsSync(path)) known.add(encoded);
         if (normalized.length > 0) {
-          const needsRepair = recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0;
+          const needsRepair =
+            recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0 || needsRowMigration;
           const rowKeys = this.shardKeysForRows(table, normalized);
           // A file holding any row whose key does not encode back to the
           // file's own name (hand-edits, stray re-home copies) can never be
@@ -2828,7 +3051,9 @@ class FileTableStore {
       combined.sort(
         (a, b) =>
           String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
-          String(a.id ?? "").localeCompare(String(b.id ?? "")),
+          String(meta.primaryKey ? a[meta.primaryKey] : "").localeCompare(
+            String(meta.primaryKey ? b[meta.primaryKey] : ""),
+          ),
       );
       // Duplicate primary keys across shards (a stale copy left by an
       // interrupted re-home, or hand-edited files) must not survive into
@@ -2846,7 +3071,7 @@ class FileTableStore {
       const duplicateShardKeys = new Set<string>();
       let duplicateCount = 0;
       for (const row of combined) {
-        const id = typeof row.id === "string" ? row.id : null;
+        const id = meta.primaryKey && typeof row[meta.primaryKey] === "string" ? row[meta.primaryKey] : null;
         if (id && keptIndexById.has(id)) {
           duplicateCount++;
           const keptIndex = keptIndexById.get(id)!;
@@ -2911,9 +3136,8 @@ class FileTableStore {
     this.knownShardFiles.set(table, known);
     const stale = this.staleShardFiles.get(table);
     // Nothing dirty and nothing to repair: skip the O(rows) regroup — this
-    // runs for BOTH sharded tables on every flush, so an unrelated
-    // flat-table write must not scan every message and swipe on the 750ms
-    // flush cadence.
+    // runs for every sharded table on each flush, so an unrelated write must
+    // not scan every stored row on the 750ms flush cadence.
     if (dirtyKeys.size === 0 && (!stale || stale.size === 0)) {
       return known.size;
     }

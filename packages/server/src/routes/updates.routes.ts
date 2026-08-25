@@ -19,7 +19,11 @@ import { getBuildBranch, getBuildCommit, getBuildLabel } from "../config/build-i
 import { getFileStorageDir } from "../config/runtime-config.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { isLoopbackIp } from "../middleware/ip-allowlist.js";
-import { isGitUpdateApplyAllowed } from "../services/updates/update-apply-policy.js";
+import {
+  isGitUpdateApplyAllowed,
+  isUpdateChannelSwitch,
+  resolveDockerChannelImageTags,
+} from "../services/updates/update-apply-policy.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -221,7 +225,10 @@ function getManualUpdateCommand(installType: InstallType, platform: ServerPlatfo
 
 function getManualUpdateHint(installType: InstallType, platform: ServerPlatform, channel = UPDATE_CHANNELS.stable) {
   if (installType === "docker") {
-    return "Pull the published container image and restart the container. Versioned tags are published from vX.Y.Z release tags.";
+    if (channel.id === "staging") {
+      return `Set the Compose image to ${DOCKER_IMAGE}:staging, then pull it and restart the container. Use a separate data volume for staging.`;
+    }
+    return `Set the Compose image to the stable tag shown below (or ${DOCKER_IMAGE}:latest), then pull it and restart the container.`;
   }
   if (installType === "git" && channel.id === "staging") {
     return "Staging is a tester branch. Make a profile backup first, then apply from the browser or run the command below from the repo checkout.";
@@ -766,14 +773,12 @@ function serializeUpdateChannels() {
   }));
 }
 
-function buildReleasePayload(release: NonNullable<typeof cachedRelease>) {
+function buildReleasePayload(release: NonNullable<typeof cachedRelease>, channel = UPDATE_CHANNELS.stable) {
   const releaseTag = `v${release.latestVersion}`;
   return {
     ...release,
     releaseTag,
-    dockerImage: DOCKER_IMAGE,
-    dockerImageTag: `${DOCKER_IMAGE}:${release.latestVersion}`,
-    dockerLiteImageTag: `${DOCKER_IMAGE}:${release.latestVersion}-lite`,
+    ...resolveDockerChannelImageTags(DOCKER_IMAGE, release.latestVersion, channel.id),
   };
 }
 
@@ -843,7 +848,7 @@ export async function updatesRoutes(app: FastifyInstance) {
       (req.query as { channel?: unknown } | undefined)?.channel,
       currentBranch,
     );
-    const channelSwitch = gitInstall && currentChannel.id !== channel.id;
+    const channelSwitch = isUpdateChannelSwitch(installType, currentChannel.id, channel.id);
     const applyAvailability = getApplyAvailability(
       installType,
       serverPlatform,
@@ -888,6 +893,7 @@ export async function updatesRoutes(app: FastifyInstance) {
           currentBranch,
           channels: serializeUpdateChannels(),
           updateAvailable: channelSwitch || (commitsBehind != null && commitsBehind > 0),
+          channelSwitch,
           commitsBehind: commitsBehind ?? 0,
           installType,
           serverPlatform,
@@ -906,9 +912,10 @@ export async function updatesRoutes(app: FastifyInstance) {
       channelLabel: channel.label,
       currentBranch,
       channels: serializeUpdateChannels(),
-      ...buildReleasePayload(release),
+      ...buildReleasePayload(release, channel),
       updateAvailable:
         channelSwitch || (channel.id === "stable" && versionUpdate) || (commitsBehind != null && commitsBehind > 0),
+      channelSwitch,
       versionUpdate: channel.id === "stable" ? versionUpdate : false,
       commitsBehind: commitsBehind ?? 0,
       installType,

@@ -94,6 +94,7 @@ export interface FloatingWidgetPosition {
   x: number;
   y: number;
 }
+export const DEFAULT_MOBILE_MUSIC_WIDGET_POSITION = { x: 16, y: 144 } as const;
 export interface SummaryPopoverSettings {
   sourceMode: SummaryPopoverSourceMode;
   contextSize: number | null;
@@ -241,6 +242,14 @@ const GAME_SETUP_LEARNED_LIMIT = 60;
 const USER_ACTIVITY_MAX_LENGTH = 120;
 const RECENT_USER_ACTIVITY_LIMIT = 8;
 export const TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
+  "world",
+  "persona",
+  "characters",
+  "quests",
+  "inventory",
+  "custom",
+];
+const LEGACY_TRACKER_DATA_PANEL_SECTIONS: TrackerDataPanelSection[] = [
   "world",
   "persona",
   "characters",
@@ -416,6 +425,17 @@ export function normalizeTrackerPanelSectionOrder(value: unknown): TrackerPanelS
 
   for (const section of TRACKER_DATA_PANEL_SECTIONS) {
     if (!seen.has(section)) order.push(section);
+  }
+
+  if (order.every((section, index) => section === LEGACY_TRACKER_DATA_PANEL_SECTIONS[index])) {
+    return [...TRACKER_DATA_PANEL_SECTIONS];
+  }
+
+  const inventoryIndex = order.indexOf("inventory");
+  const customIndex = order.indexOf("custom");
+  if (inventoryIndex >= 0 && customIndex >= 0 && inventoryIndex > customIndex) {
+    order.splice(inventoryIndex, 1);
+    order.splice(customIndex, 0, "inventory");
   }
 
   return order;
@@ -622,6 +642,8 @@ interface UIState {
   cardLibraryKind: CardLibraryKind;
   /** When true, the main area shows the full-page downloadable agent catalog */
   agentCatalogOpen: boolean;
+  /** Optional package selected when opening the downloadable agent catalog */
+  agentCatalogInitialPackageId: string | null;
   /** Last selected character card inside the full-page character library */
   characterLibrarySelectedId: string | null;
   /** Last selected persona card inside the full-page card library */
@@ -747,6 +769,10 @@ interface UIState {
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
   boldDialogue: boolean;
+  /** When true, character names and aliases are colored in chat prose using the character's nameColor. */
+  colorInlineNames: boolean;
+  /** When true, inline name coloring uses the first solid color from gradients instead of rendering the gradient. */
+  disableInlineNameGradients: boolean;
   /** Preferred quote style applied to AI output and user input. */
   quoteFormat: QuoteFormat;
   /** When true, common LaTeX symbol commands render as plain Unicode symbols in chat text. */
@@ -807,6 +833,10 @@ interface UIState {
   chatFontOpacity: number;
   /** When true, flatten expensive Roleplay paint effects for smoother navigation. */
   roleplayReducedPaintEffects: boolean;
+  /** When true, show saved and streaming model reasoning inside Roleplay message bubbles. */
+  showRoleplayThinkingInMessages: boolean;
+  /** When true, inline Roleplay reasoning stays expanded until the user collapses it. */
+  keepRoleplayThinkingExpanded: boolean;
   /** Whether Game mode applies animated emphasis to narration and dialogue text. */
   gameTextEffectsEnabled: boolean;
   /** Layout style for roleplay message avatars */
@@ -880,8 +910,10 @@ interface UIState {
 
   // ── Onboarding ──
   hasCompletedOnboarding: boolean;
-  /** True once the user has permanently disabled the in-game tutorial (? icon still re-opens). */
-  gameTutorialDisabled: boolean;
+  /** Chat modes whose first-chat help overlay has already been dismissed. */
+  chatHelpSeenModes: ChatModeShortcut[];
+  /** Removes the chat Help button and suppresses automatic help overlays. */
+  chatHelpButtonHidden: boolean;
 
   // ── Dismissals ──
   linkApiBannerDismissed: boolean;
@@ -1007,7 +1039,7 @@ interface UIState {
   openCharacterLibrary: () => void;
   openPersonaLibrary: () => void;
   closeCharacterLibrary: () => void;
-  openAgentCatalog: () => void;
+  openAgentCatalog: (packageId?: string) => void;
   closeAgentCatalog: () => void;
   openBotBrowser: () => void;
   closeBotBrowser: () => void;
@@ -1069,6 +1101,8 @@ interface UIState {
   setIncludeReasoningInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
+  setColorInlineNames: (v: boolean) => void;
+  setDisableInlineNameGradients: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
   setTrimIncompleteModelOutput: (v: boolean) => void;
@@ -1098,6 +1132,8 @@ interface UIState {
   setChatChromeTextColor: (v: string) => void;
   setChatFontOpacity: (v: number) => void;
   setRoleplayReducedPaintEffects: (v: boolean) => void;
+  setShowRoleplayThinkingInMessages: (v: boolean) => void;
+  setKeepRoleplayThinkingExpanded: (v: boolean) => void;
   setGameTextEffectsEnabled: (v: boolean) => void;
   setRoleplayAvatarStyle: (v: RoleplayAvatarStyle) => void;
   setRoleplayAvatarScale: (v: number) => void;
@@ -1147,7 +1183,8 @@ interface UIState {
   setHasMigratedCustomThemesToServer: (v: boolean) => void;
   clearLegacyCustomThemes: () => void;
   setHasCompletedOnboarding: (v: boolean) => void;
-  setGameTutorialDisabled: (v: boolean) => void;
+  markChatHelpSeen: (mode: ChatModeShortcut) => void;
+  setChatHelpButtonHidden: (v: boolean) => void;
   dismissLinkApiBanner: () => void;
   toggleEchoChamber: () => void;
   setEchoChamberSide: (side: EchoChamberSide) => void;
@@ -1282,6 +1319,8 @@ export function pickSyncedSettings(state: UIState) {
     includeReasoningInExports: state.includeReasoningInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
+    colorInlineNames: state.colorInlineNames,
+    disableInlineNameGradients: state.disableInlineNameGradients,
     quoteFormat: state.quoteFormat,
     convertLatexSymbols: state.convertLatexSymbols,
     trimIncompleteModelOutput: state.trimIncompleteModelOutput,
@@ -1310,6 +1349,8 @@ export function pickSyncedSettings(state: UIState) {
     defaultDialogueColor: state.defaultDialogueColor,
     chatChromeTextColor: state.chatChromeTextColor,
     chatFontOpacity: state.chatFontOpacity,
+    showRoleplayThinkingInMessages: state.showRoleplayThinkingInMessages,
+    keepRoleplayThinkingExpanded: state.keepRoleplayThinkingExpanded,
     gameTextEffectsEnabled: state.gameTextEffectsEnabled,
     roleplayAvatarStyle: state.roleplayAvatarStyle,
     roleplayAvatarScale: state.roleplayAvatarScale,
@@ -1328,7 +1369,8 @@ export function pickSyncedSettings(state: UIState) {
     enterToSendProfessorMari: state.enterToSendProfessorMari,
     weatherEffects: state.weatherEffects,
     hasCompletedOnboarding: state.hasCompletedOnboarding,
-    gameTutorialDisabled: state.gameTutorialDisabled,
+    chatHelpSeenModes: state.chatHelpSeenModes,
+    chatHelpButtonHidden: state.chatHelpButtonHidden,
     linkApiBannerDismissed: state.linkApiBannerDismissed,
     echoChamberOpen: state.echoChamberOpen,
     echoChamberSide: state.echoChamberSide,
@@ -1416,6 +1458,7 @@ export const useUIStore = create<UIState>()(
       characterLibraryOpen: false,
       cardLibraryKind: "characters" as CardLibraryKind,
       agentCatalogOpen: false,
+      agentCatalogInitialPackageId: null,
       characterLibrarySelectedId: null,
       personaLibrarySelectedId: null,
       characterLibrarySort: "name-asc" as CharacterLibrarySort,
@@ -1488,6 +1531,8 @@ export const useUIStore = create<UIState>()(
       includeReasoningInExports: false,
       messagesPerPage: 20,
       boldDialogue: true,
+      colorInlineNames: false,
+      disableInlineNameGradients: false,
       quoteFormat: "straight" as QuoteFormat,
       convertLatexSymbols: true,
       trimIncompleteModelOutput: false,
@@ -1505,7 +1550,7 @@ export const useUIStore = create<UIState>()(
       conversationCallVoiceVolume: 100,
       conversationCallVoiceMuted: false,
       spotifyMobileWidgetCollapsed: true,
-      spotifyMobileWidgetPosition: { x: 16, y: 96 },
+      spotifyMobileWidgetPosition: { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION },
       intuitiveSwipeNavigation: false,
       intuitiveSwipeRerollLatest: false,
       editLastMessageOnArrowUp: true,
@@ -1517,6 +1562,8 @@ export const useUIStore = create<UIState>()(
       chatChromeTextColor: "",
       chatFontOpacity: 90,
       roleplayReducedPaintEffects: false,
+      showRoleplayThinkingInMessages: false,
+      keepRoleplayThinkingExpanded: false,
       gameTextEffectsEnabled: true,
       roleplayAvatarStyle: "circles" as RoleplayAvatarStyle,
       roleplayAvatarScale: 1,
@@ -1554,7 +1601,8 @@ export const useUIStore = create<UIState>()(
       customThemes: [],
       hasMigratedCustomThemesToServer: false,
       hasCompletedOnboarding: false,
-      gameTutorialDisabled: false,
+      chatHelpSeenModes: [],
+      chatHelpButtonHidden: false,
       linkApiBannerDismissed: false,
       echoChamberOpen: true,
       echoChamberSide: "bottom-right" as EchoChamberSide,
@@ -2034,9 +2082,10 @@ export const useUIStore = create<UIState>()(
           rightPanelOpen: isMobileShellViewport() ? false : state.rightPanelOpen,
         })),
       closeCharacterLibrary: () => set({ characterLibraryOpen: false }),
-      openAgentCatalog: () =>
+      openAgentCatalog: (packageId) =>
         set((state) => ({
           agentCatalogOpen: true,
+          agentCatalogInitialPackageId: packageId ?? null,
           characterLibraryOpen: false,
           characterDetailId: null,
           lorebookDetailId: null,
@@ -2055,7 +2104,7 @@ export const useUIStore = create<UIState>()(
           detailReturnRightPanel: null,
           rightPanelOpen: isMobileShellViewport() ? false : state.rightPanelOpen,
         })),
-      closeAgentCatalog: () => set({ agentCatalogOpen: false }),
+      closeAgentCatalog: () => set({ agentCatalogOpen: false, agentCatalogInitialPackageId: null }),
       openBotBrowser: () =>
         set({
           botBrowserOpen: true,
@@ -2275,6 +2324,8 @@ export const useUIStore = create<UIState>()(
       setIncludeReasoningInExports: (v) => set({ includeReasoningInExports: v }),
       setMessagesPerPage: (n) => set({ messagesPerPage: n }),
       setBoldDialogue: (v) => set({ boldDialogue: v }),
+      setColorInlineNames: (v) => set({ colorInlineNames: v }),
+      setDisableInlineNameGradients: (v) => set({ disableInlineNameGradients: v }),
       setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
       setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
       setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
@@ -2304,8 +2355,12 @@ export const useUIStore = create<UIState>()(
       setSpotifyMobileWidgetPosition: (position) =>
         set({
           spotifyMobileWidgetPosition: {
-            x: Number.isFinite(position.x) ? Math.max(8, Math.round(position.x)) : 16,
-            y: Number.isFinite(position.y) ? Math.max(8, Math.round(position.y)) : 96,
+            x: Number.isFinite(position.x)
+              ? Math.max(8, Math.round(position.x))
+              : DEFAULT_MOBILE_MUSIC_WIDGET_POSITION.x,
+            y: Number.isFinite(position.y)
+              ? Math.max(8, Math.round(position.y))
+              : DEFAULT_MOBILE_MUSIC_WIDGET_POSITION.y,
           },
         }),
       setIntuitiveSwipeNavigation: (v) => set({ intuitiveSwipeNavigation: v }),
@@ -2326,6 +2381,13 @@ export const useUIStore = create<UIState>()(
       setChatChromeTextColor: (v) => set({ chatChromeTextColor: normalizeChatChromeTextColor(v) }),
       setChatFontOpacity: (v) => set({ chatFontOpacity: Math.max(0, Math.min(100, v)) }),
       setRoleplayReducedPaintEffects: (v) => set({ roleplayReducedPaintEffects: v }),
+      setShowRoleplayThinkingInMessages: (v) =>
+        set({
+          showRoleplayThinkingInMessages: v,
+          ...(!v ? { keepRoleplayThinkingExpanded: false } : {}),
+        }),
+      setKeepRoleplayThinkingExpanded: (v) =>
+        set((state) => ({ keepRoleplayThinkingExpanded: state.showRoleplayThinkingInMessages && v })),
       setGameTextEffectsEnabled: (v) => set({ gameTextEffectsEnabled: v }),
       setRoleplayAvatarStyle: (v) => set({ roleplayAvatarStyle: v }),
       setRoleplayAvatarScale: (v) =>
@@ -2384,6 +2446,8 @@ export const useUIStore = create<UIState>()(
           chatChromeTextColor: "",
           chatFontOpacity: 90,
           roleplayReducedPaintEffects: false,
+          showRoleplayThinkingInMessages: false,
+          keepRoleplayThinkingExpanded: false,
           gameTextEffectsEnabled: true,
           roleplayAvatarStyle: "circles" as RoleplayAvatarStyle,
           roleplayAvatarScale: 1,
@@ -2471,7 +2535,16 @@ export const useUIStore = create<UIState>()(
       setHasMigratedCustomThemesToServer: (v) => set({ hasMigratedCustomThemesToServer: v }),
       clearLegacyCustomThemes: () => set({ customThemes: [], activeCustomTheme: null }),
       setHasCompletedOnboarding: (v) => set({ hasCompletedOnboarding: v }),
-      setGameTutorialDisabled: (v) => set({ gameTutorialDisabled: v }),
+      markChatHelpSeen: (mode) =>
+        set((state) => {
+          const seenModes = state.chatHelpSeenModes ?? [];
+          return seenModes.includes(mode) ? state : { chatHelpSeenModes: [...seenModes, mode] };
+        }),
+      setChatHelpButtonHidden: (v) =>
+        set((state) => ({
+          chatHelpButtonHidden: v,
+          chatHelpSeenModes: v ? ["conversation", "roleplay", "game"] : state.chatHelpSeenModes,
+        })),
       dismissLinkApiBanner: () => set({ linkApiBannerDismissed: true }),
       toggleEchoChamber: () => set((s) => ({ echoChamberOpen: !s.echoChamberOpen })),
       setEchoChamberSide: (side) => set({ echoChamberSide: side }),
@@ -2514,12 +2587,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      // v93 -> v94: add the Inventory tracker-panel section. The bump matters:
-      // `migrate` re-normalizes `trackerPanelSectionOrder`, and it only runs when
-      // the persisted version changes. Without it an existing user's saved order
-      // never gains "inventory" and the section stays invisible until they
-      // reorder the panel by hand.
-      version: 94,
+      // v95 -> v96: add inline Roleplay reasoning preferences and per-mode chat help history.
+      version: 96,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2564,6 +2633,10 @@ export const useUIStore = create<UIState>()(
         };
       }),
       migrate: (persisted: any, version: number) => {
+        if (version <= 95 && !Array.isArray(persisted.chatHelpSeenModes)) {
+          persisted.chatHelpSeenModes = persisted.gameTutorialDisabled === true ? ["game"] : [];
+        }
+        delete persisted.gameTutorialDisabled;
         if (version <= 91 && persisted.rightPanel === "bot-browser") {
           persisted.rightPanel = "characters";
           persisted.rightPanelOpen = false;
@@ -2711,7 +2784,7 @@ export const useUIStore = create<UIState>()(
         if (version <= 19) {
           if (persisted.spotifyMobileWidgetCollapsed === undefined) persisted.spotifyMobileWidgetCollapsed = true;
           if (persisted.spotifyMobileWidgetPosition === undefined) {
-            persisted.spotifyMobileWidgetPosition = { x: 16, y: 96 };
+            persisted.spotifyMobileWidgetPosition = { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION };
           }
         }
         // v20 -> v21: remember Game setup free-text fields and learned preference chips.
@@ -3084,6 +3157,19 @@ export const useUIStore = create<UIState>()(
         if (version <= 90 && persisted.professorMariNavigationEnabled === undefined) {
           persisted.professorMariNavigationEnabled = true;
         }
+        // v94 -> v95: existing custom positions stay untouched; the exact legacy
+        // default is the only reliable indication that the widget was never moved.
+        if (
+          version <= 94 &&
+          persisted.spotifyMobileWidgetPosition?.x === 16 &&
+          persisted.spotifyMobileWidgetPosition?.y === 96
+        ) {
+          persisted.spotifyMobileWidgetPosition = { ...DEFAULT_MOBILE_MUSIC_WIDGET_POSITION };
+        }
+        if (version <= 95) {
+          persisted.showRoleplayThinkingInMessages = false;
+          persisted.keepRoleplayThinkingExpanded = false;
+        }
         // v84 -> v85: keep the historical blank-line behavior for /continue by default.
         if (version <= 84 && persisted.continueAddsNewline === undefined) {
           persisted.continueAddsNewline = true;
@@ -3095,6 +3181,9 @@ export const useUIStore = create<UIState>()(
         persisted.professorMariNavigationEnabled = persisted.professorMariNavigationEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
         persisted.roleplayReducedPaintEffects = persisted.roleplayReducedPaintEffects === true;
+        persisted.showRoleplayThinkingInMessages = persisted.showRoleplayThinkingInMessages === true;
+        persisted.keepRoleplayThinkingExpanded =
+          persisted.showRoleplayThinkingInMessages && persisted.keepRoleplayThinkingExpanded === true;
         persisted.roleplayNarratorAvatarCycling = persisted.roleplayNarratorAvatarCycling !== false;
         persisted.gameTextEffectsEnabled = persisted.gameTextEffectsEnabled !== false;
         persisted.defaultDialogueColor =
@@ -3216,6 +3305,8 @@ export const useUIStore = create<UIState>()(
         includeReasoningInExports: state.includeReasoningInExports,
         messagesPerPage: state.messagesPerPage,
         boldDialogue: state.boldDialogue,
+        colorInlineNames: state.colorInlineNames,
+        disableInlineNameGradients: state.disableInlineNameGradients,
         quoteFormat: state.quoteFormat,
         convertLatexSymbols: state.convertLatexSymbols,
         trimIncompleteModelOutput: state.trimIncompleteModelOutput,
@@ -3245,6 +3336,8 @@ export const useUIStore = create<UIState>()(
         chatChromeTextColor: state.chatChromeTextColor,
         chatFontOpacity: state.chatFontOpacity,
         roleplayReducedPaintEffects: state.roleplayReducedPaintEffects,
+        showRoleplayThinkingInMessages: state.showRoleplayThinkingInMessages,
+        keepRoleplayThinkingExpanded: state.keepRoleplayThinkingExpanded,
         gameTextEffectsEnabled: state.gameTextEffectsEnabled,
         roleplayAvatarStyle: state.roleplayAvatarStyle,
         roleplayAvatarScale: state.roleplayAvatarScale,
@@ -3266,7 +3359,8 @@ export const useUIStore = create<UIState>()(
         activeCustomTheme: state.activeCustomTheme,
         customThemes: state.customThemes,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
-        gameTutorialDisabled: state.gameTutorialDisabled,
+        chatHelpSeenModes: state.chatHelpSeenModes,
+        chatHelpButtonHidden: state.chatHelpButtonHidden,
         linkApiBannerDismissed: state.linkApiBannerDismissed,
         echoChamberOpen: state.echoChamberOpen,
         echoChamberSide: state.echoChamberSide,

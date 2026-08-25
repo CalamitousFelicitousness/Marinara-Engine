@@ -4,12 +4,14 @@
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { buildApp } from "./app.js";
+import { StorageWriterLeaseError } from "./db/file-backed-store.js";
 import { logger } from "./lib/logger.js";
 import { getHost, getPort, getServerProtocol, loadTlsOptions, logStorageDiagnostics } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
 import { migrateTaskbarShortcuts } from "./services/setup/taskbar-shortcut-migration.js";
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
+import { startRuntimeMemoryMonitor } from "./utils/runtime-memory.js";
 
 function isAddressInUseError(err: unknown): err is NodeJS.ErrnoException {
   return err instanceof Error && "code" in err && err.code === "EADDRINUSE";
@@ -34,6 +36,18 @@ function logFatalProcessError(reason: unknown, message: string): void {
   logger.error({ reason }, message);
 }
 
+function stopDevelopmentWatcherAfterLeaseConflict(error: unknown): void {
+  if (!(error instanceof StorageWriterLeaseError) || !process.argv.includes("--marinara-dev-watch")) return;
+  if (process.ppid <= 1) return;
+  try {
+    process.kill(process.ppid, "SIGTERM");
+  } catch (signalError) {
+    if ((signalError as NodeJS.ErrnoException).code !== "ESRCH") {
+      logger.warn(signalError, "[startup] Could not stop the development watcher after a writer lease conflict");
+    }
+  }
+}
+
 async function main() {
   const tls = loadTlsOptions();
   logStorageDiagnostics();
@@ -43,6 +57,7 @@ async function main() {
   const port = getPort();
   const host = getHost();
   let isShuttingDown = false;
+  let stopRuntimeMemoryMonitor: () => void = () => undefined;
 
   const reapSidecar = () => {
     sidecarProcessService.killCurrentChildForProcessExit();
@@ -71,6 +86,7 @@ async function main() {
 
     try {
       envWatcher.stop();
+      stopRuntimeMemoryMonitor();
       await app.close();
       logger.info("Shutdown complete");
       process.exit(0);
@@ -90,6 +106,7 @@ async function main() {
   try {
     await app.listen({ port, host });
     logger.info(`Marinara Engine server listening on ${protocol}://${host}:${port}`);
+    stopRuntimeMemoryMonitor = startRuntimeMemoryMonitor();
     logCsrfTrustSummary();
     scheduleTaskbarShortcutMigration();
   } catch (err) {
@@ -113,5 +130,6 @@ async function main() {
 
 main().catch((err) => {
   logger.error(err, "[startup] Unhandled error during server bootstrap");
+  stopDevelopmentWatcherAfterLeaseConflict(err);
   process.exit(1);
 });

@@ -21,6 +21,7 @@ import {
   useDeleteMessage,
   useDeleteMessages,
   useDeleteSwipe,
+  useDeleteOtherSwipes,
   useUpdateMessage,
   useUpdateMessageExtra,
   usePeekPrompt,
@@ -40,6 +41,7 @@ import {
   useActivePersona,
   useCharacters,
   usePersona,
+  useUpdateCharacter,
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { usePageActivity } from "../../hooks/use-page-activity";
@@ -141,6 +143,8 @@ import {
 } from "../ui/ImagePromptReviewModal";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ChatResourceDropOverlay } from "./ChatResourceDropOverlay";
+import { ChatHelpOverlay } from "./ChatHelpOverlay";
+import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
 
@@ -377,6 +381,7 @@ function toCharacterMapValue(char: CharacterRow): CharacterMapValue {
       avatarCrop: normalizeAvatarCrop(extensions.avatarCrop),
       conversationStatus: extensions.conversationStatus || undefined,
       conversationActivity: extensions.conversationActivity || undefined,
+      nameAliases: extensions.nameAliases || undefined,
     };
   } catch {
     return { name: "Unknown", avatarUrl: char.avatarPath ?? null };
@@ -406,6 +411,11 @@ function areCharacterMapValuesEqual(a: CharacterMapValue, b: CharacterMapValue):
     a.boxColor === b.boxColor &&
     a.conversationStatus === b.conversationStatus &&
     a.conversationActivity === b.conversationActivity &&
+    (a.nameAliases === b.nameAliases ||
+      (Array.isArray(a.nameAliases) &&
+        Array.isArray(b.nameAliases) &&
+        a.nameAliases.length === b.nameAliases.length &&
+        a.nameAliases.every((alias, index) => alias === b.nameAliases![index]))) &&
     // avatarCrop is a small plain object — compare by value, not reference.
     (a.avatarCrop === b.avatarCrop || JSON.stringify(a.avatarCrop ?? null) === JSON.stringify(b.avatarCrop ?? null))
   );
@@ -663,6 +673,7 @@ export const ChatArea = memo(function ChatArea() {
   const deleteMessage = useDeleteMessage(activeChatId);
   const deleteMessages = useDeleteMessages(activeChatId);
   const deleteSwipe = useDeleteSwipe(activeChatId);
+  const deleteOtherSwipes = useDeleteOtherSwipes(activeChatId);
   const { mutate: updateMessage, mutateAsync: updateMessageAsync } = useUpdateMessage(activeChatId);
   const { mutate: updateMessageExtra } = useUpdateMessageExtra(activeChatId);
   const peekPrompt = usePeekPrompt();
@@ -751,6 +762,7 @@ export const ChatArea = memo(function ChatArea() {
           prompt: override.prompt,
           ...(override.negativePrompt ? { negativePrompt: override.negativePrompt } : {}),
         },
+        illustratorRetryTargets: [illustratorPromptReview.item.kind === "background" ? "background" : "illustration"],
       });
       setIllustratorPromptReviewSubmitting(false);
       if (success) setIllustratorPromptReview(null);
@@ -843,6 +855,10 @@ export const ChatArea = memo(function ChatArea() {
       ...Object.keys(chatStatuses ?? {}),
       ...Object.keys((convoMeta.conversationStatusOverrides as Record<string, unknown> | undefined) ?? {}),
       ...Object.keys((convoMeta.characterSchedules as Record<string, unknown> | undefined) ?? {}),
+      // A chat with schedules off has no cached schedules to key off, but its
+      // characters still need the always-online answer instead of the card's
+      // global status.
+      ...(convoMeta.conversationSchedulesEnabled === false ? chatCharIds : []),
     ]);
     for (const id of presenceIds) {
       const existing = map.get(id);
@@ -868,7 +884,7 @@ export const ChatArea = memo(function ChatArea() {
     if (areCharacterMapsEqual(characterMapRef.current, map)) return characterMapRef.current;
     characterMapRef.current = map;
     return map;
-  }, [chatCharacterRows, chat?.metadata, presenceNow]);
+  }, [chatCharacterRows, chat?.metadata, presenceNow, chatCharIds]);
 
   const characterNames = useMemo(
     () => chatCharIds.map((id) => characterMap.get(id)?.name).filter((n): n is string => !!n),
@@ -1068,18 +1084,34 @@ export const ChatArea = memo(function ChatArea() {
     setScheduleModalCharacterId(null);
     setScheduleModalInitialDay(null);
   }, []);
+  const updateCharacter = useUpdateCharacter();
+  // The character owns its schedule; the chat's `characterSchedules` map is only
+  // a cache, so write the card and let the server re-resolve the chat copy.
   const handleSaveCharacterSchedule = useCallback(
     (savedCharacterId: string, updated: WeekSchedule) => {
-      if (!chat?.id) return;
-      updateMeta.mutate({
-        id: chat.id,
-        characterSchedules: {
-          ...((chatMeta.characterSchedules as Record<string, WeekSchedule> | undefined) ?? {}),
-          [savedCharacterId]: updated,
+      updateCharacter.mutate(
+        {
+          id: savedCharacterId,
+          data: { extensions: { conversationSchedule: updated } },
+          skipVersionSnapshot: true,
         },
-      });
+        {
+          onSuccess: () => {
+            // Refetching the chat re-resolves its cached copy from the card, so
+            // the new routine shows up here without a second metadata write.
+            void queryClient.invalidateQueries({ queryKey: characterKeys.detail(savedCharacterId) });
+            if (chat?.id) void queryClient.invalidateQueries({ queryKey: chatKeys.detail(chat.id) });
+          },
+          onError: (error) =>
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : localizeUi("ui.chat.characterscheduleeditormodal.failedToSaveSchedule"),
+            ),
+        },
+      );
     },
-    [chat?.id, chatMeta.characterSchedules, updateMeta],
+    [chat?.id, localizeUi, queryClient, updateCharacter],
   );
   const summaryContextSize: number = (chatMeta.summaryContextSize as number) ?? 50;
   const [roleplayVideoReviewItems, setRoleplayVideoReviewItems] = useState<ImagePromptReviewItem[]>([]);
@@ -1725,6 +1757,7 @@ export const ChatArea = memo(function ChatArea() {
     [deleteDialogMessageId, messages],
   );
   const deleteDialogCanDeleteSwipe = (deleteDialogMessage?.swipeCount ?? 0) > 1;
+  const deleteDialogCanDeleteOtherSwipes = deleteDialogCanDeleteSwipe && !isGameChat;
   const deleteDialogActiveSwipeIndex = deleteDialogMessage?.activeSwipeIndex ?? 0;
   const deleteDialogSwipeCount = deleteDialogMessage?.swipeCount ?? 0;
 
@@ -1778,6 +1811,22 @@ export const ChatArea = memo(function ChatArea() {
     deleteSwipe,
     refreshVisibleGameState,
     shouldRefreshGameStateOnSwipe,
+    localizeUi,
+  ]);
+
+  const handleDeleteOtherSwipes = useCallback(() => {
+    const messageId = deleteDialogMessageId;
+    const index = deleteDialogActiveSwipeIndex;
+    setDeleteDialogMessageId(null);
+    if (!messageId || !deleteDialogCanDeleteOtherSwipes) return;
+    void deleteOtherSwipes.mutateAsync({ messageId, index }).catch(() => {
+      toast.error(localizeUi("ui.chat.chatarea.couldNotDeleteTheSwipe"));
+    });
+  }, [
+    deleteDialogActiveSwipeIndex,
+    deleteDialogCanDeleteOtherSwipes,
+    deleteDialogMessageId,
+    deleteOtherSwipes,
     localizeUi,
   ]);
 
@@ -2396,7 +2445,7 @@ export const ChatArea = memo(function ChatArea() {
     },
     [scrollToMessagesBottom],
   );
-  useKeepLatestChatMessageVisible(scrollRef, scheduleScrollToMessagesBottom);
+  useKeepLatestChatMessageVisible(scrollRef, scrollToMessagesBottom);
   useEffect(() => {
     const handleScrollRequest = (event: Event) => {
       const detail = (event as CustomEvent<ChatScrollToBottomDetail>).detail;
@@ -2900,6 +2949,23 @@ export const ChatArea = memo(function ChatArea() {
     </Suspense>
   ) : null;
   const resourceDropOverlay = chat ? <ChatResourceDropOverlay chat={chat} /> : null;
+  const chatHelpMode = readChatHelpMode(chatMode);
+  const chatHelpOverlay =
+    chat && chatHelpMode ? (
+      <ChatHelpOverlay
+        mode={chatHelpMode}
+        activeChatId={chat.id}
+        isFirstChat={(allChats ?? []).filter((candidate) => candidate.mode === chatMode).length === 1}
+        autoOpenBlocked={
+          wizardOpen ||
+          settingsOpen ||
+          galleryOpen ||
+          !!pendingNewChatMode ||
+          !!peekPromptData ||
+          !!deleteDialogMessageId
+        }
+      />
+    ) : null;
 
   // ═══════════════════════════════════════════════
   // Game mode — RPG surface with GM narration, map, party chat
@@ -2947,6 +3013,7 @@ export const ChatArea = memo(function ChatArea() {
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
             deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+            deleteDialogCanDeleteOtherSwipes={deleteDialogCanDeleteOtherSwipes}
             deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
             deleteDialogSwipeCount={deleteDialogSwipeCount}
             multiSelectMode={multiSelectMode}
@@ -2969,6 +3036,7 @@ export const ChatArea = memo(function ChatArea() {
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onDeleteConfirm={handleDeleteConfirm}
             onDeleteSwipe={handleDeleteSwipe}
+            onDeleteOtherSwipes={handleDeleteOtherSwipes}
             onDeleteMore={handleDeleteMore}
             onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
             onBulkDelete={handleBulkDelete}
@@ -2977,6 +3045,7 @@ export const ChatArea = memo(function ChatArea() {
             onSelectAllAboveSelection={handleSelectAllAboveSelection}
             onSelectAllBelowSelection={handleSelectAllBelowSelection}
           />
+          {chatHelpOverlay}
         </>
       </Suspense>
     );
@@ -3018,6 +3087,7 @@ export const ChatArea = memo(function ChatArea() {
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
             deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+            deleteDialogCanDeleteOtherSwipes={deleteDialogCanDeleteOtherSwipes}
             deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
             deleteDialogSwipeCount={deleteDialogSwipeCount}
             multiSelectMode={multiSelectMode}
@@ -3058,6 +3128,7 @@ export const ChatArea = memo(function ChatArea() {
             onToggleSpriteArrange={() => setSpriteArrangeMode((prev) => !prev)}
             onDeleteConfirm={handleDeleteConfirm}
             onDeleteSwipe={handleDeleteSwipe}
+            onDeleteOtherSwipes={handleDeleteOtherSwipes}
             onDeleteMore={handleDeleteMore}
             onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
             onBulkDelete={handleBulkDelete}
@@ -3075,6 +3146,7 @@ export const ChatArea = memo(function ChatArea() {
           onCancel={() => closeConversationSelfiePromptReview(null)}
           onConfirm={confirmConversationSelfiePromptReview}
         />
+        {chatHelpOverlay}
         {pendingNewChatMode && (
           <NewChatConnectionGate
             mode={pendingNewChatMode}
@@ -3151,6 +3223,7 @@ export const ChatArea = memo(function ChatArea() {
           peekPromptData={peekPromptData}
           deleteDialogMessageId={deleteDialogMessageId}
           deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+          deleteDialogCanDeleteOtherSwipes={deleteDialogCanDeleteOtherSwipes}
           deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
           deleteDialogSwipeCount={deleteDialogSwipeCount}
           multiSelectMode={multiSelectMode}
@@ -3210,6 +3283,7 @@ export const ChatArea = memo(function ChatArea() {
           onFinishSpritePlacement={() => setSpriteArrangeMode(false)}
           onDeleteConfirm={handleDeleteConfirm}
           onDeleteSwipe={handleDeleteSwipe}
+          onDeleteOtherSwipes={handleDeleteOtherSwipes}
           onDeleteMore={handleDeleteMore}
           onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
           onBulkDelete={handleBulkDelete}
@@ -3244,6 +3318,7 @@ export const ChatArea = memo(function ChatArea() {
         onCancel={() => closeRoleplayVideoPromptReview(null)}
         onConfirm={confirmRoleplayVideoPromptReview}
       />
+      {chatHelpOverlay}
       {pendingNewChatMode && (
         <NewChatConnectionGate
           mode={pendingNewChatMode}

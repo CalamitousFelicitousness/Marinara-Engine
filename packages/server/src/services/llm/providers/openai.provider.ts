@@ -24,6 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
+import { isLoopbackIp, isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters } from "./glm-request-compat.js";
 
 /**
@@ -49,6 +50,41 @@ type ChatCompletionsUsagePayload = {
     rejected_prediction_tokens?: number;
   };
 };
+
+export function extractOpenAICompatibleContentBlocks(
+  content: unknown,
+  createAnonymousToolCallId?: () => string,
+): { text: string; thinking: string; toolCalls: LLMToolCall[]; anonymousToolCallIds: string[] } | null {
+  if (!Array.isArray(content)) return null;
+  let text = "";
+  let thinking = "";
+  const toolCalls: LLMToolCall[] = [];
+  const anonymousToolCallIds: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const value = block as Record<string, unknown>;
+    if (value.type === "thinking" && typeof value.thinking === "string") {
+      thinking += value.thinking;
+    } else if (value.type === "text" && typeof value.text === "string") {
+      text += value.text;
+    } else if (value.type === "tool_use" && typeof value.name === "string") {
+      const name = value.name.trim();
+      if (!name) continue;
+      const providerId = typeof value.id === "string" && value.id.trim() ? value.id : null;
+      const id = providerId ?? createAnonymousToolCallId?.() ?? `tool_${toolCalls.length + 1}`;
+      if (!providerId) anonymousToolCallIds.push(id);
+      toolCalls.push({
+        id,
+        type: "function",
+        function: {
+          name,
+          arguments: typeof value.input === "string" ? value.input : JSON.stringify(value.input ?? {}),
+        },
+      });
+    }
+  }
+  return { text, thinking, toolCalls, anonymousToolCallIds };
+}
 
 type ResponsesUsagePayload = {
   input_tokens?: number;
@@ -291,21 +327,7 @@ export class OpenAIProvider extends BaseLLMProvider {
    * OpenRouter may return `content` as an array of typed blocks instead of a plain string:
    *   [{ type: "thinking", thinking: "..." }, { type: "text", text: "..." }]
    */
-  private static extractContentBlocks(content: unknown): { text: string; thinking: string } | null {
-    if (!Array.isArray(content)) return null;
-    let text = "";
-    let thinking = "";
-    for (const block of content) {
-      if (typeof block !== "object" || block === null) continue;
-      const b = block as Record<string, unknown>;
-      if (b.type === "thinking" && typeof b.thinking === "string") {
-        thinking += b.thinking;
-      } else if (b.type === "text" && typeof b.text === "string") {
-        text += b.text;
-      }
-    }
-    return { text, thinking };
-  }
+  private static extractContentBlocks = extractOpenAICompatibleContentBlocks;
 
   private shouldSendTopK(): boolean {
     return this.apiKey === "local-sidecar" || this.isGenericCustomProvider();
@@ -700,6 +722,49 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private hasExplicitReasoningDisable(reasoningEffort?: string | null): boolean {
     return reasoningEffort === "none";
+  }
+
+  /**
+   * True when baseUrl points at an inference server running on this machine or
+   * this LAN (llama.cpp, Ollama, vLLM, LM Studio). Such servers expose
+   * arbitrary model names that never match the OpenAI/xAI catalog patterns the
+   * reasoning gates rely on, so without this the user's explicit "reasoning
+   * off" choice is silently discarded before it reaches the request body.
+   */
+  private isLocalInferenceEndpoint(): boolean {
+    try {
+      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
+      if (hostname === "localhost" || isLoopbackIp(hostname)) return true;
+      if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
+      if (hostname === "host.docker.internal" || hostname === "host.containers.internal") return true;
+      if (!hostname.includes(".") || hostname.endsWith(".internal")) return true;
+      return isNonRoutableNetworkIp(hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  private enforceLocalInferenceThinkingDisable(
+    body: Record<string, unknown>,
+    options: ChatOptions,
+    suppressModelParameters: boolean,
+  ): void {
+    if (
+      suppressModelParameters ||
+      !this.isGenericCustomProvider() ||
+      !this.shouldSendParameter(options, "reasoningEffort") ||
+      !this.hasExplicitReasoningDisable(options.reasoningEffort) ||
+      !this.isLocalInferenceEndpoint()
+    ) {
+      return;
+    }
+    const templateOptions =
+      body.chat_template_kwargs &&
+      typeof body.chat_template_kwargs === "object" &&
+      !Array.isArray(body.chat_template_kwargs)
+        ? (body.chat_template_kwargs as Record<string, unknown>)
+        : {};
+    body.chat_template_kwargs = { ...templateOptions, enable_thinking: false };
   }
 
   private supportsOpenAIReasoningDisable(model: string): boolean {
@@ -1174,6 +1239,9 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    // Local chat templates may ignore reasoning_effort. Apply this after custom
+    // parameters so an explicit Reasoning Effort: Off choice remains authoritative.
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(
@@ -1459,6 +1527,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
+    this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
 
     logger.debug(
@@ -1524,6 +1593,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       }
       const usage = OpenAIProvider.extractChatCompletionsUsage(json.usage as ChatCompletionsUsagePayload | undefined);
       let toolCalls = OpenAIProvider.normalizeToolCalls(choice?.message?.tool_calls);
+      if (toolCalls.length === 0 && blocks?.toolCalls.length) toolCalls = blocks.toolCalls;
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
         if (toolCalls.length > 0) resolvedContent = null;
@@ -1556,12 +1626,15 @@ export class OpenAIProvider extends BaseLLMProvider {
     let finishReason = "stop";
     let streamUsage: LLMUsage | undefined;
     const reasoningMetadata: Record<string, unknown> = {};
+    let anonymousContentBlockToolCallCount = 0;
 
     // Accumulate tool calls from deltas
     const toolCallsMap = new Map<
       number,
       { id: string; type: "function"; function: { name: string; arguments: string } }
     >();
+    const contentBlockToolCallsMap = new Map<number, LLMToolCall>();
+    const providerContentBlockToolCallIndexes = new Map<string, number>();
 
     try {
       while (true) {
@@ -1635,12 +1708,23 @@ export class OpenAIProvider extends BaseLLMProvider {
             (typeof delta?.refusal === "string" && delta.refusal) ||
             (typeof message?.refusal === "string" && message.refusal) ||
             "";
-          const blocks = OpenAIProvider.extractContentBlocks(textContent);
+          const blocks = OpenAIProvider.extractContentBlocks(
+            textContent,
+            () => `content_block_tool_${++anonymousContentBlockToolCallCount}`,
+          );
           if (blocks) {
             if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
             if (blocks.text) {
               content += blocks.text;
               await options.onToken?.(blocks.text);
+            }
+            for (const toolCall of blocks.toolCalls) {
+              const isAnonymous = blocks.anonymousToolCallIds.includes(toolCall.id);
+              const index = isAnonymous
+                ? contentBlockToolCallsMap.size
+                : (providerContentBlockToolCallIndexes.get(toolCall.id) ?? contentBlockToolCallsMap.size);
+              contentBlockToolCallsMap.set(index, toolCall);
+              if (!isAnonymous) providerContentBlockToolCallIndexes.set(toolCall.id, index);
             }
           } else if (typeof textContent === "string" && textContent) {
             content += textContent;
@@ -1703,9 +1787,10 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     // Collect tool calls in order
     let toolCalls: LLMToolCall[] = [];
-    const sortedKeys = [...toolCallsMap.keys()].sort((a, b) => a - b);
+    const selectedToolCallsMap = toolCallsMap.size > 0 ? toolCallsMap : contentBlockToolCallsMap;
+    const sortedKeys = [...selectedToolCallsMap.keys()].sort((a, b) => a - b);
     for (const key of sortedKeys) {
-      const normalized = OpenAIProvider.normalizeToolCall(toolCallsMap.get(key), key);
+      const normalized = OpenAIProvider.normalizeToolCall(selectedToolCallsMap.get(key), key);
       if (normalized) toolCalls.push(normalized);
     }
     if (toolCalls.length === 0 && content && options.tools?.length) {

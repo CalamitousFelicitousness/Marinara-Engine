@@ -19,6 +19,7 @@ import {
   PROFESSOR_MARI_ID,
   CONVERSATION_CALL_CHARACTER_VIDEO_CLIP_KINDS,
   findImageStyleProfile,
+  MAX_FILE_SIZES,
 } from "@marinara-engine/shared";
 import type { CharacterData, ConversationCallCharacterVideoClipKind, ExportEnvelope } from "@marinara-engine/shared";
 import { createCharactersStorage, type PersonaStorageRow } from "../services/storage/characters.storage.js";
@@ -30,6 +31,8 @@ import { createGameSceneVideosStorage } from "../services/storage/game-scene-vid
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createNoodleStorage } from "../services/storage/noodle.storage.js";
+import { createPromptOverridesStorage } from "../services/storage/prompt-overrides.storage.js";
+import { CHARACTERS_REFERENCE_SHEET, loadPrompt } from "../services/prompt-overrides/index.js";
 import { generateImage } from "../services/image/image-generation.js";
 import {
   resolveConnectionImageDefaults,
@@ -53,7 +56,7 @@ import {
   uploadConversationCallCharacterVideoClip,
 } from "../services/conversation/call-character-videos.service.js";
 import { removeSavedVideoFromDisk } from "../services/video/video-generation.js";
-import { writeFile, mkdir, readFile, readdir, unlink } from "fs/promises";
+import { writeFile, mkdir, readFile, readdir, stat, unlink } from "fs/promises";
 import { join } from "path";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { createWriteStream, existsSync, rmSync, unlinkSync } from "fs";
@@ -68,6 +71,7 @@ import { logger, logDebugOverride } from "../lib/logger.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
+import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
 import {
   clearEmbeddedLorebookFromCharacter,
   embedLorebookIntoCharacter,
@@ -490,17 +494,15 @@ const AVATAR_GENERATION_HARD_NEGATIVE_PROMPT =
 const CHARACTER_SHEET_HARD_NEGATIVE_PROMPT =
   "text, captions, logos, watermarks, decorative borders, unrelated characters, extra limbs, inconsistent faces, cropped-off body parts";
 
-function buildAvatarGenerationPrompt(body: AvatarGenerationBody, profileSubjectTags: string): string {
+async function buildAvatarGenerationPrompt(
+  promptOverridesStorage: ReturnType<typeof createPromptOverridesStorage>,
+  body: AvatarGenerationBody,
+  profileSubjectTags: string,
+): Promise<string> {
   const name = body.name?.trim() || "Character";
   const appearance = body.appearance?.trim() || name;
   if (body.purpose === "character-sheet") {
-    return [
-      `Create a polished production character design sheet for ${name}.`,
-      `Canonical appearance: ${appearance}.`,
-      "Show multiple consistent views of the same character: one large full-body hero view, front and back turnaround views in neutral poses, close-up face and costume details, important accessories, and a compact color palette on a clean neutral background.",
-      "Keep the same face, body proportions, hairstyle, outfit construction, colors, accessories, and distinguishing features in every view.",
-      "Show only this character and keep every body view fully in frame.",
-    ].join(" ");
+    return loadPrompt(promptOverridesStorage, CHARACTERS_REFERENCE_SHEET, { name, appearance });
   }
   if (profileSubjectTags.trim()) return `Canonical appearance for ${name}: ${appearance}.`;
   return `Create a polished character avatar portrait for ${name}. Canonical appearance: ${appearance}. Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`;
@@ -586,7 +588,15 @@ async function copyGalleryImageToAvatar(
 // Read every sprite file in data/sprites/<id>/ and return it as
 // { filename, data } so import can restore the same expression set under a
 // new id.
-async function readSpritesForId(id: string): Promise<Array<{ filename: string; data: string }>> {
+async function readSpritesForId(id: string): Promise<Array<{ filename: string; data: string }>>;
+async function readSpritesForId(
+  id: string,
+  enforcePortableLimits: true,
+): Promise<Array<{ filename: string; data: string }> | null>;
+async function readSpritesForId(
+  id: string,
+  enforcePortableLimits = false,
+): Promise<Array<{ filename: string; data: string }> | null> {
   const dir = join(DATA_DIR, "sprites", id);
   if (!existsSync(dir)) return [];
   let entries: string[];
@@ -596,9 +606,30 @@ async function readSpritesForId(id: string): Promise<Array<{ filename: string; d
     return [];
   }
   const sprites: Array<{ filename: string; data: string }> = [];
+  const byteLengths: number[] = [];
+  let totalBytes = 0;
   for (const entry of entries) {
+    if (enforcePortableLimits) {
+      try {
+        const fileSize = (await stat(assertInsideDir(dir, join(dir, entry)))).size;
+        if (fileSize > MAX_FILE_SIZES.SPRITE || totalBytes + fileSize > MAX_FILE_SIZES.CHARACTER_CARD) {
+          return null;
+        }
+      } catch {
+        continue;
+      }
+    }
     const dataUrl = await readImageAsDataUrl(dir, entry);
-    if (dataUrl) sprites.push({ filename: entry, data: dataUrl });
+    if (dataUrl) {
+      if (enforcePortableLimits) {
+        if (sprites.length >= MAX_EMBEDDED_SPRITE_COUNT) return null;
+        const byteLength = Buffer.byteLength(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
+        if (!embeddedSpriteSizesAreWithinLimits([...byteLengths, byteLength])) return null;
+        byteLengths.push(byteLength);
+        totalBytes += byteLength;
+      }
+      sprites.push({ filename: entry, data: dataUrl });
+    }
   }
   return sprites;
 }
@@ -673,10 +704,16 @@ async function buildNativeCharacterEnvelope(
   } satisfies ExportEnvelope;
 }
 
-function buildCompatibleCharacterExport(data: any) {
-  const extensions = parseCharacterDataRecord(data?.extensions);
+export function buildCompatibleCharacterExport(data: any, sprites: Array<{ filename: string; data: string }> = []) {
+  const extensions = { ...parseCharacterDataRecord(data?.extensions) };
   delete extensions.characterSheetImageId;
   extensions.useCharacterSheetAsReference = false;
+  if (sprites.length > 0) {
+    extensions.marinara = {
+      ...parseCharacterDataRecord(extensions.marinara),
+      sprites,
+    };
+  }
   return {
     spec: "chara_card_v2",
     spec_version: "2.0",
@@ -829,6 +866,7 @@ export async function charactersRoutes(app: FastifyInstance) {
   const personaGallery = createPersonaGalleryStorage(app.db);
   const lorebooksStorage = createLorebooksStorage(app.db);
   const connections = createConnectionsStorage(app.db);
+  const promptOverridesStorage = createPromptOverridesStorage(app.db);
   const characterUpdateQueues = new Map<string, Promise<unknown>>();
   const personaUpdateQueues = new Map<string, Promise<unknown>>();
 
@@ -899,7 +937,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       ).subjectTags[isCharacterSheet ? "illustration" : "avatar"] ?? "";
     const compiled = compileImagePrompt({
       kind: isCharacterSheet ? "illustration" : "avatar",
-      prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
+      prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
       styleProfiles: imageSettings.styleProfiles,
       styleProfileId: body.styleProfileId,
       imageDefaults,
@@ -985,7 +1023,7 @@ export async function charactersRoutes(app: FastifyInstance) {
         }
       : compileImagePrompt({
           kind: isCharacterSheet ? "illustration" : "avatar",
-          prompt: buildAvatarGenerationPrompt(body, profileSubjectTags),
+          prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
           styleProfiles: imageSettings.styleProfiles,
           styleProfileId: body.styleProfileId,
           imageDefaults,
@@ -1922,7 +1960,11 @@ export async function charactersRoutes(app: FastifyInstance) {
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
     const charData = JSON.parse(char.data);
-    const v2Envelope = buildCompatibleCharacterExport(charData);
+    const sprites = await readSpritesForId(char.id, true);
+    if (!sprites) {
+      return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });
+    }
+    const v2Envelope = buildCompatibleCharacterExport(charData, sprites);
     const charaBase64 = Buffer.from(JSON.stringify(v2Envelope), "utf-8").toString("base64");
 
     // Read avatar image or create a minimal 1x1 transparent PNG fallback

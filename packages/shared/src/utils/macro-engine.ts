@@ -48,6 +48,8 @@ export interface MacroContext {
   personaReferences?: Record<string, string>;
   /** Activated lorebook Outlet content keyed by its exact, case-sensitive name */
   outlets?: Record<string, string>;
+  /** Per-lorebook total entry counts, keyed by lorebook ID (for {{lorebooksize::ID}}) */
+  lorebookEntryCounts?: Record<string, number>;
   /** Current character card fields used by macros like {{description}} */
   characterFields?: {
     phoneticName?: string;
@@ -444,6 +446,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
     description: "Activated lorebook entries assigned to the exact, case-sensitive Outlet name",
   },
   {
+    category: "Lorebooks",
+    syntax: "{{lorebooksize::ID}}",
+    description: "Total number of entries in the lorebook with the given ID",
+  },
+  {
     category: "Game",
     syntax: "{{gameStoryboardKeyframeCount}}",
     description: "Current Game Mode Keyframes per Turn target (1-6, default 3)",
@@ -493,6 +500,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
     category: "Formatting",
     syntax: '{{#if char == "Name" || "Other"}}...{{else}}...{{/if}}',
     description: "Conditional block with ||, &&, parentheses, else branches, and straight or typographic quotes",
+  },
+  {
+    category: "Formatting",
+    syntax: '{{#if character != "Maukie"}}...{{/if}}',
+    description: 'Negated comparison; "is not", "not contains", and "not includes" are also supported',
   },
   { category: "Formatting", syntax: "{{noop}}", description: "No-op placeholder removed from output" },
   { category: "Formatting", syntax: "{{// comment}}", description: "Inline author comment removed from output" },
@@ -1827,6 +1839,62 @@ function resolveConditionalBlocks(input: string, ctx: MacroContext, options: Res
   return result;
 }
 
+const AGENT_CONDITIONAL_ENTITY_REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/&quot;|&#34;|&#x22;/gi, '"'],
+  [/&apos;|&#39;|&#x27;/gi, "'"],
+  [/&lt;|&#60;|&#x3c;/gi, "<"],
+  [/&gt;|&#62;|&#x3e;/gi, ">"],
+  [/&amp;|&#38;|&#x26;/gi, "&"],
+];
+
+function decodeAgentConditionalTextEntities(input: string): string {
+  return AGENT_CONDITIONAL_ENTITY_REPLACEMENTS.reduce(
+    (value, [pattern, replacement]) => value.replace(pattern, replacement),
+    input,
+  );
+}
+
+function decodeAgentConditionalEntities(input: string): string {
+  return replaceBalancedMacros(input, (body) => {
+    if (parseIfCondition(body) === null && parseElseIfCondition(body) === null) return undefined;
+    return `{{${decodeAgentConditionalTextEntities(body)}}}`;
+  });
+}
+
+/**
+ * Remove conditional control syntax from agent-bound text while keeping every
+ * authored branch. Agent calls need the prose as context, not the main prompt's
+ * character-specific control flow.
+ */
+export function flattenAgentConditionalMacros(input: string): string {
+  return flattenAgentConditionalMacrosInner(input, false);
+}
+
+function flattenAgentConditionalMacrosInner(input: string, decodeTextEntities: boolean): string {
+  const normalized = decodeAgentConditionalEntities(
+    decodeTextEntities ? decodeAgentConditionalTextEntities(input) : input,
+  );
+  let result = "";
+  let index = 0;
+
+  while (index < normalized.length) {
+    const start = findConditionalStart(normalized, index);
+    if (!start) return result + normalized.slice(index);
+    const block = findConditionalBranches(normalized, start.end, start.condition);
+    if (!block) return result + normalized.slice(index);
+
+    result += normalized.slice(index, start.start);
+    result += block.branches
+      .map((branch) =>
+        flattenAgentConditionalMacrosInner(normalized.slice(branch.contentStart, branch.contentEnd), true),
+      )
+      .join("");
+    index = block.endEnd;
+  }
+
+  return result;
+}
+
 function splitTopLevelDoubleColon(input: string): string[] {
   const parts: string[] = [];
   let current = "";
@@ -2018,6 +2086,7 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
  *  - {{lastGenerationType}} — current generation type label
  *  - {{idle_duration}} — time since the last chat activity
  *  - {{outlet::name}} — activated lorebook entries assigned to a named Outlet
+ *  - {{lorebooksize::ID}} — total number of entries in the lorebook with the given ID
  *  - {{gameStoryboardKeyframeCount}} — current Game Mode Keyframes per Turn target
  *  - {{// comment}} — removed (author comments)
  *  - {{trim}} — remove surrounding whitespace
@@ -2280,6 +2349,14 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     if (!match) return undefined;
     const name = (match[1] ?? "").trim();
     return name && ctx.outlets && Object.prototype.hasOwnProperty.call(ctx.outlets, name) ? ctx.outlets[name]! : "";
+  });
+
+  // ── Lorebook entry count ──
+  // Resolves {{lorebooksize::ID}} to the total number of entries in the
+  // referenced lorebook. Unknown IDs resolve to 0.
+  result = result.replace(/\{\{lorebooksize::([\w-]+)\}\}/gi, (_, id) => {
+    const counts = ctx.lorebookEntryCounts;
+    return counts && Object.prototype.hasOwnProperty.call(counts, id) ? String(counts[id]) : "0";
   });
 
   if (options.trimResult !== false) {

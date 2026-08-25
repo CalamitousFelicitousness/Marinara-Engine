@@ -25,6 +25,7 @@ import {
   resolveGoogleFunctionCallingMode,
 } from "../../packages/server/src/services/llm/providers/google.provider.js";
 import {
+  extractOpenAICompatibleContentBlocks,
   normalizeOpenAIChatCompletionsResponseFormat,
   OpenAIProvider,
 } from "../../packages/server/src/services/llm/providers/openai.provider.js";
@@ -44,6 +45,7 @@ import {
 } from "../../packages/server/src/services/llm/connection-fallback-provider.js";
 import {
   BaseLLMProvider,
+  resolveEmbeddingEndpointUrl,
   type ChatMessage,
   type ChatOptions,
   type LLMUsage,
@@ -149,6 +151,15 @@ const gatewaySseBody = [
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(1), 0);
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(0.75), 0.25);
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(0), 1);
+assert.equal(resolveEmbeddingEndpointUrl("https://openrouter.ai/api/v1"), "https://openrouter.ai/api/v1/embeddings");
+assert.equal(
+  resolveEmbeddingEndpointUrl("https://nano-gpt.com/api/v1/embeddings"),
+  "https://nano-gpt.com/api/v1/embeddings",
+);
+assert.equal(
+  resolveEmbeddingEndpointUrl("https://example.com/v1/embeddings/?source=memory"),
+  "https://example.com/v1/embeddings?source=memory",
+);
 const gatewayServer = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream" });
   response.end(gatewaySseBody);
@@ -309,10 +320,9 @@ try {
 
   assert.equal(supportsAssistantReasoningPrefill("custom"), true);
   assert.equal(supportsAssistantReasoningPrefill("grok_subscription"), false);
-  assert.deepEqual(
-    buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }),
-    [{ role: "user", content: "Continue." }],
-  );
+  assert.deepEqual(buildPrefillMessages("", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }), [
+    { role: "user", content: "Continue." },
+  ]);
   assert.deepEqual(
     buildPrefillMessages("Visible", "Unsupported reasoning", { supportsAssistantReasoningPrefill: false }),
     [
@@ -470,6 +480,167 @@ try {
 } finally {
   await new Promise<void>((resolve, reject) =>
     customParametersServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+// A locally hosted OpenAI-compatible server (llama.cpp / Ollama / vLLM / LM Studio)
+// is reached through the "custom" provider kind. Disabling reasoning there has to
+// arrive as BOTH reasoning_effort and chat_template_kwargs.enable_thinking:
+// llama.cpp only skips the thinking pass for the latter, while reasoning_format
+// alone would merely hide the thinking and still pay for the tokens.
+let localReasoningRequestBody: Record<string, unknown> | null = null;
+const localReasoningServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  localReasoningRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => localReasoningServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = localReasoningServer.address();
+  assert.ok(address && typeof address === "object");
+  const localProvider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+
+  await localProvider.chatComplete([{ role: "user", content: "no thinking please" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+    customParameters: { chat_template_kwargs: { enable_thinking: true, use_jinja: true } },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal(
+    localReasoningRequestBody.reasoning_effort,
+    "none",
+    "local endpoints must receive an explicit reasoning disable",
+  );
+  assert.deepEqual(
+    localReasoningRequestBody.chat_template_kwargs,
+    { enable_thinking: false, use_jinja: true },
+    "llama.cpp needs enable_thinking=false to win over custom parameters while preserving sibling options",
+  );
+
+  // Graded levels stay gated for off-catalog models: llama.cpp accepts them but
+  // treats every non-"none" value identically to sending nothing.
+  localReasoningRequestBody = null;
+  await localProvider.chatComplete([{ role: "user", content: "think hard" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "high",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal("reasoning_effort" in localReasoningRequestBody, false);
+  assert.equal("chat_template_kwargs" in localReasoningRequestBody, false);
+
+  // The parameter's own send-switch still wins over everything.
+  localReasoningRequestBody = null;
+  await localProvider.chatComplete([{ role: "user", content: "provider default" }], {
+    model: "Qwen3.8-27B-Uncensored-HauhauCS-Aggressive",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: false },
+  });
+  assert.ok(localReasoningRequestBody);
+  assert.equal("reasoning_effort" in localReasoningRequestBody, false);
+  assert.equal("chat_template_kwargs" in localReasoningRequestBody, false);
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    localReasoningServer.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+// The enable_thinking addition is a local-endpoint carve-out. A remote custom
+// endpoint keeps the previous behaviour: reasoning_effort only, no template kwargs.
+for (const localBaseUrl of [
+  "http://host.docker.internal:11434/v1",
+  "http://host.containers.internal:11434/v1",
+  "http://ollama:11434/v1",
+  "http://127.0.0.2:11434/v1",
+]) {
+  const localHostnameProvider = new OpenAIProvider(localBaseUrl, "test", undefined, undefined, undefined, "custom");
+  assert.equal(
+    (
+      localHostnameProvider as unknown as {
+        isLocalInferenceEndpoint(): boolean;
+      }
+    ).isLocalInferenceEndpoint(),
+    true,
+    `${localBaseUrl} should be recognized as a local inference endpoint`,
+  );
+}
+
+const previousTrustedPrivateNetworks = process.env.TRUSTED_PRIVATE_NETWORKS;
+process.env.TRUSTED_PRIVATE_NETWORKS = "10.0.0.0/8";
+try {
+  const privateAddressProvider = new OpenAIProvider(
+    "http://192.168.50.2:11434/v1",
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  assert.equal(
+    (
+      privateAddressProvider as unknown as {
+        isLocalInferenceEndpoint(): boolean;
+      }
+    ).isLocalInferenceEndpoint(),
+    true,
+    "inference endpoint detection must not depend on the authentication trust-list override",
+  );
+} finally {
+  if (previousTrustedPrivateNetworks === undefined) delete process.env.TRUSTED_PRIVATE_NETWORKS;
+  else process.env.TRUSTED_PRIVATE_NETWORKS = previousTrustedPrivateNetworks;
+}
+
+let remoteReasoningRequestBody: Record<string, unknown> | null = null;
+const remoteReasoningServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  remoteReasoningRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => remoteReasoningServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = remoteReasoningServer.address();
+  assert.ok(address && typeof address === "object");
+  const remoteProvider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  // Force the local check to fail while keeping the loopback transport.
+  Object.defineProperty(remoteProvider, "isLocalInferenceEndpoint", { value: () => false });
+  await remoteProvider.chatComplete([{ role: "user", content: "no thinking please" }], {
+    model: "some-remote-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.ok(remoteReasoningRequestBody);
+  assert.equal(remoteReasoningRequestBody.reasoning_effort, "none");
+  assert.equal(
+    "chat_template_kwargs" in remoteReasoningRequestBody,
+    false,
+    "enable_thinking must stay a local-endpoint carve-out",
+  );
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    remoteReasoningServer.close((error) => (error ? reject(error) : resolve())),
   );
 }
 
@@ -792,6 +963,55 @@ assert.equal(
     assert.ok(subscriptionOptions);
     assert.deepEqual(subscriptionOptions.thinking, { type: "adaptive", display: "summarized" });
     assert.equal(subscriptionOptions.effort, "xhigh");
+
+    assert.equal(
+      await collectProviderOutputForMessages(
+        provider,
+        [
+          { role: "system", content: "Keep the caller-owned system prompt." },
+          { role: "user", content: "test" },
+        ],
+        {
+          model: "claude-opus-5",
+          stream: true,
+          customParameters: {
+            fallbackModel: "claude-sonnet-4-6",
+            maxBudgetUsd: 2,
+            tools: { type: "preset", preset: "claude_code" },
+            skills: "all",
+            maxTurns: 20,
+            allowedTools: ["Bash"],
+            mcpServers: { unsafe: { command: "/bin/false" } },
+            pathToClaudeCodeExecutable: "/bin/false",
+            extraArgs: { "dangerously-skip-permissions": null },
+            permissionMode: "acceptEdits",
+            settingSources: ["user", "project", "local"],
+            settings: "/tmp/untrusted-settings.json",
+            env: { ENABLE_CLAUDEAI_MCP_SERVERS: "true", UNTRUSTED_VALUE: "present" },
+            cwd: "/tmp",
+            systemPrompt: { type: "preset", preset: "claude_code" },
+          },
+        },
+      ),
+      "Subscription reply",
+    );
+    assert.ok(subscriptionOptions);
+    assert.equal(subscriptionOptions.fallbackModel, "claude-sonnet-4-6");
+    assert.equal(subscriptionOptions.maxBudgetUsd, 2);
+    assert.deepEqual(subscriptionOptions.tools, []);
+    assert.deepEqual(subscriptionOptions.skills, []);
+    assert.equal(subscriptionOptions.maxTurns, 1);
+    assert.equal("allowedTools" in subscriptionOptions, false);
+    assert.equal("mcpServers" in subscriptionOptions, false);
+    assert.equal("pathToClaudeCodeExecutable" in subscriptionOptions, false);
+    assert.equal("extraArgs" in subscriptionOptions, false);
+    assert.equal(subscriptionOptions.permissionMode, "bypassPermissions");
+    assert.deepEqual(subscriptionOptions.settingSources, []);
+    assert.deepEqual(subscriptionOptions.settings, { fastMode: false });
+    assert.equal(subscriptionOptions.cwd, undefined);
+    assert.equal(subscriptionOptions.systemPrompt, "Keep the caller-owned system prompt.");
+    assert.equal((subscriptionOptions.env as Record<string, unknown>).ENABLE_CLAUDEAI_MCP_SERVERS, "false");
+    assert.equal("UNTRUSTED_VALUE" in (subscriptionOptions.env as Record<string, unknown>), false);
   } finally {
     __setSdkForTesting(null);
   }
@@ -2137,6 +2357,160 @@ assert.equal(abortedFallback.calls, 0, "user cancellation must not trigger a fal
     resetConnectionAdmissionForTests();
     await new Promise<void>((resolve, reject) => captionServer.close((error) => (error ? reject(error) : resolve())));
   }
+}
+
+assert.deepEqual(
+  extractOpenAICompatibleContentBlocks([
+    { type: "thinking", thinking: "Checking the card." },
+    { type: "text", text: "I will use the card tool." },
+    { type: "tool_use", id: "call-card", name: "read_character", input: { id: "char-1" } },
+  ]),
+  {
+    text: "I will use the card tool.",
+    thinking: "Checking the card.",
+    anonymousToolCallIds: [],
+    toolCalls: [
+      {
+        id: "call-card",
+        type: "function",
+        function: { name: "read_character", arguments: '{"id":"char-1"}' },
+      },
+    ],
+  },
+  "OpenAI-compatible Anthropic content blocks must preserve tool_use calls",
+);
+
+let anonymousContentBlockToolCallIndex = 0;
+const nextAnonymousContentBlockToolCallId = () => `content_block_tool_${++anonymousContentBlockToolCallIndex}`;
+const firstAnonymousBlocks = extractOpenAICompatibleContentBlocks(
+  [{ type: "tool_use", name: "read_character", input: { id: "char-1" } }],
+  nextAnonymousContentBlockToolCallId,
+);
+const secondAnonymousBlocks = extractOpenAICompatibleContentBlocks(
+  [
+    { type: "tool_use", id: "   ", name: "read_persona", input: { id: "persona-1" } },
+    { type: "tool_use", name: "   ", input: {} },
+  ],
+  nextAnonymousContentBlockToolCallId,
+);
+assert.deepEqual(
+  [...(firstAnonymousBlocks?.toolCalls ?? []), ...(secondAnonymousBlocks?.toolCalls ?? [])].map((call) => call.id),
+  ["content_block_tool_1", "content_block_tool_2"],
+  "anonymous content-block tool calls must retain unique IDs across streamed chunks",
+);
+
+const contentBlockToolSse = [
+  `data: ${JSON.stringify({
+    choices: [{ delta: { content: [{ type: "tool_use", name: "read_character", input: { id: "char-1" } }] } }],
+  })}`,
+  "",
+  `data: ${JSON.stringify({
+    choices: [
+      {
+        delta: {
+          content: [
+            { type: "tool_use", name: "read_persona", input: { id: "persona-1" } },
+            { type: "tool_use", name: "   ", input: {} },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ],
+  })}`,
+  "",
+  "data: [DONE]",
+  "",
+].join("\n");
+const mixedToolSse = [
+  `data: ${JSON.stringify({
+    choices: [
+      {
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: "call-native",
+              function: { name: "read_character", arguments: '{"id":"char-1"}' },
+            },
+          ],
+        },
+      },
+    ],
+  })}`,
+  "",
+  `data: ${JSON.stringify({
+    choices: [
+      {
+        delta: { content: [{ type: "tool_use", name: "read_persona", input: { id: "persona-1" } }] },
+        finish_reason: "tool_calls",
+      },
+    ],
+  })}`,
+  "",
+  "data: [DONE]",
+  "",
+].join("\n");
+let streamedToolResponse = contentBlockToolSse;
+const contentBlockToolServer = createServer((_request, response) => {
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(streamedToolResponse);
+});
+await new Promise<void>((resolve) => contentBlockToolServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = contentBlockToolServer.address();
+  assert.ok(address && typeof address === "object");
+  const provider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "test",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+    undefined,
+    true,
+  );
+  const result = await provider.chatComplete([{ role: "user", content: "read both cards" }], {
+    model: "custom-model",
+    stream: true,
+    tools: [
+      {
+        type: "function",
+        function: { name: "read_character", description: "Read a character", parameters: { type: "object" } },
+      },
+      {
+        type: "function",
+        function: { name: "read_persona", description: "Read a persona", parameters: { type: "object" } },
+      },
+    ],
+  });
+  assert.deepEqual(
+    result.toolCalls.map((call) => [call.id, call.function.name]),
+    [
+      ["content_block_tool_1", "read_character"],
+      ["content_block_tool_2", "read_persona"],
+    ],
+    "separate anonymous content-block stream chunks must preserve both tool calls in order",
+  );
+  streamedToolResponse = mixedToolSse;
+  const mixedResult = await provider.chatComplete([{ role: "user", content: "read the character" }], {
+    model: "custom-model",
+    stream: true,
+    tools: [
+      {
+        type: "function",
+        function: { name: "read_character", description: "Read a character", parameters: { type: "object" } },
+      },
+    ],
+  });
+  assert.deepEqual(
+    mixedResult.toolCalls.map((call) => [call.id, call.function.name]),
+    [["call-native", "read_character"]],
+    "native streamed tool calls must take precedence over content-block fallbacks regardless of chunk order",
+  );
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    contentBlockToolServer.close((error) => (error ? reject(error) : resolve())),
+  );
 }
 
 process.stdout.write("Provider compatibility regression passed.\n");

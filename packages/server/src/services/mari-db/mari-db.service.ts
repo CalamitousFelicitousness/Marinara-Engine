@@ -9,7 +9,7 @@ import { basename, join, resolve } from "node:path";
 import { eq } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { flushDB } from "../../db/connection.js";
-import { CASCADES, FILE_BACKED_TABLES } from "../../db/file-backed-store.js";
+import { CASCADE_DANGLING_EXEMPT_PREFIXES, CASCADES, FILE_BACKED_TABLES } from "../../db/file-backed-store.js";
 import { getFileTableConfig, isFileTable, type AnyFileColumn, type AnyFileTable } from "../../db/file-schema.js";
 import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
@@ -364,6 +364,7 @@ const JSON_COLUMNS: Record<string, readonly string[]> = {
   message_swipes: ["extra"],
   memory_chunks: ["embedding"],
   lorebooks: ["scope", "tags"],
+  library_folders: ["itemIds"],
   lorebook_entries: [
     "keys",
     "secondaryKeys",
@@ -862,6 +863,7 @@ function normalizeAppDataActionName(action: string): string {
     .replace(/^themes\./, "theme.")
     .replace(/^personalextensions\./, "personalextension.")
     .replace(/^agents\./, "agent.")
+    .replace(/^chats\./, "chat.")
     .replace(/^presets\./, "preset.")
     .replace(/^promptpresets\./, "preset.");
   const aliases: Record<string, string> = {
@@ -2424,6 +2426,7 @@ export class MariDbService {
   private history: MariDbHistoryEntry[] = [];
   private writeQueue: Promise<unknown> = Promise.resolve();
   private characterFolderMutationQueue: Promise<void> = Promise.resolve();
+  private lorebookFolderMutationQueue: Promise<void> = Promise.resolve();
   // Per-review serialization queue. keepAppliedReview / restoreAppliedReview / rejectRows each do a
   // read-modify-write over pending.get(id) + the durable sidecar across await points; two concurrent
   // requests for the SAME review id would both read the same record and clobber each other on write.
@@ -2513,6 +2516,7 @@ export class MariDbService {
           return this.executePersonalExtensionAction(key.slice("personalextension.".length), envelope, context);
         }
         if (key.startsWith("agent.")) return this.executeAgentAction(key.slice("agent.".length), envelope, context);
+        if (key.startsWith("chat.")) return this.executeChatAction(key.slice("chat.".length), envelope, context);
         if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
         if (key.startsWith("homewidget."))
           return this.executeHomeWidgetAction(key.slice("homewidget.".length), envelope, context);
@@ -2525,7 +2529,7 @@ export class MariDbService {
           mode: "read",
           command,
           error:
-            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, home_widget.*, or instruction.* actions for structured no-shell app-data work.",
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, chat.*, preset.*, home_widget.*, or instruction.* actions for structured no-shell app-data work.",
         };
       };
       // Field-aware bounding keeps a single read response within the workspace
@@ -3380,6 +3384,101 @@ export class MariDbService {
           .slice(0, limit)
           .map(summarizeLorebookRow);
         return { ok: true, mode: "read", command: context.command, output: rows };
+      }
+      case "folder.list": {
+        const lorebookId = requiredString(args, ["lorebookId", "id"], "lorebook id");
+        if (!(await this.getRawById(getMeta("lorebooks"), lorebookId))) {
+          throw new Error(`Lorebook ${lorebookId} not found`);
+        }
+        const rows = (await this.rawRows("lorebook_folders"))
+          .filter((row) => row.lorebookId === lorebookId)
+          .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+          .map((row) => parseRow("lorebook_folders", row));
+        return { ok: true, mode: "read", command: context.command, output: rows };
+      }
+      case "folder.create": {
+        const lorebookId = requiredString(args, ["lorebookId"], "lorebook id");
+        const data = actionDataWithTopLevel(args, ["data", "folder"], ["name", "parentFolderId"]);
+        const name = requiredString(data, ["name"], "folder name");
+        const parentFolderId = firstString(data, ["parentFolderId"]);
+        return this.withLorebookFolderMutationLock(async () => {
+          if (!(await this.getRawById(getMeta("lorebooks"), lorebookId))) {
+            throw new Error(`Lorebook ${lorebookId} not found`);
+          }
+          if (parentFolderId) {
+            const parent = await this.getRawById(getMeta("lorebook_folders"), parentFolderId);
+            if (!parent || parent.lorebookId !== lorebookId) {
+              throw new Error(`Parent folder ${parentFolderId} not found in lorebook ${lorebookId}`);
+            }
+          }
+          const existing = (await this.rawRows("lorebook_folders")).filter((row) => row.lorebookId === lorebookId);
+          const timestamp = now();
+          const id = firstString(args, ["folderId", "id"]) ?? newId();
+          const row: Row = {
+            id,
+            lorebookId,
+            name,
+            enabled: "true",
+            parentFolderId: parentFolderId ?? null,
+            order: existing.reduce((maximum, folder) => Math.max(maximum, Number(folder.order ?? 0)), 0) + 10,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          return this.executeMutation(
+            {
+              kind: "insert",
+              table: "lorebook_folders",
+              id,
+              row,
+              apply: appDataCreateApply(args),
+              cascade: false,
+              reason: firstString(args, ["reason"]) ?? null,
+              cwd: context.cwd,
+            },
+            context.command,
+            context.sessionId,
+          );
+        });
+      }
+      case "libraryfolder.list": {
+        const rows = (await this.rawRows("library_folders"))
+          .filter((row) => row.scope === "lorebooks")
+          .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+          .map((row) => parseRow("library_folders", row));
+        return { ok: true, mode: "read", command: context.command, output: rows };
+      }
+      case "libraryfolder.create": {
+        const data = actionDataWithTopLevel(args, ["data", "folder"], ["name"]);
+        const name = requiredString(data, ["name"], "folder name");
+        return this.withLorebookFolderMutationLock(async () => {
+          const existing = (await this.rawRows("library_folders")).filter((row) => row.scope === "lorebooks");
+          const timestamp = now();
+          const id = firstString(args, ["folderId", "id"]) ?? newId();
+          const row: Row = {
+            id,
+            scope: "lorebooks",
+            name,
+            collapsed: "false",
+            sortOrder: existing.reduce((maximum, folder) => Math.max(maximum, Number(folder.sortOrder ?? -1)), -1) + 1,
+            itemIds: [],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          return this.executeMutation(
+            {
+              kind: "insert",
+              table: "library_folders",
+              id,
+              row,
+              apply: appDataCreateApply(args),
+              cascade: false,
+              reason: firstString(args, ["reason"]) ?? null,
+              cwd: context.cwd,
+            },
+            context.command,
+            context.sessionId,
+          );
+        });
       }
       case "create": {
         const data = actionDataWithTopLevel(
@@ -5195,11 +5294,15 @@ export class MariDbService {
 
     for (const cascade of CASCADES) {
       if (table && table !== cascade.child && table !== cascade.parent) continue;
+      // Refs this cascade declares dangling BY DESIGN (#5405: experience-state rows imported
+      // at an anchor the destination chat never had). See CASCADE_DANGLING_EXEMPT_PREFIXES.
+      const exemptPrefix = CASCADE_DANGLING_EXEMPT_PREFIXES[`${cascade.child}.${cascade.childKey}`];
       const parents = new Set(
         (await getRows(cascade.parent)).map((row) => row[cascade.parentKey]).filter((id) => typeof id === "string"),
       );
       for (const child of await getRows(cascade.child)) {
         const ref = child[cascade.childKey];
+        if (typeof ref === "string" && exemptPrefix && ref.startsWith(exemptPrefix)) continue;
         if (typeof ref === "string" && ref && !parents.has(ref)) {
           issues.push({
             level: "error",
@@ -6518,7 +6621,13 @@ export class MariDbService {
         let selectedMessages: typeof numberedMessages;
         if (last !== null || afterPost !== null) {
           const scopedMessages = last !== null ? numberedMessages.slice(-last) : numberedMessages.slice(afterPost ?? 0);
-          selectedMessages = scopedMessages.slice(offset, limit !== null ? offset + limit : undefined);
+          if (tail) {
+            const offsetMessages =
+              offset > 0 ? scopedMessages.slice(0, Math.max(0, scopedMessages.length - offset)) : scopedMessages;
+            selectedMessages = limit !== null ? offsetMessages.slice(-limit) : offsetMessages;
+          } else {
+            selectedMessages = scopedMessages.slice(offset, limit !== null ? offset + limit : undefined);
+          }
         } else if (tail) {
           const offsetMessages =
             offset > 0 ? numberedMessages.slice(0, Math.max(0, numberedMessages.length - offset)) : numberedMessages;
@@ -6550,6 +6659,52 @@ export class MariDbService {
       default:
         return { ok: false, mode: "read", command: context.command, error: this.chatsHelpText() };
     }
+  }
+
+  private async executeChatAction(
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const argv = [sub];
+    const fieldRead = Boolean(firstString(args, ["field"]));
+    const addFlag = (flag: string, value: unknown) => {
+      if (value === undefined || value === null || value === "") return;
+      argv.push(`--${flag}`, String(value));
+    };
+
+    if (sub === "list") {
+      addFlag("limit", firstNumber(args, ["limit"]));
+      addFlag("character", firstString(args, ["characterId", "character_id"]));
+    } else if (sub === "get") {
+      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+    } else if (sub === "messages") {
+      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+      addFlag("last", firstNumber(args, ["last"]));
+      addFlag("after-post", firstNumber(args, ["afterPost", "after_post"]));
+      const tail = firstBoolean(args, ["tail"]) === true;
+      if (fieldRead && tail) {
+        addFlag("limit", 1);
+      } else if (!fieldRead) {
+        addFlag("limit", firstNumber(args, ["limit"]));
+        addFlag("offset", firstNumber(args, ["offset"]));
+      }
+      if (tail) argv.push("--tail");
+    } else if (sub === "search") {
+      argv.push(requiredString(args, ["query"], "chat search query"));
+      addFlag("limit", firstNumber(args, ["limit"]));
+    }
+
+    const result = await this.executeChatsCommand(argv, context);
+    if (sub !== "messages" || !result.ok || !Array.isArray(result.output)) return result;
+    return {
+      ...result,
+      output: {
+        messages: result.output,
+        returned: result.output.length,
+        offset: fieldRead ? 0 : normalizeOffset(firstNumber(args, ["offset"])),
+      },
+    };
   }
 
   private async executeThemeCommand(
@@ -7420,6 +7575,15 @@ export class MariDbService {
     return run;
   }
 
+  private withLorebookFolderMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.lorebookFolderMutationQueue.then(operation);
+    this.lorebookFolderMutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   // Serialize an operation against all others touching the SAME review id (see reviewLocks). The
   // stored tail never rejects, so a failed operation cannot wedge the id's queue; the next waiter
   // still runs. The tail self-evicts from the map once it is the last holder, so ids do not
@@ -7820,6 +7984,9 @@ export class MariDbService {
       for (const cascade of CASCADES.filter((entry) => entry.child === change.table)) {
         const ref = change.afterRaw?.[cascade.childKey];
         if (typeof ref !== "string" || !ref) continue;
+        // Same by-design exemption the full validate() walk applies (#5405).
+        const exemptPrefix = CASCADE_DANGLING_EXEMPT_PREFIXES[`${cascade.child}.${cascade.childKey}`];
+        if (exemptPrefix && ref.startsWith(exemptPrefix)) continue;
         const parentInsertedOrUpdated = changes.some(
           (entry) =>
             entry.table === cascade.parent && entry.action !== "delete" && entry.afterRaw?.[cascade.parentKey] === ref,

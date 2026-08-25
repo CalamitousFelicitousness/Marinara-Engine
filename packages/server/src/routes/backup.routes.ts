@@ -10,7 +10,7 @@ import type { FileHandle } from "fs/promises";
 import { tmpdir } from "os";
 import { pipeline } from "stream/promises";
 import { StringDecoder } from "string_decoder";
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import { inflateRawSync } from "zlib";
 import AdmZip from "adm-zip";
 import { FILE_BACKED_TABLES } from "../db/file-backed-store.js";
@@ -26,6 +26,8 @@ import { createThemesStorage } from "../services/storage/themes.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import {
   canReparentFolder,
+  isStockMarinaraUniversalPreset,
+  MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
   normalizePersonalExtensionCapabilities,
   type ExportEnvelope,
 } from "@marinara-engine/shared";
@@ -35,7 +37,7 @@ import { normalizeTimestampOverrides } from "../services/import/import-timestamp
 import { flushDB, type DB } from "../db/connection.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { BACKUP_RATE_LIMIT } from "../middleware/rate-limit.js";
-import { assertInsideDir } from "../utils/security.js";
+import { assertInsideDir, safeCompareString } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
 import { crc32Buffer, finishCrc32, updateCrc32State } from "../utils/crc32.js";
 import { ENCRYPTED_WEBHOOK_PREFIX, encryptCustomToolWebhookUrl } from "../utils/custom-tool-webhook.js";
@@ -93,7 +95,6 @@ const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 * 1024 * 1024;
 const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
-const PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT = 8_192;
 const LARGE_STORED_IMAGE_EXTENSIONS = new Set([".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 const LARGE_STORED_VIDEO_EXTENSIONS = new Set([".mov", ".mp4", ".webm"]);
 const PROFILE_IMAGE_ASSET_PREFIXES = [
@@ -141,6 +142,8 @@ const PROFILE_IMPORT_MEMORY_WARNING_BYTES = 512 * 1024 * 1024;
 const PROFILE_EXPORT_JSON_TOO_LARGE_CODE = "PROFILE_EXPORT_JSON_TOO_LARGE";
 const AUTOMATIC_BACKUP_SETTINGS_KEY = "automatic_backup";
 const AUTOMATIC_BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const AUTOMATIC_BACKUP_OMISSION_HISTORY_LIMIT = 1_000;
+const AUTOMATIC_BACKUP_OMISSION_HISTORY_BYTES = 256 * 1024;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP64_EOCD_SIGNATURE = 0x06064b50;
 const ZIP64_EOCD_LOCATOR_SIGNATURE = 0x07064b50;
@@ -165,6 +168,29 @@ type AutomaticBackupSettings = {
   lastOmittedEntries: string[];
 };
 
+export function buildPreparedBackupDownloadUrl(jobId: string, token: string): string {
+  return `/api/backup/download/file/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
+}
+
+export function isPreparedBackupDownloadTokenValid(expected: string, provided: unknown): boolean {
+  return typeof provided === "string" && provided.length > 0 && safeCompareString(provided, expected);
+}
+
+export function limitAutomaticBackupOmissionHistory(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const entries: string[] = [];
+  let bytes = 0;
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const entryBytes = Buffer.byteLength(entry, "utf8");
+    if (bytes + entryBytes > AUTOMATIC_BACKUP_OMISSION_HISTORY_BYTES) break;
+    entries.push(entry);
+    bytes += entryBytes;
+    if (entries.length >= AUTOMATIC_BACKUP_OMISSION_HISTORY_LIMIT) break;
+  }
+  return entries;
+}
+
 function normalizeAutomaticBackupSettings(value: unknown): AutomaticBackupSettings {
   const candidate = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const frequency: AutomaticBackupFrequency =
@@ -175,11 +201,7 @@ function normalizeAutomaticBackupSettings(value: unknown): AutomaticBackupSettin
     retentionCount: normalizeAutomaticBackupRetentionCount(candidate.retentionCount),
     lastBackupAt: typeof candidate.lastBackupAt === "string" ? candidate.lastBackupAt : null,
     lastError: typeof candidate.lastError === "string" ? candidate.lastError : null,
-    lastOmittedEntries: Array.isArray(candidate.lastOmittedEntries)
-      ? candidate.lastOmittedEntries
-          .filter((entry): entry is string => typeof entry === "string")
-          .slice(0, PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT)
-      : [],
+    lastOmittedEntries: limitAutomaticBackupOmissionHistory(candidate.lastOmittedEntries),
   };
 }
 
@@ -738,6 +760,17 @@ export function quarantineProfileThemeRow(row: Record<string, unknown>) {
   return { ...row, isActive: "false" };
 }
 
+export function normalizeProfilePromptPresetRow(
+  row: Record<string, unknown>,
+  localStockPresetId: string | null,
+): Record<string, unknown> {
+  if (localStockPresetId && row.id === localStockPresetId) {
+    return { ...row, systemKey: MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY };
+  }
+  if (!localStockPresetId || row.systemKey !== MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY) return row;
+  return { ...row, systemKey: "" };
+}
+
 // Secret-bearing columns to omit on the conflict-UPDATE path so an existing row
 // keeps its stored secret (the file store leaves an unmentioned column untouched); only
 // the fresh-insert path carries the export's redacted values. For custom_tools the
@@ -1216,6 +1249,8 @@ async function importProfileStorageSnapshot(
     let rollbackFailed = false;
     try {
       await app.db.transaction(async (tx) => {
+        const localStockPresetId =
+          ((await tx.select().from(schema.promptPresets)).find(isStockMarinaraUniversalPreset)?.id as string) ?? null;
         const plannedSnapshot = await planProfileNoodleImport(
           tx,
           snapshot,
@@ -1250,6 +1285,9 @@ async function importProfileStorageSnapshot(
             if (tableName === "custom_tools") cleanRow = quarantineProfileCustomToolRow(cleanRow);
             if (tableName === "mari_instructions") cleanRow = quarantineProfileMariInstructionRow(cleanRow);
             if (tableName === "custom_themes") cleanRow = quarantineProfileThemeRow(cleanRow);
+            if (tableName === "prompt_presets") {
+              cleanRow = normalizeProfilePromptPresetRow(cleanRow, localStockPresetId);
+            }
             const insert = tx.insert(table as any).values(cleanRow as any) as any;
             const conflictTarget = schemaPrimaryKeyColumn(table);
             if (conflictTarget) {
@@ -1896,11 +1934,6 @@ function buildEndOfCentralDirectory(
   zip64RecordOffset: number,
   forceZip64 = false,
 ) {
-  if (entryCount > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
-    throw new ProfileArchiveTooLargeError(
-      `Profile ZIP contains too many entries (${entryCount}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
-    );
-  }
   const usesZip64 =
     forceZip64 ||
     entryCount >= ZIP16_MAX_VALUE ||
@@ -2162,12 +2195,6 @@ async function writeStoredZipArchive(
       const centralHeaderSize = buildCentralDirectoryHeader(result.record).length;
       const nextTotalBytes = totalUncompressedBytes + result.record.size;
       const nextCentralDirectorySize = centralDirectorySizeEstimate + centralHeaderSize;
-      if (records.length + 1 > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
-        await output.truncate(entryStart);
-        throw new ProfileArchiveTooLargeError(
-          `Profile ZIP contains too many entries (${records.length + 1}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
-        );
-      }
       if (nextTotalBytes > totalLimitBytes) {
         const failure = profileArchiveSizeError("Profile ZIP contents", nextTotalBytes, totalLimitBytes);
         await output.truncate(entryStart);
@@ -2447,12 +2474,6 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       eocdSearch,
       eocdOffset,
     );
-    if (totalEntries > PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT) {
-      throw new ProfileImportRequestError(
-        `Profile archive contains too many entries (${totalEntries}, limit ${PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT}).`,
-      );
-    }
-
     if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
       throw new ProfileImportRequestError(
         profileArchiveSizeError(
@@ -3213,6 +3234,7 @@ export async function backupRoutes(app: FastifyInstance) {
     size?: number;
     omittedCount?: number;
     error?: string;
+    downloadToken: string;
   };
   const backupDownloadJobs = new Map<string, BackupDownloadJob>();
   let activeBackupDownloadJobId: string | null = null;
@@ -3257,7 +3279,13 @@ export async function backupRoutes(app: FastifyInstance) {
     }
   };
   const saveAutomaticBackupSettings = (settings: AutomaticBackupSettings) =>
-    automaticBackupStorage.set(AUTOMATIC_BACKUP_SETTINGS_KEY, JSON.stringify(settings));
+    automaticBackupStorage.set(
+      AUTOMATIC_BACKUP_SETTINGS_KEY,
+      JSON.stringify({
+        ...settings,
+        lastOmittedEntries: limitAutomaticBackupOmissionHistory(settings.lastOmittedEntries),
+      }),
+    );
   const automaticBackupResponse = async (settings: AutomaticBackupSettings) => ({
     ...settings,
     nextBackupAt: automaticBackupNextAt(settings),
@@ -3294,9 +3322,13 @@ export async function backupRoutes(app: FastifyInstance) {
       }
       logger.info("[backup] Automatic backup completed; pruned %d expired automatic archive(s)", removedBackups.length);
     } catch (error) {
-      const current = await loadAutomaticBackupSettings();
       const message = getBackupErrorMessage(error, "Automatic backup failed");
-      await saveAutomaticBackupSettings({ ...current, lastError: message });
+      try {
+        const current = await loadAutomaticBackupSettings();
+        await saveAutomaticBackupSettings({ ...current, lastError: message });
+      } catch (settingsError) {
+        logger.error(settingsError, "[backup] Could not persist the automatic backup failure state");
+      }
       logger.error(error, "[backup] Automatic backup failed");
     } finally {
       automaticBackupRunning = false;
@@ -3451,6 +3483,7 @@ export async function backupRoutes(app: FastifyInstance) {
       tempDir,
       archivePath,
       createdAt: Date.now(),
+      downloadToken: randomBytes(32).toString("base64url"),
     };
     backupDownloadJobs.set(jobId, job);
 
@@ -3487,19 +3520,28 @@ export async function backupRoutes(app: FastifyInstance) {
       return reply.send({
         status: job.status,
         filename: `${job.backupName}.zip`,
-        ...(job.status === "ready" ? { size: job.size, omittedCount: job.omittedCount ?? 0 } : {}),
+        ...(job.status === "ready"
+          ? {
+              size: job.size,
+              omittedCount: job.omittedCount ?? 0,
+              downloadUrl: buildPreparedBackupDownloadUrl(req.params.jobId, job.downloadToken),
+            }
+          : {}),
         ...(job.status === "failed" ? { error: job.error ?? "Backup download failed" } : {}),
       });
     },
   );
 
-  app.get<{ Params: { jobId: string } }>(
+  app.get<{ Params: { jobId: string }; Querystring: { token?: string } }>(
     "/download/file/:jobId",
-    { config: { rateLimit: BACKUP_RATE_LIMIT } },
+    { exposeHeadRoute: false, config: { rateLimit: BACKUP_RATE_LIMIT } },
     async (req, reply) => {
-      if (!requirePrivilegedAccess(req, reply, { feature: "Backup download" })) return;
       const jobId = req.params.jobId;
       const job = backupDownloadJobs.get(jobId);
+      const oneTimeCapabilityAuthorized = job
+        ? isPreparedBackupDownloadTokenValid(job.downloadToken, req.query.token)
+        : false;
+      if (!requirePrivilegedAccess(req, reply, { feature: "Backup download", oneTimeCapabilityAuthorized })) return;
       if (!job) return reply.status(404).send({ error: "Backup download job not found or expired" });
       if (job.status === "failed") return reply.status(500).send({ error: job.error ?? "Backup download failed" });
       if (job.status !== "ready" || job.size === undefined) {

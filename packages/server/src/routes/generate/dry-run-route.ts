@@ -27,6 +27,10 @@ import { processLorebooks } from "../../services/lorebook/index.js";
 import { resolveLorebookScopeExclusions } from "../../services/lorebook/game-lorebook-scope.js";
 import { injectAtDepth } from "../../services/lorebook/prompt-injector.js";
 import { createLLMProvider } from "../../services/llm/provider-registry.js";
+import {
+  isMemoryRecallVectorizerAvailable,
+  resolveMemoryRecallEmbeddingSource,
+} from "../../services/memory-recall-embedding.js";
 import { withConnectionAdmissionProvider } from "../../services/generation/connection-admission.js";
 import { getLocalSidecarProvider } from "../../services/llm/local-sidecar.js";
 import {
@@ -40,6 +44,7 @@ import {
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
   resolvePromptMessageMacros,
+  setLorebookEntryCounts,
   type AssemblerInput,
 } from "../../services/prompt/index.js";
 import { cardPromptText } from "../../services/prompt/card-text.js";
@@ -88,7 +93,7 @@ import {
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
   resolveProviderTopK,
-  resolveRoleplayChatSummary,
+  resolveRoleplayChatSummaryForPrompt,
   normalizeServiceTier,
   resolveVisibleGameStateAnchor,
   resolveBaseUrl,
@@ -586,7 +591,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // Pull existing messages, apply the same conversation-start + context limit filtering
     const allChatMessages = await chats.listMessages(chatId);
     const chatMode = (chat.mode as string) ?? "roleplay";
-    const activeChatSummary = resolveRoleplayChatSummary(chatMode, chatMeta);
     const dryRunActiveAgentIds = Array.isArray(chatMeta.activeAgentIds) ? (chatMeta.activeAgentIds as string[]) : [];
     const dryRunChatEnableAgents = shouldEnableAgentsForGeneration({
       chatEnableAgents: chatMeta.enableAgents === true,
@@ -750,6 +754,37 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       mappedMessages = filterPromptMessagesForCharacterAudience(mappedMessages, audienceCharacterIds);
     }
 
+    let summaryEmbeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
+    let summaryVectorizerAvailable = false;
+    if (chatMode === "roleplay" && chatMeta.semanticSummaryRetrievalEnabled === true) {
+      try {
+        summaryEmbeddingSource = await resolveMemoryRecallEmbeddingSource(app.db, {
+          chatMetadata: chatMeta,
+          connectionId: connId,
+          activeConnection: conn,
+          activeBaseUrl: baseUrl,
+        });
+        summaryVectorizerAvailable =
+          summaryEmbeddingSource !== null ||
+          (await isMemoryRecallVectorizerAvailable(app.db, {
+            chatMetadata: chatMeta,
+            connectionId: connId,
+            activeConnection: conn,
+            activeBaseUrl: baseUrl,
+          }));
+      } catch (error) {
+        logger.warn(error, "[dryRun] Roleplay summary embedding setup failed; keeping all summaries in context");
+      }
+    }
+    const activeChatSummary = await resolveRoleplayChatSummaryForPrompt({
+      chatMode,
+      chatMetadata: chatMeta,
+      messages: mappedMessages,
+      excludeMessageIds: regenerateMessageId ? [regenerateMessageId] : undefined,
+      vectorizerAvailable: summaryVectorizerAvailable,
+      embeddingOptions: { embeddingSource: summaryEmbeddingSource },
+    });
+
     // Persona resolution (same strategy as generation; read-only)
     let personaId: string | null = null;
     let personaName = "User";
@@ -847,14 +882,20 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       model: conn.model,
       lastGenerationType: promptLastGenerationType,
       idleDuration: promptIdleDuration,
+      macroSources: [
+        ...mappedMessages.map((message) => message.content),
+        promptParts ? JSON.stringify(promptParts) : "",
+      ],
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
     const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
       messages: T[],
     ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
     const resolvePromptMacros = (value: string) => resolveMacros(value, promptMacroContext);
-    const resolvePromptMacrosForLorebook = (value: string) =>
-      resolveMacrosWithVariableSnapshot(value, promptMacroContext);
+    const resolvePromptMacrosForLorebook = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
+      setLorebookEntryCounts(promptMacroContext, lorebookEntryCounts);
+      return resolveMacrosWithVariableSnapshot(value, promptMacroContext);
+    };
 
     // Apply regex scripts to prompt messages (mirrors main /generate, but stays read-only).
     applyRegexScriptsToPromptMessages(mappedMessages, await regexScriptsStore.list(), {

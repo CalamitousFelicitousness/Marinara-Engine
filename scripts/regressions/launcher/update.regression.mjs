@@ -116,9 +116,29 @@ assert.equal(
 const batchInstallerSource = readFileSync(join(repositoryRoot, "win/installer/install.bat"), "utf8");
 const freshCloneStart = batchInstallerSource.indexOf('set "FRESH_CLONE_CREATED=0"');
 const freshCloneCommand = batchInstallerSource.indexOf("git clone --branch", freshCloneStart);
+const batchCommitPinGuard = batchInstallerSource.indexOf("if not defined MARINARA_RELEASE_COMMIT (");
 const freshCloneAuthorization = batchInstallerSource.indexOf(
   'if not exist "%INSTALL_DIR%\\" set "FRESH_CLONE_CREATED=1"',
   freshCloneStart,
+);
+assert.ok(
+  batchCommitPinGuard >= 0 && batchCommitPinGuard < freshCloneStart,
+  "The standalone batch installer must require an exact release commit before any clone can begin",
+);
+assert.match(
+  batchInstallerSource,
+  /if not defined MARINARA_RELEASE_COMMIT \([\s\S]*goto :fatal[\s\S]*set "RELEASE_COMMIT=%MARINARA_RELEASE_COMMIT%"/u,
+  "The standalone batch installer must stop instead of falling back to an unpinned release tag",
+);
+assert.match(
+  windowsInstallerSource,
+  /!ifndef RELEASE_COMMIT\s+!error "RELEASE_COMMIT must pin the exact release commit"\s+!endif\s+!if "\$\{RELEASE_COMMIT\}" == ""\s+!error "RELEASE_COMMIT must not be empty"\s+!endif/u,
+  "Manual NSIS builds must fail unless RELEASE_COMMIT is a non-empty pin",
+);
+assert.doesNotMatch(
+  windowsInstallerSource,
+  /!define RELEASE_COMMIT ""/u,
+  "The NSIS installer must not fall back to an unpinned release tag",
 );
 assert.ok(
   freshCloneStart >= 0 && freshCloneAuthorization >= freshCloneStart && freshCloneAuthorization < freshCloneCommand,
@@ -131,7 +151,7 @@ assert.equal(
 );
 assert.match(
   batchInstallerSource,
-  /if not defined NEW_HEAD \(\s+call :discard_unverified_fresh_clone[\s\S]*if defined RELEASE_COMMIT[^\n]+\(\s+set "RECEIVED_HEAD=[^\n]+\s+call :discard_unverified_fresh_clone/u,
+  /if not defined NEW_HEAD \(\s+call :discard_unverified_fresh_clone[\s\S]*if \/I not "!NEW_HEAD!"=="%RELEASE_COMMIT%" \(\s+set "RECEIVED_HEAD=[^\n]+\s+call :discard_unverified_fresh_clone/u,
   "The batch installer must discard an unverified fresh clone before either verification failure exits",
 );
 assert.match(

@@ -14,20 +14,18 @@ let app: { close(): Promise<void>; inject(options: Record<string, unknown>): Pro
 
 try {
   const { buildApp } = await import("../../packages/server/src/app.js");
-  const { createCapabilityPersistenceHost } = await import(
-    "../../packages/server/src/services/capability-packages/capability-persistence.service.js"
-  );
+  const { createCapabilityPersistenceHost } =
+    await import("../../packages/server/src/services/capability-packages/capability-persistence.service.js");
   const { getDB } = await import("../../packages/server/src/db/connection.js");
-  const { createGameEngineStateStorage } = await import(
-    "../../packages/server/src/services/storage/game-engine-state.storage.js"
-  );
+  const { createGameEngineStateStorage } =
+    await import("../../packages/server/src/services/storage/game-engine-state.storage.js");
 
   app = await buildApp();
   await app.ready();
   const db = await getDB();
   const engineStore = createGameEngineStateStorage(db);
 
-  const create = async (name: string, mode: "conversation" | "roleplay" = "roleplay") => {
+  const create = async (name: string, mode: "conversation" | "roleplay" | "game" = "roleplay") => {
     const response = await app!.inject({
       method: "POST",
       url: "/api/chats",
@@ -36,11 +34,11 @@ try {
     assert.equal(response.statusCode, 200);
     return response.json();
   };
-  const addMessage = async (chatId: string, content: string) => {
+  const addMessage = async (chatId: string, content: string, role: "user" | "assistant" = "user") => {
     const response = await app!.inject({
       method: "POST",
       url: `/api/chats/${chatId}/messages`,
-      payload: { role: "user", content },
+      payload: { role, content },
     });
     assert.equal(response.statusCode, 200);
     return response.json();
@@ -104,6 +102,90 @@ try {
   assert.equal(emptyBranch.metadata.branchParentChatId, empty.id);
   assert.equal(emptyBranch.metadata.branchParentMessageId, null);
   assert.equal(emptyBranch.metadata.branchMessageId, null);
+
+  const chatStorage = (await import("../../packages/server/src/services/storage/chats.storage.js")).createChatsStorage(
+    db,
+  );
+  const game = await create("Branch-scoped GM state", "game");
+  const keptGameMessage = await addMessage(game.id, '[widget: clues, add: "First clue"]', "assistant");
+  const omittedGameMessage = await addMessage(game.id, '[widget: clues, add: "Future clue"]', "assistant");
+  await chatStorage.updateMetadata(game.id, {
+    gameBlueprint: {
+      hudWidgets: [
+        {
+          id: "clues",
+          type: "list",
+          label: "Clues",
+          position: "hud_left",
+          config: { items: [] },
+        },
+      ],
+    },
+    gameWidgetState: [
+      {
+        id: "clues",
+        type: "list",
+        label: "Clues",
+        position: "hud_left",
+        config: { items: ["First clue", "Future clue"] },
+      },
+    ],
+    gameJournal: {
+      entries: [
+        {
+          timestamp: keptGameMessage.createdAt,
+          type: "location",
+          title: "Discovered: Old Hall",
+          content: "The first path.",
+          sourceMessageId: keptGameMessage.id,
+        },
+        {
+          timestamp: omittedGameMessage.createdAt,
+          type: "location",
+          title: "Discovered: Future Vault",
+          content: "The abandoned path.",
+          sourceMessageId: omittedGameMessage.id,
+        },
+      ],
+      quests: [],
+      locations: ["Old Hall", "Future Vault"],
+      npcLog: [],
+      inventoryLog: [],
+    },
+  });
+  const gameBranchResponse = await app.inject({
+    method: "POST",
+    url: `/api/chats/${game.id}/branch`,
+    payload: { upToMessageId: keptGameMessage.id },
+  });
+  assert.equal(gameBranchResponse.statusCode, 200);
+  const gameBranch = gameBranchResponse.json();
+  assert.deepEqual(gameBranch.metadata.gameJournal.locations, ["Old Hall"]);
+  assert.deepEqual(
+    gameBranch.metadata.gameJournal.entries.map((entry: { title: string }) => entry.title),
+    ["Discovered: Old Hall"],
+  );
+  assert.deepEqual(gameBranch.metadata.gameWidgetState[0].config.items, ["First clue"]);
+  const gameBranchMessagesResponse = await app.inject({
+    method: "GET",
+    url: `/api/chats/${gameBranch.id}/messages`,
+  });
+  assert.equal(gameBranchMessagesResponse.statusCode, 200);
+  const gameBranchMessages = gameBranchMessagesResponse.json();
+  assert.equal(gameBranch.metadata.gameJournal.entries[0].sourceMessageId, gameBranchMessages[0].id);
+  await addMessage(gameBranch.id, "future branch path", "assistant");
+  const nestedGameBranchResponse = await app.inject({
+    method: "POST",
+    url: `/api/chats/${gameBranch.id}/branch`,
+    payload: { upToMessageId: gameBranchMessages[0].id },
+  });
+  assert.equal(nestedGameBranchResponse.statusCode, 200);
+  const nestedGameBranch = nestedGameBranchResponse.json();
+  assert.deepEqual(
+    nestedGameBranch.metadata.gameJournal.entries.map((entry: { title: string }) => entry.title),
+    ["Discovered: Old Hall"],
+    "Journal entries must survive branching from a branch",
+  );
 
   const persistence = createCapabilityPersistenceHost(db);
   const listed = await persistence.listChats();
@@ -291,6 +373,55 @@ try {
     assert.equal(key in exportedMetadata, false);
     assert.equal(key in exportedMetadata.marinara_metadata, false);
   }
+
+  const exportGame = await create("Visible narration export", "game");
+  const editedExportMessage = await addMessage(
+    exportGame.id,
+    "Narration: Original first segment.\n\nNarration: Removed second segment.",
+    "assistant",
+  );
+  await app.inject({
+    method: "POST",
+    url: `/api/chats/${exportGame.id}/messages/${editedExportMessage.id}/swipes`,
+    payload: {
+      content: "Narration: Alternate first segment.\n\nNarration: Removed alternate segment.",
+      silent: true,
+    },
+  });
+  const deletedExportMessage = await addMessage(exportGame.id, "Narration: Entirely removed message.", "assistant");
+  const segmentMetadata = {
+    [`segmentEdit:${editedExportMessage.id}:0`]: { content: "Visible edited segment." },
+    [`segmentDelete:${editedExportMessage.id}:1`]: true,
+    [`segmentDelete:${deletedExportMessage.id}:0`]: true,
+  };
+  const exportMetadataResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${exportGame.id}/metadata`,
+    payload: segmentMetadata,
+  });
+  assert.equal(exportMetadataResponse.statusCode, 200);
+
+  const gameJsonlExport = await app.inject({
+    method: "GET",
+    url: `/api/chats/${exportGame.id}/export?format=jsonl`,
+  });
+  assert.equal(gameJsonlExport.statusCode, 200);
+  const gameJsonlLines = gameJsonlExport.body.split("\n").map((line: string) => JSON.parse(line));
+  assert.equal(gameJsonlLines.length, 2, "an entirely deleted Game message must be omitted from JSONL");
+  assert.equal(gameJsonlLines[1].mes, "Visible edited segment.");
+  assert.deepEqual(gameJsonlLines[1].swipes, ["Visible edited segment.", "Visible edited segment."]);
+  for (const key of Object.keys(segmentMetadata)) {
+    assert.equal(key in gameJsonlLines[0].chat_metadata, false);
+    assert.equal(key in gameJsonlLines[0].chat_metadata.marinara_metadata, false);
+  }
+
+  const gameTextExport = await app.inject({
+    method: "GET",
+    url: `/api/chats/${exportGame.id}/export?format=text`,
+  });
+  assert.equal(gameTextExport.statusCode, 200);
+  assert.match(gameTextExport.body, /Visible edited segment\./u);
+  assert.doesNotMatch(gameTextExport.body, /Removed second segment|Entirely removed message/u);
 
   const malformed = await create("Malformed metadata");
   const malformedMetadataResponse = await app.inject({

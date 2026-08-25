@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 13 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 14 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,20 +140,20 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.13/,
+    /requires capability API 2\.0; this Engine supports 1\.14/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 13 },
+    capabilityApi: { major: 1, minor: 14 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 14 },
+    capabilityApi: { major: 1, minor: 15 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.14; this Engine supports 1\.13/,
+    /requires capability API 1\.15; this Engine supports 1\.14/,
   );
 
   const forwardCompatibleCatalog = capabilityCatalogSchema.parse({
@@ -551,6 +551,10 @@ try {
   const stagingCatalogUrl = resolveCapabilityCatalogUrl("development", "", "staging");
   const activeCatalogUrl = resolveCapabilityCatalogUrl();
   let requestedCatalogUrl: string | URL | undefined;
+  // The explicit null preview URL keeps this block pinning the PUBLISHED catalog
+  // selection: run from a `staging` checkout the preview overlay fetch would
+  // otherwise land second and overwrite requestedCatalogUrl. Overlay behaviour
+  // has its own coverage in capability-preview-overlay.regression.ts.
   const normalizedCatalog = await capabilityPackageManager.catalog(async (url) => {
     requestedCatalogUrl = url;
     return new Response(
@@ -561,7 +565,7 @@ try {
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
-  });
+  }, null);
   assert.equal(
     requestedCatalogUrl,
     activeCatalogUrl,
@@ -1438,6 +1442,21 @@ try {
   assert.equal(rollbackChatBefore.name, "Capability persistence rollback fixture");
   assert.deepEqual(rollbackChatBefore.characterIds, []);
   assert.equal(rollbackChatBefore.connectionId, null);
+  const namedBranchChat = await chatsStore.create({
+    name: "Capability branch parent fallback",
+    mode: "roleplay",
+    characterIds: [],
+  });
+  assert.ok(namedBranchChat);
+  await chatsStore.patchMetadata(namedBranchChat.id, {
+    branchName: "NPC_First Kiss",
+    branchParentChatId: rollbackChat.id,
+  });
+  const capabilityBranchChat = await persistence.getChat(namedBranchChat.id);
+  assert.ok(capabilityBranchChat);
+  assert.equal(capabilityBranchChat.name, "NPC_First Kiss");
+  assert.equal(capabilityBranchChat.branch?.title, "NPC_First Kiss");
+  assert.equal(capabilityBranchChat.branch?.parentChatId, rollbackChat.id);
   const gameStates = createGameStateStorage(db);
   const gameStateBase = {
     chatId: rollbackChat.id,

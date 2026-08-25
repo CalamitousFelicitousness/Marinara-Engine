@@ -10,12 +10,18 @@ const roleplayPanels = readSource("packages/client/src/components/chat/RoleplayH
 const chatHelp = readSource("packages/client/src/components/chat/ChatHelpOverlay.tsx");
 const chatSidebar = readSource("packages/client/src/components/layout/ChatSidebar.tsx");
 const branchSelector = readSource("packages/client/src/components/chat/ChatBranchSelector.tsx");
+const cardLibrary = readSource("packages/client/src/components/characters/CharacterLibraryView.tsx");
+const agentCatalog = readSource("packages/client/src/components/agents/AgentCatalogView.tsx");
 const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
 const inventoryPanel = readSource(
   "packages/client/src/features/tracker-panel/components/sections/InventoryTrackerPanel.tsx",
 );
 const sectionControls = readSource(
   "packages/client/src/features/tracker-panel/components/controls/SectionControls.tsx",
+);
+const trackerDataSidebar = readSource("packages/client/src/features/tracker-panel/components/TrackerDataSidebar.tsx");
+const questTrackerPanel = readSource(
+  "packages/client/src/features/tracker-panel/components/sections/quest-tracker/QuestTrackerPanel.tsx",
 );
 const globals = readSource("packages/client/src/styles/globals.css");
 
@@ -75,10 +81,15 @@ assert.match(
   /total > 0 \? \([\s\S]*tabular-nums[\s\S]*\) : \([\s\S]*<Backpack/u,
   "the Inventory launcher must show only the item count after inventory is populated",
 );
-assert.equal(
-  (roleplayHud.match(/mari-chrome-accent-icon mari-accent-animated/g) ?? []).length >= 4,
-  true,
-  "Tracker Panel, Inventory, and both World State launcher states must use the animated chat accent token",
+assert.doesNotMatch(
+  roleplayHud,
+  /<(?:TrackerPanelIcon|Backpack|MapPin)[^>]*mari-chrome-accent-icon/u,
+  "built-in tracker launchers must inherit the shared toolbar resting color",
+);
+assert.match(
+  roleplayHud,
+  /<span className="contents \[&_button>svg\]:!text-inherit">[\s\S]*<CapabilityElement/u,
+  "downloadable tracker icons must inherit the same shared toolbar color",
 );
 assert.match(
   roleplayHud,
@@ -95,6 +106,11 @@ assert.doesNotMatch(
   /(?:Characters|Quests|Custom)\s*\{[^}]*\.length/u,
   "mobile tracker headings must not append item counts",
 );
+assert.doesNotMatch(
+  roleplayPanels,
+  /ui\.panels\.characterspanel\.characters/u,
+  "the mobile Characters heading must not reuse the library count-prefix label",
+);
 assert.match(
   inventoryPanel,
   /mari-rgb-static-icon block text-current/u,
@@ -102,8 +118,8 @@ assert.match(
 );
 assert.match(
   globals,
-  /\.mari-chrome-tag\s*\{\s*border-radius: 999px;/u,
-  "shared tags must retain the character-tag pill shape",
+  /\.mari-chrome-muted-badge[\s\S]*border-radius: 0\.625rem;[\s\S]*\.mari-chrome-tag\s*\{\s*border-radius: 0\.625rem;/u,
+  "shared tags and badges must use the compact search-tag corner radius",
 );
 assert.doesNotMatch(
   chatSidebar,
@@ -116,9 +132,34 @@ assert.match(
   "toolbar branch counts must use the same shared badge shape",
 );
 assert.match(
+  cardLibrary,
+  /card\.tags\.slice\(0, 2\)\.map[\s\S]*mari-chrome-tag/u,
+  "character and persona library tags must use the shared compact tag shape",
+);
+assert.match(
+  agentCatalog,
+  /selected\.manifest\.kind[\s\S]*mari-chrome-tag[\s\S]*packageModes\(selected\.manifest\.id\)[\s\S]*mari-chrome-tag/u,
+  "agent kind and mode tags must use the shared compact tag shape",
+);
+assert.match(
   sectionControls,
   /export const TRACKER_SECTION_SHELL_CLASS/u,
   "Tracker Panel sections must share one themed shell class",
+);
+assert.match(
+  trackerDataSidebar,
+  /TRACKER_SECTION_SHELL_CLASS, "mari-tracker-capability-section"[\s\S]*TrackerReadabilityVeil strength="strong"[\s\S]*<CapabilityElement/u,
+  "downloadable tracker sections must use the same shell and readability veil as built-in sections",
+);
+assert.doesNotMatch(
+  questTrackerPanel,
+  /radial-gradient|QUEST_PANEL_TEXTURE_CLASS/u,
+  "Quest Board must inherit the shared square panel texture instead of adding dots",
+);
+assert.match(
+  globals,
+  /\.mari-tracker-capability-section :is\(\.mn-tracker, \.bh-tracker-launch\)[\s\S]*border-bottom: 0;[\s\S]*\.mn-tracker-title, \.bh-tracker-launch__title[\s\S]*--tracker-panel-font-scale/u,
+  "Memory Nag and Beholder must inherit shared section dividers, backgrounds, and constrained typography",
 );
 assert.match(
   agentSettingsControls,

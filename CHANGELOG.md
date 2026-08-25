@@ -42,6 +42,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Matched character, persona, and agent tags plus chat branch counts to the shared compact search-tag shape instead of capsule badges.
+- Unified Quest Board, Memory Nag, and Beholder surfaces, separators, and responsive typography with the rest of the Roleplay Tracker Panel.
+- Unified inactive Roleplay tracker toolbar icons at the shared muted chroma strength and removed the stray count punctuation from the mobile Characters heading.
 - Download Agents now shows each package's supported chat modes directly in the mobile catalog list, while mobile shell panels cap malformed browser safe-area values so Android Firefox cannot hide the bottom of the list behind a large empty inset (#5507).
 - Roleplay group chats now retain their response controls and generation behavior when only one character is enabled, while Sequential generation skips every disabled character (#5501, #5502).
 - Game narration now restores choices after rewinding or switching swipes, scopes saved narration progress to the active swipe, and restarts safely when a saved cursor exceeds the available segments (#5474).

@@ -1677,14 +1677,75 @@ export function workspaceMutationSignature(command: Pick<WorkspaceCommandCall, "
     .digest("hex");
 }
 
+// JS \b treats German umlauts (ä/ö/ü) and ß as non-word characters, so a plain \b fails right at the
+// edge of umlaut-initial/umlaut-final German verbs (e.g. "\bändern\b" never matches "ändern" after a
+// space). Build the localized alternation with explicit Unicode-letter boundary lookarounds instead.
+function localizedIntentWords(words: string[]): string {
+  return `(?<![\\p{L}\\p{N}_])(?:${words.join("|")})(?![\\p{L}\\p{N}_])`;
+}
+
 const MUTATION_INTENT_PATTERNS: Record<WorkspaceMutationCategory, RegExp> = {
-  create: /\b(?:add|build|create|generate|import|make|remember|save|write)\b/iu,
-  update:
-    /\b(?:add|address|adjust|apply|assign|build|change|create|delete|disable|edit|enable|ensure|fix|generate|handle|implement|link|make|modify|remove|rename|replace|reword|save|set|tweak|unlink|update|write)\b/iu,
-  delete: /\b(?:delete|erase|forget|remove|uninstall)\b/iu,
-  move: /\b(?:move|place|put|relocate|reorder)\b/iu,
-  copy: /\b(?:clone|copy|duplicate)\b/iu,
-  install: /\b(?:add|install|update|upgrade)\b/iu,
+  create: new RegExp(
+    `\\b(?:add|build|create|generate|import|make|remember|save|write)\\b|${localizedIntentWords([
+      "erstelle(?:n|st)?",
+      "erstell",
+      "anlege(?:n|st)?",
+      "generiere(?:n|st)?",
+      "importiere(?:n|st)?",
+      "hinzufüge(?:n|st)?",
+      "mache(?:n|st)?",
+      "speichere(?:n|st)?",
+      "schreibe(?:n|st)?",
+      "merke(?:n|st)?",
+    ])}`,
+    "iu",
+  ),
+  update: new RegExp(
+    "\\b(?:add|address|adjust|apply|assign|build|change|create|delete|disable|edit|enable|ensure|fix|generate|handle|implement|link|make|modify|remove|rename|replace|reword|save|set|tweak|unlink|update|write)\\b|" +
+      localizedIntentWords([
+        "änder(?:e|n|st)?",
+        "anpasse(?:n|st)?",
+        "aktualisiere(?:n|st)?",
+        "bearbeite(?:n|st)?",
+        "behebe(?:n|st)?",
+        "repariere(?:n|st)?",
+        "ergänze(?:n|st)?",
+        "korrigiere(?:n|st)?",
+        "(?:um)?benenne(?:n|st)?",
+        "ersetze(?:n|st)?",
+        "setze(?:n|st)?",
+        "aktiviere(?:n|st)?",
+        "deaktiviere(?:n|st)?",
+        "verlinke(?:n|st)?",
+        "verknüpfe(?:n|st)?",
+      ]),
+    "iu",
+  ),
+  delete: new RegExp(
+    `\\b(?:delete|erase|forget|remove|uninstall)\\b|${localizedIntentWords([
+      "lösche(?:n|st)?",
+      "entferne(?:n|st)?",
+      "vergisst?",
+      "vergessen",
+    ])}`,
+    "iu",
+  ),
+  move: new RegExp(
+    `\\b(?:move|place|put|relocate|reorder)\\b|${localizedIntentWords([
+      "verschiebe(?:n|st)?",
+      "bewege(?:n|st)?",
+      "platziere(?:n|st)?",
+    ])}`,
+    "iu",
+  ),
+  copy: new RegExp(
+    `\\b(?:clone|copy|duplicate)\\b|${localizedIntentWords(["kopiere(?:n|st)?", "dupliziere(?:n|st)?", "klone(?:n|st)?"])}`,
+    "iu",
+  ),
+  install: new RegExp(
+    `\\b(?:add|install|update|upgrade)\\b|${localizedIntentWords(["installiere(?:n|st)?", "aktualisiere(?:n|st)?"])}`,
+    "iu",
+  ),
 };
 
 const INFORMATIONAL_REQUEST_START =
@@ -1693,6 +1754,11 @@ const DIRECT_MUTATION_AFTER_INFORMATION =
   /(?:[.!?]\s*|\b(?:and|also|then)\s+)(?:please\s+)?(?:add|apply|build|change|copy|create|delete|edit|fix|generate|implement|install|make|modify|move|remove|rename|replace|save|set|update|write)\b/iu;
 const MUTATION_DENIAL =
   /\b(?:do\s+not|don't|never|no\s+changes?|read[- ]only|without\s+(?:changing|editing|saving|writing))\b/iu;
+// A pasted document (character/persona card, transcript) can be far longer than any real user
+// instruction; only its leading and trailing edges are checked for a denial phrase to avoid
+// incidental narrative words (e.g. "never") deep inside the pasted body.
+const DENIAL_CHECK_LONG_MESSAGE_THRESHOLD = 500;
+const DENIAL_CHECK_WINDOW = 220;
 const LOCALIZED_SHORT_MUTATION_DENIAL =
   /^(?:no|nope|нет|не\s+соглас(?:ен|на)|отмена|nie|nie\s+zgadzam\s+się|anuluj|nein|abbrechen|non|annuler|não|cancelar|いいえ|しない|キャンセル|아니요|취소|لا|إلغاء|नहीं|रद्द|不要|取消)[,.!؟。\s]*$/iu;
 const SHORT_MUTATION_CONFIRMATION =
@@ -1812,7 +1878,21 @@ export function workspaceMutationAuthorizationIssue(
 
   const directUserText = normalizeAuthorizationText(context.directUserText);
   const authorization = normalizeAuthorizationText(command.authorization ?? "");
-  if (MUTATION_DENIAL.test(directUserText) || LOCALIZED_SHORT_MUTATION_DENIAL.test(directUserText)) {
+  // Pasted character/persona cards routinely embed quoted example dialogue (e.g. "Don't tell me
+  // it's nothing.") and plain narrative sentences (e.g. "Juli should never feel like a quest
+  // objective.") that read as a denial phrase out of context. Neither belongs to the user's own
+  // instruction, which realistically sits at the very start or end of a message around a bulk
+  // paste, so long messages are only checked at their edges; short messages are checked in full.
+  // The anchored localized-short-reply check still runs on the untouched text since it only ever
+  // matches when the *entire* message is one short denial word.
+  const denialCheckText = (
+    directUserText.length <= DENIAL_CHECK_LONG_MESSAGE_THRESHOLD
+      ? directUserText
+      : `${directUserText.slice(0, DENIAL_CHECK_WINDOW)} ${directUserText.slice(-DENIAL_CHECK_WINDOW)}`
+  )
+    .replace(/"[^"]*"/gu, " ")
+    .replace(/“[^”]*”/gu, " ");
+  if (MUTATION_DENIAL.test(denialCheckText) || LOCALIZED_SHORT_MUTATION_DENIAL.test(directUserText)) {
     return "Mutation blocked before execution: the active user message explicitly requests no workspace changes.";
   }
 
@@ -1845,10 +1925,20 @@ export function workspaceMutationAuthorizationIssue(
   // sometimes omit or paraphrase it, so fall back to the direct user message that
   // the server already separated from attachments and fetched content.
   const authorizationSource = authorization && directUserText.includes(authorization) ? authorization : directUserText;
-  const genericAuthorization = GENERIC_MUTATION_AUTHORIZATION.test(authorizationSource);
+  // A generic "I authorize/approve" phrase only narrows scope when it is a genuine model-quoted
+  // excerpt distinct from the raw message. Without this guard, the word "authorized" appearing
+  // anywhere inside a long pasted document (e.g. a character card's backstory) falls back to the
+  // full message and makes every unrelated action verb in that document look like a conflicting
+  // explicit request.
+  const genericAuthorization =
+    authorizationSource !== directUserText && GENERIC_MUTATION_AUTHORIZATION.test(authorizationSource);
+  // Once generic-authorization detection is settled, always resolve the working scope from the full
+  // active user turn rather than the (possibly too-narrow) model-quoted excerpt. A model can quote a
+  // valid but incomplete substring — e.g. just the character's name — that never contains the verb
+  // that actually justifies the mutation, which must not block a request the user clearly authorized.
   const authorizationScope = genericAuthorization
     ? directUserText.replace(GENERIC_MUTATION_AUTHORIZATION_CLAUSE, "").trim()
-    : authorizationSource;
+    : directUserText;
   const lorebookEntrySplit = authorizesLorebookEntrySplit(authorizationScope, commandEntity, category);
   if (
     INFORMATIONAL_REQUEST_START.test(authorizationScope) &&

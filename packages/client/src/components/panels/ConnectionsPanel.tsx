@@ -416,9 +416,13 @@ function SidecarCard() {
       )}
     >
       <div
-        className={cn("flex items-center gap-2.5", !isDownloaded && "cursor-pointer")}
+        className="flex cursor-pointer items-center gap-2.5"
         onClick={() => {
-          if (!isDownloaded) setExpanded(true);
+          // Header click toggles in every state. Gating this on the model not
+          // being downloaded left the card body — including the tracker
+          // assignment button — reachable only through the small chevron for
+          // exactly the users who have the model installed (#5538).
+          setExpanded((current) => !current);
         }}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm">

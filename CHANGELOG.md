@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Connections panel's Local Model card now expands and collapses from a header click in every state, so the tracker assignment action is no longer reachable only through the chevron once the model is downloaded (#5538).
+
 ## [2.4.4]
 
 ### Added

@@ -81,5 +81,9 @@ export default defineConfig({
       name: "mobile-chromium",
       use: { ...devices["Pixel 7"], baseURL: mobileBaseURL, viewport: { width: 390, height: 844 } },
     },
+    {
+      name: "mobile-webkit",
+      use: { ...devices["iPhone 15 Pro"], baseURL: mobileBaseURL },
+    },
   ],
 });

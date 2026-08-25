@@ -4,8 +4,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+## [2.4.4]
+
 ### Added
 
+- Hosted release validation now runs the complete Node regression suite and covers desktop Chromium, Android-sized Chromium, and iPhone-sized WebKit independently on pull requests and staging pushes (#5518, #5520).
 - Download Agents can now filter the existing Writer, Tracker, and Misc sections by Conversation, Roleplay, or Game support, and a Discovery Desk recommendation opens its exact Agent instead of the catalog's first entry (#5494, #5500).
 - Game HUD widgets now expose their unique model-facing ID for editing after creation (#5477).
 - Professor Mari's structured `app_data` helper can now list, search, inspect, and read bounded message ranges from chats without falling back to raw database commands (#5476).
@@ -42,6 +45,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Download Agents mode tags now keep identical dimensions when selected, and the installed Agents sidebar reuses the same filters below New Folder for Conversation, Roleplay, and Game Agents (#5523).
+- Help overlays now align compact desktop highlights exactly with their toolbar controls at responsive widths and keep mobile toolbar controls visible while people inspect highlighted sections (#5521).
 - Fixed the open-issues regression lane crashing at import time because a directly loaded client utility used the browser-only `@/lib` path alias (#5516).
 - Official release workflows now reject tags that do not match the canonical app version, avoid retaining checkout write credentials, and run CodeQL for both staging and main-targeted pull requests (#5510).
 - Matched character, persona, and agent tags plus chat branch counts to the shared compact search-tag shape instead of capsule badges.

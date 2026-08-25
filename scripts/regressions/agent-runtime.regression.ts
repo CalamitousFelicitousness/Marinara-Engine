@@ -103,6 +103,7 @@ const EXPECTED_AGENT_RESULT_TYPE_VALUES = [
   "director_event",
   "lorebook_update",
   "character_card_update",
+  "character_card_create",
   "background_change",
   "character_tracker_update",
   "persona_stats_update",
@@ -122,6 +123,7 @@ const EXPECTED_AGENT_RESULT_TYPE_VALUES = [
   "character_activity_update",
   "frontend_theme_update",
   "about_me_update",
+  "memory_nag",
 ] as const;
 
 assert.deepEqual(

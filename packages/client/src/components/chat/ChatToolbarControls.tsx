@@ -258,6 +258,7 @@ export function ChatToolbarMenu({
     if (!open) return;
     const handle = (event: MouseEvent) => {
       const target = event.target as Node;
+      if (target instanceof Element && target.closest("[data-chat-help-overlay]")) return;
       if (target instanceof Element && target.closest(`[data-chat-branch-popover],${CHAT_FLOATING_PANEL_SELECTOR}`)) {
         return;
       }

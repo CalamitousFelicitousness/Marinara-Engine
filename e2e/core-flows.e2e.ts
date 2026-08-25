@@ -7220,6 +7220,54 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         module.useChatStore.getState().setActiveChatId(nextChatId);
       }, chatId);
     };
+    const expectDesktopToolbarHighlightsAligned = async (overlay: Locator) => {
+      const toolbarTargetIds = [
+        "help",
+        "branches",
+        "summary",
+        "context",
+        "author-notes",
+        "gallery",
+        "connected-chat",
+        "search",
+        "settings",
+        "retry",
+        "session",
+        "volume",
+        "assets",
+      ];
+      for (const targetId of toolbarTargetIds) {
+        const source = page.locator(`[data-chat-help="${targetId}"]`).filter({ visible: true }).first();
+        const highlight = overlay.locator(`[data-chat-help-highlight="${targetId}"]`);
+        if ((await source.count()) === 0) continue;
+        await expect(highlight).toBeVisible();
+        const sourceBox = await source.boundingBox();
+        const highlightBox = await highlight.boundingBox();
+        expect(sourceBox).not.toBeNull();
+        expect(highlightBox).not.toBeNull();
+        expect(sourceBox!.width, `${targetId} control width`).toBeCloseTo(32, 0);
+        expect(sourceBox!.height, `${targetId} control height`).toBeCloseTo(32, 0);
+        expect(Math.abs(highlightBox!.x - sourceBox!.x), `${targetId} highlight left edge`).toBeLessThanOrEqual(1);
+        expect(Math.abs(highlightBox!.y - sourceBox!.y), `${targetId} highlight top edge`).toBeLessThanOrEqual(1);
+        expect(Math.abs(highlightBox!.width - sourceBox!.width), `${targetId} highlight width`).toBeLessThanOrEqual(1);
+        expect(Math.abs(highlightBox!.height - sourceBox!.height), `${targetId} highlight height`).toBeLessThanOrEqual(
+          1,
+        );
+      }
+    };
+    const openHelp = async (mode: "conversation" | "roleplay" | "game") => {
+      let helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
+      if ((await helpButton.count()) === 0) {
+        const overflowName = mode === "game" ? "Game actions" : "More options";
+        await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
+        helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
+      }
+      await expect(helpButton).toHaveCount(1);
+      await helpButton.click();
+      const overlay = page.locator(`[data-chat-help-overlay="${mode}"]`);
+      await expect(overlay).toBeVisible();
+      return overlay;
+    };
 
     for (const [index, chat] of chats.entries()) {
       if (index > 0) await setActiveChat(chat.id);
@@ -7342,10 +7390,14 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await keyboardTarget.focus();
         await page.keyboard.press("Enter");
         await expect(overlay.locator('[data-chat-help-mobile-detail="branches"]')).toBeVisible();
+        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
         await overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`).click();
         const detail = overlay.locator(`[data-chat-help-mobile-detail="${messageTarget}"]`);
         await expect(detail).toBeVisible();
         await expect(detail.locator(`[data-chat-help-action-legend="${chat.mode}"]`)).toBeVisible();
+        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="branches"]')).toBeVisible();
+        await expect(overlay.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
         await overlay
           .getByRole("button", {
             name: "Tap a section you want to learn more about or this button to exit the help overlay.",
@@ -7353,6 +7405,8 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
           })
           .click();
       } else {
+        await expectDesktopToolbarHighlightsAligned(overlay);
+
         const legend = overlay.locator("[data-chat-help-legend]");
         const legendBox = await legend.boundingBox();
         expect(legendBox).not.toBeNull();
@@ -7389,6 +7443,17 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await overlay.dispatchEvent("pointerdown");
       }
       await expect(overlay).toHaveCount(0);
+      if (!mobile) {
+        for (const width of [1100, 1720]) {
+          await page.setViewportSize({ width, height: 900 });
+          await expect(page.locator(`[data-chat-mode="${chat.mode}"]`)).toBeVisible();
+          const responsiveOverlay = await openHelp(chat.mode);
+          await expectDesktopToolbarHighlightsAligned(responsiveOverlay);
+          await responsiveOverlay.dispatchEvent("pointerdown");
+          await expect(responsiveOverlay).toHaveCount(0);
+        }
+        await page.setViewportSize({ width: 1440, height: 900 });
+      }
     }
   } finally {
     const cleanupResponses = await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));

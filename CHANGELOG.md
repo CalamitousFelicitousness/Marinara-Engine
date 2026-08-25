@@ -6,12 +6,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Manual and tracker Agent reruns now prepare and validate downloadable capability Agent runtime context, so Memory Nag receives real vault candidates before choosing a memory (#5531).
 - Capability-package agents now publish post-processing results only after package validation, and package-defined built-ins can request a compact context instead of inheriting every lore source, so rejected or distracted tracker output cannot reach the browser as successful data (#5525).
 
 ## [2.4.4]
 
 ### Added
 
+- The in-app What's New notice now presents the complete v2.4.4 release story with inline Help, Memory Nag, and Roleplay thinking media (#5528).
 - Hosted release validation now runs the complete Node regression suite and covers desktop Chromium, Android-sized Chromium, and iPhone-sized WebKit independently on pull requests and staging pushes (#5518, #5520).
 - Download Agents can now filter the existing Writer, Tracker, and Misc sections by Conversation, Roleplay, or Game support, and a Discovery Desk recommendation opens its exact Agent instead of the catalog's first entry (#5494, #5500).
 - Game HUD widgets now expose their unique model-facing ID for editing after creation (#5477).

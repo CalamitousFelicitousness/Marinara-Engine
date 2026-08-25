@@ -254,7 +254,7 @@
   );
   --marinara-chat-chrome-accent: var(--marinara-app-accent-solid);
   --marinara-chat-chrome-accent-gradient: var(--marinara-app-accent-gradient);
-  --marinara-chat-chrome-text: var(--foreground);
+  --marinara-chat-chrome-text: var(--card-foreground);
   --marinara-chat-chrome-button-text-base: var(--marinara-chat-chrome-accent);
   --marinara-chat-chrome-highlight-text-base: var(--marinara-chat-chrome-accent);
   --marinara-chat-chrome-surface-bg: var(--card);
@@ -1419,7 +1419,7 @@
 .mari-settings-panel-chrome {
   --accent: var(--marinara-chat-chrome-highlight-bg);
   --accent-foreground: var(--marinara-chat-chrome-highlight-text);
-  --foreground: var(--marinara-chat-chrome-panel-title);
+  --foreground: var(--marinara-chat-chrome-text);
   --muted-foreground: var(--marinara-chat-chrome-panel-muted);
   --sidebar-accent: var(--marinara-chat-chrome-highlight-bg);
   --sidebar-accent-foreground: var(--marinara-chat-chrome-panel-title);

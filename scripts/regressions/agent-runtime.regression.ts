@@ -222,6 +222,77 @@ const arrayJsonResult = await executeAgent(
 assert.equal(arrayJsonResult.success, false, "structured agent output must be a JSON object, not an array");
 assert.equal(arrayJsonProvider.calls, 2, "array-shaped JSON should retain the existing single retry");
 
+// #5537: with reasoning_format "none" a local runtime leaves thinking inline in
+// content; JSON extraction must strip the leading block instead of failing.
+const inlineThinkingProvider = new RecordingProvider('<think>the user wants weather</think>\n{"weather":"rain"}');
+const inlineThinkingResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  inlineThinkingProvider,
+  "agent-model",
+);
+assert.equal(inlineThinkingResult.success, true, "a leading thinking block must not fail JSON agents");
+assert.equal(inlineThinkingProvider.calls, 1, "thinking-prefixed JSON should parse without a retry");
+assert.deepEqual(inlineThinkingResult.data, { weather: "rain" });
+
+// A fenced payload INSIDE the thinking block must not win the fence heuristic.
+const fencedThinkingProvider = new RecordingProvider(
+  '<think>draft: ```json\n{"weather":"draft"}\n```</think>\n{"weather":"final"}',
+);
+const fencedThinkingResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  fencedThinkingProvider,
+  "agent-model",
+);
+assert.equal(fencedThinkingResult.success, true);
+assert.deepEqual(fencedThinkingResult.data, { weather: "final" }, "the payload after the thinking block must win");
+
+// #5537: Gemma 4's <|"|> string delimiters parse in the tool-call path and must
+// parse in the agent JSON path too.
+const gemmaDelimiterProvider = new RecordingProvider('{<|"|>weather<|"|>: <|"|>rain<|"|>}');
+const gemmaDelimiterResult = await executeAgent(
+  makeAgent("world-state", "game_state_update"),
+  context,
+  gemmaDelimiterProvider,
+  "agent-model",
+);
+assert.equal(gemmaDelimiterResult.success, true, "Gemma 4 string delimiters must not fail JSON agents");
+assert.equal(gemmaDelimiterProvider.calls, 1);
+assert.deepEqual(gemmaDelimiterResult.data, { weather: "rain" });
+
+// #5537: JSON agents on the local sidecar are grammar-constrained via
+// response_format json_object; other connections keep prompt-only behavior.
+const sidecarFormatProvider = new RecordingProvider('{"weather":"rain"}');
+await executeAgent(
+  { ...makeAgent("world-state", "game_state_update"), connectionId: "__local_sidecar__" },
+  context,
+  sidecarFormatProvider,
+  "local-sidecar",
+);
+assert.deepEqual(
+  sidecarFormatProvider.options[0]?.responseFormat,
+  { type: "json_object" },
+  "sidecar JSON agents must request grammar-constrained output",
+);
+
+const remoteFormatProvider = new RecordingProvider('{"weather":"rain"}');
+await executeAgent(makeAgent("world-state", "game_state_update"), context, remoteFormatProvider, "agent-model");
+assert.equal(
+  remoteFormatProvider.options[0]?.responseFormat,
+  undefined,
+  "non-sidecar agents must not gain a response format",
+);
+
+// Text-result agents must stay unconstrained even on the sidecar.
+const sidecarTextProvider = new RecordingProvider("plain prose");
+await executeAgent(makeAgent("custom", "context_injection"), context, sidecarTextProvider, "local-sidecar");
+assert.equal(
+  sidecarTextProvider.options[0]?.responseFormat,
+  undefined,
+  "text agents on the sidecar must not be JSON-constrained",
+);
+
 const toolJsonProvider = new RecordingProvider('{"weather":"rain"}');
 await executeAgent(
   {

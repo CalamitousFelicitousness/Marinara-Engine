@@ -32,11 +32,14 @@ import {
   flattenAgentConditionalMacros,
   normalizeRpgStatPools,
   resolveMacros,
+  extractLeadingThinkingBlocks,
   type CustomAgentContextSources,
 } from "@marinara-engine/shared";
 import { getAgentCallTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { repairJsonText } from "../../lib/json-repair.js";
+import { LOCAL_SIDECAR_MODEL } from "../llm/local-sidecar.js";
+import { normalizeGemma4Delimiters } from "../llm/textual-tool-call-parser.js";
 import { wrapContent } from "../prompt/format-engine.js";
 import { sanitizePromptLeaf } from "../prompt/prompt-escaping.js";
 import { settleAgentJobsWithConcurrencyLimit } from "./agent-concurrency.js";
@@ -772,6 +775,7 @@ export async function executeAgent(
     const streamResponses = context.streaming !== false;
     const customParameters = agentCustomParameters(config);
     const reasoningOverride = jsonAgentReasoningOverride(config);
+    const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
 
     // If tools are available, use the tool call loop.
     // `await` so a rethrow from the tool loop is caught by this function's
@@ -837,6 +841,7 @@ export async function executeAgent(
       customParameters,
       enabledParameters: config.enabledParameters,
       ...reasoningOverride,
+      ...responseFormatOverride,
       suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       onToken: streamResponses
@@ -888,6 +893,7 @@ export async function executeAgent(
         customParameters,
         enabledParameters: config.enabledParameters,
         ...reasoningOverride,
+        ...responseFormatOverride,
         suppressModelParameters: config.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
@@ -1099,6 +1105,7 @@ async function executeAgentWithTools(
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
   const customParameters = agentCustomParameters(config);
+  const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
   // Fresh per-call so AGENT_CALL_TIMEOUT_MS caps each LLM call, not the whole
   // tool loop; earlier rounds must not eat a later round's budget.
   const nextCallSignal = () =>
@@ -1125,6 +1132,9 @@ async function executeAgentWithTools(
       customParameters,
       enabledParameters: config.enabledParameters,
       ...reasoningOverride,
+      // No responseFormat on tool rounds: a JSON grammar would constrain the
+      // completion before the model can emit its tool-call tokens. The final
+      // no-tools round below carries it instead.
       suppressModelParameters: config.suppressModelParameters,
       stream: streamResponses,
       tools: toolContext.tools,
@@ -1218,6 +1228,7 @@ async function executeAgentWithTools(
     customParameters,
     enabledParameters: config.enabledParameters,
     ...reasoningOverride,
+    ...responseFormatOverride,
     suppressModelParameters: config.suppressModelParameters,
     stream: streamResponses,
     signal: nextCallSignal(),
@@ -1369,6 +1380,9 @@ export async function executeAgentBatch(
   const temperature = resolveAgentTemperature(configs[0]!);
   const customParameters = agentCustomParameters(configs[0]!);
   const reasoningOverride = jsonResponseReasoningOverride(configs[0]!.enabledParameters);
+  // A batch response is always one JSON map keyed by agent name, so on the
+  // sidecar the whole call is grammar-constrained regardless of member types.
+  const responseFormatOverride = localSidecarJsonResponseFormat(model);
   const enableCaching = configs[0]!.enableCaching;
   const anthropicExtendedCacheTtl = configs[0]!.anthropicExtendedCacheTtl;
   const cachingAtDepth = configs[0]!.cachingAtDepth;
@@ -1451,6 +1465,7 @@ export async function executeAgentBatch(
         customParameters,
         enabledParameters: configs[0]!.enabledParameters,
         ...reasoningOverride,
+        ...responseFormatOverride,
         suppressModelParameters: configs[0]!.suppressModelParameters,
         stream: streamResponses,
         onToken: streamResponses
@@ -3260,6 +3275,35 @@ function jsonAgentReasoningOverride(
   return jsonResponseReasoningOverride(config.enabledParameters);
 }
 
+type JsonResponseFormatOverride = { responseFormat?: { type: "json_object" } };
+
+/**
+ * Grammar-constrain JSON agent responses on the local sidecar (#5537).
+ *
+ * Agents ask for JSON by prompt alone, which leaves them exposed to anything
+ * the model puts in front of the payload — most recently inline thinking after
+ * reasoning_format:"none" started shipping on sidecar requests. llama.cpp's
+ * json_object mode constrains generation itself, so the parse cannot be
+ * poisoned. Scoped to the sidecar model: it is the runtime we ship and the
+ * one guaranteed to support the parameter, while remote providers keep their
+ * existing prompt-only behavior. The MLX backend strips responseFormat in
+ * LocalSidecarProvider, so this is safe on both sidecar backends. Note that
+ * a set responseFormat also switches the sidecar to greedy sampling, which is
+ * the desired decoding for machine-readable output.
+ */
+function localSidecarJsonResponseFormat(model: string): JsonResponseFormatOverride {
+  if (model !== LOCAL_SIDECAR_MODEL) return {};
+  return { responseFormat: { type: "json_object" } };
+}
+
+function jsonAgentResponseFormatOverride(
+  config: Pick<AgentExecConfig, "type" | "settings">,
+  model: string,
+): JsonResponseFormatOverride {
+  if (!agentResponseIsJson(config)) return {};
+  return localSidecarJsonResponseFormat(model);
+}
+
 function agentResponseIsJson(config: Pick<AgentExecConfig, "type" | "settings">): boolean {
   if (config.type === "html") return true;
   const resultType = resolveAgentResultType(config);
@@ -3343,6 +3387,15 @@ function parseAgentResponse(
 
 /** Extract JSON from a response that may contain markdown fences. */
 function extractJson(text: string): string {
+  // Strip leading thinking blocks BEFORE the fence match: with
+  // reasoning_format "none" a local runtime leaves thinking inline in content,
+  // and a fenced block inside the thinking region would win the fence regex
+  // and poison every downstream heuristic (#5537). Only leading blocks are
+  // stripped, which matches the observed `<think>…</think>\n{json}` shape.
+  text = extractLeadingThinkingBlocks(text).content;
+  // Gemma 4 emits <|"|>…<|"|> string delimiters; the tool-call parser already
+  // tolerates them, so the agent JSON path must too.
+  if (text.includes('<|"|>')) text = normalizeGemma4Delimiters(text);
   const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)(?:\n?```|$)/i);
   if (fenceMatch) {
     text = fenceMatch[1]!.trim();

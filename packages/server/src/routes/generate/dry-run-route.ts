@@ -44,6 +44,7 @@ import {
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
   resolvePromptMessageMacros,
+  setLorebookEntryCounts,
   type AssemblerInput,
 } from "../../services/prompt/index.js";
 import { cardPromptText } from "../../services/prompt/card-text.js";
@@ -881,14 +882,20 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       model: conn.model,
       lastGenerationType: promptLastGenerationType,
       idleDuration: promptIdleDuration,
+      macroSources: [
+        ...mappedMessages.map((message) => message.content),
+        promptParts ? JSON.stringify(promptParts) : "",
+      ],
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
     const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
       messages: T[],
     ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
     const resolvePromptMacros = (value: string) => resolveMacros(value, promptMacroContext);
-    const resolvePromptMacrosForLorebook = (value: string) =>
-      resolveMacrosWithVariableSnapshot(value, promptMacroContext);
+    const resolvePromptMacrosForLorebook = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
+      setLorebookEntryCounts(promptMacroContext, lorebookEntryCounts);
+      return resolveMacrosWithVariableSnapshot(value, promptMacroContext);
+    };
 
     // Apply regex scripts to prompt messages (mirrors main /generate, but stays read-only).
     applyRegexScriptsToPromptMessages(mappedMessages, await regexScriptsStore.list(), {

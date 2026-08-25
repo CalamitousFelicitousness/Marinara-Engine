@@ -290,6 +290,7 @@ import {
   extractPersonaReferenceIds,
   MAX_REFERENCED_CHARACTERS,
   normalizeChatMacroVariables,
+  setLorebookEntryCounts,
 } from "../../packages/server/src/services/prompt/macro-context.js";
 import { assemblePrompt } from "../../packages/server/src/services/prompt/assembler.js";
 import { resolveRunPodComfyUiTimeoutSeconds } from "../../packages/server/src/services/image/runpod-comfyui.service.js";
@@ -630,6 +631,7 @@ const copiedSupportDiagnostics = formatSupportDiagnostics({
   build: "2.4.2+abcdef123456",
   commit: "abcdef123456",
   serverOs: "Linux 6.8.0 (x64)",
+  serverMemory: { heapUsedMiB: 768, heapLimitMiB: 1536, rssMiB: 1024 },
   clientOs: "macOS 15.6",
   browser: "Marinara test shell",
   gpu: "Test GPU",
@@ -642,6 +644,7 @@ for (const expectedLine of [
   "Build: 2.4.2+abcdef123456",
   "Commit: abcdef123456",
   "Server OS: Linux 6.8.0 (x64)",
+  "Server memory: heap 768 / 1536 MiB; RSS 1024 MiB",
   "Client OS: macOS 15.6",
   "Browser / app shell: Marinara test shell",
   "GPU: Test GPU",
@@ -1567,6 +1570,46 @@ try {
       content: "REFERENCED_PERSONA_LOREBOOK_MEMORY",
       keys: ["cafe"],
     }),
+  );
+  const countOnlyReferencedCharacter = await characterStorage.create(
+    characterDataSchema.parse({
+      name: "Count-only character reference",
+      description: `This card can see ${"{{"}lorebooksize::${hiddenCharacterLorebook.id}}} saved memory.`,
+    }),
+  );
+  const countOnlyReferencedPersona = await characterStorage.createPersona(
+    "Count-only Persona reference",
+    `This Persona can see ${"{{"}lorebooksize::${hiddenPersonaLorebook.id}}} saved memory.`,
+  );
+  assert.ok(countOnlyReferencedPersona);
+  const countOnlyCharacterContext = await buildReferencedCharacterContext({
+    db,
+    activeCharacterIds: [],
+    sources: [`{{${countOnlyReferencedCharacter.id}}}`],
+    chatMessages: [],
+    macroCtx: { user: "Mari", char: "Character", characters: [], variables: {} },
+    wrapFormat: "xml",
+    chatId: "count-only-character-reference",
+    includeLorebooks: false,
+  });
+  assert.match(
+    countOnlyCharacterContext.content,
+    /This card can see 1 saved memory\./u,
+    "referenced Character fields must load lorebook counts without an attached lorebook scan",
+  );
+  const countOnlyPersonaContext = await buildReferencedPersonaContext({
+    db,
+    sources: [`{{persona-${countOnlyReferencedPersona.id}}}`],
+    chatMessages: [],
+    macroCtx: { user: "Mari", char: "Character", characters: [], variables: {} },
+    wrapFormat: "xml",
+    chatId: "count-only-persona-reference",
+    includeLorebooks: false,
+  });
+  assert.match(
+    countOnlyPersonaContext.content,
+    /This Persona can see 1 saved memory\./u,
+    "referenced Persona fields must load lorebook counts without an attached lorebook scan",
   );
   assert.equal(
     (await lorebookStorage.list()).some((book) => book.id === hiddenCharacterLorebook.id),
@@ -5027,12 +5070,11 @@ const termuxLauncher = readFileSync(new URL("../../start-termux.sh", import.meta
 assert.doesNotMatch(termuxLauncher, /run_pnpm install --force/u);
 assert.match(termuxLauncher, /run_pnpm store prune/u);
 assert.match(termuxLauncher, /TERMUX_REBUILD_REQUIRED/u);
-assert.match(termuxLauncher, /--max-old-space-size=1024/u);
 assert.doesNotMatch(termuxLauncher, /--max-old-space-size=2048/u);
 assert.match(
   termuxLauncher,
-  /has_explicit_node_heap_limit\(\)[\s\S]*NODE_OPTIONS_VALUE[\s\S]*const heapOption = \/\^--max[\s\S]*if ! has_explicit_node_heap_limit; then[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=1024"/u,
-  "Termux must parse complete heap-option tokens before applying its safe default",
+  /has_explicit_node_heap_limit\(\)[\s\S]*NODE_OPTIONS_VALUE[\s\S]*const heapOption = \/\^--max[\s\S]*resolve_default_node_heap_mb\(\)[\s\S]*heap_mb=1024[\s\S]*heap_mb=1536[\s\S]*if ! has_explicit_node_heap_limit; then[\s\S]*--max-old-space-size=\$\{MARINARA_TERMUX_HEAP_MB\}/u,
+  "Termux must parse complete heap-option tokens before applying its bounded profile-aware default",
 );
 for (const buildEntry of [
   "packages/shared/dist/constants/defaults.js",
@@ -5922,6 +5964,14 @@ const backupRoutesSource = readFileSync(
   new URL("../../packages/server/src/routes/backup.routes.ts", import.meta.url),
   "utf8",
 );
+const promptMacroContextSource = readFileSync(
+  new URL("../../packages/server/src/services/prompt/macro-context.ts", import.meta.url),
+  "utf8",
+);
+const lorebookServiceSource = readFileSync(
+  new URL("../../packages/server/src/services/lorebook/index.ts", import.meta.url),
+  "utf8",
+);
 const serverAppSource = readFileSync(new URL("../../packages/server/src/app.ts", import.meta.url), "utf8");
 const gameTypesSource = readFileSync(new URL("../../packages/shared/src/types/game.ts", import.meta.url), "utf8");
 const backupGuideSource = readFileSync(new URL("../../docs/data/backup-and-restore.md", import.meta.url), "utf8");
@@ -6166,10 +6216,14 @@ assert.equal(
 );
 assert.match(gameJournalSource, /data-game-journal-scroll/u);
 assert.match(gameJournalSource, /\/game\/\$\{chatId\}\/journal\/entries\/\$\{editingEntry\.index\}/u);
-assert.match(gameJournalSource, /<TimelineView entries=\{visibleEntries\} onEdit=\{beginEditingEntry\}/u);
+assert.match(
+  gameJournalSource,
+  /<TimelineView\s+entries=\{visibleEntries\}\s+onEdit=\{beginEditingEntry\}/u,
+  "Game Journal must keep edit controls connected after JSX formatting changes",
+);
 assert.match(
   gameNarrationSource,
-  /const narrationKey = latestAssistant \? `\$\{latestAssistant\.id\}:\$\{latestAssistant\.activeSwipeIndex\}` : null/u,
+  /const narrationKey = latestAssistant \? `\$\{latestAssistant\.id\}:\$\{latestAssistant\.activeSwipeIndex \?\? 0\}` : null/u,
   "Game rerolls must reset narration when the saved swipe changes on the same message",
 );
 assert.match(gameAudioSource, /audio\.onended = \(\) => \{[\s\S]*remainingPlays -= 1/u);
@@ -6292,11 +6346,39 @@ assert.match(
   backupRoutesSource,
   /lastOmittedEntries: limitAutomaticBackupOmissionHistory\(settings\.lastOmittedEntries\)/u,
 );
+assert.match(
+  promptMacroContextSource,
+  /macroSources\.some\(\(source\) => \/\\\{\\\{\\s\*lorebooksize::\/iu\.test\(source\)\)[\s\S]*countAllEntriesByLorebook/u,
+  "prompt macro contexts must only scan lorebook counts when a source uses lorebooksize",
+);
+const staleLorebookCountContext = {
+  user: "Mari",
+  char: "Character",
+  characters: ["Character"],
+  variables: {},
+  lorebookEntryCounts: { stale: 4 },
+};
+setLorebookEntryCounts(staleLorebookCountContext, undefined);
+assert.deepEqual(
+  staleLorebookCountContext.lorebookEntryCounts,
+  {},
+  "an omitted lorebook count snapshot must clear stale values",
+);
+assert.match(
+  lorebookServiceSource,
+  /allEntries\.some\(\(entry\) => \/\\\{\\\{\\s\*lorebooksize::\/iu\.test\(entry\.content\)\)[\s\S]*countAllEntriesByLorebook/u,
+  "lorebook scans must only count all entries when relevant content uses lorebooksize",
+);
 assert.match(serverAppSource, /const clientIndex = resolve\(clientDist, "index\.html"\)/u);
 assert.match(serverAppSource, /if \(existsSync\(clientIndex\)\)/u);
 assert.match(
   backupRoutesSource,
   /if \(automaticBackupRunning\) return;\s*automaticBackupRunning = true;\s*try \{\s*const settings = await loadAutomaticBackupSettings\(\);/u,
+);
+assert.match(
+  backupRoutesSource,
+  /catch \(error\) \{\s*const message = getBackupErrorMessage[\s\S]*try \{[\s\S]*await saveAutomaticBackupSettings[\s\S]*catch \(settingsError\)[\s\S]*Could not persist the automatic backup failure state/u,
+  "automatic-backup error reporting must not reject when its settings write also fails",
 );
 assert.match(
   backupRoutesSource,
@@ -7024,7 +7106,7 @@ const projectionState = {
   ...useUIStore.getState(),
   enterToSendGame: false,
   enterToSendProfessorMari: false,
-  gameTutorialDisabled: true,
+  chatHelpSeenModes: ["game"] as ChatMode[],
 };
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
@@ -7036,10 +7118,10 @@ assert.equal(
   false,
   "Professor Mari's Send on Enter preference must be server-synced",
 );
-assert.equal(
-  pickSyncedSettings(projectionState).gameTutorialDisabled,
-  true,
-  "The tutorial dismissal must be server-synced",
+assert.deepEqual(
+  pickSyncedSettings(projectionState).chatHelpSeenModes,
+  ["game"],
+  "The chat-help seen modes must be server-synced",
 );
 const localProjection = useUIStore.persist.getOptions().partialize(projectionState) as Record<string, unknown>;
 const syncedSettingsMissingFromLocalPersistence = Object.keys(pickSyncedSettings(projectionState)).filter(
@@ -7050,7 +7132,7 @@ assert.deepEqual(
   [],
   "Every server-synced setting must also be browser-local persisted",
 );
-assert.equal(localProjection.gameTutorialDisabled, true, "The tutorial dismissal must be browser-local persisted");
+assert.deepEqual(localProjection.chatHelpSeenModes, ["game"], "Chat-help seen modes must be browser-local persisted");
 assert.match(chatAreaPromptReviewSource, /MEDIA_PROMPT_PREVIEW_TIMEOUT_MS/);
 assert.match(chatAreaPromptReviewSource, /confirmRoleplayVideoPromptReview/);
 assert.match(chatAreaPromptReviewSource, /confirmConversationSelfiePromptReview/);
@@ -8309,7 +8391,7 @@ assert.equal(
 );
 assert.match(
   summaryPopoverSource,
-  /rows=\{5\}[\s\S]{0,500}className="h-28 w-full resize-none/u,
+  /rows=\{5\}[\s\S]{0,500}className="mari-chrome-field h-28 resize-none/u,
   "The Combine prompt editor must stay compact enough to match the Chat Summary view",
 );
 const promptSettingsPersistSource = summaryPopoverSource.slice(
@@ -8331,12 +8413,12 @@ const summaryPromptControlsSource = summaryPopoverSource.slice(
 );
 assert.equal(
   summaryPromptControlsSource.match(/disabled=\{promptSettingsSaveLocked\}/gu)?.length,
-  9,
+  8,
   "Every prompt option, template row, and open template editor control must use the save lock",
 );
 assert.equal(
   summaryPromptControlsSource.match(/disabled=\{!globalPromptSettingsReady \|\| promptSettingsSaveLocked\}/gu)?.length,
-  3,
+  2,
   "Every prompt-level action must use the save lock",
 );
 assert.match(
@@ -8814,8 +8896,13 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   );
   assert.match(
     chatSettingsSource,
-    /role="checkbox"[\s\S]{0,100}aria-checked=\{effectiveValue\}/u,
+    /<SettingsSwitch[\s\S]{0,220}checked=\{effectiveValue\}/u,
     "Memory Recall must expose its switch state to assistive technology",
+  );
+  assert.match(
+    notificationSettingsSource,
+    /export function SettingsSwitch[\s\S]*?<input[\s\S]{0,180}type="checkbox"[\s\S]{0,100}checked=\{checked\}/u,
+    "The shared settings switch must expose a native checkbox",
   );
   assert.match(
     chatSettingsSource,
@@ -9392,16 +9479,16 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     /Add the Agent|Chat Settings|Tracker Agents/iu,
     "The World Maps settings summary must not repeat installation guidance",
   );
-  const gameWorldMapsSettingsBranch = sourceBetween(
+  const standaloneRoleplayAgentSettings = sourceBetween(
     chatSettingsSource,
-    'if (agent.id === "hierarchical-maps" && mapsPackage) {',
-    'if (agent.id === "long-term-memory" && ltmPackage) {',
-    "Game World Maps settings branch",
+    "const renderStandaloneRoleplayAgentSettingsCard =",
+    "const updateAgentPromptTemplateSelection =",
+    "Standalone Roleplay agent settings renderer",
   );
   assert.match(
-    gameWorldMapsSettingsBranch,
-    /<AgentSettingsCard[\s\S]*?description=\{worldMapsSettingsDescription\}[\s\S]*?<CapabilityElement/u,
-    "Game Chat Settings must omit package-installation guidance from the expanded World Maps card",
+    standaloneRoleplayAgentSettings,
+    /agent\.id === "hierarchical-maps"[\s\S]*?<CapabilityElement[\s\S]*?<AgentSettingsCard[\s\S]*?agent\.id === "hierarchical-maps"[\s\S]*?worldMapsSettingsDescription/u,
+    "Standalone Roleplay World Maps settings must use the concise feature summary",
   );
   const roleplayActiveAgentCards = sourceBetween(
     chatSettingsSource,
@@ -9817,7 +9904,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   assert.equal(
     (
       settingsDrawerSource.match(
-        /packageId=\{ltmPackage\.id\}[\s\S]*?className="(?:mt-2 )?block overflow-hidden rounded-lg"/gu,
+        /packageId=\{ltmPackage\.id\}[\s\S]*?className="block overflow-hidden(?: rounded-lg)?"/gu,
       ) ?? []
     ).length,
     3,
@@ -9927,13 +10014,16 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     /for \(const result of results\) \{\s*if \(abortController\.signal\.aborted\) return;[\s\S]{0,500}sendSseEvent\(reply, \{\s*type: "agent_result"/u,
     "Forced retries must stop emitting results as soon as their shared abort signal fires",
   );
-  for (const phase of ["persistRetryResults", "applyRetryResultEffects"]) {
-    assert.match(
-      retryAgentsRouteSource,
-      new RegExp(`if \\(abortController\\.signal\\.aborted\\) return;\\s*await ${phase}\\(`, "u"),
-      `Forced retries must check cancellation immediately before ${phase}`,
-    );
-  }
+  assert.match(
+    retryAgentsRouteSource,
+    /if \(abortController\.signal\.aborted\) return;\s*await persistRetryResults\(/u,
+    "Forced retries must check cancellation immediately before persistRetryResults",
+  );
+  assert.match(
+    retryAgentsRouteSource,
+    /if \(abortController\.signal\.aborted\) return;[\s\S]{0,140}await applyRetryResultEffects\(\{/u,
+    "Forced retries must check cancellation before applyRetryResultEffects",
+  );
   assert.match(
     retryAgentsRouteSource,
     /if \(abortController\.signal\.aborted\) return;\s*sendSseEvent\(reply, \{ type: "done"/u,

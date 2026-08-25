@@ -44,6 +44,7 @@ type CatalogMode = "conversation" | "roleplay" | "game";
 type CatalogModeFilter = "all" | CatalogMode;
 
 const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> = Object.freeze({
+  beholder: ["roleplay"],
   "card-evolution-auditor": ["roleplay"],
   continuity: ["roleplay"],
   "knowledge-retrieval": ["roleplay"],
@@ -57,6 +58,7 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "memory-nag": ["roleplay"],
   "long-term-memory": ["conversation", "roleplay", "game"],
   expression: ["roleplay"],
+  "gacha-forge": ["conversation", "roleplay", "game"],
   "hierarchical-maps": ["roleplay", "game"],
   "persona-stats": ["roleplay"],
   quest: ["roleplay"],
@@ -73,6 +75,7 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   html: ["roleplay"],
   "lorebook-keeper": ["roleplay", "game"],
   noodle: ["conversation", "roleplay", "game"],
+  slurp: ["conversation", "roleplay", "game"],
   spotify: ["conversation", "roleplay", "game"],
   poker: ["conversation"],
   "rock-paper-scissors": ["conversation"],
@@ -80,19 +83,19 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   uno: ["conversation"],
 });
 
-const MODE_BADGES: Record<CatalogMode, { label: string; className: string }> = {
+const MODE_BADGES: Record<CatalogMode, { labelKey: string; className: string }> = {
   conversation: {
-    label: "Conversation",
+    labelKey: "ui.agents.agentcatalogview.conversationMode",
     className:
       "border-[color-mix(in_srgb,var(--mari-logo-cyan)_55%,var(--border))] bg-[color-mix(in_srgb,var(--mari-logo-cyan)_18%,transparent)]",
   },
   roleplay: {
-    label: "Roleplay",
+    labelKey: "ui.agents.agentcatalogview.roleplayMode",
     className:
       "border-[color-mix(in_srgb,var(--mari-logo-orange)_55%,var(--border))] bg-[color-mix(in_srgb,var(--mari-logo-orange)_18%,transparent)]",
   },
   game: {
-    label: "Game",
+    labelKey: "ui.agents.agentcatalogview.gameMode",
     className:
       "border-[color-mix(in_srgb,var(--mari-logo-pink)_55%,var(--border))] bg-[color-mix(in_srgb,var(--mari-logo-pink)_18%,transparent)]",
   },
@@ -163,13 +166,13 @@ export function AgentCatalogView() {
             manifest.id,
             category,
             ...manifest.kind.map(kindLabel),
-            ...packageModes(manifest.id).map((mode) => MODE_BADGES[mode].label),
+            ...packageModes(manifest.id).map((mode) => localizeUi(MODE_BADGES[mode].labelKey)),
           ]
             .join(" ")
             .toLowerCase()
             .includes(needle)),
     );
-  }, [catalog.data, modeFilter, query]);
+  }, [catalog.data, localizeUi, modeFilter, query]);
   const packageGroups = useMemo(
     () => [
       {
@@ -586,6 +589,7 @@ export function AgentCatalogView() {
                               <div className="space-y-1">
                                 {entries.map((entry) => {
                                   const active = entry.manifest.id === selected?.manifest.id;
+                                  const modes = packageModes(entry.manifest.id);
                                   return (
                                     <button
                                       key={entry.manifest.id}
@@ -621,6 +625,21 @@ export function AgentCatalogView() {
                                         <span className="mt-0.5 line-clamp-2 text-xs text-[var(--muted-foreground)]">
                                           {entry.manifest.description}
                                         </span>
+                                        {modes.length > 0 && (
+                                          <span data-agent-catalog-mode-badges className="mt-1 flex flex-wrap gap-1">
+                                            {modes.map((mode) => (
+                                              <span
+                                                key={mode}
+                                                className={cn(
+                                                  "rounded-md border px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--foreground)]",
+                                                  MODE_BADGES[mode].className,
+                                                )}
+                                              >
+                                                {localizeUi(MODE_BADGES[mode].labelKey)}
+                                              </span>
+                                            ))}
+                                          </span>
+                                        )}
                                       </span>
                                     </button>
                                   );
@@ -683,7 +702,7 @@ export function AgentCatalogView() {
                           MODE_BADGES[mode].className,
                         )}
                       >
-                        {MODE_BADGES[mode].label}
+                        {localizeUi(MODE_BADGES[mode].labelKey)}
                       </span>
                     ))}
                   </div>

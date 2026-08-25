@@ -41,6 +41,7 @@ const CATEGORY_SECTIONS = [
 ] as const;
 
 type CatalogMode = "conversation" | "roleplay" | "game";
+type CatalogModeFilter = "all" | CatalogMode;
 
 const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> = Object.freeze({
   "card-evolution-auditor": ["roleplay"],
@@ -54,6 +55,7 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "custom-tracker": ["roleplay"],
   "inventory-tracker": ["roleplay"],
   "memory-nag": ["roleplay"],
+  "long-term-memory": ["conversation", "roleplay", "game"],
   expression: ["roleplay"],
   "hierarchical-maps": ["roleplay", "game"],
   "persona-stats": ["roleplay"],
@@ -65,7 +67,7 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "conversation-calls": ["conversation"],
   cyoa: ["roleplay"],
   "echo-chamber": ["roleplay"],
-  haptic: ["conversation", "roleplay"],
+  haptic: ["conversation", "roleplay", "game"],
   illustrator: ["conversation", "roleplay", "game"],
   storyboard: ["roleplay", "game"],
   html: ["roleplay"],
@@ -132,6 +134,7 @@ function packageModes(packageId: string): readonly CatalogMode[] {
 export function AgentCatalogView() {
   const { t: localizeUi } = useUiTranslation();
   const closeAgentCatalog = useUIStore((state) => state.closeAgentCatalog);
+  const initialPackageId = useUIStore((state) => state.agentCatalogInitialPackageId);
   const catalog = useCapabilityCatalog();
   const installed = useInstalledCapabilityPackages();
   const install = useInstallCapabilityPackage();
@@ -140,30 +143,33 @@ export function AgentCatalogView() {
   const uninstallAll = useUninstallAllCapabilityPackages();
   const customRepositories = useCustomAgentRepositories();
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mobileDetail, setMobileDetail] = useState(false);
+  const [modeFilter, setModeFilter] = useState<CatalogModeFilter>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(initialPackageId);
+  const [mobileDetail, setMobileDetail] = useState(Boolean(initialPackageId));
   const [bulkProgress, setBulkProgress] = useState<BulkActionProgress | null>(null);
   const [customRepositoriesOpen, setCustomRepositoriesOpen] = useState(false);
+  const hasActiveFilters = Boolean(query.trim()) || modeFilter !== "all";
 
   const installedById = useMemo(() => new Map((installed.data ?? []).map((item) => [item.id, item])), [installed.data]);
   const packages = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (catalog.data?.packages ?? []).filter(
       ({ manifest, category }) =>
-        !needle ||
-        [
-          manifest.name,
-          manifest.description,
-          manifest.id,
-          category,
-          ...manifest.kind.map(kindLabel),
-          ...packageModes(manifest.id).map((mode) => MODE_BADGES[mode].label),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(needle),
+        (modeFilter === "all" || packageModes(manifest.id).includes(modeFilter)) &&
+        (!needle ||
+          [
+            manifest.name,
+            manifest.description,
+            manifest.id,
+            category,
+            ...manifest.kind.map(kindLabel),
+            ...packageModes(manifest.id).map((mode) => MODE_BADGES[mode].label),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(needle)),
     );
-  }, [catalog.data, query]);
+  }, [catalog.data, modeFilter, query]);
   const packageGroups = useMemo(
     () => [
       {
@@ -197,6 +203,7 @@ export function AgentCatalogView() {
     : 0;
 
   useEffect(() => {
+    if (packages.length === 0) return;
     if (!selectedId && packages[0]) setSelectedId(packages[0].manifest.id);
     if (selectedId && !packages.some((item) => item.manifest.id === selectedId)) {
       setSelectedId(packages[0]?.manifest.id ?? null);
@@ -408,6 +415,33 @@ export function AgentCatalogView() {
                 aria-label={localizeUi("ui.agents.agentcatalogview.searchDownloadableAgents")}
               />
             </div>
+            <div
+              className="mt-2 grid grid-cols-4 gap-1"
+              role="group"
+              aria-label={localizeUi("ui.agents.agentcatalogview.filterByChatMode")}
+            >
+              {(
+                [
+                  ["all", "ui.agents.agentcatalogview.allModes"],
+                  ["conversation", "ui.agents.agentcatalogview.conversationMode"],
+                  ["roleplay", "ui.agents.agentcatalogview.roleplayMode"],
+                  ["game", "ui.agents.agentcatalogview.gameMode"],
+                ] as const
+              ).map(([mode, labelKey]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={cn(
+                    "mari-chrome-control h-8 min-w-0 px-1 text-[0.625rem]",
+                    modeFilter === mode && "mari-chrome-control--primary",
+                  )}
+                  onClick={() => setModeFilter(mode)}
+                  aria-pressed={modeFilter === mode}
+                >
+                  <span className="truncate">{localizeUi(labelKey)}</span>
+                </button>
+              ))}
+            </div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -508,12 +542,12 @@ export function AgentCatalogView() {
               <div className="flex min-h-56 flex-col items-center justify-center gap-2 px-4 text-center">
                 <Sparkles size="2rem" className="text-[var(--muted-foreground)]" />
                 <p className="font-semibold">
-                  {query
+                  {hasActiveFilters
                     ? localizeUi("ui.agents.agentcatalogview.noMatchingAgents")
                     : localizeUi("ui.agents.agentcatalogview.theOfficialCatalogIsEmpty")}
                 </p>
                 <p className="text-sm text-[var(--muted-foreground)]">
-                  {query
+                  {hasActiveFilters
                     ? localizeUi("ui.noodle.noodlehome.tryADifferentSearch")
                     : localizeUi("ui.agents.agentcatalogview.publishedAgentsWillAppearHereAutomatically")}
                 </p>

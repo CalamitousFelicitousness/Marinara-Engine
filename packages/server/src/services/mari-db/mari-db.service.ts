@@ -863,6 +863,7 @@ function normalizeAppDataActionName(action: string): string {
     .replace(/^themes\./, "theme.")
     .replace(/^personalextensions\./, "personalextension.")
     .replace(/^agents\./, "agent.")
+    .replace(/^chats\./, "chat.")
     .replace(/^presets\./, "preset.")
     .replace(/^promptpresets\./, "preset.");
   const aliases: Record<string, string> = {
@@ -2515,6 +2516,7 @@ export class MariDbService {
           return this.executePersonalExtensionAction(key.slice("personalextension.".length), envelope, context);
         }
         if (key.startsWith("agent.")) return this.executeAgentAction(key.slice("agent.".length), envelope, context);
+        if (key.startsWith("chat.")) return this.executeChatAction(key.slice("chat.".length), envelope, context);
         if (key.startsWith("preset.")) return this.executePresetAction(key.slice("preset.".length), envelope, context);
         if (key.startsWith("homewidget."))
           return this.executeHomeWidgetAction(key.slice("homewidget.".length), envelope, context);
@@ -2527,7 +2529,7 @@ export class MariDbService {
           mode: "read",
           command,
           error:
-            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, preset.*, home_widget.*, or instruction.* actions for structured no-shell app-data work.",
+            "Unsupported app_data action. Use character.*, persona.*, lorebook.*, theme.*, personal_extension.*, agent.*, chat.*, preset.*, home_widget.*, or instruction.* actions for structured no-shell app-data work.",
         };
       };
       // Field-aware bounding keeps a single read response within the workspace
@@ -6619,7 +6621,13 @@ export class MariDbService {
         let selectedMessages: typeof numberedMessages;
         if (last !== null || afterPost !== null) {
           const scopedMessages = last !== null ? numberedMessages.slice(-last) : numberedMessages.slice(afterPost ?? 0);
-          selectedMessages = scopedMessages.slice(offset, limit !== null ? offset + limit : undefined);
+          if (tail) {
+            const offsetMessages =
+              offset > 0 ? scopedMessages.slice(0, Math.max(0, scopedMessages.length - offset)) : scopedMessages;
+            selectedMessages = limit !== null ? offsetMessages.slice(-limit) : offsetMessages;
+          } else {
+            selectedMessages = scopedMessages.slice(offset, limit !== null ? offset + limit : undefined);
+          }
         } else if (tail) {
           const offsetMessages =
             offset > 0 ? numberedMessages.slice(0, Math.max(0, numberedMessages.length - offset)) : numberedMessages;
@@ -6651,6 +6659,52 @@ export class MariDbService {
       default:
         return { ok: false, mode: "read", command: context.command, error: this.chatsHelpText() };
     }
+  }
+
+  private async executeChatAction(
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const argv = [sub];
+    const fieldRead = Boolean(firstString(args, ["field"]));
+    const addFlag = (flag: string, value: unknown) => {
+      if (value === undefined || value === null || value === "") return;
+      argv.push(`--${flag}`, String(value));
+    };
+
+    if (sub === "list") {
+      addFlag("limit", firstNumber(args, ["limit"]));
+      addFlag("character", firstString(args, ["characterId", "character_id"]));
+    } else if (sub === "get") {
+      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+    } else if (sub === "messages") {
+      argv.push(requiredString(args, ["chatId", "chat_id", "id"], "chat id"));
+      addFlag("last", firstNumber(args, ["last"]));
+      addFlag("after-post", firstNumber(args, ["afterPost", "after_post"]));
+      const tail = firstBoolean(args, ["tail"]) === true;
+      if (fieldRead && tail) {
+        addFlag("limit", 1);
+      } else if (!fieldRead) {
+        addFlag("limit", firstNumber(args, ["limit"]));
+        addFlag("offset", firstNumber(args, ["offset"]));
+      }
+      if (tail) argv.push("--tail");
+    } else if (sub === "search") {
+      argv.push(requiredString(args, ["query"], "chat search query"));
+      addFlag("limit", firstNumber(args, ["limit"]));
+    }
+
+    const result = await this.executeChatsCommand(argv, context);
+    if (sub !== "messages" || !result.ok || !Array.isArray(result.output)) return result;
+    return {
+      ...result,
+      output: {
+        messages: result.output,
+        returned: result.output.length,
+        offset: fieldRead ? 0 : normalizeOffset(firstNumber(args, ["offset"])),
+      },
+    };
   }
 
   private async executeThemeCommand(

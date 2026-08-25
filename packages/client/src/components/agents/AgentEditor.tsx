@@ -1221,9 +1221,7 @@ export function AgentEditor() {
   // The sidecar can be the agents default without owning a connection row
   // (#5539); while available it takes precedence over a row default, matching
   // the server's resolveAgentsDefaultConnectionId.
-  const sidecarIsAgentsDefault = useSidecarStore(
-    (state) => state.config.useAsAgentsDefault && state.modelDownloaded,
-  );
+  const sidecarIsAgentsDefault = useSidecarStore((state) => state.config.useAsAgentsDefault && state.modelDownloaded);
 
   const defaultAgentImageConn = imageConnections.find(
     (c) => c.defaultForAgents === true || c.defaultForAgents === "true",

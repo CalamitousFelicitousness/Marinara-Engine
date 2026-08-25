@@ -400,9 +400,7 @@ export function AgentsPanel() {
         }),
       );
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : localizeUi("ui.panels.agentspanel.bulkConnectionFailed"),
-      );
+      toast.error(error instanceof Error ? error.message : localizeUi("ui.panels.agentspanel.bulkConnectionFailed"));
     } finally {
       setBulkAssigning(false);
     }

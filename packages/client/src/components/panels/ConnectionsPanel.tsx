@@ -458,7 +458,11 @@ function SidecarCard() {
               expanded ? localizeUi("ui.panels.ttsconfigcard.collapse") : localizeUi("ui.panels.ttsconfigcard.expand")
             }
             aria-expanded={expanded}
-            aria-controls="local-model-card-content"
+            aria-controls={
+              // The body is conditionally rendered, so the IDREF resolves only
+              // while expanded; a dangling aria-controls is an authoring error.
+              expanded ? "local-model-card-content" : undefined
+            }
           >
             {expanded ? <ChevronUp size="0.875rem" /> : <ChevronDown size="0.875rem" />}
           </button>

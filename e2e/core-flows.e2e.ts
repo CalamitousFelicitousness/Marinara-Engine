@@ -3021,10 +3021,13 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
   };
 
   const ensureCharacterPanelOpen = async () => {
-    if (!(await rightPanel.isVisible())) {
-      await page.locator('[data-tour="panel-characters"]').click();
+    const charactersButton = page.locator('[data-tour="panel-characters"]');
+    if ((await charactersButton.getAttribute("aria-pressed")) !== "true") {
+      await charactersButton.click();
     }
+    await expect(charactersButton).toHaveAttribute("aria-pressed", "true");
     await expect(rightPanel).toBeVisible();
+    if (mobile) await expect(rightPanel).toBeInViewport();
   };
 
   try {

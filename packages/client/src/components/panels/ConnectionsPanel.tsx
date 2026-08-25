@@ -99,7 +99,7 @@ import { TouchDragHandle } from "../ui/TouchDragHandle";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
-import { isLanguageGenerationConnection } from "../../lib/connection-filters";
+import { createLocalSidecarConnectionOption, isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
 
 const CONNECTION_ICON_COLORS = {
@@ -804,6 +804,7 @@ function ConnectionDefaultPair({
   fallbackField,
   primaryEmptyLabel,
   fallbackModelLabel,
+  includeLocalSidecar,
 }: {
   title: string;
   icon: ReactNode;
@@ -812,15 +813,30 @@ function ConnectionDefaultPair({
   fallbackField: ConnectionDefaultField;
   primaryEmptyLabel: string;
   fallbackModelLabel: string;
+  /** Offer the local sidecar pseudo-connection as the primary default (#5539).
+   *  The sidecar has no connection row to carry the role flag, so selecting it
+   *  writes the sidecar config's useAsAgentsDefault instead. */
+  includeLocalSidecar?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const openConnectionDetail = useUIStore((state) => state.openConnectionDetail);
   const updateConnection = useUpdateConnection();
   const queryClient = useQueryClient();
+  const sidecarModelDownloaded = useSidecarStore((state) => state.modelDownloaded);
+  const sidecarModelDisplayName = useSidecarStore((state) => state.modelDisplayName);
+  const sidecarAsAgentsDefault = useSidecarStore((state) => state.config.useAsAgentsDefault);
+  const updateSidecarConfig = useSidecarStore((state) => state.updateConfig);
   const primaryConnection = connections.find((connection) => isEnabledConnectionRole(connection[primaryField])) ?? null;
   const fallbackConnection =
     connections.find((connection) => isEnabledConnectionRole(connection[fallbackField])) ?? null;
   const hasConnections = connections.length > 0;
+  // Keep the option visible while the flag is set even if the model was
+  // deleted, so the stale default can still be seen and cleared here.
+  const offerLocalSidecar =
+    includeLocalSidecar === true &&
+    import.meta.env.VITE_MARINARA_LITE !== "true" &&
+    (sidecarModelDownloaded || sidecarAsAgentsDefault);
+  const localSidecarSelected = includeLocalSidecar === true && sidecarAsAgentsDefault;
 
   const handleRoleChange = (
     field: ConnectionDefaultField,
@@ -828,6 +844,16 @@ function ConnectionDefaultPair({
     event: ChangeEvent<HTMLSelectElement>,
   ) => {
     const nextConnectionId = event.target.value;
+    if (field === primaryField && includeLocalSidecar) {
+      if (nextConnectionId === LOCAL_SIDECAR_CONNECTION_ID) {
+        if (localSidecarSelected) return;
+        void updateSidecarConfig({ useAsAgentsDefault: true });
+        // The sidecar default replaces any row-flag default; keep one source.
+        if (currentConnection) updateConnection.mutate({ id: currentConnection.id, [field]: false });
+        return;
+      }
+      if (localSidecarSelected) void updateSidecarConfig({ useAsAgentsDefault: false });
+    }
     if (nextConnectionId === currentConnection?.id) return;
     if (!nextConnectionId) {
       if (currentConnection) updateConnection.mutate({ id: currentConnection.id, [field]: false });
@@ -854,17 +880,22 @@ function ConnectionDefaultPair({
             </span>
             <div className="flex items-center gap-1">
               <select
-                value={primaryConnection?.id ?? ""}
+                value={localSidecarSelected ? LOCAL_SIDECAR_CONNECTION_ID : (primaryConnection?.id ?? "")}
                 onChange={(event) => handleRoleChange(primaryField, primaryConnection, event)}
-                disabled={updateConnection.isPending || (!hasConnections && !primaryConnection)}
+                disabled={updateConnection.isPending || (!hasConnections && !primaryConnection && !offerLocalSidecar)}
                 className="mari-chrome-field h-9 min-w-0 flex-1 px-2 py-0 text-[0.6875rem]"
                 aria-label={localizeUi("ui.panels.connectiondefaultpair.defaultConnectionForValue1", { value1: title })}
               >
                 <option value="">
-                  {hasConnections
+                  {hasConnections || offerLocalSidecar
                     ? primaryEmptyLabel
                     : localizeUi("ui.panels.connectiondefaultpair.noCompatibleConnections")}
                 </option>
+                {offerLocalSidecar && (
+                  <option value={LOCAL_SIDECAR_CONNECTION_ID}>
+                    {createLocalSidecarConnectionOption(sidecarModelDisplayName).name}
+                  </option>
+                )}
                 {connections
                   .filter((connection) => connection.id !== fallbackConnection?.id)
                   .map((connection) => (
@@ -1016,6 +1047,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackField="fallbackForAgents"
             primaryEmptyLabel="Use the active chat connection"
             fallbackModelLabel="No model set"
+            includeLocalSidecar
           />
           <ConnectionDefaultPair
             title={localizeUi("ui.panels.connectiondefaultssection.images")}

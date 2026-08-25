@@ -5,7 +5,10 @@ import {
   resolveAgentResultType,
 } from "../../packages/server/src/services/agents/agent-executor.js";
 import { createAgentPipeline, type ResolvedAgent } from "../../packages/server/src/services/agents/agent-pipeline.js";
-import { resolveAgentPipelineAgents } from "../../packages/server/src/services/generation/agent-resolution.js";
+import {
+  resolveAgentPipelineAgents,
+  resolveAgentsDefaultConnectionId,
+} from "../../packages/server/src/services/generation/agent-resolution.js";
 import {
   applySpotifyAgentPlaybackFallbacks,
   type SpotifyRuntimeAgent,
@@ -291,6 +294,47 @@ assert.equal(
   sidecarTextProvider.options[0]?.responseFormat,
   undefined,
   "text agents on the sidecar must not be JSON-constrained",
+);
+
+// #5539: the sidecar can be the agents default without owning a connection
+// row. The sentinel is substituted only while the sidecar is available;
+// unavailable it degrades to the row default (or null) instead of feeding the
+// sentinel into the default slot, which would bypass the skip guard.
+assert.equal(
+  resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: true,
+    localSidecarAvailable: true,
+    rowDefaultConnectionId: "row-1",
+  }),
+  "__local_sidecar__",
+  "the sidecar agents default must win over a row default while available",
+);
+assert.equal(
+  resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: true,
+    localSidecarAvailable: false,
+    rowDefaultConnectionId: "row-1",
+  }),
+  "row-1",
+  "an unavailable sidecar default must degrade to the row default",
+);
+assert.equal(
+  resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: false,
+    localSidecarAvailable: true,
+    rowDefaultConnectionId: "row-1",
+  }),
+  "row-1",
+  "the row default must hold when the sidecar flag is off",
+);
+assert.equal(
+  resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: true,
+    localSidecarAvailable: false,
+    rowDefaultConnectionId: null,
+  }),
+  null,
+  "no default at all must stay null so agents inherit the chat connection",
 );
 
 const toolJsonProvider = new RecordingProvider('{"weather":"rain"}');

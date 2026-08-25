@@ -120,6 +120,7 @@ import {
 } from "../../lib/agent-transfer";
 import { CUSTOM_AGENT_RESULT_EXAMPLES, type CustomAgentResultType } from "../../lib/custom-agent-result-examples";
 import { downloadZipFile } from "../../lib/download-zip";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { Trans, useTranslation as useUiTranslation } from "react-i18next";
 
 function parseActivationKeywordsText(value: string): string[] {
@@ -1217,6 +1218,10 @@ export function AgentEditor() {
       c.provider !== "audio" &&
       (c.defaultForAgents === true || c.defaultForAgents === "true"),
   );
+  // The sidecar can be the agents default without owning a connection row
+  // (#5539); while available it takes precedence over a row default, matching
+  // the server's resolveAgentsDefaultConnectionId.
+  const sidecarIsAgentsDefault = useSidecarStore((state) => state.config.useAsAgentsDefault && state.modelDownloaded);
 
   const defaultAgentImageConn = imageConnections.find(
     (c) => c.defaultForAgents === true || c.defaultForAgents === "true",
@@ -2328,9 +2333,13 @@ export function AgentEditor() {
               className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             >
               <option value="">
-                {defaultAgentConn
-                  ? localizeUi("ui.agents.agenteditor.agentDefaultValue1", { value1: defaultAgentConn.name })
-                  : localizeUi("ui.agents.agenteditor.useChatConnection")}
+                {sidecarIsAgentsDefault
+                  ? localizeUi("ui.agents.agenteditor.agentDefaultValue1", {
+                      value1: localizeUi("ui.agents.agenteditor.localModelSidecar"),
+                    })
+                  : defaultAgentConn
+                    ? localizeUi("ui.agents.agenteditor.agentDefaultValue1", { value1: defaultAgentConn.name })
+                    : localizeUi("ui.agents.agenteditor.useChatConnection")}
               </option>
               {import.meta.env.VITE_MARINARA_LITE !== "true" && (
                 <option value={LOCAL_SIDECAR_CONNECTION_ID}>

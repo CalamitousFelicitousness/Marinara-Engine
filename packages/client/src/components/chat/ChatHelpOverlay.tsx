@@ -428,11 +428,7 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mod
     const composer = root.querySelector<HTMLElement>("[data-chat-composer]");
     const composerShell = composer?.closest<HTMLElement>("[data-chat-resource-drop-exclude]") ?? composer;
     const composerRect = composerShell ? readVisibleRect(composerShell) : null;
-    const topControls = Array.from(
-      root.querySelectorAll<HTMLElement>(
-        '[data-chat-help="identity"], [data-roleplay-top-controls="right"], [data-chat-help="agents"]',
-      ),
-    )
+    const topControls = Array.from(root.querySelectorAll<HTMLElement>("[data-chat-help]"))
       .map((element) => readVisibleRect(element, true))
       .filter((rect): rect is Rect => rect !== null);
     const top = Math.max(scrollRect.top + 8, ...topControls.map((rect) => rect.top + rect.height + 8));
@@ -452,7 +448,13 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mod
 
   if (!definition.selector) return null;
   const preferInteractive = definition.selector.startsWith("[data-chat-help=");
-  const rects = querySelectorAllDeep(document, definition.selector)
+  const elements = [
+    ...new Set([
+      ...querySelectorAllDeep(root, definition.selector),
+      ...querySelectorAllDeep(document, definition.selector),
+    ]),
+  ];
+  const rects = elements
     .map((element) => {
       const rect = readVisibleRect(element, preferInteractive);
       return rect ? normalizeMobileToolbarRect(element, rect) : null;

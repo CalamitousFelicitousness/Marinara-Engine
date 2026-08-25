@@ -224,6 +224,7 @@ import { resolveCustomWritableLorebookIds } from "../../services/generation/agen
 import {
   getAgentFallbackPrompt,
   musicAgentUsesSource,
+  resolveAgentsDefaultConnectionId,
   resolveEffectiveAgentSettings,
 } from "../../services/generation/agent-resolution.js";
 import { resolveAgentGenerationTools } from "../../services/generation/tool-resolution-runtime.js";
@@ -1575,6 +1576,13 @@ async function resolveRetryAgents(args: {
   // Explicit per-agent sidecar selection is valid independently of the global
   // tracker default; the provider starts the configured model on demand.
   const localSidecarAvailableForTrackers = sidecarModelService.getConfiguredModelRef() !== null;
+  // Mirrors resolveAgentPipelineAgents: retries must honor the same agents
+  // default as first runs, or a retried agent silently changes backend (#5539).
+  const defaultAgentConnectionId = resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: sidecarModelService.getConfig().useAsAgentsDefault,
+    localSidecarAvailable: localSidecarAvailableForTrackers,
+    rowDefaultConnectionId: (defaultAgentConn?.id as string | undefined) ?? null,
+  });
   const unavailableConnectionWarnings = new Map<
     string,
     { reason: string; connectionName?: string; agentNames: string[] }
@@ -1641,7 +1649,7 @@ async function resolveRetryAgents(args: {
     const effectiveConnectionId = resolveRetryAgentConnectionRequest({
       agentType: cfg.type as string,
       configuredConnectionId: cfg.connectionId as string | null,
-      defaultAgentConnectionId: defaultAgentConn?.id ?? null,
+      defaultAgentConnectionId,
       chatMeta,
       localSidecarAvailable: localSidecarAvailableForTrackers,
     });
@@ -1716,7 +1724,7 @@ async function resolveRetryAgents(args: {
     const builtInConnectionId = resolveRetryAgentConnectionRequest({
       agentType: builtIn.id,
       configuredConnectionId: null,
-      defaultAgentConnectionId: defaultAgentConn?.id ?? null,
+      defaultAgentConnectionId,
       chatMeta,
       localSidecarAvailable: localSidecarAvailableForTrackers,
     });

@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Added
+
+- The built-in Local Model can now be the default connection for agents - selectable in the Connections panel's defaults section without a stored connection row - and the Agents panel gains a bulk action that points every agent (or resets every agent to the agents default) at any connection in one step (#5539).
+
 ### Fixed
 
 - Agents that must return JSON no longer fail with "invalid JSON" on the built-in Local Model: sidecar responses are grammar-constrained to a JSON object, leading thinking blocks are stripped before parsing, and Gemma 4 string delimiters are normalized the same way the tool-call path already tolerates (#5537).

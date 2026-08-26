@@ -2072,7 +2072,7 @@ function summarizeCharacterRow(row: Row): Row {
     id: row.id,
     name: typeof data.name === "string" ? data.name : "(unnamed)",
     comment: row.comment ?? "",
-    summary: typeof data.summary === "string" ? truncateStr(data.summary, 120) : "",
+    summary: typeof data.summary === "string" ? data.summary : "",
     tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [],
     avatarPath: row.avatarPath ?? null,
     createdAt: row.createdAt,

@@ -250,6 +250,28 @@ export function useUpdateCharacter() {
   });
 }
 
+export interface CharacterSummaryDraft {
+  name?: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  backstory?: string;
+}
+
+/** Shared by the editor's single Generate action and the library's bulk run. */
+export function generateCharacterSummary(id: string, draft?: CharacterSummaryDraft) {
+  return api.post<{ summary: string }>(`/characters/${encodeURIComponent(id)}/summary/generate`, {
+    debugMode: useUIStore.getState().debugMode,
+    draft,
+  });
+}
+
+export function useGenerateCharacterSummary() {
+  return useMutation({
+    mutationFn: ({ id, draft }: { id: string; draft?: CharacterSummaryDraft }) => generateCharacterSummary(id, draft),
+  });
+}
+
 export function useCharacterVersions(id: string | null) {
   return useQuery({
     queryKey: characterKeys.versions(id ?? ""),

@@ -2072,6 +2072,7 @@ function summarizeCharacterRow(row: Row): Row {
     id: row.id,
     name: typeof data.name === "string" ? data.name : "(unnamed)",
     comment: row.comment ?? "",
+    summary: typeof data.summary === "string" ? data.summary : "",
     tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [],
     avatarPath: row.avatarPath ?? null,
     createdAt: row.createdAt,
@@ -2246,6 +2247,7 @@ function summarizeChatRow(row: Row): Row {
 
 const CHARACTER_DATA_HINT_KEYS = new Set([
   "name",
+  "summary",
   "description",
   "personality",
   "scenario",
@@ -2370,6 +2372,7 @@ function buildMinimalCharacterData(
     ? (normalizedBase.extensions as Record<string, unknown>)
     : {};
   const data: Record<string, unknown> = {
+    summary: "",
     description: "",
     personality: "",
     scenario: "",
@@ -2386,6 +2389,7 @@ function buildMinimalCharacterData(
     extensions: { ...baseExtensions },
   };
   const topLevelMap: Array<[string, string]> = [
+    ["summary", "summary"],
     ["description", "description"],
     ["personality", "personality"],
     ["scenario", "scenario"],
@@ -2397,6 +2401,7 @@ function buildMinimalCharacterData(
     const val = flagString(flags, flagName);
     if (val !== undefined) data[fieldName] = val;
   }
+  data.summary = typeof data.summary === "string" ? data.summary.trim().slice(0, 500) : "";
   // backstory and appearance are Marinara extensions stored under data.extensions.*
   const extensions = data.extensions as Record<string, unknown>;
   const extMap: Array<[string, string]> = [
@@ -2600,6 +2605,7 @@ export class MariDbService {
             ["data", "card", "character"],
             [
               "name",
+              "summary",
               "description",
               "personality",
               "scenario",
@@ -2657,6 +2663,7 @@ export class MariDbService {
             ["patch", "data", "card", "character"],
             [
               "name",
+              "summary",
               "description",
               "personality",
               "scenario",
@@ -2683,7 +2690,7 @@ export class MariDbService {
           comment === (typeof existing.comment === "string" ? existing.comment : "")
         ) {
           throw new Error(
-            "character.update needs a patch field such as name, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment",
+            "character.update needs a patch field such as name, summary, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment",
           );
         }
         const name =
@@ -5741,7 +5748,7 @@ export class MariDbService {
         const rawJson = await resolveJsonInput(flags, context.cwd);
         if (!name && !rawJson) {
           throw new Error(
-            "Usage: mari characters create --name <name> [--description <text>] [--personality <text>] [--scenario <text>] [--about-me <text>] [--apply]\n" +
+            "Usage: mari characters create --name <name> [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--about-me <text>] [--apply]\n" +
               "       or: mari characters create --json '<data_json>' [--json-file <path>] [--apply]",
           );
         }
@@ -5774,7 +5781,7 @@ export class MariDbService {
         const id = parsed.positionals[0];
         if (!id)
           throw new Error(
-            "Usage: mari characters update <id> [--name <name>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
+            "Usage: mari characters update <id> [--name <name>] [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
           );
         const existing = await this.getRawById(getMeta("characters"), id);
         if (!existing) throw new Error(`Character ${id} not found`);
@@ -8531,9 +8538,9 @@ export class MariDbService {
       "Read:  list [--limit <n>] [--search <text>]",
       "Read:  get <id>",
       "Read:  search <query> [--limit <n>]",
-      "Write: create (--name <name> [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] | --json '<data_json>' | --json-file <path>) [--apply] [--reason <text>]",
+      "Write: create (--name <name> [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] | --json '<data_json>' | --json-file <path>) [--apply] [--reason <text>]",
       "       --backstory, --appearance, and --about-me write to matching data.extensions fields",
-      "Write: update <id> [--name <name>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
+      "Write: update <id> [--name <name>] [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
       "Write: delete <id> [--apply] [--reason <text>]",
       "Writes dry-run by default; --apply saves reversible changes and shows a Keep/Restore review card.",
     ].join("\n");

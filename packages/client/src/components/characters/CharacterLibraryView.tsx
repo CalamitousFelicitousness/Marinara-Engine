@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -11,12 +12,16 @@ import {
   Search,
   Star,
   User,
+  WandSparkles,
+  X,
 } from "lucide-react";
-import { type CharacterData, type Persona } from "@marinara-engine/shared";
+import { normalizeTextForMatch, type CharacterData, type Persona } from "@marinara-engine/shared";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import {
   flattenCharacterPages,
   flattenPersonaPages,
+  fetchAllCharacterPages,
+  generateCharacterSummary,
   useCharacterPages,
   usePersonaPages,
 } from "../../hooks/use-characters";
@@ -32,6 +37,8 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
+import { api, ApiError } from "../../lib/api-client";
+import { showConfirmDialog } from "../../lib/app-dialogs";
 import {
   useUIStore,
   type CardLibraryKind,
@@ -75,6 +82,7 @@ type LibraryCard = {
   favorite: boolean;
   active: boolean;
   creatorNotes: string;
+  hasExplicitSummary: boolean;
   sections: LibrarySection[];
 };
 
@@ -113,6 +121,14 @@ function getText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Reads the saved card so bulk "missing only" decides on server truth, not a stale list page. */
+async function characterHasSummary(id: string) {
+  const character = await api.get<{ data?: string | { summary?: unknown } }>(`/characters/${encodeURIComponent(id)}`);
+  const raw = character.data;
+  const data = typeof raw === "string" ? (JSON.parse(raw) as { summary?: unknown }) : raw;
+  return typeof data?.summary === "string" && data.summary.trim().length > 0;
+}
+
 function getCharacterTags(char: ParsedCharacterRow): string[] {
   return (Array.isArray(char.parsed.tags) ? char.parsed.tags : []).filter(
     (tag): tag is string => typeof tag === "string" && tag.trim().length > 0,
@@ -120,7 +136,12 @@ function getCharacterTags(char: ParsedCharacterRow): string[] {
 }
 
 function getCharacterSummary(char: ParsedCharacterRow) {
-  return getCardLibrarySummary([char.parsed.creator_notes, char.parsed.description, char.parsed.personality]);
+  return getCardLibrarySummary([
+    char.parsed.summary,
+    char.parsed.creator_notes,
+    char.parsed.description,
+    char.parsed.personality,
+  ]);
 }
 
 function getPersonaSummary(persona: Persona) {
@@ -176,6 +197,7 @@ function toCharacterLibraryCard(char: ParsedCharacterRow): LibraryCard {
     favorite: !!char.parsed.extensions?.fav,
     active: false,
     creatorNotes: getText(char.parsed.creator_notes),
+    hasExplicitSummary: Boolean(getText(char.parsed.summary)),
     sections: getCharacterSections(char),
   };
 }
@@ -196,6 +218,7 @@ function toPersonaLibraryCard(persona: Persona): LibraryCard {
     favorite: false,
     active: persona.isActive,
     creatorNotes: getText(persona.creatorNotes),
+    hasExplicitSummary: false,
     sections: getPersonaSections(persona),
   };
 }
@@ -280,6 +303,17 @@ function CardLibraryDetailCard({
               </div>
             </div>
 
+            {card.hasExplicitSummary && (
+              <section className="mt-4 rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] px-4 py-3">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--marinara-chat-chrome-panel-muted)]">
+                  {localizeUi("ui.characters.summary.label")}
+                </h3>
+                <div className="mari-message-content mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--marinara-chat-chrome-panel-text)]">
+                  {renderMarkdownBlocks(card.summary, applyInlineMarkdown, `summary-${card.id}`)}
+                </div>
+              </section>
+            )}
+
             {card.creatorNotes && (
               <div className="mari-message-content mt-4 whitespace-pre-wrap rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] px-4 py-3 text-sm leading-6 text-[var(--marinara-chat-chrome-panel-text)]">
                 {renderMarkdownBlocks(card.creatorNotes, applyInlineMarkdown, `creator-notes-${card.id}`)}
@@ -362,6 +396,13 @@ export function CharacterLibraryView() {
   const selectedId = isPersonaLibrary ? personaSelectedId : characterSelectedId;
   const sort = isPersonaLibrary ? personaSort : characterSort;
   const [search, setSearch] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState<"missing" | "all" | null>(null);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ completed: 0, failed: 0, total: 0 });
+  const [bulkFailedIds, setBulkFailedIds] = useState<string[]>([]);
+  const bulkCancelledRef = useRef(false);
   const serverSearch = useMemo(() => parseCardLibrarySearchQuery(search).text, [search]);
   const characterPages = useCharacterPages({ enabled: !isPersonaLibrary, search: serverSearch, sort: characterSort });
   const personaPages = usePersonaPages({ enabled: isPersonaLibrary, search: serverSearch, sort: personaSort });
@@ -505,6 +546,107 @@ export function CharacterLibraryView() {
     [isPersonaLibrary, openModal],
   );
 
+  const toggleCharacterSelection = useCallback((id: string) => {
+    setSelectedCharacterIds((current) => {
+      const isSelected = current.includes(id);
+      return isSelected ? current.filter((item) => item !== id) : [...current, id];
+    });
+  }, []);
+
+  const selectAllMatchingCharactersTokenRef = useRef(0);
+  useEffect(() => {
+    selectAllMatchingCharactersTokenRef.current++;
+  }, [search, characterSort, isPersonaLibrary, selectionMode]);
+  const selectAllMatchingCharacters = useCallback(async () => {
+    if (isPersonaLibrary) return;
+    const requestToken = ++selectAllMatchingCharactersTokenRef.current;
+    const allCharacters = await fetchAllCharacterPages({ search: serverSearch, sort: characterSort });
+    if (selectAllMatchingCharactersTokenRef.current !== requestToken) return;
+    const query = parseCardLibrarySearchQuery(search);
+    const parsedCharacters = allCharacters
+      .map((character) => parseCharacterRow(character as CharacterRow))
+      .filter((character) => {
+        const tags = getCharacterTags(character);
+        const tagSet = new Set(tags.map((tag) => normalizeTextForMatch(tag)));
+        return !query.excludedTags.some((tag) => tagSet.has(tag));
+      })
+      .filter((character) => character.id.trim().length > 0);
+    setSelectedCharacterIds(parsedCharacters.map((character) => character.id));
+  }, [characterSort, isPersonaLibrary, search, serverSearch]);
+
+  const handleSelectAllMatchingCharacters = useCallback(async () => {
+    try {
+      await selectAllMatchingCharacters();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.summary.selectAllFailed"));
+    }
+  }, [localizeUi, selectAllMatchingCharacters]);
+
+  const runBulkSummaryGeneration = useCallback(
+    async (mode: "missing" | "all", ids = selectedCharacterIds) => {
+      if (isPersonaLibrary || ids.length === 0 || bulkPending) return;
+      const confirmed = await showConfirmDialog({
+        title: localizeUi(
+          mode === "missing" ? "ui.characters.summary.generateMissing" : "ui.characters.summary.regenerateSelected",
+        ),
+        message: localizeUi("ui.characters.summary.confirmBulk", { value1: ids.length }),
+        confirmLabel: localizeUi("ui.characters.summary.generate"),
+      });
+      if (!confirmed) return;
+      bulkCancelledRef.current = false;
+      setBulkMode(mode);
+      setBulkPending(true);
+      setBulkFailedIds([]);
+      setBulkProgress({ completed: 0, failed: 0, total: ids.length });
+      const failures: string[] = [];
+      const remaining = new Set(ids);
+      let cursor = 0;
+      const worker = async () => {
+        while (!bulkCancelledRef.current) {
+          const index = cursor++;
+          const id = ids[index];
+          if (!id) return;
+          try {
+            if (mode === "missing") {
+              if (await characterHasSummary(id)) {
+                setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
+                remaining.delete(id);
+                continue;
+              }
+              if (bulkCancelledRef.current) return;
+            }
+            const generated = await generateCharacterSummary(id);
+            if (bulkCancelledRef.current) return;
+            try {
+              await api.patch(`/characters/${encodeURIComponent(id)}`, {
+                data: { summary: generated.summary },
+                versionSource: "summary-generation",
+                versionReason: "Generated character card summary",
+                // Generation is slow. The server rechecks inside its per-character
+                // update queue so a summary saved meanwhile is never clobbered.
+                requireEmptySummary: mode === "missing",
+              });
+            } catch (error) {
+              // 409 means a summary appeared while generating: skip, do not fail.
+              if (!(error instanceof ApiError) || error.status !== 409) throw error;
+            }
+            setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
+            remaining.delete(id);
+          } catch {
+            failures.push(id);
+            remaining.delete(id);
+            setBulkProgress((current) => ({ ...current, failed: current.failed + 1 }));
+          }
+        }
+      };
+      await Promise.all([worker(), worker()]);
+      setBulkFailedIds([...failures, ...remaining]);
+      setBulkPending(false);
+      await characterPages.refetch();
+    },
+    [bulkPending, characterPages, isPersonaLibrary, localizeUi, selectedCharacterIds],
+  );
+
   const handleSortChange = (value: string) => {
     if (isPersonaLibrary) setPersonaSort(value as ResourcePanelSort);
     else setCharacterSort(value as CharacterLibrarySort);
@@ -554,6 +696,24 @@ export function CharacterLibraryView() {
           </div>
 
           <div className="grid w-full grid-cols-2 gap-1.5 sm:ml-auto sm:w-72 lg:w-80">
+            {!isPersonaLibrary && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectionMode((current) => !current);
+                  setSelectedCharacterIds([]);
+                  setBulkFailedIds([]);
+                  setBulkProgress({ completed: 0, failed: 0, total: 0 });
+                  setBulkMode(null);
+                }}
+                disabled={bulkPending}
+                className={cn(libraryToolbarButtonClass, selectionMode && "mari-chrome-control--selected")}
+                title={localizeUi("ui.characters.summary.select")}
+                aria-label={localizeUi("ui.characters.summary.select")}
+              >
+                {selectionMode ? <X size="0.75rem" /> : <WandSparkles size="0.75rem" />}
+              </button>
+            )}
             <button
               onClick={() => openModal(isPersonaLibrary ? "create-persona" : "create-character")}
               className={newCardButtonClass}
@@ -612,6 +772,67 @@ export function CharacterLibraryView() {
             </div>
           </div>
         </div>
+        {selectionMode && !isPersonaLibrary && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2 md:px-6">
+            <span className="text-xs text-[var(--marinara-chat-chrome-panel-muted)]">
+              {selectedCharacterIds.length} {localizeUi("ui.characters.summary.selected")}
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleSelectAllMatchingCharacters()}
+              className="mari-chrome-control px-2.5 py-1.5 text-xs"
+            >
+              {localizeUi("ui.characters.summary.selectAllMatching")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runBulkSummaryGeneration("missing")}
+              disabled={bulkPending || selectedCharacterIds.length === 0}
+              className="mari-chrome-control mari-chrome-control--primary px-2.5 py-1.5 text-xs disabled:opacity-50"
+            >
+              <WandSparkles size="0.75rem" /> {localizeUi("ui.characters.summary.generateMissing")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runBulkSummaryGeneration("all")}
+              disabled={bulkPending || selectedCharacterIds.length === 0}
+              className="mari-chrome-control px-2.5 py-1.5 text-xs disabled:opacity-50"
+            >
+              {localizeUi("ui.characters.summary.regenerateSelected")}
+            </button>
+            {bulkPending && (
+              <button
+                type="button"
+                onClick={() => {
+                  bulkCancelledRef.current = true;
+                }}
+                className="mari-chrome-control px-2.5 py-1.5 text-xs"
+              >
+                {localizeUi("ui.characters.summary.cancel")}
+              </button>
+            )}
+            {bulkProgress.total > 0 && (
+              <span className="text-xs text-[var(--marinara-chat-chrome-panel-muted)]">
+                {bulkProgress.completed}/{bulkProgress.total}
+                {bulkProgress.failed > 0
+                  ? localizeUi("ui.characters.characterlibraryview.value1Value2", {
+                      value1: bulkProgress.failed,
+                      value2: localizeUi("ui.characters.summary.failedCount"),
+                    })
+                  : ""}
+              </span>
+            )}
+            {!bulkPending && bulkFailedIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void runBulkSummaryGeneration(bulkMode ?? "missing", bulkFailedIds)}
+                className="mari-chrome-control px-2.5 py-1.5 text-xs"
+              >
+                {localizeUi("ui.characters.summary.retryFailed")}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-0 xl:grid-cols-[minmax(0,1.1fr)_28rem]">
@@ -659,10 +880,12 @@ export function CharacterLibraryView() {
                     <button
                       type="button"
                       data-card-library-card={card.id}
-                      onClick={() => setSelectedId(card.id)}
+                      onClick={() =>
+                        selectionMode && !isPersonaLibrary ? toggleCharacterSelection(card.id) : setSelectedId(card.id)
+                      }
                       className={cn(
                         "group flex h-full items-stretch overflow-hidden rounded-[1.25rem] border bg-[var(--card)]/70 text-left shadow-[0_20px_50px_-32px_rgba(15,23,42,0.75)] transition-all hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:shadow-[0_24px_60px_-32px_color-mix(in_srgb,var(--marinara-chat-chrome-accent)_35%,transparent)] sm:flex-col sm:rounded-[1.75rem] sm:hover:-translate-y-0.5",
-                        isSelected
+                        isSelected || selectedCharacterIds.includes(card.id)
                           ? "border-[var(--marinara-chat-chrome-button-border-active)] ring-1 ring-[var(--marinara-chat-chrome-focus-ring)]"
                           : "border-[var(--marinara-chat-chrome-panel-border)]",
                       )}

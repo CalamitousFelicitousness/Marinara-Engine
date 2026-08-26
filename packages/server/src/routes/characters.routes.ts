@@ -70,6 +70,11 @@ import {
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
+import {
+  resolveChatSummaryConnection,
+  resolveChatSummaryTemperatureOptions,
+} from "../services/chat-summary/connection-resolution.js";
+import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
 import {
@@ -916,6 +921,87 @@ export async function charactersRoutes(app: FastifyInstance) {
     return storage.listSummariesByIds(ids);
   });
 
+  app.post<{
+    Params: { id: string };
+    Body: {
+      debugMode?: boolean;
+      draft?: {
+        name?: string;
+        description?: string;
+        personality?: string;
+        scenario?: string;
+        backstory?: string;
+      };
+    };
+  }>("/:id/summary/generate", async (req, reply) => {
+    const character = await storage.getById(req.params.id);
+    if (!character) return reply.status(404).send({ error: "Character not found" });
+
+    const data = parseCharacterDataRecord(character.data) as Partial<CharacterData>;
+    const draft = req.body?.draft;
+    if (typeof draft?.name === "string") data.name = draft.name;
+    if (typeof draft?.description === "string") data.description = draft.description;
+    if (typeof draft?.personality === "string") data.personality = draft.personality;
+    if (typeof draft?.scenario === "string") data.scenario = draft.scenario;
+    const backstory = typeof draft?.backstory === "string" ? draft.backstory : data.extensions?.backstory;
+    const defaultConnection = await connections.getDefault();
+    const resolved = await resolveChatSummaryConnection({
+      chatMetadata: {},
+      defaultConnectionId: defaultConnection?.id,
+      connections,
+      resolveBaseUrl,
+    });
+    if (!resolved.ok) return reply.status(400).send({ error: resolved.error });
+
+    const prompt = [
+      "Write a concise metadata summary for this character card.",
+      "Use one sentence or two short sentences, maximum 500 characters.",
+      "Write in third person and describe the character's identity, role, personality, or central premise.",
+      "Use only facts present in the card. Do not write instructions, dialogue, markdown, labels, or commentary.",
+      "Return the summary text only.",
+      "",
+      `Name: ${typeof data.name === "string" ? data.name : ""}`,
+      `Description: ${typeof data.description === "string" ? data.description : ""}`,
+      `Personality: ${typeof data.personality === "string" ? data.personality : ""}`,
+      `Backstory: ${typeof backstory === "string" ? backstory : ""}`,
+      `Scenario: ${typeof data.scenario === "string" ? data.scenario : ""}`,
+    ].join("\n");
+
+    logDebugOverride(
+      req.body?.debugMode === true || isDebugAgentsEnabled(),
+      "[debug/characters/%s-summary] prompt:\n%s",
+      req.params.id,
+      prompt,
+    );
+    try {
+      const result = await resolved.provider.chatComplete(
+        [
+          { role: "system", content: prompt },
+          { role: "user", content: "Create the card summary." },
+        ],
+        {
+          model: resolved.model,
+          maxTokens: Math.min(resolved.provider.maxTokensOverrideValue ?? 256, 256),
+          temperature: 0.35,
+          enabledParameters: resolveChatSummaryTemperatureOptions(resolved).enabledParameters,
+        },
+      );
+      const summary = (result.content ?? "")
+        .replace(/^```(?:text)?/i, "")
+        .replace(/```$/i, "")
+        .trim()
+        .slice(0, 500)
+        .trim();
+      if (!summary) return reply.status(502).send({ error: "Summary generation returned no text" });
+      return reply.send({ summary });
+    } catch (error) {
+      logger.error(error, "Character summary generation failed");
+      return reply
+        .status(502)
+        .send({ error: error instanceof Error ? error.message : "Character summary generation failed" });
+    }
+  });
+
   app.post("/avatar-generation/preview", async (req, reply) => {
     const body = req.body as AvatarGenerationBody;
     const resolved = await resolveAvatarGenerationConnection(app, body);
@@ -1130,7 +1216,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     );
   });
 
-  app.patch<{ Params: { id: string } }>("/:id", async (req) => {
+  app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const body = req.body as Record<string, unknown>;
     const update = updateCharacterSchema.parse(req.body);
     const avatarPath = typeof body.avatarPath === "string" ? body.avatarPath : undefined;
@@ -1138,8 +1224,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     const versionSource = typeof body.versionSource === "string" ? body.versionSource : undefined;
     const versionReason = typeof body.versionReason === "string" ? body.versionReason : undefined;
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
+    // Bulk summary generation sets this so a summary saved while generation was
+    // in flight wins. Checked inside the per-character queue to stay atomic.
+    const requireEmptySummary = body.requireEmptySummary === true;
     const characterDataUpdate = update.data ?? {};
-    return enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
+    const result = await enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
+      if (requireEmptySummary) {
+        const current = await storage.getById(req.params.id);
+        const currentData = current ? (parseCharacterDataRecord(current.data) as Partial<CharacterData>) : undefined;
+        if (typeof currentData?.summary === "string" && currentData.summary.trim()) return "summary-exists" as const;
+      }
       const validatedDataUpdate = await validateCharacterGalleryReferences(
         req.params.id,
         characterDataUpdate,
@@ -1152,6 +1246,8 @@ export async function charactersRoutes(app: FastifyInstance) {
         skipVersionSnapshot,
       });
     });
+    if (result === "summary-exists") return reply.status(409).send({ error: "Character already has a summary" });
+    return result;
   });
 
   app.patch<{ Params: { id: string }; Body: { paint?: unknown } }>("/:id/tracker-card-colors", async (req, reply) => {

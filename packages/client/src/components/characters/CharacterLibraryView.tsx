@@ -37,7 +37,7 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import {
   useUIStore,
@@ -617,19 +617,19 @@ export function CharacterLibraryView() {
             }
             const generated = await generateCharacterSummary(id);
             if (bulkCancelledRef.current) return;
-            // Generation is slow, so re-check before writing: a summary saved
-            // elsewhere while this ran must not be clobbered by missing-only mode.
-            if (mode === "missing" && (await characterHasSummary(id))) {
-              setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
-              remaining.delete(id);
-              continue;
+            try {
+              await api.patch(`/characters/${encodeURIComponent(id)}`, {
+                data: { summary: generated.summary },
+                versionSource: "summary-generation",
+                versionReason: "Generated character card summary",
+                // Generation is slow. The server rechecks inside its per-character
+                // update queue so a summary saved meanwhile is never clobbered.
+                requireEmptySummary: mode === "missing",
+              });
+            } catch (error) {
+              // 409 means a summary appeared while generating: skip, do not fail.
+              if (!(error instanceof ApiError) || error.status !== 409) throw error;
             }
-            if (bulkCancelledRef.current) return;
-            await api.patch(`/characters/${encodeURIComponent(id)}`, {
-              data: { summary: generated.summary },
-              versionSource: "summary-generation",
-              versionReason: "Generated character card summary",
-            });
             setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
             remaining.delete(id);
           } catch {

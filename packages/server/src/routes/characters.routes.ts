@@ -1216,7 +1216,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     );
   });
 
-  app.patch<{ Params: { id: string } }>("/:id", async (req) => {
+  app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const body = req.body as Record<string, unknown>;
     const update = updateCharacterSchema.parse(req.body);
     const avatarPath = typeof body.avatarPath === "string" ? body.avatarPath : undefined;
@@ -1224,8 +1224,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     const versionSource = typeof body.versionSource === "string" ? body.versionSource : undefined;
     const versionReason = typeof body.versionReason === "string" ? body.versionReason : undefined;
     const skipVersionSnapshot = body.skipVersionSnapshot === true;
+    // Bulk summary generation sets this so a summary saved while generation was
+    // in flight wins. Checked inside the per-character queue to stay atomic.
+    const requireEmptySummary = body.requireEmptySummary === true;
     const characterDataUpdate = update.data ?? {};
-    return enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
+    const result = await enqueueUpdate(characterUpdateQueues, req.params.id, async () => {
+      if (requireEmptySummary) {
+        const current = await storage.getById(req.params.id);
+        const currentData = current ? (parseCharacterDataRecord(current.data) as Partial<CharacterData>) : undefined;
+        if (typeof currentData?.summary === "string" && currentData.summary.trim()) return "summary-exists" as const;
+      }
       const validatedDataUpdate = await validateCharacterGalleryReferences(
         req.params.id,
         characterDataUpdate,
@@ -1238,6 +1246,8 @@ export async function charactersRoutes(app: FastifyInstance) {
         skipVersionSnapshot,
       });
     });
+    if (result === "summary-exists") return reply.status(409).send({ error: "Character already has a summary" });
+    return result;
   });
 
   app.patch<{ Params: { id: string }; Body: { paint?: unknown } }>("/:id/tracker-card-colors", async (req, reply) => {

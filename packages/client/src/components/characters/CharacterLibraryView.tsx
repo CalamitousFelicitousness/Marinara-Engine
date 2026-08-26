@@ -544,9 +544,15 @@ export function CharacterLibraryView() {
     });
   }, []);
 
+  const selectAllMatchingCharactersTokenRef = useRef(0);
+  useEffect(() => {
+    selectAllMatchingCharactersTokenRef.current++;
+  }, [serverSearch, characterSort, isPersonaLibrary]);
   const selectAllMatchingCharacters = useCallback(async () => {
     if (isPersonaLibrary) return;
+    const requestToken = ++selectAllMatchingCharactersTokenRef.current;
     const allCharacters = await fetchAllCharacterPages({ search: serverSearch, sort: characterSort });
+    if (selectAllMatchingCharactersTokenRef.current !== requestToken) return;
     const query = parseCardLibrarySearchQuery(search);
     const parsedCharacters = allCharacters
       .map((character) => parseCharacterRow(character as CharacterRow))
@@ -596,6 +602,7 @@ export function CharacterLibraryView() {
               const currentCharacter = await api.get<{ data?: string | { summary?: unknown } }>(
                 `/characters/${encodeURIComponent(id)}`,
               );
+              if (bulkCancelledRef.current) return;
               const rawData = currentCharacter.data;
               const currentData =
                 typeof rawData === "string" ? (JSON.parse(rawData) as { summary?: unknown }) : rawData;
@@ -609,6 +616,7 @@ export function CharacterLibraryView() {
               `/characters/${encodeURIComponent(id)}/summary/generate`,
               {},
             );
+            if (bulkCancelledRef.current) return;
             await api.patch(`/characters/${encodeURIComponent(id)}`, {
               data: { summary: generated.summary },
               versionSource: "summary-generation",

@@ -1389,12 +1389,16 @@ function CharacterSummaryField({
   const { t: localizeUi } = useUiTranslation();
   const characterId = useUIStore((s) => s.characterDetailId);
   const generateSummary = useGenerateCharacterSummary();
+  const liveSummaryRef = useRef(formData.summary ?? "");
+  liveSummaryRef.current = formData.summary ?? "";
   const handleGenerate = async () => {
     if (!characterId) return;
     const requestedCharacterId = characterId;
+    const summaryAtRequest = liveSummaryRef.current;
     try {
       const result = await generateSummary.mutateAsync({ id: requestedCharacterId });
       if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
+      if (liveSummaryRef.current !== summaryAtRequest) return;
       updateField("summary", result.summary);
       toast.success(localizeUi("ui.characters.summary.generated"));
     } catch (error) {

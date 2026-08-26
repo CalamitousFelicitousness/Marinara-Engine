@@ -27,8 +27,8 @@ export const TRACKER_SECTION_RERUN_TITLES: Partial<Record<TrackerPanelSection, s
 };
 
 export const TRACKER_FEATURED_CHARACTER_META_KEY = "trackerFeaturedCharacterKeys";
-export const TRACKER_TEXT_ROW = "text-[length:var(--tracker-fs-0-6875)] leading-[0.875rem]";
-export const TRACKER_TEXT_MICRO = "text-[length:var(--tracker-fs-0-625)] leading-[0.75rem]";
+export const TRACKER_TEXT_ROW = "text-[length:var(--tracker-fs-0-6875)] leading-[1.3]";
+export const TRACKER_TEXT_MICRO = "text-[length:var(--tracker-fs-0-625)] leading-[1.25]";
 export const TRACKER_BAR = "h-[3px] rounded-[1px]";
 export const TRACKER_PROFILE_PORTRAIT_FRAME_STAGE_CLASS =
   "h-[9rem] min-h-[9rem] @min-[380px]:h-[10.5rem] @min-[380px]:min-h-[10.5rem]";

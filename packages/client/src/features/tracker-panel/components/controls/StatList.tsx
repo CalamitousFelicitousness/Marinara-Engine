@@ -80,6 +80,22 @@ function GaugeDivider({ ornamentEdge = false }: { ornamentEdge?: boolean }) {
   );
 }
 
+const GAUGE_RAIL_CLASS =
+  "@container relative isolate w-full min-w-0 rounded-[0.5rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_42%,transparent)] bg-[image:var(--tracker-profile-field-material)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_6%,transparent),inset_0_-10px_18px_color-mix(in_srgb,var(--background)_30%,transparent)] [background-blend-mode:var(--tracker-profile-field-material-blend)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_58%,transparent),transparent)] before:opacity-80 before:content-['']";
+/** Two gauges or fewer always fit one row, so that case keeps the ornament rails. */
+const GAUGE_RAIL_ORNAMENT_CLASS = "scrollbar-hide flex snap-x snap-mandatory overflow-x-auto";
+/**
+ * Three or more gauges wrap instead of scrolling.
+ *
+ * The rail was a snap carousel, which suited a swipeable strip but not a
+ * fixed-width panel: `scrollbar-hide` left no affordance, so a fifth stat simply
+ * vanished past the right edge. auto-fit keeps every row's columns equal and
+ * needs no per-count breakpoint. Dividers are dropped here because a divider
+ * element cannot know where a wrapped row breaks.
+ */
+const GAUGE_RAIL_WRAP_CLASS =
+  "grid grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))] @min-[380px]:grid-cols-[repeat(auto-fit,minmax(4.75rem,1fr))]";
+
 function StatBar({
   stat,
   onUpdateName,
@@ -124,22 +140,22 @@ function StatBar({
   const isCondensed = isCompact || isTight;
   const isInstrument = visualTone === "instrument";
   const rowTextClass = isTight
-    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[1.25]"
     : isCompact
-      ? "text-[length:var(--tracker-fs-0-625)] leading-3"
+      ? "text-[length:var(--tracker-fs-0-625)] leading-[1.25]"
       : TRACKER_TEXT_ROW;
   const inlineEditClass = isTight
-    ? "h-[0.6875rem] text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
+    ? "min-h-[0.6875rem] text-[length:var(--tracker-fs-0-5625)] leading-[1.25]"
     : isCompact
-      ? "h-3 text-[length:var(--tracker-fs-0-625)] leading-3"
-      : cn("h-[0.875rem]", TRACKER_TEXT_ROW);
+      ? "min-h-3 text-[length:var(--tracker-fs-0-625)] leading-[1.25]"
+      : cn("min-h-[0.875rem]", TRACKER_TEXT_ROW);
   const compactNameClass = isTight
-    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
-    : "text-[length:var(--tracker-fs-0-625)] leading-3";
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[1.25]"
+    : "text-[length:var(--tracker-fs-0-625)] leading-[1.25]";
   const nameInlineEditClass = compactNameRhythm ? cn(inlineEditClass, compactNameClass) : inlineEditClass;
   const numberClass = isTight
-    ? "text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
-    : "text-[length:var(--tracker-fs-0-625)] leading-3";
+    ? "text-[length:var(--tracker-fs-0-5625)] leading-[1.25]"
+    : "text-[length:var(--tracker-fs-0-625)] leading-[1.25]";
   const barClass = isInstrument
     ? isTight
       ? "h-[2px] rounded-[1px]"
@@ -327,40 +343,43 @@ export function StatList({
   if (renderGauges) {
     const gaugeSize = stats.length <= 4 ? "large" : stats.length <= 6 ? "medium" : "compact";
     const showGaugeOrnaments = stats.length <= 2;
+    const renderGauge = (stat: CharacterStat, index: number) => {
+      const occurrence = getStatNameOccurrence(stats, index);
+      const resolvedIcon = resolveIcon(stat, occurrence);
+      return (
+        <StatGauge
+          stat={stat}
+          iconValue={resolvedIcon.value}
+          icon={resolvedIcon.displayIcon}
+          onSelectIcon={(icon) => onSetIcon(stat, occurrence, icon)}
+          onUpdate={(updatedStat) => updateStat(index, updatedStat)}
+          size={gaugeSize}
+          nameLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "name", stat))}
+          valueLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "value", stat))}
+          maxLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "max", stat))}
+        />
+      );
+    };
     return (
       <div
-        className="@container scrollbar-hide relative isolate flex w-full min-w-0 snap-x snap-mandatory overflow-x-auto rounded-[0.5rem] border border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_42%,transparent)] bg-[image:var(--tracker-profile-field-material)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_6%,transparent),inset_0_-10px_18px_color-mix(in_srgb,var(--background)_30%,transparent)] [background-blend-mode:var(--tracker-profile-field-material-blend)] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_58%,transparent),transparent)] before:opacity-80 before:content-['']"
+        className={cn(GAUGE_RAIL_CLASS, showGaugeOrnaments ? GAUGE_RAIL_ORNAMENT_CLASS : GAUGE_RAIL_WRAP_CLASS)}
         role="list"
       >
-        {showGaugeOrnaments && (
+        {showGaugeOrnaments ? (
           <>
             <GaugeOrnamentRail compact={stats.length === 2} />
             <GaugeDivider ornamentEdge />
+            {stats.map((stat, index) => (
+              <Fragment key={`${stat.name}-${index}`}>
+                {renderGauge(stat, index)}
+                <GaugeDivider ornamentEdge={index === stats.length - 1} />
+              </Fragment>
+            ))}
+            <GaugeOrnamentRail compact={stats.length === 2} />
           </>
+        ) : (
+          stats.map((stat, index) => <Fragment key={`${stat.name}-${index}`}>{renderGauge(stat, index)}</Fragment>)
         )}
-        {stats.map((stat, index) => {
-          const occurrence = getStatNameOccurrence(stats, index);
-          const resolvedIcon = resolveIcon(stat, occurrence);
-          return (
-            <Fragment key={`${stat.name}-${index}`}>
-              <StatGauge
-                stat={stat}
-                iconValue={resolvedIcon.value}
-                icon={resolvedIcon.displayIcon}
-                onSelectIcon={(icon) => onSetIcon(stat, occurrence, icon)}
-                onUpdate={(updatedStat) => updateStat(index, updatedStat)}
-                size={gaugeSize}
-                nameLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "name", stat))}
-                valueLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "value", stat))}
-                maxLocked={isTrackerFieldLocked(fieldLocks, getLockKey(index, "max", stat))}
-              />
-              {(index < stats.length - 1 || showGaugeOrnaments) && (
-                <GaugeDivider ornamentEdge={showGaugeOrnaments && index === stats.length - 1} />
-              )}
-            </Fragment>
-          );
-        })}
-        {showGaugeOrnaments && <GaugeOrnamentRail compact={stats.length === 2} />}
       </div>
     );
   }
@@ -410,9 +429,9 @@ export function StatList({
           title={localizeUi("ui.trackerPanel.statlist.addStat")}
           className={
             density === "tight"
-              ? "min-h-3 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[0.6875rem]"
+              ? "min-h-3 py-0 text-[length:var(--tracker-fs-0-5625)] leading-[1.25]"
               : density === "compact"
-                ? "min-h-4 py-px text-[length:var(--tracker-fs-0-625)] leading-3"
+                ? "min-h-4 py-px text-[length:var(--tracker-fs-0-625)] leading-[1.25]"
                 : undefined
           }
         />

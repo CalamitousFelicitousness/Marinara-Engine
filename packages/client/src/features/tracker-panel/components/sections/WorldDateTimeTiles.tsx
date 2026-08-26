@@ -25,8 +25,8 @@ const WORLD_DATE_TIME_PROFILE_STYLES: Record<
     clock: "h-4 w-4 opacity-80",
     calendar: "h-3.5 w-3.5 opacity-[0.58]",
     edit: "px-0.5",
-    time: "text-sm leading-4",
-    date: "text-xs leading-4",
+    time: "text-sm leading-[1.25]",
+    date: "text-xs leading-[1.35]",
   },
   standard: {
     shell: "pr-1",
@@ -34,8 +34,8 @@ const WORLD_DATE_TIME_PROFILE_STYLES: Record<
     clock: "h-5 w-5 opacity-85",
     calendar: "h-4 w-4 opacity-[0.62]",
     edit: "px-1",
-    time: "text-[length:var(--tracker-fs-1-0625)] leading-5",
-    date: "text-[length:var(--tracker-fs-0-8125)] leading-4",
+    time: "text-[length:var(--tracker-fs-1-0625)] leading-[1.25]",
+    date: "text-[length:var(--tracker-fs-0-8125)] leading-[1.25]",
   },
   expanded: {
     shell: "pr-1",
@@ -43,8 +43,8 @@ const WORLD_DATE_TIME_PROFILE_STYLES: Record<
     clock: "h-6 w-6 opacity-85",
     calendar: "h-5 w-5 opacity-[0.62]",
     edit: "px-1",
-    time: "text-[length:var(--tracker-fs-1-1875)] leading-6",
-    date: "text-sm leading-5",
+    time: "text-[length:var(--tracker-fs-1-1875)] leading-[1.3]",
+    date: "text-sm leading-[1.45]",
   },
 };
 

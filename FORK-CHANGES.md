@@ -811,6 +811,44 @@ Persist migration v96 -> v97 folds the short-lived density setting into the text
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
 
+### Tracker line boxes scale with the tracker font scale
+
+Font sizes in the panel come from `--tracker-fs-*`, which multiply by `--tracker-text-scale` (the
+user's S/M/L/XL setting) and `--tracker-panel-font-scale`. Every `line-height` was a fixed rem and
+did not. At the default size L the multiplier is 1.3, so a 0.625rem gauge label rendered at
+0.8125rem inside a `leading-3` line box of 0.75rem: a line box smaller than its own font.
+
+`FittedText` needs `overflow-hidden` for its ellipsis, so the excess was sheared rather than
+overflowing. Descenders lost their tails on y, g, p and on the Polish tails in a, e. It read as
+several unrelated bugs (stat gauge labels, the featured nameplate, detail fields) because it
+surfaced wherever a glyph happened to have a descender.
+
+All 38 length-valued line heights in `features/tracker-panel` are now unitless ratios, which are a
+proportion of the element's own font-size and therefore track both scales with no token. That also
+made 8 per-breakpoint `line-height` overrides redundant, since a ratio already follows whatever
+font-size the breakpoint sets. Ratios preserve the value each site was designed at, floored at 1.25
+so a descender clears the box.
+
+Fixed heights that capped scaled text became floors in the same pass: the nameplate frame and its
+name editor, the stat-name and value editors, and the quest title and objective rows.
+
+`pnpm regression:...` lane `tracker-line-height-scale` forbids any length-valued `leading-` in the
+panel and self-checks its own pattern against four legal and four illegal spellings.
+
+The `globals.css` line-height allowlist under `[data-tracker-content-constrained="true"]` is left
+alone. It keys on literal class strings that no longer appear in the panel, so it is inert here, but
+it still covers shared components rendered inside the panel from elsewhere.
+
+### Stat gauges wrap instead of scrolling off the edge
+
+The gauge rail was a `snap-x` carousel with `scrollbar-hide`. In a fixed-width panel that meant a
+fifth stat sat past the right edge with no visible affordance that anything was there.
+
+Three or more gauges now lay out as `grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))]`, which wraps
+into equal columns and needs no per-count breakpoint. Two or fewer keep the flex rail, because that
+case always fits one row and carries the ornament rails and dividers. Dividers are dropped in the
+wrapping mode: a divider element cannot know where a wrapped row breaks.
+
 ### One drag-resize primitive, and a resizable tracker panel
 
 `AppShell.tsx` carried two near-identical inline resize implementations (~40 lines each) for the left

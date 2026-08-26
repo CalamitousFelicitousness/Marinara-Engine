@@ -107,9 +107,9 @@ function CustomFieldList({
               <div
                 key={`${field.name}-${index}`}
                 className={cn(
-                  "group/field relative grid min-h-7 grid-cols-[minmax(5.5rem,0.42fr)_minmax(0,1fr)] items-center gap-2 border-b border-[var(--border)]/28 px-1 py-1 text-[length:var(--tracker-fs-0-6875)] leading-[0.875rem] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]",
+                  "group/field relative grid min-h-7 grid-cols-[minmax(5.5rem,0.42fr)_minmax(0,1fr)] items-center gap-2 border-b border-[var(--border)]/28 px-1 py-1 text-[length:var(--tracker-fs-0-6875)] leading-[1.3] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]",
                   trackerPanelSizeProfile !== "compact" && "grid-cols-[5.5rem_minmax(0,1fr)]",
-                  allowWrap && "leading-[0.95rem]",
+                  allowWrap && "leading-[1.4]",
                   useFieldColumns &&
                     index % 2 === 0 &&
                     !(fields.length % 2 === 1 && index === fields.length - 1) &&

@@ -32,8 +32,8 @@ export function WorldLocationPlate({
         value={value}
         maxLines={2}
         className={cn(
-          "min-w-0 text-sm font-semibold leading-5 text-[var(--foreground)]",
-          compact && "text-[length:var(--tracker-fs-0-8125)] leading-4",
+          "min-w-0 text-sm font-semibold leading-[1.45] text-[var(--foreground)]",
+          compact && "text-[length:var(--tracker-fs-0-8125)] leading-[1.25]",
         )}
       />
     </WorldRenderedEdit>

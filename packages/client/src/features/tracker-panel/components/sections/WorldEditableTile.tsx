@@ -88,7 +88,7 @@ export function WorldRenderedEdit({
         }}
         onBlur={commit}
         className={cn(
-          "h-auto max-h-24 min-h-full w-full min-w-0 resize-none overflow-y-auto rounded-sm border border-[var(--foreground)]/25 bg-[var(--background)]/68 px-1 py-1 text-[length:var(--tracker-fs-0-6875)] font-semibold leading-4 text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--border)]",
+          "h-auto max-h-24 min-h-full w-full min-w-0 resize-none overflow-y-auto rounded-sm border border-[var(--foreground)]/25 bg-[var(--background)]/68 px-1 py-1 text-[length:var(--tracker-fs-0-6875)] font-semibold leading-[1.45] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--border)]",
           className,
           inputClassName,
         )}
@@ -253,7 +253,7 @@ export function WorldValueText({
     <span
       ref={containerRef}
       className={cn(
-        "relative block min-w-0 overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-5",
+        "relative block min-w-0 overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-[1.45]",
         className,
       )}
       dir="auto"

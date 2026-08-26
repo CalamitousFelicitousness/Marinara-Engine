@@ -330,7 +330,7 @@ function WorldCustomFieldPlate({
             <WorldValueText
               value={field.value}
               maxLines={3}
-              className="text-[length:var(--tracker-fs-0-75)] leading-4"
+              className="text-[length:var(--tracker-fs-0-75)] leading-[1.35]"
             />
           </WorldRenderedEdit>
         </dd>

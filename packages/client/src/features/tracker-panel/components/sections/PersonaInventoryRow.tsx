@@ -56,7 +56,7 @@ export function PersonaInventoryRow({
         <InlineEdit
           value={item.name}
           onSave={updateName}
-          className="h-4 w-full min-w-0 px-0.5 py-0 text-[length:var(--tracker-fs-0-625)] font-medium leading-4 text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/25"
+          className="min-h-4 w-full min-w-0 px-0.5 py-0 text-[length:var(--tracker-fs-0-625)] font-medium leading-[1.6] text-[color:var(--tracker-profile-text)] hover:bg-[var(--accent)]/25"
           placeholder={localizeUi("ui.trackerPanel.personainventoryrow.item")}
           title={visibleText(item.name, "Item")}
           scrollOnHover
@@ -70,7 +70,7 @@ export function PersonaInventoryRow({
             value={item.quantity}
             onChange={(quantity) => onUpdate({ ...item, quantity })}
             min={0}
-            className="justify-self-end px-0 text-right text-[length:var(--tracker-fs-0-625)] leading-4 text-[color:var(--tracker-profile-number-text)] hover:bg-transparent focus:bg-transparent focus:ring-0"
+            className="justify-self-end px-0 text-right text-[length:var(--tracker-fs-0-625)] leading-[1.6] text-[color:var(--tracker-profile-number-text)] hover:bg-transparent focus:bg-transparent focus:ring-0"
             title={localizeUi("ui.trackerPanel.personainventoryrow.value1Quantity", { value1: item.name })}
             locked={isTrackerFieldLocked(fieldLocks, quantityLockKey)}
             lockMode={lockMode}

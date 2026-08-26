@@ -28,7 +28,7 @@ const QUEST_STATIC_ICON_CLASS = "flex h-4 w-4 shrink-0 items-center justify-cent
 const QUEST_TITLE_EDIT_CLASS =
   "w-full min-w-0 overflow-hidden px-0.5 py-0 text-[length:var(--tracker-fs-0-75)] font-semibold text-[var(--foreground)]/92 hover:bg-[var(--accent)]/20";
 const QUEST_TITLE_EDIT_WRAPPED_CLASS = "min-h-5 py-0.5 leading-[1.12]";
-const QUEST_TITLE_EDIT_SINGLE_LINE_CLASS = "h-5 leading-5";
+const QUEST_TITLE_EDIT_SINGLE_LINE_CLASS = "min-h-5 leading-[1.65]";
 const QUEST_TITLE_TEXT_CLASS = "min-w-0 text-[length:var(--tracker-fs-0-75)] font-semibold";
 const QUEST_COMPLETION_BADGE_CLASS =
   "shrink-0 rounded-sm border border-[var(--border)]/32 bg-[var(--background)]/18 px-1 py-0.5 text-[length:var(--tracker-fs-0-5625)] font-semibold uppercase leading-none tabular-nums text-[var(--foreground)]/68";
@@ -39,7 +39,7 @@ const QUEST_PROGRESS_FILL_CLASS = "h-full rounded-[1px] transition-[width] durat
 const OBJECTIVE_LIST_CLASS = "relative mx-1 mb-0.5 mt-0.5 grid gap-px pl-4";
 const OBJECTIVE_RAIL_CLASS = "pointer-events-none absolute left-[0.4375rem] top-1 w-px bg-[var(--border)]/28";
 const ADD_OBJECTIVE_BUTTON_CLASS =
-  "relative grid h-4 w-full grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-1 rounded-[2px] px-0.5 text-left text-[length:var(--tracker-fs-0-6875)] leading-4 text-[var(--foreground)]/35 transition-colors hover:bg-[var(--foreground)]/8 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)]";
+  "relative grid h-4 w-full grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-1 rounded-[2px] px-0.5 text-left text-[length:var(--tracker-fs-0-6875)] leading-[1.45] text-[var(--foreground)]/35 transition-colors hover:bg-[var(--foreground)]/8 hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)]";
 
 export function QuestRow({
   quest,

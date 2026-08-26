@@ -61,7 +61,7 @@ const PERSONA_STAT_DECK_CLASS = cn(
 );
 const PERSONA_STATUS_STRIP_CLASS = cn(TRACKER_PROFILE_STATUS_STRIP_CLASS, "mx-0.5 items-center px-1.5 py-[0.1875rem]");
 const PERSONA_INVENTORY_HEADER_CLASS =
-  "relative mx-0.5 flex min-h-6 items-center gap-1 overflow-hidden px-0.5 text-[length:var(--tracker-fs-0-625)] leading-3";
+  "relative mx-0.5 flex min-h-6 items-center gap-1 overflow-hidden px-0.5 text-[length:var(--tracker-fs-0-625)] leading-[1.25]";
 const PERSONA_INVENTORY_SHELF_CLASS = cn(TRACKER_PROFILE_EMPTY_SURFACE_CLASS, "min-h-0 flex-1");
 
 export function PersonaInventoryPanel({
@@ -234,7 +234,7 @@ export function PersonaInventoryPanel({
         value={status}
         onSave={onSaveStatus}
         placeholder={localizeUi("ui.trackerPanel.personainventorypanel.status")}
-        className="relative z-[1] min-h-5 flex-1 rounded-[2px] px-0.5 py-0 text-[length:var(--tracker-fs-0-6875)] font-medium leading-[0.875rem] text-[color-mix(in_srgb,var(--tracker-profile-text)_92%,var(--muted-foreground)_8%)] hover:bg-[var(--accent)]/18"
+        className="relative z-[1] min-h-5 flex-1 rounded-[2px] px-0.5 py-0 text-[length:var(--tracker-fs-0-6875)] font-medium leading-[1.3] text-[color-mix(in_srgb,var(--tracker-profile-text)_92%,var(--muted-foreground)_8%)] hover:bg-[var(--accent)]/18"
         title={status || localizeUi("ui.trackerPanel.personainventorypanel.status")}
         ariaLabel={personaStatusAccessibleName}
         previewLineCount={3}

@@ -19,22 +19,22 @@ const WORLD_FORECAST_PROFILE_STYLES: Record<
   compact: {
     shell: "px-0",
     edit: "px-0.5",
-    primary: "text-sm leading-4",
-    secondary: "whitespace-pre-wrap break-words text-xs leading-4 [overflow-wrap:anywhere]",
+    primary: "text-sm leading-[1.25]",
+    secondary: "whitespace-pre-wrap break-words text-xs leading-[1.35] [overflow-wrap:anywhere]",
     thermometer: "h-5 w-[0.625rem]",
   },
   standard: {
     shell: "px-0.5",
     edit: "px-1",
-    primary: "text-[length:var(--tracker-fs-1-0625)] leading-5",
-    secondary: "text-[length:var(--tracker-fs-0-8125)] leading-4",
+    primary: "text-[length:var(--tracker-fs-1-0625)] leading-[1.25]",
+    secondary: "text-[length:var(--tracker-fs-0-8125)] leading-[1.25]",
     thermometer: "h-5 w-[0.625rem]",
   },
   expanded: {
     shell: "px-1",
     edit: "px-1",
-    primary: "text-[length:var(--tracker-fs-1-1875)] leading-6",
-    secondary: "text-sm leading-5",
+    primary: "text-[length:var(--tracker-fs-1-1875)] leading-[1.3]",
+    secondary: "text-sm leading-[1.45]",
     thermometer: "h-6 w-3",
   },
 };

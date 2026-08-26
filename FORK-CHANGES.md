@@ -889,6 +889,15 @@ Two details worth keeping:
 - Removing a character drops its collapsed key as well as its featured one. Without that, a later
   character resolving to the same key renders collapsed for no visible reason.
 
+The row's avatar is plain `object-cover`. It first applied `getAvatarCropStyle(character.avatarCrop)`,
+which crashed the panel: `avatarCrop` is typed `unknown` because it can still be raw JSON text from
+storage, and `isLegacyAvatarCrop`'s `"zoom" in c` throws on a string. The cast that silenced the
+compiler was the bug. `normalizeAvatarCrop` would have parsed it, but the deeper point is that no
+other tracker avatar honours `avatarCrop` at all -- the panel frames with `portraitFocus` and
+`portraitZoom` -- so the crop would have framed a character one way collapsed and another expanded.
+The regression now forbids `getAvatarCropStyle` anywhere in the panel, and forbids casting
+`avatarCrop` rather than parsing it.
+
 Display only. Nothing in the collapsed path touches `presentCharacters`, and no server file knows
 the metadata key, so a collapsed character reaches the prompt exactly as an expanded one does. The
 regression pins that, because the tempting future optimisation is to stop sending them.

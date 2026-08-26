@@ -9,7 +9,17 @@
 // the obvious "optimisation" later is to stop sending collapsed characters.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+function walkPanel(dir: string): Array<{ path: string; text: string }> {
+  return readdirSync(dir).flatMap((entry) => {
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) return walkPanel(path);
+    return /\.tsx?$/u.test(path) ? [{ path, text: readFileSync(path, "utf8") }] : [];
+  });
+}
 
 const readClient = (path: string) =>
   readFileSync(new URL(`../../packages/client/src/${path}`, import.meta.url), "utf8");
@@ -84,6 +94,31 @@ for (const key of [
   assert.ok(locales[key], `missing English string for ${key}`);
 }
 assert.ok(!/title="[A-Z]/u.test(row), "the collapsed row must not hardcode user-facing copy");
+
+// ── Avatars are framed the panel's way, not the card library's ──
+// The row first rendered getAvatarCropStyle(character.avatarCrop). Two faults:
+// avatarCrop arrives from storage as a JSON string, so isLegacyAvatarCrop's
+// `"zoom" in c` threw and took the panel down; and no other tracker avatar
+// honours avatarCrop at all, so the same character framed one way collapsed
+// and another way expanded. The panel uses portraitFocus/portraitZoom.
+const panelDir = fileURLToPath(new URL("../../packages/client/src/features/tracker-panel/", import.meta.url));
+const panelSources = walkPanel(panelDir);
+assert.ok(panelSources.length > 20, `expected the panel's sources, found ${panelSources.length}`);
+for (const { path, text } of panelSources) {
+  assert.ok(
+    !text.includes("getAvatarCropStyle"),
+    `${path.slice(panelDir.length)} frames an avatar with avatarCrop; the panel uses portraitFocus`,
+  );
+}
+// Anything that does read avatarCrop must go through the parser, never a cast:
+// the value is `unknown` because it can still be raw JSON text.
+for (const { path, text } of panelSources) {
+  if (!text.includes("avatarCrop")) continue;
+  assert.ok(
+    !/avatarCrop as \w/u.test(text),
+    `${path.slice(panelDir.length)} casts avatarCrop instead of calling normalizeAvatarCrop`,
+  );
+}
 
 // ── The row stays a single toggle plus an optional delete ──
 // Nesting the name editor or avatar upload inside the toggle would put a button

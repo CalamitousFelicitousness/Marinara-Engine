@@ -1,6 +1,6 @@
 import { ChevronRight, X } from "lucide-react";
-import type { AvatarCrop, PresentCharacter } from "@marinara-engine/shared";
-import { cn, getAvatarCropStyle } from "../../../../lib/utils";
+import type { PresentCharacter } from "@marinara-engine/shared";
+import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
 import { TRACKER_DETAIL_TEXT_CLASS } from "../../lib/tracker-row-layout";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -18,6 +18,10 @@ const TOGGLE_CLASS =
   "flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-0.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border)]";
 const CHEVRON_CLASS =
   "shrink-0 text-[color:color-mix(in_srgb,var(--tracker-profile-rule)_45%,var(--tracker-profile-text)_55%)] transition-transform group-hover/collapsed:translate-x-px";
+// object-cover, no avatarCrop: the panel frames tracker avatars with the
+// character's portraitFocus/portraitZoom, and the cards ignore avatarCrop
+// entirely. Honouring it only here would frame a character one way collapsed
+// and another way expanded.
 const AVATAR_CLASS =
   "relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[color-mix(in_srgb,var(--tracker-profile-nameplate-rule)_34%,transparent)] bg-[var(--muted)] shadow-[0_2px_5px_rgba(0,0,0,0.22)]";
 const NAME_CLASS =
@@ -61,13 +65,7 @@ export function CollapsedCharacterRow({
         <ChevronRight size="0.6875rem" className={CHEVRON_CLASS} aria-hidden="true" />
         <span className={AVATAR_CLASS} aria-hidden="true">
           {avatarMedia ? (
-            <img
-              src={avatarMedia}
-              alt=""
-              className="h-full w-full object-cover"
-              style={getAvatarCropStyle(character.avatarCrop as AvatarCrop | null | undefined)}
-              draggable={false}
-            />
+            <img src={avatarMedia} alt="" className="h-full w-full object-cover" draggable={false} />
           ) : (
             <span className="text-[length:var(--tracker-fs-0-625)] leading-[1.15]">{character.emoji || "?"}</span>
           )}

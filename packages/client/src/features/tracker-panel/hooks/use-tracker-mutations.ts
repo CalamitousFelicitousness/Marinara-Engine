@@ -106,6 +106,7 @@ export function useTrackerMutations({
   patchField,
   patchPlayerStats,
   removeFeaturedCharacterCard,
+  removeCollapsedCharacterCard,
 }: {
   activeChatId: string | null;
   customFields: CustomTrackerField[];
@@ -116,6 +117,7 @@ export function useTrackerMutations({
   patchField: (field: GameStatePatchField, value: unknown) => void;
   patchPlayerStats: (field: keyof PlayerStats, value: unknown) => void;
   removeFeaturedCharacterCard: (key: string) => void;
+  removeCollapsedCharacterCard: (key: string) => void;
 }) {
   const [avatarUpload, setAvatarUpload] = useState<{ characterId: string; index: number } | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
@@ -284,7 +286,11 @@ export function useTrackerMutations({
 
       const removed = liveCharacters[targetIndex];
       if (removed) {
-        removeFeaturedCharacterCard(getCharacterFeatureKey(removed, targetIndex));
+        const removedKey = getCharacterFeatureKey(removed, targetIndex);
+        removeFeaturedCharacterCard(removedKey);
+        // Without this a later character resolving to the same key would render
+        // collapsed for no reason the user can see.
+        removeCollapsedCharacterCard(removedKey);
         updateFieldLocks((locks) => removeTrackerCharacterLocks(locks, removed, targetIndex));
         updateHiddenTrackerFields((hiddenFields) => removeTrackerCharacterLocks(hiddenFields, removed, targetIndex));
       }
@@ -293,7 +299,14 @@ export function useTrackerMutations({
         liveCharacters.filter((_, characterIndex) => characterIndex !== targetIndex),
       );
     },
-    [patchField, readPresentCharacters, removeFeaturedCharacterCard, updateFieldLocks, updateHiddenTrackerFields],
+    [
+      patchField,
+      readPresentCharacters,
+      removeCollapsedCharacterCard,
+      removeFeaturedCharacterCard,
+      updateFieldLocks,
+      updateHiddenTrackerFields,
+    ],
   );
 
   const addCharacter = useCallback(() => {

@@ -1,5 +1,5 @@
 import { type RefObject } from "react";
-import { Brain, Minimize2 } from "lucide-react";
+import { Brain, ChevronDown, Minimize2 } from "lucide-react";
 import { characterTrackerLockKey, isTrackerFieldLocked, type PresentCharacter } from "@marinara-engine/shared";
 import { cn } from "../../../../lib/utils";
 import type { TrackerProfileSide } from "../../lib/tracker-profile-layout";
@@ -21,6 +21,7 @@ export function FeaturedCharacterNameplate({
   thoughtControlSide,
   onToggleThoughts,
   onToggleFeatured,
+  onToggleCollapsed,
   characterIndex,
 }: {
   character: PresentCharacter;
@@ -30,6 +31,7 @@ export function FeaturedCharacterNameplate({
   thoughtControlSide: TrackerProfileSide;
   onToggleThoughts?: () => void;
   onToggleFeatured: () => void;
+  onToggleCollapsed: () => void;
   characterIndex: number;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -78,6 +80,16 @@ export function FeaturedCharacterNameplate({
   const headerControls = (
     <>
       {emojiControl}
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        title={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+        aria-label={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+        aria-expanded
+        className={TRACKER_PROFILE_NAMEPLATE_HEADER_BUTTON_CLASS}
+      >
+        <ChevronDown size="0.6875rem" />
+      </button>
       <button
         type="button"
         onClick={onToggleFeatured}

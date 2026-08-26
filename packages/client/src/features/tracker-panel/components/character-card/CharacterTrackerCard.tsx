@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Eye, HeartPulse, Maximize2, Shirt, X } from "lucide-react";
+import { ChevronDown, Eye, HeartPulse, Maximize2, Shirt, X } from "lucide-react";
 import {
   characterStatTrackerLockKey,
   characterTrackerLockKey,
@@ -49,6 +49,11 @@ const CHARACTER_HEADER_VOID_TEXTURE_CLASS =
   "pointer-events-none absolute inset-x-0 bottom-[-0.125rem] top-[2.05rem] z-0 rounded-b-[5px] bg-[radial-gradient(ellipse_at_48%_0%,color-mix(in_srgb,var(--tracker-profile-accent-solid)_11%,transparent)_0%,transparent_62%),repeating-linear-gradient(135deg,color-mix(in_srgb,var(--tracker-profile-rule)_18%,transparent)_0_1px,transparent_1px_7px),repeating-linear-gradient(0deg,color-mix(in_srgb,var(--foreground)_4%,transparent)_0_1px,transparent_1px_5px)] opacity-[0.56] mix-blend-soft-light [mask-image:linear-gradient(180deg,transparent_0%,black_22%,black_82%,transparent_100%)]";
 const CHARACTER_FEATURE_BUTTON_CLASS =
   "absolute left-0 top-0 z-[6] flex h-[1.35rem] w-[1.35rem] items-center justify-center rounded-tl-[5px] rounded-br-[5px] bg-transparent text-[var(--tracker-profile-nameplate-text)]/42 transition-all hover:bg-[color-mix(in_srgb,var(--tracker-profile-nameplate-rule)_10%,transparent)] hover:text-[var(--tracker-profile-nameplate-text)]/74 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--border)] active:scale-95 [&>svg]:drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]";
+/** Sits beside the feature button, so it never collides with delete-mode's corner. */
+const CHARACTER_COLLAPSE_BUTTON_CLASS = cn(
+  CHARACTER_FEATURE_BUTTON_CLASS,
+  "left-[1.35rem] rounded-tl-none rounded-br-none",
+);
 const CHARACTER_NAMEPLATE_CLASS =
   "relative z-[3] -mx-0.5 -mt-0.5 mb-0.5 flex min-h-[1.35rem] min-w-0 items-center overflow-hidden rounded-t-[5px] border-x border-t border-[color-mix(in_srgb,var(--tracker-profile-nameplate-rule)_20%,transparent)] bg-[image:var(--tracker-profile-nameplate)] pl-[clamp(4.05rem,43cqw,4.85rem)] pr-1.5 shadow-[0_0_4px_color-mix(in_srgb,var(--tracker-profile-nameplate-glow)_9%,transparent),inset_0_-1px_0_color-mix(in_srgb,var(--background)_24%,transparent)] [background-blend-mode:normal]";
 const CHARACTER_NAMEPLATE_GLEAM_CLASS =
@@ -158,6 +163,7 @@ export function CharacterTrackerCard({
   deleteMode,
   addMode,
   onToggleFeatured,
+  onToggleCollapsed,
   onUploadAvatar,
 }: {
   character: PresentCharacter;
@@ -172,6 +178,7 @@ export function CharacterTrackerCard({
   deleteMode: boolean;
   addMode: boolean;
   onToggleFeatured: () => void;
+  onToggleCollapsed: () => void;
   onUploadAvatar: () => void;
 }) {
   useRenderTimer(`tracker-card:${characterIndex}`); // [#3104 diagnostic]
@@ -252,6 +259,16 @@ export function CharacterTrackerCard({
         className={CHARACTER_FEATURE_BUTTON_CLASS}
       >
         <Maximize2 size="0.5625rem" />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        title={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+        aria-label={localizeUi("ui.trackerPanel.charactertrackercard.collapseCharacterCard")}
+        aria-expanded
+        className={CHARACTER_COLLAPSE_BUTTON_CLASS}
+      >
+        <ChevronDown size="0.5625rem" />
       </button>
 
       <div className={cn(CHARACTER_HEADER_CLASS, deleteMode && "pr-7")}>

@@ -93,6 +93,7 @@ export function FeaturedCharacterTrackerCard({
   deleteMode,
   addMode,
   onToggleFeatured,
+  onToggleCollapsed,
   onUploadAvatar,
 }: {
   character: PresentCharacter;
@@ -113,6 +114,7 @@ export function FeaturedCharacterTrackerCard({
   deleteMode: boolean;
   addMode: boolean;
   onToggleFeatured: () => void;
+  onToggleCollapsed: () => void;
   onUploadAvatar: () => void;
 }) {
   useRenderTimer(`tracker-featured:${characterIndex}`); // [#3104 diagnostic]
@@ -238,6 +240,7 @@ export function FeaturedCharacterTrackerCard({
           thoughtControlSide={featuredPortraitSide}
           onToggleThoughts={canToggleThoughts ? () => setThoughtsOpen((open) => !open) : undefined}
           onToggleFeatured={onToggleFeatured}
+          onToggleCollapsed={onToggleCollapsed}
           characterIndex={characterIndex}
         />
         <div aria-hidden="true" className={FEATURED_COCKPIT_SHELF_CLASS}>

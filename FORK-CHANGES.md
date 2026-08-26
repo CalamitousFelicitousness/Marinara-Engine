@@ -811,6 +811,32 @@ Persist migration v96 -> v97 folds the short-lived density setting into the text
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
 
+### Character cards collapse to a header
+
+A cast of eight fills the tracker with cards you scroll past to reach the one you want. Each
+character card now collapses to a one-line row carrying its avatar, emoji, name and mood, with a
+collapse-all toggle in the Present Characters header.
+
+Collapsed keys persist per chat in `trackerCollapsedCharacterKeys`, alongside the existing
+`trackerFeaturedCharacterKeys`. Both now run through one `useCharacterCardKeySet` hook rather than
+two copies of the same write-through-to-metadata logic; `useFeaturedCharacterCards` is a thin
+wrapper over it, kept so upstream references to that name still resolve.
+
+The three groups are disjoint and render in priority order: featured, then compact, then collapsed.
+Collapsed wins over featured, since a card asked to get out of the way should not keep the top slot.
+Toggling therefore moves a card between groups, which is how featuring already behaves.
+
+Two details worth keeping:
+
+- Collapse-all enumerates the live characters rather than reading the stored set, so keys left
+  behind by departed characters cannot leave the button stuck reporting "all collapsed".
+- Removing a character drops its collapsed key as well as its featured one. Without that, a later
+  character resolving to the same key renders collapsed for no visible reason.
+
+Display only. Nothing in the collapsed path touches `presentCharacters`, and no server file knows
+the metadata key, so a collapsed character reaches the prompt exactly as an expanded one does. The
+regression pins that, because the tempting future optimisation is to stop sending them.
+
 ### Tracker line boxes scale with the tracker font scale
 
 Font sizes in the panel come from `--tracker-fs-*`, which multiply by `--tracker-text-scale` (the

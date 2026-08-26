@@ -119,6 +119,7 @@ export function TrackerDataSidebar({
     enabledAgentTypes,
     expressionSpritesEnabled,
     featuredCharacterCardKeys,
+    collapsedCharacterCardKeys,
     orderedTrackerSections,
     resolveSpriteCharacterId,
     spriteExpressions,
@@ -257,6 +258,7 @@ export function TrackerDataSidebar({
                 enabledAgentTypes={enabledAgentTypes}
                 expressionSpritesEnabled={expressionSpritesEnabled}
                 featuredCharacterCardKeys={featuredCharacterCardKeys}
+                collapsedCharacterCardKeys={collapsedCharacterCardKeys}
                 flushPatch={flushPatch}
                 gameStateRefreshing={gameStateRefreshing}
                 orderedTrackerSections={orderedTrackerSections}

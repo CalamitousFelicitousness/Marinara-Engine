@@ -27,6 +27,8 @@ export const TRACKER_SECTION_RERUN_TITLES: Partial<Record<TrackerPanelSection, s
 };
 
 export const TRACKER_FEATURED_CHARACTER_META_KEY = "trackerFeaturedCharacterKeys";
+/** Cards collapsed to a one-line header. Display only; the prompt is unaffected. */
+export const TRACKER_COLLAPSED_CHARACTER_META_KEY = "trackerCollapsedCharacterKeys";
 export const TRACKER_TEXT_ROW = "text-[length:var(--tracker-fs-0-6875)] leading-[1.3]";
 export const TRACKER_TEXT_MICRO = "text-[length:var(--tracker-fs-0-625)] leading-[1.25]";
 export const TRACKER_BAR = "h-[3px] rounded-[1px]";

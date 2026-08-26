@@ -22,7 +22,9 @@ const read = (path: string) => readFileSync(new URL(`../../packages/client/src/$
 const panel = read("features/tracker-panel/components/sections/CharacterTrackerPanel.tsx");
 const statIcons = read("features/tracker-panel/hooks/use-stat-icons.ts");
 const mutations = read("features/tracker-panel/hooks/use-tracker-mutations.ts");
-const featuredCards = read("features/tracker-panel/hooks/use-featured-character-cards.ts");
+// Featured and collapsed cards share one implementation; the stability
+// properties below live there now rather than in the featured wrapper.
+const cardKeySet = read("features/tracker-panel/hooks/use-character-card-key-set.ts");
 const sidebar = read("features/tracker-panel/components/TrackerDataSidebar.tsx");
 
 // ── 1. Memo boundaries, and props stable enough for them to bite ──
@@ -54,13 +56,9 @@ assert.equal(statIcons.includes("latest.current."), true, "the lookup resolves a
 // ── 3. Character mutations survive a patch ──
 // They closed over the rendered snapshot, so every patch changed their identity.
 assert.equal(mutations.includes("renderedCharactersRef.current"), true, "the rendered snapshot is read via ref");
+assert.equal(cardKeySet.includes("keysRef.current"), true, "the key set is read via ref, not closed over");
 assert.equal(
-  featuredCards.includes("featuredCharacterCardsRef.current"),
-  true,
-  "the featured set is read via ref, not closed over",
-);
-assert.equal(
-  featuredCards.includes("mutate: mutateChatMetadata"),
+  cardKeySet.includes("mutate: mutateChatMetadata"),
   true,
   "only `mutate` is referentially stable; the mutation object it hangs off is not",
 );

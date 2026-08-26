@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, RefreshCw, Sparkles } from "lucide-react";
 import type {
   GameState,
   InventoryTrackerGroup,
@@ -18,6 +18,8 @@ import type {
   TrackerThoughtBubbleDisplay,
 } from "../../../stores/ui.store";
 import { useFeaturedCharacterCards } from "../hooks/use-featured-character-cards";
+import { useCharacterCardKeySet } from "../hooks/use-character-card-key-set";
+import { TRACKER_COLLAPSED_CHARACTER_META_KEY } from "../lib/tracker-panel.constants";
 import type { StatIconLookup } from "../hooks/use-stat-icons";
 import { useTrackerMutations } from "../hooks/use-tracker-mutations";
 import { useTrackerRerun } from "../hooks/use-tracker-rerun";
@@ -26,6 +28,8 @@ import { buildInventoryTrackerEditPatch } from "../lib/inventory-tracker-edit";
 import { TRACKER_SECTION_AGENT_TYPES, TRACKER_SECTION_RERUN_TITLES } from "../lib/tracker-panel.constants";
 import type { TrackerPanelSection, TrackerSpriteLookup } from "../tracker-panel.types";
 import { SectionIconButton } from "./controls/SectionControls";
+import { getCharacterFeatureKey } from "../lib/character-tracker-data";
+import { useTranslation as useUiTranslation } from "react-i18next";
 import { CharacterTrackerPanel } from "./sections/CharacterTrackerPanel";
 import { CustomTrackerPanel } from "./sections/CustomTrackerPanel";
 import { PersonaInventoryPanel } from "./sections/PersonaInventoryPanel";
@@ -43,6 +47,7 @@ export function TrackerSectionList({
   enabledAgentTypes,
   expressionSpritesEnabled,
   featuredCharacterCardKeys,
+  collapsedCharacterCardKeys,
   flushPatch,
   gameStateRefreshing,
   orderedTrackerSections,
@@ -74,6 +79,7 @@ export function TrackerSectionList({
   enabledAgentTypes: Set<string>;
   expressionSpritesEnabled: boolean;
   featuredCharacterCardKeys: Set<string>;
+  collapsedCharacterCardKeys: Set<string>;
   flushPatch: () => Promise<void>;
   gameStateRefreshing: boolean;
   orderedTrackerSections: TrackerPanelSection[];
@@ -100,6 +106,7 @@ export function TrackerSectionList({
   flushPersonaPortraitSave: (personaId: string) => void;
   resolveStatIcon: StatIconLookup;
 }) {
+  const { t: localizeUi } = useUiTranslation();
   const updateAgent = useUpdateAgent();
   const autoGenerateCharacterAvatars = characterTrackerSettings.autoGenerateAvatars === true;
   const { featuredCharacterCards, removeFeaturedCharacterCard, toggleFeaturedCharacterCard } =
@@ -107,6 +114,16 @@ export function TrackerSectionList({
       activeChatId,
       featuredCharacterCardKeys,
     });
+  const {
+    keys: collapsedCharacterCards,
+    replace: replaceCollapsedCharacterCards,
+    toggle: toggleCollapsedCharacterCard,
+    remove: removeCollapsedCharacterCard,
+  } = useCharacterCardKeySet({
+    activeChatId,
+    metaKey: TRACKER_COLLAPSED_CHARACTER_META_KEY,
+    persistedKeys: collapsedCharacterCardKeys,
+  });
   const { rerunTracker, trackerRetryBusy } = useTrackerRerun({
     activeChatId,
     enabledAgentTypes,
@@ -164,6 +181,7 @@ export function TrackerSectionList({
     patchField,
     patchPlayerStats,
     removeFeaturedCharacterCard,
+    removeCollapsedCharacterCard,
   });
   const isPanelCollapsed = (section: TrackerPanelSection) => trackerPanelCollapsedSections[section] === true;
   const toggleAutoGenerateCharacterAvatars = useCallback(() => {
@@ -193,8 +211,27 @@ export function TrackerSectionList({
     const autoAvatarTitle = autoGenerateCharacterAvatars
       ? "Auto-generate character avatars: ON"
       : "Auto-generate character avatars: OFF";
+    // Every card collapsed means the button expands; anything still open means
+    // it collapses. Keyed off the live characters rather than the stored set,
+    // so keys left behind by departed characters cannot strand the control.
+    const characterCardKeys = presentCharacters.map((character, index) => getCharacterFeatureKey(character, index));
+    const allCharactersCollapsed =
+      characterCardKeys.length > 0 && characterCardKeys.every((key) => collapsedCharacterCards.has(key));
     return (
       <>
+        {characterCardKeys.length > 0 && (
+          <SectionIconButton
+            onClick={() => replaceCollapsedCharacterCards(new Set(allCharactersCollapsed ? [] : characterCardKeys))}
+            title={
+              allCharactersCollapsed
+                ? localizeUi("ui.trackerPanel.charactertrackerpanel.expandAllCharacters")
+                : localizeUi("ui.trackerPanel.charactertrackerpanel.collapseAllCharacters")
+            }
+            pressed={allCharactersCollapsed}
+          >
+            {allCharactersCollapsed ? <ChevronsUpDown size="0.6875rem" /> : <ChevronsDownUp size="0.6875rem" />}
+          </SectionIconButton>
+        )}
         {characterTrackerConfig && (
           <SectionIconButton
             onClick={toggleAutoGenerateCharacterAvatars}
@@ -266,6 +303,7 @@ export function TrackerSectionList({
             activeChatId={activeChatId}
             characters={presentCharacters}
             featuredCharacterCards={featuredCharacterCards}
+            collapsedCharacterCards={collapsedCharacterCards}
             spriteExpressions={spriteExpressions}
             expressionSpritesEnabled={expressionSpritesEnabled}
             characterPictures={characterSpriteLookup.pictureById}
@@ -283,6 +321,7 @@ export function TrackerSectionList({
             onAddCharacter={addCharacter}
             onUploadAvatar={openAvatarUpload}
             onToggleFeatured={toggleFeaturedCharacterCard}
+            onToggleCharacterCollapsed={toggleCollapsedCharacterCard}
             deleteMode={deleteMode}
             addMode={addMode}
             collapsed={isPanelCollapsed("characters")}

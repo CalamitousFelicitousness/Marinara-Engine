@@ -14,6 +14,7 @@ import { getSpriteExpressionForCharacter } from "../../lib/sprite-expressions";
 import type { TrackerProfileColors } from "../../lib/tracker-profile-style";
 import { AddRowButton, EmptySection, SectionHeader } from "../controls/SectionControls";
 import { CharacterTrackerCard } from "../character-card/CharacterTrackerCard";
+import { CollapsedCharacterRow } from "../character-card/CollapsedCharacterRow";
 import { FeaturedCharacterTrackerCard } from "../character-card/FeaturedCharacterTrackerCard";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -38,13 +39,20 @@ type CharacterCardSlotCallbacks = {
   onUpdateCharacter: (index: number, character: PresentCharacter) => void;
   onRemoveCharacter: (index: number) => void;
   onToggleFeatured: (key: string) => void;
+  onToggleCharacterCollapsed: (key: string) => void;
   onUploadAvatar: (index: number) => void;
 };
 
 function useCharacterSlotCallbacks(
   characterIndex: number,
   cardKey: string,
-  { onUpdateCharacter, onRemoveCharacter, onToggleFeatured, onUploadAvatar }: CharacterCardSlotCallbacks,
+  {
+    onUpdateCharacter,
+    onRemoveCharacter,
+    onToggleFeatured,
+    onToggleCharacterCollapsed,
+    onUploadAvatar,
+  }: CharacterCardSlotCallbacks,
 ) {
   return {
     onUpdate: useCallback(
@@ -53,6 +61,7 @@ function useCharacterSlotCallbacks(
     ),
     onRemove: useCallback(() => onRemoveCharacter(characterIndex), [characterIndex, onRemoveCharacter]),
     onToggleFeatured: useCallback(() => onToggleFeatured(cardKey), [cardKey, onToggleFeatured]),
+    onToggleCollapsed: useCallback(() => onToggleCharacterCollapsed(cardKey), [cardKey, onToggleCharacterCollapsed]),
     onUploadAvatar: useCallback(() => onUploadAvatar(characterIndex), [characterIndex, onUploadAvatar]),
   };
 }
@@ -97,6 +106,32 @@ const CompactCharacterCardSlot = memo(function CompactCharacterCardSlot({
         {...slot}
       />
     </div>
+  );
+});
+
+const CollapsedCharacterRowSlot = memo(function CollapsedCharacterRowSlot({
+  character,
+  characterIndex,
+  cardKey,
+  avatarMedia,
+  deleteMode,
+  ...callbacks
+}: {
+  character: PresentCharacter;
+  characterIndex: number;
+  cardKey: string;
+  avatarMedia: string | null;
+  deleteMode: boolean;
+} & CharacterCardSlotCallbacks) {
+  const slot = useCharacterSlotCallbacks(characterIndex, cardKey, callbacks);
+  return (
+    <CollapsedCharacterRow
+      character={character}
+      avatarMedia={avatarMedia}
+      deleteMode={deleteMode}
+      onToggleCollapsed={slot.onToggleCollapsed}
+      onRemove={slot.onRemove}
+    />
   );
 });
 
@@ -165,6 +200,7 @@ export function CharacterTrackerPanel({
   activeChatId,
   characters,
   featuredCharacterCards,
+  collapsedCharacterCards,
   spriteExpressions,
   expressionSpritesEnabled,
   characterPictures,
@@ -180,6 +216,7 @@ export function CharacterTrackerPanel({
   onRemoveCharacter,
   onAddCharacter,
   onToggleFeatured,
+  onToggleCharacterCollapsed,
   onUploadAvatar,
   deleteMode,
   addMode,
@@ -190,6 +227,7 @@ export function CharacterTrackerPanel({
   activeChatId: string;
   characters: PresentCharacter[];
   featuredCharacterCards: Set<string>;
+  collapsedCharacterCards: Set<string>;
   spriteExpressions: Record<string, string>;
   expressionSpritesEnabled: boolean;
   characterPictures: Record<string, string>;
@@ -205,6 +243,7 @@ export function CharacterTrackerPanel({
   onRemoveCharacter: (index: number) => void;
   onAddCharacter: () => void;
   onToggleFeatured: (key: string) => void;
+  onToggleCharacterCollapsed: (key: string) => void;
   onUploadAvatar: (index: number) => void;
   deleteMode: boolean;
   addMode: boolean;
@@ -232,11 +271,16 @@ export function CharacterTrackerPanel({
         characterPicture: spriteCharacterId ? characterPictures[spriteCharacterId] : undefined,
         profileColors: spriteCharacterId ? characterProfileColors[spriteCharacterId] : undefined,
         featured: featuredCharacterCards.has(cardKey),
+        collapsed: collapsedCharacterCards.has(cardKey),
         index,
       };
     });
-    const featuredEntries = characterEntries.filter((entry) => entry.featured);
-    const compactEntries = characterEntries.filter((entry) => !entry.featured);
+    // Collapsed wins over featured: a card asked to get out of the way should
+    // not keep the top slot. The three groups are disjoint and render in
+    // priority order, matching how featuring already reorders the list.
+    const collapsedEntries = characterEntries.filter((entry) => entry.collapsed);
+    const featuredEntries = characterEntries.filter((entry) => !entry.collapsed && entry.featured);
+    const compactEntries = characterEntries.filter((entry) => !entry.collapsed && !entry.featured);
     const getCharacterEntryKey = (entry: (typeof characterEntries)[number]) =>
       `${activeChatId}-${entry.character.characterId}-${entry.index}`;
     const useCompactCardColumns = trackerPanelSizeProfile !== "compact";
@@ -257,6 +301,22 @@ export function CharacterTrackerPanel({
         onUpdateCharacter={onUpdateCharacter}
         onRemoveCharacter={onRemoveCharacter}
         onToggleFeatured={onToggleFeatured}
+        onToggleCharacterCollapsed={onToggleCharacterCollapsed}
+        onUploadAvatar={onUploadAvatar}
+      />
+    );
+    const renderCollapsedCharacterRow = (entry: (typeof characterEntries)[number]) => (
+      <CollapsedCharacterRowSlot
+        key={getCharacterEntryKey(entry)}
+        character={entry.character}
+        characterIndex={entry.index}
+        cardKey={entry.cardKey}
+        avatarMedia={entry.characterPicture ?? entry.character.avatarPath ?? null}
+        deleteMode={deleteMode}
+        onUpdateCharacter={onUpdateCharacter}
+        onRemoveCharacter={onRemoveCharacter}
+        onToggleFeatured={onToggleFeatured}
+        onToggleCharacterCollapsed={onToggleCharacterCollapsed}
         onUploadAvatar={onUploadAvatar}
       />
     );
@@ -286,6 +346,7 @@ export function CharacterTrackerPanel({
         onUpdateCharacter={onUpdateCharacter}
         onRemoveCharacter={onRemoveCharacter}
         onToggleFeatured={onToggleFeatured}
+        onToggleCharacterCollapsed={onToggleCharacterCollapsed}
         onUploadAvatar={onUploadAvatar}
       />
     );
@@ -303,6 +364,11 @@ export function CharacterTrackerPanel({
           >
             {compactEntries.map(renderCompactCharacterCard)}
             {shouldRenderCompactGhostSlot && <div aria-hidden="true" className={COMPACT_CHARACTER_GHOST_SLOT_CLASS} />}
+          </div>
+        )}
+        {collapsedEntries.length > 0 && (
+          <div className={cn("grid grid-cols-1 gap-0.5 px-1 pb-1", compactEntries.length === 0 && "pt-1")}>
+            {collapsedEntries.map(renderCollapsedCharacterRow)}
           </div>
         )}
       </div>

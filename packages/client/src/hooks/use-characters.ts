@@ -252,8 +252,21 @@ export function useUpdateCharacter() {
 
 export function useGenerateCharacterSummary() {
   return useMutation({
-    mutationFn: ({ id, debugMode }: { id: string; debugMode?: boolean }) =>
-      api.post<{ summary: string }>(`/characters/${id}/summary/generate`, { debugMode }),
+    mutationFn: ({
+      id,
+      debugMode,
+      draft,
+    }: {
+      id: string;
+      debugMode?: boolean;
+      draft?: {
+        name?: string;
+        description?: string;
+        personality?: string;
+        scenario?: string;
+        backstory?: string;
+      };
+    }) => api.post<{ summary: string }>(`/characters/${id}/summary/generate`, { debugMode, draft }),
   });
 }
 

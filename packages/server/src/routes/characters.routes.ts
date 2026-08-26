@@ -921,11 +921,29 @@ export async function charactersRoutes(app: FastifyInstance) {
     return storage.listSummariesByIds(ids);
   });
 
-  app.post<{ Params: { id: string }; Body: { debugMode?: boolean } }>("/:id/summary/generate", async (req, reply) => {
+  app.post<{
+    Params: { id: string };
+    Body: {
+      debugMode?: boolean;
+      draft?: {
+        name?: string;
+        description?: string;
+        personality?: string;
+        scenario?: string;
+        backstory?: string;
+      };
+    };
+  }>("/:id/summary/generate", async (req, reply) => {
     const character = await storage.getById(req.params.id);
     if (!character) return reply.status(404).send({ error: "Character not found" });
 
     const data = parseCharacterDataRecord(character.data) as Partial<CharacterData>;
+    const draft = req.body?.draft;
+    if (typeof draft?.name === "string") data.name = draft.name;
+    if (typeof draft?.description === "string") data.description = draft.description;
+    if (typeof draft?.personality === "string") data.personality = draft.personality;
+    if (typeof draft?.scenario === "string") data.scenario = draft.scenario;
+    const backstory = typeof draft?.backstory === "string" ? draft.backstory : data.extensions?.backstory;
     const defaultConnection = await connections.getDefault();
     const resolved = await resolveChatSummaryConnection({
       chatMetadata: {},
@@ -945,7 +963,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       `Name: ${typeof data.name === "string" ? data.name : ""}`,
       `Description: ${typeof data.description === "string" ? data.description : ""}`,
       `Personality: ${typeof data.personality === "string" ? data.personality : ""}`,
-      `Backstory: ${typeof data.extensions?.backstory === "string" ? data.extensions.backstory : ""}`,
+      `Backstory: ${typeof backstory === "string" ? backstory : ""}`,
       `Scenario: ${typeof data.scenario === "string" ? data.scenario : ""}`,
     ].join("\n");
 

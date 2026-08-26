@@ -1396,7 +1396,16 @@ function CharacterSummaryField({
     const requestedCharacterId = characterId;
     const summaryAtRequest = liveSummaryRef.current;
     try {
-      const result = await generateSummary.mutateAsync({ id: requestedCharacterId });
+      const result = await generateSummary.mutateAsync({
+        id: requestedCharacterId,
+        draft: {
+          name: formData.name,
+          description: formData.description,
+          personality: formData.personality,
+          scenario: formData.scenario,
+          backstory: formData.extensions?.backstory,
+        },
+      });
       if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
       if (liveSummaryRef.current !== summaryAtRequest) return;
       updateField("summary", result.summary);

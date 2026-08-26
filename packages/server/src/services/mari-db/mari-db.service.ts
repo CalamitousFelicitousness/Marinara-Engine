@@ -2072,6 +2072,7 @@ function summarizeCharacterRow(row: Row): Row {
     id: row.id,
     name: typeof data.name === "string" ? data.name : "(unnamed)",
     comment: row.comment ?? "",
+    summary: typeof data.summary === "string" ? truncateStr(data.summary, 120) : "",
     tags: Array.isArray(data.tags) ? data.tags.slice(0, 8) : [],
     avatarPath: row.avatarPath ?? null,
     createdAt: row.createdAt,
@@ -2689,7 +2690,7 @@ export class MariDbService {
           comment === (typeof existing.comment === "string" ? existing.comment : "")
         ) {
           throw new Error(
-            "character.update needs a patch field such as name, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment",
+            "character.update needs a patch field such as name, summary, description, personality, scenario, firstMes, creatorNotes, backstory, appearance, aboutMe, tags, or comment",
           );
         }
         const name =

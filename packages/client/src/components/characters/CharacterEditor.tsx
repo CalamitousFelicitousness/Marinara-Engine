@@ -1441,6 +1441,7 @@ function CharacterSummaryField({
         onChange={(event) => updateField("summary", event.target.value.slice(0, 500))}
         maxLength={500}
         rows={4}
+        aria-label={localizeUi("ui.characters.summary.label")}
         placeholder={localizeUi("ui.characters.summary.placeholder")}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />

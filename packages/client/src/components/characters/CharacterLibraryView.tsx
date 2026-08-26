@@ -547,7 +547,7 @@ export function CharacterLibraryView() {
   const selectAllMatchingCharactersTokenRef = useRef(0);
   useEffect(() => {
     selectAllMatchingCharactersTokenRef.current++;
-  }, [serverSearch, characterSort, isPersonaLibrary]);
+  }, [search, characterSort, isPersonaLibrary, selectionMode]);
   const selectAllMatchingCharacters = useCallback(async () => {
     if (isPersonaLibrary) return;
     const requestToken = ++selectAllMatchingCharactersTokenRef.current;

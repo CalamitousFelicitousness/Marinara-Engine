@@ -731,6 +731,9 @@ function normalizeV2(raw: Record<string, unknown>): CharacterData {
   const rawExtensions = optionalRecord(raw.extensions);
   return {
     name: String(raw.name ?? "Unknown"),
+    summary: String(raw.summary ?? "")
+      .trim()
+      .slice(0, 500),
     description: String(raw.description ?? ""),
     personality: String(raw.personality ?? ""),
     scenario: String(raw.scenario ?? ""),

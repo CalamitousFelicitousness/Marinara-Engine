@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useCharacter,
   useUpdateCharacter,
+  useGenerateCharacterSummary,
   useUploadAvatar,
   useRemoveAvatar,
   useDeleteCharacter,
@@ -172,6 +173,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 const CHARACTER_CARD_SECTIONS = [
+  { id: "character-card-summary", label: "Summary" },
   { id: "character-card-description", label: "Description" },
   { id: "character-card-personality", label: "Personality" },
   { id: "character-card-backstory", label: "Backstory" },
@@ -1313,6 +1315,9 @@ function CharacterCardTab({
       />
       <EditorSectionJumps items={CHARACTER_CARD_SECTIONS} />
       <div className="space-y-10">
+        <EditorSectionAnchor id="character-card-summary">
+          <CharacterSummaryField formData={formData} updateField={updateField} />
+        </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
           <CharacterDescriptionTab formData={formData} updateField={updateField} />
         </EditorSectionAnchor>
@@ -1370,6 +1375,65 @@ function CharacterCardTab({
           <DialogueTab formData={formData} updateField={updateField} />
         </EditorSectionAnchor>
       </div>
+    </div>
+  );
+}
+
+function CharacterSummaryField({
+  formData,
+  updateField,
+}: {
+  formData: CharacterData;
+  updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const characterId = useUIStore((s) => s.characterDetailId);
+  const generateSummary = useGenerateCharacterSummary();
+  const handleGenerate = async () => {
+    if (!characterId) return;
+    const requestedCharacterId = characterId;
+    try {
+      const result = await generateSummary.mutateAsync({ id: requestedCharacterId });
+      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
+      updateField("summary", result.summary);
+      toast.success(localizeUi("ui.characters.summary.generated"));
+    } catch (error) {
+      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
+      toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.summary.failed"));
+    }
+  };
+
+  return (
+    <div className="mari-editor-panel space-y-3 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader
+          title={localizeUi("ui.characters.summary.label")}
+          subtitle={localizeUi("ui.characters.summary.help")}
+        />
+        <button
+          type="button"
+          onClick={() => void handleGenerate()}
+          disabled={!characterId || generateSummary.isPending}
+          className="mari-editor-action inline-flex min-h-9 shrink-0 items-center gap-1.5 px-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          title={localizeUi("ui.characters.summary.generate")}
+        >
+          {generateSummary.isPending ? <Loader2 size="0.8rem" className="animate-spin" /> : <Wand2 size="0.8rem" />}
+          {generateSummary.isPending
+            ? localizeUi("ui.characters.summary.generating")
+            : localizeUi("ui.characters.summary.generate")}
+        </button>
+      </div>
+      <textarea
+        value={formData.summary ?? ""}
+        onChange={(event) => updateField("summary", event.target.value.slice(0, 500))}
+        maxLength={500}
+        rows={4}
+        placeholder={localizeUi("ui.characters.summary.placeholder")}
+        className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
+      />
+      <p className="text-right text-[0.625rem] text-[var(--muted-foreground)]">
+        {String(formData.summary ?? "").length}/500
+      </p>
     </div>
   );
 }
@@ -1834,6 +1898,7 @@ function MetadataTab({
 
 const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "name", label: "Name" },
+  { key: "summary", label: "Summary" },
   { key: "description", label: "Description" },
   { key: "personality", label: "Personality" },
   { key: "scenario", label: "Scenario" },

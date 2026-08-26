@@ -2370,6 +2370,7 @@ function buildMinimalCharacterData(
     ? (normalizedBase.extensions as Record<string, unknown>)
     : {};
   const data: Record<string, unknown> = {
+    summary: "",
     description: "",
     personality: "",
     scenario: "",
@@ -2385,7 +2386,9 @@ function buildMinimalCharacterData(
     name,
     extensions: { ...baseExtensions },
   };
+  if (typeof data.summary === "string") data.summary = data.summary.trim().slice(0, 500);
   const topLevelMap: Array<[string, string]> = [
+    ["summary", "summary"],
     ["description", "description"],
     ["personality", "personality"],
     ["scenario", "scenario"],
@@ -2600,6 +2603,7 @@ export class MariDbService {
             ["data", "card", "character"],
             [
               "name",
+              "summary",
               "description",
               "personality",
               "scenario",
@@ -2657,6 +2661,7 @@ export class MariDbService {
             ["patch", "data", "card", "character"],
             [
               "name",
+              "summary",
               "description",
               "personality",
               "scenario",
@@ -5741,7 +5746,7 @@ export class MariDbService {
         const rawJson = await resolveJsonInput(flags, context.cwd);
         if (!name && !rawJson) {
           throw new Error(
-            "Usage: mari characters create --name <name> [--description <text>] [--personality <text>] [--scenario <text>] [--about-me <text>] [--apply]\n" +
+            "Usage: mari characters create --name <name> [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--about-me <text>] [--apply]\n" +
               "       or: mari characters create --json '<data_json>' [--json-file <path>] [--apply]",
           );
         }
@@ -5774,7 +5779,7 @@ export class MariDbService {
         const id = parsed.positionals[0];
         if (!id)
           throw new Error(
-            "Usage: mari characters update <id> [--name <name>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
+            "Usage: mari characters update <id> [--name <name>] [--summary <text>] [--description <text>] [--personality <text>] [--scenario <text>] [--first-mes <text>] [--creator-notes <text>] [--backstory <text>] [--appearance <text>] [--about-me <text>] [--tags <t1,t2,...>] [--comment <text>] [--json '<data_json>' | --json-file <path>] [--apply] [--reason <text>]",
           );
         const existing = await this.getRawById(getMeta("characters"), id);
         if (!existing) throw new Error(`Character ${id} not found`);

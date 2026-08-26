@@ -70,6 +70,11 @@ import {
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { isDebugAgentsEnabled } from "../config/runtime-config.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
+import {
+  resolveChatSummaryConnection,
+  resolveChatSummaryTemperatureOptions,
+} from "../services/chat-summary/connection-resolution.js";
+import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
 import {
@@ -914,6 +919,69 @@ export async function charactersRoutes(app: FastifyInstance) {
   app.post<{ Body: { ids?: unknown } }>("/summaries", async (req) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id): id is string => typeof id === "string") : [];
     return storage.listSummariesByIds(ids);
+  });
+
+  app.post<{ Params: { id: string }; Body: { debugMode?: boolean } }>("/:id/summary/generate", async (req, reply) => {
+    const character = await storage.getById(req.params.id);
+    if (!character) return reply.status(404).send({ error: "Character not found" });
+
+    const data = parseCharacterDataRecord(character.data) as Partial<CharacterData>;
+    const defaultConnection = await connections.getDefault();
+    const resolved = await resolveChatSummaryConnection({
+      chatMetadata: {},
+      defaultConnectionId: defaultConnection?.id,
+      connections,
+      resolveBaseUrl,
+    });
+    if (!resolved.ok) return reply.status(400).send({ error: resolved.error });
+
+    const prompt = [
+      "Write a concise metadata summary for this character card.",
+      "Use one sentence or two short sentences, maximum 500 characters.",
+      "Write in third person and describe the character's identity, role, personality, or central premise.",
+      "Use only facts present in the card. Do not write instructions, dialogue, markdown, labels, or commentary.",
+      "Return the summary text only.",
+      "",
+      `Name: ${typeof data.name === "string" ? data.name : ""}`,
+      `Description: ${typeof data.description === "string" ? data.description : ""}`,
+      `Personality: ${typeof data.personality === "string" ? data.personality : ""}`,
+      `Backstory: ${typeof data.extensions?.backstory === "string" ? data.extensions.backstory : ""}`,
+      `Scenario: ${typeof data.scenario === "string" ? data.scenario : ""}`,
+    ].join("\n");
+
+    logDebugOverride(
+      req.body?.debugMode === true || isDebugAgentsEnabled(),
+      "[debug/characters/%s-summary] prompt:\n%s",
+      req.params.id,
+      prompt,
+    );
+    try {
+      const result = await resolved.provider.chatComplete(
+        [
+          { role: "system", content: prompt },
+          { role: "user", content: "Create the card summary." },
+        ],
+        {
+          model: resolved.model,
+          maxTokens: Math.min(resolved.provider.maxTokensOverrideValue ?? 256, 256),
+          temperature: 0.35,
+          enabledParameters: resolveChatSummaryTemperatureOptions(resolved).enabledParameters,
+        },
+      );
+      const summary = (result.content ?? "")
+        .replace(/^```(?:text)?/i, "")
+        .replace(/```$/i, "")
+        .trim()
+        .slice(0, 500)
+        .trim();
+      if (!summary) return reply.status(502).send({ error: "Summary generation returned no text" });
+      return reply.send({ summary });
+    } catch (error) {
+      logger.error(error, "Character summary generation failed");
+      return reply
+        .status(502)
+        .send({ error: error instanceof Error ? error.message : "Character summary generation failed" });
+    }
   });
 
   app.post("/avatar-generation/preview", async (req, reply) => {

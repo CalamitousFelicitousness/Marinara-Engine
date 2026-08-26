@@ -250,6 +250,13 @@ export function useUpdateCharacter() {
   });
 }
 
+export function useGenerateCharacterSummary() {
+  return useMutation({
+    mutationFn: ({ id, debugMode }: { id: string; debugMode?: boolean }) =>
+      api.post<{ summary: string }>(`/characters/${id}/summary/generate`, { debugMode }),
+  });
+}
+
 export function useCharacterVersions(id: string | null) {
   return useQuery({
     queryKey: characterKeys.versions(id ?? ""),

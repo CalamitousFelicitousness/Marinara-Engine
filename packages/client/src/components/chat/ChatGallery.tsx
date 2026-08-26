@@ -749,7 +749,7 @@ export function ChatGallery({
               onChange={(event) => setAssetSearch(event.target.value)}
               placeholder={localizeUi("ui.chat.chatgallery.searchChatCharacterPersonaAndSpriteImages")}
               aria-label={localizeUi("ui.chat.chatgallery.searchGalleryImages")}
-              className="h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] pl-9 pr-10 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
+              className="mari-chrome-field h-10 w-full !rounded-md pl-9 pr-10 text-xs"
             />
             {assetSearch && (
               <button
@@ -956,7 +956,7 @@ export function ChatGallery({
             aria-selected={activeTab === "images"}
             onClick={() => setActiveTab("images")}
             className={cn(
-              "flex min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+              "flex min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors",
               activeTab === "images"
                 ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
                 : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
@@ -978,7 +978,7 @@ export function ChatGallery({
             }}
             disabled={!sceneVideosEnabled}
             className={cn(
-              "flex min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+              "flex min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors",
               !sceneVideosEnabled
                 ? "cursor-not-allowed text-[var(--muted-foreground)] opacity-50"
                 : activeTab === "videos"

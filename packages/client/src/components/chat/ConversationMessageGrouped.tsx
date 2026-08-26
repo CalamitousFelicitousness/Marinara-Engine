@@ -134,10 +134,9 @@ export function ConversationMessageGrouped({
         "relative px-4 py-0.5 transition-colors hover:bg-[var(--secondary)]/30",
         isBubbleStyle && "hover:bg-transparent",
         !noHoverGroup && "group",
-        isGrouped ? "mt-0" : "mt-3",
+        isGrouped ? "mt-0" : "mt-0.5",
         isStreaming && "bg-[var(--secondary)]/20",
         multiSelectMode && isSelected && MESSAGE_SELECTION_SURFACE_CLASS,
-        hideActions && hasReasoning && "max-sm:pb-8",
       )}
       onClick={handleMobileTap}
     >
@@ -402,9 +401,8 @@ export function ConversationMessageGrouped({
           [data-card-css] wrapper so themes retain the reach they had when the
           attribute lived on the block root — but only rendered when it has
           content, so container-styling themes can't paint an empty box. The
-          hover action bar stays OUTSIDE the wrapper: it's chrome (like the chip
-          rows), and its absolute positioning must keep resolving against the
-          relative block root even if a theme makes the wrapper positioned. */}
+          action row stays OUTSIDE the wrapper because it is app chrome, like
+          the reaction chip rows. */}
       {hasTrailingContent && (
         <div {...cardCssProps}>
           {/* Streaming cursor */}
@@ -455,7 +453,6 @@ export function ConversationMessageGrouped({
       {/* Action bar */}
       {(!hideActions || hasReasoning) && (
         <ConversationMessageActions
-          isBubbleStyle={isBubbleStyle}
           isUser={false}
           showActions={showActions}
           forceShowActions={hideActions && hasReasoning ? true : forceShowActions}

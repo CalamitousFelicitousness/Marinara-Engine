@@ -68,6 +68,13 @@ assert.equal(extras.includes("{addMode && Array.isArray(node) && ("), true, "the
 assert.equal(sections.includes("addMode={addMode}"), true, "the shared section tail passes edit mode to extras");
 
 // Every other add control was already gated; keep it that way.
+//
+// A panel may satisfy this two ways: render its own gated <AddRowButton>, or
+// hand `addMode` to StatList and let the shared control gate. Upstream's
+// "unify tracker and settings controls" moved PersonaInventoryPanel to the
+// second shape, so accepting only the first would fail a panel that is still
+// correctly gated. StatList's own gates are asserted below, so delegation is
+// only accepted because the delegate is checked.
 for (const file of [
   "sections/CharacterTrackerPanel.tsx",
   "sections/CustomTrackerPanel.tsx",
@@ -77,9 +84,26 @@ for (const file of [
   "sections/WorldStatePanel.tsx",
 ]) {
   const source = readClient(`features/tracker-panel/components/${file}`);
-  const gated = /addMode (\?|&&)[\s\S]{0,120}?<AddRowButton/u.test(source);
-  assert.equal(gated, true, `${file} gates its AddRowButton on edit mode`);
+  const gatesOwnButton = /addMode (\?|&&)[\s\S]{0,120}?<AddRowButton/u.test(source);
+  const delegatesToStatList = /<StatList[\s\S]{0,400}?addMode=\{addMode\}/u.test(source);
+  assert.equal(
+    gatesOwnButton || delegatesToStatList,
+    true,
+    `${file} must gate its own AddRowButton or hand addMode to StatList`,
+  );
+  // Whichever shape it uses, it must not also carry an ungated add control.
+  assert.equal(
+    /(?<!addMode[^<]{0,120})<AddRowButton/u.test(source) && !gatesOwnButton,
+    false,
+    `${file} has an AddRowButton that edit mode does not govern`,
+  );
 }
+
+// The delegate. Both of StatList's add paths -- the empty-state one and the
+// trailing row -- are what PersonaInventoryPanel now relies on.
+const statList = readClient("features/tracker-panel/components/controls/StatList.tsx");
+assert.match(statList, /return addMode \? \(\s*<InlineAddRow/u, "StatList gates its empty-state add row");
+assert.match(statList, /\{addMode && \(\s*<InlineAddRow/u, "StatList gates its trailing add row");
 
 // ── Toolbar wording ──
 for (const key of ["enterEditMode", "exitEditMode", "enterTrackerEditMode", "exitTrackerEditMode"]) {

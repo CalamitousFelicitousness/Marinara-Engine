@@ -1,12 +1,38 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Settings2, Trash2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { AgentPromptTemplateOption } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
+import { MacroTextarea } from "../ui/MacroTextarea";
 
 export const AGENT_SETTINGS_SURFACE_CLASS = "border border-[var(--border)] bg-[var(--secondary)]/70";
+
+export function AgentSettingsActionButton({
+  variant = "default",
+  iconOnly = false,
+  className,
+  type = "button",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "default" | "primary" | "danger";
+  iconOnly?: boolean;
+}) {
+  return (
+    <button
+      {...props}
+      type={type}
+      className={cn(
+        "mari-agent-settings-action",
+        variant === "primary" && "mari-agent-settings-action--primary",
+        variant === "danger" && "mari-agent-settings-action--danger",
+        iconOnly && "mari-agent-settings-action--icon",
+        className,
+      )}
+    />
+  );
+}
 
 export function AgentCategorySection({
   label,
@@ -262,17 +288,20 @@ export function AgentSettingsTextarea({
   onBlur?: () => void;
 }) {
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <span className="text-[0.625rem] font-medium text-[var(--foreground)]">{label}</span>
-      <textarea
+      <MacroTextarea
         value={value}
         placeholder={placeholder}
         rows={rows ?? 3}
-        onChange={(event) => onChange(event.target.value)}
+        title={label}
+        ariaLabel={label}
+        onChange={onChange}
         onBlur={onBlur}
-        className="min-h-[3.25rem] w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs leading-relaxed text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/45 focus:border-[var(--primary)]/50"
+        onExpandedClose={onBlur}
+        className="mari-chrome-field min-h-[3.25rem] w-full !rounded-md px-2.5 py-2 pr-8 text-xs leading-relaxed"
       />
-    </label>
+    </div>
   );
 }
 
@@ -294,7 +323,7 @@ export function AgentSettingsToggle({
   surface?: "card" | "secondary";
 }) {
   return (
-    <div className="space-y-1">
+    <div className="flex h-full flex-col gap-1">
       <SettingsSwitch
         label={label}
         description={description}
@@ -302,7 +331,7 @@ export function AgentSettingsToggle({
         onChange={() => onToggle()}
         labelPosition="start"
         className={cn(
-          "justify-between rounded-lg px-3 py-2.5 text-left",
+          "flex-1 justify-between rounded-md px-3 py-2.5 text-left",
           enabled
             ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
             : surface === "secondary"
@@ -406,7 +435,7 @@ export function AgentSettingsSegmentedControl<T extends string>({
           onClick={() => onChange(option.id)}
           aria-pressed={value === option.id}
           className={cn(
-            "rounded-md px-2.5 py-2 text-left transition-all",
+            "flex min-h-8 items-center justify-center rounded-md px-2.5 py-2 text-center transition-all",
             value === option.id
               ? "bg-[var(--primary)]/12 text-[var(--foreground)] ring-1 ring-[var(--primary)]/35"
               : "text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",

@@ -51,6 +51,41 @@ type ChatCompletionsUsagePayload = {
   };
 };
 
+export function extractOpenAICompatibleContentBlocks(
+  content: unknown,
+  createAnonymousToolCallId?: () => string,
+): { text: string; thinking: string; toolCalls: LLMToolCall[]; anonymousToolCallIds: string[] } | null {
+  if (!Array.isArray(content)) return null;
+  let text = "";
+  let thinking = "";
+  const toolCalls: LLMToolCall[] = [];
+  const anonymousToolCallIds: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const value = block as Record<string, unknown>;
+    if (value.type === "thinking" && typeof value.thinking === "string") {
+      thinking += value.thinking;
+    } else if (value.type === "text" && typeof value.text === "string") {
+      text += value.text;
+    } else if (value.type === "tool_use" && typeof value.name === "string") {
+      const name = value.name.trim();
+      if (!name) continue;
+      const providerId = typeof value.id === "string" && value.id.trim() ? value.id : null;
+      const id = providerId ?? createAnonymousToolCallId?.() ?? `tool_${toolCalls.length + 1}`;
+      if (!providerId) anonymousToolCallIds.push(id);
+      toolCalls.push({
+        id,
+        type: "function",
+        function: {
+          name,
+          arguments: typeof value.input === "string" ? value.input : JSON.stringify(value.input ?? {}),
+        },
+      });
+    }
+  }
+  return { text, thinking, toolCalls, anonymousToolCallIds };
+}
+
 type ResponsesUsagePayload = {
   input_tokens?: number;
   output_tokens?: number;
@@ -292,21 +327,7 @@ export class OpenAIProvider extends BaseLLMProvider {
    * OpenRouter may return `content` as an array of typed blocks instead of a plain string:
    *   [{ type: "thinking", thinking: "..." }, { type: "text", text: "..." }]
    */
-  private static extractContentBlocks(content: unknown): { text: string; thinking: string } | null {
-    if (!Array.isArray(content)) return null;
-    let text = "";
-    let thinking = "";
-    for (const block of content) {
-      if (typeof block !== "object" || block === null) continue;
-      const b = block as Record<string, unknown>;
-      if (b.type === "thinking" && typeof b.thinking === "string") {
-        thinking += b.thinking;
-      } else if (b.type === "text" && typeof b.text === "string") {
-        text += b.text;
-      }
-    }
-    return { text, thinking };
-  }
+  private static extractContentBlocks = extractOpenAICompatibleContentBlocks;
 
   private shouldSendTopK(): boolean {
     return this.apiKey === "local-sidecar" || this.isGenericCustomProvider();
@@ -1572,6 +1593,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       }
       const usage = OpenAIProvider.extractChatCompletionsUsage(json.usage as ChatCompletionsUsagePayload | undefined);
       let toolCalls = OpenAIProvider.normalizeToolCalls(choice?.message?.tool_calls);
+      if (toolCalls.length === 0 && blocks?.toolCalls.length) toolCalls = blocks.toolCalls;
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
         if (toolCalls.length > 0) resolvedContent = null;
@@ -1604,12 +1626,15 @@ export class OpenAIProvider extends BaseLLMProvider {
     let finishReason = "stop";
     let streamUsage: LLMUsage | undefined;
     const reasoningMetadata: Record<string, unknown> = {};
+    let anonymousContentBlockToolCallCount = 0;
 
     // Accumulate tool calls from deltas
     const toolCallsMap = new Map<
       number,
       { id: string; type: "function"; function: { name: string; arguments: string } }
     >();
+    const contentBlockToolCallsMap = new Map<number, LLMToolCall>();
+    const providerContentBlockToolCallIndexes = new Map<string, number>();
 
     try {
       while (true) {
@@ -1683,12 +1708,23 @@ export class OpenAIProvider extends BaseLLMProvider {
             (typeof delta?.refusal === "string" && delta.refusal) ||
             (typeof message?.refusal === "string" && message.refusal) ||
             "";
-          const blocks = OpenAIProvider.extractContentBlocks(textContent);
+          const blocks = OpenAIProvider.extractContentBlocks(
+            textContent,
+            () => `content_block_tool_${++anonymousContentBlockToolCallCount}`,
+          );
           if (blocks) {
             if (!reasoning && blocks.thinking && options.onThinking) options.onThinking(blocks.thinking);
             if (blocks.text) {
               content += blocks.text;
               await options.onToken?.(blocks.text);
+            }
+            for (const toolCall of blocks.toolCalls) {
+              const isAnonymous = blocks.anonymousToolCallIds.includes(toolCall.id);
+              const index = isAnonymous
+                ? contentBlockToolCallsMap.size
+                : (providerContentBlockToolCallIndexes.get(toolCall.id) ?? contentBlockToolCallsMap.size);
+              contentBlockToolCallsMap.set(index, toolCall);
+              if (!isAnonymous) providerContentBlockToolCallIndexes.set(toolCall.id, index);
             }
           } else if (typeof textContent === "string" && textContent) {
             content += textContent;
@@ -1751,9 +1787,10 @@ export class OpenAIProvider extends BaseLLMProvider {
 
     // Collect tool calls in order
     let toolCalls: LLMToolCall[] = [];
-    const sortedKeys = [...toolCallsMap.keys()].sort((a, b) => a - b);
+    const selectedToolCallsMap = toolCallsMap.size > 0 ? toolCallsMap : contentBlockToolCallsMap;
+    const sortedKeys = [...selectedToolCallsMap.keys()].sort((a, b) => a - b);
     for (const key of sortedKeys) {
-      const normalized = OpenAIProvider.normalizeToolCall(toolCallsMap.get(key), key);
+      const normalized = OpenAIProvider.normalizeToolCall(selectedToolCallsMap.get(key), key);
       if (normalized) toolCalls.push(normalized);
     }
     if (toolCalls.length === 0 && content && options.tools?.length) {

@@ -109,6 +109,19 @@ export function useUpdateAgent() {
   });
 }
 
+/** PATCH an agent by its type, creating the config row for a built-in that has
+ *  never been configured. Used by bulk connection assignment (#5539). */
+export function useUpdateAgentByType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentType, ...data }: { agentType: string } & Record<string, unknown>) =>
+      api.patch(`/agents/type/${encodeURIComponent(agentType)}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: agentKeys.all });
+    },
+  });
+}
+
 export function useUploadAgentImage() {
   const qc = useQueryClient();
   return useMutation({

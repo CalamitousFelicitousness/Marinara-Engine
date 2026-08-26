@@ -517,6 +517,7 @@ export function ConversationPresenceCard({
       <button
         ref={buttonRef}
         type="button"
+        data-chat-help="identity"
         className={identityPillClass}
         title={title}
         onClick={() => {

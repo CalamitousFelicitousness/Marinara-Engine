@@ -548,8 +548,9 @@ function PersonaGalleryTab({
               key={tab.id}
               type="button"
               onClick={() => setMediaTab(tab.id)}
+              aria-pressed={active}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
                 active
                   ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
                   : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
@@ -2280,8 +2281,9 @@ function PersonaSpritesTab({
           key={tab.id}
           type="button"
           onClick={() => setCategory(tab.id)}
+          aria-pressed={category === tab.id}
           className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             category === tab.id
               ? "bg-[var(--primary)]/15 text-[var(--primary)]"
               : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -3629,22 +3631,6 @@ function PersonaMetadataTab({
         helpText={PERSONA_METADATA_HELP}
       />
 
-      <div className="space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {t("editor.avatar.label")}
-          <HelpTooltip text={t("editor.avatar.persona.help")} />
-        </span>
-        <fieldset disabled={avatarMutationBusy} className="min-w-0 border-0 p-0 disabled:opacity-60">
-          <AvatarReplaceActions
-            hasAvatar={Boolean(avatarPreview)}
-            uploading={avatarUploading}
-            generationAvailable={imageGenerationAvailable}
-            onUpload={onSelectAvatar}
-            onGenerate={onGenerateAvatar}
-          />
-        </fieldset>
-      </div>
-
       {personaId && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/70 px-3 py-2">
           <span className="text-[0.625rem] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -3668,22 +3654,39 @@ function PersonaMetadataTab({
         </div>
       )}
 
-      {avatarPreview && (
-        <fieldset
-          disabled={avatarMutationBusy}
-          className="min-w-0 border-0 p-0 disabled:pointer-events-none disabled:opacity-60"
-        >
-          <AvatarCropWidget
-            src={avatarPreview}
-            alt={formData.name}
-            crop={formData.avatarCrop}
-            onChange={(next) => {
-              if (avatarMutationBusy) return;
-              updateField("avatarCrop", next);
-            }}
+      <div className="space-y-1.5">
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+          {t("editor.avatar.label")}
+          <HelpTooltip text={t("editor.avatar.persona.help")} />
+        </span>
+
+        {avatarPreview && (
+          <fieldset
+            disabled={avatarMutationBusy}
+            className="min-w-0 border-0 p-0 disabled:pointer-events-none disabled:opacity-60"
+          >
+            <AvatarCropWidget
+              src={avatarPreview}
+              alt={formData.name}
+              crop={formData.avatarCrop}
+              onChange={(next) => {
+                if (avatarMutationBusy) return;
+                updateField("avatarCrop", next);
+              }}
+            />
+          </fieldset>
+        )}
+
+        <fieldset disabled={avatarMutationBusy} className="min-w-0 border-0 p-0 disabled:opacity-60">
+          <AvatarReplaceActions
+            hasAvatar={Boolean(avatarPreview)}
+            uploading={avatarUploading}
+            generationAvailable={imageGenerationAvailable}
+            onUpload={onSelectAvatar}
+            onGenerate={onGenerateAvatar}
           />
         </fieldset>
-      )}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1.5 sm:col-span-2">

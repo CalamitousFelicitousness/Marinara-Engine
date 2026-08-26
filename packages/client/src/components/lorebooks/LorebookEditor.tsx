@@ -351,6 +351,7 @@ const BATCH_EDITABLE_ENTRY_FIELDS = [
   "generationTriggerFilters",
   "additionalMatchingSources",
   "position",
+  "outletName",
   "depth",
   "order",
   "role",
@@ -1688,6 +1689,25 @@ export function LorebookEditor() {
             resetFolderDragState();
             resetEntryDragState();
           }}
+          selectionMode={entrySelectionMode}
+          allSelected={
+            entrySelectionMode &&
+            (entriesByContainer.get(folder.id) ?? []).length > 0 &&
+            (entriesByContainer.get(folder.id) ?? []).every((entry) => selectedEntryIds.has(entry.id))
+          }
+          onToggleSelectAll={() => {
+            const folderEntries = entriesByContainer.get(folder.id) ?? [];
+            const allSelected =
+              folderEntries.length > 0 && folderEntries.every((entry) => selectedEntryIds.has(entry.id));
+            setSelectedEntryIds((current) => {
+              const next = new Set(current);
+              for (const entry of folderEntries) {
+                if (allSelected) next.delete(entry.id);
+                else next.add(entry.id);
+              }
+              return next;
+            });
+          }}
         />
         {!isCollapsed && (
           <div
@@ -2117,12 +2137,14 @@ export function LorebookEditor() {
                       return (
                         <button
                           key={opt.value}
+                          type="button"
                           onClick={() => {
                             setFormCategory(opt.value);
                             markLorebookDirty();
                           }}
+                          aria-pressed={formCategory === opt.value}
                           className={cn(
-                            "flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all",
+                            "flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-all",
                             formCategory === opt.value
                               ? "mari-chrome-accent-surface mari-accent-animated"
                               : "mari-editor-action text-[var(--marinara-editor-muted)]",

@@ -41,6 +41,7 @@ import {
   Download,
   CheckCircle2,
   ChevronDown,
+  Timer,
 } from "lucide-react";
 import {
   ANIME_GAME_PROMPT_TEMPLATE_ID,
@@ -419,7 +420,8 @@ function LearnedOptionChips({
         <button
           type="button"
           onClick={onToggleExpanded}
-          className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+          aria-expanded={expanded}
+          className="rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
         >
           {expanded
             ? localizeUi("ui.game.learnedoptionchips.showLess")
@@ -515,6 +517,7 @@ export function GameSetupWizard({
   const [enableSpriteGeneration, setEnableSpriteGeneration] = useState(false);
   const [gameImageDynamicPromptEnabled, setGameImageDynamicPromptEnabled] = useState(false);
   const [enableAgents, setEnableAgents] = useState(false);
+  const [enableQuickTimeEvents, setEnableQuickTimeEvents] = useState(true);
   const [enableSpotifyDj, setEnableSpotifyDj] = useState(false);
   const [gameSpotifySourceType, setGameSpotifySourceType] = useState<GameSpotifySourceType>("liked");
   const [gameSpotifyPlaylistId, setGameSpotifyPlaylistId] = useState("");
@@ -1074,6 +1077,7 @@ export function GameSetupWizard({
           config.gameWorldMapMode === "hierarchical" ||
           Boolean(config.spatialMapInstructions?.trim()),
       );
+      setEnableQuickTimeEvents(config.enableQuickTimeEvents !== false);
       setEnableSpriteGeneration(visualGenerationEnabled);
       setGameImageDynamicPromptEnabled(config.gameImageDynamicPromptEnabled === true);
       setImageConnectionId(config.imageConnectionId ?? null);
@@ -1180,6 +1184,7 @@ export function GameSetupWizard({
       personaId: personaId ?? undefined,
       sceneConnectionId: sceneModelValue && sceneModelValue !== "local" ? sceneModelValue : undefined,
       enableAgents: enableAgents || undefined,
+      enableQuickTimeEvents: enableQuickTimeEvents ? undefined : false,
       enableSpriteGeneration: illustratorEnabled,
       gameImageDynamicPromptEnabled: illustratorEnabled && gameImageDynamicPromptEnabled,
       imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
@@ -1553,8 +1558,9 @@ export function GameSetupWizard({
                           <button
                             key={g}
                             onClick={() => toggleGenre(g)}
+                            aria-pressed={genres.includes(g)}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               genres.includes(g)
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1570,7 +1576,8 @@ export function GameSetupWizard({
                             <button
                               key={g}
                               onClick={() => toggleGenre(g)}
-                              className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
+                              aria-pressed={genres.includes(g)}
+                              className="flex items-center gap-1 rounded-md bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {g}
                               <X size={10} />
@@ -1621,7 +1628,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => applySuggestion(setSetting, s)}
-                            className="flex items-center gap-1 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s === "Surprise me!" && <Sparkles size={9} />}
                             {s}
@@ -1648,8 +1655,9 @@ export function GameSetupWizard({
                           <button
                             key={t}
                             onClick={() => toggleTone(t)}
+                            aria-pressed={tones.includes(t)}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               tones.includes(t)
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1665,7 +1673,8 @@ export function GameSetupWizard({
                             <button
                               key={t}
                               onClick={() => toggleTone(t)}
-                              className="flex items-center gap-1 rounded-full bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
+                              aria-pressed={tones.includes(t)}
+                              className="flex items-center gap-1 rounded-md bg-[var(--primary)]/20 px-3 py-1 text-xs text-[var(--primary)] ring-1 ring-[var(--primary)]/40 transition-colors"
                             >
                               {t}
                               <X size={10} />
@@ -1709,8 +1718,9 @@ export function GameSetupWizard({
                           <button
                             key={d}
                             onClick={() => setDifficulty(d)}
+                            aria-pressed={difficulty === d}
                             className={cn(
-                              "rounded-full px-3 py-1 text-xs transition-colors",
+                              "rounded-md px-3 py-1 text-xs transition-colors",
                               difficulty === d
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1730,6 +1740,7 @@ export function GameSetupWizard({
                       <div className="flex gap-2">
                         <button
                           onClick={() => setCombatStyle("classic")}
+                          aria-pressed={combatStyle === "classic"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             combatStyle === "classic"
@@ -1746,6 +1757,7 @@ export function GameSetupWizard({
                         </button>
                         <button
                           onClick={() => setCombatStyle("tactical")}
+                          aria-pressed={combatStyle === "tactical"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             combatStyle === "tactical"
@@ -1774,7 +1786,7 @@ export function GameSetupWizard({
                           onClick={() => setRating("sfw")}
                           aria-pressed={rating === "sfw"}
                           className={cn(
-                            "rounded-full px-3 py-1 text-xs transition-colors",
+                            "rounded-md px-3 py-1 text-xs transition-colors",
                             rating === "sfw"
                               ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                               : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1787,7 +1799,7 @@ export function GameSetupWizard({
                           onClick={() => setRating("nsfw")}
                           aria-pressed={rating === "nsfw"}
                           className={cn(
-                            "rounded-full px-3 py-1 text-xs transition-colors",
+                            "rounded-md px-3 py-1 text-xs transition-colors",
                             rating === "nsfw"
                               ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                               : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
@@ -1820,8 +1832,9 @@ export function GameSetupWizard({
                           <button
                             key={option.value}
                             onClick={() => setLanguage(option.label)}
+                            aria-pressed={normalizedLanguage === option.value}
                             className={cn(
-                              "rounded-full px-2 py-0.5 text-[0.625rem] transition-colors",
+                              "rounded-md px-2 py-0.5 text-[0.625rem] transition-colors",
                               normalizedLanguage === option.value
                                 ? "bg-[var(--primary)]/20 text-[var(--primary)] ring-1 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10",
@@ -1848,6 +1861,7 @@ export function GameSetupWizard({
                       <div className="flex gap-2">
                         <button
                           onClick={() => setGmMode("standalone")}
+                          aria-pressed={gmMode === "standalone"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             gmMode === "standalone"
@@ -1864,6 +1878,7 @@ export function GameSetupWizard({
                         </button>
                         <button
                           onClick={() => setGmMode("character")}
+                          aria-pressed={gmMode === "character"}
                           className={cn(
                             "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
                             gmMode === "character"
@@ -2188,6 +2203,49 @@ export function GameSetupWizard({
                         {localizeUi("ui.game.gamesetupwizard.gameFeatures")}
                       </label>
                       <div className="space-y-2">
+                        <button
+                          type="button"
+                          aria-pressed={enableQuickTimeEvents}
+                          onClick={() => setEnableQuickTimeEvents((enabled) => !enabled)}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                            enableQuickTimeEvents
+                              ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                              : "bg-[var(--secondary)] ring-1 ring-transparent hover:ring-[var(--border)]",
+                          )}
+                        >
+                          <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                            <Timer
+                              size={14}
+                              className={
+                                enableQuickTimeEvents ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-xs font-medium text-[var(--foreground)]">
+                                {localizeUi("ui.game.gamesetupwizard.quickTimeEvents")}
+                              </span>
+                              <span className="block text-[0.575rem] text-[var(--muted-foreground)]">
+                                {localizeUi("ui.game.gamesetupwizard.quickTimeEventsDescription")}
+                              </span>
+                            </span>
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
+                              enableQuickTimeEvents ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "block h-4 w-4 rounded-full bg-white transition-transform",
+                                enableQuickTimeEvents && "translate-x-3.5",
+                              )}
+                            />
+                          </span>
+                        </button>
+
                         {installedAgentsLoading ? (
                           <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-4 py-4 text-xs text-[var(--muted-foreground)]">
                             <Loader2 size={13} className="animate-spin" />
@@ -2831,7 +2889,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => applySuggestion(setPlayerGoals, s)}
-                            className="flex items-center gap-1 rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s === "Surprise me!" && <Sparkles size={9} />}
                             {s}
@@ -2864,7 +2922,7 @@ export function GameSetupWizard({
                           <button
                             key={s}
                             onClick={() => setPreferences((prev) => (prev ? `${prev}, ${s.toLowerCase()}` : s))}
-                            className="rounded-full bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                            className="rounded-md bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--primary)] hover:bg-[var(--primary)]/10"
                           >
                             {s}
                           </button>

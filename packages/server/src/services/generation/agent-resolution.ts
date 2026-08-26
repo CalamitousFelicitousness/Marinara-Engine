@@ -117,6 +117,28 @@ function resolveAgentConnectionRequest(args: {
   });
 }
 
+/**
+ * The connection id agents fall back to when they have no explicit one (#5539).
+ *
+ * The sidecar cannot hold the `defaultForAgents` row flag — it has no
+ * connection row — so its default status lives in the sidecar config instead.
+ * The sentinel is substituted only while the sidecar is actually available:
+ * fed into the default slot while unavailable it would bypass the
+ * skip-local-sidecar guard (which only inspects the REQUESTED id) and surface
+ * a misleading "connection was deleted" warning. Degrading to the row default
+ * (or the chat connection) is the right behavior for a missing model anyway —
+ * a default is a preference, unlike an explicit per-agent selection, which
+ * skips the agent rather than silently running it elsewhere.
+ */
+export function resolveAgentsDefaultConnectionId(args: {
+  useLocalSidecarAsAgentsDefault: boolean;
+  localSidecarAvailable: boolean;
+  rowDefaultConnectionId: string | null;
+}): string | null {
+  if (args.useLocalSidecarAsAgentsDefault && args.localSidecarAvailable) return LOCAL_SIDECAR_CONNECTION_ID;
+  return args.rowDefaultConnectionId;
+}
+
 export type ResolvedAgentPipelineAgents = {
   enabledConfigs: any[];
   resolvedAgents: ResolvedAgent[];
@@ -401,6 +423,11 @@ export async function resolveAgentPipelineAgents({
   };
   const defaultAgentConn = await connections.getDefaultForAgents();
   const fallbackAgentConn = await connections.getFallbackForAgents();
+  const defaultAgentConnectionId = resolveAgentsDefaultConnectionId({
+    useLocalSidecarAsAgentsDefault: sidecarModelService.getConfig().useAsAgentsDefault,
+    localSidecarAvailable: localSidecarAvailableForTrackers,
+    rowDefaultConnectionId: defaultAgentConn?.id ?? null,
+  });
   for (const cfg of enabledConfigs) {
     if (hasPerChatAgentList && !perChatAgentSet.has(cfg.type)) continue;
 
@@ -419,7 +446,7 @@ export async function resolveAgentPipelineAgents({
     const effectiveConnectionId = resolveAgentConnectionRequest({
       agentType: cfg.type as string,
       configuredConnectionId: cfg.connectionId as string | null,
-      defaultAgentConnectionId: defaultAgentConn?.id ?? null,
+      defaultAgentConnectionId,
       chatMetadata,
       localSidecarAvailable: localSidecarAvailableForTrackers,
     });
@@ -508,7 +535,7 @@ export async function resolveAgentPipelineAgents({
     const builtInConnectionId = resolveAgentConnectionRequest({
       agentType: builtIn.id,
       configuredConnectionId: null,
-      defaultAgentConnectionId: defaultAgentConn?.id ?? null,
+      defaultAgentConnectionId,
       chatMetadata,
       localSidecarAvailable: localSidecarAvailableForTrackers,
     });

@@ -80,12 +80,38 @@ assert.match(
   /trap release_termux_wake_lock EXIT/u,
   "the Termux launcher must release its wake lock whenever the server exits",
 );
+assert.doesNotMatch(
+  termuxLauncherSource,
+  /--max-old-space-size=2048/u,
+  "the Termux launcher must not restore the memory-heavy 2 GB automatic heap default",
+);
+assert.match(
+  termuxLauncherSource,
+  /if ! has_explicit_node_heap_limit; then[\s\S]*resolve_default_node_heap_mb[\s\S]*NODE_OPTIONS="\$\{NODE_OPTIONS:\+\$\{NODE_OPTIONS\} \}--max-old-space-size=\$\{MARINARA_TERMUX_HEAP_MB\}"/u,
+  "an explicit NODE_OPTIONS heap limit must override the adaptive mobile default",
+);
+const heapSetupStart = termuxLauncherSource.indexOf("has_explicit_node_heap_limit() {");
+const heapSetupEnd = termuxLauncherSource.indexOf("\nload_launcher_setting()", heapSetupStart);
+assert.ok(heapSetupStart >= 0 && heapSetupEnd >= 0, "the Termux heap helpers must be present");
+const heapHelpersSource = termuxLauncherSource.slice(heapSetupStart, heapSetupEnd);
+const probeHeapHelpers = (script, nodeOptions = "") => {
+  const probe = spawnSync("bash", ["-c", `${heapHelpersSource}\n${script}`], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    env: { ...process.env, NODE_OPTIONS: nodeOptions },
+  });
+  assert.equal(probe.status, 0, probe.stderr);
+  return probe.stdout;
+};
+probeHeapHelpers("has_explicit_node_heap_limit", "--max-old-space-size=512");
+probeHeapHelpers("! has_explicit_node_heap_limit", "--trace-warnings");
+assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 0 8388608"), "1024");
+assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 8388608"), "1536");
+assert.equal(probeHeapHelpers("resolve_default_node_heap_mb 1153434 4194304"), "1024");
 const wakeLockTrapIndex = termuxLauncherSource.search(/^[ \t]*trap release_termux_wake_lock EXIT[ \t]*$/mu);
 const wakeLockAcquireIndex = termuxLauncherSource.search(/^[ \t]*if[ \t]+termux-wake-lock\b[^\n]*;[ \t]*then[ \t]*$/mu);
 const serverStartIndex = termuxLauncherSource.lastIndexOf("node dist/index.js");
-const persistentLogIndex = termuxLauncherSource.indexOf(
-  'exec > >(tee -a "$MARINARA_TERMUX_LOG_FILE") 2>&1',
-);
+const persistentLogIndex = termuxLauncherSource.indexOf('exec > >(tee -a "$MARINARA_TERMUX_LOG_FILE") 2>&1');
 const dependencySetupIndex = termuxLauncherSource.indexOf("resolve_pnpm_runner || exit 1");
 assert.ok(
   wakeLockTrapIndex >= 0 && wakeLockAcquireIndex >= 0 && wakeLockTrapIndex < wakeLockAcquireIndex,

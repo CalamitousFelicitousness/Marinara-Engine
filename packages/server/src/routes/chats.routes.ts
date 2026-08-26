@@ -17,6 +17,7 @@ import {
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
   estimateChatSummaryTokens,
+  getChatSummaryMessageIdsToUnhideAfterDelete,
   markAutonomousUnreadSchema,
   nameToXmlTag,
   normalizeChatSummaryEntries,
@@ -54,6 +55,7 @@ import {
   createChatsStorage,
   InvalidMessageCursorError,
   parseMessageCursor,
+  withChatMetadataPatchQueue,
 } from "../services/storage/chats.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -341,7 +343,7 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
 }
 type SummaryEntriesPatchBody =
   | { operation: "replace"; entry: Partial<ChatSummaryEntry> & { id: string; content: string } }
-  | { operation: "delete"; entryId: string }
+  | { operation: "delete"; entryId?: string; entryIds?: string[] }
   | { operation: "toggle"; entryId: string; enabled: boolean }
   | { operation: "reorder"; entryIds: string[] };
 
@@ -1281,6 +1283,7 @@ export async function chatsRoutes(app: FastifyInstance) {
   // Update rolling summary entries without replacing unrelated chat metadata.
   app.patch<{ Params: { id: string }; Body: SummaryEntriesPatchBody }>("/:id/summary-entries", async (req, reply) => {
     const body = req.body;
+    let deleteEntryIds: string[] = [];
     if (!body || typeof body !== "object" || !("operation" in body)) {
       return reply.status(400).send({ error: "Invalid summary entry operation" });
     }
@@ -1295,9 +1298,15 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "replace requires entry.id and entry.content" });
       }
     } else if (body.operation === "delete") {
-      if (typeof body.entryId !== "string" || !body.entryId.trim()) {
-        return reply.status(400).send({ error: "delete requires entryId" });
+      const requestedIds = Array.isArray(body.entryIds) ? body.entryIds : [body.entryId];
+      if (
+        requestedIds.length === 0 ||
+        !requestedIds.every((id) => typeof id === "string" && id.trim()) ||
+        new Set(requestedIds).size !== requestedIds.length
+      ) {
+        return reply.status(400).send({ error: "delete requires entryId or unique entryIds" });
       }
+      deleteEntryIds = requestedIds as string[];
     } else if (body.operation === "toggle") {
       if (typeof body.entryId !== "string" || !body.entryId.trim() || typeof body.enabled !== "boolean") {
         return reply.status(400).send({ error: "toggle requires entryId and enabled" });
@@ -1315,38 +1324,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Unsupported summary entry operation" });
     }
 
-    // For delete: restore visibility of the messages this entry covered (except
-    // any still covered by another enabled entry) BEFORE removing the entry.
-    // Unhiding first is what keeps this safe without a transaction: if the
-    // metadata write below fails, the messages are visible and the entry still
-    // exists (a benign, self-consistent state) — never hidden with no entry to
-    // justify them. So no rollback bookkeeping is needed.
-    if (body.operation === "delete") {
-      const current = await storage.getById(req.params.id);
-      if (!current) return reply.status(404).send({ error: "Chat not found" });
-      const currentMeta = parseExtra(current.metadata) as Record<string, unknown>;
-      const currentEntries = normalizeChatSummaryEntries(currentMeta.summaryEntries, {
-        legacySummary: typeof currentMeta.summary === "string" ? currentMeta.summary : null,
-      });
-      const target = currentEntries.find((entry) => entry.id === body.entryId);
-      if (target) {
-        // Restore exactly what this entry hid. `hiddenMessageIds` records the
-        // precise hidden subset; older entries without it fall back to messageIds.
-        const covered = target.hiddenMessageIds ?? target.messageIds ?? [];
-        const stillCovered = new Set<string>();
-        for (const entry of currentEntries) {
-          if (entry.id === body.entryId || !entry.enabled) continue;
-          for (const id of entry.hiddenMessageIds ?? entry.messageIds ?? []) stillCovered.add(id);
-        }
-        const toUnhide = covered.filter((id) => !stillCovered.has(id));
-        if (toUnhide.length > 0) {
-          await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
-        }
-      }
-    }
-
     let reorderConflict = false;
-    const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
+    const updated = await storage.patchMetadata(req.params.id, async (freshMeta) => {
       const entries = normalizeChatSummaryEntries(freshMeta.summaryEntries, {
         legacySummary: typeof freshMeta.summary === "string" ? freshMeta.summary : null,
       });
@@ -1370,7 +1349,16 @@ export async function chatsRoutes(app: FastifyInstance) {
           ? entries.map((entry) => (entry.id === replacement.id ? replacement : entry))
           : [...entries, replacement];
       } else if (body.operation === "delete") {
-        nextEntries = entries.filter((entry) => entry.id !== body.entryId);
+        const deletedIds = new Set(deleteEntryIds);
+        // Restore visibility from the same serialized metadata snapshot we
+        // remove from. Unhiding first leaves a benign visible+summarised state
+        // if the later metadata write fails, never hidden messages with no
+        // retained summary to justify them.
+        const toUnhide = getChatSummaryMessageIdsToUnhideAfterDelete(entries, deletedIds);
+        if (toUnhide.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, toUnhide, false);
+        }
+        nextEntries = entries.filter((entry) => !deletedIds.has(entry.id));
       } else if (body.operation === "toggle") {
         const now = new Date().toISOString();
         nextEntries = entries.map((entry) =>
@@ -2601,7 +2589,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       try {
         const { createPromptsStorage } = await import("../services/storage/prompts.storage.js");
         const { createCharactersStorage } = await import("../services/storage/characters.storage.js");
-        const { assemblePrompt, buildPromptMacroContext, resolvePromptIdleDuration } =
+        const { assemblePrompt, buildPromptMacroContext, resolvePromptIdleDuration, setLorebookEntryCounts } =
           await import("../services/prompt/index.js");
         const presetStore = createPromptsStorage(app.db);
         const charStore = createCharactersStorage(app.db);
@@ -2703,8 +2691,15 @@ export async function chatsRoutes(app: FastifyInstance) {
             chatId: req.params.id,
             lastGenerationType: "preview",
             idleDuration: promptIdleDuration,
+            macroSources: [
+              ...sections.map((section) => section.content),
+              ...mappedMessages.map((message) => message.content),
+            ],
           });
-          const resolvePromptMacros = (value: string) => resolveMacros(value, promptMacroContext);
+          const resolvePromptMacros = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
+            setLorebookEntryCounts(promptMacroContext, lorebookEntryCounts);
+            return resolveMacros(value, promptMacroContext);
+          };
           // Apply regex scripts to prompt context (mirrors generate.routes.ts).
           const regexStore = createRegexScriptsStorage(app.db);
           applyRegexScriptsToPromptMessages(mappedMessages, await regexStore.list(), {
@@ -3251,6 +3246,33 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Delete every alternate while preserving the selected swipe.
+  app.delete<{ Params: { chatId: string; messageId: string; index: string } }>(
+    "/:chatId/messages/:messageId/swipes/others/:index",
+    async (req, reply) => {
+      const keepIndex = Number(req.params.index);
+      if (!/^\d+$/u.test(req.params.index) || !Number.isSafeInteger(keepIndex)) {
+        return reply.status(400).send({ error: "Valid swipe index is required" });
+      }
+
+      const message = await storage.getMessage(req.params.messageId);
+      if (!message || message.chatId !== req.params.chatId) {
+        return reply.status(404).send({ error: "Message not found" });
+      }
+      const swipes = await storage.getSwipes(req.params.messageId);
+      if (!swipes.some((swipe: any) => swipe.index === keepIndex)) {
+        return reply.status(404).send({ error: "Swipe not found" });
+      }
+
+      // Descending indexes keep the selected swipe stable until lower rows are
+      // removed, after which the existing removal path shifts it safely to 0.
+      for (const swipe of [...swipes].sort((a: any, b: any) => b.index - a.index)) {
+        if (swipe.index !== keepIndex) await storage.removeSwipe(req.params.messageId, swipe.index);
+      }
+      return storage.getMessage(req.params.messageId);
+    },
+  );
+
   // Set active swipe
   app.put<{ Params: { chatId: string; messageId: string } }>(
     "/:chatId/messages/:messageId/active-swipe",
@@ -3528,6 +3550,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       lastInput: [...msgs].reverse().find((msg) => msg.role === "user")?.content,
       chatId: chat.id,
       lastGenerationType: "export",
+      macroSources: msgs.map((message) => message.content),
     });
 
     const getDisplayName = (msg: { role: string; characterId?: string | null }) => {
@@ -3820,6 +3843,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     for (const key of ["summary", "summaryEntries", "lastAutomaticSummaryMessageId", "daySummaries", "weekSummaries"]) {
       delete settingsToKeep[key];
     }
+    delete settingsToKeep.gameNarrationIndex;
+    delete settingsToKeep.gameNarrationMessageId;
     const sourceCutoffIndex = upToMessageId ? msgs.findIndex((msg) => msg.id === upToMessageId) : msgs.length - 1;
     const sourceMessagesToCopy = msgs.slice(0, sourceCutoffIndex + 1);
     const copiedSourceMessageIds = new Set(sourceMessagesToCopy.map((msg) => msg.id));
@@ -3943,6 +3968,14 @@ export async function chatsRoutes(app: FastifyInstance) {
       inheritedAutomaticEntry && typeof sourceMeta.lastAutomaticSummaryMessageId === "string"
         ? sourceToBranchedMessageId.get(sourceMeta.lastAutomaticSummaryMessageId)
         : undefined;
+    // #5406: `settingsToKeep` is the source metadata verbatim, which carries its
+    // `metadataWriteOrdinals` mirror. Inherit the source's write-ordinal counter too, or the
+    // branch's first allocation would come in BELOW the stamps it just copied and invert the
+    // "which store is newer" comparison for the life of the branch. Raised before the metadata
+    // write so no interleaved allocation can slip in under the floor. This snapshot can already
+    // be stale by the time the engine rows are copied further down, so the copy loop raises the
+    // floor a second time against what it actually copied.
+    await storage.raiseWriteOrdinalFloor(newChat.id, sourceChat.writeOrdinalCounter);
     await storage.updateMetadata(newChat.id, {
       ...settingsToKeep,
       branchName: "New Branch",
@@ -4038,12 +4071,21 @@ export async function chatsRoutes(app: FastifyInstance) {
           throw err;
         }
       };
+      // #5406: highest ordinal this branch actually copied onto its own engine rows. The
+      // pre-metadata floor above was read from a counter snapshot taken before any of the copy
+      // work, so a source-chat experience save landing mid-branch produces a copied row whose
+      // ordinal is ABOVE that floor — and the branch's first allocation would then duplicate it.
+      // Tracked live here and applied once after the copy loop.
+      let maxCopiedWriteOrdinal = 0;
       const copyEngineSnapshot = async (
         snapshot: NonNullable<Awaited<ReturnType<NonNullable<typeof gameEngineStore>["getByChatAndMessage"]>>>,
         targetMessageId: string,
         targetSwipeIndex: number,
       ) => {
         if (!gameEngineStore) return;
+        if (typeof snapshot.writeOrdinal === "number" && snapshot.writeOrdinal > maxCopiedWriteOrdinal) {
+          maxCopiedWriteOrdinal = snapshot.writeOrdinal;
+        }
         await gameEngineStore.create({
           chatId: newChat.id,
           messageId: targetMessageId,
@@ -4052,6 +4094,12 @@ export async function chatsRoutes(app: FastifyInstance) {
           schemaVersion: snapshot.schemaVersion,
           state: snapshot.state,
           committed: (snapshot.committed as any) === 1,
+          // #5406: keep the source ordinal verbatim. The branch inherits the source's whole
+          // metadata blob (mirror included) AND, via the raiseWriteOrdinalFloor calls, a counter
+          // above everything it copied — so this is the same counter space, and the copied rows
+          // and the copied mirror stay in exactly the order they had in the source. Re-allocating
+          // here instead would reorder the copies against a mirror that was NOT re-stamped.
+          writeOrdinal: snapshot.writeOrdinal,
         });
       };
 
@@ -4105,6 +4153,10 @@ export async function chatsRoutes(app: FastifyInstance) {
           await copyEngineSnapshot(engineBootstrap, "", 0);
         }
       }
+      // #5406: re-floor against what was really copied, now that every row is in. Without this
+      // the branch's first allocation can collide with a row copied after the earlier snapshot
+      // was taken, handing the same ordinal to two rows in one counter space.
+      await storage.raiseWriteOrdinalFloor(newChat.id, maxCopiedWriteOrdinal);
     } catch (err) {
       try {
         await storage.remove(newChat.id);
@@ -4413,91 +4465,81 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
 
     const messageIds = selectedMessages.map((message) => message.id);
-    // Subset eligible to be hidden when "Hide summarised messages" is on: the
-    // summarized set minus the protected tail, so manual hiding honors
-    // `summaryTailMessages` like the automatic path. Persisted on the entry (when
-    // hiding is enabled) so deletion restores exactly what was hidden.
-    const [latestChatBeforeHide, latestMessagesBeforeHide] = await Promise.all([
-      storage.getById(req.params.id),
-      storage.listMessages(req.params.id),
-    ]);
-    const latestMetaBeforeHide = latestChatBeforeHide
-      ? (parseExtra(latestChatBeforeHide.metadata) as Record<string, unknown>)
-      : chatMeta;
-    const hideEnabled = latestMetaBeforeHide.hideSummarisedMessages === true;
-    // Keep ownership tied to the exact messages sent to the provider, but use
-    // the live list to protect the real current tail if messages arrived while it ran.
-    const eligibleToHide = hideEnabled
-      ? computeSummaryHideIds({
-          messages: latestMessagesBeforeHide,
-          entryMessageIds: messageIds,
-          tail: resolveRoleplaySummaryTail(latestMetaBeforeHide.summaryTailMessages),
-        })
-      : [];
-    // Perform the hide on the server, BEFORE the entry records hiddenMessageIds, so
-    // the recorded set always reflects messages actually hidden (no phantom set if a
-    // separate client call were to fail). The client no longer hides. bulkSetHidden
-    // returns exactly the ids it flipped visible->hidden, read at the moment of
-    // mutation — so ownership can never be a stale pre-provider snapshot that claims
-    // a message another action hid during the (seconds-long) provider call above.
-    const hideMessageIds =
-      eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
-    // If the entry that owns hiddenMessageIds is not persisted (chat vanished, or
-    // the write throws), roll back exactly the hides this attempt applied (the set
-    // bulkSetHidden reported flipping) so we never leave messages hidden with no
-    // entry. A rollback failure is surfaced (re-thrown), not swallowed, so the
-    // caller learns recovery did not complete.
-    const rollbackHide = async () => {
-      if (hideMessageIds.length === 0) return;
-      await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
-    };
-
     // Append as a structured entry and recompile the prompt-facing summary
-    // without replacing concurrent metadata changes.
+    // without replacing concurrent metadata changes. Hiding and metadata
+    // ownership share the same per-chat queue as deletion, so neither operation
+    // can interleave between the visibility write and its summary entry.
+    let hideMessageIds: string[] = [];
     let combined: string | null = summaryText;
     let createdEntry: ChatSummaryEntry | null = null;
     let summaryEntries: ChatSummaryEntry[] = [];
     let updatedChat: Awaited<ReturnType<typeof storage.patchMetadata>>;
-    try {
-      updatedChat = await storage.patchMetadata(req.params.id, (freshMeta) => {
-        const now = new Date().toISOString();
-        const result = appendChatSummaryEntryToMetadata(
-          freshMeta,
-          {
-            kind: "rolling",
-            origin: "manual",
-            sourceMode: hasRange ? "range" : "last",
-            ...(parsedSummary.title ? { title: parsedSummary.title } : {}),
-            content: summaryText,
-            enabled: true,
-            messageCount: selectedMessages.length,
-            rangeStartIndex: selectedRangeStartIndex,
-            rangeEndIndex: selectedRangeEndIndex,
-            messageIds,
-            ...(hideMessageIds.length > 0 ? { hiddenMessageIds: hideMessageIds } : {}),
-            promptTemplateId: requestedPromptTemplateId,
-            createdAt: now,
-            updatedAt: now,
+    updatedChat = await withChatMetadataPatchQueue(req.params.id, async () => {
+      const [latestChatBeforeHide, latestMessagesBeforeHide] = await Promise.all([
+        storage.getById(req.params.id),
+        storage.listMessages(req.params.id),
+      ]);
+      if (!latestChatBeforeHide) return null;
+      const latestMetaBeforeHide = parseExtra(latestChatBeforeHide.metadata) as Record<string, unknown>;
+      const eligibleToHide =
+        latestMetaBeforeHide.hideSummarisedMessages === true
+          ? computeSummaryHideIds({
+              messages: latestMessagesBeforeHide,
+              entryMessageIds: messageIds,
+              tail: resolveRoleplaySummaryTail(latestMetaBeforeHide.summaryTailMessages),
+            })
+          : [];
+      hideMessageIds =
+        eligibleToHide.length > 0 ? await storage.bulkSetHiddenFromAI(req.params.id, eligibleToHide, true) : [];
+
+      try {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          (freshMeta) => {
+            const now = new Date().toISOString();
+            const result = appendChatSummaryEntryToMetadata(
+              freshMeta,
+              {
+                kind: "rolling",
+                origin: "manual",
+                sourceMode: hasRange ? "range" : "last",
+                ...(parsedSummary.title ? { title: parsedSummary.title } : {}),
+                content: summaryText,
+                enabled: true,
+                messageCount: selectedMessages.length,
+                rangeStartIndex: selectedRangeStartIndex,
+                rangeEndIndex: selectedRangeEndIndex,
+                messageIds,
+                ...(hideMessageIds.length > 0 ? { hiddenMessageIds: hideMessageIds } : {}),
+                promptTemplateId: requestedPromptTemplateId,
+                createdAt: now,
+                updatedAt: now,
+              },
+              { createId: newId, now },
+            );
+            combined = result.summary;
+            createdEntry = result.entry;
+            summaryEntries = result.entries;
+            return {
+              summary: result.summary,
+              summaryEntries: result.entries,
+              ...(!hasRange && typeof body.contextSize !== "undefined" ? { summaryContextSize: contextSize } : {}),
+            };
           },
-          { createId: newId, now },
+          { metadataQueueHeld: true },
         );
-        combined = result.summary;
-        createdEntry = result.entry;
-        summaryEntries = result.entries;
-        return {
-          summary: result.summary,
-          summaryEntries: result.entries,
-          ...(!hasRange && typeof body.contextSize !== "undefined" ? { summaryContextSize: contextSize } : {}),
-        };
-      });
-    } catch (err) {
-      await rollbackHide();
-      throw err;
-    }
-    if (!updatedChat) {
-      await rollbackHide();
-      return reply.status(404).send({ error: "Chat not found" });
-    }
+        if (!updated && hideMessageIds.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
+        }
+        return updated;
+      } catch (err) {
+        if (hideMessageIds.length > 0) {
+          await storage.bulkSetHiddenFromAI(req.params.id, hideMessageIds, false);
+        }
+        throw err;
+      }
+    });
+    if (!updatedChat) return reply.status(404).send({ error: "Chat not found" });
 
     return {
       summary: combined,

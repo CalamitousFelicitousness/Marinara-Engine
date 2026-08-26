@@ -694,8 +694,8 @@ export function AuthorNotesPanel({
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
         ariaLabel={localizeUi("ui.chat.authornotespanel.authorSNotes")}
-        wrapperClassName="mari-author-notes-field"
-        className="resize-none px-2.5 py-2 text-xs leading-relaxed"
+        wrapperClassName="mari-author-notes-field min-w-0"
+        className="mari-chrome-field resize-none !rounded-md px-2.5 py-2 text-xs leading-relaxed"
       />
       <div className="mt-2 flex items-center gap-2">
         <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
@@ -707,7 +707,7 @@ export function AuthorNotesPanel({
           value={depthStr}
           onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
           onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
-          className="w-14 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-center text-[0.625rem] text-[var(--foreground)] outline-none transition-colors [appearance:textfield] focus:ring-2 focus:ring-[var(--ring)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {dirty && (

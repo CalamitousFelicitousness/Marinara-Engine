@@ -947,9 +947,11 @@ function OverviewTab({
           {(["xml", "markdown", "none"] as const).map((fmt) => (
             <button
               key={fmt}
+              type="button"
               onClick={() => onWrapFormatChange(fmt)}
+              aria-pressed={wrapFormat === fmt}
               className={cn(
-                "flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium transition-all",
+                "flex items-center gap-2 rounded-md px-4 py-2.5 text-xs font-medium transition-all",
                 wrapFormat === fmt
                   ? "mari-chrome-accent-surface mari-accent-animated"
                   : "mari-editor-action text-[var(--marinara-editor-muted)]",
@@ -1507,11 +1509,10 @@ function SectionsTab({
         </div>
         <button
           onClick={() => setShowGroupsPanel(!showGroupsPanel)}
+          aria-expanded={showGroupsPanel}
           className={cn(
-            "flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium ring-1 transition-all active:scale-[0.98]",
-            showGroupsPanel
-              ? "mari-chrome-accent-surface mari-accent-animated"
-              : "mari-editor-action text-[var(--marinara-editor-muted)]",
+            "mari-editor-action mari-editor-action--primary inline-flex",
+            showGroupsPanel && "mari-chrome-accent-surface mari-accent-animated",
           )}
         >
           <FolderOpen size="0.8125rem" /> {localizeUi("ui.presets.sectionstab.groups")}

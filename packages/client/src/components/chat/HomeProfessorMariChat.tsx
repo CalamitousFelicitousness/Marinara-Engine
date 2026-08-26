@@ -1341,7 +1341,7 @@ function MariAvatar({ active }: { active?: boolean }) {
     <span
       className={cn(
         "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-[var(--secondary)] shadow-sm",
-        active ? "border-[var(--primary)]/60 shadow-[0_0_14px_rgba(255,179,217,0.22)]" : "border-[var(--border)]/70",
+        active ? "mari-chrome-accent-soft-tile mari-accent-animated" : "border-[var(--border)]/70",
       )}
     >
       <img src={MARI_AVATAR_URL} alt="" className="h-full w-full object-cover" draggable={false} />
@@ -3338,11 +3338,13 @@ export function HomeProfessorMariChat({
   }, [isBusy]);
   const canSubmitMessage = (draft.trim().length > 0 || attachments.length > 0) && !isReadingAttachments;
   const visibleSuggestionChips =
-    professorMariSuggestionsEnabled && mariChipsChatId === chatId && mariChips.length > 0
-      ? mariChips
-      : professorMariSuggestionsEnabled && chatId !== null && loadedMessagesChatId === chatId && !isBusy
-        ? MARI_STARTER_CHIPS
-        : [];
+    mariChipsChatId === chatId && mariChips.some((chip) => chip.id === "authorization-accept")
+      ? mariChips.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept")
+      : professorMariSuggestionsEnabled && mariChipsChatId === chatId && mariChips.length > 0
+        ? mariChips
+        : professorMariSuggestionsEnabled && chatId !== null && loadedMessagesChatId === chatId && !isBusy
+          ? MARI_STARTER_CHIPS
+          : [];
   const selectedSkill = useMemo(
     () => skills.find((skill) => skill.id === selectedSkillId) ?? null,
     [selectedSkillId, skills],
@@ -3748,6 +3750,11 @@ export function HomeProfessorMariChat({
   }, []);
 
   const displayMessages = useMemo(() => [createWelcomeMessage(chatId), ...messages], [chatId, messages]);
+  const showConnectionFirstHint =
+    chatId !== null &&
+    loadedMessagesChatId === chatId &&
+    !sending &&
+    !messages.some((message) => message.role === "user");
 
   useEffect(() => {
     if (!mobileFocusMode) return;
@@ -3977,6 +3984,7 @@ export function HomeProfessorMariChat({
     qc.setQueryData(chatKeys.detail(chat.id), chat);
     await api.post("/professor-mari/workspace/reset", { clearHistory: true });
     setMessages([]);
+    setLoadedMessagesChatId(chat.id);
     setDraft("");
     clearMariChips();
     setWorkspaceActive(false);
@@ -4013,26 +4021,27 @@ export function HomeProfessorMariChat({
     chipRowChips.length === 0 &&
     workspaceActivity?.toLocaleLowerCase().includes("suggestion") === true;
 
-  const handleSuggestionSelect = useCallback(
-    (chip: MariSuggestionChip) => {
-      if (guidedPlanStep) {
-        const result = recordMariPlanAnswer(guidedPlanStep.fieldKey, chip.prompt);
-        if (result === "complete") {
-          const answers = useAgentStore.getState().mariPlanAnswers;
-          const summary = Object.entries(answers)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("; ");
-          clearMariPlan();
-          setDraft(`Create it - ${summary}`);
-          focusComposer();
-        }
-        return;
+  function handleSuggestionSelect(chip: MariSuggestionChip) {
+    if (chip.id === "authorization-accept") {
+      void handleSubmit(chip.prompt);
+      return;
+    }
+    if (guidedPlanStep) {
+      const result = recordMariPlanAnswer(guidedPlanStep.fieldKey, chip.prompt);
+      if (result === "complete") {
+        const answers = useAgentStore.getState().mariPlanAnswers;
+        const summary = Object.entries(answers)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join("; ");
+        clearMariPlan();
+        setDraft(`Create it - ${summary}`);
+        focusComposer();
       }
-      setDraft((current) => (current.trim() ? `${current.trimEnd()} ${chip.prompt}` : chip.prompt));
-      focusComposer();
-    },
-    [clearMariPlan, focusComposer, guidedPlanStep, recordMariPlanAnswer, setDraft],
-  );
+      return;
+    }
+    setDraft((current) => (current.trim() ? `${current.trimEnd()} ${chip.prompt}` : chip.prompt));
+    focusComposer();
+  }
 
   const runRestart = useCallback(async () => {
     if (isBusy) return;
@@ -4813,8 +4822,12 @@ export function HomeProfessorMariChat({
             setWorkspaceTimeline((current) => upsertToolTimeline(current, toolCall));
             setWorkspaceActivity(isError ? "Tool needs attention" : "Thinking...");
           } else if (event.type === "suggestions") {
-            if (useUIStore.getState().professorMariSuggestionsEnabled) {
-              setMariChips(chat.id, Array.isArray(event.data) ? (event.data as MariSuggestionChip[]) : []);
+            const chips = Array.isArray(event.data) ? (event.data as MariSuggestionChip[]) : [];
+            if (
+              useUIStore.getState().professorMariSuggestionsEnabled ||
+              chips.some((chip) => chip.id === "authorization-accept")
+            ) {
+              setMariChips(chat.id, chips);
             }
           } else if (event.type === "plan") {
             if (useUIStore.getState().professorMariSuggestionsEnabled) {
@@ -5022,7 +5035,7 @@ export function HomeProfessorMariChat({
     [chatId, isBusy, loadMessages, localizeUi],
   );
 
-  const handleSubmit = async (overrideText?: string) => {
+  async function handleSubmit(overrideText?: string) {
     const text = (overrideText ?? draft).trim();
     const submittedAttachments = attachments;
     const messageText = text || (submittedAttachments.length > 0 ? "Please inspect the attached file." : "");
@@ -5071,7 +5084,7 @@ export function HomeProfessorMariChat({
     } finally {
       setSending(false);
     }
-  };
+  }
 
   const renderDisplayMessage = (message: Message) => {
     const canManageMessage = message.id !== PROFESSOR_MARI_WELCOME_MESSAGE_ID;
@@ -5120,6 +5133,11 @@ export function HomeProfessorMariChat({
         ) : (
           <>
             {displayMessages.map(renderDisplayMessage)}
+            {showConnectionFirstHint && (
+              <p className="px-3 py-1 text-center text-xs text-[var(--muted-foreground)]">
+                {localizeUi("ui.chat.homeprofessormarichat.selectAConnectionFirst")}
+              </p>
+            )}
             {workspaceTimeline.length === 0 && workspaceTimelineActive && !showDottoreSupport && (
               <WorkspaceStatusEvent content={workspaceActivity ?? "Thinking..."} />
             )}
@@ -5310,7 +5328,10 @@ export function HomeProfessorMariChat({
       return (
         <div
           ref={floatingButtonRef}
-          className={cn("fixed z-[95] touch-none sm:hidden", floatingPosition ? "" : "bottom-4 left-4")}
+          className={cn(
+            "mari-chrome-token-scope fixed z-[95] touch-none sm:hidden",
+            floatingPosition ? "" : "bottom-4 left-4",
+          )}
           style={floatingPositionStyle}
           onPointerDown={beginFloatingDrag}
           onPointerMove={moveFloatingDrag}
@@ -5353,7 +5374,7 @@ export function HomeProfessorMariChat({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={PROFESSOR_MARI_PANE_TRANSITION}
-          className="fixed inset-x-0 top-[calc(3rem_+_env(safe-area-inset-top))] z-[95] flex h-[calc(100vh_-_3rem_-_env(safe-area-inset-top))] max-h-[calc(100vh_-_3rem_-_env(safe-area-inset-top))] flex-col bg-[var(--background)] supports-[height:100dvh]:h-[calc(100dvh_-_3rem_-_env(safe-area-inset-top))] supports-[height:100dvh]:max-h-[calc(100dvh_-_3rem_-_env(safe-area-inset-top))] sm:hidden"
+          className="mari-chrome-token-scope fixed inset-x-0 top-[calc(3rem_+_env(safe-area-inset-top))] z-[95] flex h-[calc(100vh_-_3rem_-_env(safe-area-inset-top))] max-h-[calc(100vh_-_3rem_-_env(safe-area-inset-top))] flex-col bg-[var(--background)] supports-[height:100dvh]:h-[calc(100dvh_-_3rem_-_env(safe-area-inset-top))] supports-[height:100dvh]:max-h-[calc(100dvh_-_3rem_-_env(safe-area-inset-top))] sm:hidden"
         >
           <div className="flex h-12 shrink-0 items-center justify-end border-b border-[var(--border)]/60 bg-[var(--card)]/80 px-2">
             <button
@@ -5375,7 +5396,7 @@ export function HomeProfessorMariChat({
       <div
         ref={floatingSurfaceRef}
         className={cn(
-          "fixed z-[95] flex h-[min(32rem,calc(100vh-5rem))] w-[min(25rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--marinara-chat-chrome-accent)] bg-[var(--background)] shadow-2xl shadow-black/40 ring-1 ring-black/15",
+          "mari-chrome-token-scope fixed z-[95] flex h-[min(32rem,calc(100vh-5rem))] w-[min(25rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--marinara-chat-chrome-accent)] bg-[var(--background)] shadow-2xl shadow-black/40 ring-1 ring-black/15",
           floatingPosition ? "" : "bottom-3 left-3",
         )}
         style={floatingPositionStyle}
@@ -5394,11 +5415,11 @@ export function HomeProfessorMariChat({
             data-professor-mari-floating-action
             type="button"
             onClick={onFloatingDismiss}
-            className="mari-editor-action mari-accent-animated inline-flex shrink-0"
+            className="mari-chrome-control mari-chrome-control--small mari-accent-animated h-7 w-7 shrink-0 p-0"
             aria-label={t("home.professorMari.dismiss")}
             title={t("home.professorMari.dismiss")}
           >
-            <X size="1.125rem" />
+            <X size="0.875rem" />
           </button>
         </div>
         {renderFloatingChatBody()}
@@ -5420,11 +5441,11 @@ export function HomeProfessorMariChat({
           data-paused={pageActive ? "false" : "true"}
         >
           <section
-            className="relative flex min-w-0 flex-col items-center gap-2 overflow-visible rounded-2xl border border-[color-mix(in_srgb,oklch(0.73_0.21_345)_36%,var(--border))] bg-[color-mix(in_srgb,oklch(0.73_0.21_345)_8%,var(--card))] p-3 text-center shadow-[0_18px_44px_-34px_oklch(0.73_0.21_345/0.7)] sm:p-4"
+            className="mari-chrome-accent-frame mari-chrome-accent-panel mari-accent-animated relative flex min-w-0 flex-col items-center gap-2 overflow-visible rounded-2xl border p-3 text-center sm:p-4"
             data-component="HomeProfessorMariChat.MariPanel"
           >
             <span
-              className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-[oklch(0.73_0.21_345/0.12)] blur-2xl"
+              className="mari-accent-soft-fill mari-accent-animated pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full blur-2xl"
               aria-hidden="true"
             />
             <div className="flex w-full flex-col items-center gap-2">
@@ -5746,13 +5767,13 @@ export function HomeProfessorMariChat({
                         className={cn(
                           "flex h-full min-h-0 min-w-0 flex-col overflow-hidden border bg-[var(--background)]",
                           embeddedTab
-                            ? "rounded-2xl border-[color-mix(in_srgb,oklch(0.73_0.21_345)_28%,var(--border))] shadow-[0_24px_70px_-42px_oklch(0.73_0.21_345/0.8)]"
+                            ? "mari-chrome-accent-frame mari-accent-animated rounded-2xl"
                             : "rounded-none border-0 sm:rounded-xl sm:border sm:border-[var(--border)]/70 sm:shadow-2xl",
                         )}
                       >
                         <div className="flex min-h-12 items-center justify-between gap-2 border-b border-[var(--border)]/60 bg-[var(--card)]/80 px-2 pt-2 sm:px-3 sm:py-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="h-8 w-8 shrink-0 overflow-hidden rounded-lg border border-[oklch(0.73_0.21_345/0.4)] bg-[oklch(0.73_0.21_345/0.1)] shadow-[0_0_18px_oklch(0.73_0.21_345/0.18)]">
+                            <span className="mari-chrome-accent-soft-tile mari-accent-animated h-8 w-8 shrink-0 overflow-hidden rounded-md border">
                               <img src={MARI_AVATAR_URL} alt="" className="h-full w-full object-cover" />
                             </span>
                             <span className="min-w-0">
@@ -5862,13 +5883,18 @@ export function HomeProfessorMariChat({
                           ref={setTranscriptScrollNode}
                           onScroll={handleTranscriptScroll}
                           data-component="HomeProfessorMariChat.Transcript"
-                          className="min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-[radial-gradient(circle_at_12%_8%,oklch(0.79_0.16_205/0.06),transparent_26%),radial-gradient(circle_at_88%_12%,oklch(0.73_0.21_345/0.07),transparent_28%)] px-3 py-3 pb-4 text-left"
+                          className="min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-[radial-gradient(circle_at_12%_8%,oklch(0.79_0.16_205/0.06),transparent_26%),radial-gradient(circle_at_88%_12%,color-mix(in_srgb,var(--marinara-app-accent-solid)_7%,transparent),transparent_28%)] px-3 py-3 pb-4 text-left"
                         >
                           {loadingHistory ? (
                             <LoadingHistoryState />
                           ) : (
                             <>
                               {displayMessages.map(renderDisplayMessage)}
+                              {showConnectionFirstHint && (
+                                <p className="px-3 py-1 text-center text-xs text-[var(--muted-foreground)]">
+                                  {localizeUi("ui.chat.homeprofessormarichat.selectAConnectionFirst")}
+                                </p>
+                              )}
                               {workspaceTimeline.length === 0 && workspaceTimelineActive && !showDottoreSupport && (
                                 <WorkspaceStatusEvent content={workspaceActivity ?? "Thinking..."} />
                               )}

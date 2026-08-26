@@ -70,6 +70,7 @@ import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { ChatBranchSelector } from "./ChatBranchSelector";
 import { ChatMessageSearch } from "./ChatMessageSearch";
+import { ChatHelpButton } from "./ChatHelpButton";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   CHAT_TOOLBAR_OVERFLOW_MENU_SELECTOR,
@@ -304,6 +305,8 @@ function CrossfadeBackground({
   );
 }
 
+const hasVisibleStreamText = (text: string) => /\S/u.test(text);
+
 function RoleplayLiveStreamText({
   chatId,
   emptyLabel,
@@ -345,7 +348,7 @@ function RoleplayLiveStreamText({
     };
   }, [chatId]);
 
-  return <>{text ? renderText(text) : emptyLabel}</>;
+  return <>{hasVisibleStreamText(text) ? renderText(text) : emptyLabel}</>;
 }
 
 function StreamingIndicator({
@@ -369,6 +372,9 @@ function StreamingIndicator({
 }) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    hasVisibleStreamText(s.streamBuffers.get(activeChatId) ?? (s.activeChatId === activeChatId ? s.streamBuffer : "")),
+  );
   const streamingCharacterId = useChatStore((s) => s.streamingCharacterId);
 
   return (
@@ -391,6 +397,7 @@ function StreamingIndicator({
           createdAt: new Date().toISOString(),
         }}
         isStreaming
+        streamingOutputStarted={streamingOutputStarted}
         streamingContent={(renderText) => (
           <RoleplayLiveStreamText
             chatId={activeChatId}
@@ -418,6 +425,9 @@ function RegeneratingMessageContent({
 } & Omit<ComponentProps<typeof ChatMessage>, "message" | "isStreaming">) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const streamingOutputStarted = useChatStore((s) =>
+    hasVisibleStreamText(s.streamBuffers.get(msg.chatId) ?? (s.activeChatId === msg.chatId ? s.streamBuffer : "")),
+  );
   // Strip old-swipe attachments so a previous illustration doesn't linger
   // while the new swipe's text is streaming in. The same applies to old
   // reasoning: expose the action only after this swipe receives its first
@@ -428,6 +438,7 @@ function RegeneratingMessageContent({
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
+      streamingOutputStarted={streamingOutputStarted}
       streamingContent={(renderText) => (
         <RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} renderText={renderText} />
       )}
@@ -700,6 +711,7 @@ function ActiveContextLinksButton({
     <div className="relative" ref={ref} onClick={(event) => event.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="context"
         onClick={() => setOpen((prev) => !prev)}
         className={getChatToolbarButtonClass({ compact, open })}
         title={t("chat.toolbar.activeContext")}
@@ -882,6 +894,7 @@ function SummaryButton({
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="summary"
         data-chat-toolbar-panel-action="summary"
         onClick={() => {
           if (open && document.querySelector("[data-macro-modal]")) return;
@@ -898,7 +911,7 @@ function SummaryButton({
       >
         <ScrollText size="0.875rem" />
         {enabledSummaryCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex min-w-4 justify-center rounded-full bg-[var(--marinara-chat-chrome-highlight-bg)] px-1 text-[0.5625rem] font-semibold leading-4 text-[var(--marinara-chat-chrome-panel-muted)]">
+          <span className="mari-chrome-muted-badge absolute -right-1 -top-1 flex min-w-4 justify-center px-1 text-[0.5625rem] font-semibold leading-4 text-[var(--marinara-chat-chrome-accent)]">
             {enabledSummaryCount}
           </span>
         )}
@@ -1044,6 +1057,7 @@ function AuthorNotesButton({
     <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
         ref={buttonRef}
+        data-chat-help="author-notes"
         onClick={() => {
           const nextOpen = !open;
           setMobileFrame(nextOpen && useMobilePanel ? getMobileFloatingPanelFrame(buttonRef.current, 288) : null);
@@ -1182,6 +1196,7 @@ type RoleplaySurfaceProps = {
   peekPromptData: PeekPromptData | null;
   deleteDialogMessageId: string | null;
   deleteDialogCanDeleteSwipe: boolean;
+  deleteDialogCanDeleteOtherSwipes: boolean;
   deleteDialogActiveSwipeIndex: number;
   deleteDialogSwipeCount: number;
   multiSelectMode: boolean;
@@ -1239,6 +1254,7 @@ type RoleplaySurfaceProps = {
   onFinishSpritePlacement: () => void;
   onDeleteConfirm: () => void;
   onDeleteSwipe: () => void;
+  onDeleteOtherSwipes: () => void;
   onDeleteMore: () => void;
   onCloseDeleteDialog: () => void;
   onBulkDelete: () => void;
@@ -1303,6 +1319,7 @@ export function ChatRoleplaySurface({
   peekPromptData,
   deleteDialogMessageId,
   deleteDialogCanDeleteSwipe,
+  deleteDialogCanDeleteOtherSwipes,
   deleteDialogActiveSwipeIndex,
   deleteDialogSwipeCount,
   multiSelectMode,
@@ -1354,6 +1371,7 @@ export function ChatRoleplaySurface({
   onFinishSpritePlacement,
   onDeleteConfirm,
   onDeleteSwipe,
+  onDeleteOtherSwipes,
   onDeleteMore,
   onCloseDeleteDialog,
   onBulkDelete,
@@ -1818,129 +1836,135 @@ export function ChatRoleplaySurface({
         <div className="relative flex flex-1 overflow-hidden">
           <div className="relative flex flex-1 flex-col overflow-hidden">
             <div ref={topChromeRef} className="pointer-events-none absolute inset-x-0 top-0 z-40">
-              <div
-                data-tracker-panel-anchor="roleplay-hud"
-                className={cn(
-                  "pointer-events-none relative z-40 items-center py-2 max-md:hidden",
-                  centerCompact ? "hidden" : "flex",
-                )}
-                style={{
-                  paddingLeft: "calc(1rem + var(--tracker-panel-hud-clear-left, 0px))",
-                  paddingRight: "calc(1rem + var(--tracker-panel-hud-clear-right, 0px))",
-                }}
-              >
-                {chat && chatMeta.enableAgents && (
-                  <div className="pointer-events-auto flex-1 overflow-x-auto">
-                    <Suspense fallback={null}>
-                      <RoleplayHUD
-                        chatId={chat.id}
-                        isStreaming={isStreaming}
-                        onRetriggerTrackers={onRerunTrackers}
-                        onRetryFailedAgents={onRetryFailedAgents}
-                        onRerunSingleTracker={onRerunSingleTracker}
-                        enabledAgentTypes={enabledAgentTypes}
-                        manualTrackers={manualTrackersActive}
-                        injectionSourceMessages={messages}
-                      />
-                    </Suspense>
-                  </div>
-                )}
+              {!centerCompact && (
                 <div
-                  data-roleplay-top-controls="right"
-                  className={cn("pointer-events-auto ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
+                  data-tracker-panel-anchor="roleplay-hud"
+                  className="pointer-events-none relative z-40 hidden items-center py-2 md:flex"
+                  style={{
+                    paddingLeft: "calc(1rem + var(--tracker-panel-hud-clear-left, 0px))",
+                    paddingRight: "calc(1rem + var(--tracker-panel-hud-clear-right, 0px))",
+                  }}
                 >
-                  {conversationToolbarPackages.map((item) => (
-                    <CapabilityElement
-                      key={`${item.id}-toolbar`}
-                      packageId={item.id}
-                      view="toolbar"
-                      capabilityProps={{
-                        ...conversationCapabilityProps,
-                        toolbarButtonClass: getChatToolbarButtonClass(),
-                      }}
-                      className="contents"
-                    />
-                  ))}
-                  <ChatBranchSelector
-                    activeChatId={activeChatId}
-                    activeChatName={chat?.name}
-                    groupId={chat?.groupId ?? null}
-                    variant="roleplay"
-                  />
-                  <ChatToolbarMenu openSummaryOnRequest>
-                    <SummaryButton
-                      chatId={chat?.id ?? null}
-                      summary={chatMeta.summary ?? null}
-                      summaryEntries={
-                        Array.isArray(chatMeta.summaryEntries) ? (chatMeta.summaryEntries as ChatSummaryEntry[]) : []
-                      }
-                      summaryContextSize={summaryContextSize}
-                      summaryPromptTemplates={
-                        Array.isArray(chatMeta.summaryPromptTemplates) ? chatMeta.summaryPromptTemplates : []
-                      }
-                      activeSummaryPromptTemplateId={
-                        typeof chatMeta.activeSummaryPromptTemplateId === "string"
-                          ? chatMeta.activeSummaryPromptTemplateId
-                          : null
-                      }
-                      longTermMemorySummaryPromptAvailable={longTermMemorySummaryPromptAvailable}
-                      summaryConnectionId={
-                        typeof chatMeta.summaryConnectionId === "string" ? chatMeta.summaryConnectionId : null
-                      }
-                      summaryMaxTokens={summaryMaxTokens}
-                      automaticSummaryEnabled={automaticSummaryEnabled}
-                      semanticSummaryRetrievalEnabled={semanticSummaryRetrievalEnabled}
-                      activeAgentIds={summaryActiveAgentIds}
-                      summaryRunInterval={summaryRunInterval}
-                      hideSummarisedMessages={hideSummarisedMessages}
-                      summaryTailMessages={summaryTailMessages}
-                      automaticSummariesAvailable={chatMode === "roleplay"}
-                      totalMessageCount={totalMessageCount}
-                      promptPresetId={typeof chat?.promptPresetId === "string" ? chat.promptPresetId : null}
-                    />
-                    <ActiveContextLinksButton
-                      chat={chat}
-                      chatMeta={chatMeta}
-                      chatCharIds={chatCharIds}
-                      characterMap={characterMap}
-                    />
-                    <AuthorNotesButton
-                      chatId={chat?.id ?? null}
-                      chatMeta={chatMeta}
-                      open={!compactToolbarOwnsAuthorNotes && expandedAuthorNotesOpen}
-                      onOpenChange={
-                        compactToolbarOwnsAuthorNotes ? setCompactAuthorNotesOpen : setExpandedAuthorNotesOpen
-                      }
-                      renderPanel={!compactToolbarOwnsAuthorNotes}
-                      mobilePanel={false}
-                    />
-                    <ChatToolbarButton
-                      icon={<Image size="0.875rem" />}
-                      title={t("chat.toolbar.gallery")}
-                      panelAction="gallery"
-                      onClick={onOpenGallery}
-                    />
-                    {chat?.connectedChatId && (
-                      <ChatToolbarButton
-                        icon={<ArrowRightLeft size="0.875rem" />}
-                        title={
-                          linkedChatName
-                            ? t("chat.toolbar.switchTo", { name: linkedChatName })
-                            : t("chat.toolbar.connectedChat")
-                        }
-                        onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
-                      />
+                  {chat && chatMeta.enableAgents && (
+                    <div data-chat-help="agents" className="pointer-events-auto flex-1 overflow-x-auto">
+                      <Suspense fallback={null}>
+                        <RoleplayHUD
+                          chatId={chat.id}
+                          isStreaming={isStreaming}
+                          onRetriggerTrackers={onRerunTrackers}
+                          onRetryFailedAgents={onRetryFailedAgents}
+                          onRerunSingleTracker={onRerunSingleTracker}
+                          enabledAgentTypes={enabledAgentTypes}
+                          manualTrackers={manualTrackersActive}
+                          injectionSourceMessages={messages}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
+                  <div
+                    data-roleplay-top-controls="right"
+                    className={cn(
+                      "pointer-events-auto ml-auto flex shrink-0 items-center",
+                      CHAT_TOOLBAR_ICON_GAP_CLASS,
                     )}
-                    <ChatMessageSearch chatId={activeChatId} />
-                    <ChatToolbarButton
-                      icon={<Settings2 size="0.875rem" />}
-                      title={t("chat.toolbar.settings")}
-                      panelAction="settings"
-                      onClick={onOpenSettings}
+                  >
+                    <ChatHelpButton mode="roleplay" className="hidden md:flex" />
+                    {conversationToolbarPackages.map((item) => (
+                      <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+                        <CapabilityElement
+                          packageId={item.id}
+                          view="toolbar"
+                          capabilityProps={{
+                            ...conversationCapabilityProps,
+                            toolbarButtonClass: getChatToolbarButtonClass(),
+                          }}
+                          className="contents"
+                        />
+                      </span>
+                    ))}
+                    <ChatBranchSelector
+                      activeChatId={activeChatId}
+                      activeChatName={chat?.name}
+                      groupId={chat?.groupId ?? null}
+                      variant="roleplay"
                     />
-                  </ChatToolbarMenu>
+                    <ChatToolbarMenu openSummaryOnRequest>
+                      <ChatHelpButton mode="roleplay" className="md:hidden" />
+                      <SummaryButton
+                        chatId={chat?.id ?? null}
+                        summary={chatMeta.summary ?? null}
+                        summaryEntries={
+                          Array.isArray(chatMeta.summaryEntries) ? (chatMeta.summaryEntries as ChatSummaryEntry[]) : []
+                        }
+                        summaryContextSize={summaryContextSize}
+                        summaryPromptTemplates={
+                          Array.isArray(chatMeta.summaryPromptTemplates) ? chatMeta.summaryPromptTemplates : []
+                        }
+                        activeSummaryPromptTemplateId={
+                          typeof chatMeta.activeSummaryPromptTemplateId === "string"
+                            ? chatMeta.activeSummaryPromptTemplateId
+                            : null
+                        }
+                        longTermMemorySummaryPromptAvailable={longTermMemorySummaryPromptAvailable}
+                        summaryConnectionId={
+                          typeof chatMeta.summaryConnectionId === "string" ? chatMeta.summaryConnectionId : null
+                        }
+                        summaryMaxTokens={summaryMaxTokens}
+                        automaticSummaryEnabled={automaticSummaryEnabled}
+                        semanticSummaryRetrievalEnabled={semanticSummaryRetrievalEnabled}
+                        activeAgentIds={summaryActiveAgentIds}
+                        summaryRunInterval={summaryRunInterval}
+                        hideSummarisedMessages={hideSummarisedMessages}
+                        summaryTailMessages={summaryTailMessages}
+                        automaticSummariesAvailable={chatMode === "roleplay"}
+                        totalMessageCount={totalMessageCount}
+                        promptPresetId={typeof chat?.promptPresetId === "string" ? chat.promptPresetId : null}
+                      />
+                      <ActiveContextLinksButton
+                        chat={chat}
+                        chatMeta={chatMeta}
+                        chatCharIds={chatCharIds}
+                        characterMap={characterMap}
+                      />
+                      <AuthorNotesButton
+                        chatId={chat?.id ?? null}
+                        chatMeta={chatMeta}
+                        open={!compactToolbarOwnsAuthorNotes && expandedAuthorNotesOpen}
+                        onOpenChange={
+                          compactToolbarOwnsAuthorNotes ? setCompactAuthorNotesOpen : setExpandedAuthorNotesOpen
+                        }
+                        renderPanel={!compactToolbarOwnsAuthorNotes}
+                        mobilePanel={false}
+                      />
+                      <ChatToolbarButton
+                        icon={<Image size="0.875rem" />}
+                        title={t("chat.toolbar.gallery")}
+                        panelAction="gallery"
+                        onClick={onOpenGallery}
+                      />
+                      {chat?.connectedChatId && (
+                        <ChatToolbarButton
+                          icon={<ArrowRightLeft size="0.875rem" />}
+                          helpTarget="connected-chat"
+                          title={
+                            linkedChatName
+                              ? t("chat.toolbar.switchTo", { name: linkedChatName })
+                              : t("chat.toolbar.connectedChat")
+                          }
+                          onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+                        />
+                      )}
+                      <ChatMessageSearch chatId={activeChatId} />
+                      <ChatToolbarButton
+                        icon={<Settings2 size="0.875rem" />}
+                        title={t("chat.toolbar.settings")}
+                        panelAction="settings"
+                        onClick={onOpenSettings}
+                      />
+                    </ChatToolbarMenu>
+                  </div>
                 </div>
-              </div>
+              )}
               <div
                 data-tracker-panel-anchor={centerCompact ? "roleplay-hud" : undefined}
                 className={cn(
@@ -1956,7 +1980,7 @@ export function ChatRoleplaySurface({
                       paddingRight: "calc(0.5rem + var(--tracker-panel-hud-clear-right, 0px))",
                     }}
                   >
-                    <div className="min-w-0 flex-1 overflow-x-auto">
+                    <div data-chat-help="agents" className="min-w-0 flex-1 overflow-x-auto">
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
@@ -1975,19 +1999,22 @@ export function ChatRoleplaySurface({
                       data-roleplay-top-controls="right"
                       className={cn("ml-auto flex shrink-0 items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                     >
+                      <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                       {conversationToolbarPackages.map((item) => (
-                        <CapabilityElement
-                          key={`${item.id}-compact-toolbar`}
-                          packageId={item.id}
-                          view="toolbar"
-                          capabilityProps={{
-                            ...conversationCapabilityProps,
-                            toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
-                          }}
-                          className="contents"
-                        />
+                        <span key={`${item.id}-compact-toolbar`} data-chat-help="agent-controls" className="contents">
+                          <CapabilityElement
+                            packageId={item.id}
+                            view="toolbar"
+                            capabilityProps={{
+                              ...conversationCapabilityProps,
+                              toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
+                            }}
+                            className="contents"
+                          />
+                        </span>
                       ))}
                       <ChatToolbarMenu openSummaryOnRequest>
+                        <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                         <ChatBranchSelector
                           activeChatId={activeChatId}
                           activeChatName={chat?.name}
@@ -2050,6 +2077,7 @@ export function ChatRoleplaySurface({
                         {chat?.connectedChatId && (
                           <ChatToolbarButton
                             icon={<ArrowRightLeft size="0.875rem" />}
+                            helpTarget="connected-chat"
                             title={
                               linkedChatName
                                 ? t("chat.toolbar.switchTo", { name: linkedChatName })
@@ -2073,7 +2101,9 @@ export function ChatRoleplaySurface({
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
+                    <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                     <ChatToolbarMenu openSummaryOnRequest>
+                      <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                       <ChatBranchSelector
                         activeChatId={activeChatId}
                         activeChatName={chat?.name}
@@ -2134,6 +2164,7 @@ export function ChatRoleplaySurface({
                       {chat?.connectedChatId && (
                         <ChatToolbarButton
                           icon={<ArrowRightLeft size="0.875rem" />}
+                          helpTarget="connected-chat"
                           title={
                             linkedChatName
                               ? t("chat.toolbar.switchTo", { name: linkedChatName })
@@ -2404,6 +2435,7 @@ export function ChatRoleplaySurface({
         peekPromptData={peekPromptData}
         deleteDialogMessageId={deleteDialogMessageId}
         deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+        deleteDialogCanDeleteOtherSwipes={deleteDialogCanDeleteOtherSwipes}
         deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
         deleteDialogSwipeCount={deleteDialogSwipeCount}
         multiSelectMode={multiSelectMode}
@@ -2434,6 +2466,7 @@ export function ChatRoleplaySurface({
         onClosePeekPrompt={onClosePeekPrompt}
         onDeleteConfirm={onDeleteConfirm}
         onDeleteSwipe={onDeleteSwipe}
+        onDeleteOtherSwipes={onDeleteOtherSwipes}
         onDeleteMore={onDeleteMore}
         onCloseDeleteDialog={onCloseDeleteDialog}
         onBulkDelete={onBulkDelete}

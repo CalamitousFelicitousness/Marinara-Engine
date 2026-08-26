@@ -18,6 +18,19 @@ Upstream reads `PORT` only from `process.env` in both files and falls back to `7
 
 Guarded by `pnpm dev-ports:check`, which runs inside `pnpm check`.
 
+### Shared message action button carries gesture handlers
+
+`packages/client/src/components/chat/MessageActionButton.tsx` accepts a `triggerProps` prop and
+spreads it on the button ahead of `onClick`.
+
+Upstream introduced that component in "feat: unify chat controls and reasoning presentation" and
+routed `ChatMessage`'s `ActionBtn` through it. The fork's multi-swipe regenerate menu passes
+right-click and long-press handlers down that path, and the shared component had nowhere to put
+them, so adopting it unchanged would have dropped the menu silently. Keeping the fork's raw
+`<button>` instead was the alternative, at the cost of drifting from upstream's chrome.
+
+The spread must stay above `onClick` so the explicit click handler wins.
+
 ## Fork-only additions
 
 ### Author's note presets
@@ -810,6 +823,49 @@ Verified in a browser: at 1500px, where the gutter is 89px, the panel now render
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
+
+### Sync with upstream, 2026-08-26
+
+146 upstream commits, merge base `c276876dd`. 274 upstream-changed files, 44 overlapping fork
+changes, 7 conflicts. Version and storage format were already equal on both sides (2.4.4, format 5),
+and upstream touched neither `AGENTS.md` nor `CLAUDE.md`, so the two usual silent reverts did not
+arise. `package.json#pnpm` gained nothing upstream, so `pnpm-workspace.yaml` needed no mirroring.
+
+Resolutions worth remembering:
+
+- **`ui.store.ts` persist version.** Both sides independently used 96: upstream for inline Roleplay
+  reasoning prefs and per-mode chat help, the fork for the tracker width/density split. The sync
+  lands on 99 so every store migrates. Upstream's `chatHelpSeenModes` seeding was widened from
+  `version <= 95` to `<= 98`, because fork stores sit at 96-98 while the `delete
+  persisted.gameTutorialDisabled` below it is unconditional: without widening, those stores lose the
+  signal without gaining the replacement and re-show help the user had dismissed.
+- **`ChatMessage.tsx`.** The fork's `dark` prop on `ActionBtn` is retired, not reverted. Upstream's
+  new `--marinara-chat-message-action-*` tokens are `40% / 70% / 10%` of the chrome text, which is
+  exactly what `dark` selected, so the prop had no branch left. `triggerProps` survives through the
+  shared button, see above.
+- **`ChatRoleplayPanels.tsx`.** Author's-note depth field: the fork's `patchDraft` /
+  `parseAuthorNoteDepth` handlers with upstream's `mari-chrome-field` classes. Upstream's side
+  restored save-on-blur, which would have silently reverted the presets' explicit-save model.
+- **`PersonaInventoryRow.tsx`** was deleted upstream in "unify tracker and settings controls"; the
+  deletion is accepted and the fork's two now-unused class constants in `PersonaInventoryPanel.tsx`
+  went with it.
+- **`use-generate.ts`** auto-merged with a duplicate `import { translate }`, caught by `tsc` rather
+  than by a conflict marker. Both sides added the same import at different anchors.
+
+`tracker-edit-mode.regression.ts` was the one lane the merge broke, and it broke correctly:
+`PersonaInventoryPanel` no longer renders its own `AddRowButton`, it hands `addMode` to `StatList`.
+The lane now accepts either shape and asserts `StatList`'s own two gates, so delegation is only
+allowed because the delegate is checked.
+
+Nine further regression failures during validation were the writer lease, not the merge: a running
+Marinara process held `packages/server/data/storage`. `launcher/update.regression.mjs` fails by fork
+design, as `.claude/skills/marinara-validation/SKILL.md` records.
+
+Left for later: upstream's new capability-package tracker CSS
+(`.mari-tracker-capability-section .mn-tracker-title` and friends) scales font size and line height
+by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those titles ignore the S/M/L/XL
+setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
+of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
 ### Character cards collapse to a header
 

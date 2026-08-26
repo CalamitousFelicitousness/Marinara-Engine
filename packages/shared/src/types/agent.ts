@@ -47,6 +47,7 @@ export const AGENT_RESULT_TYPE_VALUES = [
   "director_event",
   "lorebook_update",
   "character_card_update",
+  "character_card_create",
   "background_change",
   "character_tracker_update",
   "persona_stats_update",
@@ -66,6 +67,7 @@ export const AGENT_RESULT_TYPE_VALUES = [
   "character_activity_update",
   "frontend_theme_update",
   "about_me_update",
+  "memory_nag",
 ] as const;
 
 /** The result type an agent can produce. */
@@ -274,7 +276,7 @@ export interface AgentResult {
   error: string | null;
 }
 
-export type AgentWriteApprovalKind = "lorebook_update" | "summary_update";
+export type AgentWriteApprovalKind = "character_card_create" | "lorebook_update" | "summary_update";
 
 export interface AgentWriteApprovalProposal {
   kind: AgentWriteApprovalKind;
@@ -415,6 +417,8 @@ export interface AgentContext {
     id: string;
     content: string;
   }>;
+  /** Per-lorebook total entry counts (for {{lorebooksize::ID}} macro in agent prompts). */
+  lorebookEntryCounts?: Record<string, number>;
   /**
    * Semantic source material resolved for custom agents that opt into vector access.
    * The runtime keeps this out of ordinary agent prompts and injects it only for
@@ -542,6 +546,7 @@ export const MIN_AGENT_MAX_TOKENS = 128;
 export const MAX_AGENT_MAX_TOKENS = 32768;
 
 export const CUSTOM_AGENT_CAPABILITY_IDS = [
+  "create_characters",
   "create_lorebooks",
   "edit_lorebooks",
   "edit_messages",
@@ -622,6 +627,7 @@ export function createImportedAgentType(sourceType: string): string {
 const CUSTOM_AGENT_CAPABILITY_SET = new Set<string>(CUSTOM_AGENT_CAPABILITY_IDS);
 
 const CUSTOM_AGENT_RESULT_CAPABILITY: Partial<Record<AgentResultType, CustomAgentCapability>> = {
+  character_card_create: "create_characters",
   text_rewrite: "edit_messages",
   lorebook_update: "edit_lorebooks",
   character_tracker_update: "edit_trackers",

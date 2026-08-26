@@ -367,10 +367,10 @@ interface GameNarrationProps {
   onSegmentChange?: (index: number) => void;
   /**
    * Called when narration is fully complete (all segments read, not streaming).
-   * `messageId` identifies which assistant message the completion refers to so the
+   * `turnKey` identifies which assistant message and swipe the completion refers to so the
    * caller can guard against stale narrationDone leaking from the previous turn.
    */
-  onNarrationComplete?: (complete: boolean, messageId: string | null) => void;
+  onNarrationComplete?: (complete: boolean, turnKey: string | null) => void;
   /** Slot rendered above the narration box (used for mobile widget icons) */
   widgetSlot?: ReactNode;
   /** Slot rendered above the narration box for GM choice cards */
@@ -2391,13 +2391,13 @@ export function GameNarration({
   // Notify parent about narration completion state. While reviewing the past via
   // wheel-nav, the past message will look "complete" — but it's not the present, so
   // suppress the notification to keep the parent's narrationDone state honest.
-  // Pass the active segment's source message ID so the parent can tell which message's
-  // typewriter the completion refers to (otherwise stale "done" from the previous turn
-  // can leak across to the new turn before this effect re-runs to push false).
+  // Pass the active assistant turn key so the parent can reject completion from
+  // another message or swipe.
+  const narrationKey = latestAssistant ? `${latestAssistant.id}:${latestAssistant.activeSwipeIndex ?? 0}` : null;
   useEffect(() => {
     if (messageOffset > 0) return;
-    onNarrationComplete?.(narrationComplete, activeSourceMessageId);
-  }, [messageOffset, narrationComplete, activeSourceMessageId, onNarrationComplete]);
+    onNarrationComplete?.(narrationComplete, narrationKey);
+  }, [messageOffset, narrationComplete, narrationKey, onNarrationComplete]);
 
   // Build log entries from the LAST scene — includes party chat & player action.
   // Entries are stored chronologically (oldest first, newest last).
@@ -2837,7 +2837,6 @@ export function GameNarration({
   const lastNarrationKeyRef = useRef<string | undefined>(undefined);
   const segmentChangeReady = useRef(false);
   const segmentEnterReady = useRef(false);
-  const narrationKey = latestAssistant ? `${latestAssistant.id}:${latestAssistant.activeSwipeIndex}` : null;
   const narrationMessageChanged = Boolean(narrationKey && narrationKey !== lastNarrationKeyRef.current);
   const gameInstantTextReveal = useUIStore((s) => s.gameInstantTextReveal);
   const reduceAmbientEffects = useReducedAmbientEffects();
@@ -2883,14 +2882,14 @@ export function GameNarration({
     const firstNarrationForChat = restoredChatIdRef.current !== currentChatId;
     const shouldRestorePosition = hasStoredNarrationPosition && firstNarrationForChat && segments.length > 0;
     if (shouldRestorePosition) {
-      // Jump to saved segment index (or last segment if saved index exceeds current
-      // segment count — party dialogue may not be restored yet).
+      // Jump to the saved segment index. A stale out-of-range cursor must restart
+      // rather than silently completing a shorter swipe.
       restoredRef.current = true;
       restoredChatIdRef.current = currentChatId;
       const targetIdx =
         restoredSegmentIndex != null && restoredSegmentIndex >= 0 && restoredSegmentIndex < segments.length
           ? restoredSegmentIndex
-          : segments.length - 1;
+          : 0;
       setActiveIndex(targetIdx);
       setVisibleChars(effectDisplayLength(segments[targetIdx]!.content));
       // Allow persistence and segment-enter AFTER the restore state settles
@@ -3559,6 +3558,8 @@ export function GameNarration({
     "inline-flex items-center justify-center rounded p-1 text-[var(--muted-foreground)]/40 transition-colors hover:bg-[var(--muted)]/30 hover:text-[var(--muted-foreground)] dark:text-white/20 dark:hover:bg-white/10 dark:hover:text-white/60";
   const LOG_SEGMENT_ACTION_BTN =
     "rounded p-1 text-white/45 opacity-100 transition-all hover:bg-white/10 hover:text-white/60 md:text-white/20 md:opacity-0 md:group-hover/logseg:opacity-100";
+  const LOG_DELETE_ACTION_BTN =
+    "text-[var(--marinara-chat-message-action-text)] hover:bg-[var(--marinara-chat-message-action-bg-hover)] hover:text-[var(--marinara-chat-message-action-text-hover)] dark:text-[var(--marinara-chat-message-action-text)] dark:hover:bg-[var(--marinara-chat-message-action-bg-hover)] dark:hover:text-[var(--marinara-chat-message-action-text-hover)]";
   const combatMetaButton = onRequestCombatStart ? (
     <button
       type="button"
@@ -4121,10 +4122,7 @@ export function GameNarration({
             onDeleteSegment?.(sourceMessageId, sourceSegmentIndex);
           }
         }}
-        className={cn(
-          stackedActionButtonClass,
-          "hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
-        )}
+        className={cn(stackedActionButtonClass, LOG_DELETE_ACTION_BTN)}
         title={
           canDeleteThisSegment
             ? localizeUi("ui.game.gamenarration.deleteSegment")
@@ -5219,7 +5217,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={loadOlderLogs}
-                      className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
                       title={localizeUi("ui.game.gamenarration.loadOlderLogs")}
                     >
                       {localizeUi("ui.game.gamenarration.older")}
@@ -5228,7 +5226,7 @@ export function GameNarration({
                     <button
                       type="button"
                       onClick={showAllLogs}
-                      className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[0.65rem] font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
                       title={localizeUi("ui.game.gamenarration.loadTheEntireSessionLog")}
                     >
                       {localizeUi("ui.noodle.stageprofilesourcepicker.all")}
@@ -5277,7 +5275,7 @@ export function GameNarration({
                       logScrolledRef.current = true;
                       loadOlderLogs();
                     }}
-                    className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
+                    className="rounded-md border border-white/10 bg-black/55 px-3 py-1.5 text-xs font-medium text-white/70 shadow-lg transition-colors hover:bg-white/10 hover:text-white"
                   >
                     {localizeUi("ui.game.gamesurfacecomponent.showMoreOlderLogs")}
                     {hiddenLogCount})
@@ -5478,7 +5476,7 @@ export function GameNarration({
                               onDeleteSegment?.(sourceMessageId, sourceSegmentIndex);
                             }
                           }}
-                          className="rounded p-1 text-[var(--marinara-chat-chrome-button-text)] opacity-100 transition-all hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] hover:text-[var(--marinara-chat-chrome-button-text-hover)] md:opacity-0 md:group-hover/logseg:opacity-100"
+                          className={cn(LOG_SEGMENT_ACTION_BTN, LOG_DELETE_ACTION_BTN)}
                           title={
                             canDeleteThisSegment
                               ? localizeUi("ui.game.gamenarration.deleteSegment")

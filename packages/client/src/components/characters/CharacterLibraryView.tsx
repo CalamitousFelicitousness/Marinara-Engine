@@ -21,6 +21,7 @@ import {
   flattenCharacterPages,
   flattenPersonaPages,
   fetchAllCharacterPages,
+  generateCharacterSummary,
   useCharacterPages,
   usePersonaPages,
 } from "../../hooks/use-characters";
@@ -118,6 +119,14 @@ function parseCharacterRow(char: CharacterRow): ParsedCharacterRow {
 
 function getText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** Reads the saved card so bulk "missing only" decides on server truth, not a stale list page. */
+async function characterHasSummary(id: string) {
+  const character = await api.get<{ data?: string | { summary?: unknown } }>(`/characters/${encodeURIComponent(id)}`);
+  const raw = character.data;
+  const data = typeof raw === "string" ? (JSON.parse(raw) as { summary?: unknown }) : raw;
+  return typeof data?.summary === "string" && data.summary.trim().length > 0;
 }
 
 function getCharacterTags(char: ParsedCharacterRow): string[] {
@@ -599,23 +608,22 @@ export function CharacterLibraryView() {
           if (!id) return;
           try {
             if (mode === "missing") {
-              const currentCharacter = await api.get<{ data?: string | { summary?: unknown } }>(
-                `/characters/${encodeURIComponent(id)}`,
-              );
-              if (bulkCancelledRef.current) return;
-              const rawData = currentCharacter.data;
-              const currentData =
-                typeof rawData === "string" ? (JSON.parse(rawData) as { summary?: unknown }) : rawData;
-              if (typeof currentData?.summary === "string" && currentData.summary.trim()) {
+              if (await characterHasSummary(id)) {
                 setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
                 remaining.delete(id);
                 continue;
               }
+              if (bulkCancelledRef.current) return;
             }
-            const generated = await api.post<{ summary: string }>(
-              `/characters/${encodeURIComponent(id)}/summary/generate`,
-              {},
-            );
+            const generated = await generateCharacterSummary(id);
+            if (bulkCancelledRef.current) return;
+            // Generation is slow, so re-check before writing: a summary saved
+            // elsewhere while this ran must not be clobbered by missing-only mode.
+            if (mode === "missing" && (await characterHasSummary(id))) {
+              setBulkProgress((current) => ({ ...current, completed: current.completed + 1 }));
+              remaining.delete(id);
+              continue;
+            }
             if (bulkCancelledRef.current) return;
             await api.patch(`/characters/${encodeURIComponent(id)}`, {
               data: { summary: generated.summary },

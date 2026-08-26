@@ -844,6 +844,19 @@ it still covers shared components rendered inside the panel from elsewhere.
 The gauge rail was a `snap-x` carousel with `scrollbar-hide`. In a fixed-width panel that meant a
 fifth stat sat past the right edge with no visible affordance that anything was there.
 
+The featured card capped its stat band at `max-h-[7.75rem]`, which moved the clipping from the right
+edge to the bottom one once gauges wrapped: a second row scrolled out of sight. The cap now applies
+to bar mode only, which is a scrolling list by design; gauge mode sizes to its rows.
+
+The dashed-circle icon placeholder rendered on every gauge with no icon. It is a control, not data,
+so it now appears only in edit mode, alongside the rest of them. Gauges that do carry an icon are
+unchanged. The gate compares `editMode === true` rather than testing truthiness, because
+`RoleplayHUDPanels` renders gauges outside the lock provider and reads `undefined` there.
+
+Removing the icon and label's `-translate-y-1` fixed a collision the taller line boxes exposed: both
+nudges were compensating for the cramped metrics, so once the stack sized correctly they pushed the
+placeholder into the gauge arc.
+
 Three or more gauges now lay out as `grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))]`, which wraps
 into equal columns and needs no per-count breakpoint. Two or fewer keep the flex rail, because that
 case always fits one row and carries the ornament rails and dividers. Dividers are dropped in the

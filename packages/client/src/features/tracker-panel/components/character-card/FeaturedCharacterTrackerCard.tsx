@@ -66,10 +66,14 @@ const FEATURED_DETAILS_FIELDS_CLASS = "relative min-h-0 flex-1";
 const FEATURED_DOCKED_THOUGHT_CLASS = "relative z-[2] order-3 col-span-full mx-1 mb-1 mt-1 shrink-0";
 const FEATURED_DOCKED_THOUGHT_SURFACE_CLASS = "scrollbar-hide overflow-hidden";
 const FEATURED_STAT_BAND_CLASS = "order-4 col-span-full mt-0 rounded-b-[5px]";
-const FEATURED_STAT_SHELF_CLASS = cn(
-  "group/statbox relative isolate flex min-h-0 flex-col overflow-x-hidden border-t border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_38%,transparent)] bg-[image:var(--tracker-profile-material)] p-1 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent),inset_0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)] [background-blend-mode:var(--tracker-profile-material-blend)] before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:z-[1] before:h-px before:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_34%,transparent),transparent)] before:opacity-55 before:content-['']",
-  "max-h-[7.75rem] @min-[380px]:max-h-[9.25rem]",
-);
+const FEATURED_STAT_SHELF_CLASS =
+  "group/statbox relative isolate flex min-h-0 flex-col overflow-x-hidden border-t border-[color-mix(in_srgb,var(--tracker-profile-dialogue-border)_38%,transparent)] bg-[image:var(--tracker-profile-material)] p-1 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--foreground)_4%,transparent),inset_0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)] [background-blend-mode:var(--tracker-profile-material-blend)] before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:z-[1] before:h-px before:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--tracker-profile-dialogue-border)_34%,transparent),transparent)] before:opacity-55 before:content-['']";
+/**
+ * Bar mode is a scrolling list, so it caps the band to keep the card readable.
+ * Gauge mode wraps into rows instead, and a cap there just moves the clipping
+ * from the right edge to the bottom one: the second row scrolled out of sight.
+ */
+const FEATURED_STAT_SHELF_SCROLL_CLASS = "max-h-[7.75rem] @min-[380px]:max-h-[9.25rem]";
 export function FeaturedCharacterTrackerCard({
   character,
   spriteCharacterId,
@@ -294,7 +298,7 @@ export function FeaturedCharacterTrackerCard({
           <div
             className={cn(
               FEATURED_STAT_SHELF_CLASS,
-              renderCharacterGauges && "p-px",
+              renderCharacterGauges ? "p-px" : FEATURED_STAT_SHELF_SCROLL_CLASS,
               renderCharacterGauges || characterStatsOverflowPortrait ? "overflow-y-auto" : "overflow-y-hidden",
               FEATURED_STAT_BAND_CLASS,
             )}

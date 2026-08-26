@@ -84,4 +84,29 @@ assert.match(
   "the rail must pick a mode from the gauge count",
 );
 
+// ── Wrapping needs somewhere to wrap into ──
+// The featured card capped its stat band, so gauges wrapped to a second row and
+// that row scrolled out of sight. The cap belongs to bar mode, which is a list.
+const featuredCard = readFileSync(join(PANEL_DIR, "components/character-card/FeaturedCharacterTrackerCard.tsx"), "utf8");
+const shelfClass = /FEATURED_STAT_SHELF_CLASS =\s*\n?\s*"([^"]+)"/u.exec(featuredCard)?.[1] ?? "";
+assert.ok(shelfClass.length > 0, "featured stat shelf class not found");
+assert.ok(!shelfClass.includes("max-h-"), `the shelf must not cap itself unconditionally: ${shelfClass}`);
+assert.match(
+  featuredCard,
+  /renderCharacterGauges \? "p-px" : FEATURED_STAT_SHELF_SCROLL_CLASS/u,
+  "the height cap must apply to bar mode only",
+);
+assert.match(/FEATURED_STAT_SHELF_SCROLL_CLASS = "([^"]+)"/u.exec(featuredCard)?.[1] ?? "", /max-h-/u);
+
+// ── The icon placeholder is a control, so edit mode owns it ──
+const statGauge = readFileSync(join(PANEL_DIR, "components/controls/StatGauge.tsx"), "utf8");
+assert.match(
+  statGauge,
+  /const showIconPicker = hasIcon \|\| editMode === true;/u,
+  "a gauge with no icon must hide the picker outside edit mode",
+);
+assert.match(statGauge, /\{showIconPicker && \(\s*<StatIconPicker/u, "the picker must be gated, not merely styled");
+// === true, never truthiness: RoleplayHUDPanels renders gauges with no provider.
+assert.ok(!/editMode \?\?|!editMode/u.test(statGauge), "editMode is optional here, so compare it explicitly");
+
 console.log("tracker-line-height-scale regression passed.");

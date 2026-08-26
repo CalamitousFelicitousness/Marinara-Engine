@@ -4,6 +4,7 @@ import { cn } from "../../../../lib/utils";
 import { visibleText } from "../../lib/tracker-display";
 import { getStatPercent } from "../../lib/tracker-stat-layout";
 import { InlineEdit, InlineNumber } from "./InlineControls";
+import { useTrackerLockContext } from "../TrackerLockContext";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
@@ -84,6 +85,13 @@ export function StatGauge({
   const statStroke = stat.color || "var(--primary)";
   const name = visibleText(stat.name, "Stat");
   const numberClass = GAUGE_NUMBER_CLASS[size];
+  // The picker falls back to `value` when `displayIcon` is omitted, so mirror
+  // that here rather than testing `icon` alone.
+  const hasIcon = (icon === undefined ? iconValue : icon) != null;
+  // A gauge with no icon rendered a dashed-circle placeholder at all times.
+  // It is a control, not data, so it belongs to edit mode with the rest of them.
+  const { editMode } = useTrackerLockContext();
+  const showIconPicker = hasIcon || editMode === true;
   const [editingValues, setEditingValues] = useState(false);
   const valueEditorRef = useRef<HTMLDivElement>(null);
 
@@ -155,20 +163,22 @@ export function StatGauge({
           />
         </svg>
         <div className="absolute inset-[15%] flex min-w-0 -translate-y-[2%] flex-col items-center justify-center gap-0 text-center text-[color:var(--tracker-profile-text)]">
-          <StatIconPicker
-            value={iconValue}
-            displayIcon={icon}
-            statName={name}
-            onSelect={onSelectIcon}
-            allowInherit
-            iconSize="1em"
-            triggerClassName={cn(
-              "h-auto w-auto -translate-y-1 rounded-full border-transparent bg-transparent p-0 text-[color:color-mix(in_srgb,var(--tracker-profile-rule)_35%,var(--tracker-profile-text)_65%)] hover:border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] hover:bg-[color-mix(in_srgb,var(--tracker-profile-text)_5%,transparent)] hover:text-[var(--tracker-profile-text)] focus-visible:ring-1",
-              size === "large" ? "min-h-5 min-w-5" : "min-h-4 min-w-4",
-              GAUGE_ICON_CLASS[size],
-            )}
-            iconClassName="stroke-[2.25]"
-          />
+          {showIconPicker && (
+            <StatIconPicker
+              value={iconValue}
+              displayIcon={icon}
+              statName={name}
+              onSelect={onSelectIcon}
+              allowInherit
+              iconSize="1em"
+              triggerClassName={cn(
+                "h-auto w-auto rounded-full border-transparent bg-transparent p-0 text-[color:color-mix(in_srgb,var(--tracker-profile-rule)_35%,var(--tracker-profile-text)_65%)] hover:border-[color-mix(in_srgb,var(--tracker-profile-rule)_34%,transparent)] hover:bg-[color-mix(in_srgb,var(--tracker-profile-text)_5%,transparent)] hover:text-[var(--tracker-profile-text)] focus-visible:ring-1",
+                size === "large" ? "min-h-5 min-w-5" : "min-h-4 min-w-4",
+                GAUGE_ICON_CLASS[size],
+              )}
+              iconClassName="stroke-[2.25]"
+            />
+          )}
           <InlineEdit
             value={stat.name}
             onSave={(nextName) => onUpdate({ ...stat, name: nextName })}
@@ -176,7 +186,7 @@ export function StatGauge({
             title={name}
             ariaLabel={localizeUi("ui.trackerPanel.statbar.stat")}
             className={cn(
-              "w-full min-w-0 -translate-y-1 justify-center px-0 py-0 text-center font-semibold hover:bg-[var(--accent)]/25",
+              "w-full min-w-0 justify-center px-0 py-0 text-center font-semibold hover:bg-[var(--accent)]/25",
               GAUGE_NAME_CLASS[size],
             )}
             fitPreview

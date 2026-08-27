@@ -44,6 +44,7 @@ import {
   FileText,
   FilePlus2,
   FolderOpen,
+  Folder,
   Upload,
   Download,
   Star,
@@ -168,6 +169,7 @@ import {
   stepCadenceValue,
 } from "../../lib/agent-cadence";
 import { characterMatchesSearch, getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
+import { buildCharacterIdentityGroups } from "../../lib/character-identity-groups";
 import { buildRoleplayAgentSettingsOrder, hasStandaloneRoleplayAgentSettings } from "../../lib/agent-settings-order";
 import { extractCreatorNotesCss } from "../../lib/creator-notes-css";
 import { isLorebookScopeActiveForChat } from "../../lib/lorebook-scope";
@@ -2338,6 +2340,15 @@ export function ChatSettingsDrawer({
     () => characters.filter((character) => character.id !== PROFESSOR_MARI_ID),
     [characters],
   );
+  const characterIdentityGroups = useMemo(
+    () =>
+      buildCharacterIdentityGroups(
+        selectableCharacters,
+        (characterGroups ?? []) as any[],
+        localizeUi("ui.chat.personapicker.ungrouped"),
+      ),
+    [characterGroups, localizeUi, selectableCharacters],
+  );
 
   const chatCharacters = useMemo(
     () =>
@@ -2398,7 +2409,7 @@ export function ChatSettingsDrawer({
   }, [charInfoMap]);
 
   const getCharacterInfo = useCallback(
-    (c: { id?: string; data: string; comment?: string | null }) => {
+    (c: { id?: string; data: string | Record<string, unknown>; comment?: string | null }) => {
       if (c.id && charInfoMap.has(c.id)) return charInfoMap.get(c.id)!;
       return parseCharacterDisplayData(c);
     },
@@ -2406,12 +2417,13 @@ export function ChatSettingsDrawer({
   );
 
   const charName = useCallback(
-    (c: { id?: string; data: string; comment?: string | null }) => getCharacterInfo(c).name,
+    (c: { id?: string; data: string | Record<string, unknown>; comment?: string | null }) => getCharacterInfo(c).name,
     [getCharacterInfo],
   );
 
   const charTitle = useCallback(
-    (c: { id?: string; data: string; comment?: string | null }) => getCharacterTitle(getCharacterInfo(c)),
+    (c: { id?: string; data: string | Record<string, unknown>; comment?: string | null }) =>
+      getCharacterTitle(getCharacterInfo(c)),
     [getCharacterInfo],
   );
 
@@ -3416,6 +3428,8 @@ export function ChatSettingsDrawer({
   const [showLbPicker, setShowLbPicker] = useState(false);
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [showPersonaPicker, setShowPersonaPicker] = useState(false);
+  const [showCharacterIdentityGroups, setShowCharacterIdentityGroups] = useState(false);
+  const [expandedCharacterIdentityGroups, setExpandedCharacterIdentityGroups] = useState<Set<string>>(new Set());
   const [showConnectionPicker, setShowConnectionPicker] = useState(false);
   const [showSummariesModal, setShowSummariesModal] = useState(false);
   const [showAgentSuiteModal, setShowAgentSuiteModal] = useState(false);
@@ -5425,45 +5439,83 @@ export function ChatSettingsDrawer({
                         )}
                       </button>
                     ))}
-                  <div className="border-t border-[var(--border)] px-3 py-2 text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)]">
-                    {localizeUi("ui.chat.personapicker.playAsCharacter")}
-                  </div>
-                  {selectableCharacters
-                    .filter((character) => characterMatchesSearch(getCharacterInfo(character), personaSearch))
-                    .map((character) => (
-                      <button
-                        key={`persona-character-${character.id}`}
-                        onClick={() => {
-                          updateChat.mutate({
-                            id: chat.id,
-                            personaId: null,
-                            personaCharacterId: character.id,
-                          });
-                          setShowPersonaPicker(false);
-                        }}
-                        className={cn(
-                          "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
-                          chat.personaCharacterId === character.id && "bg-[var(--primary)]/10",
-                        )}
-                      >
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[0.625rem] font-semibold">
-                          {character.avatarPath ? (
-                            <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            charName(character)[0]
-                          )}
+                  <button
+                    type="button"
+                    onClick={() => setShowCharacterIdentityGroups((value) => !value)}
+                    aria-expanded={showCharacterIdentityGroups}
+                    className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  >
+                    {showCharacterIdentityGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                    <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
+                    {showCharacterIdentityGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+                  </button>
+                  {showCharacterIdentityGroups &&
+                    characterIdentityGroups.map((group) => {
+                      const expanded = expandedCharacterIdentityGroups.has(group.id);
+                      const visibleMembers = group.members.filter((character) =>
+                        characterMatchesSearch(getCharacterInfo(character), personaSearch),
+                      );
+                      if (visibleMembers.length === 0) return null;
+                      return (
+                        <div key={group.id}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCharacterIdentityGroups((current) => {
+                                const next = new Set(current);
+                                if (next.has(group.id)) next.delete(group.id);
+                                else next.add(group.id);
+                                return next;
+                              })
+                            }
+                            aria-expanded={expanded}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--accent)]"
+                          >
+                            {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                            <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                            <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                              {visibleMembers.length}
+                            </span>
+                            {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+                          </button>
+                          {expanded &&
+                            visibleMembers.map((character) => (
+                              <button
+                                key={`persona-character-${character.id}`}
+                                onClick={() => {
+                                  updateChat.mutate({
+                                    id: chat.id,
+                                    personaId: null,
+                                    personaCharacterId: character.id,
+                                  });
+                                  setShowPersonaPicker(false);
+                                }}
+                                className={cn(
+                                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
+                                  chat.personaCharacterId === character.id && "bg-[var(--primary)]/10",
+                                )}
+                              >
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[0.625rem] font-semibold">
+                                  {character.avatarPath ? (
+                                    <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                                  ) : (
+                                    charName(character)[0]
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs">{charName(character)}</span>
+                                  <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
+                                    {localizeUi("ui.chat.personapicker.characterSource")}
+                                  </span>
+                                </div>
+                                {chat.personaCharacterId === character.id && (
+                                  <Check size="0.625rem" className="ml-auto shrink-0 text-[var(--primary)]" />
+                                )}
+                              </button>
+                            ))}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <span className="block truncate text-xs">{charName(character)}</span>
-                          <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
-                            {localizeUi("ui.chat.personapicker.characterSource")}
-                          </span>
-                        </div>
-                        {chat.personaCharacterId === character.id && (
-                          <Check size="0.625rem" className="ml-auto shrink-0 text-[var(--primary)]" />
-                        )}
-                      </button>
-                    ))}
+                      );
+                    })}
                   {personas.filter(
                     (p) =>
                       includesTextForMatch(p.name, personaSearch) ||

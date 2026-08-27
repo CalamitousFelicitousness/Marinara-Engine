@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Dices,
   FolderOpen,
+  Folder,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useConnections } from "../../hooks/use-connections";
@@ -42,6 +43,7 @@ import { appendLocalSidecarConnectionOption } from "../../lib/connection-filters
 import { resolveConversationSelfieSetup } from "../../lib/conversation-selfie-setup";
 import { getAgentRunIntervalMeta } from "../../lib/agent-cadence";
 import { characterMatchesSearch, getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
+import { buildCharacterIdentityGroups } from "../../lib/character-identity-groups";
 import { addSilentGreetingSwipes } from "../../lib/message-swipes";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
 import {
@@ -609,6 +611,7 @@ function PersonaAvatar({ persona }: { persona: Persona | null }) {
 function PersonaPicker({
   personas,
   characters = [],
+  characterGroups = [],
   value,
   characterValue = null,
   onChange,
@@ -622,6 +625,7 @@ function PersonaPicker({
     avatarPath?: string | null;
     comment?: string | null;
   }>;
+  characterGroups?: CharacterGroup[];
   value: string | null;
   characterValue?: string | null;
   onChange: (personaId: string | null) => void;
@@ -631,6 +635,8 @@ function PersonaPicker({
   const { t: localizeUi } = useUiTranslation();
   const selectedId = value ?? "";
   const selectedCharacterId = characterValue ?? "";
+  const [showCharacters, setShowCharacters] = useState(false);
+  const [expandedCharacterGroups, setExpandedCharacterGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const filteredPersonas = useMemo(() => {
     if (!search.trim()) return personas;
@@ -640,6 +646,10 @@ function PersonaPicker({
       return persona.name.toLowerCase().includes(query) || title.includes(query);
     });
   }, [personas, search]);
+  const characterGroupsWithMembers = useMemo(
+    () => buildCharacterIdentityGroups(characters, characterGroups, localizeUi("ui.chat.personapicker.ungrouped")),
+    [characterGroups, characters, localizeUi],
+  );
 
   return (
     <div className="overflow-hidden rounded-lg bg-[var(--secondary)]/50 ring-1 ring-[var(--border)]">
@@ -716,36 +726,72 @@ function PersonaPicker({
         )}
         {characters.length > 0 && (
           <>
-            <div className="border-t border-[var(--border)] px-3 py-2 text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.personapicker.playAsCharacter")}
-            </div>
-            {characters.map((character) => {
-              const isSelected = selectedCharacterId === character.id;
-              const name = parseCharacterDisplayData(character).name;
-              return (
-                <button
-                  key={`character-${character.id}`}
-                  type="button"
-                  onClick={() => {
-                    onCharacterChange?.(character.id);
-                  }}
-                  aria-pressed={isSelected}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
-                    isSelected && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
-                  )}
-                >
-                  <PersonaAvatar persona={null} />
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium">{name}</span>
-                    <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                      {localizeUi("ui.chat.personapicker.characterSource")}
-                    </span>
+            <button
+              type="button"
+              onClick={() => setShowCharacters((value) => !value)}
+              aria-expanded={showCharacters}
+              className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+            >
+              {showCharacters ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+              <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
+              {showCharacters ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+            </button>
+            {showCharacters &&
+              characterGroupsWithMembers.map((group) => {
+                const expanded = expandedCharacterGroups.has(group.id);
+                const visibleMembers = group.members.filter((character) =>
+                  characterMatchesSearch(parseCharacterDisplayData(character), search),
+                );
+                if (visibleMembers.length === 0) return null;
+                return (
+                  <div key={group.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedCharacterGroups((current) => {
+                          const next = new Set(current);
+                          if (next.has(group.id)) next.delete(group.id);
+                          else next.add(group.id);
+                          return next;
+                        })
+                      }
+                      aria-expanded={expanded}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--accent)]"
+                    >
+                      {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                      <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                      <span className="text-[0.625rem] text-[var(--muted-foreground)]">{visibleMembers.length}</span>
+                      {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+                    </button>
+                    {expanded &&
+                      visibleMembers.map((character) => {
+                        const isSelected = selectedCharacterId === character.id;
+                        const name = parseCharacterDisplayData(character).name;
+                        return (
+                          <button
+                            key={`character-${character.id}`}
+                            type="button"
+                            onClick={() => onCharacterChange?.(character.id)}
+                            aria-pressed={isSelected}
+                            className={cn(
+                              "flex w-full items-center gap-2.5 py-2 pl-8 pr-3 text-left transition-all hover:bg-[var(--accent)]",
+                              isSelected && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
+                            )}
+                          >
+                            <PersonaAvatar persona={null} />
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-medium">{name}</span>
+                              <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                                {localizeUi("ui.chat.personapicker.characterSource")}
+                              </span>
+                            </div>
+                            {isSelected && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
+                          </button>
+                        );
+                      })}
                   </div>
-                  {isSelected && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
-                </button>
-              );
-            })}
+                );
+              })}
           </>
         )}
       </div>
@@ -1435,6 +1481,7 @@ function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
         <PersonaPicker
           personas={personas}
           characters={characters}
+          characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
           value={chat.personaId ?? null}
           characterValue={chat.personaCharacterId ?? null}
           onChange={setPersona}
@@ -2554,6 +2601,7 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
       <PersonaPicker
         personas={personas}
         characters={characters}
+        characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
         value={chat.personaId ?? null}
         characterValue={chat.personaCharacterId ?? null}
         onChange={setPersona}
@@ -3202,6 +3250,7 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
         <PersonaPicker
           personas={personas}
           characters={characters}
+          characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
           value={chat.personaId ?? null}
           characterValue={chat.personaCharacterId ?? null}
           onChange={setPersona}

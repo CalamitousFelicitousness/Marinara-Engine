@@ -3934,6 +3934,7 @@
   "ui.chat.personapicker.noMatchingPersonas": "No matching personas.",
   "ui.chat.personapicker.playAsCharacter": "Play as a character",
   "ui.chat.personapicker.stayAnonymous": "Stay anonymous",
+  "ui.chat.personapicker.ungrouped": "Ungrouped",
   "ui.chat.personastatswidget.loadingPersonaStats": "Loading persona stats…",
   "ui.chat.personastatswidget.personaStats": "Persona Stats",
   "ui.chat.personastatusfield.currentStatus": "Current Status",

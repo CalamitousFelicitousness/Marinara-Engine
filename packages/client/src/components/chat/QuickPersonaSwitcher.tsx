@@ -5,11 +5,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
-import { useCharacters, usePersonas, usePersonaGroups } from "../../hooks/use-characters";
+import { useCharacters, usePersonas, usePersonaGroups, useCharacterGroups } from "../../hooks/use-characters";
 import { useUpdateChat, useChat } from "../../hooks/use-chats";
 import { useChatStore } from "../../stores/chat.store";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { parseCharacterDisplayData } from "../../lib/character-display";
+import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
 
@@ -33,16 +34,32 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showCharacterGroups, setShowCharacterGroups] = useState(false);
+  const [expandedCharacterGroups, setExpandedCharacterGroups] = useState<Set<string>>(new Set());
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
-  const characters = (rawCharacters ?? []) as Array<{
-    id: string;
-    data: string | Record<string, unknown>;
-    avatarPath?: string | null;
-  }>;
+  const { data: rawCharacterGroups } = useCharacterGroups();
+  const characters = useMemo(
+    () =>
+      (rawCharacters ?? []) as Array<{
+        id: string;
+        data: string | Record<string, unknown>;
+        avatarPath?: string | null;
+      }>,
+    [rawCharacters],
+  );
+  const characterGroups = useMemo(
+    () =>
+      buildCharacterIdentityGroups(
+        characters as CharacterIdentityChoice[],
+        (rawCharacterGroups ?? []) as any[],
+        localizeUi("ui.chat.personapicker.ungrouped"),
+      ),
+    [characters, localizeUi, rawCharacterGroups],
+  );
   const { data: rawPersonaGroups } = usePersonaGroups();
   const { data: chat } = useChat(activeChatId);
   const updateChat = useUpdateChat();
@@ -367,40 +384,76 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 </div>
               )}
               {characters.length > 0 && (
-                <div className="border-t border-foreground/10 px-2.5 py-2 text-[0.625rem] font-semibold uppercase text-foreground/45">
-                  {localizeUi("ui.chat.personapicker.playAsCharacter")}
-                </div>
-              )}
-              {characters.map((character) => {
-                const name = parseCharacterDisplayData(character).name;
-                const isActive = activeCharacterId === character.id;
-                return (
+                <>
                   <button
-                    key={`character-${character.id}`}
                     type="button"
-                    onClick={() => handleCharacterSwitch(character.id)}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-foreground/10",
-                      isActive && "bg-foreground/10 text-foreground ring-1 ring-foreground/15",
-                    )}
+                    onClick={() => setShowCharacterGroups((value) => !value)}
+                    aria-expanded={showCharacterGroups}
+                    className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
-                      {character.avatarPath ? (
-                        <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        name[0]
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-semibold">{name}</span>
-                      <span className="block text-[0.625rem] text-foreground/45">
-                        {localizeUi("ui.chat.personapicker.characterSource")}
-                      </span>
-                    </div>
-                    {isActive && <span className="text-[0.6875rem]">✓</span>}
+                    {showCharacterGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                    <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
+                    {showCharacterGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                   </button>
-                );
-              })}
+                  {showCharacterGroups &&
+                    characterGroups.map((group) => {
+                      const expanded = expandedCharacterGroups.has(group.id);
+                      return (
+                        <div key={group.id}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedCharacterGroups((current) => {
+                                const next = new Set(current);
+                                if (next.has(group.id)) next.delete(group.id);
+                                else next.add(group.id);
+                                return next;
+                              })
+                            }
+                            aria-expanded={expanded}
+                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-foreground/10"
+                          >
+                            {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                            <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                            <span className="text-[0.625rem] text-foreground/45">{group.members.length}</span>
+                            {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+                          </button>
+                          {expanded &&
+                            group.members.map((character) => {
+                              const name = parseCharacterDisplayData(character).name;
+                              const isActive = activeCharacterId === character.id;
+                              return (
+                                <button
+                                  key={`character-${character.id}`}
+                                  type="button"
+                                  onClick={() => handleCharacterSwitch(character.id)}
+                                  className={cn(
+                                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-foreground/10",
+                                    isActive && "bg-foreground/10 text-foreground ring-1 ring-foreground/15",
+                                  )}
+                                >
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
+                                    {character.avatarPath ? (
+                                      <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                      name[0]
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-xs font-semibold">{name}</span>
+                                    <span className="block text-[0.625rem] text-foreground/45">
+                                      {localizeUi("ui.chat.personapicker.characterSource")}
+                                    </span>
+                                  </div>
+                                  {isActive && <span className="text-[0.6875rem]">✓</span>}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      );
+                    })}
+                </>
+              )}
             </div>
           </div>,
           document.body,

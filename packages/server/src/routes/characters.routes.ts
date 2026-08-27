@@ -509,8 +509,8 @@ async function buildAvatarGenerationPrompt(
   if (body.purpose === "character-sheet") {
     return loadPrompt(promptOverridesStorage, CHARACTERS_REFERENCE_SHEET, { name, appearance });
   }
-  if (profileSubjectTags.trim()) return `Canonical appearance for ${name}: ${appearance}.`;
-  return `Create a polished character avatar portrait for ${name}. Canonical appearance: ${appearance}. Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`;
+  if (profileSubjectTags.trim()) return `Create a polished character avatar portrait for ${name}.`;
+  return `Create a polished character avatar portrait for ${name}. Composition: centered face-and-shoulders portrait, readable expression, clear silhouette, suitable as a chat avatar.`;
 }
 
 async function resolveAvatarGenerationConnection(app: FastifyInstance, body: AvatarGenerationBody) {
@@ -1115,6 +1115,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     const compiled = compileImagePrompt({
       kind: isCharacterSheet ? "illustration" : "avatar",
       prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
+      userPositive: isCharacterSheet ? undefined : body.appearance,
       styleProfiles: imageSettings.styleProfiles,
       styleProfileId: body.styleProfileId,
       imageDefaults,
@@ -1201,6 +1202,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       : compileImagePrompt({
           kind: isCharacterSheet ? "illustration" : "avatar",
           prompt: await buildAvatarGenerationPrompt(promptOverridesStorage, body, profileSubjectTags),
+          userPositive: isCharacterSheet ? undefined : body.appearance,
           styleProfiles: imageSettings.styleProfiles,
           styleProfileId: body.styleProfileId,
           imageDefaults,

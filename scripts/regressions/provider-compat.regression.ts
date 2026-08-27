@@ -192,7 +192,13 @@ const openRouterCachingRequestBodies: Array<Record<string, unknown>> = [];
 const openRouterCachingServer = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  openRouterCachingRequestBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
+  const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  openRouterCachingRequestBodies.push(body);
+  if (body.stream === true) {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end('data: {"choices":[{"delta":{"content":"cached"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    return;
+  }
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ choices: [{ message: { content: "cached" }, finish_reason: "stop" }] }));
 });
@@ -218,8 +224,24 @@ try {
     stream: false,
     enableCaching: false,
   });
+  await provider
+    .chat([{ role: "user", content: "cache suppressed stream" }], {
+      model: "google/gemini-3-pro-preview",
+      stream: true,
+      enableCaching: true,
+      suppressModelParameters: true,
+    })
+    .next();
+  await provider.chatComplete([{ role: "user", content: "cache suppressed complete" }], {
+    model: "google/gemini-3-pro-preview",
+    stream: false,
+    enableCaching: true,
+    suppressModelParameters: true,
+  });
   assert.deepEqual(openRouterCachingRequestBodies[0]?.cache_control, { type: "ephemeral" });
   assert.equal("cache_control" in (openRouterCachingRequestBodies[1] ?? {}), false);
+  assert.deepEqual(openRouterCachingRequestBodies[2]?.cache_control, { type: "ephemeral" });
+  assert.deepEqual(openRouterCachingRequestBodies[3]?.cache_control, { type: "ephemeral" });
 } finally {
   await new Promise<void>((resolve, reject) =>
     openRouterCachingServer.close((error) => (error ? reject(error) : resolve())),

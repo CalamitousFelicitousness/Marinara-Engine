@@ -7627,6 +7627,22 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       });
       assert.equal(countValue(zImageAppearanceMissing.prompt, appearance), 1);
 
+      const avatarAppearance = [
+        "silver-furred fox-woman with a braided crown and mismatched amber and teal eyes",
+        "persimmon kimono with embroidered moonflowers and a debt-scroll tucked into her sleeve",
+        "quietly amused expression with a small scar through the left eyebrow",
+      ].join(", ");
+      const avatar = compileImagePrompt({
+        kind: "avatar",
+        prompt: "Create a polished character avatar portrait.",
+        userPositive: avatarAppearance,
+        styleProfiles,
+        styleProfileId: "anime",
+      });
+      assert.match(avatar.prompt, /braided crown/);
+      assert.match(avatar.prompt, /embroidered moonflowers/);
+      assert.match(avatar.prompt, /scar through the left eyebrow/);
+
       const compactBudgetPrompt = [
         ...Array.from({ length: 40 }, (_, index) => `blue eyes detail ${index}`),
         `Art style: ornate rococo oil painting`,

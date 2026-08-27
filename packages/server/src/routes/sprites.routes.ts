@@ -6,7 +6,7 @@ import AdmZip from "adm-zip";
 import { execFile } from "child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync } from "fs";
 import { randomUUID } from "crypto";
-import { writeFile, mkdir, unlink, copyFile, rm, readFile, mkdtemp } from "fs/promises";
+import { writeFile, mkdir, unlink, copyFile, rm, readFile, mkdtemp, rename } from "fs/promises";
 import { tmpdir } from "os";
 import { delimiter, dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -26,6 +26,7 @@ import {
 import { pixelizeImage, PixelizeInputError } from "../services/image/pixelize.service.js";
 import { clampByte, clampUnit, getSharp, type RgbColor } from "../services/image/sharp-runtime.js";
 import { logger } from "../lib/logger.js";
+import { z } from "zod";
 
 async function getSpriteCapabilities() {
   try {
@@ -604,6 +605,20 @@ function formatSpriteLabelForPrompt(label: string): string {
 
 function normalizeSpriteExpression(raw: string): string {
   return normalizeSpriteExpressionLabel(raw, { fullBody: /^\s*full[_\s-]+/iu.test(raw) });
+}
+
+const renameSpriteSchema = z
+  .object({
+    expression: z.string().trim().min(1).max(120),
+  })
+  .strict();
+
+export function buildRenamedSpriteFilename(sourceFilename: string, expression: string): string | null {
+  const extension = extname(sourceFilename);
+  if (!SPRITE_FILE_RE.test(sourceFilename) || !extension) return null;
+  if (/[\\/]/u.test(expression) || expression.includes("..")) return null;
+  const normalizedExpression = normalizeSpriteExpression(expression);
+  return normalizedExpression ? `${normalizedExpression}${extension}` : null;
 }
 
 function sanitizeSpriteExportName(raw: unknown, fallback: string): string {
@@ -1340,6 +1355,56 @@ export async function spritesRoutes(app: FastifyInstance) {
     const { characterId } = req.params;
     return listSpriteInfos(characterId);
   });
+
+  /**
+   * PATCH /api/sprites/:characterId/:expression
+   * Rename a sprite without rewriting its image bytes or changing its type.
+   * Body: { expression: string }
+   */
+  app.patch<{ Params: { characterId: string; expression: string } }>(
+    "/:characterId/:expression",
+    async (req, reply) => {
+      const { characterId, expression: rawExpression } = req.params;
+      if (characterId.includes("..") || characterId.includes("/") || characterId.includes("\\")) {
+        return reply.status(400).send({ error: "Invalid character ID" });
+      }
+
+      const sourceExpression = normalizeSpriteExpression(rawExpression);
+      const parsed = renameSpriteSchema.safeParse(req.body);
+      if (!sourceExpression || !parsed.success) {
+        return reply.status(400).send({ error: "A valid new expression label is required" });
+      }
+
+      const dir = join(SPRITES_ROOT, characterId);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "Sprite not found" });
+      const sourceFilename = readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && SPRITE_FILE_RE.test(entry.name))
+        .map((entry) => entry.name)
+        .find(
+          (filename) => normalizeSpriteExpression(filename.slice(0, -extname(filename).length)) === sourceExpression,
+        );
+      if (!sourceFilename) return reply.status(404).send({ error: "Sprite not found" });
+
+      const destinationFilename = buildRenamedSpriteFilename(sourceFilename, parsed.data.expression);
+      if (!destinationFilename)
+        return reply.status(400).send({ error: "Expression label must include at least one letter or number" });
+      if (destinationFilename === sourceFilename) {
+        return reply.status(400).send({ error: "The sprite already has that expression label" });
+      }
+
+      const destinationPath = join(dir, destinationFilename);
+      if (existsSync(destinationPath))
+        return reply.status(409).send({ error: "A sprite with that expression already exists" });
+
+      await rename(join(dir, sourceFilename), destinationPath);
+      const mtime = statSync(destinationPath).mtimeMs;
+      return {
+        expression: destinationFilename.slice(0, -extname(destinationFilename).length),
+        filename: destinationFilename,
+        url: `/api/sprites/${characterId}/file/${encodeURIComponent(destinationFilename)}?v=${Math.floor(mtime)}`,
+      };
+    },
+  );
 
   /**
    * POST /api/sprites/:characterId/export

@@ -7,6 +7,7 @@ import {
 } from "../../packages/server/src/services/image/sprite-background.service.js";
 import {
   buildFullBodyReferenceContract,
+  buildRenamedSpriteFilename,
   resolveSpriteNativeTransparency,
   resolveSpriteSheetCanvas,
 } from "../../packages/server/src/routes/sprites.routes.js";
@@ -44,25 +45,23 @@ assert.equal(resolveSpriteNativeTransparency("gpt-image-2-preview", true), false
 assert.equal(resolveSpriteNativeTransparency("gpt-image-1.5", true), true);
 assert.equal(resolveSpriteNativeTransparency("sdxl", true), true);
 assert.equal(resolveSpriteNativeTransparency("gpt-image-2", false), false);
+assert.equal(buildRenamedSpriteFilename("happy.webp", "joyful"), "joyful.webp");
+assert.equal(buildRenamedSpriteFilename("happy.PNG", "full_idle"), "full_idle.PNG");
+assert.equal(buildRenamedSpriteFilename("full_happy.webp", "full_joyful"), "full_joyful.webp");
+assert.equal(buildRenamedSpriteFilename("happy.webp", "../outside"), null);
 
-assert.deepEqual(
-  resolveSpriteSheetCanvas({ cols: 1, rows: 1, spriteType: "full-body", model: "gpt-image-2" }),
-  {
-    sheetWidth: 1024,
-    sheetHeight: 1536,
-    cellWidth: 1024,
-    cellHeight: 1536,
-  },
-);
-assert.deepEqual(
-  resolveSpriteSheetCanvas({ cols: 1, rows: 1, spriteType: "full-body", model: "sdxl" }),
-  {
-    sheetWidth: 1024,
-    sheetHeight: 1536,
-    cellWidth: 1024,
-    cellHeight: 1536,
-  },
-);
+assert.deepEqual(resolveSpriteSheetCanvas({ cols: 1, rows: 1, spriteType: "full-body", model: "gpt-image-2" }), {
+  sheetWidth: 1024,
+  sheetHeight: 1536,
+  cellWidth: 1024,
+  cellHeight: 1536,
+});
+assert.deepEqual(resolveSpriteSheetCanvas({ cols: 1, rows: 1, spriteType: "full-body", model: "sdxl" }), {
+  sheetWidth: 1024,
+  sheetHeight: 1536,
+  cellWidth: 1024,
+  cellHeight: 1536,
+});
 
 const fullBodyReferenceContract = buildFullBodyReferenceContract([
   { kind: "neutral-full-body" },
@@ -217,9 +216,8 @@ console.info("Sprite background regression passed.");
 // same way the gallery path does (findImageStyleProfile falls back gracefully).
 {
   const { compileSpritePrompt } = await import("../../packages/server/src/routes/sprites.routes.js");
-  const { normalizeImageStyleProfileSettings, findImageStyleProfile } = await import(
-    "../../packages/shared/src/constants/image-style-profiles.js"
-  );
+  const { normalizeImageStyleProfileSettings, findImageStyleProfile } =
+    await import("../../packages/shared/src/constants/image-style-profiles.js");
   const settings = normalizeImageStyleProfileSettings(null);
   const nonDefault = settings.profiles.find((profile) => profile.id !== settings.defaultProfileId);
   assert.ok(nonDefault, "built-in profiles must include a non-default profile for this regression");
@@ -255,7 +253,10 @@ console.info("Sprite background regression passed.");
     seed: 0,
     styleProfileId: nonDefault.id,
   };
-  const viaConnectionDefault = compileSpritePrompt("sprite of the subject", { ...base, imageDefaults: connectionDefault });
+  const viaConnectionDefault = compileSpritePrompt("sprite of the subject", {
+    ...base,
+    imageDefaults: connectionDefault,
+  });
   assert.deepEqual(
     viaConnectionDefault,
     overridden,

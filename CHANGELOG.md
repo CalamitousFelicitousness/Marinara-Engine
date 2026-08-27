@@ -12,6 +12,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Avatar generation now preserves the complete user Avatar Prompt, OpenRouter caching remains enabled for eligible unknown models, and sprite emotions can be renamed without re-uploading their images (#5552, #5574, #5575).
 - Permanent Delete now preserves Marinara's stock Universal Preset and its prompt structure while removing editable presets (#5568).
 
 ## [2.4.4]

@@ -571,6 +571,25 @@ export function useUploadSprite() {
   });
 }
 
+export function useRenameSprite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      characterId,
+      expression,
+      newExpression,
+    }: {
+      characterId: string;
+      expression: string;
+      newExpression: string;
+    }) =>
+      api.patch<SpriteInfo>(`/sprites/${characterId}/${encodeURIComponent(expression)}`, { expression: newExpression }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: spriteKeys.list(variables.characterId) });
+    },
+  });
+}
+
 export function useDeleteSprite() {
   const qc = useQueryClient();
   return useMutation({

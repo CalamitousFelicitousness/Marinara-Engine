@@ -190,6 +190,8 @@ For automatic Game Storyboards, turn on **Automatic Storyboard Illustrations**. 
 
 Yes, in **Conversation** mode. Audio and video calls are a Conversation-only feature. To hear a character speak, first set up **Text to Speech** under the **Connections** panel.
 
+Speech is not limited to calls: the **Speak** button on any message and per-mode auto-play work in every chat mode. You can use a hosted API or run a voice engine on your own machine. Any engine that serves the OpenAI `/v1/audio/speech` API, such as Chatterbox, Kokoro-FastAPI, or AllTalk, works under the **OpenAI-compatible** source, and the **Advanced synthesis** settings exist to tune chunk size, timeout, retries, and parallelism for a slow local engine. See [Text to Speech Setup](media/tts-setup.md).
+
 If you want to talk back with your microphone and the browser's own speech recognition is unreliable, first install **Calls** from **Agents > Download Agents**. Then open the **Connections** panel, expand the **Local Model** card, find **Local Speech Model**, pick **Whisper Tiny (Multilingual)** or **Whisper Base (Multilingual)**, and click **Download Whisper**. Uninstalling Calls also removes its Whisper downloads to reclaim disk space. For the full call setup, see [Calls](conversation/calls.md).
 
 ## Can Marinara generate images?

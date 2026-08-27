@@ -112,6 +112,50 @@ If a saved speed is outside the current source's range, the app clamps it to the
 
 For **ElevenLabs** only, two extra controls appear. **Language** lets you force a spoken language, or leave it on **Auto detect**. **Stability** slides between more expressive and more consistent speech.
 
+## Advanced synthesis: tuning for slow or local engines
+
+The **Advanced synthesis** section of the TTS card holds four settings. They are saved per Source, so a local engine and a hosted API keep their own values and switching Source does not carry one's tuning onto the other. The defaults suit hosted APIs; local engines are the reason these controls exist.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Request timeout | 60s | How long to wait for one chunk before giving up. A local engine on CPU often needs several minutes. |
+| Chunk size | 900 characters | How much text goes in one request. Smaller chunks start speaking sooner and suit engines that choke on long passages. |
+| Retries | 1 | Extra attempts after a timeout or a temporary engine failure. A rejected request is never repeated. |
+| Parallel requests | 1 | How many chunks are synthesized at once. Leave this at 1 unless the engine really does synthesize in parallel. |
+
+Two things are worth knowing before you raise anything:
+
+- A queued request still spends its timeout while it waits. Raising **Parallel requests** against a single-worker engine makes chunks 2 and 3 sit in its queue burning their own budget, which shows up as timeouts that disappear again at 1.
+- WAV is far larger than MP3. A 4096-character WAV chunk can exceed the 20 MB response limit. With WAV, keep **Chunk size** near 2000 or below, or switch to MP3.
+
+Turn on **Progressive playback** as well. Without it the whole message is synthesized before any sound plays, so a five-chunk message on a slow engine is five round trips of silence before the first word. With it, each chunk plays as it arrives and the opening line is split short so speech starts almost immediately.
+
+## Local OpenAI-compatible engines
+
+Any engine that serves the OpenAI `/v1/audio/speech` API works without a dedicated Source. This covers [Chatterbox](https://github.com/resemble-ai/chatterbox), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), and [AllTalk](https://github.com/erew123/alltalk_tts), among others.
+
+Set **Source** to **OpenAI-compatible**, put the engine's address in **Base URL** including the `/v1` suffix, and set **Model** and **All Characters Voice** to names the engine recognises. The API key can stay empty if the engine does not check one.
+
+```text
+Base URL:  http://localhost:8000/v1
+Model:     <whatever the engine calls its model>
+Voice:     <a voice name the engine knows>
+```
+
+A **loopback** address such as `http://localhost:8000` or `http://127.0.0.1:8000` works with no extra server setting. An engine on **another machine on your network** does need `TTS_LOCAL_URLS_ENABLED=true`, because that opens up private and LAN addresses. See [Server Configuration Reference](../CONFIGURATION.md).
+
+A reasonable starting point for a CPU engine:
+
+| Setting | Value |
+| --- | --- |
+| Request timeout | 300s |
+| Chunk size | 300 |
+| Retries | 1 |
+| Parallel requests | 1 |
+| Progressive playback | On |
+
+If the engine has no voice-list endpoint, the dropdown falls back to the built-in names and the text field beside it accepts any name the engine knows.
+
 ## Auto-play: reading messages automatically
 
 Under the **Auto-play** heading, each toggle tells the app to read one kind of new message as soon as it finishes generating. They all need **Enable TTS** to be on first. Every toggle starts off.
@@ -161,7 +205,11 @@ This override is used only during Conversation audio and video calls. The regula
 - Nothing speaks: confirm the **Enable TTS** switch is on. Then check the right per-mode **Auto-play** toggle, or use the per-message **Speak** button. The **Speak** button and auto-play options only appear after TTS is enabled.
 - No voices in the dropdown: save the card with TTS enabled and a valid API key, then click **Refresh voices**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
 - ElevenLabs will not speak: make sure you selected a real voice, not the "Select an ElevenLabs voice" placeholder. Also check that the **Model** is a speech model, not a voice-design model whose ID contains `ttv`.
-- A self-hosted TTS server on a local address is blocked: turn on the server setting `TTS_LOCAL_URLS_ENABLED`. It lets the app reach a local or private address for OpenAI-compatible or ElevenLabs-style servers. PocketTTS does not need this setting. See [Server Configuration Reference](../CONFIGURATION.md).
+- A self-hosted TTS server on a private or LAN address is blocked: turn on the server setting `TTS_LOCAL_URLS_ENABLED`. Loopback addresses such as `localhost` and `127.0.0.1` are always allowed and do not need it, and PocketTTS does not need it at all. See [Server Configuration Reference](../CONFIGURATION.md).
+- "The speech engine ran out of time": the engine did not finish a chunk inside the **Request timeout**. Raise it in **Advanced synthesis**, and lower **Chunk size** so each request is smaller. Local engines on CPU commonly need 300s and chunks near 300 characters.
+- Speech starts only after a long pause: turn on **Progressive playback**, which plays each chunk as it arrives instead of synthesizing the whole message first.
+- Voice auto-play stopped on its own: auto-play pauses after three failed messages in a row so a stopped engine cannot fill the chat with silent waits. Fix the engine, then press **Speak** on any message to start it again.
+- Timeouts appear only when **Parallel requests** is above 1: the engine is synthesizing serially, so queued chunks spend their timeout waiting their turn. Set it back to 1.
 - Test your setup fast: click the **Preview** button in the card to play a short sample line with your current settings.
 
 ## Related guides

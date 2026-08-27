@@ -224,6 +224,10 @@ If starting a game fails because the model returned broken JSON, Marinara opens 
 - If characters do not speak during a call, Text to Speech is not set up. Open **Connections** > **Text to Speech**, enable it, choose a source, enter your key, pick a voice, and save. A character with no voice appears as text only.
 - If the microphone is not working, you may need the local speech model. Install **Calls** from **Agents > Download Agents**, then open **Connections** > **Local Model**, expand the card, find **Local Speech Model**, choose a Whisper model, and click **Download Whisper**. Firefox in particular needs this because it lacks browser speech recognition. Uninstalling Calls deletes its Whisper models to reclaim disk space.
 - On a Lite build, the message **Local Whisper is disabled in Lite mode** means that small build cannot run the local speech model. Use a full Marinara install instead.
+- **The speech engine ran out of time** means one chunk did not finish inside the request timeout. Open **Connections** > **Text to Speech** > **Advanced synthesis**, raise **Request timeout**, and lower **Chunk size**. A local engine on CPU commonly needs 300s with chunks near 300 characters. See [Text to Speech Setup](media/tts-setup.md).
+- **Could not reach the speech engine** means the address refused the connection. Check that the engine is running and the Base URL is right. Loopback addresses work as they are; an engine on another machine on your network also needs `TTS_LOCAL_URLS_ENABLED`.
+- If speech only starts after a long silence, turn on **Progressive playback** so each chunk plays as it arrives instead of waiting for the whole message.
+- If voice auto-play stops by itself, it pauses after three failed messages in a row so a stopped engine cannot fill the chat with silent waits. Fix the engine, then press **Speak** on any message to resume.
 
 ### Music DJ Spotify login fails on a remote or network install
 

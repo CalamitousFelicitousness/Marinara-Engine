@@ -10,6 +10,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Permanent Delete now preserves Marinara's stock Universal Preset and its prompt structure while removing editable presets (#5568).
+
 ## [2.4.4]
 
 ### Added

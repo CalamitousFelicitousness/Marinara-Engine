@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Character cards now support editable metadata summaries, AI-generated summary drafts, and Character Library previews that use the saved summary when available.
+- The Home Character of the Day widget now uses saved character summaries and offers direct chat-start and character-view actions.
 
 ### Fixed
 

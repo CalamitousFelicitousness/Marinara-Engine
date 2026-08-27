@@ -94,10 +94,11 @@ type TableSnapshotManifest = {
 };
 
 type StorageWriterLeaseRecord = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   pid: number;
   hostId: string | null;
   scopeId?: string;
+  bootId?: string;
   hostname: string;
   token: string;
   acquiredAt: string;
@@ -195,6 +196,7 @@ export type FileNativeDB = {
 export type FileNativeStoreTestHooks = {
   beforeTableWrite?: (table: string, serializedRows: string) => Promise<void> | void;
   writerLeaseScopeId?: string;
+  writerLeaseBootId?: string;
 };
 
 type SelectFromBuilder<TProjection extends Projection | undefined> = {
@@ -1174,6 +1176,37 @@ function readStableMachineId() {
   );
 }
 
+function readBootId() {
+  if (process.platform === "linux" || process.platform === "android") {
+    try {
+      return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim() || null;
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "win32") {
+    try {
+      const executable = process.env.SystemRoot
+        ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        : "powershell.exe";
+      const output = execFileSync(
+        executable,
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')",
+        ],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2_000, maxBuffer: 8 * 1024 },
+      );
+      return output.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 const CURRENT_HOST_ID = (() => {
   const machineId = readStableMachineId();
   if (!machineId) return null;
@@ -1181,6 +1214,7 @@ const CURRENT_HOST_ID = (() => {
     .update(`marinara-writer-lease-v2\n${process.platform}\n${machineId.toLowerCase()}`)
     .digest("hex");
 })();
+const CURRENT_BOOT_ID = readBootId();
 
 const CURRENT_CONTAINER_WRITER_SCOPE_ID = (() => {
   if (process.platform !== "linux" || process.env.MARINARA_DOCKER !== "true") return null;
@@ -1196,7 +1230,7 @@ const CURRENT_CONTAINER_WRITER_SCOPE_ID = (() => {
 })();
 
 function writerLeaseBelongsToCurrentHost(record: StorageWriterLeaseRecord) {
-  if (record.version === 2) {
+  if (record.version === 2 || record.version === 4) {
     return Boolean(CURRENT_HOST_ID && record.hostId === CURRENT_HOST_ID);
   }
   if (CURRENT_LEGACY_HOST_ID && record.hostId === CURRENT_LEGACY_HOST_ID) return true;
@@ -1320,11 +1354,12 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
   try {
     const record = JSON.parse(raw) as StorageWriterLeaseRecord;
     if (
-      (record.version !== 1 && record.version !== 2 && record.version !== 3) ||
+      (record.version !== 1 && record.version !== 2 && record.version !== 3 && record.version !== 4) ||
       !Number.isSafeInteger(record.pid) ||
       record.pid <= 0 ||
       (record.hostId !== null && typeof record.hostId !== "string") ||
       (record.version === 3 && (typeof record.scopeId !== "string" || record.scopeId.length === 0)) ||
+      (record.version === 4 && (typeof record.bootId !== "string" || record.bootId.length === 0)) ||
       typeof record.hostname !== "string" ||
       typeof record.token !== "string" ||
       typeof record.acquiredAt !== "string"
@@ -1694,6 +1729,7 @@ class FileTableStore {
   private async acquireWriterLease() {
     const path = writerLeasePath(this.rootDir);
     const writerScopeId = this.testHooks?.writerLeaseScopeId ?? CURRENT_CONTAINER_WRITER_SCOPE_ID;
+    const writerBootId = this.testHooks?.writerLeaseBootId ?? CURRENT_BOOT_ID;
     for (let attempt = 0; attempt < 10; attempt++) {
       const token = randomUUID();
       let created = false;
@@ -1712,10 +1748,11 @@ class FileTableStore {
         const liveness = await startWriterLeaseLiveness(path, token, writerScopeId);
         try {
           const record: StorageWriterLeaseRecord = {
-            version: liveness ? 3 : 2,
+            version: writerBootId ? 4 : liveness ? 3 : 2,
             pid: process.pid,
             hostId: CURRENT_HOST_ID,
             ...(liveness ? { scopeId: liveness.scopeId } : {}),
+            ...(writerBootId ? { bootId: writerBootId } : {}),
             hostname: CURRENT_HOSTNAME,
             token,
             acquiredAt: new Date().toISOString(),
@@ -1753,8 +1790,11 @@ class FileTableStore {
         throw err;
       }
 
-      let staleReason: "liveness" | "pid" | null = null;
-      if (existing.record.version === 3) {
+      let staleReason: "boot" | "liveness" | "pid" | null = null;
+      const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
+      if (existing.record.version === 4 && sameHost && writerBootId && existing.record.bootId !== writerBootId) {
+        staleReason = "boot";
+      } else if (existing.record.version === 3 || (existing.record.version === 4 && existing.record.scopeId)) {
         // A socket refusal is proof only within the same host kernel. Shared
         // network storage may expose the socket path to a different machine.
         if (
@@ -1765,7 +1805,6 @@ class FileTableStore {
           staleReason = "liveness";
         }
       } else {
-        const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
         if (sameHost && pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
       }
       if (!staleReason) {
@@ -1798,9 +1837,11 @@ class FileTableStore {
       rmSync(stalePath, { recursive: true });
       logger.warn(
         { previousPid: existing.record.pid, path, staleReason },
-        staleReason === "liveness"
-          ? "[file-storage] Reclaimed the writer lease after confirming the previous owner was no longer listening."
-          : "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
+        staleReason === "boot"
+          ? "[file-storage] Reclaimed the writer lease after detecting that the previous owner belonged to an earlier boot."
+          : staleReason === "liveness"
+            ? "[file-storage] Reclaimed the writer lease after confirming the previous owner was no longer listening."
+            : "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
       );
     }
     throw new StorageWriterLeaseError(`The storage writer lease at ${path} changed repeatedly; retry startup.`);

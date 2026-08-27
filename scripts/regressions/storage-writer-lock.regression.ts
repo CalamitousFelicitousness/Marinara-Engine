@@ -17,10 +17,11 @@ import { getMariDbService } from "../../packages/server/src/services/mari-db/mar
 import { resolvePnpmRunner } from "../pnpm-runner.mjs";
 
 type LeaseRecord = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   pid: number;
   hostId: string | null;
   scopeId?: string;
+  bootId?: string;
   hostname: string;
   token: string;
   acquiredAt: string;
@@ -125,11 +126,11 @@ try {
     const socketPathIsSupported = process.platform !== "win32" && Buffer.byteLength(livenessPath(dir)) <= 100;
     assert.equal(
       leaseTemplate.version,
-      socketPathIsSupported ? 3 : 2,
-      "new leases use an owner socket only when the platform, host identity, and path support it",
+      leaseTemplate.bootId ? 4 : socketPathIsSupported ? 3 : 2,
+      "new leases record the current boot identity when it is available",
     );
-    assert.equal(existsSync(livenessPath(dir)), leaseTemplate.version === 3);
-    if (leaseTemplate.version === 3) {
+    assert.equal(existsSync(livenessPath(dir)), socketPathIsSupported);
+    if (socketPathIsSupported) {
       writeFileSync(ownerPath(dir), JSON.stringify({ ...leaseTemplate, hostname: "another-container" }, null, 2));
     }
     await assert.rejects(
@@ -140,28 +141,24 @@ try {
         error.message.includes(dir),
       "a second live writer is rejected with owner and data-directory details",
     );
-    if (leaseTemplate.version === 3) {
+    if (socketPathIsSupported) {
       writeFileSync(ownerPath(dir), JSON.stringify(leaseTemplate, null, 2));
     }
 
     const pnpmRunner = resolvePnpmRunner();
-    const watcher = spawn(
-      pnpmRunner.command,
-      [...pnpmRunner.args, "--filter", "@marinara-engine/server", "dev"],
-      {
-        cwd: repositoryRoot,
-        env: {
-          ...process.env,
-          FILE_STORAGE_DIR: dir,
-          MARINARA_ENV_FILE: join(dir, ".watcher.env"),
-          NODE_ENV: "production",
-          PORT: String(20_000 + (process.pid % 10_000)),
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        detached: process.platform !== "win32",
+    const watcher = spawn(pnpmRunner.command, [...pnpmRunner.args, "--filter", "@marinara-engine/server", "dev"], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        FILE_STORAGE_DIR: dir,
+        MARINARA_ENV_FILE: join(dir, ".watcher.env"),
+        NODE_ENV: "production",
+        PORT: String(20_000 + (process.pid % 10_000)),
       },
-    );
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+    });
     let watcherOutput = "";
     watcher.stdout?.on("data", (chunk) => {
       watcherOutput += chunk.toString();
@@ -174,7 +171,11 @@ try {
       assert.match(watcherOutput, /--marinara-dev-watch/u, "the competing process must use the guarded dev watcher");
       assert.match(watcherOutput, /StorageWriterLeaseError/u, "the watcher must exit because it lost the writer lease");
       assert.equal(existsSync(leasePath(dir)), true, "the healthy writer keeps its lease after rejecting the watcher");
-      assert.equal(readJson<LeaseRecord>(ownerPath(dir)).pid, process.pid, "the healthy writer remains the lease owner");
+      assert.equal(
+        readJson<LeaseRecord>(ownerPath(dir)).pid,
+        process.pid,
+        "the healthy writer remains the lease owner",
+      );
     } finally {
       forceStopProcessTree(watcher);
     }
@@ -199,7 +200,7 @@ try {
     rmSync(leasePath(dir), { recursive: true });
     await externallyReleased._fileStore.close();
 
-    if (leaseTemplate.version === 3) {
+    if (socketPathIsSupported) {
       mkdirSync(leasePath(dir));
       await leaveStaleSocket(livenessPath(dir));
       writeFileSync(
@@ -269,6 +270,24 @@ try {
       const afterCrash = await createFileNativeDB();
       assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "stale-owner-token");
       await afterCrash._fileStore.close();
+    }
+
+    if (leaseTemplate.hostId) {
+      mkdirSync(leasePath(dir));
+      writeFileSync(
+        ownerPath(dir),
+        JSON.stringify({
+          ...leaseTemplate,
+          version: 4,
+          pid: process.pid,
+          scopeId: undefined,
+          bootId: "writer-lock-previous-boot",
+          token: "stale-reused-pid-token",
+        }),
+      );
+      const afterReboot = await createFileNativeDB({ writerLeaseBootId: "writer-lock-current-boot" });
+      assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "stale-reused-pid-token");
+      await afterReboot._fileStore.close();
     }
 
     if (process.platform !== "win32") {

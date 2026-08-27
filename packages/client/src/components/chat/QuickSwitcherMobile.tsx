@@ -10,6 +10,7 @@ import { useConnections, useUpdateConnection } from "../../hooks/use-connections
 import { useCharacters, usePersonas, usePersonaGroups, useCharacterGroups } from "../../hooks/use-characters";
 import { useUpdateChat, useChat } from "../../hooks/use-chats";
 import { useChatStore } from "../../stores/chat.store";
+import { useUIStore } from "../../stores/ui.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { appendLocalSidecarConnectionOption, isLocalSidecarConnectionOption } from "../../lib/connection-filters";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
@@ -44,6 +45,7 @@ export function QuickSwitcherMobile() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
+  const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
   const { data: connections } = useConnections();
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
@@ -481,7 +483,7 @@ export function QuickSwitcherMobile() {
                       </div>
                     );
                   })}
-                  {characters.length > 0 && (
+                  {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
                     <>
                       <button
                         type="button"
@@ -496,6 +498,10 @@ export function QuickSwitcherMobile() {
                       {showCharacterGroups &&
                         characterGroups.map((group) => {
                           const expanded = expandedCharacterGroups.has(group.id);
+                          const members = group.members.filter(
+                            (character) => showCharacterIdentities || character.id === activeCharacterId,
+                          );
+                          if (members.length === 0) return null;
                           return (
                             <div key={group.id}>
                               <button
@@ -513,11 +519,11 @@ export function QuickSwitcherMobile() {
                               >
                                 {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
                                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
-                                <span className="text-[0.625rem] text-foreground/45">{group.members.length}</span>
+                                <span className="text-[0.625rem] text-foreground/45">{members.length}</span>
                                 {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                               </button>
                               {expanded &&
-                                group.members.map((character) => {
+                                members.map((character) => {
                                   const name = parseCharacterDisplayData(character).name;
                                   const isActive = activeCharacterId === character.id;
                                   return (

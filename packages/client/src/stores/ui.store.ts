@@ -753,6 +753,8 @@ interface UIState {
   showModelName: boolean;
   showTokenUsage: boolean;
   showMessageNumbers: boolean;
+  /** When true, character cards are available in Persona pickers. */
+  showCharactersInPersonaPickers: boolean;
   guideGenerations: boolean;
   showQuickRepliesMenu: boolean;
   showQuickReplyPostOnly: boolean;
@@ -1088,6 +1090,7 @@ interface UIState {
   setShowModelName: (v: boolean) => void;
   setShowTokenUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
+  setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
   setShowQuickRepliesMenu: (v: boolean) => void;
   setShowQuickReplyPostOnly: (v: boolean) => void;
@@ -1308,6 +1311,7 @@ export function pickSyncedSettings(state: UIState) {
     showModelName: state.showModelName,
     showTokenUsage: state.showTokenUsage,
     showMessageNumbers: state.showMessageNumbers,
+    showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
     showQuickRepliesMenu: state.showQuickRepliesMenu,
     showQuickReplyPostOnly: state.showQuickReplyPostOnly,
@@ -1520,6 +1524,7 @@ export const useUIStore = create<UIState>()(
       showModelName: false,
       showTokenUsage: false,
       showMessageNumbers: false,
+      showCharactersInPersonaPickers: false,
       guideGenerations: false,
       showQuickRepliesMenu: false,
       showQuickReplyPostOnly: true,
@@ -2289,6 +2294,7 @@ export const useUIStore = create<UIState>()(
       setShowModelName: (v) => set({ showModelName: v }),
       setShowTokenUsage: (v) => set({ showTokenUsage: v }),
       setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
+      setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
       setGuideGenerations: (v) => set({ guideGenerations: v }),
       setShowQuickRepliesMenu: (v) => set({ showQuickRepliesMenu: v }),
       setShowQuickReplyPostOnly: (v) => set({ showQuickReplyPostOnly: v }),
@@ -2587,8 +2593,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      // v95 -> v96: add inline Roleplay reasoning preferences and per-mode chat help history.
-      version: 96,
+      // v96 -> v97: add opt-in character identities to Persona pickers.
+      version: 97,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2633,6 +2639,9 @@ export const useUIStore = create<UIState>()(
         };
       }),
       migrate: (persisted: any, version: number) => {
+        if (version <= 96 && persisted.showCharactersInPersonaPickers === undefined) {
+          persisted.showCharactersInPersonaPickers = false;
+        }
         if (version <= 95 && !Array.isArray(persisted.chatHelpSeenModes)) {
           persisted.chatHelpSeenModes = persisted.gameTutorialDisabled === true ? ["game"] : [];
         }
@@ -3294,6 +3303,7 @@ export const useUIStore = create<UIState>()(
         showModelName: state.showModelName,
         showTokenUsage: state.showTokenUsage,
         showMessageNumbers: state.showMessageNumbers,
+        showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
         guideGenerations: state.guideGenerations,
         showQuickRepliesMenu: state.showQuickRepliesMenu,
         showQuickReplyPostOnly: state.showQuickReplyPostOnly,

@@ -956,6 +956,8 @@
   "settings.controls.selfies.label": "Selfies",
   "settings.controls.sendOnEnter.help": "Choose which chat surfaces send on Enter. When off, Enter creates a new line and Ctrl/Command+Enter sends.",
   "settings.controls.sendOnEnter.label": "Send on Enter",
+  "settings.controls.showCharactersInPersonaPickers.description": "Allow character cards to appear as user identities in chat.",
+  "settings.controls.showCharactersInPersonaPickers.label": "Show characters in Persona pickers",
   "settings.controls.showMessageNumbers.help": "Displays message numbers in roleplay and conversation chats.",
   "settings.controls.showMessageNumbers.label": "Show message numbers",
   "settings.controls.showModelName.help": "Displays which AI model generated each response, shown as a small label on assistant messages.",

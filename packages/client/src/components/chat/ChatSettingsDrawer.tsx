@@ -1044,6 +1044,7 @@ export function ChatSettingsDrawer({
   const { data: customToolCapabilities } = useCustomToolCapabilities();
   const { data: allChats } = useChats({ refetchOnMount: false });
   const personas = useMemo(() => allPersonas ?? [], [allPersonas]);
+  const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
 
   const chatCharIds: string[] = useMemo(
     () => getChatCharacterIds({ characterIds: chat.characterIds }),
@@ -4412,7 +4413,9 @@ export function ChatSettingsDrawer({
                         ? "cursor-not-allowed opacity-40"
                         : "hover:bg-[var(--primary)]/15 hover:text-[var(--primary)]",
                     )}
-                    title={localizeUi("ui.chat.chatsettingsdrawer.reRunValue1OnTheLastMessage", { value1: agent.name })}
+                    title={localizeUi("ui.chat.chatsettingsdrawer.reRunValue1OnTheLastMessage", {
+                      value1: agent.name,
+                    })}
                   >
                     <RefreshCw size="0.6875rem" className={cn(agentProcessing && "animate-spin")} />
                   </button>
@@ -5439,21 +5442,27 @@ export function ChatSettingsDrawer({
                         )}
                       </button>
                     ))}
-                  <button
-                    type="button"
-                    onClick={() => setShowCharacterIdentityGroups((value) => !value)}
-                    aria-expanded={showCharacterIdentityGroups}
-                    className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
-                  >
-                    {showCharacterIdentityGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
-                    <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
-                    {showCharacterIdentityGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
-                  </button>
-                  {showCharacterIdentityGroups &&
+                  {(showCharacterIdentities || !!chat.personaCharacterId) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCharacterIdentityGroups((value) => !value)}
+                      aria-expanded={showCharacterIdentityGroups}
+                      className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                    >
+                      {showCharacterIdentityGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                      <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
+                      {showCharacterIdentityGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
+                    </button>
+                  )}
+                  {(showCharacterIdentities || !!chat.personaCharacterId) &&
+                    showCharacterIdentityGroups &&
                     characterIdentityGroups.map((group) => {
                       const expanded = expandedCharacterIdentityGroups.has(group.id);
-                      const visibleMembers = group.members.filter((character) =>
-                        characterMatchesSearch(getCharacterInfo(character), personaSearch),
+                      const visibleMembers = group.members.filter(
+                        (character) =>
+                          character.id === chat.personaCharacterId ||
+                          (showCharacterIdentities &&
+                            characterMatchesSearch(getCharacterInfo(character), personaSearch)),
                       );
                       if (visibleMembers.length === 0) return null;
                       return (

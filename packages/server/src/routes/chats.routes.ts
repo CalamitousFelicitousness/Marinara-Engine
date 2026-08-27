@@ -1006,6 +1006,21 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
     }
+    const identityBefore =
+      data.personaId !== undefined || data.personaCharacterId !== undefined
+        ? await resolveChatUserIdentity(createCharactersStorage(app.db), existing)
+        : null;
+    const identityAfter =
+      data.personaId !== undefined || data.personaCharacterId !== undefined
+        ? await resolveChatUserIdentity(createCharactersStorage(app.db), {
+            ...existing,
+            ...data,
+            personaId: data.personaCharacterId ? null : (data.personaId ?? existing.personaId),
+            personaCharacterId: data.personaCharacterId ?? null,
+          })
+        : null;
+    const identityChanged =
+      identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);
@@ -1071,6 +1086,27 @@ export async function chatsRoutes(app: FastifyInstance) {
         await seedNewRoleplayChatTrackerDefaults(app, updated, roleplayTrackerCharacterIdsToSeed);
       } catch (err) {
         logger.warn(err, "Failed to seed Character Tracker defaults while setting up Roleplay chat");
+      }
+    }
+    if (updated && identityChanged) {
+      const existingMessages = await storage.listMessages(req.params.id);
+      const hasStartedChat = existingMessages.some(
+        (message) => message.role === "user" || message.role === "assistant",
+      );
+      if (hasStartedChat && identityAfter) {
+        await storage.createMessage({
+          chatId: req.params.id,
+          role: "system",
+          characterId: null,
+          content: `You are now playing as ${identityAfter.name}.`,
+          extra: {
+            identityTransitionEvent: {
+              from: identityBefore?.name ?? null,
+              to: identityAfter.name,
+              source: identityAfter.source,
+            },
+          },
+        });
       }
     }
     return updated ? normalizeChatForResponse(updated) : updated;

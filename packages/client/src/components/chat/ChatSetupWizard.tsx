@@ -612,6 +612,7 @@ function PersonaPicker({
   personas,
   characters = [],
   characterGroups = [],
+  showCharacterIdentities = false,
   value,
   characterValue = null,
   onChange,
@@ -626,6 +627,7 @@ function PersonaPicker({
     comment?: string | null;
   }>;
   characterGroups?: CharacterGroup[];
+  showCharacterIdentities?: boolean;
   value: string | null;
   characterValue?: string | null;
   onChange: (personaId: string | null) => void;
@@ -724,7 +726,7 @@ function PersonaPicker({
               : localizeUi("ui.chat.personapicker.noMatchingPersonas")}
           </p>
         )}
-        {characters.length > 0 && (
+        {characters.length > 0 && (showCharacterIdentities || !!selectedCharacterId) && (
           <>
             <button
               type="button"
@@ -739,8 +741,10 @@ function PersonaPicker({
             {showCharacters &&
               characterGroupsWithMembers.map((group) => {
                 const expanded = expandedCharacterGroups.has(group.id);
-                const visibleMembers = group.members.filter((character) =>
-                  characterMatchesSearch(parseCharacterDisplayData(character), search),
+                const visibleMembers = group.members.filter(
+                  (character) =>
+                    character.id === selectedCharacterId ||
+                    (showCharacterIdentities && characterMatchesSearch(parseCharacterDisplayData(character), search)),
                 );
                 if (visibleMembers.length === 0) return null;
                 return (
@@ -871,6 +875,7 @@ export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
 
 function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
   const { t: localizeUi } = useUiTranslation();
+  const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
   const [step, setStep] = useState(0);
   const currentStep = CONVERSATION_STEPS[step]!;
   const isLast = step === CONVERSATION_STEPS.length - 1;
@@ -1482,6 +1487,7 @@ function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
           personas={personas}
           characters={characters}
           characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
+          showCharacterIdentities={showCharacterIdentities}
           value={chat.personaId ?? null}
           characterValue={chat.personaCharacterId ?? null}
           onChange={setPersona}
@@ -1894,6 +1900,7 @@ function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
 
 function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const { t: localizeUi } = useUiTranslation();
+  const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
   const STEPS = ROLEPLAY_STEPS;
   const roleplayConnectionSelectId = useId();
 
@@ -2602,6 +2609,7 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
         personas={personas}
         characters={characters}
         characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
+        showCharacterIdentities={showCharacterIdentities}
         value={chat.personaId ?? null}
         characterValue={chat.personaCharacterId ?? null}
         onChange={setPersona}
@@ -3251,6 +3259,7 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
           personas={personas}
           characters={characters}
           characterGroups={(allCharacterGroups ?? []) as CharacterGroup[]}
+          showCharacterIdentities={showCharacterIdentities}
           value={chat.personaId ?? null}
           characterValue={chat.personaCharacterId ?? null}
           onChange={setPersona}

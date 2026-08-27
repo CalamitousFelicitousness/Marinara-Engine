@@ -1062,6 +1062,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Button group",
   },
   {
+    id: "show-characters-in-persona-pickers",
+    sectionId: "chat-display",
+    label: "Show Characters in Persona Pickers",
+    description: "Allow character cards to appear as user identities in chat.",
+    aliases: ["persona", "character", "play as", "identity"],
+    kind: "Toggle",
+  },
+  {
     id: "tracker-panel",
     sectionId: "roleplay-tracker",
     label: "Tracker Panel",
@@ -4658,6 +4666,8 @@ function AppearanceSettings() {
   const setConversationMessageStyle = useUIStore((s) => s.setConversationMessageStyle);
   const conversationAvatarShape = useUIStore((s) => s.conversationAvatarShape);
   const setConversationAvatarShape = useUIStore((s) => s.setConversationAvatarShape);
+  const showCharactersInPersonaPickers = useUIStore((s) => s.showCharactersInPersonaPickers);
+  const setShowCharactersInPersonaPickers = useUIStore((s) => s.setShowCharactersInPersonaPickers);
   const weatherEffects = useUIStore((s) => s.weatherEffects);
   const setWeatherEffects = useUIStore((s) => s.setWeatherEffects);
   // Text appearance
@@ -5150,6 +5160,14 @@ function AppearanceSettings() {
         {...getSettingsSectionAnchorProps("chat-display")}
       >
         <div className="flex flex-col gap-3">
+          <SearchableSettingTarget controlId="show-characters-in-persona-pickers">
+            <SettingsSwitch
+              label={localizeUi("settings.controls.showCharactersInPersonaPickers.label")}
+              description={localizeUi("settings.controls.showCharactersInPersonaPickers.description")}
+              checked={showCharactersInPersonaPickers}
+              onChange={setShowCharactersInPersonaPickers}
+            />
+          </SearchableSettingTarget>
           <div
             id={getSettingsControlAnchorId("conversation-layout")}
             className="flex scroll-mt-3 flex-col gap-2 rounded-lg border border-[var(--border)]/70 bg-[var(--secondary)]/25 p-3"

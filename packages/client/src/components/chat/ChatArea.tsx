@@ -670,6 +670,19 @@ export const ChatArea = memo(function ChatArea() {
     enabled: !!chat?.id && chat.id === activeChatId && isGameChat,
     includeBuiltIn: true,
   });
+  const { data: identityCharacters } = useCharacters({
+    enabled: !!chat?.id && chat.id === activeChatId && !isGameChat,
+    includeBuiltIn: false,
+  });
+  const identityCharacterRows = useMemo(
+    () =>
+      (identityCharacters ?? []) as Array<{
+        id: string;
+        data: unknown;
+        avatarPath: string | null;
+      }>,
+    [identityCharacters],
+  );
   const deleteMessage = useDeleteMessage(activeChatId);
   const deleteMessages = useDeleteMessages(activeChatId);
   const deleteSwipe = useDeleteSwipe(activeChatId);
@@ -953,6 +966,34 @@ export const ChatArea = memo(function ChatArea() {
     // Roleplay and Game may intentionally have no Persona; only Conversation
     // falls back to the globally active account Persona.
     const persona = chatPersona ?? (chatMode === "conversation" ? activePersonaFallback : null);
+    if (!persona && chat?.personaCharacterId) {
+      const row = identityCharacterRows.find((candidate) => candidate.id === chat.personaCharacterId);
+      if (row) {
+        try {
+          const rawData = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+          const data = rawData && typeof rawData === "object" && !Array.isArray(rawData) ? rawData : {};
+          const extensions = data?.extensions ?? {};
+          return {
+            id: row.id,
+            name: data?.name ?? "Unknown",
+            convoDisplayName: extensions.convoDisplayName || undefined,
+            phoneticName: data?.phoneticName || undefined,
+            description: typeof data?.description === "string" ? data.description : undefined,
+            personality: typeof data?.personality === "string" ? data.personality : undefined,
+            scenario: typeof data?.scenario === "string" ? data.scenario : undefined,
+            backstory: typeof extensions.backstory === "string" ? extensions.backstory : undefined,
+            appearance: typeof extensions.appearance === "string" ? extensions.appearance : undefined,
+            avatarUrl: row.avatarPath || undefined,
+            avatarCrop: extensions.avatarCrop ?? null,
+            nameColor: typeof extensions.nameColor === "string" ? extensions.nameColor : undefined,
+            dialogueColor: typeof extensions.dialogueColor === "string" ? extensions.dialogueColor : undefined,
+            boxColor: typeof extensions.boxColor === "string" ? extensions.boxColor : undefined,
+          };
+        } catch {
+          return undefined;
+        }
+      }
+    }
     if (!persona) return undefined;
     return {
       id: persona.id,
@@ -970,7 +1011,7 @@ export const ChatArea = memo(function ChatArea() {
       dialogueColor: persona.dialogueColor || undefined,
       boxColor: persona.boxColor || undefined,
     };
-  }, [activePersonaFallback, chatMode, chatPersona]);
+  }, [activePersonaFallback, chat, chatMode, chatPersona, identityCharacterRows]);
 
   const { startEncounter } = useEncounter();
   const { concludeScene, abandonScene, forkScene, isForking } = useScene();

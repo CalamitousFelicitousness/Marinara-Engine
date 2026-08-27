@@ -16580,10 +16580,11 @@ test("mobile Achievements stays compact and preserves the gap before Discovery D
 test("Character of the Day stays vertically centered inside its mobile widget", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile-only character widget composition.");
 
+  const characterName = `Mobile Character of the Day ${Date.now()}`;
   const characterResponse = await page.request.post("/api/characters", {
     data: {
       data: {
-        name: `Mobile Character of the Day ${Date.now()}`,
+        name: characterName,
         summary: "A concise saved summary for the daily encounter.",
         description:
           "A deliberately long character summary that verifies the mobile card keeps its portrait and copy comfortably inside the widget.",
@@ -16609,8 +16610,10 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
     await expect(characterWidget.getByRole("button", { name: "Start a chat", exact: true })).toBeVisible();
     await expect(characterWidget.getByRole("button", { name: "View character", exact: true })).toBeVisible();
     await characterWidget.getByRole("button", { name: "Start a chat", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Choose a chat mode" })).toBeVisible();
+    const chatModeDialog = page.getByRole("dialog", { name: "Choose a chat mode" });
+    await expect(chatModeDialog).toBeVisible();
     await page.keyboard.press("Escape");
+    await expect(chatModeDialog).toBeHidden();
     const characterLayout = await characterWidget.evaluate((element) => {
       const content = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayContent"]');
       const avatar = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayAvatar"]');
@@ -16633,6 +16636,8 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
     expect(characterLayout!.avatarBottomOverflow).toBeLessThanOrEqual(1);
     expect(characterLayout!.detailsBottomOverflow).toBeLessThanOrEqual(1);
     expect(characterLayout!.widgetOverflow).toBeLessThanOrEqual(1);
+    await characterWidget.getByRole("button", { name: "View character", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Character name" })).toHaveValue(characterName);
   } finally {
     await page.request.delete(`/api/characters/${character.id}`).catch(() => undefined);
   }

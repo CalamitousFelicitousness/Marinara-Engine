@@ -2867,7 +2867,7 @@ export function HomeBrowserHub({
                               <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-[var(--muted-foreground)] sm:line-clamp-3">
                                 {characterOfDay.summary ||
                                   characterOfDay.comment ||
-                                  characterOfDay.description ||
+                                  characterOfDay.description?.trim() ||
                                   t("home.characterOfDay.fallback")}
                               </p>
                               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-2">

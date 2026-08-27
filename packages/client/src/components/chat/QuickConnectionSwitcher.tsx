@@ -11,16 +11,8 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import { appendLocalSidecarConnectionOption, isLocalSidecarConnectionOption } from "../../lib/connection-filters";
 import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
-import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
-export function QuickConnectionSwitcher({
-  className,
-  contextBudget,
-}: {
-  className?: string;
-  contextBudget?: ProfessorMariContextBudget | null;
-}) {
+export function QuickConnectionSwitcher({ className }: { className?: string }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -93,7 +85,6 @@ export function QuickConnectionSwitcher({
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
-  const hasContextBudget = Boolean(contextBudget);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
@@ -109,7 +100,7 @@ export function QuickConnectionSwitcher({
       if (left < 8) left = 8;
       setPos({ left, top: Math.max(8, anchorTop - menuHeight - 4) });
     });
-  }, [open, hasContextBudget]);
+  }, [open]);
 
   if (!activeChatId) return null;
 
@@ -152,11 +143,6 @@ export function QuickConnectionSwitcher({
                 <Dices size="0.875rem" />
               </button>
             </div>
-            {contextBudget && (
-              <div className="border-b border-foreground/10 px-3 pt-2">
-                <ContextBudgetIndicator budget={contextBudget} />
-              </div>
-            )}
             <div className="overflow-y-auto p-1">
               {sorted.map((conn) => {
                 const inPool = conn.useForRandom === "true";
@@ -230,10 +216,7 @@ export function QuickConnectionSwitcher({
           className,
         )}
       >
-        <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
-          {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
-          <Link size="1rem" />
-        </span>
+        <Link size="1rem" />
       </button>
       {menu}
     </>

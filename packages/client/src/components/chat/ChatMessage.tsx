@@ -84,6 +84,7 @@ import { useTranslate } from "../../hooks/use-translate";
 import { api } from "../../lib/api-client";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ttsService } from "../../lib/tts-service";
+import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { useTTSConfig } from "../../hooks/use-tts";
 import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCacheKeys } from "../../lib/tts-dialogue";
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
@@ -2004,6 +2005,7 @@ export const ChatMessage = memo(function ChatMessage({
               ttsSpeakerName,
               message.characterId,
               resolveTTSCharacterId,
+              { fastFirstChunk: ttsConfig.progressivePlayback },
             ),
             ttsConfig,
             message.id,
@@ -2054,10 +2056,12 @@ export const ChatMessage = memo(function ChatMessage({
       if (!hasTTSContent) return;
       void ttsService.speakSequence(ttsVoiceRequests, message.id, {
         progressive: ttsConfig?.progressivePlayback,
+        concurrency: ttsConfig?.generationConcurrency,
+        policy: resolveTTSSynthesisPolicy(ttsConfig),
         volume: ttsLinePlaybackVolume,
       });
     }
-  }, [hasTTSContent, message.id, ttsConfig?.progressivePlayback, ttsLinePlaybackVolume, ttsVoiceRequests]);
+  }, [hasTTSContent, message.id, ttsConfig, ttsLinePlaybackVolume, ttsVoiceRequests]);
 
   const handlePauseResumeTTS = useCallback(() => {
     if (ttsService.getActiveId() !== message.id) return;

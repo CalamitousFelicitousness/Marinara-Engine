@@ -867,6 +867,42 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### Chunk size, timeout, retries, and parallelism are settings
+
+The tuning fields existed in the schema but nothing reachable set them. `TTSConfigCard` gains an
+"Advanced synthesis" section, collapsed by default because the defaults suit hosted APIs and local
+engines are the reason it exists. Every control is a bounded slider saved into the active source
+profile, so a local engine's 300s timeout does not follow the user to ElevenLabs.
+
+The chunk-size control is clamped to the source's `maxInputChars` as well as its own range, so a
+legal setting can never become a 400 from `/speak`. It warns when WAV output is paired with chunks
+long enough to breach the 20 MB response cap, and the parallel-requests control warns that a queued
+request still spends its timeout while it waits, which is how a serial local engine starts reporting
+timeouts that vanish at 1.
+
+`splitTTSChunks` takes the limit as an argument instead of reading a module constant; the
+newline-to-sentence-to-clause-to-word cascade is unchanged.
+
+`cleanTTSInputText` now strips emoji. Engines either read them aloud by name or choke on them, and
+bracketed emotion cues (which some providers do steer on) are protected separately by
+`preserveEmotionIndicators`. Keycap sequences lose only their enclosing mark, so "press 1" survives
+as speech. A message that is nothing but emoji now produces no requests at all, which leaves the
+speak button correctly disabled instead of sending junk to the engine.
+
+Progressive playback splits the opening chunk at the last sentence end within 220 characters, so
+audio starts while the rest of the message is still rendering. It runs before the dialogue-pause
+pass, which keys on the last chunk of an utterance and would otherwise attach the pause to the wrong
+request. In prefetch-all mode it is skipped: there it would be one more request for no earlier sound.
+
+Autoplay stops trying after three consecutive failed sequences and says so once, rather than turning
+every generated message into minutes of silent loading against a dead engine. Any clip that actually
+plays clears the count, and the manual speak button always tries.
+
+Patches to upstream files: `packages/client/src/lib/tts-dialogue.ts`,
+`packages/client/src/components/panels/settings/TTSConfigCard.tsx`,
+`packages/client/src/components/chat/ChatMessage.tsx`,
+`packages/client/src/components/chat/ChatArea.tsx`, and the English catalog. All are upstream-edited.
+
 ### The TTS engine retries, deadlines, and reports what went wrong
 
 The chat playback engine had no retries: one transient 502 ended the whole sequence, while the game

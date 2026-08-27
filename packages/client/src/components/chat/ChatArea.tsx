@@ -84,6 +84,8 @@ import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
 import { ttsService } from "../../lib/tts-service";
+import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
+import { notifyTTSAutoplayPaused } from "../../lib/tts-error-notice";
 import { useTTSConfig } from "../../hooks/use-tts";
 import {
   buildTTSVoiceRequests,
@@ -462,6 +464,9 @@ const CharacterScheduleEditorModal = lazy(preloadCharacterScheduleEditorModal);
 
 type FloatingPanelAnchor = ReturnType<typeof readChatToolbarFloatingPanelAnchor>;
 type OpenSettingsOptions = { initialSection?: ChatSettingsInitialSection };
+/** Consecutive failed sequences before autoplay stops trying on its own. */
+const TTS_AUTOPLAY_FAILURE_LIMIT = 3;
+
 type TTSGenerationSnapshot = {
   chatId: string;
   beforeRevision: string | null;
@@ -2560,6 +2565,8 @@ export const ChatArea = memo(function ChatArea() {
   const prevIsStreamingRef = useRef(false);
   const ttsGenerationRef = useRef<TTSGenerationSnapshot | null>(null);
   const startedTTSAutoplayRevisionsRef = useRef(new Set<string>());
+  // One notice per outage, not one per message.
+  const ttsAutoplayPauseNotifiedRef = useRef(false);
   useEffect(() => {
     const handleGenerationError = (event: Event) => {
       const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
@@ -2627,6 +2634,7 @@ export const ChatArea = memo(function ChatArea() {
             fallbackSpeaker,
             lastMsg.characterId,
             resolveTTSCharacterId,
+            { fastFirstChunk: cfg.progressivePlayback },
           );
         }
       } else {
@@ -2636,6 +2644,7 @@ export const ChatArea = memo(function ChatArea() {
           fallbackSpeaker,
           lastMsg.characterId,
           resolveTTSCharacterId,
+          { fastFirstChunk: cfg.progressivePlayback },
         );
       }
 
@@ -2649,8 +2658,22 @@ export const ChatArea = memo(function ChatArea() {
         return;
       if (ttsRequests.length === 0) return;
 
+      // A dead engine would otherwise turn every generated message into
+      // minutes of silent loading followed by a toast, forever. Manual speak
+      // still tries, and any successful clip clears the count.
+      if (ttsService.getConsecutiveFailureCount() >= TTS_AUTOPLAY_FAILURE_LIMIT) {
+        if (!ttsAutoplayPauseNotifiedRef.current) {
+          ttsAutoplayPauseNotifiedRef.current = true;
+          notifyTTSAutoplayPaused();
+        }
+        return;
+      }
+      ttsAutoplayPauseNotifiedRef.current = false;
+
       await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
         progressive: cfg.progressivePlayback,
+        concurrency: cfg.generationConcurrency,
+        policy: resolveTTSSynthesisPolicy(cfg),
         volume: ttsLineVolume / 100,
       });
     },

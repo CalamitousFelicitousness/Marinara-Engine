@@ -22,7 +22,12 @@ import {
   ttsFailureKindFromResponse,
 } from "../../../packages/client/src/lib/tts-synthesis-policy.ts";
 import { ttsService } from "../../../packages/client/src/lib/tts-service.ts";
-import { TTS_TIMEOUT_MS_DEFAULT } from "../../../packages/shared/src/types/tts.js";
+import { buildTTSVoiceRequests, cleanTTSInputText } from "../../../packages/client/src/lib/tts-dialogue.ts";
+import {
+  TTS_CHUNK_CHARS_MAX,
+  TTS_TIMEOUT_MS_DEFAULT,
+  ttsConfigSchema,
+} from "../../../packages/shared/src/types/tts.js";
 
 // ── Classification comes from the server's code, not its prose ──
 assert.equal(ttsFailureKindFromResponse("timeout"), "timeout");
@@ -157,6 +162,71 @@ void runWithTTSSynthesisPolicy(
 ).catch(() => null);
 await new Promise((resolve) => setTimeout(resolve, 10));
 assert.equal(sawSignal, passthrough.signal, "no deadline means no extra signal wrapping");
+
+// ── Text preparation ──
+// Chunk size is a setting now, not a module constant, and it is clamped to what
+// /speak will actually accept so a legal setting cannot become a 400.
+{
+  const paragraph = `${"Sentence one is here. ".repeat(40)}`;
+  const wide = ttsConfigSchema.parse({ chunkCharLimit: 900 });
+  const narrow = ttsConfigSchema.parse({ chunkCharLimit: 200 });
+  const wideChunks = buildTTSVoiceRequests(paragraph, wide);
+  const narrowChunks = buildTTSVoiceRequests(paragraph, narrow);
+  assert.ok(narrowChunks.length > wideChunks.length, "a smaller chunk setting must produce more, smaller requests");
+  for (const request of narrowChunks) {
+    assert.ok(request.text.length <= 200, `chunk of ${request.text.length} exceeded the configured 200`);
+  }
+  for (const request of wideChunks) {
+    assert.ok(request.text.length <= TTS_CHUNK_CHARS_MAX, "no chunk may exceed what /speak accepts");
+  }
+  // Words survive the split; a chunker that cuts mid-word makes the engine
+  // pronounce fragments.
+  assert.ok(
+    narrowChunks.every((request) => !/\s$/u.test(request.text) && request.text.trim() === request.text),
+    "chunks are trimmed rather than cut on whitespace",
+  );
+
+  // Emoji are stripped, but a keycap's base character is spoken text.
+  assert.equal(cleanTTSInputText("Hello 👋🏽 there 👨‍👩‍👧 friend 🇯🇵"), "Hello there friend");
+  assert.equal(cleanTTSInputText("Press 1️⃣ then #️⃣"), "Press 1 then #");
+  assert.equal(cleanTTSInputText("No emoji here."), "No emoji here.", "ordinary text is untouched");
+  assert.equal(
+    buildTTSVoiceRequests("😀😀😀", ttsConfigSchema.parse({})).length,
+    0,
+    "an emoji-only message produces no requests, which disables the speak button rather than sending junk",
+  );
+
+  // The opening chunk is split small so playback starts while the rest renders,
+  // and only when clips are played as they arrive.
+  const longOpener = `${"Opening line is short. "}${"Then a much longer continuation follows. ".repeat(30)}`;
+  const config = ttsConfigSchema.parse({});
+  const plain = buildTTSVoiceRequests(longOpener, config);
+  const fast = buildTTSVoiceRequests(longOpener, config, undefined, undefined, undefined, { fastFirstChunk: true });
+  assert.ok(fast[0]!.text.length < plain[0]!.text.length, "the fast opener is shorter than the normal first chunk");
+  assert.ok(fast[0]!.text.length <= 220, "the opener stays inside the fast-start window");
+  assert.equal(plain.length + 1, fast.length, "the split adds exactly one request and drops no text");
+  assert.equal(
+    fast.map((request) => request.text).join(" "),
+    plain.map((request) => request.text).join(" "),
+    "splitting the opener must not lose or reorder a single word",
+  );
+
+  // Pause placement keys on the last chunk of an utterance, so the opener split
+  // has to happen before it, not after.
+  const paused = ttsConfigSchema.parse({ dialogueOnly: true, dialoguePauseMs: 2000 });
+  const dialogue = buildTTSVoiceRequests(
+    `"${"First speaker says a fairly long opening line here. ".repeat(6)}"\n"And the second speaker answers."`,
+    paused,
+    undefined,
+    undefined,
+    undefined,
+    { fastFirstChunk: true },
+  );
+  const pauseIndexes = dialogue.map((request, index) => (request.pauseAfterMs ? index : -1)).filter((i) => i >= 0);
+  for (const index of pauseIndexes) {
+    assert.ok(index < dialogue.length - 1, "a pause never lands on the very last request");
+  }
+}
 
 // ── The engine keeps its lookahead inside the configured bound ──
 const originalFetch = globalThis.fetch;

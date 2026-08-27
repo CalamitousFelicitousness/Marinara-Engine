@@ -4,6 +4,10 @@ import {
   speakerBodyFromMatch,
   speakerNameFromMatch,
   speakerTaggedSpanRegex,
+  ttsSourceMaxInputChars,
+  TTS_CHUNK_CHARS_DEFAULT,
+  TTS_CHUNK_CHARS_MAX,
+  TTS_CHUNK_CHARS_MIN,
   type TTSConfig,
 } from "@marinara-engine/shared";
 import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "./dialogue-quotes";
@@ -278,6 +282,15 @@ function stripTTSMarkup(value: string, preserveSpeakerTags = false): string {
   return withoutNonSpeechBlocks.replace(/<(?!\/?speaker(?:=|\s|>))[^>]+>/gi, " ");
 }
 
+// Engines either read emoji aloud by name ("grinning face with smiling eyes")
+// or choke on them. Emotion steering uses bracketed cues, which
+// preserveEmotionIndicators protects separately, so nothing steerable is lost.
+// Keycaps lose only their enclosing mark, so the digit or "#" underneath
+// survives as spoken text.
+const TTS_KEYCAP_MARK_RE = /\uFE0F?\u20E3/gu;
+const TTS_EMOJI_SEQUENCE_RE =
+  /[\p{Regional_Indicator}\p{Extended_Pictographic}](?:\uFE0F|\p{Emoji_Modifier}|\u200D[\p{Regional_Indicator}\p{Extended_Pictographic}])*/gu;
+
 export function cleanTTSInputText(value: string, options: { preserveEmotionIndicators?: boolean } = {}): string {
   let cleaned = stripTTSMarkup(value)
     .replace(VN_TTS_LINE_PREFIX_RE, "")
@@ -300,12 +313,40 @@ export function cleanTTSInputText(value: string, options: { preserveEmotionIndic
     cleaned = cleaned.replace(/\[[a-z_]+:[^\]]*\]/gi, "").replace(VN_TTS_METADATA_TAG_RE, " ");
   }
   return cleaned
+    .replace(TTS_KEYCAP_MARK_RE, "")
+    .replace(TTS_EMOJI_SEQUENCE_RE, " ")
     .replace(/\s+/g, " ")
     .replace(/\s+([,.;:!?])/g, "$1")
     .trim();
 }
 
-const DEFAULT_TTS_CHUNK_CHAR_LIMIT = 900;
+const DEFAULT_TTS_CHUNK_CHAR_LIMIT = TTS_CHUNK_CHARS_DEFAULT;
+
+/**
+ * Head of the first utterance, split off so playback can start while the rest
+ * is still rendering. Only worth it when clips play as they arrive; in
+ * prefetch-all mode it is one more request for no earlier sound.
+ */
+const TTS_FAST_FIRST_CHUNK_CHARS = 220;
+
+function resolveTTSChunkCharLimit(config: Pick<TTSConfig, "source" | "chunkCharLimit">): number {
+  const ceiling = Math.min(TTS_CHUNK_CHARS_MAX, ttsSourceMaxInputChars(config.source));
+  const configured = Number(config.chunkCharLimit ?? DEFAULT_TTS_CHUNK_CHAR_LIMIT);
+  if (!Number.isFinite(configured)) return Math.min(DEFAULT_TTS_CHUNK_CHAR_LIMIT, ceiling);
+  return Math.min(ceiling, Math.max(TTS_CHUNK_CHARS_MIN, Math.trunc(configured)));
+}
+
+/** Splits at the last sentence end inside the window, so the opener is short but whole. */
+function splitFastFirstChunk(chunk: string): string[] {
+  if (chunk.length <= TTS_FAST_FIRST_CHUNK_CHARS) return [chunk];
+  const window = chunk.slice(0, TTS_FAST_FIRST_CHUNK_CHARS);
+  const match = /^[\s\S]*[.!?…。！？]["')\]}»”’]*/u.exec(window);
+  if (!match) return [chunk];
+  const head = match[0].trim();
+  const tail = chunk.slice(match[0].length).trim();
+  if (!head || !tail) return [chunk];
+  return [head, tail];
+}
 
 function splitOversizedTTSPiece(value: string, maxChars: number): string[] {
   const chunks: string[] = [];
@@ -377,12 +418,16 @@ function splitCleanTTSInputIntoChunks(value: string, maxChars = DEFAULT_TTS_CHUN
   return packTTSChunkPieces(sentencePieces, maxChars);
 }
 
-export function splitTTSChunks(value: string, options: { preserveEmotionIndicators?: boolean } = {}): string[] {
+export function splitTTSChunks(
+  value: string,
+  options: { preserveEmotionIndicators?: boolean; maxChars?: number } = {},
+): string[] {
+  const maxChars = options.maxChars ?? DEFAULT_TTS_CHUNK_CHAR_LIMIT;
   return value
     .split(/\r?\n+/)
     .map((chunk) => cleanTTSInputText(chunk, options))
     .filter(Boolean)
-    .flatMap((chunk) => splitCleanTTSInputIntoChunks(chunk));
+    .flatMap((chunk) => splitCleanTTSInputIntoChunks(chunk, maxChars));
 }
 
 export function buildTTSVoiceRequests(
@@ -391,7 +436,9 @@ export function buildTTSVoiceRequests(
   fallbackSpeaker?: string | null,
   fallbackCharacterId?: string | null,
   resolveCharacterIdForSpeaker?: (speaker?: string | null) => string | null | undefined,
+  options: { fastFirstChunk?: boolean } = {},
 ): TTSVoiceRequest[] {
+  const maxChars = resolveTTSChunkCharLimit(config);
   const normalized = decodeEncodedSpeakerTags(text);
   const hasSpeakerTags = hasSpeakerTag(normalized);
   const shouldExtractUtterances = config.dialogueOnly || hasSpeakerTags;
@@ -413,7 +460,13 @@ export function buildTTSVoiceRequests(
     const voice = resolveTTSVoiceForSpeaker(config, speaker, resolvedCharacterId);
     if (config.source === "elevenlabs" && !voice) return [];
 
-    const chunks = splitTTSChunks(utterance.text);
+    const split = splitTTSChunks(utterance.text, { maxChars });
+    // Applied before the pause pass below, which keys on the last chunk of an
+    // utterance: splitting afterwards would move the pause off the real tail.
+    const chunks =
+      options.fastFirstChunk && utteranceIndex === 0 && split.length > 0
+        ? [...splitFastFirstChunk(split[0]!), ...split.slice(1)]
+        : split;
     return chunks.map((chunk, chunkIndex) => ({
       text: chunk,
       speaker,

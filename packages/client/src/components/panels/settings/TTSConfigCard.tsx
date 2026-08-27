@@ -49,10 +49,18 @@ import {
   TTS_DIALOGUE_PAUSE_MAX_SECONDS,
   TTS_DIALOGUE_PAUSE_MIN_SECONDS,
   TTS_CHUNK_CHARS_DEFAULT,
+  TTS_CHUNK_CHARS_MAX,
+  TTS_CHUNK_CHARS_MIN,
   TTS_CONCURRENCY_DEFAULT,
+  TTS_CONCURRENCY_MAX,
+  TTS_CONCURRENCY_MIN,
   TTS_MAX_RETRIES_DEFAULT,
+  TTS_MAX_RETRIES_MAX,
+  TTS_MAX_RETRIES_MIN,
   TTS_SOURCE_DEFINITIONS,
   TTS_TIMEOUT_MS_DEFAULT,
+  TTS_TIMEOUT_MS_MAX,
+  TTS_TIMEOUT_MS_MIN,
   TTS_SOURCE_IDS,
   ttsSourceProfileFromConfig,
   ttsSourceProfileSchema,
@@ -908,6 +916,7 @@ export function TTSConfigCard() {
   const [callCustomVideoClipsEnabled, setCallCustomVideoClipsEnabled] = useState(false);
 
   const [expanded, setExpanded] = useState(false);
+  const [advancedSynthesisOpen, setAdvancedSynthesisOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2246,6 +2255,132 @@ export function TTSConfigCard() {
                   </span>
                 </div>
               </FieldRow>
+            )}
+          </div>
+
+          {/* Advanced synthesis: per-source request tuning. Collapsed by default
+              because the defaults are right for hosted APIs; local engines are
+              the reason it exists. */}
+          <div className="space-y-2 rounded-xl border border-[var(--border)] px-2.5 py-2">
+            <button
+              type="button"
+              onClick={() => setAdvancedSynthesisOpen((open) => !open)}
+              aria-expanded={advancedSynthesisOpen}
+              className="flex w-full items-center justify-between text-xs font-medium text-[var(--foreground)]"
+            >
+              <span>{localizeUi("ui.panels.ttsconfigcard.advancedSynthesis")}</span>
+              {advancedSynthesisOpen ? <ChevronUp size="0.75rem" /> : <ChevronDown size="0.75rem" />}
+            </button>
+
+            {advancedSynthesisOpen && (
+              <div className="space-y-3">
+                <FieldRow
+                  label={localizeUi("ui.panels.ttsconfigcard.requestTimeoutValue1Seconds", {
+                    value1: Math.round(timeoutMs / 1000),
+                  })}
+                  help={localizeUi("ui.panels.ttsconfigcard.howLongToWaitForOneChunk")}
+                >
+                  <input
+                    type="range"
+                    aria-label={localizeUi("ui.panels.ttsconfigcard.requestTimeoutInSeconds")}
+                    min={TTS_TIMEOUT_MS_MIN / 1000}
+                    max={TTS_TIMEOUT_MS_MAX / 1000}
+                    step={5}
+                    value={Math.round(timeoutMs / 1000)}
+                    onChange={(event) => {
+                      const seconds = Number(event.target.value);
+                      const next = Math.min(
+                        TTS_TIMEOUT_MS_MAX,
+                        Math.max(TTS_TIMEOUT_MS_MIN, Math.round(seconds) * 1000),
+                      );
+                      setTimeoutMs(next);
+                      mark({ timeoutMs: next });
+                    }}
+                    className="w-full accent-[var(--primary)]"
+                  />
+                </FieldRow>
+
+                <FieldRow
+                  label={localizeUi("ui.panels.ttsconfigcard.chunkSizeValue1Characters", { value1: chunkCharLimit })}
+                  help={localizeUi("ui.panels.ttsconfigcard.howMuchTextGoesInOneRequest")}
+                >
+                  <input
+                    type="range"
+                    aria-label={localizeUi("ui.panels.ttsconfigcard.chunkSizeInCharacters")}
+                    min={TTS_CHUNK_CHARS_MIN}
+                    max={Math.min(TTS_CHUNK_CHARS_MAX, TTS_SOURCE_DEFINITIONS[source].maxInputChars)}
+                    step={50}
+                    value={chunkCharLimit}
+                    onChange={(event) => {
+                      const next = Math.min(
+                        Math.min(TTS_CHUNK_CHARS_MAX, TTS_SOURCE_DEFINITIONS[source].maxInputChars),
+                        Math.max(TTS_CHUNK_CHARS_MIN, Number(event.target.value)),
+                      );
+                      setChunkCharLimit(next);
+                      mark({ chunkCharLimit: next });
+                    }}
+                    className="w-full accent-[var(--primary)]"
+                  />
+                  {audioFormat === "wav" && chunkCharLimit > 2000 && (
+                    <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.panels.ttsconfigcard.wavChunksThisLongCanExceedTheResponseLimit")}
+                    </p>
+                  )}
+                </FieldRow>
+
+                <FieldRow
+                  label={localizeUi("ui.panels.ttsconfigcard.retriesValue1", { value1: maxRetries })}
+                  help={localizeUi("ui.panels.ttsconfigcard.retriesOnlyCoverTransientFailures")}
+                >
+                  <input
+                    type="range"
+                    aria-label={localizeUi("ui.panels.ttsconfigcard.retriesPerChunk")}
+                    min={TTS_MAX_RETRIES_MIN}
+                    max={TTS_MAX_RETRIES_MAX}
+                    step={1}
+                    value={maxRetries}
+                    onChange={(event) => {
+                      const next = Math.min(
+                        TTS_MAX_RETRIES_MAX,
+                        Math.max(TTS_MAX_RETRIES_MIN, Number(event.target.value)),
+                      );
+                      setMaxRetries(next);
+                      mark({ maxRetries: next });
+                    }}
+                    className="w-full accent-[var(--primary)]"
+                  />
+                </FieldRow>
+
+                <FieldRow
+                  label={localizeUi("ui.panels.ttsconfigcard.parallelRequestsValue1", {
+                    value1: generationConcurrency,
+                  })}
+                  help={localizeUi("ui.panels.ttsconfigcard.keepThisAt1ForSingleWorkerLocalEngines")}
+                >
+                  <input
+                    type="range"
+                    aria-label={localizeUi("ui.panels.ttsconfigcard.parallelSynthesisRequests")}
+                    min={TTS_CONCURRENCY_MIN}
+                    max={TTS_CONCURRENCY_MAX}
+                    step={1}
+                    value={generationConcurrency}
+                    onChange={(event) => {
+                      const next = Math.min(
+                        TTS_CONCURRENCY_MAX,
+                        Math.max(TTS_CONCURRENCY_MIN, Number(event.target.value)),
+                      );
+                      setGenerationConcurrency(next);
+                      mark({ generationConcurrency: next });
+                    }}
+                    className="w-full accent-[var(--primary)]"
+                  />
+                  {generationConcurrency > 1 && (
+                    <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.panels.ttsconfigcard.queuedRequestsStillSpendTheTimeout")}
+                    </p>
+                  )}
+                </FieldRow>
+              </div>
             )}
           </div>
 

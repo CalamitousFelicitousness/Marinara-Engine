@@ -36,7 +36,6 @@ import {
   formatTextQuotes,
   MARI_STARTER_CHIPS,
   PROFESSOR_MARI_ID,
-  type APIConnection,
   type MariSuggestionChip,
   type Message,
   type Persona,
@@ -571,13 +570,7 @@ export const ChatInput = memo(function ChatInput({
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChatId ?? ""));
   const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
   const contextBudget = useMemo(
-    () =>
-      resolveChatContextBudget(
-        contextMessages,
-        activeChat?.connectionId,
-        contextConnections as APIConnection[],
-        sidecarMaxContext,
-      ),
+    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections, sidecarMaxContext),
     [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
   );
   const isProfessorMariChat = activeChatCharacters?.some((character) => character.id === PROFESSOR_MARI_ID) ?? false;

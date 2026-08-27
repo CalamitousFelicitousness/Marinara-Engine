@@ -39,7 +39,7 @@ import {
 } from "../../lib/slash-commands";
 import { createInputMacroResolverForChat, isPromptPreviewMacro } from "../../lib/chat-macros";
 import { parseChatMetadata } from "../../lib/chat-display";
-import type { APIConnection, AvatarCrop } from "@marinara-engine/shared";
+import type { AvatarCrop } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { translateDraftText } from "../../lib/draft-translation";
@@ -499,13 +499,7 @@ export function ConversationInput({
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChatId ?? ""));
   const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
   const contextBudget = useMemo(
-    () =>
-      resolveChatContextBudget(
-        contextMessages,
-        activeChat?.connectionId,
-        contextConnections as APIConnection[],
-        sidecarMaxContext,
-      ),
+    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections, sidecarMaxContext),
     [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
   );
   const isProfessorMariChat = activeChatCharacters?.some((character) => character.id === PROFESSOR_MARI_ID) ?? false;

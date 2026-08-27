@@ -47,7 +47,7 @@ export function resolveProfessorMariContextBudget(
 export function resolveChatContextBudget(
   messages: readonly Message[],
   connectionId: string | null | undefined,
-  connections: readonly APIConnection[],
+  connections: readonly unknown[],
   sidecarMaxContext?: number | null,
 ): ProfessorMariContextBudget | null {
   if (connectionId === "random") return null;
@@ -55,7 +55,9 @@ export function resolveChatContextBudget(
     return resolveProfessorMariContextBudget(messages, sidecarMaxContext);
   }
   if (!connectionId) return null;
-  const connection = connections.find((candidate) => candidate.id === connectionId);
+  const connection = connections.find(
+    (candidate): candidate is APIConnection => record(candidate)?.id === connectionId,
+  );
   return resolveProfessorMariContextBudget(messages, connection?.maxContext);
 }
 

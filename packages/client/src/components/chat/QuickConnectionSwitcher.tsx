@@ -93,6 +93,7 @@ export function QuickConnectionSwitcher({
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
+  const hasContextBudget = Boolean(contextBudget);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
@@ -108,7 +109,7 @@ export function QuickConnectionSwitcher({
       if (left < 8) left = 8;
       setPos({ left, top: Math.max(8, anchorTop - menuHeight - 4) });
     });
-  }, [open]);
+  }, [open, hasContextBudget]);
 
   if (!activeChatId) return null;
 

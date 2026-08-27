@@ -189,7 +189,6 @@ import {
   useSetActiveChatPreset,
 } from "../../hooks/use-chat-presets";
 import type {
-  APIConnection,
   AgentPhase,
   AgentPromptTemplateOption,
   ChatMode,
@@ -1029,7 +1028,7 @@ export function ChatSettingsDrawer({
         ? resolveChatContextBudget(
             gameContextMessagesQuery.data ?? [],
             chat.connectionId,
-            (connections ?? []) as APIConnection[],
+            connections ?? [],
             sidecarMaxContext,
           )
         : null,

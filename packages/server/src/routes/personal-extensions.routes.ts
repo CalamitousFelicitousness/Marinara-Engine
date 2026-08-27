@@ -48,6 +48,7 @@ type ContextTextBudget = { remaining: number };
 type ContextCharacterSource = { id: string; data: CharacterData };
 type ContextPersonaSource = {
   id: string;
+  source?: "persona" | "character";
   name: unknown;
   description: unknown;
   personality: unknown;
@@ -109,6 +110,7 @@ function personaContextSnapshot(
 ): PersonalExtensionPersonaSnapshot {
   return {
     id: persona.id,
+    ...(persona.source ? { source: persona.source } : {}),
     name: boundedContextText(persona.name, budget),
     description: boundedContextText(persona.description, budget),
     personality: boundedContextText(persona.personality, budget),
@@ -279,6 +281,7 @@ export function browserWorkerSource(extension: PersonalExtension) {
     if (!id || !allowedIds.has(id)) return null;
     return Object.freeze({
       id,
+      ...(value?.source === "character" || value?.source === "persona" ? { source: value.source } : {}),
       name: boundedContextText(value.name, budget),
       description: boundedContextText(value.description, budget),
       personality: boundedContextText(value.personality, budget),

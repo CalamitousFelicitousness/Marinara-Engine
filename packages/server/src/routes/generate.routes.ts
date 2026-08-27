@@ -1723,7 +1723,11 @@ export async function generateRoutes(app: FastifyInstance) {
             nameColor: identity.nameColor,
             dialogueColor: identity.dialogueColor,
             boxColor: identity.boxColor,
-          } as (typeof allPersonas)[number];
+            aboutMe: identity.aboutMe,
+            convoDisplayName: identity.convoDisplayName,
+            tags: identity.tags,
+            personaStats: identity.personaStats,
+          } as unknown as (typeof allPersonas)[number];
         }
         personaId = identity.id;
         personaName = identity.name;

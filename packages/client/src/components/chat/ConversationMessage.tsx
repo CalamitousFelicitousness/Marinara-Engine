@@ -792,7 +792,10 @@ export const ConversationMessage = memo(function ConversationMessage({
   // The component only mounts in conversation mode, so this never applies elsewhere.
   const aboutMeTarget: { kind: "character" | "persona"; id: string } | null = isUser
     ? (msgPersona?.personaId ?? personaInfo?.id)
-      ? { kind: "persona", id: (msgPersona?.personaId ?? personaInfo?.id)! }
+      ? {
+          kind: msgPersona?.source === "character" || personaInfo?.source === "character" ? "character" : "persona",
+          id: (msgPersona?.personaId ?? personaInfo?.id)!,
+        }
       : null
     : message.characterId
       ? { kind: "character", id: message.characterId }

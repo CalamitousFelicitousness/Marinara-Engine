@@ -965,8 +965,7 @@ export const ChatArea = memo(function ChatArea() {
   const personaInfo = useMemo(() => {
     // Roleplay and Game may intentionally have no Persona; only Conversation
     // falls back to the globally active account Persona.
-    const persona = chatPersona ?? (chatMode === "conversation" ? activePersonaFallback : null);
-    if (!persona && chat?.personaCharacterId) {
+    if (chat?.personaCharacterId) {
       const row = identityCharacterRows.find((candidate) => candidate.id === chat.personaCharacterId);
       if (row) {
         try {
@@ -975,6 +974,7 @@ export const ChatArea = memo(function ChatArea() {
           const extensions = data?.extensions ?? {};
           return {
             id: row.id,
+            source: "character" as const,
             name: data?.name ?? "Unknown",
             convoDisplayName: extensions.convoDisplayName || undefined,
             phoneticName: extensions.phoneticName || undefined,
@@ -993,10 +993,13 @@ export const ChatArea = memo(function ChatArea() {
           return undefined;
         }
       }
+      return undefined;
     }
+    const persona = chatPersona ?? (chatMode === "conversation" ? activePersonaFallback : null);
     if (!persona) return undefined;
     return {
       id: persona.id,
+      source: "persona" as const,
       name: persona.name,
       convoDisplayName: persona.convoDisplayName || undefined,
       phoneticName: persona.phoneticName || undefined,

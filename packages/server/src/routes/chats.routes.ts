@@ -106,7 +106,6 @@ import {
   isMessageHiddenFromAI,
   resolveBaseUrl,
   resolveActiveCharacterIds,
-  resolveActivePersonaCandidate,
   resolveVisibleGameStateAnchor,
   shouldEnableAgentsForGeneration,
   formatConversationInstructionsForWrap,
@@ -1575,11 +1574,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
 
-    const personas = await charactersStore.listPersonas();
-    const persona =
-      (chat.personaId ? personas.find((candidate) => candidate.id === chat.personaId) : null) ??
-      personas.find((candidate) => candidate.isActive === "true");
-    const personaName = persona?.name ?? "User";
+    const identity = await resolveChatUserIdentity(charactersStore, chat);
+    const personaName = identity?.name ?? "User";
 
     const allMessages = await storage.listMessages(req.params.id);
     let startIdx = 0;
@@ -1976,9 +1972,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
 
-    const personas = await charactersStore.listPersonas();
-    const persona = resolveActivePersonaCandidate(personas, chat.personaId, chat.mode);
-    const userName = persona?.name ?? "User";
+    const identity = await resolveChatUserIdentity(charactersStore, chat);
+    const userName = identity?.name ?? "User";
 
     const embeddingSource = await resolveMemoryRecallEmbeddingSource(app.db, {
       chatMetadata: chat.metadata,
@@ -2657,26 +2652,25 @@ export async function chatsRoutes(app: FastifyInstance) {
           let personaId: string | null = null;
           let personaDescription = "";
           let personaFields: Record<string, string> = {};
-          const allPersonas = await charStore.listPersonas();
-          const persona = resolveActivePersonaCandidate(allPersonas, chat.personaId, chat.mode as string);
-          if (persona) {
-            personaId = persona.id as string;
-            personaName = persona.name;
-            personaDescription = cardPromptText(persona.description);
+          const identity = await resolveChatUserIdentity(charStore, chat);
+          if (identity) {
+            personaId = identity.id;
+            personaName = identity.name;
+            personaDescription = cardPromptText(identity.description);
 
             personaFields = {
-              personality: cardPromptText(persona.personality),
-              scenario: cardPromptText(persona.scenario),
-              backstory: cardPromptText(persona.backstory),
-              appearance: cardPromptText(persona.appearance),
+              personality: cardPromptText(identity.personality),
+              scenario: cardPromptText(identity.scenario),
+              backstory: cardPromptText(identity.backstory),
+              appearance: cardPromptText(identity.appearance),
             };
           }
 
           const personaStats = (() => {
-            if (!persona?.personaStats) return undefined;
-            if (typeof persona.personaStats !== "string") return persona.personaStats;
+            if (!identity?.personaStats) return undefined;
+            if (typeof identity.personaStats !== "string") return identity.personaStats;
             try {
-              return JSON.parse(persona.personaStats as string);
+              return JSON.parse(identity.personaStats as string);
             } catch {
               return undefined;
             }

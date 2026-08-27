@@ -41,7 +41,6 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
-  const setShowCharacterIdentities = useUIStore((state) => state.setShowCharactersInPersonaPickers);
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
   const { data: rawCharacterGroups } = useCharacterGroups();
@@ -410,14 +409,11 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                   {localizeUi("ui.chat.quickpersonaswitcher.noPersonasFound")}
                 </div>
               )}
-              {characters.length > 0 && (
+              {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
                 <>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!showCharacterIdentities) setShowCharacterIdentities(true);
-                      setShowCharacterGroups((value) => !value);
-                    }}
+                    onClick={() => setShowCharacterGroups((value) => !value)}
                     aria-expanded={showCharacterGroups}
                     className="mt-1 flex w-full items-center gap-2 rounded-lg border border-foreground/10 px-2.5 py-2 text-left text-xs font-semibold text-foreground/70 transition-colors hover:bg-foreground/10"
                   >

@@ -46,7 +46,6 @@ export function QuickSwitcherMobile() {
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
-  const setShowCharacterIdentities = useUIStore((state) => state.setShowCharactersInPersonaPickers);
   const { data: connections } = useConnections();
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
@@ -206,11 +205,13 @@ export function QuickSwitcherMobile() {
       const spaceAbove = Math.max(0, anchor.top - 12);
       const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
       const openAbove = spaceAbove >= spaceBelow;
-      const maxHeight = Math.max(1, Math.min(400, openAbove ? spaceAbove : spaceBelow));
+      const anchoredSpace = openAbove ? spaceAbove : spaceBelow;
+      const useViewportFallback = anchoredSpace < 160;
+      const maxHeight = Math.min(400, useViewportFallback ? window.innerHeight - 16 : anchoredSpace);
       const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
       setPos({
         left,
-        top: Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
+        top: useViewportFallback ? 8 : Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
         width,
         maxHeight,
       });
@@ -491,14 +492,11 @@ export function QuickSwitcherMobile() {
                       </div>
                     );
                   })}
-                  {characters.length > 0 && (
+                  {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
                     <>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!showCharacterIdentities) setShowCharacterIdentities(true);
-                          setShowCharacterGroups((value) => !value);
-                        }}
+                        onClick={() => setShowCharacterGroups((value) => !value)}
                         aria-expanded={showCharacterGroups}
                         className="mt-1 flex w-full items-center gap-2 rounded-lg border border-foreground/10 px-2.5 py-2 text-left text-xs font-semibold text-foreground/70 transition-colors hover:bg-foreground/10"
                       >

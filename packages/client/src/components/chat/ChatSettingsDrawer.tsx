@@ -2363,13 +2363,23 @@ export function ChatSettingsDrawer({
     () => (chat.personaId ? (personas.find((persona) => persona.id === chat.personaId) ?? null) : null),
     [chat.personaId, personas],
   );
+  const activeIdentityCharacter = useMemo(
+    () =>
+      chat.personaCharacterId
+        ? (characters.find((character) => character.id === chat.personaCharacterId) ?? null)
+        : null,
+    [chat.personaCharacterId, characters],
+  );
 
   const chatSpriteSubjects = useMemo(
     () => [
       ...chatCharacters.map((character) => ({ kind: "character" as const, id: character.id, character })),
+      ...(activeIdentityCharacter
+        ? [{ kind: "character" as const, id: activeIdentityCharacter.id, character: activeIdentityCharacter }]
+        : []),
       ...(activePersona ? [{ kind: "persona" as const, id: activePersona.id, persona: activePersona }] : []),
     ],
-    [activePersona, chatCharacters],
+    [activeIdentityCharacter, activePersona, chatCharacters],
   );
 
   const chatSpriteQueries = useQueries({
@@ -2386,7 +2396,9 @@ export function ChatSettingsDrawer({
     return Array.isArray(sprites) && sprites.length > 0;
   });
   const chatSpriteSubjectsLoading =
-    (chatCharIds.length > 0 && allCharacters == null) || (!!chat.personaId && allPersonas == null);
+    (chatCharIds.length > 0 && allCharacters == null) ||
+    (!!chat.personaId && allPersonas == null) ||
+    (!!chat.personaCharacterId && allCharacters == null);
   const chatSpriteChoicesLoading =
     chatSpriteSubjects.length > 0 &&
     chatSpriteSubjectsWithSprites.length === 0 &&

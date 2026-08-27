@@ -27,6 +27,7 @@ export type CharacterMap = Map<
 
 export type PersonaInfo = {
   id?: string;
+  source?: "persona" | "character";
   name: string;
   /** Conversation-only cosmetic display name (persona.convoDisplayName). */
   convoDisplayName?: string;

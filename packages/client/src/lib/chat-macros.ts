@@ -236,13 +236,29 @@ export function isPromptPreviewMacro(input: string): boolean {
 }
 
 export function createInputMacroResolverForChat(
-  chat: { characterIds?: unknown; personaId?: string | null; mode?: string | null } | null | undefined,
+  chat:
+    | { characterIds?: unknown; personaId?: string | null; personaCharacterId?: string | null; mode?: string | null }
+    | null
+    | undefined,
   characters: Array<{ id: string; data: unknown }> | undefined,
   personas: Persona[] | undefined,
   lastInput?: string,
 ) {
   const chatCharacters = selectChatCharacters(chat, characters);
-  const activePersona = selectActivePersona(chat, personas);
+  const characterPersona = chat?.personaCharacterId
+    ? parseCharacterMacroData(characters?.find((character) => character.id === chat.personaCharacterId))
+    : null;
+  const activePersona: MacroPersonaData | undefined = characterPersona
+    ? {
+        personaId: characterPersona.id,
+        name: characterPersona.name,
+        description: characterPersona.description,
+        personality: characterPersona.personality,
+        backstory: characterPersona.backstory,
+        appearance: characterPersona.appearance,
+        scenario: characterPersona.scenario,
+      }
+    : selectActivePersona(chat, personas);
   return createMessageMacroResolver({
     persona: activePersona,
     primaryCharacter: chatCharacters[0] ?? null,

@@ -195,23 +195,20 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
       const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
       const openAbove = spaceAbove >= Math.min(320, spaceBelow) || spaceAbove >= spaceBelow;
       const maxHeight = Math.max(160, Math.min(400, openAbove ? spaceAbove : spaceBelow));
-      const desiredHeight = Math.min(menuEl?.scrollHeight || maxHeight, maxHeight);
-      const top = openAbove ? anchor.top - desiredHeight - 4 : anchor.bottom + 4;
+      const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
       setPos({
         left,
-        top: Math.max(8, Math.min(top, window.innerHeight - desiredHeight - 8)),
+        top: Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
         width,
-        maxHeight: desiredHeight,
+        maxHeight,
       });
     };
     const frame = requestAnimationFrame(update);
     window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
     };
   }, [open, expandedGroups, expandedCharacterGroups, showCharacterGroups]);
 

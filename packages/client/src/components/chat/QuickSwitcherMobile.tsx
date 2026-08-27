@@ -207,23 +207,20 @@ export function QuickSwitcherMobile() {
       const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
       const openAbove = spaceAbove >= spaceBelow;
       const maxHeight = Math.max(160, openAbove ? spaceAbove : spaceBelow);
-      const desiredHeight = Math.min(menuRef.current?.scrollHeight || maxHeight, maxHeight);
-      const top = openAbove ? anchor.top - desiredHeight - 4 : anchor.bottom + 4;
+      const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
       setPos({
         left,
-        top: Math.max(8, Math.min(top, window.innerHeight - desiredHeight - 8)),
+        top: Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
         width,
-        maxHeight: desiredHeight,
+        maxHeight,
       });
     };
     requestAnimationFrame(update);
     const timer = setTimeout(update, 50);
     window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
     return () => {
       clearTimeout(timer);
       window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
     };
   }, [open, tab, expandedGroups, expandedCharacterGroups, showCharacterGroups]);
 

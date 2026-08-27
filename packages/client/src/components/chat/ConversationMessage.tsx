@@ -798,11 +798,14 @@ export const ConversationMessage = memo(function ConversationMessage({
   // ── Build shared render context ──
   // Convo-only: clicking an avatar opens the about-me viewer for that identity.
   // The component only mounts in conversation mode, so this never applies elsewhere.
+  const aboutMeIdentity = msgPersona?.personaId
+    ? { id: msgPersona.personaId, source: msgPersona.source ?? ("persona" as const) }
+    : personaInfo;
   const aboutMeTarget: { kind: "character" | "persona"; id: string } | null = isUser
-    ? (msgPersona?.personaId ?? personaInfo?.id)
+    ? aboutMeIdentity
       ? {
-          kind: (msgPersona?.source ?? personaInfo?.source) === "character" ? "character" : "persona",
-          id: (msgPersona?.personaId ?? personaInfo?.id)!,
+          kind: aboutMeIdentity.source === "character" ? "character" : "persona",
+          id: aboutMeIdentity.id,
         }
       : null
     : message.characterId

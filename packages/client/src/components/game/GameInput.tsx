@@ -9,6 +9,7 @@ import { EmojiPicker } from "../ui/EmojiPicker";
 import { SpeechToTextButton } from "../ui/SpeechToTextButton";
 import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { translateDraftText } from "../../lib/draft-translation";
 import {
   formatTextQuotes,
@@ -161,6 +162,7 @@ export function GameInput({
   const addressMenuRef = useRef<HTMLDivElement>(null);
   const activeChat = useChatStore((s) => s.activeChat);
   const { data: contextConnections = [] } = useConnections();
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
   const qc = useQueryClient();
   const [, bumpMessagesTick] = useState(0);
   useEffect(() => {
@@ -176,8 +178,14 @@ export function GameInput({
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChat?.id ?? ""));
   const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
   const contextBudget = useMemo(
-    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections as APIConnection[]),
-    [activeChat?.connectionId, contextConnections, contextMessages],
+    () =>
+      resolveChatContextBudget(
+        contextMessages,
+        activeChat?.connectionId,
+        contextConnections as APIConnection[],
+        sidecarMaxContext,
+      ),
+    [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
   );
   const pendingSpatialTransition = useChatStore((s) =>
     draftKey ? (s.pendingSpatialTransitions.get(draftKey) ?? null) : null,

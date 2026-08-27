@@ -2,7 +2,37 @@ import type { CSSProperties } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { formatCompactTokenCount, type ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 
-export function ContextBudgetIndicator({ budget }: { budget: ProfessorMariContextBudget }) {
+const CONTEXT_GAUGE_CIRCUMFERENCE = 2 * Math.PI * 10;
+
+export function ContextBudgetGauge({ percentage }: { percentage: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="pointer-events-none absolute inset-0 h-full w-full -rotate-90"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        fill="none"
+        stroke="var(--primary)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={`${(percentage / 100) * CONTEXT_GAUGE_CIRCUMFERENCE} ${CONTEXT_GAUGE_CIRCUMFERENCE}`}
+      />
+    </svg>
+  );
+}
+
+export function ContextBudgetIndicator({
+  budget,
+  professorMari = false,
+}: {
+  budget: ProfessorMariContextBudget;
+  professorMari?: boolean;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const used = formatCompactTokenCount(budget.usedTokens);
   const maximum = formatCompactTokenCount(budget.maxTokens);
@@ -12,11 +42,19 @@ export function ContextBudgetIndicator({ budget }: { budget: ProfessorMariContex
   return (
     <div
       data-component="ContextBudget"
-      className="mb-2 space-y-1 px-0.5 text-[0.6875rem] text-[var(--muted-foreground)]"
+      className={`mb-2 space-y-1 px-0.5 text-[0.6875rem] ${
+        professorMari ? "text-[var(--marinara-chat-chrome-panel-muted)]" : "text-[var(--muted-foreground)]"
+      }`}
     >
       <div className="flex items-center justify-between gap-3">
         <span>{localizeUi("ui.chat.contextBudget.label")}</span>
-        <span className="tabular-nums text-foreground/80">
+        <span
+          className={
+            professorMari
+              ? "tabular-nums text-[var(--marinara-chat-chrome-panel-text)]"
+              : "tabular-nums text-foreground/80"
+          }
+        >
           {localizeUi("ui.chat.contextBudget.value", { used, maximum })}
         </span>
       </div>
@@ -29,7 +67,7 @@ export function ContextBudgetIndicator({ budget }: { budget: ProfessorMariContex
         className="h-1 overflow-hidden rounded-full bg-[var(--muted)]/55"
       >
         <div
-          className="h-full w-[var(--context-budget)] rounded-full bg-[var(--primary)] transition-[width] duration-200"
+          className="h-full w-[var(--context-budget)] rounded-full bg-[var(--primary)] transition-[width] duration-200 motion-reduce:transition-none"
           style={progressStyle}
         />
       </div>

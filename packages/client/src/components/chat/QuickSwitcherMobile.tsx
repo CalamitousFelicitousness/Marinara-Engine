@@ -16,7 +16,7 @@ import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
-import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
+import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
 interface PersonaGroupRow {
   id: string;
@@ -260,7 +260,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
             : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
         )}
       >
-        <ChevronUp size="1rem" className={cn("transition-transform", open && "rotate-180")} />
+        <span className="relative flex h-5 w-5 items-center justify-center">
+          {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
+          <ChevronUp size="0.875rem" className={cn("transition-transform", open && "rotate-180")} />
+        </span>
       </button>
 
       {open &&

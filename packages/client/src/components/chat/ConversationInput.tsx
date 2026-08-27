@@ -22,6 +22,7 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useUIStore } from "../../stores/ui.store";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { useConversationGamesStore } from "../../stores/conversation-games.store";
 import { useGenerate } from "../../hooks/use-generate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
@@ -379,6 +380,7 @@ export function ConversationInput({
   const professorMariSuggestionsEnabled = useUIStore((s) => s.professorMariSuggestionsEnabled);
   const { data: activeChat } = useChat(activeChatId);
   const { data: contextConnections = [] } = useConnections();
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
   const showContextUsage = useUIStore((s) => s.showContextUsage);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const availableCapabilityIds = useMemo(
@@ -498,8 +500,14 @@ export function ConversationInput({
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChatId ?? ""));
   const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
   const contextBudget = useMemo(
-    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections as APIConnection[]),
-    [activeChat?.connectionId, contextConnections, contextMessages],
+    () =>
+      resolveChatContextBudget(
+        contextMessages,
+        activeChat?.connectionId,
+        contextConnections as APIConnection[],
+        sidecarMaxContext,
+      ),
+    [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
   );
   const isProfessorMariChat = activeChatCharacters?.some((character) => character.id === PROFESSOR_MARI_ID) ?? false;
   const hasMessages = (messagesData?.pages ?? []).some((page) => page.length > 0);

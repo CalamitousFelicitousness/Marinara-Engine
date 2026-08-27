@@ -23,6 +23,7 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { updateCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useUIStore } from "../../stores/ui.store";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { useGenerate } from "../../hooks/use-generate";
 import { useCommitSpatialOwnerTurn } from "../../hooks/use-spatial-context";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
@@ -285,6 +286,7 @@ export const ChatInput = memo(function ChatInput({
   const clearResponseQueue = useChatStore((s) => s.clearResponseQueue);
   const activeChat = useChatStore((s) => s.activeChat);
   const { data: contextConnections = [] } = useConnections();
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
   const showContextUsage = useUIStore((s) => s.showContextUsage);
   const chatMetadata = useMemo(() => parseChatMetadata(activeChat?.metadata), [activeChat?.metadata]);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
@@ -570,8 +572,14 @@ export const ChatInput = memo(function ChatInput({
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChatId ?? ""));
   const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
   const contextBudget = useMemo(
-    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections as APIConnection[]),
-    [activeChat?.connectionId, contextConnections, contextMessages],
+    () =>
+      resolveChatContextBudget(
+        contextMessages,
+        activeChat?.connectionId,
+        contextConnections as APIConnection[],
+        sidecarMaxContext,
+      ),
+    [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
   );
   const isProfessorMariChat = activeChatCharacters?.some((character) => character.id === PROFESSOR_MARI_ID) ?? false;
   const hasMessages = (messagesData?.pages ?? []).some((page) => page.length > 0);

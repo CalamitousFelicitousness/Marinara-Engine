@@ -5134,7 +5134,7 @@ export function HomeProfessorMariChat({
           void handleSubmit();
         }}
       >
-        {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} />}
+        {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} professorMari />}
         <input
           ref={attachmentInputRef}
           type="file"
@@ -5895,7 +5895,9 @@ export function HomeProfessorMariChat({
                             void handleSubmit();
                           }}
                         >
-                          {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} />}
+                          {showContextUsage && contextBudget && (
+                            <ContextBudgetIndicator budget={contextBudget} professorMari />
+                          )}
                           <input
                             ref={attachmentInputRef}
                             type="file"

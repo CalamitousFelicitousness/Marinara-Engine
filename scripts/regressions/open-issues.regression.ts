@@ -5254,6 +5254,47 @@ assert.equal(
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
 assert.equal(
   resolveChatContextBudget(
+    [
+      {
+        role: "assistant",
+        extra: JSON.stringify({ generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } }),
+      },
+    ] as Message[],
+    "connection-1",
+    [{ id: "connection-1", maxContext: 8_000 }] as never,
+  )?.usedTokens,
+  4_100,
+  "chat context usage must parse JSON-encoded message metadata",
+);
+const contextBudgetConnections = [
+  { id: "first", maxContext: 8_000, isDefault: false },
+  { id: "default", maxContext: 16_000, isDefault: true },
+  { id: "selected", maxContext: 32_000, isDefault: false },
+] as never;
+const contextBudgetMessages = [
+  { role: "assistant", extra: { generationInfo: { tokensPrompt: 1_000, tokensCompletion: 100 } } },
+  { role: "user", extra: {} },
+  { role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } },
+] as Message[];
+assert.equal(resolveChatContextBudget(contextBudgetMessages, "selected", contextBudgetConnections)?.maxTokens, 32_000);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, null, contextBudgetConnections),
+  null,
+  "a chat without a selected connection must not borrow the default connection's context limit",
+);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, "missing", contextBudgetConnections),
+  null,
+  "a missing selected connection must not borrow another connection's context limit",
+);
+assert.equal(resolveChatContextBudget(contextBudgetMessages, "__local_sidecar__", [], 24_000)?.maxTokens, 24_000);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, "selected", contextBudgetConnections)?.usedTokens,
+  4_100,
+  "chat context usage must use the newest assistant measurement",
+);
+assert.equal(
+  resolveChatContextBudget(
     [{ role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } }] as Message[],
     "random",
     [{ id: "a", maxContext: 8_000 }] as never,

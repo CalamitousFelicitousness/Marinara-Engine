@@ -12,7 +12,7 @@ import { appendLocalSidecarConnectionOption, isLocalSidecarConnectionOption } fr
 import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
-import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
+import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
 export function QuickConnectionSwitcher({
   className,
@@ -229,7 +229,10 @@ export function QuickConnectionSwitcher({
           className,
         )}
       >
-        <Link size="1rem" />
+        <span className="relative flex h-5 w-5 items-center justify-center">
+          {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
+          <Link size="0.875rem" />
+        </span>
       </button>
       {menu}
     </>

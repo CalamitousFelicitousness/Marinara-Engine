@@ -1313,6 +1313,7 @@ assert.deepEqual(
     id: "fresh-chat",
     characterIds: ["character-a", "character-b"],
     metadata: { tags: ["saved-tag"], gameNpcs: [] },
+    personaCharacterId: null,
   },
   "Fresh chat responses must expose parsed tags and character IDs",
 );

@@ -41,6 +41,7 @@ import {
   useGenerateCharacterCustomCallVideoClip,
   useUploadSprite,
   useDeleteSprite,
+  useRenameSprite,
   useExportSprites,
   useCleanupSavedSprites,
   useRestoreSpriteCleanupBackup,
@@ -4179,6 +4180,7 @@ function SpritesTab({
   );
   const uploadSprite = useUploadSprite();
   const deleteSprite = useDeleteSprite();
+  const renameSprite = useRenameSprite();
   const exportSprites = useExportSprites();
   const cleanupSavedSprites = useCleanupSavedSprites();
   const restoreSpriteCleanupBackup = useRestoreSpriteCleanupBackup();
@@ -4247,9 +4249,10 @@ function SpritesTab({
     </div>
   );
 
-  const normalizeExpressionForCategory = (raw: string) => {
-    return normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" });
-  };
+  const normalizeExpressionForCategory = useCallback(
+    (raw: string) => normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" }),
+    [category],
+  );
 
   const displayExpression = useCallback(
     (stored: string) => (category === "full-body" ? stored.replace(/^full_/, "") : stored),
@@ -4335,6 +4338,36 @@ function SpritesTab({
       setDeletingSprites(null);
     }
   }, [characterId, deleteSprite, deleteSpriteRequest]);
+
+  const handleRenameSprite = useCallback(
+    async (sprite: SpriteInfo) => {
+      const nextExpression = await showPromptDialog({
+        title: localizeUi("ui.characters.spritestab.renameSprite"),
+        message: localizeUi("ui.characters.spritestab.renameSpriteFor", {
+          value1: displayExpression(sprite.expression),
+        }),
+        defaultValue: displayExpression(sprite.expression),
+        placeholder: localizeUi("ui.characters.spritestab.expressionNameEGHappySadAngry"),
+        confirmLabel: localizeUi("ui.characters.spritestab.rename"),
+        tone: "accent",
+      });
+      const normalized = nextExpression ? normalizeExpressionForCategory(nextExpression) : "";
+      if (!normalized || normalized === sprite.expression) return;
+      try {
+        await renameSprite.mutateAsync({
+          characterId,
+          expression: sprite.expression,
+          nextExpression: normalized,
+        });
+        toast.success(localizeUi("ui.characters.spritestab.renamedSprite"));
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : localizeUi("ui.characters.spritestab.failedToRenameSprite"),
+        );
+      }
+    },
+    [characterId, displayExpression, localizeUi, normalizeExpressionForCategory, renameSprite],
+  );
 
   const handleDeleteVisibleSprites = useCallback(async () => {
     if (visibleSprites.length === 0) return;
@@ -4860,6 +4893,14 @@ function SpritesTab({
                     title={localizeUi("ui.characters.charactergallerytab.download")}
                   >
                     <ImageDown size="0.6875rem" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRenameSprite(sprite)}
+                    className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                    title={localizeUi("ui.characters.spritestab.renameSprite")}
+                  >
+                    <Pencil size="0.6875rem" />
                   </button>
                   <button
                     type="button"

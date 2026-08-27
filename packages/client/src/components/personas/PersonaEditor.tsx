@@ -95,7 +95,6 @@ import { estimateTextTokens, formatEstimatedTokens } from "../../lib/character-t
 import {
   useCharacterSprites,
   useUploadSprite,
-  useRenameSprite,
   useDeleteSprite,
   useExportSprites,
   useCleanupSavedSprites,
@@ -2226,7 +2225,6 @@ function PersonaSpritesTab({
   const { data: sprites, isLoading } = useCharacterSprites(personaId);
   const { data: spriteCapabilities } = useSpriteCapabilities();
   const uploadSprite = useUploadSprite();
-  const renameSprite = useRenameSprite();
   const deleteSprite = useDeleteSprite();
   const exportSprites = useExportSprites();
   const cleanupSavedSprites = useCleanupSavedSprites();
@@ -2296,10 +2294,9 @@ function PersonaSpritesTab({
     </div>
   );
 
-  const normalizeExpressionForCategory = useCallback(
-    (raw: string) => normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" }),
-    [category],
-  );
+  const normalizeExpressionForCategory = (raw: string) => {
+    return normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" });
+  };
 
   const displayExpression = useCallback(
     (stored: string) => (category === "full-body" ? stored.replace(/^full_/, "") : stored),
@@ -2372,36 +2369,6 @@ function PersonaSpritesTab({
       setDeletingSprites(null);
     }
   }, [deleteSprite, deleteSpriteRequest, personaId]);
-
-  const handleRenameSprite = useCallback(
-    async (sprite: SpriteInfo) => {
-      const newExpression = await showPromptDialog({
-        title: localizeUi("ui.personas.personaspritestab.renameSprite"),
-        message: localizeUi("ui.personas.personaspritestab.renameSpriteMessage", {
-          value1: displayExpression(sprite.expression),
-        }),
-        defaultValue: displayExpression(sprite.expression),
-        placeholder: localizeUi("ui.personas.personaspritestab.expressionNameEGHappySadAngry"),
-        confirmLabel: localizeUi("ui.personas.personaspritestab.rename"),
-        cancelLabel: localizeUi("chat.delete.dialog.cancel"),
-      });
-      const normalizedExpression = newExpression ? normalizeExpressionForCategory(newExpression) : "";
-      if (!normalizedExpression) return;
-      try {
-        await renameSprite.mutateAsync({
-          characterId: personaId,
-          expression: sprite.expression,
-          newExpression: normalizedExpression,
-        });
-        toast.success(localizeUi("ui.personas.personaspritestab.renamedSprite"));
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : localizeUi("ui.personas.personaspritestab.failedToRenameSprite"),
-        );
-      }
-    },
-    [displayExpression, localizeUi, normalizeExpressionForCategory, personaId, renameSprite],
-  );
 
   const handleDeleteVisibleSprites = useCallback(async () => {
     if (visibleSprites.length === 0) return;
@@ -2933,15 +2900,6 @@ function PersonaSpritesTab({
                     title={localizeUi("settings.notifications.customSound.actions.replace")}
                   >
                     <Upload size="0.6875rem" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRenameSprite(sprite)}
-                    disabled={renameSprite.isPending}
-                    className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:opacity-50"
-                    title={localizeUi("ui.personas.personaspritestab.renameSprite")}
-                  >
-                    <Pencil size="0.6875rem" />
                   </button>
                   <button
                     type="button"

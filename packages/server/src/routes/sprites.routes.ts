@@ -26,7 +26,26 @@ import {
 import { pixelizeImage, PixelizeInputError } from "../services/image/pixelize.service.js";
 import { clampByte, clampUnit, getSharp, type RgbColor } from "../services/image/sharp-runtime.js";
 import { logger } from "../lib/logger.js";
-import { z } from "zod";
+import { SPRITE_RENAME_RATE_LIMIT } from "../middleware/rate-limit.js";
+
+const spriteRenameQueues = new Map<string, Promise<void>>();
+
+async function withSpriteRenameLock<T>(characterId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = spriteRenameQueues.get(characterId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queuedTail = previous.then(() => current);
+  spriteRenameQueues.set(characterId, queuedTail);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (spriteRenameQueues.get(characterId) === queuedTail) spriteRenameQueues.delete(characterId);
+  }
+}
 
 async function getSpriteCapabilities() {
   try {
@@ -605,20 +624,6 @@ function formatSpriteLabelForPrompt(label: string): string {
 
 function normalizeSpriteExpression(raw: string): string {
   return normalizeSpriteExpressionLabel(raw, { fullBody: /^\s*full[_\s-]+/iu.test(raw) });
-}
-
-const renameSpriteSchema = z
-  .object({
-    expression: z.string().trim().min(1).max(120),
-  })
-  .strict();
-
-export function buildRenamedSpriteFilename(sourceFilename: string, expression: string): string | null {
-  const extension = extname(sourceFilename);
-  if (!SPRITE_FILE_RE.test(sourceFilename) || !extension) return null;
-  if (/[\\/]/u.test(expression) || expression.includes("..")) return null;
-  const normalizedExpression = normalizeSpriteExpression(expression);
-  return normalizedExpression ? `${normalizedExpression}${extension}` : null;
 }
 
 function sanitizeSpriteExportName(raw: unknown, fallback: string): string {
@@ -1357,56 +1362,6 @@ export async function spritesRoutes(app: FastifyInstance) {
   });
 
   /**
-   * PATCH /api/sprites/:characterId/:expression
-   * Rename a sprite without rewriting its image bytes or changing its type.
-   * Body: { expression: string }
-   */
-  app.patch<{ Params: { characterId: string; expression: string } }>(
-    "/:characterId/:expression",
-    async (req, reply) => {
-      const { characterId, expression: rawExpression } = req.params;
-      if (characterId.includes("..") || characterId.includes("/") || characterId.includes("\\")) {
-        return reply.status(400).send({ error: "Invalid character ID" });
-      }
-
-      const sourceExpression = normalizeSpriteExpression(rawExpression);
-      const parsed = renameSpriteSchema.safeParse(req.body);
-      if (!sourceExpression || !parsed.success) {
-        return reply.status(400).send({ error: "A valid new expression label is required" });
-      }
-
-      const dir = join(SPRITES_ROOT, characterId);
-      if (!existsSync(dir)) return reply.status(404).send({ error: "Sprite not found" });
-      const sourceFilename = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isFile() && SPRITE_FILE_RE.test(entry.name))
-        .map((entry) => entry.name)
-        .find(
-          (filename) => normalizeSpriteExpression(filename.slice(0, -extname(filename).length)) === sourceExpression,
-        );
-      if (!sourceFilename) return reply.status(404).send({ error: "Sprite not found" });
-
-      const destinationFilename = buildRenamedSpriteFilename(sourceFilename, parsed.data.expression);
-      if (!destinationFilename)
-        return reply.status(400).send({ error: "Expression label must include at least one letter or number" });
-      if (destinationFilename === sourceFilename) {
-        return reply.status(400).send({ error: "The sprite already has that expression label" });
-      }
-
-      const destinationPath = join(dir, destinationFilename);
-      if (existsSync(destinationPath))
-        return reply.status(409).send({ error: "A sprite with that expression already exists" });
-
-      await rename(join(dir, sourceFilename), destinationPath);
-      const mtime = statSync(destinationPath).mtimeMs;
-      return {
-        expression: destinationFilename.slice(0, -extname(destinationFilename).length),
-        filename: destinationFilename,
-        url: `/api/sprites/${characterId}/file/${encodeURIComponent(destinationFilename)}?v=${Math.floor(mtime)}`,
-      };
-    },
-  );
-
-  /**
    * POST /api/sprites/:characterId/export
    * Export selected sprite expressions as one zip with a folder inside.
    * Body: { expressions?: string[], folderName?: string }
@@ -1751,6 +1706,64 @@ export async function spritesRoutes(app: FastifyInstance) {
 
     return payload;
   });
+
+  /**
+   * PATCH /api/sprites/:characterId/:expression
+   * Rename a saved sprite without replacing its image.
+   * Body: { expression: string }
+   */
+  app.patch<{ Params: { characterId: string; expression: string } }>(
+    "/:characterId/:expression",
+    { config: { rateLimit: SPRITE_RENAME_RATE_LIMIT } },
+    async (req, reply) =>
+      withSpriteRenameLock(req.params.characterId, async () => {
+        const { characterId, expression } = req.params;
+        if (characterId.includes("..") || characterId.includes("/") || characterId.includes("\\")) {
+          return reply.status(400).send({ error: "Invalid character ID" });
+        }
+
+        const body = req.body;
+        const nextExpression =
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          typeof (body as { expression?: unknown }).expression === "string"
+            ? normalizeSpriteExpression((body as { expression: string }).expression)
+            : "";
+        if (!nextExpression) {
+          return reply.status(400).send({ error: "Expression label must include at least one letter or number" });
+        }
+
+        const dir = join(SPRITES_ROOT, characterId);
+        if (!existsSync(dir)) return reply.status(404).send({ error: "No sprites found" });
+
+        const files = readdirSync(dir);
+        const source = files.find((filename) => {
+          const ext = extname(filename);
+          return SPRITE_FILE_RE.test(filename) && filename.slice(0, -ext.length) === expression;
+        });
+        if (!source) return reply.status(404).send({ error: "Expression not found" });
+
+        const extension = extname(source);
+        const target = `${nextExpression}${extension}`;
+        const hasNameCollision = files.some((filename) => {
+          if (!SPRITE_FILE_RE.test(filename)) return false;
+          const filenameExpression = filename.slice(0, -extname(filename).length);
+          return filename !== source && filenameExpression.toLowerCase() === nextExpression.toLowerCase();
+        });
+        if (hasNameCollision) {
+          return reply.status(409).send({ error: "An expression with that name already exists" });
+        }
+
+        if (target !== source) await rename(join(dir, source), join(dir, target));
+        const mtime = statSync(join(dir, target)).mtimeMs;
+        return {
+          expression: nextExpression,
+          filename: target,
+          url: `/api/sprites/${characterId}/file/${encodeURIComponent(target)}?v=${Math.floor(mtime)}`,
+        };
+      }),
+  );
 
   /**
    * DELETE /api/sprites/:characterId/:expression

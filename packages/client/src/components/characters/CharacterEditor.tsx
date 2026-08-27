@@ -40,8 +40,8 @@ import {
   useGenerateCharacterCallVideoClips,
   useGenerateCharacterCustomCallVideoClip,
   useUploadSprite,
-  useRenameSprite,
   useDeleteSprite,
+  useRenameSprite,
   useExportSprites,
   useCleanupSavedSprites,
   useRestoreSpriteCleanupBackup,
@@ -4179,8 +4179,8 @@ function SpritesTab({
     (item) => item.status === "active" && item.manifest.kind.includes("conversation-calls"),
   );
   const uploadSprite = useUploadSprite();
-  const renameSprite = useRenameSprite();
   const deleteSprite = useDeleteSprite();
+  const renameSprite = useRenameSprite();
   const exportSprites = useExportSprites();
   const cleanupSavedSprites = useCleanupSavedSprites();
   const restoreSpriteCleanupBackup = useRestoreSpriteCleanupBackup();
@@ -4341,23 +4341,23 @@ function SpritesTab({
 
   const handleRenameSprite = useCallback(
     async (sprite: SpriteInfo) => {
-      const newExpression = await showPromptDialog({
+      const nextExpression = await showPromptDialog({
         title: localizeUi("ui.characters.spritestab.renameSprite"),
-        message: localizeUi("ui.characters.spritestab.renameSpriteMessage", {
+        message: localizeUi("ui.characters.spritestab.renameSpriteFor", {
           value1: displayExpression(sprite.expression),
         }),
         defaultValue: displayExpression(sprite.expression),
         placeholder: localizeUi("ui.characters.spritestab.expressionNameEGHappySadAngry"),
         confirmLabel: localizeUi("ui.characters.spritestab.rename"),
-        cancelLabel: localizeUi("chat.delete.dialog.cancel"),
+        tone: "accent",
       });
-      const normalizedExpression = newExpression ? normalizeExpressionForCategory(newExpression) : "";
-      if (!normalizedExpression) return;
+      const normalized = nextExpression ? normalizeExpressionForCategory(nextExpression) : "";
+      if (!normalized || normalized === sprite.expression) return;
       try {
         await renameSprite.mutateAsync({
           characterId,
           expression: sprite.expression,
-          newExpression: normalizedExpression,
+          nextExpression: normalized,
         });
         toast.success(localizeUi("ui.characters.spritestab.renamedSprite"));
       } catch (error) {
@@ -4896,20 +4896,19 @@ function SpritesTab({
                   </button>
                   <button
                     type="button"
+                    onClick={() => void handleRenameSprite(sprite)}
+                    className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                    title={localizeUi("ui.characters.spritestab.renameSprite")}
+                  >
+                    <Pencil size="0.6875rem" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => startUpload(sprite.expression)}
                     className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
                     title={localizeUi("settings.notifications.customSound.actions.replace")}
                   >
                     <Upload size="0.6875rem" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRenameSprite(sprite)}
-                    disabled={renameSprite.isPending}
-                    className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] disabled:opacity-50"
-                    title={localizeUi("ui.characters.spritestab.renameSprite")}
-                  >
-                    <Pencil size="0.6875rem" />
                   </button>
                   <button
                     type="button"

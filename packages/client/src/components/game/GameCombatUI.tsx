@@ -23,7 +23,7 @@ import {
 import { cn } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { audioManager } from "../../lib/game-audio";
-import { getOrCreateCachedTTSAudioBlob } from "../../lib/tts-audio-cache";
+import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { normalizeTTSCharacterName, resolveTTSVoiceForSpeaker, splitTTSChunks } from "../../lib/tts-dialogue";
 import { ttsService } from "../../lib/tts-service";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
@@ -65,6 +65,13 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+
+/** Matches game narration: two attempts with a 350ms linear backoff. */
+const COMBAT_VOICE_SYNTHESIS_POLICY: TTSSynthesisPolicy = {
+  requestTimeoutMs: 0,
+  maxRetries: 1,
+  retryBaseDelayMs: TTS_RETRY_BASE_DELAY_MS,
+};
 
 // `combatant.sprite` is populated either from a real avatar URL (player party,
 // from the character sheet's `avatarUrl`) or from the encounter LLM, which is
@@ -1051,14 +1058,17 @@ export function GameCombatUI({
           if (controller.signal.aborted) break;
           const chunkKey = `${line.voiceKey}:${chunkIndex}`;
           try {
-            const blob = await getOrCreateCachedTTSAudioBlob(chunkKey, () =>
-              ttsService.generateAudio(chunk, {
-                speaker: line.character,
-                tone: line.expression,
-                voice: line.voice,
-                signal: controller.signal,
-              }),
-            );
+            const blob = await ttsService.synthesize(chunk, {
+              speaker: line.character,
+              tone: line.expression,
+              voice: line.voice,
+              cacheKey: chunkKey,
+              signal: controller.signal,
+              // Combat had no retries at all; it now uses the same curve as
+              // narration rather than dropping a line on one transient failure.
+              policy: COMBAT_VOICE_SYNTHESIS_POLICY,
+              abortCacheGenerationOnAbort: true,
+            });
             blobs.push(blob);
           } catch (err) {
             if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) break;

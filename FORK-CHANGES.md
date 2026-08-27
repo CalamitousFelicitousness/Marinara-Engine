@@ -867,6 +867,34 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### Game voice synthesizes through the same engine as chat
+
+Game narration and combat each carried their own cache lookup, retry loop, and abort wrapper around
+`ttsService.generateAudio`. Narration's copy had the retry curve and the `#2647` orphaned-audio
+fixes; chat had neither, because a fix applied to one copy reached none of the others. That is the
+duplication that let the reported failure modes persist in chat for months after the game path had
+already solved them.
+
+Both now call `ttsService.synthesize`, which owns the cache lookup, the retry policy, and the abort
+wrapper. Roughly 90 lines of scaffolding are deleted, including `waitForGameTTSBlob`,
+`waitForGameTTSRetry`, and `GAME_TTS_CHUNK_ATTEMPTS`. Narration's behaviour is unchanged: same two
+attempts, same 350ms linear backoff, now expressed as a policy object. Combat previously had no
+retries at all and now shares the same curve, so a single transient failure no longer drops a line.
+
+One deliberate difference in narration: a retry after the caller aborts is no longer cut short. That
+matches how its first attempt already behaved, since an aborted job deliberately leaves its
+generation running so the clip still lands in the cache.
+
+Their playback loops stay local, and that is the intended end state rather than unfinished work.
+Key-based highlighting, `audioManager` volume mixing, the serial promise tail, the bounded object-URL
+maps, and the autoplay-blocked retry timers are game-surface semantics the chat engine has no
+analogue for; moving them would rewrite working code with its own bug history for no user-visible
+gain.
+
+Patches to upstream files: `packages/client/src/components/game/GameNarration.tsx` and
+`GameCombatUI.tsx`, both net-negative. Pinned by `tts-synthesis-policy.regression.ts`, which asserts
+neither file reaches past the engine into the blob cache or the raw generator.
+
 ### TTS has a provider layer instead of five parallel ternary chains
 
 All TTS synthesis lived inline in `tts.routes.ts`, where choosing a backend meant five nested

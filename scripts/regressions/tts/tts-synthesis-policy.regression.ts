@@ -11,6 +11,9 @@
 // did, which is what keeps the upstream tts-source-persistence assertions true.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   PASSTHROUGH_TTS_SYNTHESIS_POLICY,
   TTSSynthesisError,
@@ -320,6 +323,36 @@ try {
   globalThis.fetch = originalFetch;
   if (originalAudioDescriptor) Object.defineProperty(globalThis, "Audio", originalAudioDescriptor);
   else Reflect.deleteProperty(globalThis, "Audio");
+}
+
+// ── Every surface synthesizes through the one engine ──
+// Game narration and combat each carried their own cache lookup, retry loop,
+// and abort wrapper. Narration's had the retry curve and the #2647 fixes; chat
+// had neither, because a fix applied to one copy reached none of the others.
+{
+  const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const read = (relative: string) => readFileSync(join(repositoryRoot, relative), "utf8");
+
+  for (const relative of [
+    "packages/client/src/components/game/GameNarration.tsx",
+    "packages/client/src/components/game/GameCombatUI.tsx",
+  ]) {
+    const source = read(relative);
+    const file = relative.split("/").pop();
+    assert.match(source, /ttsService\.synthesize\(/u, `${file} must synthesize through the shared engine`);
+    assert.doesNotMatch(
+      source,
+      /getOrCreateCachedTTSAudioBlob\(/u,
+      `${file} must not reach past the engine into the blob cache`,
+    );
+    assert.doesNotMatch(source, /ttsService\.generateAudio\(/u, `${file} must not call the raw generator`);
+  }
+
+  // The private retry and abort helpers are gone rather than merely unused.
+  const narration = read("packages/client/src/components/game/GameNarration.tsx");
+  for (const helper of ["waitForGameTTSBlob", "waitForGameTTSRetry", "GAME_TTS_CHUNK_ATTEMPTS"]) {
+    assert.doesNotMatch(narration, new RegExp(helper, "u"), `${helper} is superseded by the shared policy`);
+  }
 }
 
 console.info("TTS synthesis policy regression passed.");

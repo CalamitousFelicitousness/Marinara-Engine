@@ -69,7 +69,7 @@ import { estimateGameSessionHistoryTokens } from "../../lib/game-session-history
 import { createMessageMacroResolver, findCharacterByName } from "../../lib/chat-macros";
 import { animateTextHtml } from "./AnimatedText";
 import { ttsService } from "../../lib/tts-service";
-import { getOrCreateCachedTTSAudioBlob } from "../../lib/tts-audio-cache";
+import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { resolveTTSNarratorVoice, resolveTTSVoiceForSpeaker, splitTTSChunks } from "../../lib/tts-dialogue";
 import {
   formatTextQuotes,
@@ -318,7 +318,12 @@ interface GameVoiceEntryPlan {
   controller: AbortController;
 }
 
-const GAME_TTS_CHUNK_ATTEMPTS = 2;
+/** Two attempts with a 350ms linear backoff, the curve game voice has always used. */
+const GAME_VOICE_SYNTHESIS_POLICY: TTSSynthesisPolicy = {
+  requestTimeoutMs: 0,
+  maxRetries: 1,
+  retryBaseDelayMs: TTS_RETRY_BASE_DELAY_MS,
+};
 
 interface GameNarrationProps {
   messages: NarrationMessage[];
@@ -677,72 +682,21 @@ function buildGameVoiceAudioJobs(
   );
 }
 
-function waitForGameTTSRetry(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new DOMException("TTS request aborted", "AbortError"));
-      return;
-    }
-    const timeout = window.setTimeout(resolve, ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timeout);
-        reject(new DOMException("TTS request aborted", "AbortError"));
-      },
-      { once: true },
-    );
+function generateGameVoiceJobBlob(job: GameVoiceAudioJob, controller: AbortController): Promise<Blob> {
+  // The shared engine now owns the cache lookup, the retry curve, and the abort
+  // wrapper this function used to reimplement. One difference is deliberate: a
+  // retry after the caller aborts is no longer cut short, which matches how the
+  // first attempt already behaved here (an aborted job leaves its generation
+  // running so the clip still lands in the cache).
+  return ttsService.synthesize(job.chunk, {
+    speaker: job.speaker,
+    tone: job.tone,
+    voice: job.voice,
+    cacheKey: job.cacheKey,
+    cacheAliases: [job.textCacheKey],
+    signal: controller.signal,
+    policy: GAME_VOICE_SYNTHESIS_POLICY,
   });
-}
-
-function waitForGameTTSBlob(promise: Promise<Blob>, signal: AbortSignal): Promise<Blob> {
-  if (signal.aborted) return Promise.reject(new DOMException("TTS request aborted", "AbortError"));
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      signal.removeEventListener("abort", onAbort);
-      reject(new DOMException("TTS request aborted", "AbortError"));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (blob) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(blob);
-      },
-      (error) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-  });
-}
-
-async function generateGameVoiceJobBlob(job: GameVoiceAudioJob, controller: AbortController): Promise<Blob> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= GAME_TTS_CHUNK_ATTEMPTS; attempt += 1) {
-    if (controller.signal.aborted) throw new DOMException("TTS request aborted", "AbortError");
-    try {
-      const sharedPromise = getOrCreateCachedTTSAudioBlob(
-        job.cacheKey,
-        () =>
-          ttsService.generateAudio(job.chunk, {
-            speaker: job.speaker,
-            tone: job.tone,
-            voice: job.voice,
-          }),
-        [job.textCacheKey],
-      );
-      return await waitForGameTTSBlob(sharedPromise, controller.signal);
-    } catch (err) {
-      if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) throw err;
-      lastError = err;
-      if (attempt < GAME_TTS_CHUNK_ATTEMPTS) {
-        await waitForGameTTSRetry(350 * attempt, controller.signal);
-      }
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("TTS request failed");
 }
 
 function findNpcVoiceHint(speaker: string | null | undefined, gameNpcs: GameNpc[]) {

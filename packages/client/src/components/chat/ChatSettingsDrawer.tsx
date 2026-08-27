@@ -118,6 +118,7 @@ import { SummariesEditorModal } from "./SummariesEditorModal";
 import { AgentSuiteModal } from "./AgentSuiteModal";
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
 import { RoleplayMessagePreview } from "./ChatMessage";
+import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CHAT_SETTINGS_SURFACES } from "./chat-settings-surfaces";
 import { useCharacters, usePersonas, useCharacterGroups, type SpriteInfo } from "../../hooks/use-characters";
 import { lorebookKeys, useLorebooks, useEntriesAcrossLorebooks } from "../../hooks/use-lorebooks";
@@ -188,6 +189,7 @@ import {
   useSetActiveChatPreset,
 } from "../../hooks/use-chat-presets";
 import type {
+  APIConnection,
   AgentPhase,
   AgentPromptTemplateOption,
   ChatMode,
@@ -881,6 +883,7 @@ export function ChatSettingsDrawer({
   const callsSettingsMenuId = getAgentSettingsMenuId(chat.id, "conversation-calls");
   const callsSettingsOpen = useUIStore((s) => s.chatSettingsExpandedSections[callsSettingsMenuId] ?? false);
   const setChatSettingsSectionExpanded = useUIStore((s) => s.setChatSettingsSectionExpanded);
+  const showContextUsage = useUIStore((s) => s.showContextUsage);
 
   const { data: allCharacters } = useCharacters({ includeBuiltIn: true });
   const { data: characterGroups } = useCharacterGroups();
@@ -1009,6 +1012,7 @@ export function ChatSettingsDrawer({
   );
   const sidecarModelDownloaded = useSidecarStore((state) => state.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((state) => state.modelDisplayName);
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
   const chatGenerationConnectionsList = useMemo(
     () =>
       appendLocalSidecarConnectionOption(
@@ -1017,6 +1021,26 @@ export function ChatSettingsDrawer({
         sidecarModelDisplayName,
       ),
     [isGame, sidecarModelDisplayName, sidecarModelDownloaded, textConnectionsList],
+  );
+  const gameContextMessagesQuery = useChatMessagePeek(chat.id, 20, open && isGame && showContextUsage);
+  const gameContextBudget = useMemo(
+    () =>
+      isGame && showContextUsage
+        ? resolveChatContextBudget(
+            gameContextMessagesQuery.data ?? [],
+            chat.connectionId,
+            (connections ?? []) as APIConnection[],
+            sidecarMaxContext,
+          )
+        : null,
+    [
+      chat.connectionId,
+      connections,
+      gameContextMessagesQuery.data,
+      isGame,
+      showContextUsage,
+      sidecarMaxContext,
+    ],
   );
   const conversationSummaryConnectionId =
     typeof metadata.summaryConnectionId === "string" ? metadata.summaryConnectionId : "";
@@ -4880,6 +4904,7 @@ export function ChatSettingsDrawer({
             <ConnectionSection
               connectionId={chat.connectionId ?? null}
               connections={chatGenerationConnectionsList}
+              contextBudget={gameContextBudget}
               isGame={isGame}
               onConnectionChange={setConnection}
             />

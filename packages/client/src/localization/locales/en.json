@@ -957,7 +957,7 @@
   "settings.controls.selfies.label": "Selfies",
   "settings.controls.sendOnEnter.help": "Choose which chat surfaces send on Enter. When off, Enter creates a new line and Ctrl/Command+Enter sends.",
   "settings.controls.sendOnEnter.label": "Send on Enter",
-  "settings.controls.showContextUsage.help": "Displays the latest measured context usage in connection switchers.",
+  "settings.controls.showContextUsage.help": "Displays the latest measured context usage in connection switchers and Game chat settings.",
   "settings.controls.showContextUsage.label": "Show context usage",
   "settings.controls.showMessageNumbers.help": "Displays message numbers in roleplay and conversation chats.",
   "settings.controls.showMessageNumbers.label": "Show message numbers",

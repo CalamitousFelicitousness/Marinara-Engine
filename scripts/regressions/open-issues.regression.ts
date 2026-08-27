@@ -5234,6 +5234,14 @@ const contextBudgetGameInputSource = readFileSync(
   new URL("../../packages/client/src/components/game/GameInput.tsx", import.meta.url),
   "utf8",
 );
+const contextBudgetChatSettingsSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetConnectionSectionSource = readFileSync(
+  new URL("../../packages/client/src/features/chat-settings/sections/ConnectionSection.tsx", import.meta.url),
+  "utf8",
+);
 const quickConnectionSwitcherSource = readFileSync(
   new URL("../../packages/client/src/components/chat/QuickConnectionSwitcher.tsx", import.meta.url),
   "utf8",
@@ -5334,13 +5342,18 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   contextBudgetGameInputSource,
-  /<ContextBudgetIndicator/u,
-  "Game input must not render a standalone context usage bar",
+  /ContextBudget|QuickConnectionSwitcher/u,
+  "Game input must leave context usage in chat settings",
 );
 assert.match(
-  contextBudgetGameInputSource,
-  /<QuickConnectionSwitcher className="shrink-0" contextBudget=\{showContextUsage \? contextBudget : null\} \/>/u,
-  "Game input must expose context usage through its connection popup",
+  contextBudgetChatSettingsSource,
+  /<ConnectionSection[\s\S]{0,240}contextBudget=\{gameContextBudget\}/u,
+  "Game chat settings must pass measured usage to the connection section",
+);
+assert.match(
+  contextBudgetConnectionSectionSource,
+  /\{contextBudget && <ContextBudgetIndicator budget=\{contextBudget\} \/>\}/u,
+  "Game connection settings must show measured context usage",
 );
 for (const [name, source] of [
   ["desktop connection switcher", quickConnectionSwitcherSource],

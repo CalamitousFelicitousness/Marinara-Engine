@@ -2,7 +2,15 @@
 // TTS Service — Server-proxied audio playback
 // ──────────────────────────────────────────────
 import { TTS_DIALOGUE_PAUSE_MAX_SECONDS } from "@marinara-engine/shared";
+import { api } from "./api-client";
 import { getOrCreateCachedTTSAudioBlob } from "./tts-audio-cache";
+import {
+  PASSTHROUGH_TTS_SYNTHESIS_POLICY,
+  runWithTTSSynthesisPolicy,
+  TTSSynthesisError,
+  ttsFailureKindFromResponse,
+  type TTSSynthesisPolicy,
+} from "./tts-synthesis-policy";
 
 export type TTSState = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -21,6 +29,8 @@ export interface TTSSpeakOptions {
   abortCacheGenerationOnAbort?: boolean;
   volume?: number;
   muted?: boolean;
+  /** Absent means no client-side timeout and no retries, the behaviour before tuning existed. */
+  policy?: TTSSynthesisPolicy;
 }
 
 export interface TTSSpeakRequest {
@@ -34,8 +44,13 @@ export interface TTSSpeakRequest {
   activeId?: string | null;
 }
 
-export interface TTSSpeakSequenceOptions extends Pick<TTSSpeakOptions, "signal" | "throwOnError" | "volume" | "muted"> {
+export interface TTSSpeakSequenceOptions extends Pick<
+  TTSSpeakOptions,
+  "signal" | "throwOnError" | "volume" | "muted" | "policy"
+> {
   progressive?: boolean;
+  /** Requests kept in flight ahead of playback in progressive mode. 1 is serial. */
+  concurrency?: number;
   onChunkStart?: (request: TTSSpeakRequest, index: number) => void;
   onChunkEnd?: (request: TTSSpeakRequest, index: number) => void;
 }
@@ -152,6 +167,10 @@ async function playWhenAvailable(audio: HTMLAudioElement, signal?: AbortSignal):
       await audio.play();
       return;
     } catch (err) {
+      // play() rejects with AbortError when a pause interrupts the start, but
+      // the element can still be running. Treating that as a failure would drop
+      // it from tracking and leave a clip nothing can stop (#2647).
+      if (!audio.paused && !audio.ended) return;
       if (!shouldWaitForPlaybackReturn(err)) throw err;
       waitBeforeRetry = true;
     }
@@ -160,6 +179,14 @@ async function playWhenAvailable(audio: HTMLAudioElement, signal?: AbortSignal):
 
 class TTSService {
   private audio: HTMLAudioElement | null = null;
+  /**
+   * Every element handed to play(), not just the current one. Interleaved
+   * playback attempts can orphan an earlier element off the single ref, after
+   * which nothing can pause it and clips overlap (#2647).
+   */
+  private activeAudios = new Set<HTMLAudioElement>();
+  /** Consecutive failed sequences, so a dead engine stops being retried forever. */
+  private consecutiveFailures = 0;
   private currentObjectUrl: string | null = null;
   private abortController: AbortController | null = null;
   private state: TTSState = "idle";
@@ -196,24 +223,22 @@ class TTSService {
     this.listeners.forEach((fn) => fn(this.state, this.activeId));
   }
 
-  private async readError(res: Response): Promise<string> {
-    const fallback = `TTS request failed (${res.status})`;
-    const raw = await res.text().catch(() => "");
-    if (!raw.trim()) return fallback;
-
-    try {
-      const data = JSON.parse(raw) as Record<string, unknown>;
-      const error = typeof data.error === "string" ? data.error : "";
-      const detail = typeof data.detail === "string" ? data.detail : "";
-      const message = typeof data.message === "string" ? data.message : "";
-      return [error || message || fallback, detail].filter(Boolean).join(": ");
-    } catch {
-      return `${fallback}: ${raw.slice(0, 500)}`;
-    }
-  }
-
   private isCurrentSequence(sequence: number): boolean {
     return this.sequence === sequence;
+  }
+
+  /**
+   * Report a failure to the user. Loaded lazily and skipped outside a browser so
+   * the regression suite, which drives this engine under Node, stays silent.
+   */
+  private notifyFailure(error: Error): void {
+    if (typeof document === "undefined") return;
+    if (error.name === "AbortError") return;
+    void import("./tts-error-notice")
+      .then(({ notifyTTSFailure }) => notifyTTSFailure(error))
+      .catch(() => {
+        /* the toast is best-effort; the button state already reports the failure */
+      });
   }
 
   // ── Playback ──────────────────────────────────
@@ -242,25 +267,66 @@ class TTSService {
   }
 
   async generateAudio(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
-    const res = await fetch("/api/tts/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        ...(options.speaker ? { speaker: options.speaker } : {}),
-        ...(options.tone ? { tone: options.tone } : {}),
-        ...(options.voice ? { voice: options.voice } : {}),
-        // "" is meaningful (legacy-blob sentinel), so gate on undefined.
-        ...(options.audioConnectionId !== undefined ? { audioConnectionId: options.audioConnectionId } : {}),
-      }),
-      signal: options.signal,
+    const body = JSON.stringify({
+      text,
+      ...(options.speaker ? { speaker: options.speaker } : {}),
+      ...(options.tone ? { tone: options.tone } : {}),
+      ...(options.voice ? { voice: options.voice } : {}),
+      // "" is meaningful (legacy-blob sentinel), so gate on undefined.
+      ...(options.audioConnectionId !== undefined ? { audioConnectionId: options.audioConnectionId } : {}),
     });
 
-    if (!res.ok) {
-      throw new Error(await this.readError(res));
-    }
+    return runWithTTSSynthesisPolicy(
+      async (signal) => {
+        // api.raw rather than a bare fetch: it carries the CSRF header, the
+        // admin secret, and the no-store policy every other request gets.
+        const res = await api.raw("/tts/speak", { method: "POST", body, signal });
+        if (!res.ok) throw await this.synthesisError(res);
+        return res.blob();
+      },
+      options.policy ?? PASSTHROUGH_TTS_SYNTHESIS_POLICY,
+      options.signal,
+    );
+  }
 
-    return res.blob();
+  /** Reads the server's machine-readable code so the UI need not match prose. */
+  private async synthesisError(res: Response): Promise<TTSSynthesisError> {
+    const raw = await res.text().catch(() => "");
+    let code: unknown;
+    let message = `TTS request failed (${res.status})`;
+    if (raw.trim()) {
+      try {
+        const data = JSON.parse(raw) as Record<string, unknown>;
+        code = data.code;
+        const error = typeof data.error === "string" ? data.error : "";
+        const detail = typeof data.detail === "string" ? data.detail : "";
+        const reported = typeof data.message === "string" ? data.message : "";
+        message = [error || reported || message, detail].filter(Boolean).join(": ");
+      } catch {
+        message = `${message}: ${raw.slice(0, 500)}`;
+      }
+    }
+    return new TTSSynthesisError(message, ttsFailureKindFromResponse(code), res.status);
+  }
+
+  /**
+   * Synthesize one clip without touching playback state.
+   *
+   * Callers that keep their own cache (the game surfaces bound object URLs in
+   * their own maps) pass no cacheKey, which skips the shared IndexedDB store
+   * rather than storing every line twice.
+   */
+  synthesize(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
+    return this.getAudioBlob(text, options);
+  }
+
+  /** Consecutive failed sequences. Autoplay stops trying once an engine is clearly down. */
+  getConsecutiveFailureCount(): number {
+    return this.consecutiveFailures;
+  }
+
+  resetFailureCount(): void {
+    this.consecutiveFailures = 0;
   }
 
   private async getAudioBlob(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
@@ -316,6 +382,7 @@ class TTSService {
     const audio = new Audio(objectUrl);
     this.applyPlaybackOptions(audio, options);
     this.audio = audio;
+    this.activeAudios.add(audio);
 
     audio.onended = () => {
       if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
@@ -337,6 +404,7 @@ class TTSService {
     try {
       await playWhenAvailable(audio, abortController.signal);
       if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+      this.consecutiveFailures = 0;
       this.setState("playing", id ?? null);
     } catch (err) {
       if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
@@ -387,6 +455,7 @@ class TTSService {
           speaker: request.speaker,
           tone: request.tone,
           voice: request.voice,
+          policy: options.policy,
           signal: abortController.signal,
           cacheKey: request.cacheKey,
           cacheAliases: request.cacheAliases,
@@ -412,6 +481,7 @@ class TTSService {
       const audio = new Audio(objectUrl);
       this.applyPlaybackOptions(audio, options);
       this.audio = audio;
+      this.activeAudios.add(audio);
       const runChunkStart = () => {
         try {
           options.onChunkStart?.(request, index);
@@ -476,6 +546,7 @@ class TTSService {
         void playWhenAvailable(audio, abortController.signal)
           .then(() => {
             if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+            this.consecutiveFailures = 0;
             runChunkStart();
             this.setState("playing", request.activeId ?? id ?? null);
           })
@@ -485,16 +556,38 @@ class TTSService {
 
     const handleFetchFailure = (error: Error) => {
       this.lastError = error.message;
+      this.consecutiveFailures += 1;
       console.warn("[TTS] Audio chunk generation failed; stopping the sequence:", error);
       this.setState("error");
+      this.notifyFailure(error);
     };
 
     try {
       if (options.progressive) {
-        let nextFetch: Promise<ChunkResult> | null = fetchChunk(playableRequests[0]!, 0);
+        const lookahead = Math.max(1, Math.trunc(options.concurrency ?? 1));
+        const inFlight = new Map<number, Promise<ChunkResult>>();
+        const arrived = new Set<number>();
+        // fetchChunk resolves rather than rejects, so queued-but-unread entries
+        // can never surface as unhandled rejections when the sequence ends early.
+        const topUp = (fromIndex: number) => {
+          for (let i = fromIndex; i < playableRequests.length && inFlight.size < lookahead; i += 1) {
+            if (inFlight.has(i)) continue;
+            const index = i;
+            inFlight.set(
+              index,
+              fetchChunk(playableRequests[index]!, index).then((result) => {
+                arrived.add(index);
+                return result;
+              }),
+            );
+          }
+        };
+        topUp(0);
 
         for (let index = 0; index < playableRequests.length; index += 1) {
-          const result = await nextFetch!;
+          const result = await inFlight.get(index)!;
+          inFlight.delete(index);
+          arrived.delete(index);
           if (!this.isCurrentSequence(sequence)) return;
 
           if (!result.ok) {
@@ -515,12 +608,16 @@ class TTSService {
             return;
           }
 
-          nextFetch = index + 1 < playableRequests.length ? fetchChunk(playableRequests[index + 1]!, index + 1) : null;
+          topUp(index + 1);
 
           try {
             await playBlob(result.blob, result.request, result.index);
             await waitForPlaybackDelay(result.request.pauseAfterMs, abortController.signal);
-            if (nextFetch && this.isCurrentSequence(sequence)) {
+            // Announce loading only while the next clip is still coming.
+            // Flipping unconditionally flashed a spinner between chunks the
+            // lookahead had already fetched.
+            const waitingOnNext = inFlight.has(index + 1) && !arrived.has(index + 1);
+            if (waitingOnNext && this.isCurrentSequence(sequence)) {
               this.setState("loading", id ?? null);
             }
           } catch (err) {
@@ -601,12 +698,17 @@ class TTSService {
     this.abortController = null;
     this.clearPlaybackOptions();
 
-    if (this.audio) {
-      this.audio.pause();
-      this.audio.onended = null;
-      this.audio.onerror = null;
-      this.audio = null;
+    for (const audio of this.activeAudios) {
+      try {
+        audio.pause();
+      } catch {
+        /* an element mid-start can throw; it is being discarded anyway */
+      }
+      audio.onended = null;
+      audio.onerror = null;
     }
+    this.activeAudios.clear();
+    this.audio = null;
 
     this.cleanup();
     this.lastError = null;

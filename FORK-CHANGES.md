@@ -867,6 +867,46 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### The TTS engine retries, deadlines, and reports what went wrong
+
+The chat playback engine had no retries: one transient 502 ended the whole sequence, while the game
+engine has shipped two attempts with a 350ms linear backoff for months. It also had no deadline of
+its own, so an engine that accepted the connection and never answered left the button spinning until
+the server gave up. Failures reached the user as a silently flipped button state and a
+`console.warn`; the settings card was the only surface that showed a reason.
+
+`packages/client/src/lib/tts-synthesis-policy.ts` is new and holds the timeout, the retry loop, and
+the failure classifier, so it can be exercised without the playback singleton and the engine's diff
+against upstream stays small. Retries cover timeouts, unreachable hosts, and 5xx; never 4xx, which
+would repeat identically, and never a caller abort. The classifier reads the `code` field `/speak`
+now returns rather than matching English prose. The client deadline is the server's budget plus 15s
+grace so the server's own answer wins the race and the user is told which engine timed out.
+
+Both new knobs are inert unless a caller passes them: the engine defaults to no client deadline and
+no retries. That is what keeps the upstream `tts-source-persistence` assertions true, including the
+serial-generation and stop-after-first-failure ones, with no edit to that file.
+
+`generateAudio` now goes through `api.raw` instead of the one bare `fetch` left in the client, so it
+carries the CSRF header, the admin secret, and the no-store policy every other request gets.
+
+Progressive playback's hardcoded one-chunk lookahead became a bounded ring driven by
+`generationConcurrency`; at 1 it issues exactly the same requests in the same order as before. The
+between-chunk loading flip now only fires while the next clip is genuinely still coming, instead of
+flashing a spinner over a clip the lookahead already had.
+
+The `#2647` orphaned-audio guards are ported from `GameNarration` into the shared engine, which
+never had them: every element handed to `play()` is tracked rather than just the current ref, and a
+`play()` rejection on an element that is actually running is treated as started. Both cases
+otherwise leave a clip nothing can pause.
+
+Failures now raise a localized toast, loaded lazily and only in a browser so the regression suite
+never pulls in sonner. A consecutive-failure counter backs the autoplay circuit breaker; it clears
+as soon as any clip actually plays.
+
+Patches to upstream files: `packages/client/src/lib/tts-service.ts` (the engine itself, the one to
+re-check after a sync) and `packages/client/src/localization/locales/en.json`. Proven by
+`scripts/regressions/tts/tts-synthesis-policy.regression.ts`.
+
 ### TTS honours a configured timeout, stops on disconnect, and reaches localhost
 
 The provider request budget was the literal `AbortSignal.timeout(60_000)` in the `/speak` handler.

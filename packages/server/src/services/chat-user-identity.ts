@@ -55,7 +55,7 @@ export async function resolveChatUserIdentity(
       source: "character",
       id: row.id,
       name: data.name,
-      phoneticName: stringValue(data.phoneticName),
+      phoneticName: stringValue(extensions.phoneticName),
       description: data.description,
       personality: data.personality,
       scenario: data.scenario,

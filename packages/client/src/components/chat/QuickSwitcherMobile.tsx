@@ -17,7 +17,7 @@ import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import type { Persona } from "@marinara-engine/shared";
+import type { CharacterGroup, Persona } from "@marinara-engine/shared";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
@@ -67,7 +67,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     () =>
       buildCharacterIdentityGroups(
         characters,
-        (rawCharacterGroups ?? []) as any[],
+        (rawCharacterGroups ?? []) as CharacterGroup[],
         localizeUi("ui.chat.personapicker.ungrouped"),
       ),
     [characters, localizeUi, rawCharacterGroups],
@@ -221,9 +221,13 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     requestAnimationFrame(update);
     const timer = setTimeout(update, 50);
     window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
     return () => {
       clearTimeout(timer);
       window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
     };
   }, [open, tab, expandedGroups, expandedCharacterGroups, showCharacterGroups]);
 
@@ -276,13 +280,8 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         title={
-          activeCharacterId
-            ? localizeUi("ui.chat.quickpersonaswitcher.value1Value2", {
-                value1: parseCharacterDisplayData(
-                  characters.find((character) => character.id === activeCharacterId) ?? { data: {} },
-                ).name,
-                value2: "",
-              })
+          activeCharacterId && characters.find((character) => character.id === activeCharacterId)
+            ? parseCharacterDisplayData(characters.find((character) => character.id === activeCharacterId)!).name
             : localizeUi("ui.chat.quickswitchermobile.quickSwitcher")
         }
         className={cn(
@@ -305,7 +304,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
             className="fixed z-[9999] flex min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={
               pos
-                ? { left: pos.left, top: pos.top, width: pos.width, height: pos.maxHeight }
+                ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }
                 : { visibility: "hidden" as const }
             }
           >

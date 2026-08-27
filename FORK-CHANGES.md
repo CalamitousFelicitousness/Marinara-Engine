@@ -867,6 +867,44 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### TTS has a provider layer instead of five parallel ternary chains
+
+All TTS synthesis lived inline in `tts.routes.ts`, where choosing a backend meant five nested
+ternary chains, one each for URL, headers, body, text preparation, and whether to send a speed
+parameter. They were separated by dozens of lines and had to be edited in lockstep, so adding a
+backend meant finding all five. LLM, image, and video generation all have a `services/` layer;
+TTS had none.
+
+`packages/server/src/services/tts/` now holds `BaseTTSProvider`, one file per backend, and a
+`createTTSProvider` switch shaped like `createLLMProvider`. It is deliberately not a plugin
+registry: four backends do not need a registration mechanism, and the switch is the thing a reader
+can follow.
+
+Providers build a request descriptor and perform no I/O. The route makes the single outbound call,
+so the deadline, the abort chain, the URL policy, and the response cap cannot drift apart per
+backend, and request shapes can be asserted without a live server. The whole registry regression is
+plain function calls: no mock servers, no ports, no timers.
+
+Two behaviours were nearly lost in the move and are now pinned by name. A NanoGPT base URL wins over
+the configured source, so an ElevenLabs source pointed at nano-gpt.com sends NanoGPT-shaped
+requests; dispatching on `cfg.source` alone would have broken those setups silently. And format
+forcing keys on the configured source rather than the dispatched provider, so a saved WAV preference
+never leaks into an ElevenLabs or xAI request. Per-model behaviour (ElevenLabs speed support, OpenAI
+speech instructions, NanoGPT's ElevenLabs-branded models) stays in the providers, which is why the
+shared source table carries none of it.
+
+Voice and model listing stay in `tts.routes.ts`. Their fetchers are pinned by upstream regressions
+that call them directly against live mock servers and read env flags at call time, and moving
+working code purely for symmetry would risk that for no gain.
+
+Every symbol the upstream regression imports is re-exported from `tts.routes.ts`, and every fragment
+it asserts against by source text (the PocketTTS probe body, the config-save cache invalidation
+pair, the extractor debug line) stays physically in place. That is what let roughly 24 helpers and
+the entire dispatch move without editing an upstream-owned test.
+
+Patches to upstream files: `packages/server/src/routes/tts.routes.ts` only; everything else is new.
+Proven by `scripts/regressions/tts/tts-provider-registry.regression.ts`.
+
 ### Chunk size, timeout, retries, and parallelism are settings
 
 The tuning fields existed in the schema but nothing reachable set them. `TTSConfigCard` gains an

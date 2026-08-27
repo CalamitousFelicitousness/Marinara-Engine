@@ -31,6 +31,24 @@ import { encryptApiKey, decryptApiKey } from "../utils/crypto.js";
 import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
+import { createTTSProvider } from "../services/tts/provider-registry.js";
+import {
+  buildElevenLabsTextInput,
+  buildOfficialPocketTtsForm,
+  configuredBaseUrl,
+  elevenLabsApiRoot,
+  elevenLabsHeaders,
+  ELEVENLABS_NON_TTS_MODELS,
+  isNanoGptBaseUrl,
+  openAiHeaders,
+  optionalBearerHeaders,
+  pocketTtsV1BaseUrl,
+} from "../services/tts/tts-endpoints.js";
+
+// Re-exported because scripts/regressions/tts-source-persistence.regression.ts
+// imports them from this module. Keeping the names resolvable here is what lets
+// the provider extraction land without editing an upstream-owned test.
+export { buildElevenLabsTextInput, buildOfficialPocketTtsForm };
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
@@ -63,20 +81,6 @@ const ELEVENLABS_FALLBACK_MODELS = [
 // Source ids and per-source defaults come from TTS_SOURCE_DEFINITIONS in
 // packages/shared/src/constants/tts-sources.ts; both lived here as literals too.
 
-const ELEVENLABS_NON_TTS_MODELS = new Set(["eleven_ttv_v3", "eleven_multilingual_ttv_v2"]);
-const ELEVENLABS_TTS_MODEL_ALIASES: Record<string, string> = {
-  tts_v3: "eleven_v3",
-  elevenlabs_v3: "eleven_v3",
-  elevenlabs_tts_v3: "eleven_v3",
-};
-const NANOGPT_TTS_MODEL_ALIASES: Record<string, string> = {
-  eleven_v3: "Elevenlabs-V3",
-  "elevenlabs-v3": "Elevenlabs-V3",
-  elevenlabs_v3: "Elevenlabs-V3",
-  elevenlabs_tts_v3: "Elevenlabs-V3",
-  eleven_turbo_v2_5: "Elevenlabs-Turbo-V2.5",
-  eleven_flash_v2_5: "Elevenlabs-Turbo-V2.5",
-};
 const NANOGPT_ELEVENLABS_VOICES = [
   "Adam",
   "Alice",
@@ -650,50 +654,12 @@ function resolveTtsTimeoutMs(cfg: TTSConfig): number {
   return Math.min(TTS_TIMEOUT_MS_MAX, Math.max(TTS_TIMEOUT_MS_MIN, Math.round(configured)));
 }
 
-function configuredBaseUrl(cfg: TTSConfig) {
-  const fallbackBase = TTS_SOURCE_DEFINITIONS[cfg.source].defaultBaseUrl;
-  return (cfg.baseUrl || fallbackBase).replace(/\/+$/, "");
-}
-
-function elevenLabsApiRoot(baseUrl: string) {
-  return baseUrl.replace(/\/v\d+$/, "");
-}
-
-function isNanoGptBaseUrl(baseUrl: string) {
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    return hostname === "nano-gpt.com" || hostname.endsWith(".nano-gpt.com");
-  } catch {
-    return baseUrl.toLowerCase().includes("nano-gpt.com");
-  }
-}
-
-function nanoGptApiRoot(baseUrl: string) {
-  return baseUrl.replace(/\/v\d+$/, "");
-}
-
-function nanoGptV1BaseUrl(baseUrl: string) {
-  const root = nanoGptApiRoot(baseUrl);
-  return root.endsWith("/v1") ? root : `${root}/v1`;
-}
-
-function pocketTtsV1BaseUrl(baseUrl: string) {
-  return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
-}
-
 type PocketTtsApiMode = "official" | "openai";
 const pocketTtsApiModeCache = new Map<string, Promise<PocketTtsApiMode>>();
 
 export function resolvePocketTtsApiMode(openApi: unknown): PocketTtsApiMode {
   const paths = asObject(asObject(openApi)?.["paths"]);
   return paths?.["/tts"] ? "official" : "openai";
-}
-
-export function buildOfficialPocketTtsForm(text: string, voice: string): FormData {
-  const form = new FormData();
-  form.append("text", text);
-  if (voice) form.append("voice_url", voice);
-  return form;
 }
 
 async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode> {
@@ -726,32 +692,6 @@ async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode>
 function clearPocketTtsApiModeCache(cfg: TTSConfig): void {
   if (cfg.source !== "pockettts") return;
   pocketTtsApiModeCache.delete(configuredBaseUrl(cfg));
-}
-
-function normalizeElevenLabsTtsModelId(model: string) {
-  const trimmed = model.trim();
-  return ELEVENLABS_TTS_MODEL_ALIASES[trimmed.toLowerCase()] ?? trimmed;
-}
-
-function normalizeNanoGptTtsModelId(model: string) {
-  const trimmed = model.trim();
-  return NANOGPT_TTS_MODEL_ALIASES[trimmed.toLowerCase()] ?? trimmed;
-}
-
-function clampElevenLabsSpeed(speed: number) {
-  return Math.min(1.2, Math.max(0.7, Number.isFinite(speed) ? speed : 1));
-}
-
-function clampXaiSpeed(speed: number) {
-  return Math.min(1.5, Math.max(0.7, Number.isFinite(speed) ? speed : 1));
-}
-
-function elevenLabsModelSupportsSpeed(model: string) {
-  return model.trim().toLowerCase() !== "eleven_v3";
-}
-
-function isNanoGptElevenLabsModel(model: string) {
-  return /^elevenlabs[-_]/i.test(model.trim());
 }
 
 function readString(value: unknown) {
@@ -845,38 +785,6 @@ function mergeVoiceOptions(voiceOptions: VoiceOption[]): VoiceOption[] {
   return [...byId.values()];
 }
 
-function elevenLabsHeaders(apiKey: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) headers["xi-api-key"] = apiKey;
-  return headers;
-}
-
-function openAiHeaders(apiKey: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  return headers;
-}
-
-function nanoGptHeaders(apiKey: string) {
-  const headers = openAiHeaders(apiKey);
-  if (apiKey) headers["x-api-key"] = apiKey;
-  return headers;
-}
-
-function optionalBearerHeaders(apiKey: string) {
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  return headers;
-}
-
-function openAiModelSupportsSpeechInstructions(model: string) {
-  return /^gpt-4o/i.test(model.trim());
-}
-
-function articleForWord(value: string) {
-  return /^[aeiou]/i.test(value.trim()) ? "an" : "a";
-}
-
 function readProviderErrorDetail(body: string): string {
   if (!body.trim()) return "";
 
@@ -952,26 +860,6 @@ export function resolveTTSAudioResponseContentType(contentType: string | null, b
   const declaredContentType = contentType?.trim() ?? "";
   if (isAllowedTTSAudioContentType(declaredContentType)) return declaredContentType;
   return detectTTSAudioMimeType(bytes);
-}
-
-function buildSpeechInstructions(input: { speaker?: string; tone?: string; includeSpeaker?: boolean }) {
-  const parts: string[] = [];
-  if (input.includeSpeaker !== false && input.speaker?.trim()) {
-    parts.push(`Voice the line as ${input.speaker.trim()}.`);
-  }
-  const tone = input.tone?.trim();
-  if (tone) {
-    parts.push(`Use ${articleForWord(tone)} ${tone} tone.`);
-  }
-  if (parts.length === 0) return undefined;
-  parts.push("Do not read speaker names, brackets, markup, or stage directions aloud.");
-  return parts.join(" ");
-}
-
-export function buildElevenLabsTextInput(text: string, tone?: string): string {
-  const normalizedTone = tone?.replace(/[\[\]\r\n]/g, "").trim();
-  if (!normalizedTone || text.trimStart().startsWith(`[${normalizedTone}]`)) return text;
-  return `[${normalizedTone}] ${text}`;
 }
 
 export function resolveTTSRequestVoice(configuredVoice: string, requestedVoice?: string | null): string {
@@ -1418,60 +1306,17 @@ export async function ttsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "ElevenLabs voice is not selected" });
     }
 
-    const base = configuredBaseUrl(cfg);
-    const useNanoGptSpeech = isNanoGptBaseUrl(base);
-    const usePocketTtsSpeech = cfg.source === "pockettts";
-    const pocketTtsApiMode = usePocketTtsSpeech ? await detectPocketTtsApiMode(cfg) : null;
-    const useOfficialPocketTtsSpeech = pocketTtsApiMode === "official";
-    const useXaiSpeech = cfg.source === "xai";
-    const configuredModel = (cfg.model || TTS_SOURCE_DEFINITIONS[cfg.source].defaultModel).trim();
-    const model = useNanoGptSpeech
-      ? normalizeNanoGptTtsModelId(configuredModel)
-      : cfg.source === "elevenlabs"
-        ? normalizeElevenLabsTtsModelId(configuredModel)
-        : configuredModel;
-    const normalizedModel = model.toLowerCase();
-    const nanoGptElevenLabsModel = useNanoGptSpeech && isNanoGptElevenLabsModel(model);
-    if (cfg.source === "elevenlabs" && ELEVENLABS_NON_TTS_MODELS.has(normalizedModel)) {
+    const pocketTtsApiMode = cfg.source === "pockettts" ? await detectPocketTtsApiMode(cfg) : undefined;
+    const provider = createTTSProvider(cfg, { pocketTtsMode: pocketTtsApiMode ?? undefined });
+    const model = provider.resolveModel();
+    if (cfg.source === "elevenlabs" && ELEVENLABS_NON_TTS_MODELS.has(model.toLowerCase())) {
       return reply.status(400).send({
         error: `ElevenLabs model "${model}" cannot generate text-to-speech`,
         detail: `That model is for Text to Voice / voice design. Use "eleven_v3" for Eleven v3 speech, or "eleven_multilingual_v2", "eleven_flash_v2_5", or "eleven_turbo_v2_5" for regular TTS.`,
       });
     }
 
-    const audioFormat = cfg.source === "elevenlabs" || useXaiSpeech ? "mp3" : (cfg.audioFormat ?? "mp3");
-    const includeSpeed = useXaiSpeech
-      ? true
-      : useNanoGptSpeech
-        ? !nanoGptElevenLabsModel
-        : cfg.source === "elevenlabs"
-          ? elevenLabsModelSupportsSpeed(model)
-          : true;
-    const elevenLabsSpeed = clampElevenLabsSpeed(cfg.speed);
-    const xaiSpeed = clampXaiSpeed(cfg.speed);
-    const url = useNanoGptSpeech
-      ? `${nanoGptV1BaseUrl(base)}/audio/speech`
-      : usePocketTtsSpeech
-        ? useOfficialPocketTtsSpeech
-          ? `${base}/tts`
-          : `${pocketTtsV1BaseUrl(base)}/audio/speech`
-        : useXaiSpeech
-          ? `${base}/tts`
-          : cfg.source === "elevenlabs"
-            ? `${elevenLabsApiRoot(base)}/v1/text-to-speech/${encodeURIComponent(requestVoice)}?output_format=mp3_44100_128`
-            : `${base}/audio/speech`;
-    const providerText =
-      cfg.source === "elevenlabs" || nanoGptElevenLabsModel ? buildElevenLabsTextInput(text, tone) : text;
-    const elevenLabsLanguageCode = cfg.elevenLabsLanguageCode?.trim();
-    const includeSpeakerInstructions = cfg.source !== "elevenlabs";
-    const speechInstructions = useNanoGptSpeech
-      ? !nanoGptElevenLabsModel && openAiModelSupportsSpeechInstructions(model)
-        ? buildSpeechInstructions({ speaker, tone, includeSpeaker: includeSpeakerInstructions })
-        : undefined
-      : cfg.source === "openai" && openAiModelSupportsSpeechInstructions(model)
-        ? buildSpeechInstructions({ speaker, tone })
-        : undefined;
-    const pocketTtsForm = useOfficialPocketTtsSpeech ? buildOfficialPocketTtsForm(providerText, requestVoice) : null;
+    const speechRequest = provider.buildSpeechRequest({ text, voice: requestVoice, speaker, tone });
 
     const timeoutMs = resolveTtsTimeoutMs(cfg);
     // Bound to reply.raw, not req.raw: on a plain POST the request message
@@ -1483,62 +1328,14 @@ export async function ttsRoutes(app: FastifyInstance) {
 
     let providerRes: Response;
     try {
-      providerRes = await safeFetch(url, {
+      providerRes = await safeFetch(speechRequest.url, {
         method: "POST",
-        headers: useNanoGptSpeech
-          ? nanoGptHeaders(cfg.apiKey)
-          : useXaiSpeech
-            ? openAiHeaders(cfg.apiKey)
-            : cfg.source === "elevenlabs"
-              ? elevenLabsHeaders(cfg.apiKey)
-              : useOfficialPocketTtsSpeech
-                ? optionalBearerHeaders(cfg.apiKey)
-                : openAiHeaders(cfg.apiKey),
-        body: useNanoGptSpeech
-          ? JSON.stringify({
-              model,
-              input: providerText,
-              voice: requestVoice || "alloy",
-              ...(includeSpeed ? { speed: cfg.speed } : {}),
-              response_format: audioFormat,
-              ...(speechInstructions ? { instructions: speechInstructions } : {}),
-            })
-          : useXaiSpeech
-            ? JSON.stringify({
-                text: providerText,
-                voice_id: requestVoice || "eve",
-                language: "auto",
-                output_format: {
-                  codec: audioFormat,
-                  sample_rate: audioFormat === "mp3" ? 44_100 : 24_000,
-                  ...(audioFormat === "mp3" ? { bit_rate: 128_000 } : {}),
-                },
-                ...(includeSpeed ? { speed: xaiSpeed } : {}),
-              })
-            : cfg.source === "elevenlabs"
-              ? JSON.stringify({
-                  text: providerText,
-                  model_id: model,
-                  ...(elevenLabsLanguageCode ? { language_code: elevenLabsLanguageCode } : {}),
-                  voice_settings: {
-                    stability: cfg.elevenLabsStability,
-                    ...(includeSpeed ? { speed: elevenLabsSpeed } : {}),
-                  },
-                })
-              : useOfficialPocketTtsSpeech
-                ? pocketTtsForm
-                : JSON.stringify({
-                    model,
-                    input: providerText,
-                    voice: requestVoice || (usePocketTtsSpeech ? "alba" : ""),
-                    ...(includeSpeed ? { speed: cfg.speed } : {}),
-                    response_format: audioFormat,
-                    ...(speechInstructions ? { instructions: speechInstructions } : {}),
-                  }),
+        headers: speechRequest.headers,
+        body: speechRequest.body,
         signal: AbortSignal.any([clientGone.signal, AbortSignal.timeout(timeoutMs)]),
         policy: ttsUrlPolicy(cfg.source),
         maxResponseBytes: MAX_TTS_AUDIO_BYTES,
-        decodeCompressedResponse: cfg.source === "elevenlabs",
+        decodeCompressedResponse: speechRequest.decodeCompressedResponse,
       });
     } catch (err: unknown) {
       const name = err instanceof Error ? err.name : "";

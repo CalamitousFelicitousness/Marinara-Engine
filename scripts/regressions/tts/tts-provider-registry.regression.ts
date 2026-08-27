@@ -1,0 +1,241 @@
+// Each TTS backend builds its own request, and the registry picks the backend.
+//
+// This replaced five parallel ternary chains in the /speak handler (URL,
+// headers, body, text preparation, speed inclusion) that had to be edited in
+// lockstep; adding a backend meant finding all five. The chains are reproduced
+// here as assertions so the extraction cannot quietly change a wire format.
+//
+// Providers do no I/O, so these are plain function calls: no mock servers, no
+// ports, no timers.
+
+import assert from "node:assert/strict";
+import { createTTSProvider } from "../../../packages/server/src/services/tts/provider-registry.ts";
+import { ttsConfigSchema, type TTSConfig } from "../../../packages/shared/src/types/tts.js";
+
+const config = (overrides: Partial<TTSConfig> = {}): TTSConfig =>
+  ttsConfigSchema.parse({ enabled: true, apiKey: "secret-key", ...overrides });
+
+const jsonBody = (body: string | FormData): Record<string, unknown> => {
+  assert.equal(typeof body, "string", "expected a JSON body");
+  return JSON.parse(body as string) as Record<string, unknown>;
+};
+
+// ── OpenAI-compatible, which is also how local engines are reached ──
+{
+  const request = createTTSProvider(
+    config({ source: "openai", baseUrl: "http://localhost:8000/v1", model: "tts-1", voice: "alloy" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "alloy" });
+
+  assert.equal(request.url, "http://localhost:8000/v1/audio/speech");
+  assert.equal(request.headers["Authorization"], "Bearer secret-key");
+  assert.equal(request.headers["Content-Type"], "application/json");
+  assert.equal(request.decodeCompressedResponse, false);
+  assert.deepEqual(jsonBody(request.body), {
+    model: "tts-1",
+    input: "Hello.",
+    voice: "alloy",
+    speed: 1,
+    response_format: "mp3",
+  });
+
+  // Speech steering is a per-model capability, not a per-source one.
+  const steered = createTTSProvider(config({ source: "openai", model: "gpt-4o-mini-tts" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "alloy",
+    speaker: "Amy",
+    tone: "excited",
+  });
+  const steeredBody = jsonBody(steered.body);
+  assert.match(String(steeredBody.instructions), /Voice the line as Amy\./u);
+  assert.match(String(steeredBody.instructions), /an excited tone/u, "the article agrees with the tone word");
+  assert.equal(jsonBody(request.body).instructions, undefined, "tts-1 takes no instructions");
+
+  // An empty model falls back to the source default rather than sending "".
+  const defaulted = createTTSProvider(config({ source: "openai", model: "" })).buildSpeechRequest({
+    text: "Hi.",
+    voice: "alloy",
+  });
+  assert.equal(jsonBody(defaulted.body).model, "tts-1");
+
+  // WAV is honoured for sources that do not force a format.
+  const wav = createTTSProvider(config({ source: "openai", audioFormat: "wav" })).buildSpeechRequest({
+    text: "Hi.",
+    voice: "alloy",
+  });
+  assert.equal(jsonBody(wav.body).response_format, "wav");
+}
+
+// ── NanoGPT is a base URL, not a source, and wins over the source ──
+{
+  // This is the behaviour that already shipped: an ElevenLabs source pointed at
+  // nano-gpt.com sends NanoGPT-shaped requests. Dispatching on cfg.source alone
+  // would have broken those setups silently.
+  const request = createTTSProvider(
+    config({ source: "elevenlabs", baseUrl: "https://nano-gpt.com/api/v1", model: "eleven_v3", voice: "Rachel" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "Rachel", tone: "sad" });
+
+  assert.match(
+    request.url,
+    /^https:\/\/nano-gpt\.com\/api\/v1\/audio\/speech$/u,
+    "NanoGPT URL, not the ElevenLabs one",
+  );
+  assert.equal(request.headers["Authorization"], "Bearer secret-key");
+  assert.equal(request.headers["x-api-key"], "secret-key", "NanoGPT wants both auth headers");
+
+  const body = jsonBody(request.body);
+  assert.equal(body.model, "Elevenlabs-V3", "the model id is aliased to NanoGPT's spelling");
+  assert.equal(body.voice, "Rachel");
+  assert.equal(body.speed, undefined, "ElevenLabs-branded models reject a speed parameter");
+  assert.equal(body.input, "[sad] Hello.", "tone rides in the text as a bracketed cue");
+  // Format forcing keys on the configured source, not the dispatched provider,
+  // so a saved WAV preference must not leak into an ElevenLabs-source request.
+  const forcedThroughNanoGpt = createTTSProvider(
+    config({ source: "elevenlabs", baseUrl: "https://nano-gpt.com/api/v1", audioFormat: "wav" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "Rachel" });
+  assert.equal(
+    jsonBody(forcedThroughNanoGpt.body).response_format,
+    "mp3",
+    "an ElevenLabs source is always mp3, even through NanoGPT and even with WAV saved",
+  );
+  assert.equal(body.response_format, "mp3", "an ElevenLabs source is always mp3, even through NanoGPT");
+
+  // A plain OpenAI model through NanoGPT keeps speed and takes no cue.
+  const plain = createTTSProvider(
+    config({ source: "openai", baseUrl: "https://nano-gpt.com/api/v1", model: "tts-1" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "alloy", tone: "sad" });
+  const plainBody = jsonBody(plain.body);
+  assert.equal(plainBody.speed, 1);
+  assert.equal(plainBody.input, "Hello.", "a non-ElevenLabs model gets no bracketed cue");
+  assert.equal(plainBody.voice, "alloy");
+
+  const noVoice = createTTSProvider(
+    config({ source: "openai", baseUrl: "https://nano-gpt.com/api/v1" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "" });
+  assert.equal(jsonBody(noVoice.body).voice, "alloy", "NanoGPT needs some voice; alloy is the historical default");
+}
+
+// ── ElevenLabs: voice in the path, gzipped response ──
+{
+  const request = createTTSProvider(
+    config({
+      source: "elevenlabs",
+      baseUrl: "https://api.elevenlabs.io",
+      model: "eleven_multilingual_v2",
+      elevenLabsStability: 0.4,
+      elevenLabsLanguageCode: "pl",
+      speed: 1.1,
+    }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "voice id/with slash" });
+
+  assert.equal(
+    request.url,
+    "https://api.elevenlabs.io/v1/text-to-speech/voice%20id%2Fwith%20slash?output_format=mp3_44100_128",
+    "the voice is path-encoded",
+  );
+  assert.equal(request.headers["xi-api-key"], "secret-key");
+  assert.equal(request.headers["Authorization"], undefined, "ElevenLabs does not take a bearer token");
+  assert.equal(request.decodeCompressedResponse, true, "ElevenLabs answers gzipped");
+
+  const body = jsonBody(request.body);
+  assert.equal(body.model_id, "eleven_multilingual_v2");
+  assert.equal(body.language_code, "pl");
+  assert.deepEqual(body.voice_settings, { stability: 0.4, speed: 1.1 });
+
+  // eleven_v3 rejects speed; the alias table also maps the old spelling onto it.
+  const v3 = createTTSProvider(config({ source: "elevenlabs", model: "tts_v3" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "Rachel",
+  });
+  const v3Body = jsonBody(v3.body);
+  assert.equal(v3Body.model_id, "eleven_v3", "legacy model spellings are aliased");
+  assert.deepEqual(v3Body.voice_settings, { stability: 0.5 }, "eleven_v3 takes no speed");
+
+  // Speed is clamped into the range ElevenLabs accepts.
+  const fast = createTTSProvider(config({ source: "elevenlabs", speed: 4 })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "Rachel",
+  });
+  assert.equal((jsonBody(fast.body).voice_settings as Record<string, number>).speed, 1.2);
+
+  // The format control is ignored: ElevenLabs always returns mp3.
+  const forced = createTTSProvider(config({ source: "elevenlabs", audioFormat: "wav" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "Rachel",
+  });
+  assert.match(forced.url, /output_format=mp3_44100_128/u);
+}
+
+// ── PocketTTS: two wire formats behind one source ──
+{
+  const official = createTTSProvider(config({ source: "pockettts", baseUrl: "http://localhost:8000" }), {
+    pocketTtsMode: "official",
+  }).buildSpeechRequest({ text: "Hello.", voice: "alba" });
+
+  assert.equal(official.url, "http://localhost:8000/tts");
+  assert.ok(official.body instanceof FormData, "the official server takes multipart form data");
+  assert.deepEqual(Object.fromEntries((official.body as FormData).entries()), {
+    text: "Hello.",
+    voice_url: "alba",
+  });
+  assert.equal(official.headers["Content-Type"], undefined, "the boundary must be left to the runtime");
+
+  const wrapper = createTTSProvider(config({ source: "pockettts", baseUrl: "http://localhost:8000" }), {
+    pocketTtsMode: "openai",
+  }).buildSpeechRequest({ text: "Hello.", voice: "" });
+
+  assert.equal(wrapper.url, "http://localhost:8000/v1/audio/speech");
+  assert.equal(jsonBody(wrapper.body).voice, "alba", "the wrapper needs a voice; alba is PocketTTS's default");
+  // The schema's model default is "tts-1" for every source, so a saved config
+  // carries whatever it carries; only a blank field falls back per source.
+  const blankModel = createTTSProvider(config({ source: "pockettts", model: "" }), {
+    pocketTtsMode: "openai",
+  }).buildSpeechRequest({ text: "Hello.", voice: "alba" });
+  assert.equal(jsonBody(blankModel.body).model, "pocket-tts", "a blank model takes the source default");
+
+  // An unprobed config must not accidentally pick the multipart shape.
+  const unprobed = createTTSProvider(config({ source: "pockettts" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "alba",
+  });
+  assert.equal(typeof unprobed.body, "string", "without a probe result the OpenAI-compatible shape is assumed");
+}
+
+// ── xAI: its own body shape ──
+{
+  const request = createTTSProvider(
+    config({ source: "xai", baseUrl: "https://api.x.ai/v1", speed: 3 }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "" });
+
+  assert.equal(request.url, "https://api.x.ai/v1/tts");
+  const body = jsonBody(request.body);
+  assert.equal(body.voice_id, "eve", "xAI needs a voice id; eve is the default");
+  assert.equal(body.language, "auto");
+  assert.deepEqual(body.output_format, { codec: "mp3", sample_rate: 44_100, bit_rate: 128_000 });
+  assert.equal(body.speed, 1.5, "speed is clamped into xAI's range");
+  assert.equal(body.text, "Hello.");
+
+  // xAI always returns mp3, so a saved WAV preference must not reach it.
+  const forcedWav = createTTSProvider(config({ source: "xai", audioFormat: "wav" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "eve",
+  });
+  assert.deepEqual(
+    jsonBody(forcedWav.body).output_format,
+    { codec: "mp3", sample_rate: 44_100, bit_rate: 128_000 },
+    "xAI is always mp3 regardless of the saved audio format",
+  );
+}
+
+// ── Trailing slashes never produce a double slash ──
+for (const [source, expected] of [
+  ["openai", "https://example.test/v1/audio/speech"],
+  ["xai", "https://example.test/v1/tts"],
+] as const) {
+  const request = createTTSProvider(config({ source, baseUrl: "https://example.test/v1///" })).buildSpeechRequest({
+    text: "Hello.",
+    voice: "alloy",
+  });
+  assert.equal(request.url, expected, `${source}: a trailing slash must not survive into the URL`);
+}
+
+console.info("TTS provider registry regression passed.");

@@ -9,6 +9,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Simplified the quick Persona switcher to one rounded character disclosure with folder artwork and viewport-safe scrolling.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.
+- Preserved historical user names and portraits across identity switches and moved the character picker toggle to Advanced Message Tools.
 
 ### Added
 

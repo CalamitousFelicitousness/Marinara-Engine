@@ -1021,6 +1021,18 @@ export async function chatsRoutes(app: FastifyInstance) {
       : null;
     const identityChanged =
       identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
+    if (identityChanged && identityBefore) {
+      const previousSnapshot = await buildPersonaSnapshotForChat(app, existing);
+      if (previousSnapshot) {
+        const messages = await storage.listMessages(req.params.id);
+        for (const message of messages) {
+          if (message.role !== "user") continue;
+          const extra = parseExtra(message.extra);
+          if (extra.personaSnapshot) continue;
+          await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
+        }
+      }
+    }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
     if (data.characterIds !== undefined) {
       const previousIds = resolveChatCharacterIds(existing.characterIds);

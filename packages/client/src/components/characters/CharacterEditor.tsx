@@ -1542,6 +1542,16 @@ function ConvoTab({
   const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
   const currentCharacterIdRef = useRef(characterId);
   currentCharacterIdRef.current = characterId;
+  const currentConvoProfileDraft = {
+    name: formData.name,
+    description: formData.description,
+    personality: formData.personality,
+    scenario: formData.scenario,
+    backstory: (ext.backstory as string) ?? "",
+    appearance: (ext.appearance as string) ?? "",
+  };
+  const currentConvoProfileDraftRef = useRef(currentConvoProfileDraft);
+  currentConvoProfileDraftRef.current = currentConvoProfileDraft;
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The schedule is runtime state, not card content, so it saves on its own
   // rather than through the editor form. Routing it through `updateExtension`
@@ -1584,20 +1594,22 @@ function ConvoTab({
         generateConvoProfile={
           characterId
             ? (target) =>
-                generateCharacterConvoProfile
-                  .mutateAsync({
-                    id: characterId,
-                    target,
-                    draft: {
-                      name: formData.name,
-                      description: formData.description,
-                      personality: formData.personality,
-                      scenario: formData.scenario,
-                      backstory: (ext.backstory as string) ?? "",
-                      appearance: (ext.appearance as string) ?? "",
-                    },
-                  })
-                  .then((result) => (currentCharacterIdRef.current === characterId ? result : null))
+                (() => {
+                  const draft = currentConvoProfileDraftRef.current;
+                  return generateCharacterConvoProfile
+                    .mutateAsync({
+                      id: characterId,
+                      target,
+                      draft,
+                    })
+                    .then((result) => {
+                      const currentDraft = currentConvoProfileDraftRef.current;
+                      const draftUnchanged = Object.keys(draft).every(
+                        (key) => draft[key as keyof typeof draft] === currentDraft[key as keyof typeof currentDraft],
+                      );
+                      return currentCharacterIdRef.current === characterId && draftUnchanged ? result : null;
+                    });
+                })()
             : undefined
         }
         imageInstructions={(ext.conversationImageInstructions as string) ?? ""}

@@ -26,6 +26,7 @@ import {
 import { pixelizeImage, PixelizeInputError } from "../services/image/pixelize.service.js";
 import { clampByte, clampUnit, getSharp, type RgbColor } from "../services/image/sharp-runtime.js";
 import { logger } from "../lib/logger.js";
+import { SPRITE_RENAME_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 async function getSpriteCapabilities() {
   try {
@@ -1694,6 +1695,7 @@ export async function spritesRoutes(app: FastifyInstance) {
    */
   app.patch<{ Params: { characterId: string; expression: string } }>(
     "/:characterId/:expression",
+    { config: { rateLimit: SPRITE_RENAME_RATE_LIMIT } },
     async (req, reply) => {
       const { characterId, expression } = req.params;
       if (characterId.includes("..") || characterId.includes("/") || characterId.includes("\\")) {

@@ -1037,11 +1037,7 @@ function renderWithSpeakerTags(
   speakerColorMap: Map<string, string> | undefined,
   boldDialogue = true,
 ): ReactNode[] {
-  // The server repairs `<speaker name="X">` before persisting, but not before
-  // streaming; repeat it here so dialogue colours as it arrives rather than
-  // snapping when the turn finalizes, and so messages stored before that
-  // repair shipped still colour.
-  const text = normalizeSpeakerTags(rawText);
+  const text = rawText;
   const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
 
   if (!SPEAKER_TAG_RE.test(text)) {
@@ -1565,7 +1561,13 @@ function renderContent(
   // chat-wide index lets merged group replies fall back to whichever chat
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
-  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
+  // Repair the attribute spelling before anything else looks at the text. The
+  // strip below and the HTML-path replace further down both match the canonical
+  // form only, so an unrepaired `<speaker name="X">` survives the strip, trips
+  // HTML_TAG_RE, and reaches DOMPurify as an unknown element.
+  const normalized = normalizeSpeakerTags(
+    decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat))),
+  );
 
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");

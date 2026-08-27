@@ -101,6 +101,29 @@ assert.ok(unwrapAt > 0, "could not find the individual-mode speaker unwrap");
 assert.ok(normalizeAt < unwrapAt, "normalization must run before the unwrap that expects a canonical tag");
 
 // Client: covers the streaming window and messages stored before this shipped.
-assert.match(chatMessage, /const text = normalizeSpeakerTags\(rawText\);/u, "the renderer repairs before parsing");
+// Placement is the whole point. Messages can render down an HTML path guarded by
+// HTML_TAG_RE, and the strip that hides speaker tags from that test matches the
+// canonical form only. Repairing later than this leaves `<speaker name="X">` to
+// trip the test and reach DOMPurify as an unknown element.
+// Anchored inside renderContent: a bare indexOf finds the import on line 5,
+// which precedes everything and makes the ordering check unfalsifiable.
+const renderContentAt = chatMessage.indexOf("function renderContent(");
+assert.ok(renderContentAt > 0, "could not find renderContent");
+const normalizeAtClient = chatMessage.indexOf("normalizeSpeakerTags(", renderContentAt);
+const speakerStripAt = chatMessage.indexOf("// Strip speaker tags before HTML detection");
+const htmlTestAt = chatMessage.indexOf("const isHtmlPath = HTML_TAG_RE.test(");
+assert.ok(speakerStripAt > renderContentAt && htmlTestAt > renderContentAt, "could not find the HTML detection guard");
+assert.ok(normalizeAtClient > renderContentAt, "renderContent itself must repair the text");
+assert.ok(
+  normalizeAtClient < speakerStripAt && normalizeAtClient < htmlTestAt,
+  "normalization must run before the speaker strip and the HTML-path test",
+);
+// That strip and the HTML path's own replace both match canonical only, so the
+// repair above is what keeps them correct. Pin that they stay canonical-only
+// rather than growing their own copy of the tolerance.
+assert.ok(
+  chatMessage.includes('normalized.replace(/<\\/?speaker(?:="[^"]*")?>/g, "")'),
+  "the HTML-detection strip must stay canonical-only, relying on the repair above",
+);
 
 console.log("speaker-tag-normalization regression passed.");

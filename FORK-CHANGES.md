@@ -885,9 +885,17 @@ Two call sites, for different reasons:
 - `generate.routes.ts`, immediately before the individual-mode unwrap, which itself reads a
   canonical tag, and therefore before the response is persisted. This is what fixes storage, and so
   every server and client consumer of stored text.
-- `ChatMessage.tsx`'s `renderWithSpeakerTags`. The server repairs before persisting but not before
-  streaming, so without this the dialogue arrives uncoloured and snaps when the turn finalizes. It
-  also colours messages stored before this shipped.
+- `ChatMessage.tsx`'s `renderContent`, above everything else it does. The server repairs before
+  persisting but not before streaming, so without this the dialogue arrives uncoloured and snaps
+  when the turn finalizes. It also colours messages stored before this shipped.
+
+  Placement is load-bearing, and the first attempt got it wrong by putting the repair inside
+  `renderWithSpeakerTags`. Messages can render down an HTML path, and the strip that hides speaker
+  tags from `HTML_TAG_RE` matches the canonical form only. An unrepaired `<speaker name="X">`
+  therefore survived that strip, tripped the HTML test, and reached DOMPurify as an unknown element
+  -- and `renderWithSpeakerTags` only runs on the markdown path, so the repair never executed at
+  all. That is also the reason the canonical spelling is malformed on purpose: it is how a speaker
+  tag is told apart from the HTML this app genuinely renders in messages.
 
 A name containing a double quote is deliberately left alone: the canonical form matches `[^"]*`, so
 it cannot represent one, and rewriting would emit a tag that truncates at the quote.

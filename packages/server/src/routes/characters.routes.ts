@@ -921,7 +921,6 @@ export async function charactersRoutes(app: FastifyInstance) {
     return storage.listSummariesByIds(ids);
   });
 
-  /** Generates an editable Conversation profile field from character-card data. */
   app.post<{
     Params: { id: string };
     Body: {
@@ -1003,6 +1002,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Generates an editable Conversation profile field from character-card data. */
   app.post<{
     Params: { id: string };
     Body: {

@@ -2865,17 +2865,32 @@ export function HomeBrowserHub({
                                 {characterOfDay.name}
                               </h3>
                               <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted-foreground)] sm:line-clamp-3">
-                                {characterOfDay.comment ||
+                                {characterOfDay.summary ||
+                                  characterOfDay.comment ||
                                   characterOfDay.description ||
                                   t("home.characterOfDay.fallback")}
                               </p>
-                              <button
-                                type="button"
-                                onClick={() => useUIStore.getState().openCharacterDetail(characterOfDay.id)}
-                                className="mt-2 inline-flex min-h-8 items-center text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
-                              >
-                                {t("home.characterOfDay.open")}
-                              </button>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    useUIStore.getState().openModal("start-character-chat", {
+                                      characterId: characterOfDay.id,
+                                      characterName: characterOfDay.name,
+                                    })
+                                  }
+                                  className="inline-flex min-h-8 items-center rounded-md bg-[var(--home-module-accent)] px-2.5 text-xs font-bold text-[var(--primary-foreground)] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
+                                >
+                                  {t("home.characterOfDay.startChat")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => useUIStore.getState().openCharacterDetail(characterOfDay.id)}
+                                  className="inline-flex min-h-8 items-center text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
+                                >
+                                  {t("home.characterOfDay.open")}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ) : (

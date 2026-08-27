@@ -16584,6 +16584,7 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
     data: {
       data: {
         name: `Mobile Character of the Day ${Date.now()}`,
+        summary: "A concise saved summary for the daily encounter.",
         description:
           "A deliberately long character summary that verifies the mobile card keeps its portrait and copy comfortably inside the widget.",
       },
@@ -16602,6 +16603,14 @@ test("Character of the Day stays vertically centered inside its mobile widget", 
 
     const characterWidget = page.locator('[data-home-widget-id="character"]');
     await expect(characterWidget).toBeVisible({ timeout: 30_000 });
+    await expect(
+      characterWidget.getByText("A concise saved summary for the daily encounter.", { exact: true }),
+    ).toBeVisible();
+    await expect(characterWidget.getByRole("button", { name: "Start a chat", exact: true })).toBeVisible();
+    await expect(characterWidget.getByRole("button", { name: "View character", exact: true })).toBeVisible();
+    await characterWidget.getByRole("button", { name: "Start a chat", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Choose a chat mode" })).toBeVisible();
+    await page.keyboard.press("Escape");
     const characterLayout = await characterWidget.evaluate((element) => {
       const content = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayContent"]');
       const avatar = element.querySelector<HTMLElement>('[data-component="HomeBrowserHub.CharacterOfDayAvatar"]');

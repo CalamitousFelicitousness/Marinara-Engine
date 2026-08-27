@@ -63,6 +63,7 @@ export async function resolveChatUserIdentity(
       nameColor: stringValue(extensions.nameColor) || null,
       dialogueColor: stringValue(extensions.dialogueColor) || null,
       boxColor: stringValue(extensions.boxColor) || null,
+      personaStats: extensions.rpgStats ? { enabled: true, bars: [], rpgStats: extensions.rpgStats } : undefined,
     };
   }
 

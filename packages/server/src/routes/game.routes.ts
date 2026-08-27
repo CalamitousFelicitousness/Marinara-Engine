@@ -185,6 +185,7 @@ import {
   TERRAIN_DATA,
   extractLeadingThinkingBlocks,
   type RPGStatsConfig,
+  speakerOpenTagRegex,
 } from "@marinara-engine/shared";
 import {
   mergeCustomParameters,
@@ -4594,7 +4595,7 @@ function extractNarrationNpcCandidates(narration: string, excludedNames: string[
   const candidates = new Map<string, SceneAssetNpcCandidate>();
   const excluded = new Set(excludedNames.map(normalizeJournalMatch));
   const patterns = [
-    /<speaker="([^"]+)">/gi,
+    speakerOpenTagRegex(),
     new RegExp(`(?:^|\\n)\\s*([A-Z][A-Za-z'’-]+(?:\\s+[A-Z][A-Za-z'’-]+)?)\\s*:\\s*["“«「]`, "gm"),
     new RegExp(
       `\"[^\"]+\"[,.]?\\s+([A-Z][A-Za-z'’-]+(?:\\s+[A-Z][A-Za-z'’-]+)?)\\s+${NARRATION_NPC_SPEECH_VERB_PATTERN}\\b`,

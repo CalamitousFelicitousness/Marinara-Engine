@@ -1,4 +1,11 @@
-import { decodeEncodedSpeakerTags, type TTSConfig } from "@marinara-engine/shared";
+import {
+  decodeEncodedSpeakerTags,
+  hasSpeakerTag,
+  speakerBodyFromMatch,
+  speakerNameFromMatch,
+  speakerTaggedSpanRegex,
+  type TTSConfig,
+} from "@marinara-engine/shared";
 import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "./dialogue-quotes";
 
 export interface TTSUtterance {
@@ -386,7 +393,7 @@ export function buildTTSVoiceRequests(
   resolveCharacterIdForSpeaker?: (speaker?: string | null) => string | null | undefined,
 ): TTSVoiceRequest[] {
   const normalized = decodeEncodedSpeakerTags(text);
-  const hasSpeakerTags = /<speaker="[^"]*">/i.test(normalized);
+  const hasSpeakerTags = hasSpeakerTag(normalized);
   const shouldExtractUtterances = config.dialogueOnly || hasSpeakerTags;
   const utterances =
     hasSpeakerTags && !config.dialogueOnly
@@ -440,7 +447,7 @@ export function extractDialogueUtterances(text: string, fallbackSpeaker?: string
   const speechText = stripTTSMarkup(text, true);
   const utterances: TTSUtterance[] = [];
   utterances.push(...extractSpeakerTaggedUtterances(speechText, fallbackSpeaker, false));
-  const untaggedSpeechText = speechText.replace(/<speaker="[^"]*">[\s\S]*?<\/speaker>/gi, " ");
+  const untaggedSpeechText = speechText.replace(speakerTaggedSpanRegex(), " ");
 
   const vnLineRe = /^\s*(?:Dialogue\s*)?\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
   for (const rawLine of untaggedSpeechText.split(/\r?\n/)) {
@@ -482,7 +489,7 @@ function extractSpeakerTaggedUtterances(
   includeNarration = false,
 ): TTSUtterance[] {
   const utterances: TTSUtterance[] = [];
-  const speakerTagRe = /<speaker="([^"]*)">([\s\S]*?)<\/speaker>/gi;
+  const speakerTagRe = speakerTaggedSpanRegex();
   let speakerTagMatch: RegExpExecArray | null;
   let lastIndex = 0;
 
@@ -495,8 +502,8 @@ function extractSpeakerTaggedUtterances(
   while ((speakerTagMatch = speakerTagRe.exec(text)) !== null) {
     addNarration(text.slice(lastIndex, speakerTagMatch.index));
 
-    const speaker = speakerTagMatch[1]?.trim() || fallbackSpeaker || undefined;
-    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes((speakerTagMatch[2] ?? "").trim()));
+    const speaker = speakerNameFromMatch(speakerTagMatch) || fallbackSpeaker || undefined;
+    const spoken = cleanTTSInputText(stripSurroundingDialogueQuotes(speakerBodyFromMatch(speakerTagMatch).trim()));
     if (spoken) {
       utterances.push({ text: spoken, speaker });
     }

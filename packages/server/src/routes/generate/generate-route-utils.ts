@@ -25,6 +25,8 @@ import {
   type WrapFormat,
   mergeTrackerExtras,
   readCharacterExtras,
+  stripSpeakerTags,
+  hasSpeakerTag,
 } from "@marinara-engine/shared";
 import { wrapContent } from "../../services/prompt/format-engine.js";
 import {
@@ -1374,15 +1376,12 @@ export function injectIntoOutputFormatOrLastUser(
  */
 export function stripSpeakerTagsExceptLastAssistant(messages: SimpleMessage[]): void {
   const lastAssistantIdx = findLastIndex(messages, "assistant");
-  const speakerCloseRegex = /<\/speaker>/g;
 
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i]!;
-    if (message.role === "system" || i === lastAssistantIdx || !message.content.includes("<speaker=")) continue;
+    if (message.role === "system" || i === lastAssistantIdx || !hasSpeakerTag(message.content)) continue;
 
-    const content = message.content
-      .replace(/<speaker="[^"]*">/g, "")
-      .replace(speakerCloseRegex, "")
+    const content = stripSpeakerTags(message.content)
       .replace(/^\s*\n/gm, "")
       .trim();
     messages[i] = { ...message, content };

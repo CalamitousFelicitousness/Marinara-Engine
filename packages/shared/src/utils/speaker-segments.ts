@@ -1,12 +1,19 @@
 // ──────────────────────────────────────────────
 // Speaker-segment parsing for merged multi-character conversation replies.
 // A merged reply carries several characters' turns in one message, either as
-// <speaker="Name">...</speaker> tags or as `Name: text` / `Name:\ntext` prefixes. The client
+// <speaker name="Name">...</speaker> tags or as `Name: text` / `Name:\ntext` prefixes. The client
 // splits on these for the grouped display; the server splits on them to attribute
 // reactions to the exact part they were aimed at. Shared so the two sides can
 // never drift: a segment index stored by one is resolvable by the other.
 // ──────────────────────────────────────────────
 import { normalizeTextForMatch } from "./text-matching.js";
+import {
+  formatSpeakerTag,
+  SPEAKER_CLOSE_TAG,
+  speakerCloseTagRegex,
+  speakerNameFromMatch,
+  speakerOpenTagRegex,
+} from "./speaker-tags.js";
 
 export const CLOCK_TOKEN_SOURCE = String.raw`\d{1,2}[:.]\d{2}(?:\s*(?:am|pm))?`;
 export const FULL_DATE_TOKEN_SOURCE = String.raw`\d{1,2}\.\d{1,2}\.\d{2,4}`;
@@ -61,10 +68,10 @@ export function decodeEncodedSpeakerTags(value: string): string {
     const decoded = decodeSpeakerTagAttributeEntities(value.slice(bodyStart, index)).trim();
     let replacement: string | null = null;
     if (/^\/\s*speaker\s*$/i.test(decoded)) {
-      replacement = "</speaker>";
+      replacement = SPEAKER_CLOSE_TAG;
     } else {
-      const open = decoded.match(/^speaker\s*=\s*(["'])([^"']*)\1\s*$/i);
-      if (open?.[2]) replacement = `<speaker="${open[2].trim()}">`;
+      const open = decoded.match(/^speaker(?:\s+name)?\s*=\s*(["'])(.*?)\1\s*$/i);
+      if (open?.[2]) replacement = formatSpeakerTag(open[2].trim());
     }
     if (replacement !== null) {
       result += value.slice(outputCursor, candidateStart) + replacement;
@@ -120,49 +127,52 @@ export interface GroupedSegment {
 }
 
 /**
- * Parse `<speaker="Name">...</speaker>` tagged segments. Returns null when the
+ * Parse `<speaker name="Name">...</speaker>` tagged segments, either spelling. Returns null when the
  * content contains no complete tag (callers then fall back to the `Name: `
  * line-prefix format). Unknown speaker names become narration (null speaker);
  * `knownNames` holds normalizeTextForMatch()-normalized character names.
  */
 export function parseSpeakerTags(content: string, knownNames: Set<string>): SpeakerSegment[] | null {
   const decodedContent = decodeEncodedSpeakerTags(content);
-  const openTag = '<speaker="';
-  const closeTag = "</speaker>";
   const segments: SpeakerSegment[] = [];
   let lastIndex = 0;
-  let searchIndex = 0;
   let foundTag = false;
-  while (searchIndex < decodedContent.length) {
-    const start = decodedContent.indexOf(openTag, searchIndex);
-    if (start < 0) break;
-    const nameStart = start + openTag.length;
-    const nameEnd = decodedContent.indexOf('"', nameStart);
-    if (nameEnd < 0 || decodedContent[nameEnd + 1] !== ">") {
-      searchIndex = start + 1;
+
+  // Opener and closer are located separately rather than with one span pattern.
+  // A span pattern's lazy body rescans to end-of-string from every opener, so
+  // 50k openers with no closer costs O(n^2); searching for the closer lets the
+  // loop stop the first time none is left, which is the original linear shape.
+  const openRegex = speakerOpenTagRegex();
+  const closeRegex = speakerCloseTagRegex();
+  let openMatch: RegExpExecArray | null;
+  while ((openMatch = openRegex.exec(decodedContent)) !== null) {
+    const start = openMatch.index;
+    const bodyStart = start + openMatch[0].length;
+    closeRegex.lastIndex = bodyStart;
+    const closeMatch = closeRegex.exec(decodedContent);
+    // With no closer left, no later opener can complete a span either.
+    if (!closeMatch) break;
+    const end = closeMatch.index + closeMatch[0].length;
+    const speakerName = speakerNameFromMatch(openMatch);
+    if (!speakerName) {
+      openRegex.lastIndex = bodyStart;
       continue;
     }
-    const bodyStart = nameEnd + 2;
-    const bodyEnd = decodedContent.indexOf(closeTag, bodyStart);
-    // With no closer left, no later opener can form a complete tag either.
-    if (bodyEnd < 0) break;
-    const end = bodyEnd + closeTag.length;
     foundTag = true;
-    const speakerName = decodedContent.slice(nameStart, nameEnd).trim();
-    const knownSpeaker = knownNames.has(normalizeTextForMatch(speakerName));
     if (start > lastIndex) {
       const before = decodedContent.slice(lastIndex, start).trim();
       if (before) segments.push({ speaker: null, text: before, start: lastIndex, end: start });
     }
     segments.push({
-      speaker: knownSpeaker ? speakerName : null,
-      text: decodedContent.slice(bodyStart, bodyEnd).trim(),
+      speaker: knownNames.has(normalizeTextForMatch(speakerName)) ? speakerName : null,
+      text: decodedContent.slice(bodyStart, closeMatch.index).trim(),
       start,
       end,
     });
     lastIndex = end;
-    searchIndex = end;
+    openRegex.lastIndex = end;
   }
+
   if (lastIndex < decodedContent.length) {
     const after = decodedContent.slice(lastIndex).trim();
     if (after) segments.push({ speaker: null, text: after, start: lastIndex, end: decodedContent.length });

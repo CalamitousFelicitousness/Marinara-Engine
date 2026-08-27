@@ -48,7 +48,11 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
   normalizeTextForMatch,
-  normalizeSpeakerTags,
+  formatSpeakerTag,
+  SPEAKER_CLOSE_TAG,
+  speakerNameFromMatch,
+  speakerTaggedSpanRegex,
+  stripSpeakerTags,
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
   type APIProvider,
@@ -3936,7 +3940,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (groupChatMode === "merged" && groupSpeakerColors && chatMode !== "conversation") {
             const charNames = charInfo.map((c) => c.name);
             groupInstructions.push(
-              `- Since this is a group chat, wrap each character's dialogue in <speaker="name"> tags. Tags can appear inline with narration, they don't need to be on separate lines. Example: <speaker="${charNames[0] ?? "John"}">"Hello there,"</speaker> [action beat/dialogue tag].`,
+              `- Since this is a group chat, wrap each character's dialogue in ${formatSpeakerTag("name")}...${SPEAKER_CLOSE_TAG} tags. Tags can appear inline with narration, they don't need to be on separate lines. Example: ${formatSpeakerTag(charNames[0] ?? "John")}"Hello there,"${SPEAKER_CLOSE_TAG} [action beat/dialogue tag].`,
             );
           }
 
@@ -7068,16 +7072,6 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
 
-          // ── Repair the speaker tag spelling models actually produce ──
-          // `<speaker="Name">` is not well-formed markup, so models emit
-          // `<speaker name="Name">`. Normalize before the unwrap below and
-          // before persisting, so every downstream reader sees one spelling.
-          {
-            const beforeSpeakerNormalize = fullResponse;
-            fullResponse = normalizeSpeakerTags(fullResponse);
-            if (fullResponse !== beforeSpeakerNormalize) contentReplaced = true;
-          }
-
           // ── Strip character name prefix in individual group mode ──
           // LLMs often prefix the response with the character name even when told not to.
           // Also strip any leftover <speaker> tags from individual mode responses.
@@ -7094,14 +7088,13 @@ export async function generateRoutes(app: FastifyInstance) {
                   .trimStart();
                 if (fullResponse !== beforeTimestampStrip) contentReplaced = true;
               }
-              // Strip <speaker="Name">...</speaker> wrapper if present
-              const speakerWrap = new RegExp(`^\\s*<speaker="${escapedName}">[\\s\\S]*?<\\/speaker>\\s*$`, "i");
-              const speakerMatch = fullResponse.match(speakerWrap);
-              if (speakerMatch) {
-                fullResponse = fullResponse
-                  .replace(/<speaker="[^"]*">/gi, "")
-                  .replace(/<\/speaker>/gi, "")
-                  .trim();
+              // Individual mode already knows who is speaking, so a reply that is
+              // nothing but this character's own tagged span carries no information
+              // in the tag. Unwrap it; leave a genuinely multi-speaker reply alone.
+              const spans = [...fullResponse.matchAll(speakerTaggedSpanRegex())];
+              const soleSpan = spans.length === 1 && spans[0]![0].trim() === fullResponse.trim() ? spans[0]! : null;
+              if (soleSpan && speakerNameFromMatch(soleSpan).toLowerCase() === cName.toLowerCase()) {
+                fullResponse = stripSpeakerTags(fullResponse).trim();
                 contentReplaced = true;
               }
               // Strip plain name prefixes: "Dottore: text" or "Dottore\ntext".

@@ -18,6 +18,7 @@ import {
   groupConsecutiveSegments,
   parseSpeakerTags,
 } from "../../packages/shared/src/utils/speaker-segments.js";
+import { formatSpeakerTag } from "../../packages/shared/src/utils/speaker-tags.js";
 
 assert.deepEqual(extractSetvarAssignments("{{setvar::mode::gm}} {{SETVAR::tone::warm}}"), [
   ["mode", "gm"],
@@ -266,9 +267,9 @@ resolveMacros(`[\n{{#if ${" ".repeat(100_000)}unknown}}text{{/if}}\n]`, groupMac
 assert.ok(performance.now() - scopedParsingStartedAt < 5_000, "adversarial parsing should complete within five seconds");
 const encodedSpeakerNoise = "&lt;;".repeat(20_000);
 assert.equal(decodeEncodedSpeakerTags(encodedSpeakerNoise), encodedSpeakerNoise);
-assert.equal(decodeEncodedSpeakerTags("&lt;speaker=&quot;Luna&quot;&gt;"), '<speaker="Luna">');
-assert.equal(decodeEncodedSpeakerTags("İ &LT;speaker=&quot;Luna&quot;&GT;"), 'İ <speaker="Luna">');
-assert.equal(decodeEncodedSpeakerTags("&#X3C;speaker=&quot;Luna&quot;&#X3E;"), '<speaker="Luna">');
+assert.equal(decodeEncodedSpeakerTags("&lt;speaker=&quot;Luna&quot;&gt;"), formatSpeakerTag("Luna"));
+assert.equal(decodeEncodedSpeakerTags("İ &LT;speaker=&quot;Luna&quot;&GT;"), `İ ${formatSpeakerTag("Luna")}`);
+assert.equal(decodeEncodedSpeakerTags("&#X3C;speaker=&quot;Luna&quot;&#X3E;"), formatSpeakerTag("Luna"));
 assert.deepEqual(parseSpeakerTags('Before <speaker="Luna">Hello</speaker> After', new Set(["luna"])), [
   { speaker: null, text: "Before", start: 0, end: 7 },
   { speaker: "Luna", text: "Hello", start: 7, end: 38 },

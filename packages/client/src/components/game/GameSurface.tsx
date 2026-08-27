@@ -163,6 +163,7 @@ import {
   scoreMusic,
   musicAreaSlug,
   normalizeMusicEnemyTier,
+  speakerOpenTagRegex,
   isContextMusicTag,
   type MusicEnemyTier,
   scoreAmbient,
@@ -1281,7 +1282,7 @@ function extractNarrationNpcCandidates(
   }
 
   const patterns = [
-    /<speaker="([^"]+)">/gi,
+    speakerOpenTagRegex(),
     new RegExp(`(?:^|\\n)\\s*([A-Z][A-Za-z'’-]+(?:\\s+[A-Z][A-Za-z'’-]+)?)\\s*:\\s*["“«「]`, "gm"),
     new RegExp(
       `"[^"]+"[,.]?\\s+([A-Z][A-Za-z'’-]+(?:\\s+[A-Z][A-Za-z'’-]+)?)\\s+${NARRATION_NPC_SPEECH_VERB_PATTERN}\\b`,

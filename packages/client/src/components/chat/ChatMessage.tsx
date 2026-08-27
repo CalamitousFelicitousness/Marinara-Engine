@@ -2,7 +2,16 @@
 // Chat: Message — mode-aware rendering
 // ──────────────────────────────────────────────
 import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../../lib/utils";
-import { normalizeAvatarCrop, normalizeSpeakerTags, type AvatarCrop } from "@marinara-engine/shared";
+import {
+  hasSpeakerTag,
+  normalizeAvatarCrop,
+  replaceSpeakerSpans,
+  speakerBodyFromMatch,
+  speakerNameFromMatch,
+  speakerTaggedSpanRegex,
+  stripSpeakerTags,
+  type AvatarCrop,
+} from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
 import {
   normalizeCardAssetImageSyntax,
@@ -926,8 +935,6 @@ interface ChatMessageProps {
 /** Regex to match a plain image URL as the entire content. */
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(?:gif|png|jpe?g|webp)(?:\?[^\s]*)?$/i;
 
-/** Regex to match <speaker="name">dialogue</speaker> tags. */
-const SPEAKER_TAG_RE = /<speaker="([^"]*)">([\s\S]*?)<\/speaker>/g;
 const INLINE_MARKDOWN_CONTAINER_RE =
   /\*\*\*[\s\S]+?\*\*\*|\*\*[\s\S]+?\*\*|__[\s\S]+?__|(?<!\*)\*(?!\*)[\s\S]+?(?<!\*)\*(?!\*)|==[\s\S]+?==|~~[\s\S]+?~~|(?<![_\w])_[^_]+?_(?![_\w])/g;
 
@@ -1040,23 +1047,23 @@ function renderWithSpeakerTags(
   const text = rawText;
   const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
 
-  if (!SPEAKER_TAG_RE.test(text)) {
+  if (!hasSpeakerTag(text)) {
     return renderLine(text, defaultDialogueColor);
   }
-  SPEAKER_TAG_RE.lastIndex = 0;
+  const spanRegex = speakerTaggedSpanRegex();
 
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let key = 0;
 
-  while ((match = SPEAKER_TAG_RE.exec(text)) !== null) {
+  while ((match = spanRegex.exec(text)) !== null) {
     // Text before the speaker tag — use default color
     if (match.index > lastIndex) {
       nodes.push(...renderLine(text.slice(lastIndex, match.index), defaultDialogueColor));
     }
-    const speakerName = match[1]!;
-    const dialogue = match[2]!;
+    const speakerName = speakerNameFromMatch(match);
+    const dialogue = speakerBodyFromMatch(match);
     const speakerColor = speakerColorMap?.get(speakerName) ?? defaultDialogueColor;
     // Render the dialogue content (without the tags) using the speaker's color
     nodes.push(<span key={`s${key++}`}>{renderLine(dialogue, speakerColor)}</span>);
@@ -1561,16 +1568,12 @@ function renderContent(
   // chat-wide index lets merged group replies fall back to whichever chat
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
-  // Repair the attribute spelling before anything else looks at the text. The
-  // strip below and the HTML-path replace further down both match the canonical
-  // form only, so an unrepaired `<speaker name="X">` survives the strip, trips
-  // HTML_TAG_RE, and reaches DOMPurify as an unknown element.
-  const normalized = normalizeSpeakerTags(
-    decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat))),
-  );
+  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
 
-  // Strip speaker tags before HTML detection (they aren't real HTML)
-  const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
+  // Speaker tags are markup but not *content* markup: hide them from the HTML
+  // test so a tagged reply still renders as markdown. Matching by tag name is
+  // what keeps them distinguishable now that the tag is well-formed.
+  const withoutSpeakerTags = stripSpeakerTags(normalized);
 
   const isHtmlPath = HTML_TAG_RE.test(withoutSpeakerTags);
 
@@ -1592,12 +1595,10 @@ function renderContent(
     nameColorMap && nameColorMap.size > 0 ? colorNamesSkippingQuotes(normalized, nameColorMap, textShadow) : normalized;
 
   // For HTML content, replace speaker tags with color-annotated spans (preserves per-character colors)
-  const stripped = speakerColorMap
-    ? withNameColors.replace(SPEAKER_TAG_RE, (_, name, dialogue) => {
-        const color = speakerColorMap.get(name as string);
-        return color ? `<span data-spk="${color}">${dialogue as string}</span>` : (dialogue as string);
-      })
-    : withNameColors.replace(SPEAKER_TAG_RE, "$2");
+  const stripped = replaceSpeakerSpans(withNameColors, (name, dialogue) => {
+    const color = speakerColorMap?.get(name);
+    return color ? `<span data-spk="${color}">${dialogue}</span>` : dialogue;
+  });
 
   const { html: strippedWithoutStyleBlocks, css: rawStyleBlocks } = extractChatStyleBlocks(stripped);
 

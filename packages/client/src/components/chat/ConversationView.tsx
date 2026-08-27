@@ -50,6 +50,7 @@ import {
   parseGroupedSpeakerSegments,
   stripLeadingMessageTimestamps,
   type Message,
+  hasSpeakerTag,
 } from "@marinara-engine/shared";
 import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
@@ -851,9 +852,7 @@ export function ConversationView({
       const groupSegmentCount =
         msg.role === "assistant" && groupingContent ? getGroupedSegmentCount(groupingContent, knownNames) : 0;
       const hasGroupFormat =
-        groupingContent.includes("<speaker=") ||
-        groupSegmentCount > 0 ||
-        hasNamePrefixFormat(groupingContent, knownNames);
+        hasSpeakerTag(groupingContent) || groupSegmentCount > 0 || hasNamePrefixFormat(groupingContent, knownNames);
       let contentParts: string[] | undefined;
       if (conversationMessageStyle === "classic" && msg.role === "assistant" && msg.content && !hasGroupFormat) {
         const cleaned = stripTimestamps(msg.content);

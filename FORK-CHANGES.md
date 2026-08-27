@@ -867,49 +867,50 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
-### Speaker tags survive the spelling models actually produce
+### Speaker tags have one grammar, and it is well-formed markup
 
-Group chat dialogue colouring asks for `<speaker="Amy">`, which is not well-formed markup: an
-attribute needs a name. Models trained on XML and HTML emit `<speaker name="Amy">` instead, and keep
-emitting it however the instruction is worded. The colour lookup then missed and fell through to the
-default, silently, because a missing speaker match is indistinguishable from an untagged line.
+Group chat dialogue colouring asked models for `<speaker="Amy">`, which is not valid markup: an
+attribute needs a name. Models emit `<speaker name="Amy">` whatever the prompt says, so the colour
+lookup missed and fell through to the default, silently, because a missing speaker match is
+indistinguishable from an untagged line.
 
-Eleven parsers across server and client hardcode the canonical spelling: history stripping, the
-individual-mode unwrap, the game surface, TTS segmentation, the conversation grouping check and the
-chat renderer. Teaching each one a second syntax multiplies the places a third variant would later
-have to be added, so `normalizeSpeakerTags` in `packages/shared/src/utils/speaker-tags.ts` repairs
-the model's output once and every parser stays correct as written.
+The first attempt rewrote the model's output into the malformed spelling on the way in. That kept
+the wrong format canonical and bought a repair step to maintain forever, so it was replaced:
+`packages/shared/src/utils/speaker-tags.ts` now holds the whole grammar, readers accept both
+spellings, and writers emit the well-formed one. Tolerance covers stored history, which is finite,
+rather than model behaviour, which is not, and nothing rewrites a model's output.
 
-Two call sites, for different reasons:
+Twelve consumers each carried their own copy of the pattern and now import it: prompt history
+stripping, the individual-mode unwrap, narration NPC harvesting on both server and client, three
+TTS sites, the conversation grouping check, the shared segment parser, and the chat renderer's HTML
+detection plus both of its render paths. The regression forbids any other file from spelling the
+tag out in code, which is the guard that would have prevented the original divergence.
 
-- `generate.routes.ts`, immediately before the individual-mode unwrap, which itself reads a
-  canonical tag, and therefore before the response is persisted. This is what fixes storage, and so
-  every server and client consumer of stored text.
-- `ChatMessage.tsx`'s `renderContent`, above everything else it does. The server repairs before
-  persisting but not before streaming, so without this the dialogue arrives uncoloured and snaps
-  when the turn finalizes. It also colours messages stored before this shipped.
+Details worth keeping:
 
-  Placement is load-bearing, and the first attempt got it wrong by putting the repair inside
-  `renderWithSpeakerTags`. Messages can render down an HTML path, and the strip that hides speaker
-  tags from `HTML_TAG_RE` matches the canonical form only. An unrepaired `<speaker name="X">`
-  therefore survived that strip, tripped the HTML test, and reached DOMPurify as an unknown element
-  -- and `renderWithSpeakerTags` only runs on the markdown path, so the repair never executed at
-  all. That is also the reason the canonical spelling is malformed on purpose: it is how a speaker
-  tag is told apart from the HTML this app genuinely renders in messages.
+- **The malformed spelling existed for a reason.** Messages can render as real HTML, so a speaker
+  tag has to be distinguishable from content markup. Matching the tag *name* does that just as well,
+  which is what freed the spelling to become well-formed.
+- **Regexes come from factories, never a shared instance.** A module-level `RegExp` with `g` carries
+  `lastIndex` between callers, so one consumer's partial scan moves where the next one starts.
+- **The name is capture group 1 or 2, not a back-referenced quote.** Two callers run the pattern
+  inside a heterogeneous `patterns` array and read `match[1]`, so a leading quote group would have
+  handed them the quote character.
+- **`parseSpeakerTags` locates opener and closer separately.** A single span pattern's lazy body
+  rescans to end-of-string from every opener, which made 50k openers with no closer quadratic. That
+  is the case `code-scanning-content-parsing.regression.ts` guards, and a span-pattern rewrite broke
+  it. Searching for the closer restores the original early exit.
+- **A name containing a double quote is now representable**, because `formatSpeakerTag` switches to
+  single quotes and the readers accept either.
+- Both prompt sites build the instruction from `formatSpeakerTag`, so the text can no longer drift
+  from what the app parses. The preview still adds its `Available characters` clause, which live
+  generation still omits.
 
-A name containing a double quote is deliberately left alone: the canonical form matches `[^"]*`, so
-it cannot represent one, and rewriting would emit a tag that truncates at the quote.
-
-The regression asserts behaviour rather than shape. It lifts `SPEAKER_TAG_RE` out of the renderer
-and parses the normalized output with it, so the normalizer and its consumer cannot drift, and it
-asserts that same regex rejects the attribute form -- without which every case would pass whether or
-not the normalizer did anything.
-
-Not changed, but noted: the live prompt and the prompt preview inject different text. The preview
-(`chats.routes.ts`) appends `Available characters: ... Use their exact names.`; live generation
-(`generate.routes.ts`) does not, despite the comment claiming they match. Colour lookup is an exact,
-case-sensitive `Map.get`, so the one instruction that would prevent a silent name miss exists only
-in the copy the model never sees.
+Patches to upstream-edited files, all of them replacing a private copy of the grammar with the
+shared one: `generate.routes.ts`, `chats.routes.ts`, `generate-route-utils.ts`, `game.routes.ts`,
+`ChatMessage.tsx`, `ConversationView.tsx`, `GameSurface.tsx`, `tts-dialogue.ts`,
+`speaker-segments.ts`, and three assertions in `code-scanning-content-parsing.regression.ts` that
+pinned the decoder's old output.
 
 ### Character cards collapse to a header
 

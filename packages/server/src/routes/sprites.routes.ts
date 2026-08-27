@@ -6,7 +6,7 @@ import AdmZip from "adm-zip";
 import { execFile } from "child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync } from "fs";
 import { randomUUID } from "crypto";
-import { writeFile, mkdir, unlink, copyFile, rm, readFile, mkdtemp } from "fs/promises";
+import { writeFile, mkdir, unlink, copyFile, rm, readFile, mkdtemp, rename } from "fs/promises";
 import { tmpdir } from "os";
 import { delimiter, dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -1686,6 +1686,51 @@ export async function spritesRoutes(app: FastifyInstance) {
 
     return payload;
   });
+
+  /**
+   * PATCH /api/sprites/:characterId/:expression
+   * Rename a saved sprite without replacing its image.
+   * Body: { expression: string }
+   */
+  app.patch<{ Params: { characterId: string; expression: string } }>(
+    "/:characterId/:expression",
+    async (req, reply) => {
+      const { characterId, expression } = req.params;
+      if (characterId.includes("..") || characterId.includes("/") || characterId.includes("\\")) {
+        return reply.status(400).send({ error: "Invalid character ID" });
+      }
+
+      const body = req.body as { expression?: string };
+      const nextExpression = normalizeSpriteExpression(body.expression ?? "");
+      if (!nextExpression) {
+        return reply.status(400).send({ error: "Expression label must include at least one letter or number" });
+      }
+
+      const dir = join(SPRITES_ROOT, characterId);
+      if (!existsSync(dir)) return reply.status(404).send({ error: "No sprites found" });
+
+      const files = readdirSync(dir);
+      const source = files.find((filename) => {
+        const ext = extname(filename);
+        return SPRITE_FILE_RE.test(filename) && filename.slice(0, -ext.length) === expression;
+      });
+      if (!source) return reply.status(404).send({ error: "Expression not found" });
+
+      const extension = extname(source);
+      const target = `${nextExpression}${extension}`;
+      if (target !== source && existsSync(join(dir, target))) {
+        return reply.status(409).send({ error: "An expression with that name already exists" });
+      }
+
+      if (target !== source) await rename(join(dir, source), join(dir, target));
+      const mtime = statSync(join(dir, target)).mtimeMs;
+      return {
+        expression: nextExpression,
+        filename: target,
+        url: `/api/sprites/${characterId}/file/${encodeURIComponent(target)}?v=${Math.floor(mtime)}`,
+      };
+    },
+  );
 
   /**
    * DELETE /api/sprites/:characterId/:expression

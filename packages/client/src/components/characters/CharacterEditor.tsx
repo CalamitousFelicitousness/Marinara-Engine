@@ -1583,18 +1583,20 @@ function ConvoTab({
         generateConvoProfile={
           characterId
             ? (target) =>
-                generateCharacterConvoProfile.mutateAsync({
-                  id: characterId,
-                  target,
-                  draft: {
-                    name: formData.name,
-                    description: formData.description,
-                    personality: formData.personality,
-                    scenario: formData.scenario,
-                    backstory: (ext.backstory as string) ?? "",
-                    appearance: (ext.appearance as string) ?? "",
-                  },
-                }).then((result) => (currentCharacterIdRef.current === characterId ? result : null))
+                generateCharacterConvoProfile
+                  .mutateAsync({
+                    id: characterId,
+                    target,
+                    draft: {
+                      name: formData.name,
+                      description: formData.description,
+                      personality: formData.personality,
+                      scenario: formData.scenario,
+                      backstory: (ext.backstory as string) ?? "",
+                      appearance: (ext.appearance as string) ?? "",
+                    },
+                  })
+                  .then((result) => (currentCharacterIdRef.current === characterId ? result : null))
             : undefined
         }
         imageInstructions={(ext.conversationImageInstructions as string) ?? ""}

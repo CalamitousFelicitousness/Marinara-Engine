@@ -71,6 +71,7 @@ import { HelpTooltip } from "../../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "./SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ApiError } from "../../../lib/api-client";
+import { SECRET_FIELD_PROPS } from "../../../lib/secret-field-props";
 
 // ── Sub-components ───────────────────────────────
 
@@ -766,12 +767,20 @@ function CharacterSelect({
   );
 }
 
-function PocketTTSVoiceControl({
+/**
+ * A visible list of known voices beside a free-text field, for backends whose
+ * catalog is real but not exhaustive: PocketTTS takes a server voice or a path,
+ * NanoGPT takes a catalog voice or a MiniMax/Qwen/cloned id. A datalist input
+ * alone hides the catalog, since the suggestions only appear once you type.
+ */
+function PickOrTypeVoiceControl({
   value,
   options,
   fetching,
   selectLabel,
   inputLabel,
+  choosePlaceholder,
+  inputPlaceholder,
   onChange,
 }: {
   value: string;
@@ -779,6 +788,8 @@ function PocketTTSVoiceControl({
   fetching: boolean;
   selectLabel: string;
   inputLabel: string;
+  choosePlaceholder?: string;
+  inputPlaceholder?: string;
   onChange: (value: string) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -799,7 +810,7 @@ function PocketTTSVoiceControl({
           <option value="">
             {fetching
               ? localizeUi("ui.panels.pocketttsvoicecontrol.loadingServerVoices")
-              : localizeUi("ui.panels.pocketttsvoicecontrol.chooseServerVoice")}
+              : (choosePlaceholder ?? localizeUi("ui.panels.pocketttsvoicecontrol.chooseServerVoice"))}
           </option>
           {options.map((option) => (
             <option key={option.id} value={option.id}>
@@ -814,7 +825,7 @@ function PocketTTSVoiceControl({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className={INPUT_CLS}
-        placeholder={localizeUi("ui.panels.pocketttsvoicecontrol.voiceIdUrlOrPath")}
+        placeholder={inputPlaceholder ?? localizeUi("ui.panels.pocketttsvoicecontrol.voiceIdUrlOrPath")}
       />
     </div>
   );
@@ -1612,6 +1623,7 @@ export function TTSConfigCard() {
                 type="password"
                 className={cn(INPUT_CLS, "pl-8")}
                 placeholder={localizeUi("ui.panels.ttsconfigcard.enterApiKeyOrClearToRemove")}
+                {...SECRET_FIELD_PROPS}
               />
             </div>
             <p className="text-[0.625rem] text-[var(--muted-foreground)]">
@@ -1729,7 +1741,7 @@ export function TTSConfigCard() {
             >
               <div className="flex gap-2">
                 {source === "pockettts" ? (
-                  <PocketTTSVoiceControl
+                  <PickOrTypeVoiceControl
                     value={voice}
                     options={voiceOptions}
                     fetching={fetchingVoices}
@@ -1740,9 +1752,21 @@ export function TTSConfigCard() {
                       mark({ voice: nextVoice });
                     }}
                   />
-                ) : source === "openai" || source === "nanogpt" ? (
-                  // NanoGPT routes MiniMax and Qwen voice ids and cloned voices
-                  // that no catalog can enumerate, so the field stays writable.
+                ) : source === "nanogpt" ? (
+                  <PickOrTypeVoiceControl
+                    value={voice}
+                    options={voiceOptions}
+                    fetching={fetchingVoices}
+                    selectLabel={localizeUi("ui.panels.ttsconfigcard.nanogptVoiceSelectLabel")}
+                    inputLabel={localizeUi("ui.panels.ttsconfigcard.nanogptVoiceInputLabel")}
+                    choosePlaceholder={localizeUi("ui.panels.ttsconfigcard.nanogptChooseVoice")}
+                    inputPlaceholder={localizeUi("ui.panels.ttsconfigcard.nanogptCustomVoicePlaceholder")}
+                    onChange={(nextVoice) => {
+                      setVoice(nextVoice);
+                      mark({ voice: nextVoice });
+                    }}
+                  />
+                ) : source === "openai" ? (
                   <CustomizableVoiceInput
                     value={voice}
                     options={voiceOptions}
@@ -1776,6 +1800,7 @@ export function TTSConfigCard() {
                   />
                 )}
                 <button
+                  type="button"
                   onClick={() => void handleRefreshVoices()}
                   disabled={fetchingVoices || !canRefreshVoices}
                   className="mari-chrome-control mari-chrome-control--small shrink-0 text-xs"
@@ -1928,12 +1953,23 @@ export function TTSConfigCard() {
               {narratorVoiceEnabled && (
                 <div className="flex gap-2 max-sm:flex-col">
                   {source === "pockettts" ? (
-                    <PocketTTSVoiceControl
+                    <PickOrTypeVoiceControl
                       value={narratorVoice}
                       options={voiceOptions}
                       fetching={fetchingVoices}
                       selectLabel="PocketTTS narrator server voice"
                       inputLabel="PocketTTS narrator voice ID, URL, or path"
+                      onChange={handleNarratorVoiceChange}
+                    />
+                  ) : source === "nanogpt" ? (
+                    <PickOrTypeVoiceControl
+                      value={narratorVoice}
+                      options={voiceOptions}
+                      fetching={fetchingVoices}
+                      selectLabel={localizeUi("ui.panels.ttsconfigcard.nanogptNarratorVoiceSelectLabel")}
+                      inputLabel={localizeUi("ui.panels.ttsconfigcard.nanogptNarratorVoiceInputLabel")}
+                      choosePlaceholder={localizeUi("ui.panels.ttsconfigcard.nanogptChooseVoice")}
+                      inputPlaceholder={localizeUi("ui.panels.ttsconfigcard.nanogptCustomVoicePlaceholder")}
                       onChange={handleNarratorVoiceChange}
                     />
                   ) : source === "openai" ? (

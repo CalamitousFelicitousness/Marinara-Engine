@@ -1076,6 +1076,22 @@ Patches to upstream files: `packages/server/src/routes/tts.routes.ts` and
 `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts`, which boots the real app against a
 stub engine.
 
+### API-key fields tell password managers they are not logins
+
+`packages/client/src/lib/secret-field-props.ts` holds one set of attributes, spread onto every
+secret input: the TTS and connection API keys, the admin secret, the YouTube Data key, and the DeepL
+key.
+
+A bare `<input type="password">` reads to a password manager as a login field, so 1Password offers
+to save an API key as a website password. The prompt fires on interaction near the field, which in
+practice meant one prompt per voice-list refresh.
+
+These are vendor hints rather than a contract (`data-1p-ignore`, `data-lpignore`, `data-form-type`),
+and `autoComplete="off"` alone does not stop a save prompt. An extension is free to ignore them.
+
+Patches to upstream files: `TTSConfigCard.tsx`, `ConnectionEditor.tsx`, `SettingsPanel.tsx`,
+`AgentEditor.tsx`, `TranslationSection.tsx`. Each is a one-line spread on an existing input.
+
 ### NanoGPT is a TTS source, not a base URL
 
 `nanogpt` joins `TTS_SOURCE_IDS`, with `NanoGptTTSProvider` reached from the registry by source as
@@ -1089,8 +1105,14 @@ source and typing a model id from memory, against a voice list that did not matc
 NanoGPT fronts several backends behind one OpenAI-shaped endpoint, and the voice vocabulary belongs
 to the backend, not the account: Kokoro takes `af_bella`, the OpenAI models take `alloy`, ElevenLabs
 takes a name. `services/tts/nanogpt-catalog.ts` resolves a model to its family, and `/voices` answers
-from that rather than from the source, so switching model switches the voice list. The field stays
-writable, because MiniMax and Qwen voice ids and cloned voices cannot be enumerated.
+from that rather than from the source, so switching model switches the voice list.
+
+Both voice fields use `PickOrTypeVoiceControl`, a visible select beside a free-text input. The
+catalog is real but not exhaustive, so the list has to be browsable while still accepting a MiniMax
+or Qwen id or a cloned voice. A datalist input alone satisfies only the second half: the suggestions
+appear once you type, so the refreshed catalog looks like it never arrived. That control is the
+renamed `PocketTTSVoiceControl`, which already solved the same problem for a different backend; the
+PocketTTS strings stay its defaults, so its behaviour there is unchanged.
 
 `/models` fetches `GET /v1/audio-models?type=tts`, which is the only listing NanoGPT publishes. It
 falls back to `NANOGPT_TTS_MODEL_IDS` when no key is saved or the call fails. The capability flag is

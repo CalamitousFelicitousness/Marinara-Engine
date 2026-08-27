@@ -20,6 +20,7 @@ import {
   type RemoteConnectionModel,
 } from "../../hooks/use-connections";
 import { usePresets } from "../../hooks/use-presets";
+import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import {
   ArrowLeft,
   Save,
@@ -1693,6 +1694,7 @@ export function ConnectionEditor() {
                   type="password"
                   className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                   placeholder={localizeUi("ui.connections.connectioneditor.leaveEmptyToKeepExistingKey")}
+                  {...SECRET_FIELD_PROPS}
                 />
                 <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
                   {localizeUi("ui.connections.connectioneditor.yourKeyIsEncryptedAtRestLeaveBlankWhen")}

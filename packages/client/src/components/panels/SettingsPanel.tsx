@@ -24,6 +24,7 @@ import {
   type VisualTheme,
 } from "../../stores/ui.store";
 import { APP_LANGUAGE_OPTIONS } from "../../localization/locale-loader";
+import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { cn, copyToClipboard } from "../../lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8005,6 +8006,7 @@ function AdvancedSettings() {
             onChange={(e) => setAdminSecret(e.target.value)}
             placeholder={localizeUi("ui.panels.advancedsettings.adminSecret")}
             className="w-full min-w-0 rounded-lg bg-[var(--background)] px-3 py-2 text-xs outline-none ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/50 focus:ring-[var(--primary)]"
+            {...SECRET_FIELD_PROPS}
           />
           <button
             type="button"

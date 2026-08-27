@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useUIStore } from "../../stores/ui.store";
 import { showConfirmDialog } from "../../lib/app-dialogs";
+import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { api, getPrivilegedActionErrorMessage } from "../../lib/api-client";
 import { HostDeviceFileManagerError } from "../../lib/host-device";
 import {
@@ -3390,6 +3391,7 @@ export function AgentEditor() {
                         : localizeUi("ui.agents.agenteditor.pasteYourYoutubeDataApiKeyAiza")
                     }
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 font-mono"
+                    {...SECRET_FIELD_PROPS}
                   />
                 </div>
 

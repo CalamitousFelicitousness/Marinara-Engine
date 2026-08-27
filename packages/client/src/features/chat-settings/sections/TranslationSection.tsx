@@ -1,6 +1,7 @@
 import { Languages, RotateCcw } from "lucide-react";
 import { DEFAULT_TRANSLATION_SYSTEM_PROMPT } from "@marinara-engine/shared";
 import { HelpTooltip } from "../../../components/ui/HelpTooltip";
+import { SECRET_FIELD_PROPS } from "../../../lib/secret-field-props";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
 import { ChatSettingsSection } from "../ChatSettingsSection";
 import type { ChatConnectionOption } from "./ConnectionSection";
@@ -128,6 +129,7 @@ export function TranslationSection({ metadata, textConnections, onMetadataChange
               onChange={(e) => onMetadataChange({ translationDeeplApiKey: e.target.value })}
               placeholder={localizeUi("ui.chatSettings.translationsection.xxxxxxxxXxxxXxxxXxxxXxxxxxxxxxxxFx")}
               className="mt-0.5 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
+              {...SECRET_FIELD_PROPS}
             />
           </div>
         )}

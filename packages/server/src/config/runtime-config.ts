@@ -471,11 +471,20 @@ export function isUpdatesRemoteApplyAllowed() {
   return isEnabledFlag(process.env.UPDATES_ALLOW_REMOTE_APPLY);
 }
 
+/**
+ * Default-on. The URL is operator provenance: it exists only because the user
+ * typed it into Connections, and that user already reaches their own LAN from
+ * the browser, so denying the server the same reach protects nobody while
+ * costing an .env edit on exactly the self-hosted setups that need it.
+ *
+ * Set false to deny. That is the setting for an install exposed past loopback,
+ * where whoever writes a connection may not be the machine's owner. See
+ * docs/CONFIGURATION.md "Local address controls".
+ */
 export function isProviderLocalUrlsEnabled() {
-  if (process.platform === "android" && normalizeEnvValue(process.env.PROVIDER_LOCAL_URLS_ENABLED) === null) {
-    return true;
-  }
-  return isEnabledFlag(process.env.PROVIDER_LOCAL_URLS_ENABLED);
+  const raw = normalizeEnvValue(process.env.PROVIDER_LOCAL_URLS_ENABLED);
+  if (raw === null) return true;
+  return !isDisabledFlag(raw);
 }
 
 export function getEmbeddingRequestTimeoutMs() {
@@ -510,12 +519,25 @@ export function getCustomToolTimeoutMs() {
   return parsePositiveIntEnv(process.env.CUSTOM_TOOL_TIMEOUT_MS, DEFAULT_CUSTOM_TOOL_TIMEOUT_MS, MAX_TIMEOUT_MS);
 }
 
+// The three below stay deny-by-default. The split is URL provenance, not
+// subsystem: these fetch URLs a party other than the operator supplied, so the
+// party who picks the address cannot also flip the flag that permits it.
+//   image   - result URLs come back from the provider (an origin-pinned second
+//             fetch in image-generation.ts), not from a config field.
+//   deeplx  - the URL rides the /api/translate body from per-chat metadata, and
+//             st-chat.importer.ts merges imported marinara_metadata through a
+//             denylist, so an imported chat file supplies it. autoTranslate
+//             arrives in the same blob and fires it unattended.
+//   webhook - the URL comes from a custom tool definition, which is importable.
 export function isImageLocalUrlsEnabled() {
   return isEnabledFlag(process.env.IMAGE_LOCAL_URLS_ENABLED);
 }
 
+/** Default-on for the same reason as isProviderLocalUrlsEnabled: operator-supplied URL. */
 export function isTtsLocalUrlsEnabled() {
-  return isEnabledFlag(process.env.TTS_LOCAL_URLS_ENABLED);
+  const raw = normalizeEnvValue(process.env.TTS_LOCAL_URLS_ENABLED);
+  if (raw === null) return true;
+  return !isDisabledFlag(raw);
 }
 
 export function isDeeplxLocalUrlsEnabled() {

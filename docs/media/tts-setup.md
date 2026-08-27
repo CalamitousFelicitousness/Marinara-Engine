@@ -142,7 +142,7 @@ Model:     <whatever the engine calls its model>
 Voice:     <a voice name the engine knows>
 ```
 
-A **loopback** address such as `http://localhost:8000` or `http://127.0.0.1:8000` works with no extra server setting. An engine on **another machine on your network** does need `TTS_LOCAL_URLS_ENABLED=true`, because that opens up private and LAN addresses. See [Server Configuration Reference](../CONFIGURATION.md).
+Both a **loopback** address such as `http://localhost:8000` and an engine on **another machine on your network** work with no extra server setting. See [Server Configuration Reference](../CONFIGURATION.md) if your server has been hardened with `TTS_LOCAL_URLS_ENABLED=false`.
 
 A reasonable starting point for a CPU engine:
 
@@ -205,7 +205,7 @@ This override is used only during Conversation audio and video calls. The regula
 - Nothing speaks: confirm the **Enable TTS** switch is on. Then check the right per-mode **Auto-play** toggle, or use the per-message **Speak** button. The **Speak** button and auto-play options only appear after TTS is enabled.
 - No voices in the dropdown: save the card with TTS enabled and a valid API key, then click **Refresh voices**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
 - ElevenLabs will not speak: make sure you selected a real voice, not the "Select an ElevenLabs voice" placeholder. Also check that the **Model** is a speech model, not a voice-design model whose ID contains `ttv`.
-- A self-hosted TTS server on a private or LAN address is blocked: turn on the server setting `TTS_LOCAL_URLS_ENABLED`. Loopback addresses such as `localhost` and `127.0.0.1` are always allowed and do not need it, and PocketTTS does not need it at all. See [Server Configuration Reference](../CONFIGURATION.md).
+- A self-hosted TTS server on a private or LAN address is blocked: the server has `TTS_LOCAL_URLS_ENABLED=false` set. Remove that line and restart. Loopback addresses such as `localhost` and `127.0.0.1` work either way. See [Server Configuration Reference](../CONFIGURATION.md).
 - "The speech engine ran out of time": the engine did not finish a chunk inside the **Request timeout**. Raise it in **Advanced synthesis**, and lower **Chunk size** so each request is smaller. Local engines on CPU commonly need 300s and chunks near 300 characters.
 - Speech starts only after a long pause: turn on **Progressive playback**, which plays each chunk as it arrives instead of synthesizing the whole message first.
 - Voice auto-play stopped on its own: auto-play pauses after three failed messages in a row so a stopped engine cannot fill the chat with silent waits. Fix the engine, then press **Speak** on any message to start it again.

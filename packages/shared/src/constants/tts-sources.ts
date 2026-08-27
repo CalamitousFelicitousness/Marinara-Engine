@@ -34,8 +34,6 @@ export interface TTSSourceDefinition {
   maxInputChars: number;
   /** Default client chunk size. Local engines want far less; the setting overrides per source profile. */
   recommendedChunkChars: number;
-  /** Reaches private/LAN addresses without TTS_LOCAL_URLS_ENABLED. Loopback is allowed for every source. */
-  localByDefault: boolean;
 }
 
 export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = {
@@ -47,7 +45,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "alloy",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
-    localByDefault: false,
   },
   elevenlabs: {
     id: "elevenlabs",
@@ -57,7 +54,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
-    localByDefault: false,
   },
   pockettts: {
     id: "pockettts",
@@ -67,7 +63,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "alba",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
-    localByDefault: true,
   },
   xai: {
     id: "xai",
@@ -77,7 +72,6 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "eve",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
-    localByDefault: false,
   },
 };
 

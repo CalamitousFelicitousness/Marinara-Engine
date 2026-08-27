@@ -1,13 +1,17 @@
-// /speak honours the configured budget, gives up on a hung engine with a
-// machine-readable reason, stops rendering when the listener leaves, and
-// reaches a loopback engine without an opt-in flag.
+// Four properties of /speak, each cheap to break and none visible in a type:
 //
-// Before: the budget was the literal AbortSignal.timeout(60_000) with no env
-// var and no config field, so a CPU engine needing longer could only be
-// accommodated by editing source; nothing propagated client disconnect, so
-// navigating away left the engine rendering to completion; failures came back
-// as English prose the client had to pattern-match; and loopback was refused
-// without TTS_LOCAL_URLS_ENABLED even though every LLM provider allows it.
+// - The provider budget is cfg.timeoutMs, not a literal. A CPU engine needing
+//   longer must be accommodated by a setting.
+// - A hung engine ends as 502 with code:"timeout". The client branches on the
+//   code, so English prose in `error` is not a substitute.
+// - A departing listener aborts the provider request rather than leaving it
+//   rendering to completion.
+// - A local engine is reachable with no opt-in, and TTS_LOCAL_URLS_ENABLED
+//   =false still denies private and LAN addresses for every source.
+//
+// Boots the real app against a stub engine, and drives a real socket for the
+// disconnect case: app.inject has none, and the abort binding is only correct
+// on one of req.raw/reply.raw, which are indistinguishable without one.
 
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -92,6 +96,36 @@ try {
     200,
     `loopback engine must be reachable without TTS_LOCAL_URLS_ENABLED: ${spoke.body}`,
   );
+
+  // ── The local-URL flag: default-on, and its opt-out covers every source ──
+  // Asserted against the policy rather than /speak because a policy refusal and
+  // a real connection refusal both surface as code:"unreachable" on the route.
+  // A literal private IP is rejected at the hostname check (security.ts), so
+  // none of this touches DNS or the network.
+  {
+    const { ttsUrlPolicy } = await import("../../../packages/server/src/services/tts/url-policy.js");
+    const { validateOutboundUrl } = await import("../../../packages/server/src/utils/security.js");
+    const lan = "http://192.168.0.1:8000/v1/audio/speech";
+    const loopback = "http://127.0.0.1:8000/v1/audio/speech";
+
+    // The flag is read per call, so flipping it mid-run is the real behaviour.
+    delete process.env.TTS_LOCAL_URLS_ENABLED;
+    await validateOutboundUrl(lan, ttsUrlPolicy());
+
+    process.env.TTS_LOCAL_URLS_ENABLED = "false";
+    await assert.rejects(
+      () => validateOutboundUrl(lan, ttsUrlPolicy()),
+      /private, loopback, metadata, or reserved IP range|local or reserved/u,
+      "TTS_LOCAL_URLS_ENABLED=false must restore deny-by-default",
+    );
+    // The policy takes no source, so the opt-out reaches all of them. A
+    // per-source exemption would leave LAN reach open on a hardened install.
+    assert.equal(ttsUrlPolicy().allowLocal, false, "the opt-out cannot be partial: no source overrides it");
+    // Loopback is unconditional, so hardening never breaks a localhost engine.
+    await validateOutboundUrl(loopback, ttsUrlPolicy());
+
+    delete process.env.TTS_LOCAL_URLS_ENABLED;
+  }
 
   // ── The configured budget is the budget ──
   await saveConfig({ baseUrl: `${providerBase}/hang`, timeoutMs: 5_000 });

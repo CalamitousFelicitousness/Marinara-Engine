@@ -8890,7 +8890,7 @@
   "ui.tts.notice.providerTitle": "The speech engine rejected the request",
   "ui.tts.notice.timeoutBody": "Raise the request timeout in {{path}}. Local engines on CPU often need several minutes per chunk.",
   "ui.tts.notice.timeoutTitle": "The speech engine ran out of time",
-  "ui.tts.notice.unreachableBody": "Check that it is running and that the base URL is right. A LAN address also needs TTS_LOCAL_URLS_ENABLED.",
+  "ui.tts.notice.unreachableBody": "Check that it is running and that the base URL is right.",
   "ui.tts.notice.unreachableTitle": "Could not reach the speech engine",
   "ui.ui.avatarcropwidget.avatarCrop": "Avatar Crop",
   "ui.ui.avatarcropwidget.dragTheSquareToPanTheCornersToResize": "Drag the square to pan, the corners to resize. The avatar shows exactly the region inside the square.",

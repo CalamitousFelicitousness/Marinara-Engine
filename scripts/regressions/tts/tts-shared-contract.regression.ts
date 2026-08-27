@@ -66,8 +66,17 @@ for (const id of TTS_SOURCE_IDS) {
   );
   assert.ok(definition.maxInputChars <= TTS_CHUNK_CHARS_MAX, `${id}: input ceiling cannot exceed what /speak accepts`);
 }
-assert.equal(TTS_SOURCE_DEFINITIONS.pockettts.localByDefault, true, "PocketTTS reaches LAN hosts without the flag");
-assert.equal(TTS_SOURCE_DEFINITIONS.openai.localByDefault, false, "no other source reaches LAN hosts by default");
+// A source definition describes a backend, never its outbound URL policy.
+// ttsUrlPolicy() takes no source, so a policy field here would have to be read
+// somewhere new to have any effect, and the effect would be a per-source
+// exemption from TTS_LOCAL_URLS_ENABLED=false. This fails if one appears.
+for (const id of TTS_SOURCE_IDS) {
+  assert.deepEqual(
+    Object.keys(TTS_SOURCE_DEFINITIONS[id]).sort(),
+    ["defaultBaseUrl", "defaultModel", "defaultVoice", "id", "maxInputChars", "name", "recommendedChunkChars"],
+    `${id}: definition shape must stay free of URL-policy fields`,
+  );
+}
 
 // The client clamps chunk size against TTS_CHUNK_CHARS_MAX; the server rejects
 // anything larger. Drifting apart turns a legal setting into a 400.

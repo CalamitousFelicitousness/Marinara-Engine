@@ -672,7 +672,7 @@ async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode>
       const response = await safeFetch(`${base}/openapi.json`, {
         headers: optionalBearerHeaders(cfg.apiKey),
         signal: AbortSignal.timeout(5_000),
-        policy: ttsUrlPolicy("pockettts"),
+        policy: ttsUrlPolicy(),
         maxResponseBytes: 2 * 1024 * 1024,
       });
       if (!response.ok) {
@@ -890,7 +890,7 @@ export async function fetchElevenLabsVoiceOptions(
     const res = await safeFetch(url, {
       headers: elevenLabsHeaders(apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: ttsUrlPolicy("elevenlabs"),
+      policy: ttsUrlPolicy(),
       maxResponseBytes: 2 * 1024 * 1024,
       decodeCompressedResponse: true,
     });
@@ -952,7 +952,7 @@ async function fetchElevenLabsModelOptions(baseUrl: string, apiKey: string): Pro
   const res = await safeFetch(`${elevenLabsApiRoot(baseUrl)}/v1/models`, {
     headers: elevenLabsHeaders(apiKey),
     signal: AbortSignal.timeout(10_000),
-    policy: ttsUrlPolicy("elevenlabs"),
+    policy: ttsUrlPolicy(),
     maxResponseBytes: 2 * 1024 * 1024,
     decodeCompressedResponse: true,
   });
@@ -988,7 +988,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
     const res = await safeFetch(`${pocketTtsV1BaseUrl(base)}/voices`, {
       headers: optionalBearerHeaders(cfg.apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: ttsUrlPolicy("pockettts"),
+      policy: ttsUrlPolicy(),
       maxResponseBytes: 2 * 1024 * 1024,
     });
     if (!res.ok) return fallbackVoices(cfg.source);
@@ -1016,7 +1016,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
     const res = await safeFetch(`${base}/tts/voices`, {
       headers: openAiHeaders(cfg.apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: ttsUrlPolicy("xai"),
+      policy: ttsUrlPolicy(),
       maxResponseBytes: 2 * 1024 * 1024,
     });
     if (!res.ok) return fallbackVoices(cfg.source);
@@ -1027,7 +1027,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
   const res = await safeFetch(`${base}/audio/voices`, {
     headers: openAiHeaders(cfg.apiKey),
     signal: AbortSignal.timeout(10_000),
-    policy: ttsUrlPolicy(cfg.source),
+    policy: ttsUrlPolicy(),
     maxResponseBytes: 2 * 1024 * 1024,
   });
 
@@ -1333,7 +1333,7 @@ export async function ttsRoutes(app: FastifyInstance) {
         headers: speechRequest.headers,
         body: speechRequest.body,
         signal: AbortSignal.any([clientGone.signal, AbortSignal.timeout(timeoutMs)]),
-        policy: ttsUrlPolicy(cfg.source),
+        policy: ttsUrlPolicy(),
         maxResponseBytes: MAX_TTS_AUDIO_BYTES,
         decodeCompressedResponse: speechRequest.decodeCompressedResponse,
       });

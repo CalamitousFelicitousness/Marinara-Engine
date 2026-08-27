@@ -245,25 +245,33 @@ Related privileged settings:
 
 If `ADMIN_SECRET` is not set on the server, privileged actions fail from any device except the local machine. The error tells you to set the secret and paste it into **Admin Access**.
 
-## Local address opt-ins
+## Local address controls
 
-By default, outbound requests to providers, image services, and webhooks refuse to reach private or local addresses. This blocks a class of attack called SSRF (server-side request forgery), where a request is tricked into reaching an internal address. Loopback provider addresses stay allowed so local model servers keep working.
+These switches decide whether an outbound request may reach a private or LAN address. The check blocks a class of attack called SSRF (server-side request forgery), where a request is tricked into reaching an internal address.
 
-Turn on only the switch you need for a self-hosted service on another private-network machine.
+What splits them is **who supplies the address**, not which feature is asking.
+
+A **base URL you typed yourself**, in Connections or in Text to Speech, is allowed to reach your own network by default. Denying it protects nobody: you can already reach your own LAN from the browser, so the only thing the check accomplishes is making you edit `.env` before your GPU box answers.
+
+A URL **somebody else supplied** stays blocked by default, because the party choosing the address is not the party who can lift the restriction. That covers an image provider's result URL, a DeepLX address carried inside imported chat metadata, and a webhook that arrived with an imported tool.
+
+Loopback (`localhost`, `127.0.0.1`) is always allowed, for every one of these, and cannot be switched off.
 
 | Variable                      | Default | What it does                                                                         |
 | ----------------------------- | ------- | ------------------------------------------------------------------------------------ |
-| `PROVIDER_LOCAL_URLS_ENABLED` | `false` | Allows AI provider URLs to reach private or LAN addresses. On by default on Android. |
+| `PROVIDER_LOCAL_URLS_ENABLED` | `true`  | AI provider base URLs may reach private or LAN addresses. Set `false` to deny.       |
+| `TTS_LOCAL_URLS_ENABLED`      | `true`  | Text-to-speech base URLs may reach private or LAN addresses. Set `false` to deny.    |
 | `IMAGE_LOCAL_URLS_ENABLED`    | `false` | Allows image provider URLs to reach private or LAN addresses. Private generated-image result URLs must still match the configured provider's exact origin. |
-| `TTS_LOCAL_URLS_ENABLED`      | `false` | Allows text-to-speech URLs to reach private or LAN addresses. Loopback engines such as `http://localhost:8000` work without it. |
 | `DEEPLX_LOCAL_URLS_ENABLED`   | `false` | Allows DeepLX translation URLs to reach private or LAN addresses.                    |
 | `WEBHOOK_LOCAL_URLS_ENABLED`  | `false` | Allows custom tool webhooks to reach private or LAN addresses.                       |
+
+Set the first two to `false` if this server is reachable past loopback, where the person writing a connection may not be the person who owns the machine. The opt-out is complete: no provider or speech backend is exempt from it.
 
 To connect a local or self-hosted model, see [Connecting a Local or Self-Hosted Model](connections/local-self-hosted.md).
 
 ## Full environment variable reference
 
-This section lists the remaining settings, grouped by purpose. The tables above already cover access control, storage, logging, timeouts, privileged actions, and local address opt-ins.
+This section lists the remaining settings, grouped by purpose. The tables above already cover access control, storage, logging, timeouts, privileged actions, and local address controls.
 
 ### Server and startup
 

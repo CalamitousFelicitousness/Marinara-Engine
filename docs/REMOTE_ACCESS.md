@@ -226,7 +226,7 @@ Loopback, normal LAN addresses, Tailscale (`100.64.0.0/10`), and Docker bridge (
 
 ## A note on blocked local providers
 
-Say you connect Marinara to a local AI provider, for example one running on your own machine. The request may be refused with a message about a "private, loopback, metadata, or reserved IP range". That is a different safety check called SSRF protection. SSRF stands for server-side request forgery. It stops the server from calling private addresses unless you allow it. The error names the exact `.env` variable to set, such as `PROVIDER_LOCAL_URLS_ENABLED`. See [Server Configuration Reference](CONFIGURATION.md) for the full list.
+A request to a local AI provider may be refused with a message about a "private, loopback, metadata, or reserved IP range". That is a different safety check called SSRF protection. SSRF stands for server-side request forgery. Provider and speech base URLs reach private addresses by default, so this normally appears only when the server has been hardened with `PROVIDER_LOCAL_URLS_ENABLED=false`, or for a URL that something other than you supplied. The error names the exact `.env` variable involved. See [Server Configuration Reference](CONFIGURATION.md) for the full list.
 
 ## Access from a phone or tablet
 

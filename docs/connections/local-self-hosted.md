@@ -62,17 +62,9 @@ Turn this toggle on if Professor Mari stops after using a tool. Turn it on too i
 
 Marinara always allows connections to your own computer. Addresses like `localhost` and `127.0.0.1` are called loopback addresses, meaning "this same machine." These always work for a connection, with no extra setup.
 
-If your model server runs on a different computer on your home or office network, that is a private network address. Marinara blocks private network addresses by default for safety. To allow them, the person who runs the Marinara server must set an environment variable. An environment variable is a setting the server reads when it starts.
+A server on a different computer on your home or office network works too, with no extra setup. Use a Base URL that points at that machine, such as `http://192.168.1.50:11434/v1`.
 
-Add this line to the server `.env` file:
-
-```
-PROVIDER_LOCAL_URLS_ENABLED=true
-```
-
-Save the file and restart the Marinara server for the change to take effect. After that, you can use a Base URL that points at another machine on your network, such as `http://192.168.1.50:11434/v1`.
-
-On Android, this setting is turned on by default when you do not set it. For more about the `.env` file and server settings, see the [Server Configuration Reference](../CONFIGURATION.md).
+If the person running the Marinara server has hardened it with `PROVIDER_LOCAL_URLS_ENABLED=false`, those addresses are refused and the error says so. That setting is meant for a server other people can reach; on a personal install it is not needed. See the [Server Configuration Reference](../CONFIGURATION.md).
 
 ## Test your connection
 
@@ -85,7 +77,7 @@ The connection editor has a **Connection Tests** card at the bottom. Use it befo
 
 If both tests succeed, your local model is ready to use in a chat. Open a chat, open its settings, and pick this connection.
 
-If a test fails, first check that your local server is still running and that the model is loaded. Then check that the **Base URL** matches the server's address and port exactly. For a server on another computer, confirm that `PROVIDER_LOCAL_URLS_ENABLED` is set and that you restarted the Marinara server.
+If a test fails, first check that your local server is still running and that the model is loaded. Then check that the **Base URL** matches the server's address and port exactly. If the error mentions a private or reserved IP range, the Marinara server has `PROVIDER_LOCAL_URLS_ENABLED=false` set; remove that line and restart.
 
 ## Related guides
 

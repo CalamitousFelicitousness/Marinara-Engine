@@ -1,10 +1,10 @@
 // ──────────────────────────────────────────────
 // TTS Failure Notices
 // ──────────────────────────────────────────────
-// Synthesis failures used to reach the user only as a silently flipped button
-// state plus a console warning; the settings card was the one surface that
-// showed a reason. A local engine that had stopped therefore looked like a
-// feature that had stopped.
+// The reason a synthesis failed, on the surface the user is looking at. Without
+// this a stopped local engine is indistinguishable from a stopped feature: the
+// button flips back and the detail reaches only the console and the settings
+// card.
 //
 // Fired once per sequence, not per retry. The engine imports this lazily and
 // only in a browser, so the regression suite never loads sonner.
@@ -37,7 +37,7 @@ function describe(kind: TTSFailureKind, detail: string): { title: string; descri
         title: localize("ui.tts.notice.unreachableTitle", "Could not reach the speech engine"),
         description: localize(
           "ui.tts.notice.unreachableBody",
-          "Check that it is running and that the base URL is right. A LAN address also needs TTS_LOCAL_URLS_ENABLED.",
+          "Check that it is running and that the base URL is right.",
         ),
       };
     default:

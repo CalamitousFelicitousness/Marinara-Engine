@@ -1058,8 +1058,9 @@ existing client reads only `error`/`detail`/`message`.
 Loopback is now allowed for every TTS source. `llmFetch` passes `allowLoopback: true` and
 `allowMdns: true` unconditionally and `docs/CONFIGURATION.md` already promises that local model
 servers keep working, but no TTS policy set it, so a localhost engine needed
-`TTS_LOCAL_URLS_ENABLED` where an LLM server never did. The flag still gates private and LAN
-addresses. `packages/server/src/services/tts/url-policy.ts` now issues the one policy every TTS
+`TTS_LOCAL_URLS_ENABLED` where an LLM server never did. The flag still gated private and LAN
+addresses at that point; see "Local address controls key on who supplied the URL" below for why it
+no longer does. `packages/server/src/services/tts/url-policy.ts` now issues the one policy every TTS
 fetch uses; previously `/speak` used pockettts-bypass-or-flag, the PocketTTS probe hardcoded
 `allowLocal: true`, and xAI voice listing hardcoded never-local while naming the flag it ignored.
 That last one is a deliberate widening: xAI `/speak` was already flag-gated, so the listing was the
@@ -1074,6 +1075,48 @@ Patches to upstream files: `packages/server/src/routes/tts.routes.ts` and
 `packages/server/src/middleware/rate-limit.ts`. Proven by
 `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts`, which boots the real app against a
 stub engine.
+
+### Local address controls key on who supplied the URL
+
+`PROVIDER_LOCAL_URLS_ENABLED` and `TTS_LOCAL_URLS_ENABLED` now default to `true`, with an explicit
+`false` restoring deny. `IMAGE_LOCAL_URLS_ENABLED`, `DEEPLX_LOCAL_URLS_ENABLED`, and
+`WEBHOOK_LOCAL_URLS_ENABLED` are unchanged.
+
+Five flags with one shape were being read as one policy, but they guard two different situations.
+The axis that matters is URL provenance, not subsystem. A provider or TTS base URL exists because
+the operator typed it into Connections or the TTS card; that operator already reaches their own LAN
+from the browser, so denying the server the same reach stops no attacker and costs an `.env` edit on
+exactly the self-hosted setups the feature is for. The remaining three fetch a URL some other party
+supplied, so whoever picks the address cannot also flip the flag that permits it.
+
+DeepLX was checked rather than assumed, and it belongs with the second group. Its URL does not come
+from server storage: it rides the `/api/translate` body from per-chat metadata
+(`ChatArea.tsx` seeds the store from `chatMeta.translationDeeplxUrl`), and
+`st-chat.importer.ts` merges an imported SillyTavern chat's `marinara_metadata` through a
+**denylist** of six branch/scene keys. An imported chat therefore supplies `translationDeeplxUrl`,
+`translationProvider`, and `autoTranslate` together, and `use-generate.ts` fires the fetch after each
+generated message with no click. Verified by importing a crafted chat against a real DB: all three
+keys survived while the control key `branchParentChatId` was stripped.
+
+Two consequences beyond the defaults:
+
+- The Android-only auto-enable in `isProviderLocalUrlsEnabled` is gone, since it is now the
+  behaviour everywhere.
+- `TTS_SOURCE_DEFINITIONS[...].localByDefault` is deleted and `ttsUrlPolicy()` takes no source.
+  PocketTTS used that field to bypass the flag, which made an explicit opt-out silently partial: an
+  operator who hardened the install still had one source reaching the LAN.
+
+Patches to upstream files: `packages/server/src/config/runtime-config.ts`,
+`packages/server/src/routes/tts.routes.ts`, `packages/shared/src/constants/tts-sources.ts`,
+`packages/client/src/lib/tts-error-notice.ts`, `packages/client/src/localization/locales/en.json`,
+`.env.example`, `docs/CONFIGURATION.md`, `docs/REMOTE_ACCESS.md`, `docs/TROUBLESHOOTING.md`,
+`docs/connections/local-self-hosted.md`, `docs/media/tts-setup.md`. The runtime-config and docs
+edits are the collision-prone ones: upstream owns the flag defaults and the configuration table.
+
+Proven by `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts` (LAN allowed with the flag
+absent, denied with it `false`, loopback unconditional) and
+`scripts/regressions/tts/tts-shared-contract.regression.ts` (source definitions carry no URL-policy
+field).
 
 ### TTS source metadata and synthesis tuning have one definition
 

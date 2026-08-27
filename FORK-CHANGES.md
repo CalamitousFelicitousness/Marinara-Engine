@@ -867,6 +867,46 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### TTS honours a configured timeout, stops on disconnect, and reaches localhost
+
+The provider request budget was the literal `AbortSignal.timeout(60_000)` in the `/speak` handler.
+It now comes from `cfg.timeoutMs` (see the entry below), clamped again on read because
+`resolveAudioConfig` overlays a connection row onto the parsed blob. No `TTS_SPEAK_TIMEOUT_MS` env
+var: the config field is the mechanism, and an env fallback would have been unreachable once the
+schema always supplies a value.
+
+Client disconnect now aborts the provider request. The binding is `reply.raw`, not `req.raw`:
+on a plain POST the request message completes as soon as Fastify parses the body, so `req.raw`
+fires `close` about a millisecond into the handler and would abort every synthesis. Verified
+empirically rather than from the docs, because the two differ only under a real socket:
+`app.inject` has none, so an inject-only test cannot tell them apart. The regression therefore
+drives a real listener for that case.
+
+`/speak` failures carry a `code` of `timeout`, `unreachable`, or `provider_error` beside the
+existing `error` string, so the client can branch without matching English prose. A disconnect
+answers 499 rather than logging an error, since the listener is gone. The field is additive and the
+existing client reads only `error`/`detail`/`message`.
+
+Loopback is now allowed for every TTS source. `llmFetch` passes `allowLoopback: true` and
+`allowMdns: true` unconditionally and `docs/CONFIGURATION.md` already promises that local model
+servers keep working, but no TTS policy set it, so a localhost engine needed
+`TTS_LOCAL_URLS_ENABLED` where an LLM server never did. The flag still gates private and LAN
+addresses. `packages/server/src/services/tts/url-policy.ts` now issues the one policy every TTS
+fetch uses; previously `/speak` used pockettts-bypass-or-flag, the PocketTTS probe hardcoded
+`allowLocal: true`, and xAI voice listing hardcoded never-local while naming the flag it ignored.
+That last one is a deliberate widening: xAI `/speak` was already flag-gated, so the listing was the
+outlier. Game audio keeps its own hardcoded https-only ElevenLabs policy.
+
+`/voices` and `/models` parse their query with Zod instead of an untyped cast. Synthesis gets its
+own rate-limit bucket (`tts-speak`, 300/min) matched before the generic `/api/tts` rule: a message
+is many chunk requests, so at a small chunk size with parallel generation the shared 90/min ran out
+and began 429ing `/tts/config` reads mid-playback.
+
+Patches to upstream files: `packages/server/src/routes/tts.routes.ts` and
+`packages/server/src/middleware/rate-limit.ts`. Proven by
+`scripts/regressions/tts/tts-speak-timeout-abort.regression.ts`, which boots the real app against a
+stub engine.
+
 ### TTS source metadata and synthesis tuning have one definition
 
 Local TTS engines were unusable. The reported symptom was "no paragraph splitting, no timeout

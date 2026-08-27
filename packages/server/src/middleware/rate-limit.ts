@@ -41,6 +41,10 @@ export const BACKUP_RATE_LIMIT = {
 
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   { pattern: /^\/api\/generate(?:\/|$)/, rule: { key: "generate", limit: 60, windowMs: 60_000 } },
+  // Synthesis has its own bucket, matched before the generic one. A message is
+  // many chunk requests, so at a small chunk size with parallel generation the
+  // shared 90/min ran out and started 429ing /tts/config reads mid-playback.
+  { pattern: /^\/api\/tts\/speak(?:\?|$)/, rule: { key: "tts-speak", limit: 300, windowMs: 60_000 } },
   { pattern: /^\/api\/tts(?:\/|$)/, rule: { key: "tts", limit: 90, windowMs: 60_000 } },
   {
     pattern: /^\/api\/connections\/[^/]+\/test-image(?:\?|$)/,

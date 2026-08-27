@@ -15,6 +15,9 @@ import {
   ttsRoleplaySpeakerExtractorResponseSchema,
   TTS_SOURCE_DEFINITIONS,
   TTS_SOURCE_IDS,
+  TTS_TIMEOUT_MS_DEFAULT,
+  TTS_TIMEOUT_MS_MAX,
+  TTS_TIMEOUT_MS_MIN,
   type TTSSource,
   type TTSConfig,
   type TTSRoleplaySpeakerExtractorResponse,
@@ -25,8 +28,9 @@ import {
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { encryptApiKey, decryptApiKey } from "../utils/crypto.js";
-import { getChatGenerationTimeoutMs, isTtsLocalUrlsEnabled } from "../config/runtime-config.js";
+import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
+import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
@@ -133,6 +137,10 @@ const speakSchema = z.object({
   voice: z.string().max(200).optional(),
   /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
   audioConnectionId: z.string().optional(),
+});
+
+const ttsQuerySchema = z.object({
+  connectionId: z.string().max(120).optional(),
 });
 
 const roleplaySpeakerExtractorSchema = z.object({
@@ -636,13 +644,15 @@ function fallbackVoices(source: TTSSource): TTSVoicesResponse {
   );
 }
 
+function resolveTtsTimeoutMs(cfg: TTSConfig): number {
+  const configured = Number(cfg.timeoutMs);
+  if (!Number.isFinite(configured)) return TTS_TIMEOUT_MS_DEFAULT;
+  return Math.min(TTS_TIMEOUT_MS_MAX, Math.max(TTS_TIMEOUT_MS_MIN, Math.round(configured)));
+}
+
 function configuredBaseUrl(cfg: TTSConfig) {
   const fallbackBase = TTS_SOURCE_DEFINITIONS[cfg.source].defaultBaseUrl;
   return (cfg.baseUrl || fallbackBase).replace(/\/+$/, "");
-}
-
-function allowLocalTtsUrl(cfg: TTSConfig) {
-  return cfg.source === "pockettts" || isTtsLocalUrlsEnabled();
 }
 
 function elevenLabsApiRoot(baseUrl: string) {
@@ -696,11 +706,7 @@ async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode>
       const response = await safeFetch(`${base}/openapi.json`, {
         headers: optionalBearerHeaders(cfg.apiKey),
         signal: AbortSignal.timeout(5_000),
-        policy: {
-          allowLocal: true,
-          allowedProtocols: ["https:", "http:"],
-          flagName: "TTS_LOCAL_URLS_ENABLED",
-        },
+        policy: ttsUrlPolicy("pockettts"),
         maxResponseBytes: 2 * 1024 * 1024,
       });
       if (!response.ok) {
@@ -996,11 +1002,7 @@ export async function fetchElevenLabsVoiceOptions(
     const res = await safeFetch(url, {
       headers: elevenLabsHeaders(apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: {
-        allowLocal: isTtsLocalUrlsEnabled(),
-        allowedProtocols: ["https:", "http:"],
-        flagName: "TTS_LOCAL_URLS_ENABLED",
-      },
+      policy: ttsUrlPolicy("elevenlabs"),
       maxResponseBytes: 2 * 1024 * 1024,
       decodeCompressedResponse: true,
     });
@@ -1062,11 +1064,7 @@ async function fetchElevenLabsModelOptions(baseUrl: string, apiKey: string): Pro
   const res = await safeFetch(`${elevenLabsApiRoot(baseUrl)}/v1/models`, {
     headers: elevenLabsHeaders(apiKey),
     signal: AbortSignal.timeout(10_000),
-    policy: {
-      allowLocal: isTtsLocalUrlsEnabled(),
-      allowedProtocols: ["https:", "http:"],
-      flagName: "TTS_LOCAL_URLS_ENABLED",
-    },
+    policy: ttsUrlPolicy("elevenlabs"),
     maxResponseBytes: 2 * 1024 * 1024,
     decodeCompressedResponse: true,
   });
@@ -1102,11 +1100,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
     const res = await safeFetch(`${pocketTtsV1BaseUrl(base)}/voices`, {
       headers: optionalBearerHeaders(cfg.apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: {
-        allowLocal: true,
-        allowedProtocols: ["https:", "http:"],
-        flagName: "TTS_LOCAL_URLS_ENABLED",
-      },
+      policy: ttsUrlPolicy("pockettts"),
       maxResponseBytes: 2 * 1024 * 1024,
     });
     if (!res.ok) return fallbackVoices(cfg.source);
@@ -1134,11 +1128,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
     const res = await safeFetch(`${base}/tts/voices`, {
       headers: openAiHeaders(cfg.apiKey),
       signal: AbortSignal.timeout(10_000),
-      policy: {
-        allowLocal: false,
-        allowedProtocols: ["https:"],
-        flagName: "TTS_LOCAL_URLS_ENABLED",
-      },
+      policy: ttsUrlPolicy("xai"),
       maxResponseBytes: 2 * 1024 * 1024,
     });
     if (!res.ok) return fallbackVoices(cfg.source);
@@ -1149,11 +1139,7 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
   const res = await safeFetch(`${base}/audio/voices`, {
     headers: openAiHeaders(cfg.apiKey),
     signal: AbortSignal.timeout(10_000),
-    policy: {
-      allowLocal: allowLocalTtsUrl(cfg),
-      allowedProtocols: ["https:", "http:"],
-      flagName: "TTS_LOCAL_URLS_ENABLED",
-    },
+    policy: ttsUrlPolicy(cfg.source),
     maxResponseBytes: 2 * 1024 * 1024,
   });
 
@@ -1199,7 +1185,7 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Fetches available voices from the configured provider.
    */
   app.get("/voices", async (req, reply) => {
-    const { connectionId } = (req.query ?? {}) as { connectionId?: string };
+    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
     // Without an explicit connection this endpoint serves the TTS settings
     // card, which edits the blob — resolving the default audio connection here
     // would show the card voices for a source it is not configuring.
@@ -1224,7 +1210,7 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Fetches text-to-speech-capable models from ElevenLabs.
    */
   app.get("/models", async (req, reply) => {
-    const { connectionId } = (req.query ?? {}) as { connectionId?: string };
+    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
     const cfg = connectionId ? await resolveAudioConfig(storage, connections, connectionId) : await loadConfig(storage);
 
     try {
@@ -1487,6 +1473,14 @@ export async function ttsRoutes(app: FastifyInstance) {
         : undefined;
     const pocketTtsForm = useOfficialPocketTtsSpeech ? buildOfficialPocketTtsForm(providerText, requestVoice) : null;
 
+    const timeoutMs = resolveTtsTimeoutMs(cfg);
+    // Bound to reply.raw, not req.raw: on a plain POST the request message
+    // completes as soon as the body is parsed, so req.raw "close" fires while
+    // synthesis is still running and would abort every request. reply.raw
+    // "close" fires only when the response finishes or the peer hangs up.
+    const clientGone = new AbortController();
+    reply.raw.once("close", () => clientGone.abort());
+
     let providerRes: Response;
     try {
       providerRes = await safeFetch(url, {
@@ -1541,27 +1535,34 @@ export async function ttsRoutes(app: FastifyInstance) {
                     response_format: audioFormat,
                     ...(speechInstructions ? { instructions: speechInstructions } : {}),
                   }),
-        signal: AbortSignal.timeout(60_000),
-        policy: {
-          allowLocal: allowLocalTtsUrl(cfg),
-          allowedProtocols: ["https:", "http:"],
-          flagName: "TTS_LOCAL_URLS_ENABLED",
-        },
+        signal: AbortSignal.any([clientGone.signal, AbortSignal.timeout(timeoutMs)]),
+        policy: ttsUrlPolicy(cfg.source),
         maxResponseBytes: MAX_TTS_AUDIO_BYTES,
         decodeCompressedResponse: cfg.source === "elevenlabs",
       });
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error && err.name === "TimeoutError" ? "TTS request timed out" : "TTS provider unreachable";
+      const name = err instanceof Error ? err.name : "";
+      if (clientGone.signal.aborted && name !== "TimeoutError") {
+        // The listener navigated away or stopped playback. Not a failure, and
+        // nobody is left to read the reply.
+        req.log.debug("TTS synthesis abandoned by the client");
+        return reply.status(499).send({ error: "TTS request aborted", code: "aborted" });
+      }
+      const timedOut = name === "TimeoutError";
       req.log.error(err, "TTS provider request failed");
-      return reply.status(502).send({ error: msg });
+      return reply.status(502).send({
+        error: timedOut ? `TTS request timed out after ${Math.round(timeoutMs / 1000)}s` : "TTS provider unreachable",
+        code: timedOut ? "timeout" : "unreachable",
+      });
     }
 
     if (!providerRes.ok) {
       const body = await providerRes.text().catch(() => "");
-      return reply
-        .status(502)
-        .send({ error: `TTS provider returned ${providerRes.status}`, detail: readProviderErrorDetail(body) });
+      return reply.status(502).send({
+        error: `TTS provider returned ${providerRes.status}`,
+        detail: readProviderErrorDetail(body),
+        code: "provider_error",
+      });
     }
 
     const contentType = providerRes.headers.get("content-type");
@@ -1570,7 +1571,7 @@ export async function ttsRoutes(app: FastifyInstance) {
       audioBuffer = await providerRes.arrayBuffer();
     } catch (error: unknown) {
       logger.error(error, "Failed to read TTS provider response body");
-      return reply.status(502).send({ error: "TTS provider response could not be read" });
+      return reply.status(502).send({ error: "TTS provider response could not be read", code: "provider_error" });
     }
 
     const responseContentType = resolveTTSAudioResponseContentType(contentType, new Uint8Array(audioBuffer));
@@ -1579,6 +1580,7 @@ export async function ttsRoutes(app: FastifyInstance) {
       return reply.status(502).send({
         error: "TTS provider returned a non-audio response",
         detail: readProviderErrorDetail(body) || `Content-Type: ${contentType || "missing"}`,
+        code: "provider_error",
       });
     }
 

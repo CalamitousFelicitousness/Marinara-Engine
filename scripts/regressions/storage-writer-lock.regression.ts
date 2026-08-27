@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { closeDB, getDB } from "../../packages/server/src/db/connection.js";
 import {
   createFileNativeDB,
+  linuxProcessStartTimeMs,
   STORAGE_WRITER_LIVENESS_FILENAME,
   STORAGE_WRITER_LEASE_FILENAME,
   STORAGE_WRITER_OWNER_FILENAME,
@@ -116,6 +117,12 @@ function forceStopProcessTree(child: ReturnType<typeof spawn>) {
 }
 
 try {
+  assert.equal(
+    linuxProcessStartTimeMs(625, 1_700_000_000, 250),
+    1_700_000_002_500,
+    "Linux process start time uses the configured clock-tick rate",
+  );
+
   // The ordinary lorebook path remains durable, while a second live writer
   // for the exact same root fails before loading or mutating any data.
   {

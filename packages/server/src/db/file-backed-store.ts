@@ -1215,6 +1215,15 @@ const CURRENT_HOST_ID = (() => {
     .digest("hex");
 })();
 const CURRENT_BOOT_ID = readBootId();
+const CURRENT_CLOCK_TICKS_PER_SECOND = (() => {
+  if (process.platform !== "linux" && process.platform !== "android") return null;
+  try {
+    const ticks = Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: 1_000 }).trim());
+    return Number.isSafeInteger(ticks) && ticks > 0 ? ticks : null;
+  } catch {
+    return null;
+  }
+})();
 
 const CURRENT_CONTAINER_WRITER_SCOPE_ID = (() => {
   if (process.platform !== "linux" || process.env.MARINARA_DOCKER !== "true") return null;
@@ -1381,6 +1390,18 @@ function pidDefinitelyExited(pid: number) {
   }
 }
 
+export function linuxProcessStartTimeMs(startTicks: number, bootTimeSeconds: number, ticksPerSecond: number) {
+  if (
+    !Number.isFinite(startTicks) ||
+    !Number.isFinite(bootTimeSeconds) ||
+    !Number.isSafeInteger(ticksPerSecond) ||
+    ticksPerSecond <= 0
+  ) {
+    return null;
+  }
+  return bootTimeSeconds * 1_000 + (startTicks / ticksPerSecond) * 1_000;
+}
+
 function pidWasReused(record: StorageWriterLeaseRecord) {
   const leaseTime = Date.parse(record.acquiredAt);
   if (!Number.isFinite(leaseTime)) return false;
@@ -1412,8 +1433,9 @@ function pidWasReused(record: StorageWriterLeaseRecord) {
       const stat = readFileSync(`/proc/${record.pid}/stat`, "utf8");
       const startTicks = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]);
       const bootTime = Number(readFileSync("/proc/stat", "utf8").match(/^btime (\d+)$/m)?.[1]);
-      if (!Number.isFinite(startTicks) || !Number.isFinite(bootTime)) return false;
-      return bootTime * 1_000 + (startTicks / 100) * 1_000 > leaseTime + 1_000;
+      if (!CURRENT_CLOCK_TICKS_PER_SECOND) return false;
+      const processTime = linuxProcessStartTimeMs(startTicks, bootTime, CURRENT_CLOCK_TICKS_PER_SECOND);
+      return processTime !== null && processTime > leaseTime + 1_000;
     } catch {
       return false;
     }

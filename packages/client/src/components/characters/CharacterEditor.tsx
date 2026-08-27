@@ -1525,6 +1525,7 @@ function TextareaTab({
   );
 }
 
+/** Connects the character editor's unsaved card draft to Conversation profile controls. */
 function ConvoTab({
   formData,
   updateExtension,

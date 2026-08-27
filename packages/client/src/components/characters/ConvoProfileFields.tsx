@@ -133,6 +133,7 @@ export function ConvoProfileFields({
   const behaviorInstruction = behavior?.instruction ?? "";
   const behaviorStrategy: ConvoBehaviorInsertionStrategy = behavior?.insertionStrategy ?? "constant_after";
 
+  /** Applies generated text only when the user has not changed the source field. */
   const generateProfile = async (target: "aboutMe" | "behavior") => {
     if (!generateConvoProfile || generating) return;
     setGenerating(target);

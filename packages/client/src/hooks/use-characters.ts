@@ -283,6 +283,7 @@ export interface CharacterConvoProfileDraft {
   appearance?: string;
 }
 
+/** Generates one Conversation profile field from the current character card draft. */
 export function useGenerateCharacterConvoProfile() {
   return useMutation({
     mutationFn: ({

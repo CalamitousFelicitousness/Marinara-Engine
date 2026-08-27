@@ -1221,8 +1221,6 @@ export class OpenAIProvider extends BaseLLMProvider {
         body.provider = { order: [openrouterProvider] };
       }
 
-      this.applyOpenRouterPromptCaching(body, options);
-
       // Force response format (e.g. JSON mode)
       const normalizedResponseFormat = this.normalizeChatCompletionsResponseFormat(options.responseFormat);
       if (normalizedResponseFormat) {
@@ -1237,6 +1235,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       this.applyChatCompletionsReasoning(body, options);
     }
 
+    this.applyOpenRouterPromptCaching(body, options);
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
     // Local chat templates may ignore reasoning_effort. Apply this after custom
@@ -1509,8 +1508,6 @@ export class OpenAIProvider extends BaseLLMProvider {
         body.provider = { order: [openrouterProvider] };
       }
 
-      this.applyOpenRouterPromptCaching(body, options);
-
       // Force response format (e.g. JSON mode)
       const normalizedResponseFormat = this.normalizeChatCompletionsResponseFormat(options.responseFormat);
       if (normalizedResponseFormat) {
@@ -1525,6 +1522,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       this.applyChatCompletionsReasoning(body, options);
     }
 
+    this.applyOpenRouterPromptCaching(body, options);
     this.applyOpenRouterServiceTier(body, options);
     this.applyCustomParameters(body, options);
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);

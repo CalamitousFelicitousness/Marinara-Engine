@@ -323,7 +323,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 onClick={() => handleSwitch(null)}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-                  !activePersonaId
+                  !activePersonaId && !activeCharacterId
                     ? "bg-foreground/10 text-foreground ring-1 ring-foreground/15"
                     : "hover:bg-foreground/10",
                 )}
@@ -332,14 +332,16 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                   ?
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className={cn("text-xs font-semibold", !activePersonaId && "text-foreground")}>
+                  <span
+                    className={cn("text-xs font-semibold", !activePersonaId && !activeCharacterId && "text-foreground")}
+                  >
                     {localizeUi("ui.game.gamesurfacecomponent.none")}
                   </span>
                   <span className="text-[0.625rem] text-foreground/45">
                     {localizeUi("ui.chat.quickpersonaswitcher.noPersonaSelected")}
                   </span>
                 </div>
-                {!activePersonaId && <span className="ml-auto text-[0.6875rem]">✓</span>}
+                {!activePersonaId && !activeCharacterId && <span className="ml-auto text-[0.6875rem]">✓</span>}
               </button>
 
               <div className="mx-2 my-1 h-px bg-foreground/10" />

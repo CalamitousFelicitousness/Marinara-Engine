@@ -1010,15 +1010,16 @@ export async function chatsRoutes(app: FastifyInstance) {
       data.personaId !== undefined || data.personaCharacterId !== undefined
         ? await resolveChatUserIdentity(createCharactersStorage(app.db), existing)
         : null;
-    const identityAfter =
+    const nextIdentity =
       data.personaId !== undefined || data.personaCharacterId !== undefined
-        ? await resolveChatUserIdentity(createCharactersStorage(app.db), {
-            ...existing,
-            ...data,
-            personaId: data.personaCharacterId ? null : (data.personaId ?? existing.personaId),
-            personaCharacterId: data.personaCharacterId ?? null,
-          })
+        ? {
+            personaId: data.personaCharacterId ? null : (data.personaId ?? null),
+            personaCharacterId: data.personaCharacterId || null,
+          }
         : null;
+    const identityAfter = nextIdentity
+      ? await resolveChatUserIdentity(createCharactersStorage(app.db), { ...existing, ...nextIdentity })
+      : null;
     const identityChanged =
       identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
     let roleplayTrackerCharacterIdsToSeed: string[] = [];

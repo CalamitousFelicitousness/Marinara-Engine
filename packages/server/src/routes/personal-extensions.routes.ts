@@ -1361,9 +1361,9 @@ export async function personalExtensionsRoutes(app: FastifyInstance) {
           scenario: identity.scenario,
           backstory: identity.backstory,
           appearance: identity.appearance,
-          tags: [],
-          aboutMe: "",
-          convoDisplayName: "",
+          tags: identity.tags,
+          aboutMe: identity.aboutMe,
+          convoDisplayName: identity.convoDisplayName,
           source: identity.source,
         }
       : null;

@@ -27,6 +27,7 @@ import {
   Folder,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
+import { normalizeAvatarCrop } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
@@ -782,7 +783,18 @@ function PersonaPicker({
                               isSelected && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
                             )}
                           >
-                            <PersonaAvatar persona={null} />
+                            {character.avatarPath ? (
+                              <img
+                                src={character.avatarPath}
+                                alt=""
+                                className="h-7 w-7 shrink-0 rounded-full object-cover"
+                                style={getAvatarCropStyle(
+                                  normalizeAvatarCrop(parseCharacterDisplayData(character).avatarCrop),
+                                )}
+                              />
+                            ) : (
+                              <PersonaAvatar persona={null} />
+                            )}
                             <div className="min-w-0 flex-1">
                               <span className="block truncate text-xs font-medium">{name}</span>
                               <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">

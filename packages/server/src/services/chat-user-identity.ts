@@ -19,6 +19,9 @@ export type ChatUserIdentity = {
   dialogueColor: string | null;
   boxColor: string | null;
   personaStats?: unknown;
+  tags: string[];
+  aboutMe: string;
+  convoDisplayName: string;
 };
 
 function stringValue(value: unknown): string {
@@ -64,6 +67,9 @@ export async function resolveChatUserIdentity(
       dialogueColor: stringValue(extensions.dialogueColor) || null,
       boxColor: stringValue(extensions.boxColor) || null,
       personaStats: extensions.rpgStats ? { enabled: true, bars: [], rpgStats: extensions.rpgStats } : undefined,
+      tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === "string") : [],
+      aboutMe: stringValue(extensions.aboutMe),
+      convoDisplayName: stringValue(extensions.convoDisplayName),
     };
   }
 
@@ -86,5 +92,8 @@ export async function resolveChatUserIdentity(
     dialogueColor: persona.dialogueColor ?? null,
     boxColor: persona.boxColor ?? null,
     personaStats: persona.personaStats,
+    tags: Array.isArray(persona.tags) ? persona.tags : [],
+    aboutMe: persona.aboutMe ?? "",
+    convoDisplayName: persona.convoDisplayName ?? "",
   };
 }

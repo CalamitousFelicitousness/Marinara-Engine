@@ -206,7 +206,7 @@ export function QuickSwitcherMobile() {
       const spaceAbove = Math.max(0, anchor.top - 12);
       const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
       const openAbove = spaceAbove >= spaceBelow;
-      const maxHeight = Math.max(160, openAbove ? spaceAbove : spaceBelow);
+      const maxHeight = Math.max(1, Math.min(400, openAbove ? spaceAbove : spaceBelow));
       const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
       setPos({
         left,

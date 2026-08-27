@@ -7,6 +7,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ### Added
 
 - Character cards now support editable metadata summaries, AI-generated summary drafts, and Character Library previews that use the saved summary when available.
+- Character card Conversation profiles now provide controls to generate About Me and Conversation behavior text from the card's available information.
 
 ### Fixed
 

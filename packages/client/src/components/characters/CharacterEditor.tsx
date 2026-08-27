@@ -19,6 +19,7 @@ import {
   useCharacter,
   useUpdateCharacter,
   useGenerateCharacterSummary,
+  useGenerateCharacterConvoProfile,
   useUploadAvatar,
   useRemoveAvatar,
   useDeleteCharacter,
@@ -1537,6 +1538,9 @@ function ConvoTab({
 }) {
   const ext = formData.extensions;
   const { t: localizeUi } = useUiTranslation();
+  const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
+  const currentCharacterIdRef = useRef(characterId);
+  currentCharacterIdRef.current = characterId;
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The schedule is runtime state, not card content, so it saves on its own
   // rather than through the editor form. Routing it through `updateExtension`
@@ -1576,6 +1580,23 @@ function ConvoTab({
         onAboutMeChange={(v) => updateExtension("aboutMe", v)}
         behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
         onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
+        generateConvoProfile={
+          characterId
+            ? (target) =>
+                generateCharacterConvoProfile.mutateAsync({
+                  id: characterId,
+                  target,
+                  draft: {
+                    name: formData.name,
+                    description: formData.description,
+                    personality: formData.personality,
+                    scenario: formData.scenario,
+                    backstory: (ext.backstory as string) ?? "",
+                    appearance: (ext.appearance as string) ?? "",
+                  },
+                }).then((result) => (currentCharacterIdRef.current === characterId ? result : null))
+            : undefined
+        }
         imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
         onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
         applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}

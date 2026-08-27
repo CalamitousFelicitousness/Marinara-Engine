@@ -878,9 +878,14 @@ Collapsed keys persist per chat in `trackerCollapsedCharacterKeys`, alongside th
 two copies of the same write-through-to-metadata logic; `useFeaturedCharacterCards` is a thin
 wrapper over it, kept so upstream references to that name still resolve.
 
-The three groups are disjoint and render in priority order: featured, then compact, then collapsed.
-Collapsed wins over featured, since a card asked to get out of the way should not keep the top slot.
-Toggling therefore moves a card between groups, which is how featuring already behaves.
+Featured and compact stay the only groups. Collapsing swaps what an entry renders as, never which
+group it lands in, so a card holds its place in the list whether it is open or shut. Routing
+collapsed entries into a third group under the open ones was tried first and was wrong: shutting one
+card of eight sent it to the bottom, which is a re-sort, not a header.
+
+In the two-column compact grid a collapsed row spans the full width and closes its line, so the
+trailing ghost slot can no longer be a parity of the entry count. It is derived by walking the flow
+instead.
 
 Two details worth keeping:
 

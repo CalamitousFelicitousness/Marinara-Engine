@@ -115,6 +115,7 @@ const CollapsedCharacterRowSlot = memo(function CollapsedCharacterRowSlot({
   cardKey,
   avatarMedia,
   deleteMode,
+  className,
   ...callbacks
 }: {
   character: PresentCharacter;
@@ -122,6 +123,7 @@ const CollapsedCharacterRowSlot = memo(function CollapsedCharacterRowSlot({
   cardKey: string;
   avatarMedia: string | null;
   deleteMode: boolean;
+  className?: string;
 } & CharacterCardSlotCallbacks) {
   const slot = useCharacterSlotCallbacks(characterIndex, cardKey, callbacks);
   return (
@@ -129,6 +131,7 @@ const CollapsedCharacterRowSlot = memo(function CollapsedCharacterRowSlot({
       character={character}
       avatarMedia={avatarMedia}
       deleteMode={deleteMode}
+      className={className}
       onToggleCollapsed={slot.onToggleCollapsed}
       onRemove={slot.onRemove}
     />
@@ -275,43 +278,51 @@ export function CharacterTrackerPanel({
         index,
       };
     });
-    // Collapsed wins over featured: a card asked to get out of the way should
-    // not keep the top slot. The three groups are disjoint and render in
-    // priority order, matching how featuring already reorders the list.
-    const collapsedEntries = characterEntries.filter((entry) => entry.collapsed);
-    const featuredEntries = characterEntries.filter((entry) => !entry.collapsed && entry.featured);
-    const compactEntries = characterEntries.filter((entry) => !entry.collapsed && !entry.featured);
+    // Featured and compact stay the only groups. Collapsing swaps what an entry
+    // renders as, never which group it lands in, so a card holds its place in
+    // the list whether it is open or shut.
+    const featuredEntries = characterEntries.filter((entry) => entry.featured);
+    const compactEntries = characterEntries.filter((entry) => !entry.featured);
     const getCharacterEntryKey = (entry: (typeof characterEntries)[number]) =>
       `${activeChatId}-${entry.character.characterId}-${entry.index}`;
     const useCompactCardColumns = trackerPanelSizeProfile !== "compact";
-    const shouldRenderCompactGhostSlot = useCompactCardColumns && compactEntries.length % 2 === 1;
-    const renderCompactCharacterCard = (entry: (typeof characterEntries)[number]) => (
-      <CompactCharacterCardSlot
-        key={getCharacterEntryKey(entry)}
-        character={entry.character}
-        characterIndex={entry.index}
-        cardKey={entry.cardKey}
-        characterPicture={entry.characterPicture}
-        profileColors={entry.profileColors}
-        trackerPanelSizeProfile={trackerPanelSizeProfile}
-        statDisplayMode={statDisplayMode}
-        resolveStatIcon={resolveStatIcon}
-        deleteMode={deleteMode}
-        addMode={addMode}
-        onUpdateCharacter={onUpdateCharacter}
-        onRemoveCharacter={onRemoveCharacter}
-        onToggleFeatured={onToggleFeatured}
-        onToggleCharacterCollapsed={onToggleCharacterCollapsed}
-        onUploadAvatar={onUploadAvatar}
-      />
-    );
-    const renderCollapsedCharacterRow = (entry: (typeof characterEntries)[number]) => (
+    // Walk the two-column flow rather than counting: a collapsed row spans the
+    // full width and closes its line, so the trailing gap is not a parity of
+    // the entry count. Only the two-column layout shows the ghost at all.
+    let compactColumn = 0;
+    for (const entry of compactEntries) compactColumn = entry.collapsed ? 0 : compactColumn === 0 ? 1 : 0;
+    const shouldRenderCompactGhostSlot = useCompactCardColumns && compactColumn === 1;
+    const renderCompactCharacterCard = (entry: (typeof characterEntries)[number]) =>
+      entry.collapsed ? (
+        renderCollapsedCharacterRow(entry, "@min-[260px]:col-span-full")
+      ) : (
+        <CompactCharacterCardSlot
+          key={getCharacterEntryKey(entry)}
+          character={entry.character}
+          characterIndex={entry.index}
+          cardKey={entry.cardKey}
+          characterPicture={entry.characterPicture}
+          profileColors={entry.profileColors}
+          trackerPanelSizeProfile={trackerPanelSizeProfile}
+          statDisplayMode={statDisplayMode}
+          resolveStatIcon={resolveStatIcon}
+          deleteMode={deleteMode}
+          addMode={addMode}
+          onUpdateCharacter={onUpdateCharacter}
+          onRemoveCharacter={onRemoveCharacter}
+          onToggleFeatured={onToggleFeatured}
+          onToggleCharacterCollapsed={onToggleCharacterCollapsed}
+          onUploadAvatar={onUploadAvatar}
+        />
+      );
+    const renderCollapsedCharacterRow = (entry: (typeof characterEntries)[number], className?: string) => (
       <CollapsedCharacterRowSlot
         key={getCharacterEntryKey(entry)}
         character={entry.character}
         characterIndex={entry.index}
         cardKey={entry.cardKey}
         avatarMedia={entry.characterPicture ?? entry.character.avatarPath ?? null}
+        className={className}
         deleteMode={deleteMode}
         onUpdateCharacter={onUpdateCharacter}
         onRemoveCharacter={onRemoveCharacter}
@@ -320,36 +331,39 @@ export function CharacterTrackerPanel({
         onUploadAvatar={onUploadAvatar}
       />
     );
-    const renderFeaturedCharacterCard = (entry: (typeof characterEntries)[number]) => (
-      <FeaturedCharacterCardSlot
-        key={getCharacterEntryKey(entry)}
-        character={entry.character}
-        characterIndex={entry.index}
-        cardKey={entry.cardKey}
-        spriteCharacterId={entry.spriteCharacterId}
-        spriteExpression={
-          expressionSpritesEnabled
-            ? getSpriteExpressionForCharacter(spriteExpressions, entry.character, entry.spriteCharacterId)
-            : undefined
-        }
-        expressionSpritesEnabled={expressionSpritesEnabled}
-        characterPicture={entry.characterPicture}
-        profileColors={entry.profileColors}
-        trackerPanelSide={trackerPanelSide}
-        trackerPanelSizeProfile={trackerPanelSizeProfile}
-        thoughtBubbleDisplay={thoughtBubbleDisplay}
-        statDisplayMode={statDisplayMode}
-        resolveStatIcon={resolveStatIcon}
-        dockedThoughtsAlwaysVisible={dockedThoughtsAlwaysVisible}
-        deleteMode={deleteMode}
-        addMode={addMode}
-        onUpdateCharacter={onUpdateCharacter}
-        onRemoveCharacter={onRemoveCharacter}
-        onToggleFeatured={onToggleFeatured}
-        onToggleCharacterCollapsed={onToggleCharacterCollapsed}
-        onUploadAvatar={onUploadAvatar}
-      />
-    );
+    const renderFeaturedCharacterCard = (entry: (typeof characterEntries)[number]) =>
+      entry.collapsed ? (
+        renderCollapsedCharacterRow(entry, "mx-1")
+      ) : (
+        <FeaturedCharacterCardSlot
+          key={getCharacterEntryKey(entry)}
+          character={entry.character}
+          characterIndex={entry.index}
+          cardKey={entry.cardKey}
+          spriteCharacterId={entry.spriteCharacterId}
+          spriteExpression={
+            expressionSpritesEnabled
+              ? getSpriteExpressionForCharacter(spriteExpressions, entry.character, entry.spriteCharacterId)
+              : undefined
+          }
+          expressionSpritesEnabled={expressionSpritesEnabled}
+          characterPicture={entry.characterPicture}
+          profileColors={entry.profileColors}
+          trackerPanelSide={trackerPanelSide}
+          trackerPanelSizeProfile={trackerPanelSizeProfile}
+          thoughtBubbleDisplay={thoughtBubbleDisplay}
+          statDisplayMode={statDisplayMode}
+          resolveStatIcon={resolveStatIcon}
+          dockedThoughtsAlwaysVisible={dockedThoughtsAlwaysVisible}
+          deleteMode={deleteMode}
+          addMode={addMode}
+          onUpdateCharacter={onUpdateCharacter}
+          onRemoveCharacter={onRemoveCharacter}
+          onToggleFeatured={onToggleFeatured}
+          onToggleCharacterCollapsed={onToggleCharacterCollapsed}
+          onUploadAvatar={onUploadAvatar}
+        />
+      );
 
     return (
       <div className="space-y-1">
@@ -364,11 +378,6 @@ export function CharacterTrackerPanel({
           >
             {compactEntries.map(renderCompactCharacterCard)}
             {shouldRenderCompactGhostSlot && <div aria-hidden="true" className={COMPACT_CHARACTER_GHOST_SLOT_CLASS} />}
-          </div>
-        )}
-        {collapsedEntries.length > 0 && (
-          <div className={cn("grid grid-cols-1 gap-0.5 px-1 pb-1", compactEntries.length === 0 && "pt-1")}>
-            {collapsedEntries.map(renderCollapsedCharacterRow)}
           </div>
         )}
       </div>

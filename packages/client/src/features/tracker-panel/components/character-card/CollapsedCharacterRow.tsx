@@ -40,12 +40,15 @@ export function CollapsedCharacterRow({
   onToggleCollapsed,
   onRemove,
   deleteMode = false,
+  className,
 }: {
   character: PresentCharacter;
   avatarMedia: string | null;
   onToggleCollapsed: () => void;
   onRemove: () => void;
   deleteMode?: boolean;
+  /** Placement in the group that renders it: full-span in the grid, inset in the featured stack. */
+  className?: string;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const name = visibleText(character.name, "character");
@@ -53,7 +56,7 @@ export function CollapsedCharacterRow({
   const expandLabel = localizeUi("ui.trackerPanel.charactertrackerpanel.expandValue1", { value1: name });
 
   return (
-    <div className={ROW_CLASS}>
+    <div className={cn(ROW_CLASS, className)}>
       <button
         type="button"
         onClick={onToggleCollapsed}

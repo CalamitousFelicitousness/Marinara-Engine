@@ -59,13 +59,29 @@ assert.ok(
   "collapse is a view state and must not reach prompt assembly",
 );
 
-// ── The three groups are disjoint, and collapsed wins ──
-assert.match(panel, /const collapsedEntries = characterEntries\.filter\(\(entry\) => entry\.collapsed\)/u);
-assert.match(panel, /const featuredEntries = characterEntries\.filter\(\(entry\) => !entry\.collapsed && entry\.featured\)/u);
+// ── Collapsing must not move a card ──
+// It first routed collapsed entries into a third group rendered under the open
+// ones, so shutting a card sent it to the bottom of the list. Collapse now only
+// swaps what an entry renders as; featured and compact stay the only groups and
+// neither may consult `collapsed`.
+const featuredFilter = /const featuredEntries = characterEntries\.filter\(\(entry\) => ([^)]*)\)/u.exec(panel)?.[1];
+const compactFilter = /const compactEntries = characterEntries\.filter\(\(entry\) => ([^)]*)\)/u.exec(panel)?.[1];
+assert.equal(featuredFilter, "entry.featured", "featured grouping must not consult collapsed");
+assert.equal(compactFilter, "!entry.featured", "compact grouping must not consult collapsed");
+assert.ok(!panel.includes("collapsedEntries"), "there is no separate collapsed group to fall into");
+// Both renderers dispatch per entry instead.
+assert.equal(
+  (panel.match(/entry\.collapsed \? \(\s*renderCollapsedCharacterRow\(entry, /gu) ?? []).length,
+  2,
+  "the featured and compact renderers each render a collapsed entry in place",
+);
+
+// A full-width row closes its grid line, so the trailing ghost cannot be a
+// parity of the entry count. The walk is what keeps the last row aligned.
 assert.match(
   panel,
-  /const compactEntries = characterEntries\.filter\(\(entry\) => !entry\.collapsed && !entry\.featured\)/u,
-  "a collapsed card must not also render as a compact card",
+  /for \(const entry of compactEntries\) compactColumn = entry\.collapsed \? 0 : compactColumn === 0 \? 1 : 0;/u,
+  "the ghost slot must be derived by walking the two-column flow",
 );
 // The per-character callback must not shadow the section's own collapse toggle.
 assert.match(panel, /onToggleCharacterCollapsed: \(key: string\) => void;/u);

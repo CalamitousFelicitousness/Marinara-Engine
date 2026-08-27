@@ -4600,6 +4600,32 @@ const cases: RegressionCase[] = [
     },
   },
   {
+    name: "tagged avatar prompts preserve long user appearance details",
+    run() {
+      const styleProfiles = createDefaultImageStyleProfileSettings();
+      const profile = styleProfiles.profiles.find((candidate) => candidate.id === "danbooru");
+      assert.ok(profile);
+      const appearance =
+        "1girl, Shiranui Mai, Fatal Fury, light blue button down, long auburn hair, amber eyes, red ribbon, white gloves, black skirt, thighhighs, detailed face, soft smile, standing in a moonlit garden, intricate floral background, cinematic rim lighting, warm highlights, cool shadows";
+      const compiled = compileImagePrompt({
+        kind: "avatar",
+        prompt: `Canonical appearance: ${appearance}`,
+        userPositive: appearance,
+        styleProfiles,
+        styleProfileId: profile.id,
+      });
+      for (const detail of [
+        "1girl",
+        "Shiranui Mai",
+        "Fatal Fury",
+        "light blue button down",
+        "intricate floral background",
+      ]) {
+        assert.match(compiled.prompt, new RegExp(detail, "iu"), `avatar prompt must preserve ${detail}`);
+      }
+    },
+  },
+  {
     name: "avatar portrait and sprite prompts honor a profile's natural-language grammar",
     run() {
       const styleProfiles = createDefaultImageStyleProfileSettings();

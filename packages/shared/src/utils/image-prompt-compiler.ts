@@ -229,7 +229,8 @@ function resolveImagePromptCompilationMode(input: CompileImagePromptInput, profi
   const preserveGeneratedPrompt =
     !applyPromptModeToSourcePrompt &&
     (input.kind === "illustration" || input.kind === "background" || input.kind === "selfie");
-  const compactTags = !applyPromptModeToSourcePrompt && !preserveGeneratedPrompt && taggedPromptMode;
+  const compactTags =
+    !applyPromptModeToSourcePrompt && !preserveGeneratedPrompt && taggedPromptMode && input.kind !== "avatar";
   const compactVisualPrompt =
     promptMode !== "natural" && profile.baseStyle !== "z_image_turbo" && ["portrait", "sprite"].includes(input.kind);
   const compactPrompt = compactTags || compactVisualPrompt;

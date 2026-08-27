@@ -224,14 +224,14 @@ try {
     stream: false,
     enableCaching: false,
   });
-  await provider
-    .chat([{ role: "user", content: "cache suppressed stream" }], {
-      model: "google/gemini-3-pro-preview",
-      stream: true,
-      enableCaching: true,
-      suppressModelParameters: true,
-    })
-    .next();
+  for await (const _chunk of provider.chat([{ role: "user", content: "cache suppressed stream" }], {
+    model: "google/gemini-3-pro-preview",
+    stream: true,
+    enableCaching: true,
+    suppressModelParameters: true,
+  })) {
+    // Consume the full SSE response through [DONE].
+  }
   await provider.chatComplete([{ role: "user", content: "cache suppressed complete" }], {
     model: "google/gemini-3-pro-preview",
     stream: false,

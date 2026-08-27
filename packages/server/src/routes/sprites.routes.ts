@@ -1718,7 +1718,12 @@ export async function spritesRoutes(app: FastifyInstance) {
 
       const extension = extname(source);
       const target = `${nextExpression}${extension}`;
-      if (target !== source && existsSync(join(dir, target))) {
+      const hasNameCollision = files.some((filename) => {
+        if (!SPRITE_FILE_RE.test(filename)) return false;
+        const filenameExpression = filename.slice(0, -extname(filename).length);
+        return filename !== source && filenameExpression.toLowerCase() === nextExpression.toLowerCase();
+      });
+      if (hasNameCollision) {
         return reply.status(409).send({ error: "An expression with that name already exists" });
       }
 

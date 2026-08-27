@@ -35,6 +35,7 @@ import {
   normalizeTextForMatch,
   formatRpgStatsForPrompt,
   normalizeRpgStatPools,
+  characterDataSchema,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -1004,6 +1005,18 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
+    }
+    if (data.personaCharacterId) {
+      const character = await createCharactersStorage(app.db).getById(data.personaCharacterId);
+      let valid = false;
+      if (character) {
+        try {
+          valid = characterDataSchema.safeParse(JSON.parse(character.data as string)).success;
+        } catch {
+          valid = false;
+        }
+      }
+      if (!valid) return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
     }
     const identityBefore =
       data.personaId !== undefined || data.personaCharacterId !== undefined

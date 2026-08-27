@@ -867,6 +867,42 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### Speaker tags survive the spelling models actually produce
+
+Group chat dialogue colouring asks for `<speaker="Amy">`, which is not well-formed markup: an
+attribute needs a name. Models trained on XML and HTML emit `<speaker name="Amy">` instead, and keep
+emitting it however the instruction is worded. The colour lookup then missed and fell through to the
+default, silently, because a missing speaker match is indistinguishable from an untagged line.
+
+Eleven parsers across server and client hardcode the canonical spelling: history stripping, the
+individual-mode unwrap, the game surface, TTS segmentation, the conversation grouping check and the
+chat renderer. Teaching each one a second syntax multiplies the places a third variant would later
+have to be added, so `normalizeSpeakerTags` in `packages/shared/src/utils/speaker-tags.ts` repairs
+the model's output once and every parser stays correct as written.
+
+Two call sites, for different reasons:
+
+- `generate.routes.ts`, immediately before the individual-mode unwrap, which itself reads a
+  canonical tag, and therefore before the response is persisted. This is what fixes storage, and so
+  every server and client consumer of stored text.
+- `ChatMessage.tsx`'s `renderWithSpeakerTags`. The server repairs before persisting but not before
+  streaming, so without this the dialogue arrives uncoloured and snaps when the turn finalizes. It
+  also colours messages stored before this shipped.
+
+A name containing a double quote is deliberately left alone: the canonical form matches `[^"]*`, so
+it cannot represent one, and rewriting would emit a tag that truncates at the quote.
+
+The regression asserts behaviour rather than shape. It lifts `SPEAKER_TAG_RE` out of the renderer
+and parses the normalized output with it, so the normalizer and its consumer cannot drift, and it
+asserts that same regex rejects the attribute form -- without which every case would pass whether or
+not the normalizer did anything.
+
+Not changed, but noted: the live prompt and the prompt preview inject different text. The preview
+(`chats.routes.ts`) appends `Available characters: ... Use their exact names.`; live generation
+(`generate.routes.ts`) does not, despite the comment claiming they match. Colour lookup is an exact,
+case-sensitive `Map.get`, so the one instruction that would prevent a silent name miss exists only
+in the copy the model never sees.
+
 ### Character cards collapse to a header
 
 A cast of eight fills the tracker with cards you scroll past to reach the one you want. Each

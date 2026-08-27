@@ -48,6 +48,7 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
   normalizeTextForMatch,
+  normalizeSpeakerTags,
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
   type APIProvider,
@@ -7065,6 +7066,16 @@ export async function generateRoutes(app: FastifyInstance) {
                 `[generate] Extracted ${oocMessages.length} OOC message(s) for conversation ${chat.connectedChatId}`,
               );
             }
+          }
+
+          // ── Repair the speaker tag spelling models actually produce ──
+          // `<speaker="Name">` is not well-formed markup, so models emit
+          // `<speaker name="Name">`. Normalize before the unwrap below and
+          // before persisting, so every downstream reader sees one spelling.
+          {
+            const beforeSpeakerNormalize = fullResponse;
+            fullResponse = normalizeSpeakerTags(fullResponse);
+            if (fullResponse !== beforeSpeakerNormalize) contentReplaced = true;
           }
 
           // ── Strip character name prefix in individual group mode ──

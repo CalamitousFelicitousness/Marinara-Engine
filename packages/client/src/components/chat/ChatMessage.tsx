@@ -2,7 +2,7 @@
 // Chat: Message — mode-aware rendering
 // ──────────────────────────────────────────────
 import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../../lib/utils";
-import { normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
+import { normalizeAvatarCrop, normalizeSpeakerTags, type AvatarCrop } from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
 import {
   normalizeCardAssetImageSyntax,
@@ -1032,11 +1032,16 @@ function RoleplayThinkingDisclosure({
  * Non-speaker text gets the default dialogueColor.
  */
 function renderWithSpeakerTags(
-  text: string,
+  rawText: string,
   defaultDialogueColor: string | undefined,
   speakerColorMap: Map<string, string> | undefined,
   boldDialogue = true,
 ): ReactNode[] {
+  // The server repairs `<speaker name="X">` before persisting, but not before
+  // streaming; repeat it here so dialogue colours as it arrives rather than
+  // snapping when the turn finalizes, and so messages stored before that
+  // repair shipped still colour.
+  const text = normalizeSpeakerTags(rawText);
   const renderLine = (line: string, color = defaultDialogueColor) => highlightDialogue(line, color, boldDialogue);
 
   if (!SPEAKER_TAG_RE.test(text)) {

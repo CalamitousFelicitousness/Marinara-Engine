@@ -5190,7 +5190,7 @@ export function HomeProfessorMariChat({
                 : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
             }
           >
-            <span className="relative flex h-7 w-7 items-center justify-center">
+            <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
               {showContextUsage && contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
               <Link size="1rem" />
             </span>
@@ -5967,7 +5967,7 @@ export function HomeProfessorMariChat({
                                   : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
                               }
                             >
-                              <span className="relative flex h-7 w-7 items-center justify-center">
+                              <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
                                 {showContextUsage && contextBudget && (
                                   <ContextBudgetGauge percentage={contextBudget.percentage} />
                                 )}

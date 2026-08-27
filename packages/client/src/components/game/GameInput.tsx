@@ -2,22 +2,30 @@
 // Game: Input Bar (send message, roll dice, attach files, emoji)
 // ──────────────────────────────────────────────
 import { useState, useRef, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { Send, Dices, Paperclip, Smile, Users, MessageCircle, MessageSquare, Languages, Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { EmojiPicker } from "../ui/EmojiPicker";
 import { SpeechToTextButton } from "../ui/SpeechToTextButton";
 import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { translateDraftText } from "../../lib/draft-translation";
 import {
   formatTextQuotes,
+  type APIConnection,
   type DiceRollResult,
+  type Message,
   type PendingSpatialTransition,
 } from "@marinara-engine/shared";
 import { getChatInputShellClass } from "../chat/chat-input-styles";
+import { QuickConnectionSwitcher } from "../chat/QuickConnectionSwitcher";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { PendingSpatialTransitionDraft } from "../../stores/chat.store";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { useConnections } from "../../hooks/use-connections";
+import { chatKeys } from "../../hooks/use-chats";
+import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 
 interface Attachment {
   type: string;
@@ -134,6 +142,7 @@ export function GameInput({
   const enterToSend = useUIStore((s) => s.enterToSendGame);
   const speechToTextEnabled = useUIStore((s) => s.speechToTextEnabled);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
+  const showContextUsage = useUIStore((s) => s.showContextUsage);
   const storageKey = draftKey ? `game-input-draft:${draftKey}` : null;
   const [text, setText] = useState(() => readGameInputDraft(storageKey));
   const [showDice, setShowDice] = useState(false);
@@ -152,6 +161,32 @@ export function GameInput({
   const addressButtonRef = useRef<HTMLButtonElement>(null);
   const addressMenuRef = useRef<HTMLDivElement>(null);
   const activeChat = useChatStore((s) => s.activeChat);
+  const { data: contextConnections = [] } = useConnections();
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
+  const qc = useQueryClient();
+  const [, bumpMessagesTick] = useState(0);
+  useEffect(() => {
+    const chatId = activeChat?.id;
+    if (!chatId) return;
+    const targetKey = JSON.stringify(chatKeys.messages(chatId));
+    return qc.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && JSON.stringify(event.query.queryKey) === targetKey) {
+        bumpMessagesTick((value) => value + 1);
+      }
+    });
+  }, [activeChat?.id, qc]);
+  const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChat?.id ?? ""));
+  const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
+  const contextBudget = useMemo(
+    () =>
+      resolveChatContextBudget(
+        contextMessages,
+        activeChat?.connectionId,
+        contextConnections as APIConnection[],
+        sidecarMaxContext,
+      ),
+    [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
+  );
   const pendingSpatialTransition = useChatStore((s) =>
     draftKey ? (s.pendingSpatialTransitions.get(draftKey) ?? null) : null,
   );
@@ -552,6 +587,8 @@ export function GameInput({
         >
           <Paperclip size={18} />
         </button>
+
+        <QuickConnectionSwitcher className="shrink-0" contextBudget={showContextUsage ? contextBudget : null} />
 
         <div className="relative shrink-0">
           {addressMenuOpen && (

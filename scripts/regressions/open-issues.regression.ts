@@ -5334,15 +5334,24 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   contextBudgetGameInputSource,
-  /ContextBudget/u,
+  /<ContextBudgetIndicator/u,
   "Game input must not render a standalone context usage bar",
+);
+assert.match(
+  contextBudgetGameInputSource,
+  /<QuickConnectionSwitcher className="shrink-0" contextBudget=\{showContextUsage \? contextBudget : null\} \/>/u,
+  "Game input must expose context usage through its connection popup",
 );
 for (const [name, source] of [
   ["desktop connection switcher", quickConnectionSwitcherSource],
   ["mobile connection switcher", quickSwitcherMobileSource],
 ] as const) {
   assert.match(source, /<ContextBudgetIndicator budget=\{contextBudget\}/u, `${name} must show usage in its popup`);
-  assert.match(source, /relative flex h-7 w-7/u, `${name} must use the larger context gauge`);
+  assert.match(
+    source,
+    /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u,
+    `${name} must use the larger context gauge`,
+  );
 }
 assert.equal(
   professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} professorMari \/>/gu)?.length,
@@ -5350,7 +5359,7 @@ assert.equal(
   "Both Professor Mari connection popups must show context usage",
 );
 assert.equal(
-  professorMariHomeSource.match(/relative flex h-7 w-7/gu)?.length,
+  professorMariHomeSource.match(/relative flex h-\[1\.875rem\] w-\[1\.875rem\]/gu)?.length,
   2,
   "Both Professor Mari connection buttons must use the larger context gauge",
 );

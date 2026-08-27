@@ -229,7 +229,7 @@ export function QuickConnectionSwitcher({
           className,
         )}
       >
-        <span className="relative flex h-7 w-7 items-center justify-center">
+        <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
           {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
           <Link size="1rem" />
         </span>

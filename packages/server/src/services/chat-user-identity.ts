@@ -18,6 +18,7 @@ export type ChatUserIdentity = {
   nameColor: string | null;
   dialogueColor: string | null;
   boxColor: string | null;
+  personaStats?: unknown;
 };
 
 function stringValue(value: unknown): string {
@@ -83,5 +84,6 @@ export async function resolveChatUserIdentity(
     nameColor: persona.nameColor ?? null,
     dialogueColor: persona.dialogueColor ?? null,
     boxColor: persona.boxColor ?? null,
+    personaStats: persona.personaStats,
   };
 }

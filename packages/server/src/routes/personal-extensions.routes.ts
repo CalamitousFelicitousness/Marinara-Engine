@@ -26,6 +26,7 @@ import { createPersonalExtensionsStorage } from "../services/extensions/personal
 import { createPersonalExtensionSettingsStorage } from "../services/extensions/personal-extension-settings.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { personalServerExtensionRuntime } from "../services/extensions/personal-server-extension-runtime.js";
 import {
@@ -166,17 +167,6 @@ function parseContextCharacter(row: { id: string; data: string } | null): Contex
     return data && typeof data === "object" ? { id: row.id, data } : null;
   } catch {
     return null;
-  }
-}
-
-function parseContextPersonaTags(value: unknown) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string") return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
   }
 }
 
@@ -1359,11 +1349,24 @@ export async function personalExtensionsRoutes(app: FastifyInstance) {
           .map((row) => parseContextCharacter(row))
           .filter((character): character is ContextCharacterSource => Boolean(character))
       : [];
-    const personaRow =
-      capabilities.has("read_active_persona") && chat.personaId && ID_PATTERN.test(chat.personaId)
-        ? await charactersStorage.getPersona(chat.personaId)
-        : null;
-    const persona = personaRow ? { ...personaRow, tags: parseContextPersonaTags(personaRow.tags) } : null;
+    const identity = capabilities.has("read_active_persona")
+      ? await resolveChatUserIdentity(charactersStorage, chat)
+      : null;
+    const persona = identity
+      ? {
+          id: identity.id,
+          name: identity.name,
+          description: identity.description,
+          personality: identity.personality,
+          scenario: identity.scenario,
+          backstory: identity.backstory,
+          appearance: identity.appearance,
+          tags: [],
+          aboutMe: "",
+          convoDisplayName: "",
+          source: identity.source,
+        }
+      : null;
     return createPersonalExtensionRecordContext({
       capabilities: extension.capabilities,
       characters,

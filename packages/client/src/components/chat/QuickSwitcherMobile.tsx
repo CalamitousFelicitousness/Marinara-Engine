@@ -46,6 +46,7 @@ export function QuickSwitcherMobile() {
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
+  const setShowCharacterIdentities = useUIStore((state) => state.setShowCharactersInPersonaPickers);
   const { data: connections } = useConnections();
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
@@ -72,7 +73,6 @@ export function QuickSwitcherMobile() {
   );
   const chatMode = (chat as unknown as { mode?: string } | null | undefined)?.mode;
   const isRandom = activeConnectionId === "random";
-
   const sortedConnections = appendLocalSidecarConnectionOption(
     (connections ?? []) as Array<{ id: string; name: string; provider?: string; useForRandom?: string }>,
     chatMode !== "game" && sidecarModelDownloaded,
@@ -277,7 +277,16 @@ export function QuickSwitcherMobile() {
         type="button"
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
-        title={localizeUi("ui.chat.quickswitchermobile.quickSwitcher")}
+        title={
+          activeCharacterId
+            ? localizeUi("ui.chat.quickpersonaswitcher.value1Value2", {
+                value1: parseCharacterDisplayData(
+                  characters.find((character) => character.id === activeCharacterId) ?? { data: {} },
+                ).name,
+                value2: "",
+              })
+            : localizeUi("ui.chat.quickswitchermobile.quickSwitcher")
+        }
         className={cn(
           "flex h-9 w-9 items-center justify-center rounded-xl transition-all",
           open
@@ -292,7 +301,7 @@ export function QuickSwitcherMobile() {
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] flex max-h-[min(400px,70dvh)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            className="fixed z-[9999] flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={pos ? { left: pos.left, top: pos.top, width: pos.width } : { visibility: "hidden" as const }}
           >
             <div className="flex border-b border-foreground/10">
@@ -322,7 +331,7 @@ export function QuickSwitcherMobile() {
               </button>
             </div>
 
-            <div className="overflow-y-auto p-1">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {tab === "connections" && (
                 <>
                   <button
@@ -561,6 +570,16 @@ export function QuickSwitcherMobile() {
                           );
                         })}
                     </>
+                  )}
+                  {characters.length > 0 && !showCharacterIdentities && !activeCharacterId && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCharacterIdentities(true)}
+                      className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
+                    >
+                      <Folder size="0.75rem" />
+                      <span>{localizeUi("ui.chat.personapicker.showCharacters")}</span>
+                    </button>
                   )}
                   {sortedPersonas.length === 0 && (
                     <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">

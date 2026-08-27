@@ -41,6 +41,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
+  const setShowCharacterIdentities = useUIStore((state) => state.setShowCharactersInPersonaPickers);
   const { data: rawPersonas } = usePersonas();
   const { data: rawCharacters } = useCharacters();
   const { data: rawCharacterGroups } = useCharacterGroups();
@@ -71,6 +72,8 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const activePersonaId = chat?.personaId ?? null;
   const activeCharacterId = chat?.personaCharacterId ?? null;
   const activePersona = personas.find((p) => p.id === activePersonaId) ?? null;
+  const activeCharacter = characters.find((character) => character.id === activeCharacterId) ?? null;
+  const activeCharacterName = activeCharacter ? parseCharacterDisplayData(activeCharacter).name : null;
 
   // Build a map for quick lookups
   const personaMap = useMemo(() => {
@@ -186,10 +189,14 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     const anchorTop = inputBox ? inputBox.getBoundingClientRect().top : rect.top;
     requestAnimationFrame(() => {
       const menuEl = menuRef.current;
-      const menuHeight = menuEl?.offsetHeight || 400;
-      let left = rect.left;
-      if (left + 300 > window.innerWidth) left = window.innerWidth - 308;
-      setPos({ left, top: Math.max(8, anchorTop - menuHeight - 4) });
+      const menuHeight = Math.min(menuEl?.scrollHeight || 400, window.innerHeight - 16);
+      const menuWidth = Math.min(Math.max(menuEl?.offsetWidth || 300, 280), window.innerWidth - 16);
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
+      const top =
+        anchorTop - menuHeight - 4 >= 8
+          ? anchorTop - menuHeight - 4
+          : Math.min(anchorTop + rect.height + 4, window.innerHeight - menuHeight - 8);
+      setPos({ left, top: Math.max(8, top) });
     });
   }, [open, expandedGroups]);
 
@@ -244,10 +251,10 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
         ref={btnRef}
         onClick={() => setOpen((v) => !v)}
         title={
-          activePersona
+          activePersona || activeCharacter
             ? localizeUi("ui.chat.quickpersonaswitcher.value1Value2", {
-                value1: activePersona.name,
-                value2: activePersona.comment ? " — " + activePersona.comment : "",
+                value1: activePersona?.name ?? activeCharacterName ?? "",
+                value2: activePersona?.comment ? " — " + activePersona.comment : "",
               })
             : localizeUi("ui.chat.quickpersonaswitcher.quickPersonaSwitcher")
         }
@@ -257,16 +264,16 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
           className,
         )}
       >
-        {activePersona?.avatarPath ? (
+        {activePersona?.avatarPath || activeCharacter?.avatarPath ? (
           <img
-            src={activePersona.avatarPath}
-            alt={activePersona.name}
+            src={activePersona?.avatarPath ?? activeCharacter?.avatarPath ?? ""}
+            alt={activePersona?.name ?? activeCharacterName ?? ""}
             className="h-full w-full object-cover rounded-full"
-            style={getAvatarCropStyle(activePersona.avatarCrop)}
+            style={getAvatarCropStyle(activePersona?.avatarCrop)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center rounded-full bg-foreground/10 text-[0.75rem] font-semibold text-foreground/45">
-            {activePersona ? (activePersona.name || "?")[0].toUpperCase() : "?"}
+            {(activePersona?.name ?? activeCharacterName ?? "?")[0]?.toUpperCase()}
           </div>
         )}
       </button>
@@ -287,13 +294,13 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 btnRef.current?.focus();
               }
             }}
-            className="fixed z-[9999] flex min-w-[280px] max-w-[340px] max-h-[400px] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" as const }}
           >
             <div className="flex items-center justify-center border-b border-foreground/10 px-3 py-2 text-[0.6875rem] font-semibold">
               {localizeUi("navigation.topbar.personas")}
             </div>
-            <div className="overflow-y-auto p-1">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {/* None option */}
               <button
                 type="button"
@@ -459,6 +466,16 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                       );
                     })}
                 </>
+              )}
+              {characters.length > 0 && !showCharacterIdentities && !activeCharacterId && (
+                <button
+                  type="button"
+                  onClick={() => setShowCharacterIdentities(true)}
+                  className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
+                >
+                  <Folder size="0.75rem" />
+                  <span>{localizeUi("ui.chat.personapicker.showCharacters")}</span>
+                </button>
               )}
             </div>
           </div>,

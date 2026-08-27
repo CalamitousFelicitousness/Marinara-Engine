@@ -6,6 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Added character cards to Persona selection so you can play as any saved character during chat setup or an active chat.
 - Added an opt-in setting to show character identities in Persona pickers, with collapsed folder navigation and identity transition notices.
+- Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 
 ### Added
 

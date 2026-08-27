@@ -1326,9 +1326,17 @@ export function useGenerate() {
           ? cachedCharacters?.find((character) => character.id === chatPersonaCharacterId)
           : null;
         const characterData = snapshotCharacter
-          ? characterDataSchema.safeParse(
-              typeof snapshotCharacter.data === "string" ? JSON.parse(snapshotCharacter.data) : snapshotCharacter.data,
-            )
+          ? (() => {
+              try {
+                return characterDataSchema.safeParse(
+                  typeof snapshotCharacter.data === "string"
+                    ? JSON.parse(snapshotCharacter.data)
+                    : snapshotCharacter.data,
+                );
+              } catch {
+                return { success: false as const };
+              }
+            })()
           : null;
         const personaSnapshot = characterData?.success
           ? {

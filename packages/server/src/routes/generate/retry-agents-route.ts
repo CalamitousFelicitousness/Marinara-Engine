@@ -65,6 +65,7 @@ import { createAgentsStorage } from "../../services/storage/agents.storage.js";
 import { loadPriorBeholderState } from "../../services/agents/beholder-state.js";
 import { getCustomAgentImportPolicy } from "../../services/agents/custom-agent-import-policy.service.js";
 import { createCharactersStorage } from "../../services/storage/characters.storage.js";
+import { resolveChatUserIdentity } from "../../services/chat-user-identity.js";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../../services/storage/connections.storage.js";
 import { createCharacterGalleryStorage } from "../../services/storage/character-gallery.storage.js";
@@ -607,11 +608,12 @@ async function resolvePersonaContext(
   let personaStats: any = null;
   let rpgStats: any = null;
 
-  const allPersonas = await chars.listPersonas();
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
-  const persona =
-    (chat.personaId ? allPersonas.find((p: any) => p.id === chat.personaId) : null) ??
-    (chatMode !== "game" ? allPersonas.find((p: any) => p.isActive === "true") : null);
+  const persona = await resolveChatUserIdentity(chars, {
+    personaId: chat.personaId,
+    personaCharacterId: chat.personaCharacterId,
+    mode: chatMode,
+  });
 
   if (!persona) {
     return { personaId, personaName, personaDescription, personaFields, personaStats, rpgStats };

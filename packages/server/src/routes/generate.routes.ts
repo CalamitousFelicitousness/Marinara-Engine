@@ -88,6 +88,7 @@ import {
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
 import { createCustomToolsStorage } from "../services/storage/custom-tools.storage.js";
@@ -1086,23 +1087,28 @@ export async function generateRoutes(app: FastifyInstance) {
       // Snapshot Persona info for per-message tracking. Only Conversation may
       // fall back to the active Persona; Roleplay and Game can stay Persona-less.
       if (userMsg?.id) {
-        const snapshotPersonas = await chars.listPersonas().catch(releaseActiveGenerationAndRethrow);
-        const snapshotPersona = resolveActivePersonaCandidate(snapshotPersonas, chat.personaId, requestChatMode);
-        if (snapshotPersona) {
+        const snapshotIdentity = await resolveChatUserIdentity(chars, {
+          personaId: chat.personaId,
+          personaCharacterId: chat.personaCharacterId,
+          mode: requestChatMode,
+        }).catch(releaseActiveGenerationAndRethrow);
+        if (snapshotIdentity) {
           const updatedUserMsg = await chats
             .updateMessageExtra(userMsg.id, {
               personaSnapshot: {
-                personaId: snapshotPersona.id,
-                name: snapshotPersona.name,
-                description: snapshotPersona.description ?? "",
-                personality: snapshotPersona.personality ?? "",
-                scenario: snapshotPersona.scenario ?? "",
-                backstory: snapshotPersona.backstory ?? "",
-                appearance: snapshotPersona.appearance ?? "",
-                avatarUrl: snapshotPersona.avatarPath || null,
-                nameColor: snapshotPersona.nameColor || null,
-                dialogueColor: snapshotPersona.dialogueColor || null,
-                boxColor: snapshotPersona.boxColor || null,
+                personaId: snapshotIdentity.id,
+                source: snapshotIdentity.source,
+                name: snapshotIdentity.name,
+                description: snapshotIdentity.description,
+                personality: snapshotIdentity.personality,
+                scenario: snapshotIdentity.scenario,
+                backstory: snapshotIdentity.backstory,
+                appearance: snapshotIdentity.appearance,
+                avatarUrl: snapshotIdentity.avatarPath,
+                avatarCrop: snapshotIdentity.avatarCrop ? JSON.stringify(snapshotIdentity.avatarCrop) : null,
+                nameColor: snapshotIdentity.nameColor,
+                dialogueColor: snapshotIdentity.dialogueColor,
+                boxColor: snapshotIdentity.boxColor,
               },
             })
             .catch(releaseActiveGenerationAndRethrow);
@@ -1678,6 +1684,7 @@ export async function generateRoutes(app: FastifyInstance) {
         appearance?: string;
       } = {};
       const allPersonas = await chars.listPersonas();
+      let persona = resolveActivePersonaCandidate(allPersonas, chat.personaId, chatMode);
       // ── Game mode: apply segment edit overlays to message content ──
       // Users can edit individual narration/dialogue segments in the VN UI.
       // Edits are stored as chat-metadata overlays; apply them so the model
@@ -1695,19 +1702,40 @@ export async function generateRoutes(app: FastifyInstance) {
       const currentUserInputContent = (): string | undefined =>
         [...currentInputMessages()].reverse().find((message) => message.role === "user")?.content;
 
-      const persona = resolveActivePersonaCandidate(allPersonas, chat.personaId, chatMode);
-      if (persona) {
-        personaId = persona.id as string;
-        personaName = persona.name;
-        personaPhoneticName = typeof persona.phoneticName === "string" ? persona.phoneticName : "";
-        personaDescription = cardPromptText(persona.description);
+      const identity = await resolveChatUserIdentity(chars, {
+        personaId: chat.personaId,
+        personaCharacterId: chat.personaCharacterId,
+        mode: chatMode,
+      });
+      if (identity) {
+        if (identity.source === "character") {
+          persona = {
+            id: identity.id,
+            name: identity.name,
+            phoneticName: identity.phoneticName,
+            description: identity.description,
+            personality: identity.personality,
+            scenario: identity.scenario,
+            backstory: identity.backstory,
+            appearance: identity.appearance,
+            avatarPath: identity.avatarPath,
+            avatarCrop: identity.avatarCrop,
+            nameColor: identity.nameColor,
+            dialogueColor: identity.dialogueColor,
+            boxColor: identity.boxColor,
+          } as (typeof allPersonas)[number];
+        }
+        personaId = identity.id;
+        personaName = identity.name;
+        personaPhoneticName = identity.phoneticName;
+        personaDescription = cardPromptText(identity.description);
 
         personaFields = {
           phoneticName: personaPhoneticName,
-          personality: cardPromptText(persona.personality),
-          scenario: cardPromptText(persona.scenario),
-          backstory: cardPromptText(persona.backstory),
-          appearance: cardPromptText(persona.appearance),
+          personality: cardPromptText(identity.personality),
+          scenario: cardPromptText(identity.scenario),
+          backstory: cardPromptText(identity.backstory),
+          appearance: cardPromptText(identity.appearance),
         };
       }
 

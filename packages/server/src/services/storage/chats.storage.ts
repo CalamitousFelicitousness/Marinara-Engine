@@ -964,7 +964,10 @@ export function createChatsStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async create(input: CreateChatInput, timestampOverrides?: TimestampOverrides | null) {
+    async create(
+      input: Omit<CreateChatInput, "personaCharacterId"> & { personaCharacterId?: string | null },
+      timestampOverrides?: TimestampOverrides | null,
+    ) {
       const id = newId();
       const timestamp = resolveTimestamps(timestampOverrides);
       const recentConversation =
@@ -1010,6 +1013,7 @@ export function createChatsStorage(db: DB) {
         characterIds: JSON.stringify(input.characterIds),
         groupId: input.groupId ?? null,
         personaId: input.personaId,
+        personaCharacterId: input.personaCharacterId ?? null,
         promptPresetId: input.promptPresetId,
         connectionId: input.connectionId,
         metadata: JSON.stringify(metadata),
@@ -1118,6 +1122,12 @@ export function createChatsStorage(db: DB) {
       opts?: { tx?: Pick<DB, "select" | "update"> },
     ) {
       const conn = opts?.tx ?? db;
+      const identityUpdate =
+        data.personaId === undefined && data.personaCharacterId === undefined
+          ? {}
+          : data.personaCharacterId
+            ? { personaId: null, personaCharacterId: data.personaCharacterId }
+            : { personaId: data.personaId ?? null, personaCharacterId: null };
       await conn
         .update(chats)
         .set({
@@ -1125,7 +1135,7 @@ export function createChatsStorage(db: DB) {
           ...(data.mode !== undefined && { mode: data.mode }),
           ...(data.characterIds !== undefined && { characterIds: JSON.stringify(data.characterIds) }),
           ...(data.groupId !== undefined && { groupId: data.groupId }),
-          ...(data.personaId !== undefined && { personaId: data.personaId }),
+          ...identityUpdate,
           ...(data.promptPresetId !== undefined && { promptPresetId: data.promptPresetId }),
           ...(data.connectionId !== undefined && { connectionId: data.connectionId }),
           ...(data.folderId !== undefined && { folderId: data.folderId }),

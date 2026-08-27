@@ -59,6 +59,7 @@ import {
 } from "../services/storage/chats.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -337,6 +338,7 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
   return sanitizeChatGameNpcAvatars({
     ...chat,
     characterIds: resolveChatCharacterIds(chat.characterIds),
+    personaCharacterId: (chat as T & { personaCharacterId?: string | null }).personaCharacterId ?? null,
     metadata: parseChatMetadata(chat.metadata),
   });
 }
@@ -403,30 +405,27 @@ function toPeekPromptMessages(
 
 async function buildPersonaSnapshotForChat(
   app: FastifyInstance,
-  chat: { personaId?: string | null; mode?: string | null } | null,
+  chat: { personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
 ) {
   const charactersStore = createCharactersStorage(app.db);
-  const personas = await charactersStore.listPersonas();
-  const chatPersonaId = chat?.personaId ?? null;
-  // Only Conversation falls back to the active Persona. Roleplay and Game may
-  // intentionally remain Persona-less (mirrors generate.routes.ts resolution).
-  const persona = resolveActivePersonaCandidate(personas, chatPersonaId, chat?.mode);
-
-  if (!persona) return null;
+  if (!chat) return null;
+  const identity = await resolveChatUserIdentity(charactersStore, chat);
+  if (!identity) return null;
 
   return {
-    personaId: persona.id,
-    name: persona.name,
-    description: persona.description ?? "",
-    personality: persona.personality ?? "",
-    scenario: persona.scenario ?? "",
-    backstory: persona.backstory ?? "",
-    appearance: persona.appearance ?? "",
-    avatarUrl: persona.avatarPath || null,
-    avatarCrop: persona.avatarCrop || null,
-    nameColor: persona.nameColor || null,
-    dialogueColor: persona.dialogueColor || null,
-    boxColor: persona.boxColor || null,
+    personaId: identity.id,
+    source: identity.source,
+    name: identity.name,
+    description: identity.description,
+    personality: identity.personality,
+    scenario: identity.scenario,
+    backstory: identity.backstory,
+    appearance: identity.appearance,
+    avatarUrl: identity.avatarPath,
+    avatarCrop: identity.avatarCrop ? JSON.stringify(identity.avatarCrop) : null,
+    nameColor: identity.nameColor,
+    dialogueColor: identity.dialogueColor,
+    boxColor: identity.boxColor,
   };
 }
 
@@ -3802,6 +3801,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       })(),
       groupId,
       personaId: sourceChat.personaId,
+      personaCharacterId: sourceChat.personaCharacterId ?? null,
       promptPresetId: sourceChat.promptPresetId,
       connectionId: sourceChat.connectionId,
     });

@@ -554,6 +554,7 @@ export function useCreateChat() {
       groupId?: string | null;
       connectionId?: string | null;
       personaId?: string | null;
+      personaCharacterId?: string | null;
       promptPresetId?: string | null;
     }) => api.post<Chat>("/chats", data),
     onSuccess: (chat) => {
@@ -719,6 +720,7 @@ export function useUpdateChat() {
       connectionId?: string | null;
       promptPresetId?: string | null;
       personaId?: string | null;
+      personaCharacterId?: string | null;
       characterIds?: string[];
     }) => api.patch<Chat>(`/chats/${id}`, data),
     onSuccess: (updatedChat, vars) => {

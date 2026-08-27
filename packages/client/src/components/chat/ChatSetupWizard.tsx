@@ -608,17 +608,29 @@ function PersonaAvatar({ persona }: { persona: Persona | null }) {
 
 function PersonaPicker({
   personas,
+  characters = [],
   value,
+  characterValue = null,
   onChange,
+  onCharacterChange,
   searchable = true,
 }: {
   personas: Persona[];
+  characters?: Array<{
+    id: string;
+    data: string | Record<string, unknown>;
+    avatarPath?: string | null;
+    comment?: string | null;
+  }>;
   value: string | null;
+  characterValue?: string | null;
   onChange: (personaId: string | null) => void;
+  onCharacterChange?: (characterId: string | null) => void;
   searchable?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const selectedId = value ?? "";
+  const selectedCharacterId = characterValue ?? "";
   const [search, setSearch] = useState("");
   const filteredPersonas = useMemo(() => {
     if (!search.trim()) return personas;
@@ -633,11 +645,13 @@ function PersonaPicker({
     <div className="overflow-hidden rounded-lg bg-[var(--secondary)]/50 ring-1 ring-[var(--border)]">
       <button
         type="button"
-        onClick={() => onChange(null)}
-        aria-pressed={!selectedId}
+        onClick={() => {
+          onChange(null);
+        }}
+        aria-pressed={!selectedId && !selectedCharacterId}
         className={cn(
           "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
-          !selectedId && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
+          !selectedId && !selectedCharacterId && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
         )}
       >
         <PersonaAvatar persona={null} />
@@ -647,7 +661,7 @@ function PersonaPicker({
             {localizeUi("ui.chat.personapicker.stayAnonymous")}
           </span>
         </div>
-        {!selectedId && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
+        {!selectedId && !selectedCharacterId && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
       </button>
 
       {personas.length > 0 && <div className="border-t border-[var(--border)]" />}
@@ -672,7 +686,9 @@ function PersonaPicker({
             <button
               key={persona.id}
               type="button"
-              onClick={() => onChange(persona.id)}
+              onClick={() => {
+                onChange(persona.id);
+              }}
               aria-pressed={isSelected}
               className={cn(
                 "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
@@ -697,6 +713,40 @@ function PersonaPicker({
               ? localizeUi("ui.chat.chatsettingsdrawer.noPersonasCreatedYet")
               : localizeUi("ui.chat.personapicker.noMatchingPersonas")}
           </p>
+        )}
+        {characters.length > 0 && (
+          <>
+            <div className="border-t border-[var(--border)] px-3 py-2 text-[0.625rem] font-semibold uppercase text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.personapicker.playAsCharacter")}
+            </div>
+            {characters.map((character) => {
+              const isSelected = selectedCharacterId === character.id;
+              const name = parseCharacterDisplayData(character).name;
+              return (
+                <button
+                  key={`character-${character.id}`}
+                  type="button"
+                  onClick={() => {
+                    onCharacterChange?.(character.id);
+                  }}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-all hover:bg-[var(--accent)]",
+                    isSelected && "bg-[var(--primary)]/10 ring-1 ring-inset ring-[var(--primary)]/25",
+                  )}
+                >
+                  <PersonaAvatar persona={null} />
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium">{name}</span>
+                    <span className="block truncate text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.chat.personapicker.characterSource")}
+                    </span>
+                  </div>
+                  {isSelected && <Check size="0.75rem" className="shrink-0 text-[var(--primary)]" />}
+                </button>
+              );
+            })}
+          </>
         )}
       </div>
     </div>
@@ -1122,7 +1172,13 @@ function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
 
   const setPersona = useCallback(
     (personaId: string | null) => {
-      updateChat.mutate({ id: chat.id, personaId });
+      updateChat.mutate({ id: chat.id, personaId, personaCharacterId: null });
+    },
+    [chat.id, updateChat],
+  );
+  const setPersonaCharacter = useCallback(
+    (personaCharacterId: string | null) => {
+      updateChat.mutate({ id: chat.id, personaId: null, personaCharacterId });
     },
     [chat.id, updateChat],
   );
@@ -1376,7 +1432,14 @@ function ConversationQuickSetup({ chat, onFinish }: ChatSetupWizardProps) {
     <div className="space-y-4">
       <div className="space-y-1.5">
         <label className={WIZARD_FIELD_LABEL}>{localizeUi("ui.chat.conversationquicksetup.yourPersona")}</label>
-        <PersonaPicker personas={personas} value={chat.personaId ?? null} onChange={setPersona} />
+        <PersonaPicker
+          personas={personas}
+          characters={characters}
+          value={chat.personaId ?? null}
+          characterValue={chat.personaCharacterId ?? null}
+          onChange={setPersona}
+          onCharacterChange={setPersonaCharacter}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -2071,7 +2134,13 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
 
   const setPersona = useCallback(
     (personaId: string | null) => {
-      updateChat.mutate({ id: chat.id, personaId });
+      updateChat.mutate({ id: chat.id, personaId, personaCharacterId: null });
+    },
+    [chat.id, updateChat],
+  );
+  const setPersonaCharacter = useCallback(
+    (personaCharacterId: string | null) => {
+      updateChat.mutate({ id: chat.id, personaId: null, personaCharacterId });
     },
     [chat.id, updateChat],
   );
@@ -2481,7 +2550,16 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   }
 
   function renderPersona() {
-    return <PersonaPicker personas={personas} value={chat.personaId ?? null} onChange={setPersona} />;
+    return (
+      <PersonaPicker
+        personas={personas}
+        characters={characters}
+        value={chat.personaId ?? null}
+        characterValue={chat.personaCharacterId ?? null}
+        onChange={setPersona}
+        onCharacterChange={setPersonaCharacter}
+      />
+    );
   }
 
   function renderCharacters() {
@@ -3121,7 +3199,14 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
 
       <div className="space-y-1.5">
         <label className={WIZARD_FIELD_LABEL}>{localizeUi("ui.characters.cardlibrarydetailcard.persona")}</label>
-        <PersonaPicker personas={personas} value={chat.personaId ?? null} onChange={setPersona} />
+        <PersonaPicker
+          personas={personas}
+          characters={characters}
+          value={chat.personaId ?? null}
+          characterValue={chat.personaCharacterId ?? null}
+          onChange={setPersona}
+          onCharacterChange={setPersonaCharacter}
+        />
       </div>
 
       <div className="space-y-1.5">

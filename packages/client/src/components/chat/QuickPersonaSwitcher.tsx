@@ -5,10 +5,11 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
-import { usePersonas, usePersonaGroups } from "../../hooks/use-characters";
+import { useCharacters, usePersonas, usePersonaGroups } from "../../hooks/use-characters";
 import { useUpdateChat, useChat } from "../../hooks/use-chats";
 import { useChatStore } from "../../stores/chat.store";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
+import { parseCharacterDisplayData } from "../../lib/character-display";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
 
@@ -36,6 +37,12 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const { data: rawPersonas } = usePersonas();
+  const { data: rawCharacters } = useCharacters();
+  const characters = (rawCharacters ?? []) as Array<{
+    id: string;
+    data: string | Record<string, unknown>;
+    avatarPath?: string | null;
+  }>;
   const { data: rawPersonaGroups } = usePersonaGroups();
   const { data: chat } = useChat(activeChatId);
   const updateChat = useUpdateChat();
@@ -43,6 +50,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const personas = (rawPersonas ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
 
   const activePersonaId = chat?.personaId ?? null;
+  const activeCharacterId = chat?.personaCharacterId ?? null;
   const activePersona = personas.find((p) => p.id === activePersonaId) ?? null;
 
   // Build a map for quick lookups
@@ -108,7 +116,15 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const handleSwitch = useCallback(
     (personaId: string | null) => {
       if (!activeChatId) return;
-      updateChat.mutate({ id: activeChatId, personaId });
+      updateChat.mutate({ id: activeChatId, personaId, personaCharacterId: null });
+      setOpen(false);
+    },
+    [activeChatId, updateChat],
+  );
+  const handleCharacterSwitch = useCallback(
+    (personaCharacterId: string) => {
+      if (!activeChatId) return;
+      updateChat.mutate({ id: activeChatId, personaId: null, personaCharacterId });
       setOpen(false);
     },
     [activeChatId, updateChat],
@@ -350,6 +366,41 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                   {localizeUi("ui.chat.quickpersonaswitcher.noPersonasFound")}
                 </div>
               )}
+              {characters.length > 0 && (
+                <div className="border-t border-foreground/10 px-2.5 py-2 text-[0.625rem] font-semibold uppercase text-foreground/45">
+                  {localizeUi("ui.chat.personapicker.playAsCharacter")}
+                </div>
+              )}
+              {characters.map((character) => {
+                const name = parseCharacterDisplayData(character).name;
+                const isActive = activeCharacterId === character.id;
+                return (
+                  <button
+                    key={`character-${character.id}`}
+                    type="button"
+                    onClick={() => handleCharacterSwitch(character.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-foreground/10",
+                      isActive && "bg-foreground/10 text-foreground ring-1 ring-foreground/15",
+                    )}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
+                      {character.avatarPath ? (
+                        <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        name[0]
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold">{name}</span>
+                      <span className="block text-[0.625rem] text-foreground/45">
+                        {localizeUi("ui.chat.personapicker.characterSource")}
+                      </span>
+                    </div>
+                    {isActive && <span className="text-[0.6875rem]">✓</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>,
           document.body,

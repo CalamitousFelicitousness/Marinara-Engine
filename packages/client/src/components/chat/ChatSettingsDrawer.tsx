@@ -1033,14 +1033,7 @@ export function ChatSettingsDrawer({
             sidecarMaxContext,
           )
         : null,
-    [
-      chat.connectionId,
-      connections,
-      gameContextMessagesQuery.data,
-      isGame,
-      showContextUsage,
-      sidecarMaxContext,
-    ],
+    [chat.connectionId, connections, gameContextMessagesQuery.data, isGame, showContextUsage, sidecarMaxContext],
   );
   const conversationSummaryConnectionId =
     typeof metadata.summaryConnectionId === "string" ? metadata.summaryConnectionId : "";

@@ -2870,7 +2870,7 @@ export function HomeBrowserHub({
                                   characterOfDay.description?.trim() ||
                                   t("home.characterOfDay.fallback")}
                               </p>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-2">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-2">
                                 <button
                                   type="button"
                                   onClick={() =>

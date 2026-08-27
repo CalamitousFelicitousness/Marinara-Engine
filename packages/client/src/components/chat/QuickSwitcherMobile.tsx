@@ -15,6 +15,8 @@ import { appendLocalSidecarConnectionOption, isLocalSidecarConnectionOption } fr
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
+import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
+import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
 interface PersonaGroupRow {
   id: string;
@@ -32,7 +34,7 @@ interface ParsedGroup {
 
 const UNGROUPED_PERSONA_GROUP_ID = "__ungrouped-personas__";
 
-export function QuickSwitcherMobile() {
+export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: ProfessorMariContextBudget | null }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"connections" | "personas">("connections");
@@ -298,6 +300,11 @@ export function QuickSwitcherMobile() {
             <div className="overflow-y-auto p-1">
               {tab === "connections" && (
                 <>
+                  {contextBudget && (
+                    <div className="px-2 pt-1">
+                      <ContextBudgetIndicator budget={contextBudget} />
+                    </div>
+                  )}
                   <button
                     onClick={handleToggleRandom}
                     className={cn(

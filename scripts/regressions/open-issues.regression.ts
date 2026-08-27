@@ -108,6 +108,7 @@ import {
 } from "../../packages/client/src/lib/professor-mari-transcript-scroll.js";
 import {
   formatCompactTokenCount,
+  resolveChatContextBudget,
   resolveProfessorMariContextBudget,
 } from "../../packages/client/src/lib/professor-mari-context-budget.js";
 import { parseCustomParametersDraft } from "../../packages/client/src/lib/generation-custom-parameters.js";
@@ -5251,6 +5252,15 @@ assert.equal(
   "legacy Professor Mari usage metadata should keep the context indicator available",
 );
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
+assert.equal(
+  resolveChatContextBudget(
+    [{ role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } }] as Message[],
+    "random",
+    [{ id: "a", maxContext: 8_000 }] as never,
+  ),
+  null,
+  "random connection mode must not show a misleading single-connection context budget",
+);
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
 assert.match(
   professorMariHomeSource,

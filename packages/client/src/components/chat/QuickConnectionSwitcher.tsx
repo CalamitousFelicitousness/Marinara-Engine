@@ -11,8 +11,16 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import { appendLocalSidecarConnectionOption, isLocalSidecarConnectionOption } from "../../lib/connection-filters";
 import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
+import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
-export function QuickConnectionSwitcher({ className }: { className?: string }) {
+export function QuickConnectionSwitcher({
+  className,
+  contextBudget,
+}: {
+  className?: string;
+  contextBudget?: ProfessorMariContextBudget | null;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -143,6 +151,11 @@ export function QuickConnectionSwitcher({ className }: { className?: string }) {
                 <Dices size="0.875rem" />
               </button>
             </div>
+            {contextBudget && (
+              <div className="border-b border-foreground/10 px-3 pt-2">
+                <ContextBudgetIndicator budget={contextBudget} />
+              </div>
+            )}
             <div className="overflow-y-auto p-1">
               {sorted.map((conn) => {
                 const inPool = conn.useForRandom === "true";

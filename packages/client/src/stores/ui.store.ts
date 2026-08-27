@@ -752,6 +752,7 @@ interface UIState {
   showTimestamps: boolean;
   showModelName: boolean;
   showTokenUsage: boolean;
+  showContextUsage: boolean;
   showMessageNumbers: boolean;
   guideGenerations: boolean;
   showQuickRepliesMenu: boolean;
@@ -1087,6 +1088,7 @@ interface UIState {
   setShowTimestamps: (v: boolean) => void;
   setShowModelName: (v: boolean) => void;
   setShowTokenUsage: (v: boolean) => void;
+  setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
   setShowQuickRepliesMenu: (v: boolean) => void;
@@ -1307,6 +1309,7 @@ export function pickSyncedSettings(state: UIState) {
     showTimestamps: state.showTimestamps,
     showModelName: state.showModelName,
     showTokenUsage: state.showTokenUsage,
+    showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     guideGenerations: state.guideGenerations,
     showQuickRepliesMenu: state.showQuickRepliesMenu,
@@ -1519,6 +1522,7 @@ export const useUIStore = create<UIState>()(
       showTimestamps: false,
       showModelName: false,
       showTokenUsage: false,
+      showContextUsage: true,
       showMessageNumbers: false,
       guideGenerations: false,
       showQuickRepliesMenu: false,
@@ -2288,6 +2292,7 @@ export const useUIStore = create<UIState>()(
       setShowTimestamps: (v) => set({ showTimestamps: v }),
       setShowModelName: (v) => set({ showModelName: v }),
       setShowTokenUsage: (v) => set({ showTokenUsage: v }),
+      setShowContextUsage: (v) => set({ showContextUsage: v }),
       setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
       setGuideGenerations: (v) => set({ guideGenerations: v }),
       setShowQuickRepliesMenu: (v) => set({ showQuickRepliesMenu: v }),
@@ -3293,6 +3298,7 @@ export const useUIStore = create<UIState>()(
         showTimestamps: state.showTimestamps,
         showModelName: state.showModelName,
         showTokenUsage: state.showTokenUsage,
+        showContextUsage: state.showContextUsage,
         showMessageNumbers: state.showMessageNumbers,
         guideGenerations: state.guideGenerations,
         showQuickRepliesMenu: state.showQuickRepliesMenu,

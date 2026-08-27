@@ -1,4 +1,4 @@
-import type { Message } from "@marinara-engine/shared";
+import type { APIConnection, Message } from "@marinara-engine/shared";
 
 export type ProfessorMariContextBudget = {
   usedTokens: number;
@@ -41,6 +41,18 @@ export function resolveProfessorMariContextBudget(
   }
 
   return null;
+}
+
+export function resolveChatContextBudget(
+  messages: readonly Message[],
+  connectionId: string | null | undefined,
+  connections: readonly APIConnection[],
+): ProfessorMariContextBudget | null {
+  if (connectionId === "random") return null;
+  const connection = connectionId
+    ? connections.find((candidate) => candidate.id === connectionId)
+    : (connections.find((candidate) => candidate.isDefault) ?? connections[0]);
+  return resolveProfessorMariContextBudget(messages, connection?.maxContext);
 }
 
 export function formatCompactTokenCount(value: number): string {

@@ -272,6 +272,37 @@ export function useGenerateCharacterSummary() {
   });
 }
 
+export type CharacterConvoProfileTarget = "aboutMe" | "behavior";
+
+export interface CharacterConvoProfileDraft {
+  name?: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  backstory?: string;
+  appearance?: string;
+}
+
+/** Generates one Conversation profile field from the current character card draft. */
+export function useGenerateCharacterConvoProfile() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      target,
+      draft,
+    }: {
+      id: string;
+      target: CharacterConvoProfileTarget;
+      draft: CharacterConvoProfileDraft;
+    }) =>
+      api.post<{ text: string }>(`/characters/${encodeURIComponent(id)}/convo-profile/generate`, {
+        target,
+        draft,
+        debugMode: useUIStore.getState().debugMode,
+      }),
+  });
+}
+
 export function useCharacterVersions(id: string | null) {
   return useQuery({
     queryKey: characterKeys.versions(id ?? ""),

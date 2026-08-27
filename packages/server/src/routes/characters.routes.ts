@@ -1002,6 +1002,97 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Generates an editable Conversation profile field from character-card data. */
+  app.post<{
+    Params: { id: string };
+    Body: {
+      target?: "aboutMe" | "behavior";
+      debugMode?: boolean;
+      draft?: {
+        name?: string;
+        description?: string;
+        personality?: string;
+        scenario?: string;
+        backstory?: string;
+        appearance?: string;
+      };
+    };
+  }>("/:id/convo-profile/generate", async (req, reply) => {
+    const character = await storage.getById(req.params.id);
+    if (!character) return reply.status(404).send({ error: "Character not found" });
+    if (req.body?.target !== "aboutMe" && req.body?.target !== "behavior") {
+      return reply.status(400).send({ error: "Invalid Conversation profile target" });
+    }
+
+    const data = parseCharacterDataRecord(character.data) as Partial<CharacterData>;
+    const draft = req.body.draft;
+    const cardValue = (key: "name" | "description" | "personality" | "scenario") =>
+      typeof draft?.[key] === "string" ? draft[key] : typeof data[key] === "string" ? data[key] : "";
+    const extensions = parseCharacterDataRecord(data.extensions);
+    const backstory = typeof draft?.backstory === "string" ? draft.backstory : extensions.backstory;
+    const appearance = typeof draft?.appearance === "string" ? draft.appearance : extensions.appearance;
+    const target = req.body.target;
+    const prompt = [
+      target === "aboutMe"
+        ? "Write a short first-person About Me bio for this character's Conversation profile."
+        : "Write a concise Conversation behavior directive for this character.",
+      "Use only facts and traits present in the card.",
+      target === "aboutMe"
+        ? "Use the character's voice. Return the bio text only."
+        : "Describe how the character should behave, speak, and respond in Conversation mode. Return the directive text only.",
+      "Do not use labels, markdown, explanations, or invented facts.",
+      "",
+      `Name: ${cardValue("name")}`,
+      `Description: ${cardValue("description")}`,
+      `Personality: ${cardValue("personality")}`,
+      `Scenario: ${cardValue("scenario")}`,
+      `Backstory: ${typeof backstory === "string" ? backstory : ""}`,
+      `Appearance: ${typeof appearance === "string" ? appearance : ""}`,
+    ].join("\n");
+    const defaultConnection = await connections.getDefault();
+    const resolved = await resolveChatSummaryConnection({
+      chatMetadata: {},
+      defaultConnectionId: defaultConnection?.id,
+      connections,
+      resolveBaseUrl,
+    });
+    if (!resolved.ok) return reply.status(400).send({ error: resolved.error });
+
+    logDebugOverride(
+      req.body?.debugMode === true || isDebugAgentsEnabled(),
+      "[debug/characters/%s-convo-profile] prompt:\n%s",
+      req.params.id,
+      prompt,
+    );
+    try {
+      const result = await resolved.provider.chatComplete(
+        [
+          { role: "system", content: prompt },
+          { role: "user", content: "Write the profile text." },
+        ],
+        {
+          model: resolved.model,
+          maxTokens: Math.min(resolved.provider.maxTokensOverrideValue ?? 256, 256),
+          temperature: 0.5,
+          enabledParameters: resolveChatSummaryTemperatureOptions(resolved).enabledParameters,
+        },
+      );
+      const text = (result.content ?? "")
+        .replace(/^```(?:text)?/i, "")
+        .replace(/```$/i, "")
+        .trim()
+        .slice(0, 1200)
+        .trim();
+      if (!text) return reply.status(502).send({ error: "Conversation profile generation returned no text" });
+      return reply.send({ text });
+    } catch (error) {
+      logger.error(error, "Conversation profile generation failed");
+      return reply
+        .status(502)
+        .send({ error: error instanceof Error ? error.message : "Conversation profile generation failed" });
+    }
+  });
+
   app.post("/avatar-generation/preview", async (req, reply) => {
     const body = req.body as AvatarGenerationBody;
     const resolved = await resolveAvatarGenerationConnection(app, body);

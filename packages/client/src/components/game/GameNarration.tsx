@@ -683,11 +683,10 @@ function buildGameVoiceAudioJobs(
 }
 
 function generateGameVoiceJobBlob(job: GameVoiceAudioJob, controller: AbortController): Promise<Blob> {
-  // The shared engine now owns the cache lookup, the retry curve, and the abort
-  // wrapper this function used to reimplement. One difference is deliberate: a
-  // retry after the caller aborts is no longer cut short, which matches how the
-  // first attempt already behaved here (an aborted job leaves its generation
-  // running so the clip still lands in the cache).
+  // The shared engine owns the cache lookup, the retry curve, and the abort
+  // wrapper. The caller's abort stops playback, not generation: an aborted job
+  // finishes its request so the clip still lands in the cache, retries
+  // included. GAME_VOICE_SYNTHESIS_POLICY carries the game's retry curve.
   return ttsService.synthesize(job.chunk, {
     speaker: job.speaker,
     tone: job.tone,

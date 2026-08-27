@@ -1,9 +1,8 @@
 // Each TTS backend builds its own request, and the registry picks the backend.
 //
-// This replaced five parallel ternary chains in the /speak handler (URL,
-// headers, body, text preparation, speed inclusion) that had to be edited in
-// lockstep; adding a backend meant finding all five. The chains are reproduced
-// here as assertions so the extraction cannot quietly change a wire format.
+// Every wire format is pinned here: URL, headers, body, text preparation, and
+// whether speed is sent. A provider talks to a service this repo cannot test
+// against, so a wrong field is silent until a user hits it.
 //
 // Providers do no I/O, so these are plain function calls: no mock servers, no
 // ports, no timers.

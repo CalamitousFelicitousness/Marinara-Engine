@@ -1101,6 +1101,11 @@ Per-model request differences already handled for the base-URL path now apply by
 ElevenLabs-branded models take a bracketed emotion cue, reject `speed`, and are forced to mp3
 regardless of a saved WAV preference; everything else keeps speed and the saved format.
 
+`TTS_SOURCES_WITH_MODEL_LISTING` decides both whether the card renders a model dropdown and whether
+the models query fetches at all. Those two decisions lived in different files as separate source
+literals, and disagreeing is silent: the dropdown renders and sits on its fallback entries forever,
+looking like the account has no models.
+
 One deduplication came with it. `ttsSourceProfilesSchema` was a hand-listed mirror of the source ids,
 and a source missing from it is not a type error at the write site: Zod strips the unknown key, so
 the source silently fails to persist a profile and loses its settings on every switch away and back.

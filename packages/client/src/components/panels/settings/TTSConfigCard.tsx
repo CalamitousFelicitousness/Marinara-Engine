@@ -63,6 +63,7 @@ import {
   TTS_TIMEOUT_MS_MAX,
   TTS_TIMEOUT_MS_MIN,
   TTS_SOURCE_IDS,
+  TTS_SOURCES_WITH_MODEL_LISTING,
   ttsSourceProfileFromConfig,
   ttsSourceProfileSchema,
 } from "@marinara-engine/shared";
@@ -1265,9 +1266,9 @@ export function TTSConfigCard() {
   const voicesErrorMessage = voicesError
     ? getTtsRequestErrorMessage(voicesRequestError, localizeUi("ui.panels.ttsconfigcard.couldNotRefreshVoices"))
     : null;
-  // ElevenLabs and NanoGPT both publish a model list worth picking from; every
-  // other source takes a free-text id.
-  const usesModelPicker = source === "elevenlabs" || source === "nanogpt";
+  // Same list the models query gates on, so a dropdown cannot render for a
+  // source whose models are never fetched.
+  const usesModelPicker = TTS_SOURCES_WITH_MODEL_LISTING.includes(source);
   const modelOptions = useMemo(() => {
     const providerModels = modelsData?.source === source ? modelsData.models : [];
     const fallback = (source === "nanogpt" ? NANOGPT_TTS_MODEL_IDS : ELEVENLABS_TTS_MODELS).map((id) => ({

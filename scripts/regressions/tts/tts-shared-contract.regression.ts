@@ -30,7 +30,11 @@ import {
   ttsSourceProfileSchema,
   ttsSourceSchema,
 } from "../../../packages/shared/src/types/tts.js";
-import { TTS_SOURCE_DEFINITIONS, TTS_SOURCE_IDS } from "../../../packages/shared/src/constants/tts-sources.js";
+import {
+  TTS_SOURCE_DEFINITIONS,
+  TTS_SOURCE_IDS,
+  TTS_SOURCES_WITH_MODEL_LISTING,
+} from "../../../packages/shared/src/constants/tts-sources.js";
 import { AUDIO_GENERATION_SOURCES } from "../../../packages/shared/src/types/connection.js";
 import { audioGenerationSourceSchema } from "../../../packages/shared/src/schemas/connection.schema.js";
 import { prepareTTSConfigForStorage } from "../../../packages/server/src/routes/tts.routes.ts";
@@ -51,6 +55,32 @@ assert.deepEqual(
   [...TTS_SOURCE_IDS].sort(),
   "every source id needs a definition and vice versa",
 );
+
+// The model dropdown and the models query must agree on which sources have a
+// listing. They are in different files, and a source in the card but not the
+// query renders a dropdown whose fetch never fires: it sits on its fallback
+// entries forever, looking like the account has no models. Neither side may
+// spell a source id itself.
+{
+  for (const id of TTS_SOURCES_WITH_MODEL_LISTING) {
+    assert.ok(TTS_SOURCE_IDS.includes(id), `${id}: listed for model fetching but not a source`);
+  }
+
+  const hook = readSource("packages/client/src/hooks/use-tts.ts");
+  // Scoped to useTTSModels: useTTSVoices has its own `enabled:` line, and an
+  // unscoped match reads that one instead and passes for the wrong reason.
+  const modelsHook = hook.slice(hook.indexOf("export function useTTSModels"));
+  assert.ok(modelsHook.startsWith("export function useTTSModels"), "useTTSModels must still exist to be pinned");
+  const gate = /enabled:\s*enabled\s*&&\s*([^\n]*?),\s*$/mu.exec(modelsHook)?.[1] ?? "";
+  assert.match(gate, /TTS_SOURCES_WITH_MODEL_LISTING/u, "the models query must gate on the shared list");
+  for (const id of TTS_SOURCE_IDS) {
+    assert.doesNotMatch(gate, new RegExp(`["']${id}["']`, "u"), `the models query gate must not name ${id} directly`);
+  }
+
+  const card = readSource("packages/client/src/components/panels/settings/TTSConfigCard.tsx");
+  const picker = /const usesModelPicker = ([^\n]*);/u.exec(card)?.[1] ?? "";
+  assert.match(picker, /TTS_SOURCES_WITH_MODEL_LISTING/u, "the card must pick its dropdown sources from the same list");
+}
 
 // sourceProfiles is keyed off the same list. A missing key is not a type error
 // at the write site: Zod strips the unknown key, so the profile silently fails

@@ -36,6 +36,15 @@ export const NANOGPT_TTS_MODEL_IDS = [
 export const TTS_SOURCE_IDS = ["openai", "elevenlabs", "nanogpt", "pockettts", "xai"] as const;
 export type TTSSourceId = (typeof TTS_SOURCE_IDS)[number];
 
+/**
+ * Sources that publish a model list; the rest take a free-text model id.
+ *
+ * Read by both the card, to decide between a dropdown and a text field, and the
+ * models query, to decide whether to fetch at all. Those two lived apart, and a
+ * source in one but not the other renders a dropdown that is never filled.
+ */
+export const TTS_SOURCES_WITH_MODEL_LISTING: readonly TTSSourceId[] = ["elevenlabs", "nanogpt"];
+
 export interface TTSSourceDefinition {
   id: TTSSourceId;
   /** Backend name. Product noun, not UI copy; surfaces unlocalized as it always has. */

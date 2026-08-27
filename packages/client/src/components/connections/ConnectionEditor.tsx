@@ -225,7 +225,13 @@ function normalizeEndpointUrlInput(raw: string, label: string): { value: string;
 // Defaults come from TTS_SOURCE_DEFINITIONS so a fresh audio connection seeds
 // the same base URL / model / voice the TTS settings use. Only the button order
 // is local.
-const AUDIO_SOURCE_DISPLAY_ORDER: readonly AudioGenerationSource[] = ["elevenlabs", "openai", "pockettts", "xai"];
+const AUDIO_SOURCE_DISPLAY_ORDER: readonly AudioGenerationSource[] = [
+  "elevenlabs",
+  "openai",
+  "nanogpt",
+  "pockettts",
+  "xai",
+];
 const AUDIO_SOURCE_OPTIONS = AUDIO_SOURCE_DISPLAY_ORDER.map((id) => {
   const definition = TTS_SOURCE_DEFINITIONS[id];
   return {

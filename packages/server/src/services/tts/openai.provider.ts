@@ -9,7 +9,9 @@
 // aliases, an extra auth header, and ElevenLabs-branded models that take a
 // bracketed emotion cue instead of instructions.
 
+import type { TTSAudioFormat } from "@marinara-engine/shared";
 import { BaseTTSProvider } from "./base-tts-provider.js";
+import { nanoGptModelFamily } from "./nanogpt-catalog.js";
 import {
   buildElevenLabsTextInput,
   buildSpeechInstructions,
@@ -54,6 +56,28 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
     return normalizeNanoGptTtsModelId(this.configuredModel());
   }
 
+  /**
+   * ElevenLabs-branded models answer MP3 whatever is asked, so a saved WAV
+   * preference must not reach them. Kokoro answers WAV for the same reason in
+   * reverse; the route sniffs magic bytes, so the declared format is advisory.
+   */
+  protected override resolveAudioFormat(): TTSAudioFormat {
+    if (isNanoGptElevenLabsModel(this.resolveModel())) return "mp3";
+    return super.resolveAudioFormat();
+  }
+
+  /** Voice vocabulary is per backend, so an empty field cannot fall back to one name. */
+  protected override defaultVoice(): string {
+    switch (nanoGptModelFamily(this.resolveModel())) {
+      case "kokoro":
+        return "af_bella";
+      case "elevenlabs":
+        return "Rachel";
+      default:
+        return "alloy";
+    }
+  }
+
   override buildSpeechRequest(input: TTSSpeechInput): TTSSpeechRequest {
     const model = this.resolveModel();
     // NanoGPT's ElevenLabs-branded models take an emotion cue in the text and
@@ -80,7 +104,7 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
       body: JSON.stringify({
         model,
         input: text,
-        voice: input.voice || "alloy",
+        voice: input.voice || this.defaultVoice(),
         ...(elevenLabsModel ? {} : { speed: this.cfg.speed }),
         response_format: this.resolveAudioFormat(),
         ...(instructions ? { instructions } : {}),

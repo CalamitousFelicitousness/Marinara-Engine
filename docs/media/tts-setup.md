@@ -16,10 +16,11 @@ Turning TTS on does not make anything speak by itself. It only reveals the **Spe
 2. Click the switch in the card header to turn TTS on. Hover over the switch to see its tooltip: **Enable TTS** when off, **Disable TTS** when on.
 3. Open the **Source** dropdown and pick your provider.
 
-A **Source** is the service that makes the audio. The four choices are:
+A **Source** is the service that makes the audio. The five choices are:
 
 - **OpenAI-compatible**: OpenAI, or any server that copies OpenAI's TTS format.
 - **ElevenLabs**: the ElevenLabs voice service.
+- **NanoGPT**: one account that reaches OpenAI, Kokoro, and ElevenLabs voices, billed per character.
 - **PocketTTS**: a free voice server you run on your own computer.
 - **xAI Voice**: xAI's voice service.
 
@@ -39,10 +40,27 @@ The app fills in these defaults per Source:
 | ----------------- | ------------------------- | ---------------------- | ------------------------------- |
 | OpenAI-compatible | https://api.openai.com/v1 | tts-1                  | alloy                           |
 | ElevenLabs        | https://api.elevenlabs.io | eleven_multilingual_v2 | none (you must pick one)        |
+| NanoGPT           | https://nano-gpt.com/api/v1 | gpt-4o-mini-tts      | alloy                           |
 | PocketTTS         | http://localhost:8000     | pocket-tts             | alba                            |
 | xAI Voice         | https://api.x.ai/v1       | grok-tts               | eve                             |
 
 For **ElevenLabs**, the **Model** field loads the speech-capable models available through your connection and always keeps the full list visible when you open it. Pick a normal speech model. Model IDs that contain `ttv` are voice-design models, not speech models, and they cannot read text out loud. If you choose one by mistake, playback fails with an error that tells you to use a speech model instead.
+
+### NanoGPT reaches several voice services through one key
+
+NanoGPT resells other providers, so one key and one balance cover OpenAI voices, the open-weights Kokoro voices, and ElevenLabs voices. Pick the service through the **Model** field; the app loads the current list from your account once the card is saved with a key, and falls back to a built-in list before then.
+
+Which model you pick changes what the other fields mean:
+
+| Model | Voices look like | Speed | Emotion steering |
+| --- | --- | --- | --- |
+| `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd` | `alloy`, `nova`, `verse` | 0.5x to 2.0x | Speaker and tone become spoken-style instructions |
+| `Kokoro-82m` | `af_bella`, `bm_george`, `jf_alpha` | 0.5x to 2.0x | None; the prefix picks language and gender |
+| `Elevenlabs-Turbo-V2.5`, `Elevenlabs-V3` | a name, such as `Rachel` | Ignored | Tone rides in the text as a bracketed cue |
+
+The **Voice** field offers the right list for the selected model and still accepts anything typed by hand, which is how you use a MiniMax or Qwen voice ID or a cloned voice.
+
+Marinara talks to NanoGPT's OpenAI-compatible endpoint, which returns audio directly. NanoGPT's native `/tts` endpoint adds voice cloning and ElevenLabs stability controls, but answers with a job to poll and a storage URL to fetch; Marinara does not use it.
 
 ### PocketTTS is a separate program
 

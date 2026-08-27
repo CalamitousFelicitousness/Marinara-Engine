@@ -9,6 +9,11 @@
 
 import assert from "node:assert/strict";
 import { createTTSProvider } from "../../../packages/server/src/services/tts/provider-registry.ts";
+import {
+  NANOGPT_FALLBACK_TTS_MODELS,
+  nanoGptModelFamily,
+  parseNanoGptModelOptions,
+} from "../../../packages/server/src/services/tts/nanogpt-catalog.ts";
 import { ttsConfigSchema, type TTSConfig } from "../../../packages/shared/src/types/tts.js";
 
 const config = (overrides: Partial<TTSConfig> = {}): TTSConfig =>
@@ -111,6 +116,52 @@ const jsonBody = (body: string | FormData): Record<string, unknown> => {
     config({ source: "openai", baseUrl: "https://nano-gpt.com/api/v1" }),
   ).buildSpeechRequest({ text: "Hello.", voice: "" });
   assert.equal(jsonBody(noVoice.body).voice, "alloy", "NanoGPT needs some voice; alloy is the historical default");
+}
+
+// ── NanoGPT as a source of its own ──
+{
+  // Selecting the source is enough; no nano-gpt.com base URL needed to get
+  // NanoGPT-shaped requests.
+  const request = createTTSProvider(
+    config({ source: "nanogpt", baseUrl: "https://gateway.example.test/v1", model: "gpt-4o-mini-tts" }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "nova" });
+
+  assert.equal(request.url, "https://gateway.example.test/v1/audio/speech");
+  assert.equal(request.headers["x-api-key"], "secret-key", "NanoGPT wants both auth headers");
+  assert.equal(jsonBody(request.body).voice, "nova");
+
+  // Voice vocabulary is per backend, so an empty field cannot resolve to one
+  // name: alloy is meaningless to Kokoro and af_bella is meaningless to OpenAI.
+  const perFamilyDefaults = [
+    ["gpt-4o-mini-tts", "alloy"],
+    ["Kokoro-82m", "af_bella"],
+    ["Elevenlabs-V3", "Rachel"],
+  ] as const;
+  for (const [model, expected] of perFamilyDefaults) {
+    const blank = createTTSProvider(config({ source: "nanogpt", model })).buildSpeechRequest({
+      text: "Hi.",
+      voice: "",
+    });
+    assert.equal(jsonBody(blank.body).voice, expected, `${model}: empty voice falls back within its own family`);
+  }
+
+  // ElevenLabs-branded models answer mp3 whatever is asked, and reject speed.
+  const elevenThroughNanoGpt = createTTSProvider(
+    config({ source: "nanogpt", model: "Elevenlabs-Turbo-V2.5", audioFormat: "wav", speed: 1.5 }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "Rachel", tone: "sad" });
+  const elevenBody = jsonBody(elevenThroughNanoGpt.body);
+  assert.equal(elevenBody.response_format, "mp3", "a saved WAV preference must not reach an ElevenLabs model");
+  assert.equal(elevenBody.speed, undefined, "ElevenLabs-branded models reject a speed parameter");
+  assert.equal(elevenBody.input, "[sad] Hello.", "tone rides in the text as a bracketed cue");
+
+  // Kokoro is not ElevenLabs-branded, so it keeps speed and the saved format.
+  const kokoro = createTTSProvider(
+    config({ source: "nanogpt", model: "Kokoro-82m", audioFormat: "wav", speed: 1.25 }),
+  ).buildSpeechRequest({ text: "Hello.", voice: "af_bella" });
+  const kokoroBody = jsonBody(kokoro.body);
+  assert.equal(kokoroBody.speed, 1.25);
+  assert.equal(kokoroBody.response_format, "wav");
+  assert.equal(kokoroBody.input, "Hello.", "a non-ElevenLabs model gets no bracketed cue");
 }
 
 // ── ElevenLabs: voice in the path, gzipped response ──
@@ -235,6 +286,54 @@ for (const [source, expected] of [
     voice: "alloy",
   });
   assert.equal(request.url, expected, `${source}: a trailing slash must not survive into the URL`);
+}
+
+// ── The NanoGPT catalog: model family drives the voice list ──
+{
+  const families: Array<[string, string]> = [
+    ["gpt-4o-mini-tts", "openai"],
+    ["tts-1", "openai"],
+    ["tts-1-hd", "openai"],
+    ["Kokoro-82m", "kokoro"],
+    ["Elevenlabs-Turbo-V2.5", "elevenlabs"],
+    ["Elevenlabs-V3", "elevenlabs"],
+    ["MiniMax-Speech-02", "other"],
+    ["", "other"],
+  ];
+  for (const [model, expected] of families) {
+    assert.equal(nanoGptModelFamily(model), expected, `${model || "(blank)"} belongs to the ${expected} family`);
+  }
+
+  // The listing is the only place a NanoGPT user can discover model ids, so a
+  // parse that silently drops rows leaves the dropdown looking like the
+  // account has no models.
+  const parsed = parseNanoGptModelOptions({
+    object: "list",
+    data: [
+      { id: "Kokoro-82m", name: "Kokoro 82M", capabilities: { text_to_speech: true } },
+      { id: "tts-1" },
+      { id: "whisper-1", capabilities: { text_to_speech: false, speech_to_text: true } },
+      { id: "  " },
+      { id: "tts-1" },
+      "not-an-object",
+    ],
+  });
+  assert.deepEqual(
+    parsed,
+    [
+      { id: "Kokoro-82m", name: "Kokoro 82M" },
+      { id: "tts-1", name: "tts-1" },
+    ],
+    "keeps TTS rows in order, names them, and drops STT/blank/duplicate/malformed rows",
+  );
+  assert.deepEqual(parseNanoGptModelOptions({}), [], "a listing with no data array yields no models, not a throw");
+  assert.deepEqual(parseNanoGptModelOptions(null), [], "a null payload yields no models, not a throw");
+
+  // Every fallback id must resolve to a family that has voices, or a user who
+  // picks it from the seeded dropdown gets an empty voice list.
+  for (const id of NANOGPT_FALLBACK_TTS_MODELS) {
+    assert.notEqual(nanoGptModelFamily(id), "other", `${id}: a seeded model must map to a known voice family`);
+  }
 }
 
 console.info("TTS provider registry regression passed.");

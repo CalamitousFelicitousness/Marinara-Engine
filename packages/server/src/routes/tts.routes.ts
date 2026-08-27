@@ -40,10 +40,20 @@ import {
   elevenLabsHeaders,
   ELEVENLABS_NON_TTS_MODELS,
   isNanoGptBaseUrl,
+  nanoGptHeaders,
+  nanoGptV1BaseUrl,
+  normalizeNanoGptTtsModelId,
   openAiHeaders,
   optionalBearerHeaders,
   pocketTtsV1BaseUrl,
 } from "../services/tts/tts-endpoints.js";
+import {
+  NANOGPT_FALLBACK_TTS_MODELS,
+  NANOGPT_KOKORO_VOICES,
+  NANOGPT_OPENAI_VOICES,
+  nanoGptModelFamily,
+  parseNanoGptModelOptions,
+} from "../services/tts/nanogpt-catalog.js";
 
 // Re-exported because scripts/regressions/tts-source-persistence.regression.ts
 // imports them from this module. Keeping the names resolvable here is what lets
@@ -648,6 +658,28 @@ function fallbackVoices(source: TTSSource): TTSVoicesResponse {
   );
 }
 
+/**
+ * NanoGPT voices for the selected model. An empty model resolves to the source
+ * default rather than an empty list, so a freshly switched card still offers
+ * something to pick.
+ */
+function nanoGptVoiceOptions(model: string): VoiceOption[] {
+  const resolved = normalizeNanoGptTtsModelId(model || TTS_SOURCE_DEFINITIONS.nanogpt.defaultModel);
+
+  switch (nanoGptModelFamily(resolved)) {
+    case "kokoro":
+      return NANOGPT_KOKORO_VOICES.map((voice) => ({
+        id: voice.id,
+        name: voice.id,
+        category: `Kokoro ${voice.category}`,
+      }));
+    case "elevenlabs":
+      return NANOGPT_ELEVENLABS_VOICES.map((voice) => ({ id: voice, name: voice, category: "NanoGPT ElevenLabs" }));
+    default:
+      return NANOGPT_OPENAI_VOICES.map((voice) => ({ id: voice, name: voice, category: "OpenAI built-in" }));
+  }
+}
+
 function resolveTtsTimeoutMs(cfg: TTSConfig): number {
   const configured = Number(cfg.timeoutMs);
   if (!Number.isFinite(configured)) return TTS_TIMEOUT_MS_DEFAULT;
@@ -963,7 +995,35 @@ async function fetchElevenLabsModelOptions(baseUrl: string, apiKey: string): Pro
   return parseElevenLabsModelOptions(await res.json());
 }
 
+/** GET /v1/audio-models, the only listing NanoGPT exposes. */
+async function fetchNanoGptModelOptions(baseUrl: string, apiKey: string): Promise<ModelOption[]> {
+  const url = `${nanoGptV1BaseUrl(baseUrl)}/audio-models?type=tts&detailed=true`;
+  const res = await safeFetch(url, {
+    headers: nanoGptHeaders(apiKey),
+    signal: AbortSignal.timeout(10_000),
+    policy: ttsUrlPolicy(),
+    maxResponseBytes: 2 * 1024 * 1024,
+  });
+  if (!res.ok) {
+    const detail = readProviderErrorDetail(await res.text().catch(() => ""));
+    throw new Error(`NanoGPT audio-models request failed (${res.status})${detail ? `: ${detail}` : ""}`);
+  }
+  return parseNanoGptModelOptions(await res.json());
+}
+
+const nanoGptFallbackModels = (): ModelOption[] => NANOGPT_FALLBACK_TTS_MODELS.map((id) => ({ id, name: id }));
+
 async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResponse> {
+  if (cfg.source === "nanogpt") {
+    if (!cfg.apiKey) return { models: nanoGptFallbackModels(), fromProvider: false, source: cfg.source };
+    const models = await fetchNanoGptModelOptions(configuredBaseUrl(cfg), cfg.apiKey);
+    return {
+      models: models.length > 0 ? models : nanoGptFallbackModels(),
+      fromProvider: models.length > 0,
+      source: cfg.source,
+    };
+  }
+
   if (cfg.source !== "elevenlabs" || !cfg.apiKey || isNanoGptBaseUrl(configuredBaseUrl(cfg))) {
     return {
       models: ELEVENLABS_FALLBACK_MODELS.map((id) => ({ id, name: id })),
@@ -1009,6 +1069,12 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
 
     const voices = await fetchAllElevenLabsVoiceOptions(base, cfg.apiKey);
     return voices.length > 0 ? responseFromVoiceOptions(cfg.source, voices, true) : fallbackVoices(cfg.source);
+  }
+
+  // NanoGPT has no voice endpoint: the vocabulary belongs to whichever backend
+  // the selected model routes to, so it comes from the catalog.
+  if (cfg.source === "nanogpt") {
+    return responseFromVoiceOptions(cfg.source, nanoGptVoiceOptions(cfg.model), false);
   }
 
   if (cfg.source === "xai") {

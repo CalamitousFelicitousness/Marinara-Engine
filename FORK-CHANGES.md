@@ -1076,6 +1076,54 @@ Patches to upstream files: `packages/server/src/routes/tts.routes.ts` and
 `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts`, which boots the real app against a
 stub engine.
 
+### NanoGPT is a TTS source, not a base URL
+
+`nanogpt` joins `TTS_SOURCE_IDS`, with `NanoGptTTSProvider` reached from the registry by source as
+well as by base-URL detection.
+
+NanoGPT was reachable only by selecting some other source and pasting a `nano-gpt.com` base URL. That
+works, and still does, but it exposes one backend: an ElevenLabs source shows ElevenLabs models and
+ElevenLabs voices, so Kokoro and the OpenAI models could only be reached by choosing the OpenAI
+source and typing a model id from memory, against a voice list that did not match it.
+
+NanoGPT fronts several backends behind one OpenAI-shaped endpoint, and the voice vocabulary belongs
+to the backend, not the account: Kokoro takes `af_bella`, the OpenAI models take `alloy`, ElevenLabs
+takes a name. `services/tts/nanogpt-catalog.ts` resolves a model to its family, and `/voices` answers
+from that rather than from the source, so switching model switches the voice list. The field stays
+writable, because MiniMax and Qwen voice ids and cloned voices cannot be enumerated.
+
+`/models` fetches `GET /v1/audio-models?type=tts`, which is the only listing NanoGPT publishes. It
+falls back to `NANOGPT_TTS_MODEL_IDS` when no key is saved or the call fails. The capability flag is
+re-checked while parsing even though `type=tts` filters server-side, so a widened response cannot put
+transcription models in a voice dropdown.
+
+Per-model request differences already handled for the base-URL path now apply by source too:
+ElevenLabs-branded models take a bracketed emotion cue, reject `speed`, and are forced to mp3
+regardless of a saved WAV preference; everything else keeps speed and the saved format.
+
+One deduplication came with it. `ttsSourceProfilesSchema` was a hand-listed mirror of the source ids,
+and a source missing from it is not a type error at the write site: Zod strips the unknown key, so
+the source silently fails to persist a profile and loses its settings on every switch away and back.
+It now derives from `TTS_SOURCE_IDS`, and the regression pins the behaviour rather than the shape.
+
+Deliberately not implemented: NanoGPT's native `/api/tts`. It carries voice cloning and the
+ElevenLabs stability controls, but answers 202 for the ElevenLabs models and returns a storage URL to
+fetch, which is a polling loop plus a second outbound request to a provider-supplied URL. That is
+remote provenance and would need the origin pinning the image path uses, so it is its own change.
+
+Patches to upstream files: `packages/shared/src/constants/tts-sources.ts`,
+`packages/shared/src/types/tts.ts`, `packages/server/src/routes/tts.routes.ts`,
+`packages/server/src/services/tts/openai.provider.ts`,
+`packages/server/src/services/tts/provider-registry.ts`,
+`packages/client/src/components/panels/settings/TTSConfigCard.tsx`,
+`packages/client/src/components/connections/ConnectionEditor.tsx`,
+`packages/client/src/localization/locales/en.json`, `docs/media/tts-setup.md`. The two client
+components are the collision-prone ones: both carry per-source ternary chains upstream also edits.
+
+Proven by `scripts/regressions/tts/tts-provider-registry.regression.ts` (source dispatch, per-family
+voice fallback, format and speed rules, catalog parsing) and
+`scripts/regressions/tts/tts-shared-contract.regression.ts` (every source id has a profile slot).
+
 ### Local address controls key on who supplied the URL
 
 `PROVIDER_LOCAL_URLS_ENABLED` and `TTS_LOCAL_URLS_ENABLED` now default to `true`, with an explicit

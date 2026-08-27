@@ -2,7 +2,7 @@
 // TTS Types
 // ──────────────────────────────────────────────
 import { z } from "zod";
-import { TTS_SOURCE_IDS } from "../constants/tts-sources.js";
+import { TTS_SOURCE_IDS, type TTSSourceId } from "../constants/tts-sources.js";
 
 export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
 export type TTSSource = z.infer<typeof ttsSourceSchema>;
@@ -231,13 +231,15 @@ export const ttsSourceProfileSchema = ttsConfigBaseSchema.pick({
 });
 export type TTSSourceProfile = z.infer<typeof ttsSourceProfileSchema>;
 
+// Keyed off TTS_SOURCE_IDS rather than hand-listed: a source missing here still
+// compiles everywhere except the indexed reads, and the symptom is a source
+// whose saved settings silently fail to persist across a switch.
 export const ttsSourceProfilesSchema = z
-  .object({
-    openai: ttsSourceProfileSchema.optional(),
-    elevenlabs: ttsSourceProfileSchema.optional(),
-    pockettts: ttsSourceProfileSchema.optional(),
-    xai: ttsSourceProfileSchema.optional(),
-  })
+  .object(
+    Object.fromEntries(TTS_SOURCE_IDS.map((id) => [id, ttsSourceProfileSchema.optional()])) as {
+      [K in TTSSourceId]: z.ZodOptional<typeof ttsSourceProfileSchema>;
+    },
+  )
   .default({});
 export type TTSSourceProfiles = z.infer<typeof ttsSourceProfilesSchema>;
 

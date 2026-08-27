@@ -1,14 +1,14 @@
-// The TTS source list and the synthesis tuning fields have one definition each.
+// The TTS source list and the synthesis tuning fields have one definition each,
+// and everything else derives from them.
 //
-// The source ids and their default baseUrl/model/voice lived in six places:
-// two shared enums, a shared const tuple, two tables in tts.routes.ts, and two
-// more in the client. The per-source profile field list lived in three: the Zod
-// pick, ttsSourceProfileFromConfig, and TTSConfigCard's defaultSourceProfile.
-// A field added to one copy silently vanished from the others, which is how
-// tuning would have been dropped on every source switch.
+// Both are the kind of list that grows a second copy easily: the source ids
+// reach two shared enums, the shared definition table, the route, and the
+// client card, while the tuning field list reaches a Zod pick, a projection,
+// and the card's profile defaults. A copy that falls behind still compiles.
+// The symptom is silent: a source whose saved tuning vanishes on a switch, or
+// one the schema refuses to persist a profile for.
 //
-// Everything now derives from TTS_SOURCE_DEFINITIONS and the schema itself.
-// These assertions pin the derivations rather than the copies.
+// These assertions pin the derivations, so a copy has to fail loudly to exist.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -51,6 +51,14 @@ assert.deepEqual(
   [...TTS_SOURCE_IDS].sort(),
   "every source id needs a definition and vice versa",
 );
+
+// sourceProfiles is keyed off the same list. A missing key is not a type error
+// at the write site: Zod strips the unknown key, so the profile silently fails
+// to persist and the source loses its settings on every switch away and back.
+for (const id of TTS_SOURCE_IDS) {
+  const stored = ttsConfigSchema.parse({ sourceProfiles: { [id]: { voice: "probe-voice" } } });
+  assert.equal(stored.sourceProfiles[id]?.voice, "probe-voice", `${id}: needs a slot in sourceProfiles`);
+}
 
 for (const id of TTS_SOURCE_IDS) {
   const definition = TTS_SOURCE_DEFINITIONS[id];

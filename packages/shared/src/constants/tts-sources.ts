@@ -19,7 +19,21 @@
 // forced response formats, auth header shape, gzip decoding) is deliberately
 // absent: it varies by model, not by source, and lives in the server providers.
 
-export const TTS_SOURCE_IDS = ["openai", "elevenlabs", "pockettts", "xai"] as const;
+/**
+ * NanoGPT speech models, shown before the live /audio-models listing arrives
+ * and whenever it cannot be reached. Their catalog moves, so the model field
+ * accepts anything: this is a starting set, not a whitelist.
+ */
+export const NANOGPT_TTS_MODEL_IDS = [
+  "gpt-4o-mini-tts",
+  "tts-1",
+  "tts-1-hd",
+  "Kokoro-82m",
+  "Elevenlabs-Turbo-V2.5",
+  "Elevenlabs-V3",
+] as const;
+
+export const TTS_SOURCE_IDS = ["openai", "elevenlabs", "nanogpt", "pockettts", "xai"] as const;
 export type TTSSourceId = (typeof TTS_SOURCE_IDS)[number];
 
 export interface TTSSourceDefinition {
@@ -52,6 +66,22 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultBaseUrl: "https://api.elevenlabs.io",
     defaultModel: "eleven_multilingual_v2",
     defaultVoice: "",
+    maxInputChars: 4096,
+    recommendedChunkChars: 900,
+  },
+  nanogpt: {
+    id: "nanogpt",
+    name: "NanoGPT",
+    // The OpenAI-compatible surface. NanoGPT's native /api/tts is richer but
+    // answers 202 for the ElevenLabs models and returns a storage URL to fetch,
+    // which this path does not need.
+    defaultBaseUrl: "https://nano-gpt.com/api/v1",
+    // Cheapest per character of the models that stream audio back directly, and
+    // it takes instructions, so speaker and tone steering work.
+    defaultModel: "gpt-4o-mini-tts",
+    defaultVoice: "alloy",
+    // Kokoro and ElevenLabs accept 10k, OpenAI models 4096. The lower bound is
+    // the safe one: speakSchema caps every source at 4096 anyway.
     maxInputChars: 4096,
     recommendedChunkChars: 900,
   },

@@ -57,6 +57,7 @@ import {
   TTS_MAX_RETRIES_DEFAULT,
   TTS_MAX_RETRIES_MAX,
   TTS_MAX_RETRIES_MIN,
+  NANOGPT_TTS_MODEL_IDS,
   TTS_SOURCE_DEFINITIONS,
   TTS_TIMEOUT_MS_DEFAULT,
   TTS_TIMEOUT_MS_MAX,
@@ -105,6 +106,7 @@ const TTS_SOURCE_DEFAULTS: Record<
 > = {
   openai: ttsSourceDefaults("openai", "OpenAI-compatible TTS"),
   elevenlabs: ttsSourceDefaults("elevenlabs", "ElevenLabs TTS"),
+  nanogpt: ttsSourceDefaults("nanogpt", "NanoGPT speech"),
   pockettts: ttsSourceDefaults("pockettts", "Local PocketTTS"),
   xai: ttsSourceDefaults("xai", "xAI Voice"),
 };
@@ -1263,12 +1265,21 @@ export function TTSConfigCard() {
   const voicesErrorMessage = voicesError
     ? getTtsRequestErrorMessage(voicesRequestError, localizeUi("ui.panels.ttsconfigcard.couldNotRefreshVoices"))
     : null;
+  // ElevenLabs and NanoGPT both publish a model list worth picking from; every
+  // other source takes a free-text id.
+  const usesModelPicker = source === "elevenlabs" || source === "nanogpt";
   const modelOptions = useMemo(() => {
-    const providerModels = modelsData?.source === "elevenlabs" ? modelsData.models : [];
-    const choices = providerModels.length > 0 ? providerModels : ELEVENLABS_TTS_MODELS.map((id) => ({ id, name: id }));
+    const providerModels = modelsData?.source === source ? modelsData.models : [];
+    const fallback = (source === "nanogpt" ? NANOGPT_TTS_MODEL_IDS : ELEVENLABS_TTS_MODELS).map((id) => ({
+      id,
+      name: id,
+    }));
+    const choices = providerModels.length > 0 ? providerModels : fallback;
+    // A model typed by hand, or one NanoGPT added since this list was written,
+    // must not vanish from the dropdown when it is not in the fetched set.
     if (!model || choices.some((option) => option.id === model)) return choices;
     return [{ id: model, name: model }, ...choices];
-  }, [model, modelsData]);
+  }, [model, modelsData, source]);
   const canRefreshVoices = Boolean(baseUrl.trim()) && (source !== "elevenlabs" || Boolean(apiKey.trim()));
   const elevenLabsMatchedMaleVoiceOptions = useMemo(
     () =>
@@ -1357,17 +1368,21 @@ export function TTSConfigCard() {
   const selectedLanguage =
     ELEVENLABS_TTS_LANGUAGE_OPTIONS.find((option) => option.code === elevenLabsLanguageCode) ??
     ELEVENLABS_TTS_LANGUAGE_OPTIONS[0];
-  const speedMin = source === "elevenlabs" || source === "xai" ? 0.7 : 0.25;
-  const speedMax = source === "elevenlabs" ? 1.2 : source === "xai" ? 1.5 : 4.0;
+  // NanoGPT documents 0.5-2.0 on /v1/audio/speech, and its ElevenLabs-branded
+  // models take no speed at all; the provider drops the field for those.
+  const speedMin = source === "elevenlabs" || source === "xai" ? 0.7 : source === "nanogpt" ? 0.5 : 0.25;
+  const speedMax = source === "elevenlabs" ? 1.2 : source === "xai" ? 1.5 : source === "nanogpt" ? 2.0 : 4.0;
   const speedHelp =
     source === "elevenlabs"
       ? "Playback speed. ElevenLabs supports 0.7×–1.2×; wider saved values are clamped when spoken."
       : source === "xai"
         ? "Playback speed. xAI Voice supports 0.7×–1.5×; wider saved values are clamped when spoken."
-        : "Playback speed. 1.0 is normal; range is 0.25×–4.0×.";
+        : source === "nanogpt"
+          ? localizeUi("ui.panels.ttsconfigcard.nanogptSpeedHelp")
+          : "Playback speed. 1.0 is normal; range is 0.25×–4.0×.";
   const speedSliderValue = Math.min(speedMax, Math.max(speedMin, speed));
   const speedLabel =
-    (source === "elevenlabs" || source === "xai") && speedSliderValue !== speed
+    (source === "elevenlabs" || source === "xai" || source === "nanogpt") && speedSliderValue !== speed
       ? `Speed — ${speedSliderValue.toFixed(2)}× (clamped from ${speed.toFixed(2)}×)`
       : `Speed — ${speed.toFixed(2)}×`;
   const previewDisabled = !enabled || ttsState === "loading" || (source === "elevenlabs" && !previewVoice);
@@ -1557,11 +1572,13 @@ export function TTSConfigCard() {
             help={
               source === "elevenlabs"
                 ? localizeUi("ui.panels.ttsconfigcard.theElevenlabsApiRootUseTheDefaultUnlessYou")
-                : source === "pockettts"
-                  ? localizeUi("ui.panels.ttsconfigcard.thePocketttsOpenaiCompatibleServerRootItsDefaultIs")
-                  : source === "xai"
-                    ? localizeUi("ui.panels.ttsconfigcard.theXaiVoiceApiRootUseHttpsApiX")
-                    : localizeUi("ui.panels.ttsconfigcard.theOpenaiCompatibleTtsApiEndpointUseTheDefault")
+                : source === "nanogpt"
+                  ? localizeUi("ui.panels.ttsconfigcard.nanogptBaseUrlHelp")
+                  : source === "pockettts"
+                    ? localizeUi("ui.panels.ttsconfigcard.thePocketttsOpenaiCompatibleServerRootItsDefaultIs")
+                    : source === "xai"
+                      ? localizeUi("ui.panels.ttsconfigcard.theXaiVoiceApiRootUseHttpsApiX")
+                      : localizeUi("ui.panels.ttsconfigcard.theOpenaiCompatibleTtsApiEndpointUseTheDefault")
             }
           >
             <div className="relative">
@@ -1607,14 +1624,16 @@ export function TTSConfigCard() {
             help={
               source === "elevenlabs"
                 ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelIdToUseUseElevenV3For")
-                : source === "pockettts"
-                  ? localizeUi("ui.panels.ttsconfigcard.pocketttsSelectsItsLanguageModelWhenYouStartThe")
-                  : source === "xai"
-                    ? localizeUi("ui.panels.ttsconfigcard.xaiVoiceCurrentlyUsesTheTtsEndpointThisIs")
-                    : localizeUi("ui.panels.ttsconfigcard.ttsModelToUseEGTts1Tts")
+                : source === "nanogpt"
+                  ? localizeUi("ui.panels.ttsconfigcard.nanogptModelHelp")
+                  : source === "pockettts"
+                    ? localizeUi("ui.panels.ttsconfigcard.pocketttsSelectsItsLanguageModelWhenYouStartThe")
+                    : source === "xai"
+                      ? localizeUi("ui.panels.ttsconfigcard.xaiVoiceCurrentlyUsesTheTtsEndpointThisIs")
+                      : localizeUi("ui.panels.ttsconfigcard.ttsModelToUseEGTts1Tts")
             }
           >
-            {source === "elevenlabs" ? (
+            {usesModelPicker ? (
               <div className="relative">
                 <select
                   aria-label={localizeUi("ui.panels.ttsconfigcard.model")}
@@ -1649,21 +1668,24 @@ export function TTSConfigCard() {
                 placeholder={selectedSource.model}
               />
             )}
+            {usesModelPicker && fetchingModels && (
+              <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.ttsconfigcard.loadingModels")}
+              </p>
+            )}
             {source === "elevenlabs" && (
-              <>
-                {fetchingModels && (
-                  <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.panels.ttsconfigcard.loadingModels")}
-                  </p>
-                )}
-                <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                  {localizeUi("ui.panels.ttsconfigcard.elevenV3SpeechUses")}{" "}
-                  <code className="font-mono">{"eleven_v3"}</code>
-                  {localizeUi("ui.panels.ttsconfigcard.idsContaining")} <code className="font-mono">{"ttv"}</code>{" "}
-                  {localizeUi("ui.panels.ttsconfigcard.areTextToVoiceVoiceDesignModelsNanogptProxies")}{" "}
-                  <code className="font-mono">{"Elevenlabs-V3"}</code>.
-                </p>
-              </>
+              <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.ttsconfigcard.elevenV3SpeechUses")}{" "}
+                <code className="font-mono">{"eleven_v3"}</code>
+                {localizeUi("ui.panels.ttsconfigcard.idsContaining")} <code className="font-mono">{"ttv"}</code>{" "}
+                {localizeUi("ui.panels.ttsconfigcard.areTextToVoiceVoiceDesignModelsNanogptProxies")}{" "}
+                <code className="font-mono">{"Elevenlabs-V3"}</code>.
+              </p>
+            )}
+            {source === "nanogpt" && (
+              <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                {localizeUi("ui.panels.ttsconfigcard.nanogptModelHint")}
+              </p>
             )}
           </FieldRow>
 
@@ -1693,13 +1715,15 @@ export function TTSConfigCard() {
               help={
                 source === "elevenlabs"
                   ? localizeUi("ui.panels.ttsconfigcard.elevenlabsVoicesAreFetchedByNameAndSavedBy")
-                  : source === "pockettts"
-                    ? localizeUi("ui.panels.ttsconfigcard.pocketttsBuiltInOrCustomVoiceFromYourServer")
-                    : source === "xai"
-                      ? localizeUi("ui.panels.ttsconfigcard.xaiVoiceIdBuiltInsIncludeEveAraRex")
-                      : localizeUi(
-                          "ui.panels.ttsconfigcard.chooseAProviderVoiceOrEnterACustomOpenaiCompatibleValueSuchAsAKokoroMix",
-                        )
+                  : source === "nanogpt"
+                    ? localizeUi("ui.panels.ttsconfigcard.nanogptVoiceHelp")
+                    : source === "pockettts"
+                      ? localizeUi("ui.panels.ttsconfigcard.pocketttsBuiltInOrCustomVoiceFromYourServer")
+                      : source === "xai"
+                        ? localizeUi("ui.panels.ttsconfigcard.xaiVoiceIdBuiltInsIncludeEveAraRex")
+                        : localizeUi(
+                            "ui.panels.ttsconfigcard.chooseAProviderVoiceOrEnterACustomOpenaiCompatibleValueSuchAsAKokoroMix",
+                          )
               }
             >
               <div className="flex gap-2">
@@ -1715,7 +1739,9 @@ export function TTSConfigCard() {
                       mark({ voice: nextVoice });
                     }}
                   />
-                ) : source === "openai" ? (
+                ) : source === "openai" || source === "nanogpt" ? (
+                  // NanoGPT routes MiniMax and Qwen voice ids and cloned voices
+                  // that no catalog can enumerate, so the field stays writable.
                   <CustomizableVoiceInput
                     value={voice}
                     options={voiceOptions}

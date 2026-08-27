@@ -318,11 +318,89 @@ try {
   globalThis.fetch = countingFetch();
   await ttsService.speakSequence([{ text: "Alive." }], "tts-breaker-reset", { progressive: true });
   assert.equal(ttsService.getConsecutiveFailureCount(), 0, "successful playback clears the breaker");
+
+  // ── Progress is reported through both phases, not just playback ──
+  // On a slow engine the silence before the first word is the whole synthesis, so
+  // a counter that only moved during playback would sit still through the part
+  // that actually needs explaining.
+  {
+    const seen: Array<{ state: string; index: number; total: number } | null> = [];
+    const unsubscribe = ttsService.subscribe((state, _id, progress) =>
+      seen.push(progress ? { state, index: progress.index, total: progress.total } : null),
+    );
+
+    try {
+      globalThis.fetch = countingFetch();
+      const chunks = [{ text: "One." }, { text: "Two." }, { text: "Three." }];
+
+      await ttsService.speakSequence(chunks, "tts-progress-prefetch", {});
+      const totals = new Set(seen.filter(Boolean).map((entry) => entry!.total));
+      assert.deepEqual([...totals], [3], "the total is the chunk count for the whole sequence");
+      const generating = seen.filter((entry) => entry?.state === "loading").map((entry) => entry!.index);
+      assert.deepEqual(
+        [...new Set(generating)],
+        [1, 2, 3],
+        "prefetch-all reports every chunk it generates, which is the silent stretch",
+      );
+      const speaking = seen.filter((entry) => entry?.state === "playing").map((entry) => entry!.index);
+      assert.ok(speaking.length > 0, "playback reports progress too");
+      assert.deepEqual([...new Set(speaking)].sort(), [1, 2, 3], "and walks the same chunks again");
+      assert.equal(ttsService.getProgress(), null, "a finished sequence leaves no stale count behind");
+
+      seen.length = 0;
+      globalThis.fetch = countingFetch();
+      await ttsService.speakSequence(chunks, "tts-progress-progressive", { progressive: true });
+      assert.deepEqual(
+        [...new Set(seen.filter(Boolean).map((entry) => entry!.index))],
+        [1, 2, 3],
+        "progressive playback advances through every chunk",
+      );
+
+      // Stopping mid-sequence leaves no count for the next message to inherit.
+      // (The sequence guard inside setProgress is defensive and has no reachable
+      // path today, so nothing here claims to exercise it.)
+      seen.length = 0;
+      globalThis.fetch = countingFetch();
+      const abandoned = ttsService.speakSequence(chunks, "tts-progress-superseded", { progressive: true });
+      ttsService.stop();
+      await abandoned;
+      assert.equal(ttsService.getProgress(), null, "stopping clears progress");
+
+      // One clip reports 1 of 1, which the UI suppresses rather than showing "1/1".
+      seen.length = 0;
+      globalThis.fetch = countingFetch();
+      await ttsService.speakSequence([{ text: "Alone." }], "tts-progress-single", {});
+      const singles = seen.filter(Boolean).map((entry) => entry!.total);
+      assert.ok(
+        singles.every((total) => total === 1),
+        "a single-chunk message reports a total of 1",
+      );
+    } finally {
+      unsubscribe();
+    }
+  }
 } finally {
   ttsService.stop();
   globalThis.fetch = originalFetch;
   if (originalAudioDescriptor) Object.defineProperty(globalThis, "Audio", originalAudioDescriptor);
   else Reflect.deleteProperty(globalThis, "Audio");
+}
+
+// The counter lives in the message action row, which is hover-revealed, so an
+// active message has to pin its row open or both the count and the stop button
+// stay hidden for the entire wait.
+{
+  const chatMessage = readFileSync(
+    join(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../../.."),
+      "packages/client/src/components/chat/ChatMessage.tsx",
+    ),
+    "utf8",
+  );
+  const pinned = chatMessage.match(/isSpeakingThis && "opacity-100"/gu) ?? [];
+  assert.equal(pinned.length, 2, "both action rows pin open while this message is speaking");
+  assert.match(chatMessage, /ttsProgress\.total > 1/u, "a one-chunk message shows no counter");
+  assert.match(chatMessage, /tabular-nums/u, "the counter uses tabular figures so the row does not jitter");
 }
 
 // ── Every surface synthesizes through the one engine ──

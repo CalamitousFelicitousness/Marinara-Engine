@@ -2016,11 +2016,13 @@ export const ChatMessage = memo(function ChatMessage({
   const hasTTSContent = ttsVoiceRequests.length > 0;
   const [ttsState, setTTSState] = useState(ttsService.getState());
   const [ttsActiveId, setTTSActiveId] = useState<string | null>(ttsService.getActiveId());
+  const [ttsProgress, setTTSProgress] = useState(ttsService.getProgress());
   useEffect(
     () =>
-      ttsService.subscribe((state, id) => {
+      ttsService.subscribe((state, id, progress) => {
         setTTSState(state);
         setTTSActiveId(id);
+        setTTSProgress(progress);
       }),
     [],
   );
@@ -2028,6 +2030,16 @@ export const ChatMessage = memo(function ChatMessage({
   const isSpeakingThis = ttsActiveId === message.id;
   const isLoadingThis = isSpeakingThis && ttsState === "loading";
   const isPausedThis = isSpeakingThis && ttsState === "paused";
+  // A one-chunk message has nothing to count through.
+  const ttsChunkProgress = isSpeakingThis && ttsProgress && ttsProgress.total > 1 ? ttsProgress : null;
+  const ttsProgressLabel = ttsChunkProgress
+    ? localizeUi(
+        isLoadingThis
+          ? "ui.chat.chatmessage.generatingSpeechValue1OfValue2"
+          : "ui.chat.chatmessage.speakingValue1OfValue2",
+        { value1: ttsChunkProgress.index, value2: ttsChunkProgress.total },
+      )
+    : undefined;
   const ttsLinePlaybackVolume = ttsLineVolume / 100;
 
   useEffect(() => {
@@ -3580,6 +3592,7 @@ export const ChatMessage = memo(function ChatMessage({
                 "mari-message-actions flex max-w-full flex-wrap items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
                 isUser && "flex-row-reverse",
                 showActions && "opacity-100",
+                isSpeakingThis && "opacity-100",
                 showStreamingThinkingAction &&
                   "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
               )}
@@ -3718,6 +3731,16 @@ export const ChatMessage = memo(function ChatMessage({
                         title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
                       />
                     </>
+                  )}
+                  {ttsChunkProgress && (
+                    <span
+                      className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
+                      style={{ minWidth: "2.25rem" }}
+                      title={ttsProgressLabel}
+                      aria-label={ttsProgressLabel}
+                    >
+                      {ttsChunkProgress.index}/{ttsChunkProgress.total}
+                    </span>
                   )}
                   <ActionBtn
                     icon={
@@ -4067,6 +4090,7 @@ export const ChatMessage = memo(function ChatMessage({
               "mari-message-actions flex max-w-full flex-wrap items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
               isUser && "flex-row-reverse",
               showActions && "opacity-100",
+              isSpeakingThis && "opacity-100",
               showStreamingThinkingAction &&
                 "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
             )}
@@ -4203,6 +4227,16 @@ export const ChatMessage = memo(function ChatMessage({
                       title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
                     />
                   </>
+                )}
+                {ttsChunkProgress && (
+                  <span
+                    className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
+                    style={{ minWidth: "2.25rem" }}
+                    title={ttsProgressLabel}
+                    aria-label={ttsProgressLabel}
+                  >
+                    {ttsChunkProgress.index}/{ttsChunkProgress.total}
+                  </span>
                 )}
                 <ActionBtn
                   icon={

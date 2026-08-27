@@ -14,7 +14,19 @@ import {
 
 export type TTSState = "idle" | "loading" | "playing" | "paused" | "error";
 
-type StateListener = (state: TTSState, activeId: string | null) => void;
+/**
+ * How far through a spoken message the engine is. A message is many chunks, and
+ * on a slow engine the wait between pressing speak and hearing anything is the
+ * whole synthesis, so this covers generation as well as playback. Which of the
+ * two is happening is already carried by TTSState.
+ */
+export interface TTSProgress {
+  /** 1-based position of the chunk being generated or played. */
+  index: number;
+  total: number;
+}
+
+type StateListener = (state: TTSState, activeId: string | null, progress: TTSProgress | null) => void;
 
 export interface TTSSpeakOptions {
   speaker?: string;
@@ -195,6 +207,7 @@ class TTSService {
   /** ID of the entity (e.g. message id) currently being spoken */
   private activeId: string | null = null;
   private listeners = new Set<StateListener>();
+  private progress: TTSProgress | null = null;
   private livePlaybackVolume: number | null = null;
   private livePlaybackMuted: boolean | null = null;
 
@@ -217,10 +230,37 @@ class TTSService {
     return this.lastError;
   }
 
+  getProgress(): TTSProgress | null {
+    return this.progress;
+  }
+
+  private notify(): void {
+    this.listeners.forEach((fn) => fn(this.state, this.activeId, this.progress));
+  }
+
   private setState(s: TTSState, id: string | null = this.activeId) {
     this.state = s;
     this.activeId = s === "idle" || s === "error" ? null : id;
-    this.listeners.forEach((fn) => fn(this.state, this.activeId));
+    // Progress belongs to a live sequence; leaving it set would strand a stale
+    // count on a message that has stopped.
+    if (this.activeId === null) this.progress = null;
+    this.notify();
+  }
+
+  /**
+   * Unchanged values keep the same object, so a subscriber that stores this in
+   * React state does not re-render on every notify.
+   *
+   * The sequence check is defensive rather than load-bearing: every path that
+   * resumes after an await already returns on its own isCurrentSequence check
+   * before reaching here. It is kept so that a future call added after an await
+   * cannot silently write a superseded run's count.
+   */
+  private setProgress(sequence: number, index: number, total: number): void {
+    if (!this.isCurrentSequence(sequence)) return;
+    if (this.progress?.index === index && this.progress.total === total) return;
+    this.progress = { index, total };
+    this.notify();
   }
 
   private isCurrentSequence(sequence: number): boolean {
@@ -351,6 +391,7 @@ class TTSService {
     this.lastError = null;
 
     this.setState("loading", id ?? null);
+    this.setProgress(sequence, 1, 1);
     const abortController = new AbortController();
     this.abortController = abortController;
 
@@ -585,6 +626,7 @@ class TTSService {
         topUp(0);
 
         for (let index = 0; index < playableRequests.length; index += 1) {
+          this.setProgress(sequence, index + 1, playableRequests.length);
           const result = await inFlight.get(index)!;
           inFlight.delete(index);
           arrived.delete(index);
@@ -645,6 +687,7 @@ class TTSService {
 
       const playableChunks: Array<Extract<ChunkResult, { ok: true }>> = [];
       for (let index = 0; index < playableRequests.length; index += 1) {
+        this.setProgress(sequence, index + 1, playableRequests.length);
         const result = await fetchChunk(playableRequests[index]!, index);
         if (!this.isCurrentSequence(sequence)) return;
         if (!result.ok) {
@@ -664,6 +707,7 @@ class TTSService {
       }
 
       for (const chunk of playableChunks) {
+        this.setProgress(sequence, chunk.index + 1, playableRequests.length);
         try {
           await playBlob(chunk.blob, chunk.request, chunk.index);
           await waitForPlaybackDelay(chunk.request.pauseAfterMs, abortController.signal);

@@ -867,6 +867,32 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### A speaking message shows its progress and keeps its controls visible
+
+A message is many chunks, and on a local engine the wait before the first word is the whole
+synthesis. All the user saw was a spinner, with no way to tell a working engine from a hung one.
+
+The engine now tracks `{ index, total }` for the active sequence and hands it to subscribers
+alongside the state. It advances through generation as well as playback, because in prefetch-all
+mode the generation pass is the silent stretch; which phase is running is already carried by
+`TTSState`, so one counter serves both and the button icon says which. Unchanged values keep the same
+object so a subscriber storing it in React state does not re-render on every notify.
+
+The counter renders beside the speak button, suppressed for a single-chunk message where there is
+nothing to count. It uses tabular figures and a fixed minimum width, because the action row wraps on
+narrow phones and a counter that changes width as it passes 9 would shift the row under the pointer.
+
+The message action row is hover-revealed, so an active message now pins its row open. Without that
+the counter would be invisible during exactly the wait it explains, and so would the stop button:
+until now there was no way to cancel a running synthesis without first hovering the message.
+
+Not a live region. Announcing every chunk of a twelve-chunk message would be worse than silence, so
+the full phrase sits in the label to be read on demand rather than interrupting.
+
+Patches to upstream files: `packages/client/src/lib/tts-service.ts`,
+`packages/client/src/components/chat/ChatMessage.tsx`, and the English catalog. Game surfaces are not
+covered: they run their own playback loops and already have per-segment highlighting.
+
 ### Game voice synthesizes through the same engine as chat
 
 Game narration and combat each carried their own cache lookup, retry loop, and abort wrapper around

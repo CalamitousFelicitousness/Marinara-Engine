@@ -2672,6 +2672,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             mode: (chat.mode as string) ?? "roleplay",
             allowEmpty: true,
           });
+          const assistantCharacterIds = [...characterIds];
 
           let personaName = "User";
           let personaId: string | null = null;
@@ -2709,6 +2710,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const promptMacroContext = await buildPromptMacroContext({
             db: app.db,
             characterIds,
+            groupCharacterIds: assistantCharacterIds,
             personaName,
             personaDescription,
             personaFields,
@@ -2922,6 +2924,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             chatChoices,
             chatId: req.params.id,
             characterIds,
+            groupCharacterIds: assistantCharacterIds,
             personaId,
             personaName,
             personaDescription,
@@ -2965,7 +2968,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           });
 
           // ── Strip <speaker> tags from chat history to save tokens (game already returned above, so this is Roleplay) ──
-          const isGroupChat = characterIds.length > 1;
+          const isGroupChat = assistantCharacterIds.length > 1;
           if (isGroupChat && chatMode !== "conversation") {
             stripSpeakerTagsExceptLastAssistant(assembled.messages);
           }
@@ -2979,7 +2982,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           if (isGroupChat && groupChatMode === "merged" && groupSpeakerColors && chatMode !== "conversation") {
             // Fetch character names for the example
             const charNames: string[] = [];
-            for (const cid of characterIds) {
+            for (const cid of assistantCharacterIds) {
               const charRow = await charStore.getById(cid);
               if (charRow) {
                 const charData = JSON.parse(charRow.data as string);

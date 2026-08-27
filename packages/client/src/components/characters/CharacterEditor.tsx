@@ -19,6 +19,7 @@ import {
   useCharacter,
   useUpdateCharacter,
   useGenerateCharacterSummary,
+  useGenerateCharacterConvoProfile,
   useUploadAvatar,
   useRemoveAvatar,
   useDeleteCharacter,
@@ -40,6 +41,7 @@ import {
   useGenerateCharacterCustomCallVideoClip,
   useUploadSprite,
   useDeleteSprite,
+  useRenameSprite,
   useExportSprites,
   useCleanupSavedSprites,
   useRestoreSpriteCleanupBackup,
@@ -1524,6 +1526,7 @@ function TextareaTab({
   );
 }
 
+/** Connects the character editor's unsaved card draft to Conversation profile controls. */
 function ConvoTab({
   formData,
   updateExtension,
@@ -1537,6 +1540,19 @@ function ConvoTab({
 }) {
   const ext = formData.extensions;
   const { t: localizeUi } = useUiTranslation();
+  const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
+  const currentCharacterIdRef = useRef(characterId);
+  currentCharacterIdRef.current = characterId;
+  const currentConvoProfileDraft = {
+    name: formData.name,
+    description: formData.description,
+    personality: formData.personality,
+    scenario: formData.scenario,
+    backstory: (ext.backstory as string) ?? "",
+    appearance: (ext.appearance as string) ?? "",
+  };
+  const currentConvoProfileDraftRef = useRef(currentConvoProfileDraft);
+  currentConvoProfileDraftRef.current = currentConvoProfileDraft;
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // The schedule is runtime state, not card content, so it saves on its own
   // rather than through the editor form. Routing it through `updateExtension`
@@ -1576,6 +1592,27 @@ function ConvoTab({
         onAboutMeChange={(v) => updateExtension("aboutMe", v)}
         behavior={ext.convoBehavior as ConvoBehaviorConfig | undefined}
         onBehaviorChange={(b) => updateExtension("convoBehavior", b)}
+        generateConvoProfile={
+          characterId
+            ? (target) =>
+                (() => {
+                  const draft = currentConvoProfileDraftRef.current;
+                  return generateCharacterConvoProfile
+                    .mutateAsync({
+                      id: characterId,
+                      target,
+                      draft,
+                    })
+                    .then((result) => {
+                      const currentDraft = currentConvoProfileDraftRef.current;
+                      const draftUnchanged = Object.keys(draft).every(
+                        (key) => draft[key as keyof typeof draft] === currentDraft[key as keyof typeof currentDraft],
+                      );
+                      return currentCharacterIdRef.current === characterId && draftUnchanged ? result : null;
+                    });
+                })()
+            : undefined
+        }
         imageInstructions={(ext.conversationImageInstructions as string) ?? ""}
         onImageInstructionsChange={(value) => updateExtension("conversationImageInstructions", value)}
         applyImageInstructionsToNoodle={ext.applyConversationImageInstructionsToNoodle === true}
@@ -4143,6 +4180,7 @@ function SpritesTab({
   );
   const uploadSprite = useUploadSprite();
   const deleteSprite = useDeleteSprite();
+  const renameSprite = useRenameSprite();
   const exportSprites = useExportSprites();
   const cleanupSavedSprites = useCleanupSavedSprites();
   const restoreSpriteCleanupBackup = useRestoreSpriteCleanupBackup();
@@ -4211,9 +4249,10 @@ function SpritesTab({
     </div>
   );
 
-  const normalizeExpressionForCategory = (raw: string) => {
-    return normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" });
-  };
+  const normalizeExpressionForCategory = useCallback(
+    (raw: string) => normalizeSpriteExpressionLabel(raw, { fullBody: category === "full-body" }),
+    [category],
+  );
 
   const displayExpression = useCallback(
     (stored: string) => (category === "full-body" ? stored.replace(/^full_/, "") : stored),
@@ -4299,6 +4338,36 @@ function SpritesTab({
       setDeletingSprites(null);
     }
   }, [characterId, deleteSprite, deleteSpriteRequest]);
+
+  const handleRenameSprite = useCallback(
+    async (sprite: SpriteInfo) => {
+      const nextExpression = await showPromptDialog({
+        title: localizeUi("ui.characters.spritestab.renameSprite"),
+        message: localizeUi("ui.characters.spritestab.renameSpriteFor", {
+          value1: displayExpression(sprite.expression),
+        }),
+        defaultValue: displayExpression(sprite.expression),
+        placeholder: localizeUi("ui.characters.spritestab.expressionNameEGHappySadAngry"),
+        confirmLabel: localizeUi("ui.characters.spritestab.rename"),
+        tone: "accent",
+      });
+      const normalized = nextExpression ? normalizeExpressionForCategory(nextExpression) : "";
+      if (!normalized || normalized === sprite.expression) return;
+      try {
+        await renameSprite.mutateAsync({
+          characterId,
+          expression: sprite.expression,
+          nextExpression: normalized,
+        });
+        toast.success(localizeUi("ui.characters.spritestab.renamedSprite"));
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : localizeUi("ui.characters.spritestab.failedToRenameSprite"),
+        );
+      }
+    },
+    [characterId, displayExpression, localizeUi, normalizeExpressionForCategory, renameSprite],
+  );
 
   const handleDeleteVisibleSprites = useCallback(async () => {
     if (visibleSprites.length === 0) return;
@@ -4824,6 +4893,14 @@ function SpritesTab({
                     title={localizeUi("ui.characters.charactergallerytab.download")}
                   >
                     <ImageDown size="0.6875rem" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRenameSprite(sprite)}
+                    className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                    title={localizeUi("ui.characters.spritestab.renameSprite")}
+                  >
+                    <Pencil size="0.6875rem" />
                   </button>
                   <button
                     type="button"

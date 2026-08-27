@@ -29,6 +29,11 @@ export const AVATAR_STORAGE_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+export const SPRITE_RENAME_RATE_LIMIT = {
+  max: 60,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 export const ADMIN_RESTART_RATE_LIMIT = {
   max: 5,
   timeWindow: 60_000,

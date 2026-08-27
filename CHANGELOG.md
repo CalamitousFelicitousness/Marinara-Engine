@@ -12,10 +12,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Character card sprites can now be renamed after upload without replacing the image (#5575).
 - Character cards now support editable metadata summaries, AI-generated summary drafts, and Character Library previews that use the saved summary when available.
+- Character card Conversation profiles now provide controls to generate About Me and Conversation behavior text from the card's available information.
+- The Home Character of the Day widget now uses saved character summaries and offers direct chat-start and character-view actions.
 
 ### Fixed
 
+- Avatar generation now preserves the complete user Avatar Prompt, and OpenRouter caching remains enabled for eligible unknown models (#5552, #5574).
 - Permanent Delete now preserves Marinara's stock Universal Preset and its prompt structure while removing editable presets (#5568).
 
 ## [2.4.4]

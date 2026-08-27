@@ -2,8 +2,9 @@
 // TTS Types
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { TTS_SOURCE_IDS } from "../constants/tts-sources.js";
 
-export const ttsSourceSchema = z.enum(["openai", "elevenlabs", "pockettts", "xai"]);
+export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
 export type TTSSource = z.infer<typeof ttsSourceSchema>;
 
 export const ttsAudioFormatSchema = z.enum(["mp3", "wav"]);
@@ -15,6 +16,22 @@ export type TTSVoiceMode = z.infer<typeof ttsVoiceModeSchema>;
 export const TTS_DIALOGUE_PAUSE_MIN_SECONDS = 1;
 export const TTS_DIALOGUE_PAUSE_MAX_SECONDS = 60;
 export const TTS_DIALOGUE_PAUSE_DEFAULT_SECONDS = 1;
+
+// Synthesis tuning bounds. Shared by the Zod schema, the settings sliders, and
+// the server-side clamp so the three cannot drift.
+export const TTS_TIMEOUT_MS_MIN = 5_000;
+export const TTS_TIMEOUT_MS_MAX = 600_000;
+export const TTS_TIMEOUT_MS_DEFAULT = 60_000;
+/** Must equal speakSchema's text cap in tts.routes.ts. */
+export const TTS_CHUNK_CHARS_MAX = 4096;
+export const TTS_CHUNK_CHARS_MIN = 200;
+export const TTS_CHUNK_CHARS_DEFAULT = 900;
+export const TTS_MAX_RETRIES_MIN = 0;
+export const TTS_MAX_RETRIES_MAX = 3;
+export const TTS_MAX_RETRIES_DEFAULT = 1;
+export const TTS_CONCURRENCY_MIN = 1;
+export const TTS_CONCURRENCY_MAX = 4;
+export const TTS_CONCURRENCY_DEFAULT = 1;
 
 function normalizeDialoguePauseMs(value: number): number {
   const wholeSeconds = Math.round(value / 1000);
@@ -137,7 +154,23 @@ const ttsConfigBaseSchema = z.object({
   autoplayRP: z.boolean().default(false),
   autoplayConvo: z.boolean().default(false),
   autoplayGame: z.boolean().default(false),
-  progressivePlayback: z.boolean().default(false),
+  /** Play each chunk as it finishes instead of synthesizing the whole message first.
+   *  The true default only reaches installs without a parseable saved blob; a saved
+   *  config carries its own explicit value. */
+  progressivePlayback: z.boolean().default(true),
+  /** Provider request budget. Authoritative server-side; the client adds grace on top. */
+  timeoutMs: z.number().int().min(TTS_TIMEOUT_MS_MIN).max(TTS_TIMEOUT_MS_MAX).default(TTS_TIMEOUT_MS_DEFAULT),
+  /** Client chunker cap, clamped again to the source's maxInputChars. */
+  chunkCharLimit: z.number().int().min(TTS_CHUNK_CHARS_MIN).max(TTS_CHUNK_CHARS_MAX).default(TTS_CHUNK_CHARS_DEFAULT),
+  /** Per-chunk retries for 5xx, network, and timeout failures. Never 4xx, never caller aborts. */
+  maxRetries: z.number().int().min(TTS_MAX_RETRIES_MIN).max(TTS_MAX_RETRIES_MAX).default(TTS_MAX_RETRIES_DEFAULT),
+  /** Synthesis requests in flight ahead of playback. 1 keeps single-worker local engines serial. */
+  generationConcurrency: z
+    .number()
+    .int()
+    .min(TTS_CONCURRENCY_MIN)
+    .max(TTS_CONCURRENCY_MAX)
+    .default(TTS_CONCURRENCY_DEFAULT),
   dialogueOnly: z.boolean().default(false),
   /** Use a short auxiliary LLM call to separate Roleplay dialogue by speaker before autoplay. */
   roleplaySpeakerExtractorEnabled: z.boolean().default(false),
@@ -191,6 +224,10 @@ export const ttsSourceProfileSchema = ttsConfigBaseSchema.pick({
   npcDefaultMaleVoices: true,
   npcDefaultFemaleVoices: true,
   audioFormat: true,
+  timeoutMs: true,
+  chunkCharLimit: true,
+  maxRetries: true,
+  generationConcurrency: true,
 });
 export type TTSSourceProfile = z.infer<typeof ttsSourceProfileSchema>;
 
@@ -211,26 +248,14 @@ export const ttsConfigSchema = ttsConfigBaseSchema.extend({
 
 export type TTSConfig = z.infer<typeof ttsConfigSchema>;
 
+/**
+ * Projects a config onto the per-source profile fields.
+ * Derived from the schema rather than hand-listed: the field list existed twice
+ * and a field added to one side silently vanished from saved profiles.
+ * Safe because TTSConfig is already parsed and the profile is a pick of its schema.
+ */
 export function ttsSourceProfileFromConfig(config: TTSConfig): TTSSourceProfile {
-  return {
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
-    voice: config.voice,
-    model: config.model,
-    speed: config.speed,
-    elevenLabsStability: config.elevenLabsStability,
-    elevenLabsLanguageCode: config.elevenLabsLanguageCode,
-    elevenLabsGameSoundEffects: config.elevenLabsGameSoundEffects,
-    elevenLabsGameMusic: config.elevenLabsGameMusic,
-    voiceMode: config.voiceMode,
-    voiceAssignments: config.voiceAssignments,
-    narratorVoiceEnabled: config.narratorVoiceEnabled,
-    narratorVoice: config.narratorVoice,
-    npcDefaultVoicesEnabled: config.npcDefaultVoicesEnabled,
-    npcDefaultMaleVoices: config.npcDefaultMaleVoices,
-    npcDefaultFemaleVoices: config.npcDefaultFemaleVoices,
-    audioFormat: config.audioFormat,
-  };
+  return ttsSourceProfileSchema.parse(config);
 }
 
 export const TTS_SETTINGS_KEY = "tts";

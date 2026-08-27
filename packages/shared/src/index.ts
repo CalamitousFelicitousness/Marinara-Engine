@@ -70,6 +70,7 @@ export * from "./schemas/home-widget.schema.js";
 
 // Constants
 export * from "./constants/providers.js";
+export * from "./constants/tts-sources.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";
 export * from "./constants/model-lists.js"; // also exports IMAGE_GENERATION_SOURCES

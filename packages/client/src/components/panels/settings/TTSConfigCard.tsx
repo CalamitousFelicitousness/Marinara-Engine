@@ -48,7 +48,14 @@ import {
   TTS_DIALOGUE_PAUSE_DEFAULT_SECONDS,
   TTS_DIALOGUE_PAUSE_MAX_SECONDS,
   TTS_DIALOGUE_PAUSE_MIN_SECONDS,
+  TTS_CHUNK_CHARS_DEFAULT,
+  TTS_CONCURRENCY_DEFAULT,
+  TTS_MAX_RETRIES_DEFAULT,
+  TTS_SOURCE_DEFINITIONS,
+  TTS_TIMEOUT_MS_DEFAULT,
+  TTS_SOURCE_IDS,
   ttsSourceProfileFromConfig,
+  ttsSourceProfileSchema,
 } from "@marinara-engine/shared";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "./SettingControls";
@@ -71,68 +78,44 @@ function FieldRow({ label, help, children }: { label: string; help?: string; chi
 
 const INPUT_CLS = "mari-chrome-field w-full px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)]";
 
+// Shape kept local; the values come from TTS_SOURCE_DEFINITIONS. Idle-status
+// wording is the only per-source string the shared table does not carry.
+function ttsSourceDefaults(source: TTSSource, idleText: string) {
+  const definition = TTS_SOURCE_DEFINITIONS[source];
+  return {
+    label: definition.name,
+    baseUrl: definition.defaultBaseUrl,
+    model: definition.defaultModel,
+    voice: definition.defaultVoice,
+    idleText,
+  };
+}
+
 const TTS_SOURCE_DEFAULTS: Record<
   TTSSource,
   { label: string; baseUrl: string; model: string; voice: string; idleText: string }
 > = {
-  openai: {
-    label: "OpenAI-compatible",
-    baseUrl: "https://api.openai.com/v1",
-    model: "tts-1",
-    voice: "alloy",
-    idleText: "OpenAI-compatible TTS",
-  },
-  elevenlabs: {
-    label: "ElevenLabs",
-    baseUrl: "https://api.elevenlabs.io",
-    model: "eleven_multilingual_v2",
-    voice: "",
-    idleText: "ElevenLabs TTS",
-  },
-  pockettts: {
-    label: "PocketTTS",
-    baseUrl: "http://localhost:8000",
-    model: "pocket-tts",
-    voice: "alba",
-    idleText: "Local PocketTTS",
-  },
-  xai: {
-    label: "xAI Voice",
-    baseUrl: "https://api.x.ai/v1",
-    model: "grok-tts",
-    voice: "eve",
-    idleText: "xAI Voice",
-  },
+  openai: ttsSourceDefaults("openai", "OpenAI-compatible TTS"),
+  elevenlabs: ttsSourceDefaults("elevenlabs", "ElevenLabs TTS"),
+  pockettts: ttsSourceDefaults("pockettts", "Local PocketTTS"),
+  xai: ttsSourceDefaults("xai", "xAI Voice"),
 };
 
-const TTS_SOURCE_OPTIONS: Array<{ value: TTSSource; label: string }> = [
-  { value: "openai", label: "OpenAI-compatible" },
-  { value: "elevenlabs", label: "ElevenLabs" },
-  { value: "pockettts", label: "PocketTTS" },
-  { value: "xai", label: "xAI Voice" },
-];
+const TTS_SOURCE_OPTIONS: Array<{ value: TTSSource; label: string }> = TTS_SOURCE_IDS.map((id) => ({
+  value: id,
+  label: TTS_SOURCE_DEFINITIONS[id].name,
+}));
 
 function defaultSourceProfile(source: TTSSource): TTSSourceProfile {
   const defaults = TTS_SOURCE_DEFAULTS[source];
-  return {
+  // Schema defaults fill every other field, so a profile field added later
+  // cannot silently go missing here.
+  return ttsSourceProfileSchema.parse({
     baseUrl: defaults.baseUrl,
-    apiKey: "",
     voice: defaults.voice,
     model: defaults.model,
-    speed: 1,
-    elevenLabsStability: 0.5,
-    elevenLabsLanguageCode: "",
-    elevenLabsGameSoundEffects: false,
-    elevenLabsGameMusic: false,
-    voiceMode: "single",
-    voiceAssignments: [],
-    narratorVoiceEnabled: false,
     narratorVoice: defaults.voice,
-    npcDefaultVoicesEnabled: false,
-    npcDefaultMaleVoices: [],
-    npcDefaultFemaleVoices: [],
-    audioFormat: "mp3",
-  };
+  });
 }
 
 const ELEVENLABS_TTS_MODELS = [
@@ -908,6 +891,10 @@ export function TTSConfigCard() {
   const [autoplayGame, setAutoplayGame] = useState(false);
   const [progressivePlayback, setProgressivePlayback] = useState(false);
   const [dialogueOnly, setDialogueOnly] = useState(false);
+  const [timeoutMs, setTimeoutMs] = useState(TTS_TIMEOUT_MS_DEFAULT);
+  const [chunkCharLimit, setChunkCharLimit] = useState(TTS_CHUNK_CHARS_DEFAULT);
+  const [maxRetries, setMaxRetries] = useState(TTS_MAX_RETRIES_DEFAULT);
+  const [generationConcurrency, setGenerationConcurrency] = useState(TTS_CONCURRENCY_DEFAULT);
   const [roleplaySpeakerExtractorEnabled, setRoleplaySpeakerExtractorEnabled] = useState(false);
   const [roleplaySpeakerExtractorConnectionId, setRoleplaySpeakerExtractorConnectionId] = useState("");
   const [roleplaySpeakerExtractorEmotionsEnabled, setRoleplaySpeakerExtractorEmotionsEnabled] = useState(false);
@@ -979,6 +966,10 @@ export function TTSConfigCard() {
     setAutoplayGame(savedConfig.autoplayGame);
     setProgressivePlayback(savedConfig.progressivePlayback ?? false);
     setDialogueOnly(savedConfig.dialogueOnly ?? false);
+    setTimeoutMs(savedConfig.timeoutMs ?? TTS_TIMEOUT_MS_DEFAULT);
+    setChunkCharLimit(savedConfig.chunkCharLimit ?? TTS_CHUNK_CHARS_DEFAULT);
+    setMaxRetries(savedConfig.maxRetries ?? TTS_MAX_RETRIES_DEFAULT);
+    setGenerationConcurrency(savedConfig.generationConcurrency ?? TTS_CONCURRENCY_DEFAULT);
     setRoleplaySpeakerExtractorEnabled(savedConfig.roleplaySpeakerExtractorEnabled ?? false);
     setRoleplaySpeakerExtractorConnectionId(savedConfig.roleplaySpeakerExtractorConnectionId ?? "");
     setRoleplaySpeakerExtractorEmotionsEnabled(savedConfig.roleplaySpeakerExtractorEmotionsEnabled ?? false);
@@ -1054,6 +1045,10 @@ export function TTSConfigCard() {
     autoplayGame,
     progressivePlayback,
     dialogueOnly,
+    timeoutMs,
+    chunkCharLimit,
+    maxRetries,
+    generationConcurrency,
     roleplaySpeakerExtractorEnabled,
     roleplaySpeakerExtractorConnectionId,
     roleplaySpeakerExtractorEmotionsEnabled,
@@ -1131,6 +1126,10 @@ export function TTSConfigCard() {
     setElevenLabsGameSoundEffects(nextProfile.elevenLabsGameSoundEffects);
     setElevenLabsGameMusic(nextProfile.elevenLabsGameMusic);
     setAudioFormat(nextProfile.audioFormat);
+    setTimeoutMs(nextProfile.timeoutMs);
+    setChunkCharLimit(nextProfile.chunkCharLimit);
+    setMaxRetries(nextProfile.maxRetries);
+    setGenerationConcurrency(nextProfile.generationConcurrency);
     mark({
       source: nextSource,
       ...nextProfile,

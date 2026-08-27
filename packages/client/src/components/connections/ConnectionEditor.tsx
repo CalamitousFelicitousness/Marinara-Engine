@@ -101,6 +101,7 @@ import {
   MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
   normalizeImagePromptInstructions,
   parseConnectionImageCaptioningDefaults,
+  TTS_SOURCE_DEFINITIONS,
   type APIProvider,
   type AudioGenerationSource,
   type ComfyUiLoraSetting,
@@ -221,44 +222,20 @@ function normalizeEndpointUrlInput(raw: string, label: string): { value: string;
   return { value, error: null };
 }
 
-// Mirrors TTS_SOURCE_DEFAULTS in TTSConfigCard so a fresh audio connection
-// seeds the same base URL / model / voice the legacy TTS settings used.
-const AUDIO_SOURCE_OPTIONS: Array<{
-  id: AudioGenerationSource;
-  name: string;
-  defaultBaseUrl: string;
-  defaultModel: string;
-  defaultVoice: string;
-}> = [
-  {
-    id: "elevenlabs",
-    name: "ElevenLabs",
-    defaultBaseUrl: "https://api.elevenlabs.io",
-    defaultModel: "eleven_multilingual_v2",
-    defaultVoice: "",
-  },
-  {
-    id: "openai",
-    name: "OpenAI-compatible",
-    defaultBaseUrl: "https://api.openai.com/v1",
-    defaultModel: "tts-1",
-    defaultVoice: "alloy",
-  },
-  {
-    id: "pockettts",
-    name: "PocketTTS",
-    defaultBaseUrl: "http://localhost:8000",
-    defaultModel: "pocket-tts",
-    defaultVoice: "alba",
-  },
-  {
-    id: "xai",
-    name: "xAI Voice",
-    defaultBaseUrl: "https://api.x.ai/v1",
-    defaultModel: "grok-tts",
-    defaultVoice: "eve",
-  },
-];
+// Defaults come from TTS_SOURCE_DEFINITIONS so a fresh audio connection seeds
+// the same base URL / model / voice the TTS settings use. Only the button order
+// is local.
+const AUDIO_SOURCE_DISPLAY_ORDER: readonly AudioGenerationSource[] = ["elevenlabs", "openai", "pockettts", "xai"];
+const AUDIO_SOURCE_OPTIONS = AUDIO_SOURCE_DISPLAY_ORDER.map((id) => {
+  const definition = TTS_SOURCE_DEFINITIONS[id];
+  return {
+    id,
+    name: definition.name,
+    defaultBaseUrl: definition.defaultBaseUrl,
+    defaultModel: definition.defaultModel,
+    defaultVoice: definition.defaultVoice,
+  };
+});
 
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
   return (

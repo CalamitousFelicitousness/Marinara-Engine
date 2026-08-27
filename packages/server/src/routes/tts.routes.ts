@@ -13,6 +13,8 @@ import {
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
   ttsRoleplaySpeakerExtractorResponseSchema,
+  TTS_SOURCE_DEFINITIONS,
+  TTS_SOURCE_IDS,
   type TTSSource,
   type TTSConfig,
   type TTSRoleplaySpeakerExtractorResponse,
@@ -54,25 +56,8 @@ const ELEVENLABS_FALLBACK_MODELS = [
   "eleven_flash_v2",
 ];
 
-const TTS_SOURCE_DEFAULTS: Record<TTSSource, { baseUrl: string; model: string }> = {
-  openai: {
-    baseUrl: "https://api.openai.com/v1",
-    model: "tts-1",
-  },
-  elevenlabs: {
-    baseUrl: "https://api.elevenlabs.io",
-    model: "eleven_multilingual_v2",
-  },
-  pockettts: {
-    baseUrl: "http://localhost:8000",
-    model: "pocket-tts",
-  },
-  xai: {
-    baseUrl: "https://api.x.ai/v1",
-    model: "grok-tts",
-  },
-};
-const TTS_SOURCES: readonly TTSSource[] = ["openai", "elevenlabs", "pockettts", "xai"];
+// Source ids and per-source defaults come from TTS_SOURCE_DEFINITIONS in
+// packages/shared/src/constants/tts-sources.ts; both lived here as literals too.
 
 const ELEVENLABS_NON_TTS_MODELS = new Set(["eleven_ttv_v3", "eleven_multilingual_ttv_v2"]);
 const ELEVENLABS_TTS_MODEL_ALIASES: Record<string, string> = {
@@ -464,7 +449,7 @@ function withActiveSourceProfile(config: TTSConfig): TTSConfig {
 export function maskTTSConfigForResponse(config: TTSConfig): TTSConfig {
   const configWithProfiles = withActiveSourceProfile(config);
   const sourceProfiles: TTSSourceProfiles = {};
-  for (const source of TTS_SOURCES) {
+  for (const source of TTS_SOURCE_IDS) {
     const profile = configWithProfiles.sourceProfiles[source];
     if (!profile) continue;
     sourceProfiles[source] = {
@@ -491,7 +476,7 @@ export function prepareTTSConfigForStorage(
   const existingProfiles = withActiveSourceProfile(existing).sourceProfiles;
   const sourceProfiles: TTSSourceProfiles = { ...existingProfiles };
 
-  for (const source of TTS_SOURCES) {
+  for (const source of TTS_SOURCE_IDS) {
     const incomingProfile = input.sourceProfiles[source];
     if (!incomingProfile) continue;
     sourceProfiles[source] = {
@@ -574,9 +559,9 @@ async function resolveAudioConfig(
     enabled: explicitlyRequested ? true : cfg.enabled,
     source,
     apiKey: row.apiKey,
-    baseUrl: row.baseUrl || profile?.baseUrl || TTS_SOURCE_DEFAULTS[source].baseUrl,
+    baseUrl: row.baseUrl || profile?.baseUrl || TTS_SOURCE_DEFINITIONS[source].defaultBaseUrl,
     voice: row.audioVoice || profile?.voice || "",
-    model: row.model || profile?.model || TTS_SOURCE_DEFAULTS[source].model,
+    model: row.model || profile?.model || TTS_SOURCE_DEFINITIONS[source].defaultModel,
     elevenLabsGameSoundEffects: row.audioSoundEffects === "true",
     elevenLabsGameMusic: row.audioMusic === "true",
   };
@@ -652,7 +637,7 @@ function fallbackVoices(source: TTSSource): TTSVoicesResponse {
 }
 
 function configuredBaseUrl(cfg: TTSConfig) {
-  const fallbackBase = TTS_SOURCE_DEFAULTS[cfg.source].baseUrl;
+  const fallbackBase = TTS_SOURCE_DEFINITIONS[cfg.source].defaultBaseUrl;
   return (cfg.baseUrl || fallbackBase).replace(/\/+$/, "");
 }
 
@@ -1453,7 +1438,7 @@ export async function ttsRoutes(app: FastifyInstance) {
     const pocketTtsApiMode = usePocketTtsSpeech ? await detectPocketTtsApiMode(cfg) : null;
     const useOfficialPocketTtsSpeech = pocketTtsApiMode === "official";
     const useXaiSpeech = cfg.source === "xai";
-    const configuredModel = (cfg.model || TTS_SOURCE_DEFAULTS[cfg.source].model).trim();
+    const configuredModel = (cfg.model || TTS_SOURCE_DEFINITIONS[cfg.source].defaultModel).trim();
     const model = useNanoGptSpeech
       ? normalizeNanoGptTtsModelId(configuredModel)
       : cfg.source === "elevenlabs"

@@ -2,7 +2,7 @@
 // Connection Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
-import { IMAGE_GENERATION_QUALITIES } from "../types/connection.js";
+import { AUDIO_GENERATION_SOURCES, IMAGE_GENERATION_QUALITIES } from "../types/connection.js";
 import { MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH } from "../constants/defaults.js";
 
 export const apiProviderSchema = z.enum([
@@ -25,7 +25,7 @@ export const apiProviderSchema = z.enum([
   "audio",
 ]);
 
-export const audioGenerationSourceSchema = z.enum(["openai", "elevenlabs", "pockettts", "xai"]);
+export const audioGenerationSourceSchema = z.enum(AUDIO_GENERATION_SOURCES);
 
 export const imageGenerationQualitySchema = z.enum(IMAGE_GENERATION_QUALITIES);
 

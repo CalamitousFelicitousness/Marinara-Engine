@@ -867,6 +867,47 @@ by `--tracker-panel-font-scale` only, never `--tracker-text-scale`, so those tit
 setting entirely. Same confusion as the line-box bug below, different symptom, and outside the reach
 of `tracker-line-height-scale.regression.ts`, which only scans tracker-panel sources.
 
+### TTS source metadata and synthesis tuning have one definition
+
+Local TTS engines were unusable. The reported symptom was "no paragraph splitting, no timeout
+settings, no nothing"; splitting existed (900 chars, newline to sentence to clause to word) but
+everything around it defeated it. The provider request budget was the literal
+`AbortSignal.timeout(60_000)` in `tts.routes.ts` with no env var and no config field anywhere, so a
+CPU engine needing longer could only be accommodated by editing source.
+
+The list of TTS sources and their default base URL, model, and voice existed in six places: two
+shared Zod enums, a shared const tuple, two tables in `tts.routes.ts`, and two more in the client,
+one of which carried a comment saying it mirrored the other.
+`packages/shared/src/constants/tts-sources.ts` now holds `TTS_SOURCE_IDS` and
+`TTS_SOURCE_DEFINITIONS`, and every one of those sites derives from it. Per-model behaviour (ElevenLabs speed support, OpenAI speech instructions,
+forced formats, auth headers) is deliberately absent from the table: it varies by model rather than
+by source, so it stays in the request builders.
+
+`ttsConfigSchema` gains `timeoutMs`, `chunkCharLimit`, `maxRetries`, and `generationConcurrency`,
+all per source profile because a local CPU engine and a cloud API want opposite values. Defaults
+reproduce today's behaviour exactly (60000 / 900 / 1 / 1) except `maxRetries`, which defaults to 1:
+the chat path had no retries at all while the game path has shipped two attempts with backoff for
+months, and one transient 502 killed an entire sequence. `progressivePlayback` now defaults to true,
+which reaches only installs without a parseable saved blob, since `PUT /config` stores the fully
+parsed object and a saved config therefore carries its own explicit value.
+
+The per-source profile field list also existed three times: the Zod `pick`, `ttsSourceProfileFromConfig`,
+and `TTSConfigCard`'s `defaultSourceProfile`. The latter two now derive from the schema by parsing,
+so a field added to the pick cannot silently vanish from saved profiles. The card's `buildPayload`
+is a fourth copy, but it is typed `TTSConfig`, so the compiler catches an omission there; its
+source-switch restore path is not type-checked and is pinned by regression instead.
+
+Patches to upstream files: `packages/shared/src/types/tts.ts`, `packages/shared/src/types/connection.ts`,
+`packages/shared/src/schemas/connection.schema.ts`, `packages/shared/src/index.ts`,
+`packages/server/src/routes/tts.routes.ts` (local tables deleted, six call sites repointed),
+`packages/client/src/components/panels/settings/TTSConfigCard.tsx`, and
+`packages/client/src/components/connections/ConnectionEditor.tsx`. All are upstream-edited;
+`tts.routes.ts` and `TTSConfigCard.tsx` are the ones to re-check after a sync.
+
+Proven by `scripts/regressions/tts/tts-shared-contract.regression.ts`. The upstream
+`tts-source-persistence.regression.ts` imports moved helpers and asserts against `tts.routes.ts`
+source text, and passes unedited.
+
 ### Speaker tags have one grammar, and it is well-formed markup
 
 Group chat dialogue colouring asked models for `<speaker="Amy">`, which is not valid markup: an

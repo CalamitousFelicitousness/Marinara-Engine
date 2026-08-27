@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // API Connection Types
 // ──────────────────────────────────────────────
+import { TTS_SOURCE_IDS } from "../constants/tts-sources.js";
 
 /** Supported API providers. */
 export type APIProvider =
@@ -23,7 +24,7 @@ export type APIProvider =
   | "audio";
 
 /** Audio backends an audio connection can target (the former TTS sources). */
-export const AUDIO_GENERATION_SOURCES = ["openai", "elevenlabs", "pockettts", "xai"] as const;
+export const AUDIO_GENERATION_SOURCES = TTS_SOURCE_IDS;
 export type AudioGenerationSource = (typeof AUDIO_GENERATION_SOURCES)[number];
 
 export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high"] as const;

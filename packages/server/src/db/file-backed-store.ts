@@ -1381,6 +1381,47 @@ function pidDefinitelyExited(pid: number) {
   }
 }
 
+function pidWasReused(record: StorageWriterLeaseRecord) {
+  const leaseTime = Date.parse(record.acquiredAt);
+  if (!Number.isFinite(leaseTime)) return false;
+
+  if (process.platform === "win32") {
+    try {
+      const executable = process.env.SystemRoot
+        ? join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        : "powershell.exe";
+      const output = execFileSync(
+        executable,
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `(Get-Process -Id ${record.pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
+        ],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 2_000, maxBuffer: 8 * 1024 },
+      );
+      const processTime = Date.parse(output.trim());
+      return Number.isFinite(processTime) && processTime > leaseTime + 1_000;
+    } catch {
+      return false;
+    }
+  }
+
+  if (process.platform === "linux" || process.platform === "android") {
+    try {
+      const stat = readFileSync(`/proc/${record.pid}/stat`, "utf8");
+      const startTicks = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]);
+      const bootTime = Number(readFileSync("/proc/stat", "utf8").match(/^btime (\d+)$/m)?.[1]);
+      if (!Number.isFinite(startTicks) || !Number.isFinite(bootTime)) return false;
+      return bootTime * 1_000 + (startTicks / 100) * 1_000 > leaseTime + 1_000;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 function isTermuxPrivateHomeStorage(rootDir: string) {
   if (process.platform !== "android" || !process.env.HOME) return false;
   try {
@@ -1790,7 +1831,7 @@ class FileTableStore {
         throw err;
       }
 
-      let staleReason: "boot" | "liveness" | "pid" | null = null;
+      let staleReason: "boot" | "liveness" | "pid" | "pid-reused" | null = null;
       const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
       if (existing.record.version === 4 && sameHost && writerBootId && existing.record.bootId !== writerBootId) {
         staleReason = "boot";
@@ -1805,7 +1846,10 @@ class FileTableStore {
           staleReason = "liveness";
         }
       } else {
-        if (sameHost && pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
+        if (sameHost) {
+          if (pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
+          else if (pidWasReused(existing.record)) staleReason = "pid-reused";
+        }
       }
       if (!staleReason) {
         throw new StorageWriterLeaseError(
@@ -1841,7 +1885,9 @@ class FileTableStore {
           ? "[file-storage] Reclaimed the writer lease after detecting that the previous owner belonged to an earlier boot."
           : staleReason === "liveness"
             ? "[file-storage] Reclaimed the writer lease after confirming the previous owner was no longer listening."
-            : "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
+            : staleReason === "pid-reused"
+              ? "[file-storage] Reclaimed the writer lease after confirming its recorded PID belongs to a newer process."
+              : "[file-storage] Reclaimed the writer lease after confirming its same-host PID exited.",
       );
     }
     throw new StorageWriterLeaseError(`The storage writer lease at ${path} changed repeatedly; retry startup.`);

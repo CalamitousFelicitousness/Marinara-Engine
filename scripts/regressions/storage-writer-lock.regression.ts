@@ -288,6 +288,23 @@ try {
       const afterReboot = await createFileNativeDB({ writerLeaseBootId: "writer-lock-current-boot" });
       assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "stale-reused-pid-token");
       await afterReboot._fileStore.close();
+
+      mkdirSync(leasePath(dir));
+      writeFileSync(
+        ownerPath(dir),
+        JSON.stringify({
+          ...leaseTemplate,
+          version: 4,
+          pid: process.pid,
+          scopeId: undefined,
+          bootId: leaseTemplate.bootId,
+          token: "stale-reused-pid-same-boot-token",
+          acquiredAt: "2000-01-01T00:00:00.000Z",
+        }),
+      );
+      const afterPidReuse = await createFileNativeDB({ writerLeaseBootId: leaseTemplate.bootId });
+      assert.notEqual(readJson<LeaseRecord>(ownerPath(dir)).token, "stale-reused-pid-same-boot-token");
+      await afterPidReuse._fileStore.close();
     }
 
     if (process.platform !== "win32") {

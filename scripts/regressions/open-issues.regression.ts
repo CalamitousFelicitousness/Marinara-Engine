@@ -5222,6 +5222,26 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+const contextBudgetChatInputSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetConversationInputSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ConversationInput.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetGameInputSource = readFileSync(
+  new URL("../../packages/client/src/components/game/GameInput.tsx", import.meta.url),
+  "utf8",
+);
+const quickConnectionSwitcherSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/QuickConnectionSwitcher.tsx", import.meta.url),
+  "utf8",
+);
+const quickSwitcherMobileSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/QuickSwitcherMobile.tsx", import.meta.url),
+  "utf8",
+);
 const lorebookHooksSource = readFileSync(
   new URL("../../packages/client/src/hooks/use-lorebooks.ts", import.meta.url),
   "utf8",
@@ -5301,6 +5321,38 @@ assert.equal(
   ),
   null,
   "random connection mode must not show a misleading single-connection context budget",
+);
+assert.doesNotMatch(
+  contextBudgetChatInputSource,
+  /<ContextBudgetIndicator/u,
+  "Roleplay context usage must stay inside the connection switcher",
+);
+assert.doesNotMatch(
+  contextBudgetConversationInputSource,
+  /<ContextBudgetIndicator/u,
+  "Conversation context usage must stay inside the connection switcher",
+);
+assert.doesNotMatch(
+  contextBudgetGameInputSource,
+  /ContextBudget/u,
+  "Game input must not render a standalone context usage bar",
+);
+for (const [name, source] of [
+  ["desktop connection switcher", quickConnectionSwitcherSource],
+  ["mobile connection switcher", quickSwitcherMobileSource],
+] as const) {
+  assert.match(source, /<ContextBudgetIndicator budget=\{contextBudget\}/u, `${name} must show usage in its popup`);
+  assert.match(source, /relative flex h-7 w-7/u, `${name} must use the larger context gauge`);
+}
+assert.equal(
+  professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} professorMari \/>/gu)?.length,
+  2,
+  "Both Professor Mari connection popups must show context usage",
+);
+assert.equal(
+  professorMariHomeSource.match(/relative flex h-7 w-7/gu)?.length,
+  2,
+  "Both Professor Mari connection buttons must use the larger context gauge",
 );
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
 assert.match(

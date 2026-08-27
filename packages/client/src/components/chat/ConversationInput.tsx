@@ -59,7 +59,6 @@ import { SlashCommandFeedback } from "./SlashCommandFeedback";
 import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
 import { MariSuggestionChips } from "./MariSuggestionChips";
-import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import {
   ConversationMediaPickerPanel,
@@ -2187,7 +2186,6 @@ export function ConversationInput({
         </p>
       )}
       <MariSuggestionChips chips={chipRowChips} onSelect={handleMariChipSelect} disabled={isSendBlocked} />
-      {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} />}
 
       {/* Input bar */}
       <div

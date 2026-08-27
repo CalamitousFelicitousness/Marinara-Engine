@@ -260,9 +260,9 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
             : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
         )}
       >
-        <span className="relative flex h-5 w-5 items-center justify-center">
+        <span className="relative flex h-7 w-7 items-center justify-center">
           {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
-          <ChevronUp size="0.875rem" className={cn("transition-transform", open && "rotate-180")} />
+          <ChevronUp size="1rem" className={cn("transition-transform", open && "rotate-180")} />
         </span>
       </button>
 

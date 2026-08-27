@@ -98,7 +98,7 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { rafThrottle } from "../../lib/raf-throttle";
 import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import { cn } from "../../lib/utils";
-import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
+import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 import { ProfessorMariWorkingWindow } from "../ui/ProfessorMariWorkingWindow";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
@@ -5134,7 +5134,6 @@ export function HomeProfessorMariChat({
           void handleSubmit();
         }}
       >
-        {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} professorMari />}
         <input
           ref={attachmentInputRef}
           type="file"
@@ -5191,7 +5190,10 @@ export function HomeProfessorMariChat({
                 : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
             }
           >
-            <Link size="1rem" />
+            <span className="relative flex h-7 w-7 items-center justify-center">
+              {showContextUsage && contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
+              <Link size="1rem" />
+            </span>
           </button>
 
           {connectionMenuOpen && (
@@ -5202,6 +5204,11 @@ export function HomeProfessorMariChat({
               <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
                 {localizeUi("navigation.topbar.connections")}
               </div>
+              {showContextUsage && contextBudget && (
+                <div className="border-b border-[var(--border)] px-3 pt-2">
+                  <ContextBudgetIndicator budget={contextBudget} professorMari />
+                </div>
+              )}
               <div className="overflow-y-auto p-1">
                 {connectionOptions.length > 0 ? (
                   connectionOptions.map((connection) => {
@@ -5895,9 +5902,6 @@ export function HomeProfessorMariChat({
                             void handleSubmit();
                           }}
                         >
-                          {showContextUsage && contextBudget && (
-                            <ContextBudgetIndicator budget={contextBudget} professorMari />
-                          )}
                           <input
                             ref={attachmentInputRef}
                             type="file"
@@ -5963,7 +5967,12 @@ export function HomeProfessorMariChat({
                                   : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
                               }
                             >
-                              <Link size="1rem" />
+                              <span className="relative flex h-7 w-7 items-center justify-center">
+                                {showContextUsage && contextBudget && (
+                                  <ContextBudgetGauge percentage={contextBudget.percentage} />
+                                )}
+                                <Link size="1rem" />
+                              </span>
                             </button>
 
                             {connectionMenuOpen && (
@@ -5974,6 +5983,11 @@ export function HomeProfessorMariChat({
                                 <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
                                   {localizeUi("navigation.topbar.connections")}
                                 </div>
+                                {showContextUsage && contextBudget && (
+                                  <div className="border-b border-[var(--border)] px-3 pt-2">
+                                    <ContextBudgetIndicator budget={contextBudget} professorMari />
+                                  </div>
+                                )}
                                 <div className="overflow-y-auto p-1">
                                   {connectionOptions.length > 0 ? (
                                     connectionOptions.map((connection) => {

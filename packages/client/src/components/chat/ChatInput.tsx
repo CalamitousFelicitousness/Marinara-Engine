@@ -68,7 +68,6 @@ import { SlashCommandFeedback } from "./SlashCommandFeedback";
 import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
 import { MariSuggestionChips } from "./MariSuggestionChips";
-import { ContextBudgetIndicator } from "./ContextBudgetIndicator";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { PendingSpatialTransitionDraft } from "../../stores/chat.store";
@@ -1849,7 +1848,6 @@ export const ChatInput = memo(function ChatInput({
 
   return (
     <div className="mari-chat-input chat-input-container px-3 pb-3">
-      {showContextUsage && contextBudget && <ContextBudgetIndicator budget={contextBudget} />}
       {/* Slash command autocomplete popup */}
       {completions.length > 0 && (
         <div className="mb-2 max-h-[min(18rem,45dvh)] overflow-y-auto rounded-xl border border-foreground/10 bg-[var(--card)] shadow-xl backdrop-blur-xl [-webkit-overflow-scrolling:touch]">

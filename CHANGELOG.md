@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- All chats can now show the latest measured context usage above the composer and in connection switchers. The display is enabled by default and can be controlled in Advanced settings (#5577).
+- Chat connection switchers can now show the latest measured context usage in their popup and around the connection button. The display is enabled by default and can be controlled in Advanced settings (#5577).
 - Character card sprites can now be renamed after upload without replacing the image (#5575).
 - Character cards now support editable metadata summaries, AI-generated summary drafts, and Character Library previews that use the saved summary when available.
 - Character card Conversation profiles now provide controls to generate About Me and Conversation behavior text from the card's available information.

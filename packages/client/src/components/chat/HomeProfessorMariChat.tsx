@@ -93,12 +93,15 @@ import {
   isProfessorMariTranscriptNearBottom,
   scrollProfessorMariTranscriptToBottom,
 } from "../../lib/professor-mari-transcript-scroll";
-import { resolveProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
+import {
+  formatCompactTokenCount,
+  resolveProfessorMariContextBudget,
+  type ProfessorMariContextBudget,
+} from "../../lib/professor-mari-context-budget";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { rafThrottle } from "../../lib/raf-throttle";
 import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import { cn } from "../../lib/utils";
-import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 import { ProfessorMariWorkingWindow } from "../ui/ProfessorMariWorkingWindow";
 import { MacroTextarea } from "../ui/MacroTextarea";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
@@ -1748,6 +1751,41 @@ function LoadingHistoryState() {
   );
 }
 
+function ProfessorMariContextBudgetIndicator({ budget }: { budget: ProfessorMariContextBudget }) {
+  const { t: localizeUi } = useUiTranslation();
+  const used = formatCompactTokenCount(budget.usedTokens);
+  const maximum = formatCompactTokenCount(budget.maxTokens);
+  const ariaLabel = localizeUi("ui.chat.homeprofessormarichat.contextBudgetAria", { used, maximum });
+  const progressStyle = { "--mari-context-budget": `${budget.percentage}%` } as CSSProperties;
+
+  return (
+    <div
+      data-component="HomeProfessorMariChat.ContextBudget"
+      className="mb-2 space-y-1 px-0.5 text-[0.6875rem] text-[var(--marinara-chat-chrome-panel-muted)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span>{localizeUi("ui.chat.homeprofessormarichat.contextBudget")}</span>
+        <span className="tabular-nums text-[var(--marinara-chat-chrome-panel-text)]">
+          {localizeUi("ui.chat.homeprofessormarichat.contextBudgetValue", { used, maximum })}
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={ariaLabel}
+        aria-valuemin={0}
+        aria-valuemax={budget.maxTokens}
+        aria-valuenow={Math.min(budget.usedTokens, budget.maxTokens)}
+        className="h-1 overflow-hidden rounded-full bg-[var(--muted)]/55"
+      >
+        <div
+          className="h-full w-[var(--mari-context-budget)] rounded-full bg-[var(--primary)] transition-[width] duration-200"
+          style={progressStyle}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ProfessorMariPixelScene({ active }: { active: boolean }) {
   return (
     <div className="mari-professor-pixel-scene" data-state={active ? "active" : "idle"} aria-hidden="true">
@@ -3264,7 +3302,7 @@ export function HomeProfessorMariChat({
   const recordMariPlanAnswer = useAgentStore((state) => state.recordMariPlanAnswer);
   const clearMariPlan = useAgentStore((state) => state.clearMariPlan);
   const professorMariSuggestionsEnabled = useUIStore((state) => state.professorMariSuggestionsEnabled);
-  const showContextUsage = useUIStore((state) => state.showContextUsage);
+  const showTokenUsage = useUIStore((state) => state.showTokenUsage);
 
   const languageConnections = useMemo<ProfessorMariConnectionOption[]>(
     () => filterLanguageGenerationConnections((connectionsRaw ?? []) as APIConnection[]),
@@ -5134,6 +5172,7 @@ export function HomeProfessorMariChat({
           void handleSubmit();
         }}
       >
+        {showTokenUsage && contextBudget && <ProfessorMariContextBudgetIndicator budget={contextBudget} />}
         <input
           ref={attachmentInputRef}
           type="file"
@@ -5190,10 +5229,7 @@ export function HomeProfessorMariChat({
                 : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
             }
           >
-            <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
-              {showContextUsage && contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
-              <Link size="1rem" />
-            </span>
+            <Link size="1rem" />
           </button>
 
           {connectionMenuOpen && (
@@ -5204,11 +5240,6 @@ export function HomeProfessorMariChat({
               <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
                 {localizeUi("navigation.topbar.connections")}
               </div>
-              {showContextUsage && contextBudget && (
-                <div className="border-b border-[var(--border)] px-3 pt-2">
-                  <ContextBudgetIndicator budget={contextBudget} professorMari />
-                </div>
-              )}
               <div className="overflow-y-auto p-1">
                 {connectionOptions.length > 0 ? (
                   connectionOptions.map((connection) => {
@@ -5902,6 +5933,9 @@ export function HomeProfessorMariChat({
                             void handleSubmit();
                           }}
                         >
+                          {showTokenUsage && contextBudget && (
+                            <ProfessorMariContextBudgetIndicator budget={contextBudget} />
+                          )}
                           <input
                             ref={attachmentInputRef}
                             type="file"
@@ -5967,12 +6001,7 @@ export function HomeProfessorMariChat({
                                   : localizeUi("ui.chat.homeprofessormarichat.selectConnection")
                               }
                             >
-                              <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
-                                {showContextUsage && contextBudget && (
-                                  <ContextBudgetGauge percentage={contextBudget.percentage} />
-                                )}
-                                <Link size="1rem" />
-                              </span>
+                              <Link size="1rem" />
                             </button>
 
                             {connectionMenuOpen && (
@@ -5983,11 +6012,6 @@ export function HomeProfessorMariChat({
                                 <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
                                   {localizeUi("navigation.topbar.connections")}
                                 </div>
-                                {showContextUsage && contextBudget && (
-                                  <div className="border-b border-[var(--border)] px-3 pt-2">
-                                    <ContextBudgetIndicator budget={contextBudget} professorMari />
-                                  </div>
-                                )}
                                 <div className="overflow-y-auto p-1">
                                   {connectionOptions.length > 0 ? (
                                     connectionOptions.map((connection) => {

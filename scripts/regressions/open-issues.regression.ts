@@ -108,6 +108,7 @@ import {
 } from "../../packages/client/src/lib/professor-mari-transcript-scroll.js";
 import {
   formatCompactTokenCount,
+  resolveChatContextBudget,
   resolveProfessorMariContextBudget,
 } from "../../packages/client/src/lib/professor-mari-context-budget.js";
 import { parseCustomParametersDraft } from "../../packages/client/src/lib/generation-custom-parameters.js";
@@ -5222,6 +5223,34 @@ const professorMariHomeSource = readFileSync(
   new URL("../../packages/client/src/components/chat/HomeProfessorMariChat.tsx", import.meta.url),
   "utf8",
 );
+const contextBudgetChatInputSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatInput.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetConversationInputSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ConversationInput.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetGameInputSource = readFileSync(
+  new URL("../../packages/client/src/components/game/GameInput.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetChatSettingsSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatSettingsDrawer.tsx", import.meta.url),
+  "utf8",
+);
+const contextBudgetConnectionSectionSource = readFileSync(
+  new URL("../../packages/client/src/features/chat-settings/sections/ConnectionSection.tsx", import.meta.url),
+  "utf8",
+);
+const quickConnectionSwitcherSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/QuickConnectionSwitcher.tsx", import.meta.url),
+  "utf8",
+);
+const quickSwitcherMobileSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/QuickSwitcherMobile.tsx", import.meta.url),
+  "utf8",
+);
 const lorebookHooksSource = readFileSync(
   new URL("../../packages/client/src/hooks/use-lorebooks.ts", import.meta.url),
   "utf8",
@@ -5252,6 +5281,102 @@ assert.equal(
   "legacy Professor Mari usage metadata should keep the context indicator available",
 );
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
+assert.equal(
+  resolveChatContextBudget(
+    [
+      {
+        role: "assistant",
+        extra: JSON.stringify({ generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } }),
+      },
+    ] as Message[],
+    "connection-1",
+    [{ id: "connection-1", maxContext: 8_000 }] as never,
+  )?.usedTokens,
+  4_100,
+  "chat context usage must parse JSON-encoded message metadata",
+);
+const contextBudgetConnections = [
+  { id: "first", maxContext: 8_000, isDefault: false },
+  { id: "default", maxContext: 16_000, isDefault: true },
+  { id: "selected", maxContext: 32_000, isDefault: false },
+] as never;
+const contextBudgetMessages = [
+  { role: "assistant", extra: { generationInfo: { tokensPrompt: 1_000, tokensCompletion: 100 } } },
+  { role: "user", extra: {} },
+  { role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } },
+] as Message[];
+assert.equal(resolveChatContextBudget(contextBudgetMessages, "selected", contextBudgetConnections)?.maxTokens, 32_000);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, null, contextBudgetConnections),
+  null,
+  "a chat without a selected connection must not borrow the default connection's context limit",
+);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, "missing", contextBudgetConnections),
+  null,
+  "a missing selected connection must not borrow another connection's context limit",
+);
+assert.equal(resolveChatContextBudget(contextBudgetMessages, "__local_sidecar__", [], 24_000)?.maxTokens, 24_000);
+assert.equal(
+  resolveChatContextBudget(contextBudgetMessages, "selected", contextBudgetConnections)?.usedTokens,
+  4_100,
+  "chat context usage must use the newest assistant measurement",
+);
+assert.equal(
+  resolveChatContextBudget(
+    [{ role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } }] as Message[],
+    "random",
+    [{ id: "a", maxContext: 8_000 }] as never,
+  ),
+  null,
+  "random connection mode must not show a misleading single-connection context budget",
+);
+assert.doesNotMatch(
+  contextBudgetChatInputSource,
+  /<ContextBudgetIndicator/u,
+  "Roleplay context usage must stay inside the connection switcher",
+);
+assert.doesNotMatch(
+  contextBudgetConversationInputSource,
+  /<ContextBudgetIndicator/u,
+  "Conversation context usage must stay inside the connection switcher",
+);
+assert.doesNotMatch(
+  contextBudgetGameInputSource,
+  /ContextBudget|QuickConnectionSwitcher/u,
+  "Game input must leave context usage in chat settings",
+);
+assert.match(
+  contextBudgetChatSettingsSource,
+  /<ConnectionSection[\s\S]{0,240}contextBudget=\{gameContextBudget\}/u,
+  "Game chat settings must pass measured usage to the connection section",
+);
+assert.match(
+  contextBudgetConnectionSectionSource,
+  /\{contextBudget && <ContextBudgetIndicator budget=\{contextBudget\} \/>\}/u,
+  "Game connection settings must show measured context usage",
+);
+for (const [name, source] of [
+  ["desktop connection switcher", quickConnectionSwitcherSource],
+  ["mobile connection switcher", quickSwitcherMobileSource],
+] as const) {
+  assert.match(source, /<ContextBudgetIndicator budget=\{contextBudget\}/u, `${name} must show usage in its popup`);
+  assert.match(
+    source,
+    /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u,
+    `${name} must use the larger context gauge`,
+  );
+}
+assert.equal(
+  professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} professorMari \/>/gu)?.length,
+  2,
+  "Both Professor Mari connection popups must show context usage",
+);
+assert.equal(
+  professorMariHomeSource.match(/relative flex h-\[1\.875rem\] w-\[1\.875rem\]/gu)?.length,
+  2,
+  "Both Professor Mari connection buttons must use the larger context gauge",
+);
 assert.match(professorMariHomeSource, /chatHistorySelectionMode/u);
 assert.match(
   professorMariHomeSource,

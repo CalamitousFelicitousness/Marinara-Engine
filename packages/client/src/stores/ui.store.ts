@@ -752,6 +752,7 @@ interface UIState {
   showTimestamps: boolean;
   showModelName: boolean;
   showTokenUsage: boolean;
+  showContextUsage: boolean;
   showMessageNumbers: boolean;
   /** When true, character cards are available in Persona pickers. */
   showCharactersInPersonaPickers: boolean;
@@ -1089,6 +1090,7 @@ interface UIState {
   setShowTimestamps: (v: boolean) => void;
   setShowModelName: (v: boolean) => void;
   setShowTokenUsage: (v: boolean) => void;
+  setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
   setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
@@ -1310,6 +1312,7 @@ export function pickSyncedSettings(state: UIState) {
     showTimestamps: state.showTimestamps,
     showModelName: state.showModelName,
     showTokenUsage: state.showTokenUsage,
+    showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
@@ -1523,6 +1526,7 @@ export const useUIStore = create<UIState>()(
       showTimestamps: false,
       showModelName: false,
       showTokenUsage: false,
+      showContextUsage: true,
       showMessageNumbers: false,
       showCharactersInPersonaPickers: false,
       guideGenerations: false,
@@ -2293,6 +2297,7 @@ export const useUIStore = create<UIState>()(
       setShowTimestamps: (v) => set({ showTimestamps: v }),
       setShowModelName: (v) => set({ showModelName: v }),
       setShowTokenUsage: (v) => set({ showTokenUsage: v }),
+      setShowContextUsage: (v) => set({ showContextUsage: v }),
       setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
       setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
       setGuideGenerations: (v) => set({ guideGenerations: v }),
@@ -3302,6 +3307,7 @@ export const useUIStore = create<UIState>()(
         showTimestamps: state.showTimestamps,
         showModelName: state.showModelName,
         showTokenUsage: state.showTokenUsage,
+        showContextUsage: state.showContextUsage,
         showMessageNumbers: state.showMessageNumbers,
         showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
         guideGenerations: state.guideGenerations,

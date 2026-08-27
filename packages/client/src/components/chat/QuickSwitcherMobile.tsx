@@ -18,6 +18,8 @@ import { parseCharacterDisplayData } from "../../lib/character-display";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
+import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
+import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 
 interface PersonaGroupRow {
   id: string;
@@ -35,7 +37,7 @@ interface ParsedGroup {
 
 const UNGROUPED_PERSONA_GROUP_ID = "__ungrouped-personas__";
 
-export function QuickSwitcherMobile() {
+export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: ProfessorMariContextBudget | null }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"connections" | "personas">("connections");
@@ -290,7 +292,10 @@ export function QuickSwitcherMobile() {
             : "text-foreground/40 hover:bg-foreground/10 hover:text-foreground/70",
         )}
       >
-        <ChevronUp size="1rem" className={cn("transition-transform", open && "rotate-180")} />
+        <span className="relative flex h-[1.875rem] w-[1.875rem] items-center justify-center">
+          {contextBudget && <ContextBudgetGauge percentage={contextBudget.percentage} />}
+          <ChevronUp size="1rem" className={cn("transition-transform", open && "rotate-180")} />
+        </span>
       </button>
 
       {open &&
@@ -334,6 +339,11 @@ export function QuickSwitcherMobile() {
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {tab === "connections" && (
                 <>
+                  {contextBudget && (
+                    <div className="px-2 pt-1">
+                      <ContextBudgetIndicator budget={contextBudget} />
+                    </div>
+                  )}
                   <button
                     onClick={handleToggleRandom}
                     className={cn(

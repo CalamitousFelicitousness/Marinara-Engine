@@ -193,30 +193,28 @@ export function QuickSwitcherMobile() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
     const update = () => {
       const buttonEl = btnRef.current;
       if (!buttonEl) return;
       const inputBox = buttonEl.closest(".marinara-chat-input-shell") as HTMLElement | null;
-      const menuEl = menuRef.current;
-      const menuHeight = menuEl?.offsetHeight || 400;
-      if (inputBox) {
-        const boxRect = inputBox.getBoundingClientRect();
-        setPos({
-          left: boxRect.left,
-          top: Math.max(8, boxRect.top - menuHeight - 4),
-          width: boxRect.width,
-        });
-      } else {
-        const rect = buttonEl.getBoundingClientRect();
-        setPos({
-          left: 8,
-          top: Math.max(8, rect.top - menuHeight - 8),
-          width: 300,
-        });
-      }
+      const anchor = inputBox?.getBoundingClientRect() ?? buttonEl.getBoundingClientRect();
+      const width = Math.min(inputBox?.getBoundingClientRect().width ?? 300, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(inputBox?.getBoundingClientRect().left ?? 8, window.innerWidth - width - 8));
+      const spaceAbove = Math.max(0, anchor.top - 12);
+      const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
+      const openAbove = spaceAbove >= spaceBelow;
+      const maxHeight = Math.max(160, openAbove ? spaceAbove : spaceBelow);
+      const desiredHeight = Math.min(menuRef.current?.scrollHeight || maxHeight, maxHeight);
+      const top = openAbove ? anchor.top - desiredHeight - 4 : anchor.bottom + 4;
+      setPos({
+        left,
+        top: Math.max(8, Math.min(top, window.innerHeight - desiredHeight - 8)),
+        width,
+        maxHeight: desiredHeight,
+      });
     };
     requestAnimationFrame(update);
     const timer = setTimeout(update, 50);
@@ -227,7 +225,7 @@ export function QuickSwitcherMobile() {
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [open, tab, expandedGroups]);
+  }, [open, tab, expandedGroups, expandedCharacterGroups, showCharacterGroups]);
 
   if (!activeChatId) return null;
 
@@ -301,8 +299,12 @@ export function QuickSwitcherMobile() {
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
-            style={pos ? { left: pos.left, top: pos.top, width: pos.width } : { visibility: "hidden" as const }}
+            className="fixed z-[9999] flex min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            style={
+              pos
+                ? { left: pos.left, top: pos.top, width: pos.width, height: pos.maxHeight }
+                : { visibility: "hidden" as const }
+            }
           >
             <div className="flex border-b border-foreground/10">
               <button
@@ -492,15 +494,22 @@ export function QuickSwitcherMobile() {
                       </div>
                     );
                   })}
-                  {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
+                  {characters.length > 0 && (
                     <>
                       <button
                         type="button"
-                        onClick={() => setShowCharacterGroups((value) => !value)}
+                        onClick={() => {
+                          if (!showCharacterIdentities) setShowCharacterIdentities(true);
+                          setShowCharacterGroups((value) => !value);
+                        }}
                         aria-expanded={showCharacterGroups}
-                        className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
+                        className="mt-1 flex w-full items-center gap-2 rounded-lg border border-foreground/10 px-2.5 py-2 text-left text-xs font-semibold text-foreground/70 transition-colors hover:bg-foreground/10"
                       >
-                        {showCharacterGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                        {showCharacterGroups ? (
+                          <FolderOpen size="0.875rem" className="shrink-0 text-foreground/50" />
+                        ) : (
+                          <Folder size="0.875rem" className="shrink-0 text-foreground/50" />
+                        )}
                         <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
                         {showCharacterGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                       </button>
@@ -526,7 +535,17 @@ export function QuickSwitcherMobile() {
                                 aria-expanded={expanded}
                                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-foreground/10"
                               >
-                                {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                                {group.avatarPath || group.members[0]?.avatarPath ? (
+                                  <img
+                                    src={group.avatarPath ?? group.members[0]?.avatarPath ?? ""}
+                                    alt=""
+                                    className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-foreground/10"
+                                  />
+                                ) : expanded ? (
+                                  <FolderOpen size="0.875rem" className="shrink-0 text-foreground/45" />
+                                ) : (
+                                  <Folder size="0.875rem" className="shrink-0 text-foreground/45" />
+                                )}
                                 <span className="min-w-0 flex-1 truncate">{group.name}</span>
                                 <span className="text-[0.625rem] text-foreground/45">{members.length}</span>
                                 {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
@@ -570,16 +589,6 @@ export function QuickSwitcherMobile() {
                           );
                         })}
                     </>
-                  )}
-                  {characters.length > 0 && !showCharacterIdentities && !activeCharacterId && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCharacterIdentities(true)}
-                      className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
-                    >
-                      <Folder size="0.75rem" />
-                      <span>{localizeUi("ui.chat.personapicker.showCharacters")}</span>
-                    </button>
                   )}
                   {sortedPersonas.length === 0 && (
                     <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">

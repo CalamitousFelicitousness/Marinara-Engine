@@ -180,25 +180,40 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
-  // Position menu above button
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const inputBox = btnRef.current.closest(".marinara-chat-input-shell") as HTMLElement | null;
-    const anchorTop = inputBox ? inputBox.getBoundingClientRect().top : rect.top;
-    requestAnimationFrame(() => {
+    const update = () => {
+      const button = btnRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const inputBox = button.closest(".marinara-chat-input-shell") as HTMLElement | null;
+      const anchor = inputBox?.getBoundingClientRect() ?? rect;
       const menuEl = menuRef.current;
-      const menuHeight = Math.min(menuEl?.scrollHeight || 400, window.innerHeight - 16);
-      const menuWidth = Math.min(Math.max(menuEl?.offsetWidth || 300, 280), window.innerWidth - 16);
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8));
-      const top =
-        anchorTop - menuHeight - 4 >= 8
-          ? anchorTop - menuHeight - 4
-          : Math.min(anchorTop + rect.height + 4, window.innerHeight - menuHeight - 8);
-      setPos({ left, top: Math.max(8, top) });
-    });
-  }, [open, expandedGroups]);
+      const width = Math.min(Math.max(menuEl?.offsetWidth || 300, 280), window.innerWidth - 16);
+      const spaceAbove = Math.max(0, anchor.top - 12);
+      const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
+      const openAbove = spaceAbove >= Math.min(320, spaceBelow) || spaceAbove >= spaceBelow;
+      const maxHeight = Math.max(160, Math.min(400, openAbove ? spaceAbove : spaceBelow));
+      const desiredHeight = Math.min(menuEl?.scrollHeight || maxHeight, maxHeight);
+      const top = openAbove ? anchor.top - desiredHeight - 4 : anchor.bottom + 4;
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      setPos({
+        left,
+        top: Math.max(8, Math.min(top, window.innerHeight - desiredHeight - 8)),
+        width,
+        maxHeight: desiredHeight,
+      });
+    };
+    const frame = requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open, expandedGroups, expandedCharacterGroups, showCharacterGroups]);
 
   if (!activeChatId) return null;
 
@@ -294,8 +309,12 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 btnRef.current?.focus();
               }
             }}
-            className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
-            style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" as const }}
+            className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            style={
+              pos
+                ? { left: pos.left, top: pos.top, width: pos.width, height: pos.maxHeight }
+                : { visibility: "hidden" as const }
+            }
           >
             <div className="flex items-center justify-center border-b border-foreground/10 px-3 py-2 text-[0.6875rem] font-semibold">
               {localizeUi("navigation.topbar.personas")}
@@ -392,15 +411,22 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                   {localizeUi("ui.chat.quickpersonaswitcher.noPersonasFound")}
                 </div>
               )}
-              {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
+              {characters.length > 0 && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setShowCharacterGroups((value) => !value)}
+                    onClick={() => {
+                      if (!showCharacterIdentities) setShowCharacterIdentities(true);
+                      setShowCharacterGroups((value) => !value);
+                    }}
                     aria-expanded={showCharacterGroups}
-                    className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
+                    className="mt-1 flex w-full items-center gap-2 rounded-lg border border-foreground/10 px-2.5 py-2 text-left text-xs font-semibold text-foreground/70 transition-colors hover:bg-foreground/10"
                   >
-                    {showCharacterGroups ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                    {showCharacterGroups ? (
+                      <FolderOpen size="0.875rem" className="shrink-0 text-foreground/50" />
+                    ) : (
+                      <Folder size="0.875rem" className="shrink-0 text-foreground/50" />
+                    )}
                     <span className="flex-1">{localizeUi("ui.chat.personapicker.playAsCharacter")}</span>
                     {showCharacterGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                   </button>
@@ -426,7 +452,17 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                             aria-expanded={expanded}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-foreground/10"
                           >
-                            {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                            {group.avatarPath || group.members[0]?.avatarPath ? (
+                              <img
+                                src={group.avatarPath ?? group.members[0]?.avatarPath ?? ""}
+                                alt=""
+                                className="h-7 w-7 shrink-0 rounded-full object-cover ring-1 ring-foreground/10"
+                              />
+                            ) : expanded ? (
+                              <FolderOpen size="0.875rem" className="shrink-0 text-foreground/45" />
+                            ) : (
+                              <Folder size="0.875rem" className="shrink-0 text-foreground/45" />
+                            )}
                             <span className="min-w-0 flex-1 truncate">{group.name}</span>
                             <span className="text-[0.625rem] text-foreground/45">{members.length}</span>
                             {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
@@ -466,16 +502,6 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                       );
                     })}
                 </>
-              )}
-              {characters.length > 0 && !showCharacterIdentities && !activeCharacterId && (
-                <button
-                  type="button"
-                  onClick={() => setShowCharacterIdentities(true)}
-                  className="flex w-full items-center gap-2 border-t border-foreground/10 px-2.5 py-2 text-left text-[0.625rem] font-semibold uppercase text-foreground/45 hover:bg-foreground/10"
-                >
-                  <Folder size="0.75rem" />
-                  <span>{localizeUi("ui.chat.personapicker.showCharacters")}</span>
-                </button>
               )}
             </div>
           </div>,

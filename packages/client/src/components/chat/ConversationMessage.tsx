@@ -276,16 +276,20 @@ export const ConversationMessage = memo(function ConversationMessage({
   // back to whichever chat character owns the file when the speaker doesn't.
   const galleryIndex = useChatGalleryFilenameIndex(chatCharacterIds);
 
-  const msgPersona = isUser && !plainUserMessages && extra.personaSnapshot ? extra.personaSnapshot : null;
+  const msgPersona = isUser && extra.personaSnapshot ? extra.personaSnapshot : null;
   const avatarUrl = isUser
     ? plainUserMessages
       ? null
-      : (msgPersona?.avatarUrl ?? personaInfo?.avatarUrl ?? null)
+      : msgPersona
+        ? (msgPersona.avatarUrl ?? null)
+        : (personaInfo?.avatarUrl ?? null)
     : (resolvedCharacterInfo?.avatarUrl ?? null);
   const personaAvatarCrop = isUser
     ? plainUserMessages
       ? null
-      : (normalizeAvatarCrop(msgPersona?.avatarCrop) ?? personaInfo?.avatarCrop ?? null)
+      : msgPersona
+        ? (normalizeAvatarCrop(msgPersona.avatarCrop) ?? null)
+        : (personaInfo?.avatarCrop ?? null)
     : null;
   const avatarCropStyle = isUser
     ? getAvatarCropStyle(personaAvatarCrop)
@@ -293,12 +297,16 @@ export const ConversationMessage = memo(function ConversationMessage({
   const displayName = isUser
     ? plainUserMessages
       ? "You"
-      : (msgPersona?.name ?? personaInfo?.name ?? "You")
+      : msgPersona
+        ? (msgPersona.name ?? "You")
+        : (personaInfo?.name ?? "You")
     : (primaryCharInfo?.name ?? "Assistant");
   const nameColor = isUser
     ? plainUserMessages
       ? undefined
-      : (msgPersona?.nameColor ?? personaInfo?.nameColor)
+      : msgPersona
+        ? msgPersona.nameColor
+        : personaInfo?.nameColor
     : resolvedCharacterInfo?.nameColor;
 
   // Conversation-only cosmetic display name (convoDisplayName). This component only
@@ -321,11 +329,11 @@ export const ConversationMessage = memo(function ConversationMessage({
       userName: displayName,
       persona: {
         name: displayName,
-        description: plainUserMessages ? undefined : (msgPersona?.description ?? personaInfo?.description),
-        personality: plainUserMessages ? undefined : (msgPersona?.personality ?? personaInfo?.personality),
-        backstory: plainUserMessages ? undefined : (msgPersona?.backstory ?? personaInfo?.backstory),
-        appearance: plainUserMessages ? undefined : (msgPersona?.appearance ?? personaInfo?.appearance),
-        scenario: plainUserMessages ? undefined : (msgPersona?.scenario ?? personaInfo?.scenario),
+        description: plainUserMessages ? undefined : msgPersona ? msgPersona.description : personaInfo?.description,
+        personality: plainUserMessages ? undefined : msgPersona ? msgPersona.personality : personaInfo?.personality,
+        backstory: plainUserMessages ? undefined : msgPersona ? msgPersona.backstory : personaInfo?.backstory,
+        appearance: plainUserMessages ? undefined : msgPersona ? msgPersona.appearance : personaInfo?.appearance,
+        scenario: plainUserMessages ? undefined : msgPersona ? msgPersona.scenario : personaInfo?.scenario,
       },
       primaryCharacter: primaryCharInfo ?? { name: displayName },
       characters: scopedCharacterMap

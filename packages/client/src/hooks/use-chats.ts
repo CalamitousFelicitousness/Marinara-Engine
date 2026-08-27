@@ -736,6 +736,7 @@ export function useUpdateChat() {
       if (vars.personaId !== undefined || vars.personaCharacterId !== undefined) {
         qc.invalidateQueries({ queryKey: chatKeys.messages(vars.id) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(vars.id) });
+        qc.invalidateQueries({ queryKey: chatKeys.messagePeek(vars.id) });
       }
 
       // Patch the group cache so the branch selector dropdown reflects renames

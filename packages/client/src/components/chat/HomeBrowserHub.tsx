@@ -2864,13 +2864,13 @@ export function HomeBrowserHub({
                               <h3 className="truncate text-base font-bold text-[var(--foreground)]">
                                 {characterOfDay.name}
                               </h3>
-                              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted-foreground)] sm:line-clamp-3">
+                              <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-[var(--muted-foreground)] sm:line-clamp-3">
                                 {characterOfDay.summary ||
                                   characterOfDay.comment ||
                                   characterOfDay.description ||
                                   t("home.characterOfDay.fallback")}
                               </p>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-2">
                                 <button
                                   type="button"
                                   onClick={() =>

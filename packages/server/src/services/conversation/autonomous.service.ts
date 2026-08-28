@@ -55,6 +55,14 @@ export interface ChatActivityState {
   autonomousMessages: Map<string, { count: number; lastSentAt: number }>;
   /** Timestamp when generation started, or null if not in progress */
   generationInProgressSince: number | null;
+  /**
+   * Role of the chat's last message ("user"/"assistant"/other), maintained so
+   * repeat autonomous checks can answer "did the user speak last?" without
+   * reading the transcript — an unconditional read would load the chat's
+   * whole storage unit on every 30s poll (#5592 PR-B). Seeded from the
+   * transcript once, then kept live by the record* calls on the send paths.
+   */
+  lastMessageRole?: string | null;
   /** Last status reported by a connected client autonomous poller. */
   clientPresence?: { status: AutonomousClientPresenceStatus; updatedAt: number };
 }
@@ -160,6 +168,7 @@ export function recordUserActivity(chatId: string, opts: { preserveGenerationInP
   const existing = activityStates.get(chatId);
   if (existing) {
     existing.lastUserMessageAt = now;
+    existing.lastMessageRole = "user";
     existing.autonomousMessages.clear(); // Reset — user is active again
     if (!opts.preserveGenerationInProgress) {
       existing.generationInProgressSince = null;
@@ -168,6 +177,7 @@ export function recordUserActivity(chatId: string, opts: { preserveGenerationInP
     activityStates.set(chatId, {
       lastUserMessageAt: now,
       lastAssistantMessageAt: 0,
+      lastMessageRole: "user",
       autonomousMessages: new Map(),
       generationInProgressSince: null,
     });
@@ -204,6 +214,7 @@ export function recordAssistantActivity(chatId: string, characterId?: string): v
   if (existing) {
     const now = Date.now();
     existing.lastAssistantMessageAt = now;
+    existing.lastMessageRole = "assistant";
     if (characterId) {
       const prev = existing.autonomousMessages.get(characterId);
       existing.autonomousMessages.set(characterId, {
@@ -275,6 +286,7 @@ export function initializeActivityFromMessages(
   activityStates.set(chatId, {
     lastUserMessageAt: lastUserAt,
     lastAssistantMessageAt: lastAssistantAt,
+    lastMessageRole: messages[messages.length - 1]!.role ?? null,
     autonomousMessages: new Map(),
     generationInProgressSince: null,
   });

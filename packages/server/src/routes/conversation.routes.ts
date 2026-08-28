@@ -92,6 +92,15 @@ type AutonomousCandidateEvaluation =
   | { ok: true; intent: AutonomousIntentPayload }
   | { ok: false; reason: "daily_budget_exhausted" | "intent_cooldown" };
 
+/**
+ * Chats whose in-memory activity state has been seeded from the transcript
+ * this process (#5592 PR-B). Latched even when the transcript could not seed
+ * a state (e.g. no user messages yet) — live recordUserActivity covers those
+ * from the first real message — so a repeat autonomous check NEVER re-reads
+ * the transcript, keeping idle checks free of lazy-table queries.
+ */
+const seededAutonomousActivityChats = new Set<string>();
+
 function normalizeAutonomousUserStatus(value: unknown): AutonomousUserStatus {
   return value === "idle" || value === "dnd" ? value : "active";
 }
@@ -943,12 +952,22 @@ export async function conversationRoutes(app: FastifyInstance) {
       }
     }
 
-    // Initialize activity state from DB if not already in memory (handles server restart / fresh load)
-    const messages = await chats.listMessages(chatId);
-    initializeActivityFromMessages(
-      chatId,
-      messages as Array<{ role: string; createdAt?: string; characterId?: string | null }>,
-    );
+    // Initialize activity state from DB once per process (handles server
+    // restart / fresh load). Gated so REPEAT idle checks make NO lazy-table
+    // queries (#5592 PR-B): an unconditional transcript read here would load
+    // and LRU-touch every scheduled chat's whole storage unit on every 30s
+    // poll, churning the Termux eviction cap and out-competing the chat the
+    // user is actually looking at. After the seed, the in-memory activity
+    // tracker answers everything this route needs, and an evicted unit stays
+    // on disk until a message is genuinely due.
+    if (!seededAutonomousActivityChats.has(chatId)) {
+      seededAutonomousActivityChats.add(chatId);
+      const seedMessages = await chats.listMessages(chatId);
+      initializeActivityFromMessages(
+        chatId,
+        seedMessages as Array<{ role: string; createdAt?: string; characterId?: string | null }>,
+      );
+    }
 
     // Filter out characters busy in an active scene
     const sceneBusyCharIds: string[] = meta.sceneBusyCharIds ?? [];
@@ -962,12 +981,16 @@ export async function conversationRoutes(app: FastifyInstance) {
       return reply.send({ shouldTrigger: false, characterIds: [], reason: "scene_active", inactivityMs: 0 });
     }
 
-    // Skip autonomous while a turn-game (UNO, etc.) is active. The game's bot turns
-    // already drive generation; an autonomous message here would seize the chat's
-    // single generation lock and 409 the next bot-turn request, stalling the game.
-    if (await getActiveTurnGame(app.db, chatId)) {
-      return reply.send({ shouldTrigger: false, characterIds: [], reason: "turn_game_active", inactivityMs: 0 });
-    }
+    // Turn-game guard (UNO, etc.): an autonomous message would seize the
+    // chat's single generation lock and 409 the next bot-turn request,
+    // stalling the game. Checked LAZILY at the trigger points below instead
+    // of on every idle tick — the gameEngineState read loads the chat's
+    // storage unit, and an idle check must stay storage-free (#5592 PR-B).
+    // Only observable difference: an idle check during an active game now
+    // reports the ordinary not-due reason instead of "turn_game_active".
+    const turnGameBlocks = async () => Boolean(await getActiveTurnGame(app.db, chatId));
+    const turnGameActiveResponse = () =>
+      reply.send({ shouldTrigger: false, characterIds: [], reason: "turn_game_active", inactivityMs: 0 });
 
     const result = checkAutonomousMessaging(chatId, filteredSchedules, isGroup, {
       maxFollowups: req.body.maxFollowups,
@@ -978,6 +1001,7 @@ export async function conversationRoutes(app: FastifyInstance) {
     if (result.reason === "generation_in_progress") return reply.send(result);
 
     if (result.shouldTrigger) {
+      if (await turnGameBlocks()) return turnGameActiveResponse();
       let blockedReason: "daily_budget_exhausted" | "intent_cooldown" | null = null;
       for (const characterId of result.characterIds) {
         const evaluation = evaluateAutonomousCandidate(
@@ -1007,6 +1031,7 @@ export async function conversationRoutes(app: FastifyInstance) {
     );
     if (longAbsence) {
       if ("blockedReason" in longAbsence) return reply.send(blockedAutonomousResponse(longAbsence.blockedReason));
+      if (await turnGameBlocks()) return turnGameActiveResponse();
       const state = getActivityState(chatId);
       const generationStartedAt = markGenerationInProgress(chatId);
       return reply.send({
@@ -1036,10 +1061,14 @@ export async function conversationRoutes(app: FastifyInstance) {
         return status !== "offline";
       });
 
-      if (onlineCharIds.length > 0 && messages.length > 0) {
-        // Check if the last message (or consecutive last messages) are all from the user
-        const last = messages[messages.length - 1]!;
-        if (last.role === "user") {
+      // The tracker's lastMessageRole substitutes for reading the transcript
+      // (#5592 PR-B): seeded from the last message once, then kept live by
+      // the send paths. A trailing narrator/system message recorded only in
+      // the transcript can differ, but the catch-up reply is still sensible
+      // in that corner and the idle path stays storage-free.
+      if (onlineCharIds.length > 0) {
+        if (getActivityState(chatId)?.lastMessageRole === "user") {
+          if (await turnGameBlocks()) return turnGameActiveResponse();
           let blockedReason: "daily_budget_exhausted" | "intent_cooldown" | null = null;
           for (const catchUpCharacterId of onlineCharIds) {
             const evaluation = evaluateAutonomousCandidate(

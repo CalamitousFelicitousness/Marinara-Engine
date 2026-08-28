@@ -88,11 +88,14 @@ export function AudioSourceFields({
   }, [endpointOverridden, source]);
 
   const catalogScope = useMemo(() => ({ connectionId }), [connectionId]);
+  // Voices are per model where a source publishes them, so the picker follows
+  // the model on screen rather than waiting for a save.
+  const voiceScope = useMemo(() => ({ connectionId, model }), [connectionId, model]);
   const {
     data: voicesData,
     isFetching: fetchingVoices,
     refetch: refetchVoices,
-  } = useTTSVoices(source, catalogScope, Boolean(connectionId));
+  } = useTTSVoices(source, voiceScope, Boolean(connectionId));
   const { data: modelsData, isFetching: fetchingModels } = useTTSModels(source, catalogScope, Boolean(connectionId));
 
   const voiceOptions = useMemo(() => {

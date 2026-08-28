@@ -3041,6 +3041,7 @@ export function GameNarration({
   }, [
     cacheGameVoiceEntry,
     disableVoiceGeneration,
+    gameAudioConnectionId,
     gameNpcs,
     gameVoiceConfigSignature,
     gameVoiceEnabled,

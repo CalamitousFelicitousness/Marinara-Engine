@@ -38,19 +38,23 @@ import {
 export interface AudioVoiceCastingProps {
   connectionId: string;
   source: AudioGenerationSource;
+  /** The model on screen, since voices are per model where a source publishes them. */
+  model: string;
   value: AudioConnectionSettings;
   onChange: (next: AudioConnectionSettings) => void;
 }
 
-export function AudioVoiceCasting({ connectionId, source, value, onChange }: AudioVoiceCastingProps) {
+export function AudioVoiceCasting({ connectionId, source, model, value, onChange }: AudioVoiceCastingProps) {
   const { t: localizeUi } = useUiTranslation();
   const [expanded, setExpanded] = useState(false);
   const { data: characters } = useCharacters();
-  const catalogScope = useMemo(() => ({ connectionId }), [connectionId]);
+  const catalogScope = useMemo(() => ({ connectionId, model }), [connectionId, model]);
   const { data: voicesData, isFetching } = useTTSVoices(source, catalogScope, Boolean(connectionId) && expanded);
 
   const patch = (next: Partial<AudioConnectionSettings>) => onChange({ ...value, ...next });
-  const assignments = value.voiceAssignments ?? [];
+  // Stable when unset, so the memo below is not rebuilt on every render by a
+  // fresh empty array.
+  const assignments = useMemo(() => value.voiceAssignments ?? [], [value.voiceAssignments]);
   const perCharacter = value.voiceMode === "per-character";
 
   const voiceOptions = useMemo<VoiceOption[]>(() => {

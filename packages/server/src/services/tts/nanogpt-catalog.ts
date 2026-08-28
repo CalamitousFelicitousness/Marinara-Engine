@@ -3,12 +3,15 @@
 // ──────────────────────────────────────────────
 // NanoGPT fronts several speech backends behind one OpenAI-shaped endpoint, and
 // the voice vocabulary is per backend, not per account: Kokoro wants af_bella,
-// the OpenAI models want alloy, ElevenLabs wants a name. A single voice list
-// would be wrong for two thirds of the models, so voices resolve from the
-// selected model.
+// the OpenAI models want alloy, ElevenLabs wants a name, Gemini wants Zephyr.
 //
-// The model list is fetched from /audio-models when a key is present; these are
-// the fallback for an unkeyed card and for a listing that fails.
+// /audio-models publishes each model's own voices in supported_parameters.voices
+// and answers without a key, so that listing is the source of truth. There is no
+// /v1/voices endpoint; the one the OpenAI-shaped docs mention returns 404 here.
+//
+// The tables below are the offline fallback for a listing that cannot be
+// reached. They are approximations: the published lists disagree with them on
+// counts for every family, so they must never outrank a listing that answered.
 //
 // Docs: https://docs.nano-gpt.com/api-reference/text-to-speech
 
@@ -83,6 +86,14 @@ interface NanoGptAudioModelRow {
   id?: unknown;
   name?: unknown;
   capabilities?: { text_to_speech?: unknown } | null;
+  supported_parameters?: { voices?: unknown } | null;
+}
+
+export interface NanoGptTtsModel {
+  id: string;
+  name: string;
+  /** Voices this model accepts, as published. Empty when the row omits them. */
+  voices: string[];
 }
 
 /**
@@ -90,11 +101,11 @@ interface NanoGptAudioModelRow {
  * capability flag is re-checked because an unfiltered response would otherwise
  * offer transcription models as voices.
  */
-export function parseNanoGptModelOptions(payload: unknown): Array<{ id: string; name: string }> {
+export function parseNanoGptModelOptions(payload: unknown): NanoGptTtsModel[] {
   const rows = (payload as { data?: unknown } | null)?.data;
   if (!Array.isArray(rows)) return [];
 
-  const options: Array<{ id: string; name: string }> = [];
+  const options: NanoGptTtsModel[] = [];
   const seen = new Set<string>();
   for (const row of rows as NanoGptAudioModelRow[]) {
     if (!row || typeof row !== "object") continue;
@@ -102,7 +113,29 @@ export function parseNanoGptModelOptions(payload: unknown): Array<{ id: string; 
     if (!id || seen.has(id)) continue;
     if (row.capabilities && row.capabilities.text_to_speech === false) continue;
     seen.add(id);
-    options.push({ id, name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : id });
+    const published = row.supported_parameters?.voices;
+    const voices = Array.isArray(published)
+      ? published
+          .filter((voice): voice is string => typeof voice === "string" && voice.trim().length > 0)
+          .map((v) => v.trim())
+      : [];
+    options.push({
+      id,
+      name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : id,
+      voices: [...new Set(voices)],
+    });
   }
   return options;
+}
+
+/**
+ * Voices the listing publishes for one model.
+ * Empty means the listing answered but does not describe this model, which is
+ * the case for a hand-typed id. Guessing a family's voices from the id is how
+ * Gemini models ended up offering OpenAI's, so absence stays absence.
+ */
+export function nanoGptVoicesForModel(models: readonly NanoGptTtsModel[], model: string): string[] {
+  const wanted = model.trim().toLowerCase();
+  if (!wanted) return [];
+  return models.find((entry) => entry.id.trim().toLowerCase() === wanted)?.voices ?? [];
 }

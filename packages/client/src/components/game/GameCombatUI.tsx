@@ -905,7 +905,7 @@ export function GameCombatUI({
     }
 
     return lines;
-  }, [combatVoiceConfigSignature, renderedCombatDialogue, ttsConfig, voicedCombatSpeakerSet]);
+  }, [combatSpeechEnabled, combatVoiceConfigSignature, renderedCombatDialogue, ttsConfig, voicedCombatSpeakerSet]);
 
   const stopCombatVoicePlayback = useCallback(() => {
     combatVoiceSequenceRef.current += 1;
@@ -1113,7 +1113,7 @@ export function GameCombatUI({
         }
       })();
     }
-  }, [combatVoiceLines, ttsConfig]);
+  }, [combatAudioConnectionId, combatVoiceLines, ttsConfig]);
 
   useEffect(() => {
     const groupKey = combatVoiceLines.map((line) => line.voiceKey).join("|");

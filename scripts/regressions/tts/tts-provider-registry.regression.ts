@@ -12,6 +12,7 @@ import { createTTSProvider } from "../../../packages/server/src/services/tts/pro
 import {
   NANOGPT_FALLBACK_TTS_MODELS,
   nanoGptModelFamily,
+  nanoGptVoicesForModel,
   parseNanoGptModelOptions,
 } from "../../../packages/server/src/services/tts/nanogpt-catalog.ts";
 import { ttsConfigSchema, type TTSConfig } from "../../../packages/shared/src/types/tts.js";
@@ -321,8 +322,8 @@ for (const [source, expected] of [
   assert.deepEqual(
     parsed,
     [
-      { id: "Kokoro-82m", name: "Kokoro 82M" },
-      { id: "tts-1", name: "tts-1" },
+      { id: "Kokoro-82m", name: "Kokoro 82M", voices: [] },
+      { id: "tts-1", name: "tts-1", voices: [] },
     ],
     "keeps TTS rows in order, names them, and drops STT/blank/duplicate/malformed rows",
   );
@@ -334,6 +335,52 @@ for (const [source, expected] of [
   for (const id of NANOGPT_FALLBACK_TTS_MODELS) {
     assert.notEqual(nanoGptModelFamily(id), "other", `${id}: a seeded model must map to a known voice family`);
   }
+}
+
+// ── A model's published voices outrank anything guessed from its id ──
+// NanoGPT carries each model's vocabulary in supported_parameters.voices and
+// answers /audio-models without a key. Guessing instead is how a Gemini model
+// came to offer alloy and coral: it matches no known prefix, and the family
+// fallback handed back OpenAI's list as though it were authoritative.
+{
+  const listing = {
+    object: "list",
+    data: [
+      {
+        id: "gemini-3.1-flash-tts-preview",
+        name: "Gemini 3.1 Flash TTS Preview",
+        capabilities: { text_to_speech: true },
+        supported_parameters: { voices: ["Zephyr", "Puck", "Kore", "Zephyr", "  ", 7, null] },
+      },
+      { id: "tts-1", supported_parameters: { voices: ["alloy", "ash"] } },
+      { id: "Kokoro-82m", supported_parameters: {} },
+    ],
+  };
+  const models = parseNanoGptModelOptions(listing);
+
+  assert.deepEqual(
+    models[0]?.voices,
+    ["Zephyr", "Puck", "Kore"],
+    "published voices are read, deduped, and stripped of blank and non-string entries",
+  );
+  assert.deepEqual(models[2]?.voices, [], "a row that publishes none reports none rather than inventing them");
+
+  assert.deepEqual(
+    nanoGptVoicesForModel(models, "Gemini-3.1-Flash-TTS-Preview"),
+    ["Zephyr", "Puck", "Kore"],
+    "the lookup matches the id regardless of case, since the dropdown and the saved value can differ",
+  );
+  assert.deepEqual(
+    nanoGptVoicesForModel(models, "some-model-typed-by-hand"),
+    [],
+    "a model the listing does not describe yields nothing, never another backend's voices",
+  );
+
+  // The regression that started this: the id belongs to no known family, so any
+  // id-derived answer is a guess. It must not be OpenAI's list.
+  assert.equal(nanoGptModelFamily("gemini-3.1-flash-tts-preview"), "other", "Gemini matches no known prefix");
+  const guessed = nanoGptVoicesForModel(models, "gemini-3.1-flash-tts-preview");
+  assert.ok(!guessed.includes("alloy") && !guessed.includes("coral"), "Gemini must never be offered OpenAI voices");
 }
 
 console.info("TTS provider registry regression passed.");

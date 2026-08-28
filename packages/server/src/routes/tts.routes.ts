@@ -53,7 +53,9 @@ import {
   NANOGPT_KOKORO_VOICES,
   NANOGPT_OPENAI_VOICES,
   nanoGptModelFamily,
+  nanoGptVoicesForModel,
   parseNanoGptModelOptions,
+  type NanoGptTtsModel,
 } from "../services/tts/nanogpt-catalog.js";
 import {
   LEGACY_TTS_CONFIG_SENTINEL,
@@ -166,6 +168,8 @@ const speakSchema = z.object({
 
 const ttsQuerySchema = z.object({
   connectionId: z.string().max(120).optional(),
+  /** Ask about this model instead of the saved one. Voices are per model where a source publishes them. */
+  model: z.string().max(200).optional(),
 });
 
 const roleplaySpeakerExtractorSchema = z.object({
@@ -599,8 +603,13 @@ function nanoGptVoiceOptions(model: string): VoiceOption[] {
       }));
     case "elevenlabs":
       return NANOGPT_ELEVENLABS_VOICES.map((voice) => ({ id: voice, name: voice, category: "NanoGPT ElevenLabs" }));
-    default:
+    case "openai":
       return NANOGPT_OPENAI_VOICES.map((voice) => ({ id: voice, name: voice, category: "OpenAI built-in" }));
+    default:
+      // Gemini, Qwen, MiniMax and Inworld all land here. Offering the OpenAI
+      // voices to them was worse than offering nothing: every id was rejected,
+      // and the list looked authoritative while being wrong.
+      return [];
   }
 }
 
@@ -920,7 +929,7 @@ async function fetchElevenLabsModelOptions(baseUrl: string, apiKey: string): Pro
 }
 
 /** GET /v1/audio-models, the only listing NanoGPT exposes. */
-async function fetchNanoGptModelOptions(baseUrl: string, apiKey: string): Promise<ModelOption[]> {
+async function fetchNanoGptModelOptions(baseUrl: string, apiKey: string): Promise<NanoGptTtsModel[]> {
   const url = `${nanoGptV1BaseUrl(baseUrl)}/audio-models?type=tts&detailed=true`;
   const res = await safeFetch(url, {
     headers: nanoGptHeaders(apiKey),
@@ -939,10 +948,11 @@ const nanoGptFallbackModels = (): ModelOption[] => NANOGPT_FALLBACK_TTS_MODELS.m
 
 export async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResponse> {
   if (cfg.source === "nanogpt") {
-    if (!cfg.apiKey) return { models: nanoGptFallbackModels(), fromProvider: false, source: cfg.source };
+    // The listing answers without a key, so the model dropdown is populated
+    // before credentials are entered rather than sitting on stale fallbacks.
     const models = await fetchNanoGptModelOptions(configuredBaseUrl(cfg), cfg.apiKey);
     return {
-      models: models.length > 0 ? models : nanoGptFallbackModels(),
+      models: models.length > 0 ? models.map(({ id, name }) => ({ id, name })) : nanoGptFallbackModels(),
       fromProvider: models.length > 0,
       source: cfg.source,
     };
@@ -995,10 +1005,31 @@ export async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResp
     return voices.length > 0 ? responseFromVoiceOptions(cfg.source, voices, true) : fallbackVoices(cfg.source);
   }
 
-  // NanoGPT has no voice endpoint: the vocabulary belongs to whichever backend
-  // the selected model routes to, so it comes from the catalog.
+  // The vocabulary belongs to whichever backend the selected model routes to,
+  // and /audio-models publishes it per model, so the listing decides. The local
+  // tables only answer when it cannot be reached.
   if (cfg.source === "nanogpt") {
-    return responseFromVoiceOptions(cfg.source, nanoGptVoiceOptions(cfg.model), false);
+    const model = normalizeNanoGptTtsModelId(cfg.model || TTS_SOURCE_DEFINITIONS.nanogpt.defaultModel);
+    try {
+      const published = nanoGptVoicesForModel(
+        await fetchNanoGptModelOptions(configuredBaseUrl(cfg), cfg.apiKey),
+        model,
+      );
+      if (published.length > 0) {
+        return responseFromVoiceOptions(
+          cfg.source,
+          published.map((voice) => ({ id: voice, name: voice, category: `NanoGPT ${model}` })),
+          true,
+        );
+      }
+      // The listing answered and does not describe this model, which is what a
+      // hand-typed id looks like. Say so instead of substituting another
+      // backend's voices.
+      return responseFromVoiceOptions(cfg.source, [], false);
+    } catch (error) {
+      logger.warn(error, "NanoGPT audio-models listing failed; falling back to the local voice tables");
+      return responseFromVoiceOptions(cfg.source, nanoGptVoiceOptions(model), false);
+    }
   }
 
   if (cfg.source === "xai") {
@@ -1086,13 +1117,15 @@ export async function ttsRoutes(app: FastifyInstance) {
    * Fetches available voices from the configured provider.
    */
   app.get("/voices", async (req, reply) => {
-    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
-    // Without an explicit connection this endpoint serves the TTS settings
-    // card, which edits the blob — resolving the default audio connection here
-    // would show the card voices for a source it is not configuring.
-    const cfg = connectionId
+    const { connectionId, model } = ttsQuerySchema.parse(req.query ?? {});
+    // Without an explicit connection this endpoint answers for the app-level
+    // settings. Resolving the default audio connection here instead would
+    // describe an engine the caller did not ask about.
+    const resolved = connectionId
       ? (await resolveAudioConfig(storage, connections, connectionId)).cfg
       : await loadConfig(storage);
+    // The editor asks about the model it is showing, which may not be saved yet.
+    const cfg = model ? { ...resolved, model } : resolved;
 
     try {
       return await fetchProviderVoices(cfg);

@@ -31,11 +31,24 @@ export const ttsKeys = {
 export interface TTSCatalogScope {
   connectionId?: string;
   baseUrl?: string;
+  /**
+   * Ask about this model rather than the saved one. Sources that publish voices
+   * per model answer differently for each, so the picker would otherwise keep
+   * showing the previous model's voices until the connection was saved.
+   */
+  model?: string;
 }
 
-const scopeKey = (scope: TTSCatalogScope) => scope.connectionId ?? scope.baseUrl ?? "";
-const scopeQuery = (scope: TTSCatalogScope) =>
-  scope.connectionId ? `?connectionId=${encodeURIComponent(scope.connectionId)}` : "";
+/** What the catalog belongs to. Empty means nothing to ask about, which gates the query. */
+const scopeIdentity = (scope: TTSCatalogScope) => scope.connectionId ?? scope.baseUrl ?? "";
+const scopeKey = (scope: TTSCatalogScope) => `${scopeIdentity(scope)}\n${scope.model ?? ""}`;
+const scopeQuery = (scope: TTSCatalogScope) => {
+  const params = new URLSearchParams();
+  if (scope.connectionId) params.set("connectionId", scope.connectionId);
+  if (scope.model) params.set("model", scope.model);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
 
 // ── Config ───────────────────────────────────────
 
@@ -84,7 +97,7 @@ export function useTTSVoices(source: TTSSource, scope: TTSCatalogScope, enabled:
   return useQuery({
     queryKey: ttsKeys.voices(source, scopeKey(scope)),
     queryFn: () => api.get<TTSVoicesResponse>(`/tts/voices${scopeQuery(scope)}`),
-    enabled: enabled && Boolean(scopeKey(scope)),
+    enabled: enabled && Boolean(scopeIdentity(scope)),
     staleTime: 5 * 60_000,
     retry: 1,
   });
@@ -92,12 +105,14 @@ export function useTTSVoices(source: TTSSource, scope: TTSCatalogScope, enabled:
 
 export function useTTSModels(source: TTSSource, scope: TTSCatalogScope, enabled: boolean) {
   return useQuery({
-    queryKey: ttsKeys.models(source, scopeKey(scope)),
-    queryFn: () => api.get<TTSModelsResponse>(`/tts/models${scopeQuery(scope)}`),
+    // The model list does not vary by model, so it keys on identity alone and a
+    // model change does not refetch it.
+    queryKey: ttsKeys.models(source, scopeIdentity(scope)),
+    queryFn: () => api.get<TTSModelsResponse>(`/tts/models${scopeQuery({ connectionId: scope.connectionId })}`),
     // Derived, not a source literal: the editor decides whether to render a model
     // dropdown from the same list, and a gate that disagrees with it leaves the
     // dropdown permanently on its fallback entries.
-    enabled: enabled && TTS_SOURCES_WITH_MODEL_LISTING.includes(source) && Boolean(scopeKey(scope)),
+    enabled: enabled && TTS_SOURCES_WITH_MODEL_LISTING.includes(source) && Boolean(scopeIdentity(scope)),
     staleTime: 5 * 60_000,
     retry: 1,
   });

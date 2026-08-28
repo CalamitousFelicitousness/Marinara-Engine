@@ -2003,6 +2003,7 @@ export function ConnectionEditor() {
             <AudioVoiceCasting
               connectionId={connectionDetailId ?? ""}
               source={localAudioSource as AudioGenerationSource}
+              model={localModel}
               value={localAudioSettings}
               onChange={(next) => {
                 setLocalAudioSettings(next);

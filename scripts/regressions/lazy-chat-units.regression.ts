@@ -235,6 +235,67 @@ const shardExists = (dir: string, table: string, key: string) =>
   }
 }
 
+// ── A unit loaded DURING a flush keeps its shard file until the next flush ──
+// The stale-file cleanup pass unlinks shard files whose rows were re-homed.
+// Its marks must be captured atomically with the dirty keys at flush start:
+// reading the live map let a lazy unit load — running inside the flush's own
+// awaited writes — add a mark whose paired dirty keys the flush never saw,
+// and the cleanup then deleted the freshly loaded shard (and .bak) while its
+// rows existed only in memory. Setup: two chats whose swipe files each hold
+// one ORPHAN swipe (parent message gone), i.e. files the store re-homes into
+// the unassigned shard — the exact state that creates stale marks.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-x", [chatRow("chat-x")]);
+  writeShard(dir, "chats", "chat-a", [chatRow("chat-a")]);
+  writeShard(dir, "message_swipes", "chat-x", [swipeRow("s-x", "m-ghost-x", "orphan x")]);
+  writeShard(dir, "message_swipes", "chat-a", [swipeRow("s-a", "m-ghost-a", "orphan a")]);
+  let loadDuringFlush: (() => Promise<void>) | null = null;
+  const db = await createFileNativeDB({
+    beforeTableWrite: async (name: string) => {
+      if (name.startsWith("message_swipes/") && loadDuringFlush) {
+        const load = loadDuringFlush;
+        loadDuringFlush = null;
+        await load();
+      }
+    },
+  });
+  try {
+    // First touch of chat-x re-homes its orphan swipe: stale mark + dirty
+    // keys for the unassigned shard now exist BEFORE the flush.
+    await db.select().from(messages).where(eq(messages.chatId, "chat-x"));
+    // During that flush's swipe-shard write, chat-a loads mid-flight.
+    loadDuringFlush = async () => {
+      await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    };
+    await db._fileStore.flush(true, true);
+    assert.equal(
+      shardExists(dir, "message_swipes", "chat-a"),
+      true,
+      "a shard loaded mid-flush is NOT unlinked by that flush — its rows exist only in memory until the next one",
+    );
+    // The deferred mark processes correctly on the next flush: the orphan
+    // lands in the unassigned shard and the old file is then removed.
+    await db._fileStore.flush(true, true);
+    assert.equal(
+      shardExists(dir, "message_swipes", "chat-a"),
+      false,
+      "the deferred stale file heals on the next flush",
+    );
+    assert.deepEqual(
+      readShard(dir, "message_swipes", "orphaned-rows")
+        .map((row) => row.id)
+        .sort(),
+      ["s-a", "s-x"],
+      "both orphan swipes are on disk in the unassigned shard",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest: messages reports the harvested total; other lazy counts are omitted ──
 
 {

@@ -2845,9 +2845,21 @@ class FileTableStore {
     this.dirtyTables = new Set();
     const dirtyShards = this.dirtyShards;
     this.dirtyShards = new Map();
+    // The stale-file marks are captured IN THE SAME swap as the dirty keys
+    // (#5592 Phase 2): every stale mark is created in the same synchronous
+    // block that dirties the marked file's re-homed row keys, so a flush that
+    // sees the mark is guaranteed to also see those keys and write the rows'
+    // canonical shards BEFORE the stale file is unlinked. Reading the live
+    // map from inside saveShardedTable instead let a lazy unit load — which
+    // can run during this flush's own awaited writes — add a mark whose
+    // paired dirty keys this flush never captured, and the stale-cleanup pass
+    // then deleted a freshly loaded shard file (and its .bak) while its rows
+    // existed only in memory.
+    const staleShards = this.staleShardFiles;
+    this.staleShardFiles = new Map();
     const flush = (async () => {
       try {
-        await this.saveFileSnapshots(dirtyTables, dirtyShards);
+        await this.saveFileSnapshots(dirtyTables, dirtyShards, staleShards);
         this.lastFlushError = null;
       } catch (err) {
         this.lastFlushError = err;
@@ -2859,6 +2871,11 @@ class FileTableStore {
           const set = this.dirtyShards.get(table) ?? new Set<string>();
           for (const key of keys) set.add(key);
           this.dirtyShards.set(table, set);
+        }
+        for (const [table, encodings] of staleShards) {
+          const set = this.staleShardFiles.get(table) ?? new Set<string>();
+          for (const encoded of encodings) set.add(encoded);
+          this.staleShardFiles.set(table, set);
         }
         logger.error(err, "[file-storage] Failed to persist file-native storage");
       }
@@ -3136,10 +3153,28 @@ class FileTableStore {
       if (primaryColumn && column === primaryColumn) {
         if (meta.name === "messages") {
           const keys = new Set<string>();
+          let unresolved: Set<unknown> | null = null;
           for (const literal of literals) {
             if (typeof literal !== "string") continue; // no message anywhere carries this id
             const chatId = this.messageShardIndex.get(literal);
             if (chatId !== undefined) keys.add(chatId);
+            else (unresolved ??= new Set()).add(literal);
+          }
+          if (unresolved) {
+            // An id the complete harvest missed is either deleted (matches
+            // nothing anywhere) or a row whose chatId the harvest could not
+            // read (hand-edited shard). The resident probe covers the second
+            // case once such a row's unit has loaded; a probe miss safely
+            // stays out of scope — the row, if it exists at all, only becomes
+            // reachable when its unit loads, exactly like the eager loader's
+            // un-indexed rows only resolved through residency.
+            for (const row of this.rows(meta.name)) {
+              if (unresolved.has(row.id)) {
+                keys.add(this.shardKeyForRow(meta.name, row));
+                unresolved.delete(row.id);
+                if (unresolved.size === 0) break;
+              }
+            }
           }
           return keys;
         }
@@ -3803,8 +3838,15 @@ class FileTableStore {
               }
             }
             for (const row of usableRows) {
-              if (typeof row.id === "string" && typeof row.chatId === "string") {
-                this.messageShardIndex.set(row.id, row.chatId || UNASSIGNED_SHARD_KEY);
+              if (typeof row.id !== "string") continue;
+              // The eager loader normalized rows before indexing, which also
+              // accepted the column's dbName form — a hand-edited or
+              // externally produced shard may carry `chat_id`, and dropping
+              // it here would make the message invisible to id-scoped
+              // queries until its unit happens to load.
+              const chatId = typeof row.chatId === "string" ? row.chatId : row.chat_id;
+              if (typeof chatId === "string") {
+                this.messageShardIndex.set(row.id, chatId || UNASSIGNED_SHARD_KEY);
               }
             }
           }
@@ -4023,10 +4065,14 @@ class FileTableStore {
    * [], so deleted chats leave no permanent litter. Returns the shard-file
    * count for the manifest diagnostics.
    */
-  private async saveShardedTable(table: string, rows: Row[], dirtyKeys: Set<string>): Promise<number> {
+  private async saveShardedTable(
+    table: string,
+    rows: Row[],
+    dirtyKeys: Set<string>,
+    stale: Set<string> | undefined,
+  ): Promise<number> {
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
     this.knownShardFiles.set(table, known);
-    const stale = this.staleShardFiles.get(table);
     // Nothing dirty and nothing to repair: skip the O(rows) regroup — this
     // runs for every sharded table on each flush, so an unrelated write must
     // not scan every stored row on the 750ms flush cadence.
@@ -4048,8 +4094,9 @@ class FileTableStore {
     // canonical rewrite when an in-memory shard still maps to the name; the
     // rest are deleted AFTER the write loop, so a crash mid-flush leaves
     // duplicates (healed by the next load) rather than rows that exist only
-    // in memory. Cleared per table once the flush lands; a failed flush keeps
-    // the marks and retries.
+    // in memory. The marks arrive as flush-captured state (swapped out of the
+    // live map together with the dirty keys they were created alongside);
+    // a failed flush re-merges them and retries.
     let effectiveDirty = dirtyKeys;
     const encodedToKey = new Map<string, string>();
     if (stale && stale.size > 0) {
@@ -4111,11 +4158,18 @@ class FileTableStore {
       await unlinkIgnoringMissing(`${path}.bak`);
       known.delete(encoded);
     }
-    this.staleShardFiles.delete(table);
+    // The processed marks were swapped out of the live map by flush(); marks
+    // added DURING this flush (lazy unit loads) sit in the live map and keep
+    // their files untouched until the next flush captures them together with
+    // their paired dirty keys. A failed flush re-merges the captured marks.
     return known.size;
   }
 
-  private async saveFileSnapshots(dirtyTables: Set<string>, dirtyShards: Map<string, Set<string>>) {
+  private async saveFileSnapshots(
+    dirtyTables: Set<string>,
+    dirtyShards: Map<string, Set<string>>,
+    staleShards: Map<string, Set<string>>,
+  ) {
     mkdirSync(join(this.rootDir, "tables"), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     const tables: Record<string, number> = {};
     const shards: Record<string, number> = {};
@@ -4135,7 +4189,12 @@ class FileTableStore {
         // Sharded tables never touch the flat path — leaving them in this
         // loop's recreate-if-missing branch would silently regrow a full
         // monolith on the very next flush (#4708).
-        shards[table] = await this.saveShardedTable(table, rows, dirtyShards.get(table) ?? new Set());
+        shards[table] = await this.saveShardedTable(
+          table,
+          rows,
+          dirtyShards.get(table) ?? new Set(),
+          staleShards.get(table),
+        );
         continue;
       }
       const path = tableFilePath(this.rootDir, table);

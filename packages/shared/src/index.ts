@@ -71,6 +71,7 @@ export * from "./schemas/home-widget.schema.js";
 
 // Constants
 export * from "./constants/providers.js";
+export * from "./constants/audio-purposes.js";
 export * from "./constants/tts-sources.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";

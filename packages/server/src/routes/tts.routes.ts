@@ -10,6 +10,8 @@ import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
   normalizeMusicEnemyTier,
+  ttsSourceSupportsGameAudio,
+  GAME_AUDIO_PURPOSES,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
   ttsRoleplaySpeakerExtractorResponseSchema,
@@ -194,7 +196,7 @@ const extractedDialogueSchema = z.object({
 });
 
 const gameAudioSchema = z.object({
-  kind: z.enum(["sfx", "music"]),
+  kind: z.enum(GAME_AUDIO_PURPOSES),
   prompt: z.string().trim().min(1).max(4_100),
   /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
   audioConnectionId: z.string().optional(),
@@ -1331,8 +1333,16 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
     const { cfg } = await resolveAudioConfig(storage, connections, audioConnectionId);
     const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
-    if (cfg.source !== "elevenlabs" || !enabled) {
-      return reply.status(400).send({ error: `ElevenLabs game ${kind} generation is not enabled` });
+    if (!ttsSourceSupportsGameAudio(cfg.source, kind) || !enabled) {
+      return reply
+        .status(400)
+        .send({ error: `Game ${kind} generation is not enabled for the resolved audio connection` });
+    }
+    if (cfg.source !== "elevenlabs") {
+      // TTS_SOURCE_DEFINITIONS decides which sources MAY generate; this dispatch
+      // names the only generator that exists. A source turning its table flag on
+      // needs a generator here before the flag can mean anything.
+      return reply.status(400).send({ error: `No game ${kind} generator exists for source "${cfg.source}"` });
     }
     if (!cfg.apiKey) {
       return reply.status(400).send({ error: "ElevenLabs API key is not configured" });

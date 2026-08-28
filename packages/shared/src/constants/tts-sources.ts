@@ -19,6 +19,8 @@
 // forced response formats, auth header shape, gzip decoding) is deliberately
 // absent: it varies by model, not by source, and lives in the server providers.
 
+import type { GameAudioPurpose } from "./audio-purposes.js";
+
 /**
  * NanoGPT speech models, shown before the live /audio-models listing arrives
  * and whenever it cannot be reached. Their catalog moves, so the model field
@@ -64,6 +66,14 @@ export interface TTSSourceDefinition {
    * policy is source-blind.
    */
   baseUrlMode: "fixed" | "editable";
+  /**
+   * Whether /tts/game-audio may render sound effects with this backend. A gate,
+   * not a dispatch: the generator itself is source-specific and lives in the
+   * route, so a source turning this on needs its own generator first.
+   */
+  supportsGameSoundEffects: boolean;
+  /** Whether /tts/game-audio may compose music with this backend. Same gate rule. */
+  supportsGameMusic: boolean;
 }
 
 export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = {
@@ -78,6 +88,8 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     // Doubles as the lane for every OpenAI-compatible engine, local ones included,
     // so the address is the setting that matters here.
     baseUrlMode: "editable",
+    supportsGameSoundEffects: false,
+    supportsGameMusic: false,
   },
   elevenlabs: {
     id: "elevenlabs",
@@ -88,6 +100,8 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
+    supportsGameSoundEffects: true,
+    supportsGameMusic: true,
   },
   nanogpt: {
     id: "nanogpt",
@@ -105,6 +119,8 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
+    supportsGameSoundEffects: false,
+    supportsGameMusic: false,
   },
   pockettts: {
     id: "pockettts",
@@ -116,6 +132,8 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     recommendedChunkChars: 900,
     // Self-hosted: the port varies per install.
     baseUrlMode: "editable",
+    supportsGameSoundEffects: false,
+    supportsGameMusic: false,
   },
   xai: {
     id: "xai",
@@ -126,10 +144,18 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
+    supportsGameSoundEffects: false,
+    supportsGameMusic: false,
   },
 };
 
 /** Chunk ceiling for a source, never above what the server accepts. */
 export function ttsSourceMaxInputChars(source: TTSSourceId): number {
   return TTS_SOURCE_DEFINITIONS[source].maxInputChars;
+}
+
+/** Whether a source may generate one of the game-audio purposes. */
+export function ttsSourceSupportsGameAudio(source: TTSSourceId, purpose: GameAudioPurpose): boolean {
+  const definition = TTS_SOURCE_DEFINITIONS[source];
+  return purpose === "sfx" ? definition.supportsGameSoundEffects : definition.supportsGameMusic;
 }

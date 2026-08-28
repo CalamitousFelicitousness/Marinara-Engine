@@ -1596,6 +1596,7 @@ function defaultForColumn(column: ColumnMeta) {
  */
 const VECTOR_TEXT_COLUMNS: Record<string, ReadonlySet<string>> = {
   memory_chunks: new Set(["embedding"]),
+  lorebook_entries: new Set(["embedding"]),
 };
 
 function packVectorValue(value: unknown): unknown {

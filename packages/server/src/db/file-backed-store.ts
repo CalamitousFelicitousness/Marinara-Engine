@@ -1697,17 +1697,19 @@ function cloneRow(row: Row) {
 }
 
 /**
- * Canonical resident order for sharded rows: (createdAt, primaryKey). Boot
- * and unit reloads sort with this, and lazy-table INSERTS place rows at this
- * position too (#5592 PR-B) — so resident order is a pure function of the
- * data, and an evict/reload round trip cannot change what an orderBy-less
- * query returns.
+ * In-session resident order for lazy-table rows: createdAt only, with ties
+ * comparing EQUAL — a stable sort (and the tie-aware insert placement) then
+ * preserves insertion order among same-timestamp rows, which consumers rely
+ * on (experience-state import writes several rows in one millisecond and
+ * resolves ties to the first-inserted row). Unit reloads read one shard
+ * file, whose array order IS the flushed resident order, so an evict/reload
+ * round trip keeps orderBy-less query results identical, ties included.
+ * Boot's eager loader keeps its own (createdAt, primaryKey) comparator: it
+ * concatenates MANY shards, where the id tiebreak buys cross-shard
+ * determinism — restart tie order is unchanged from released behavior.
  */
-function compareRowOrder(primaryKey: string | null | undefined, a: Row, b: Row) {
-  return (
-    String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
-    String(primaryKey ? a[primaryKey] : "").localeCompare(String(primaryKey ? b[primaryKey] : ""))
-  );
+function compareRowOrder(a: Row, b: Row) {
+  return String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
 }
 
 function getMeta(table: Table | string) {
@@ -2820,7 +2822,7 @@ class FileTableStore {
                   // residency history (#5592 PR-B). Scan from the end: new
                   // rows are usually newest, making this O(1) in practice.
                   let position = nextRows.length;
-                  while (position > 0 && compareRowOrder(meta.primaryKey, nextRows[position - 1]!, row) > 0) {
+                  while (position > 0 && compareRowOrder(nextRows[position - 1]!, row) > 0) {
                     position -= 1;
                   }
                   nextRows.splice(position, 0, row);
@@ -3611,7 +3613,7 @@ class FileTableStore {
       }
     }
     if (added.length === 0 && replacements.size === 0) return keys;
-    const compareRows = (a: Row, b: Row) => compareRowOrder(primaryKey, a, b);
+    const compareRows = compareRowOrder;
     const swapReplaced = (row: Row) => {
       const id = primaryKey && typeof row[primaryKey] === "string" ? (row[primaryKey] as string) : null;
       return (id && replacements.get(id)) || row;

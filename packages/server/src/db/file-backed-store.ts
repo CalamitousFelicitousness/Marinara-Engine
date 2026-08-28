@@ -1468,7 +1468,66 @@ function defaultForColumn(column: ColumnMeta) {
   return null;
 }
 
+/**
+ * Columns whose JSON-array-of-floats string values are held in memory as
+ * Float64Array (#5592 Phase 1). Embeddings are the single largest block in a
+ * heavy profile's heap: an ~8 KB one-byte string per chunk becomes ~6 KB of
+ * off-V8-heap ArrayBuffer, and recall consumes the parsed vector directly
+ * instead of JSON.parsing every chunk per query. On disk nothing changes —
+ * rows are serialized back to the exact original text (packVectorValue packs
+ * only when the round trip is byte-identical), so this needs no
+ * STORAGE_VERSION bump and no migration.
+ */
+const VECTOR_TEXT_COLUMNS: Record<string, ReadonlySet<string>> = {
+  memory_chunks: new Set(["embedding"]),
+};
+
+function packVectorValue(value: unknown): unknown {
+  if (typeof value !== "string" || value.length < 2 || value.charCodeAt(0) !== 91 /* "[" */) return value;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed) || parsed.length === 0) return value;
+    const vector = new Float64Array(parsed.length);
+    for (let index = 0; index < parsed.length; index += 1) {
+      const entry: unknown = parsed[index];
+      if (typeof entry !== "number") return value;
+      vector[index] = entry;
+    }
+    // Pack only when re-serialization is byte-identical, so a flush can never
+    // rewrite a stored value — non-canonical text (e.g. "1.0") stays a string.
+    if (JSON.stringify(Array.from(vector)) !== value) return value;
+    return vector;
+  } catch {
+    return value;
+  }
+}
+
+function unpackVectorValue(value: unknown): unknown {
+  if (value instanceof Float64Array) return JSON.stringify(Array.from(value));
+  return value;
+}
+
+/**
+ * Serialize rows for a shard/table file, restoring packed vector columns to
+ * their original strings. A packed Float64Array would otherwise stringify as
+ * an index-keyed object and corrupt the shard. Tables without vector columns
+ * pass through with zero copying.
+ */
+function serializeTableRows(table: string, rows: Row[]): string {
+  const vectorColumns = VECTOR_TEXT_COLUMNS[table];
+  if (!vectorColumns) return JSON.stringify(rows);
+  return JSON.stringify(
+    rows.map((row) => {
+      for (const key of vectorColumns) {
+        if (row[key] instanceof Float64Array) return unpackVectorColumns(table, { ...row });
+      }
+      return row;
+    }),
+  );
+}
+
 function normalizeRow(meta: TableMeta, row: Row) {
+  const vectorColumns = VECTOR_TEXT_COLUMNS[meta.name];
   const normalized: Row = {};
   for (const column of meta.columns) {
     if (Object.prototype.hasOwnProperty.call(row, column.key)) {
@@ -1477,6 +1536,9 @@ function normalizeRow(meta: TableMeta, row: Row) {
       normalized[column.key] = row[column.dbName] ?? null;
     } else {
       normalized[column.key] = defaultForColumn(column);
+    }
+    if (vectorColumns?.has(column.key)) {
+      normalized[column.key] = packVectorValue(normalized[column.key]);
     }
   }
   return normalized;
@@ -1638,6 +1700,29 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   }
 }
 
+/**
+ * Membership sets resolved once per condition object (#5592 Phase 0). The
+ * per-row form re-materialized the values array and ran Array.includes for
+ * EVERY scanned row — O(rows x values) plus one array allocation per row, the
+ * quadratic factor behind the #3402 post-generation stall. Entries that are
+ * neither columns nor arrays are exactly the ones resolveValue returns
+ * unchanged, so their resolved set is row-independent and cacheable. Condition
+ * objects are created fresh by file-query.ts and never mutated, which makes
+ * the WeakMap key stable even for module-scope conditions.
+ */
+const membershipSetCache = new WeakMap<object, Set<unknown>>();
+
+function membershipSet(condition: { values: unknown[] }): Set<unknown> | null {
+  const cached = membershipSetCache.get(condition);
+  if (cached) return cached;
+  for (const entry of condition.values) {
+    if (isColumn(entry) || Array.isArray(entry)) return null;
+  }
+  const set = new Set(condition.values);
+  membershipSetCache.set(condition, set);
+  return set;
+}
+
 function evaluateCondition(condition: Condition, ctx: RowContext): boolean {
   if (!condition) return true;
   if (!isFileCondition(condition)) return false;
@@ -1653,6 +1738,11 @@ function evaluateCondition(condition: Condition, ctx: RowContext): boolean {
   }
   if (condition.kind === "file-membership") {
     const value = resolveValue(condition.value, ctx);
+    // Set.has and Array.includes both compare with SameValueZero, so the fast
+    // path is behavior-identical; the per-row path remains for the (currently
+    // unused) case of column- or array-valued membership entries.
+    const set = membershipSet(condition);
+    if (set) return condition.operator === "in" ? set.has(value) : !set.has(value);
     const values = condition.values.map((entry) => resolveValue(entry, ctx));
     return condition.operator === "in" ? values.includes(value) : !values.includes(value);
   }
@@ -1693,12 +1783,28 @@ function orderSpec(ordering: Ordering, ctx: RowContext): { value: unknown; direc
   return { value: undefined, direction: "asc" };
 }
 
+/** Restore packed vector columns to their original string form on a row copy. */
+function unpackVectorColumns(table: string, row: Row): Row {
+  const vectorColumns = VECTOR_TEXT_COLUMNS[table];
+  if (!vectorColumns) return row;
+  for (const key of vectorColumns) {
+    if (row[key] instanceof Float64Array) row[key] = unpackVectorValue(row[key]);
+  }
+  return row;
+}
+
 function projectRow(ctx: RowContext, projection?: Projection) {
   if (!projection) {
+    // Unprojected selects are the compatibility surface (backup export,
+    // mari-db raw reads, generic row consumers): they receive the original
+    // string form. Projected selects keep the packed Float64Array — the fast
+    // path memory recall reads (#5592 Phase 1).
     if (ctx.joined) {
-      return Object.fromEntries(Object.entries(ctx.rows).map(([table, row]) => [table, cloneRow(row)]));
+      return Object.fromEntries(
+        Object.entries(ctx.rows).map(([table, row]) => [table, unpackVectorColumns(table, cloneRow(row))]),
+      );
     }
-    return cloneRow(ctx.rows[ctx.baseTable] ?? {});
+    return unpackVectorColumns(ctx.baseTable, cloneRow(ctx.rows[ctx.baseTable] ?? {}));
   }
 
   const output: Row = {};
@@ -1744,6 +1850,18 @@ class FileTableStore {
    * rewrites each canonically or deletes it; cleared per table afterwards.
    */
   private staleShardFiles = new Map<string, Set<string>>();
+  /**
+   * Tables whose in-memory rows are the complete row set (#5592 Phase 0).
+   * Today every table is fully resident from boot, so this always contains
+   * every table and the flush's "dirty key with no rows means the shard was
+   * emptied" inference below stays valid. A future partial-residency mode
+   * (#5592 Phase 2) must remove evicted tables from this set BEFORE dropping
+   * rows — the shard-deletion gate in saveShardedTable refuses to unlink files
+   * for tables not in it, because "no resident rows" would no longer prove
+   * "emptied by deletes". Any skipped key must then be re-queued as dirty so a
+   * later flush resolves it once residency is restored.
+   */
+  private fullyResidentTables = new Set<string>(FILE_BACKED_TABLES);
   /**
    * messageIds of swipes currently resolving to the unassigned shard. When
    * such a message is later INSERTED, its swipes silently regroup into the
@@ -2236,9 +2354,13 @@ class FileTableStore {
       else rowsByShard.set(key, [row]);
     }
     for (const [key, shardRows] of rowsByShard) {
-      await atomicWriteFile(shardFilePath(this.rootDir, table, encodeShardKey(key)), JSON.stringify(shardRows), {
-        refreshBackup: true,
-      });
+      await atomicWriteFile(
+        shardFilePath(this.rootDir, table, encodeShardKey(key)),
+        serializeTableRows(table, shardRows),
+        {
+          refreshBackup: true,
+        },
+      );
     }
 
     // Only after EVERY shard write: rename the monolith and its .bak aside.
@@ -2414,12 +2536,26 @@ class FileTableStore {
     };
   }
 
+  /**
+   * Single-table WHERE evaluation shared by count() and the no-join select path
+   * (#5592 Phase 0). One RowContext is reused across the whole scan: the
+   * evaluator reads it synchronously and never retains the reference, so
+   * per-row context allocation — previously two objects for EVERY row of the
+   * table before any filtering — only happens for rows that match, in the
+   * callers that need real contexts downstream.
+   */
+  *matchingRows(meta: TableMeta, condition: Condition | undefined): IterableIterator<Row> {
+    const ctx: RowContext = { rows: {}, baseTable: meta.name, joined: false };
+    for (const row of this.rows(meta.name)) {
+      ctx.rows[meta.name] = row;
+      if (evaluateCondition(condition, ctx)) yield row;
+    }
+  }
+
   count(table: Table, condition?: Condition) {
     const meta = getMeta(table);
     let count = 0;
-    for (const row of this.rows(meta.name)) {
-      if (evaluateCondition(condition, this.contextForRow(meta, row))) count += 1;
-    }
+    for (const _row of this.matchingRows(meta, condition)) count += 1;
     return count;
   }
 
@@ -3032,8 +3168,11 @@ class FileTableStore {
     // chats-driven alternative would strand forever. Per-shard recovery uses
     // the exact per-file pipeline the flat loop uses (.bak fallback, malformed
     // row quarantine, normalizeRow). Order matters: messages first, so the
-    // shard index exists before swipes need it.
-    for (const table of SHARDED_TABLES) {
+    // messageId->chatId shard index exists before message_swipes resolves
+    // against it — enforced structurally here rather than by the declaration
+    // order of FILE_BACKED_TABLES (#5592 Phase 0).
+    const shardLoadOrder = ["messages", ...SHARDED_TABLES.filter((table) => table !== "messages")];
+    for (const table of shardLoadOrder) {
       const meta = getMeta(table);
       const dir = shardDirPath(this.rootDir, table);
       let entries: string[] = [];
@@ -3280,7 +3419,7 @@ class FileTableStore {
     for (const [key, shardRows] of rowsByShard) {
       const encoded = encodeShardKey(key);
       if (!effectiveDirty.has(key) && known.has(encoded)) continue;
-      const serializedRows = JSON.stringify(shardRows);
+      const serializedRows = serializeTableRows(table, shardRows);
       await this.testHooks?.beforeTableWrite?.(`${table}/${encoded}`, serializedRows);
       const path = shardFilePath(this.rootDir, table, encoded);
       await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
@@ -3302,6 +3441,12 @@ class FileTableStore {
     }
     for (const key of effectiveDirty) {
       if (rowsByShard.has(key)) continue;
+      // A dirty key with no rows in the regroup means the shard was emptied by
+      // deletes ONLY while the table's full row set is resident. Positive
+      // evidence, not inference from absence: under partial residency (#5592
+      // Phase 2) an evicted shard would be indistinguishable from an emptied
+      // one, and unlinking here would destroy its file and backup.
+      if (!this.fullyResidentTables.has(table)) continue;
       const encoded = encodeShardKey(key);
       if (!known.has(encoded)) continue;
       const path = shardFilePath(this.rootDir, table, encoded);
@@ -3330,7 +3475,7 @@ class FileTableStore {
       }
       const path = tableFilePath(this.rootDir, table);
       if (dirtyTables.has(table) || !existsSync(path)) {
-        const serializedRows = JSON.stringify(rows);
+        const serializedRows = serializeTableRows(table, rows);
         await this.testHooks?.beforeTableWrite?.(table, serializedRows);
         await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
       }
@@ -3403,6 +3548,16 @@ class SelectQuery implements SelectQueryBuilder<any> {
   }
 
   async run() {
+    // No-join fast path (#5592 Phase 0): filter raw rows through the shared
+    // scan and build contexts only for matches. Joined queries keep the eager
+    // context array below — the join loop needs a context per base row.
+    if (this.joins.length === 0) {
+      const matched: RowContext[] = [];
+      for (const row of this.store.matchingRows(this.fromMeta, this.condition)) {
+        matched.push(this.store.contextForRow(this.fromMeta, row));
+      }
+      return this.finish(matched);
+    }
     let contexts = this.store.rows(this.fromMeta.name).map((row) => this.store.contextForRow(this.fromMeta, row));
 
     for (const join of this.joins) {
@@ -3424,7 +3579,11 @@ class SelectQuery implements SelectQueryBuilder<any> {
     }
 
     contexts = contexts.filter((ctx) => evaluateCondition(this.condition, ctx));
+    return this.finish(contexts);
+  }
 
+  /** Ordering, offset/limit, and projection shared by both run() paths. */
+  private finish(contexts: RowContext[]) {
     if (this.orderings.length > 0) {
       contexts = [...contexts].sort((left, right) => {
         for (const ordering of this.orderings) {

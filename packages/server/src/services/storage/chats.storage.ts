@@ -591,21 +591,22 @@ async function invalidateMemoryChunksFrom(db: DB, chatId: string, createdAt: str
 }
 
 /**
- * Count swipes per message id. Avoids `inArray(messageSwipes.messageId, ids)`,
- * which the file-native store evaluates as `ids.includes()` for every swipe row
- * (re-materializing the ids array each row) — O(swipeRows * ids) = O(n^2) for a
- * large chat and a prime cause of the post-generation stall (#3402). One scan of
- * the swipes table + a Set of the wanted ids is O(totalSwipes) instead.
+ * Count swipes per message id, scoped to the requested messages. The WHERE-less
+ * scan this replaces existed because `inArray` used to cost O(ids) plus an array
+ * allocation per scanned row (#3402); the store now resolves membership sets
+ * once per condition, so the scoped form is O(totalSwipes + ids) — the store
+ * still walks every swipe row, but nonmatching rows are no longer materialized
+ * or handed back for JS-side filtering (#5592 Phase 0).
  */
 async function countSwipesByMessageId(db: DB, ids: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   if (ids.length === 0) return counts;
-  const wanted = new Set(ids);
-  const rows = await db.select({ messageId: messageSwipes.messageId }).from(messageSwipes);
+  const rows = await db
+    .select({ messageId: messageSwipes.messageId })
+    .from(messageSwipes)
+    .where(inArray(messageSwipes.messageId, ids));
   for (const row of rows) {
-    if (wanted.has(row.messageId)) {
-      counts.set(row.messageId, (counts.get(row.messageId) ?? 0) + 1);
-    }
+    counts.set(row.messageId, (counts.get(row.messageId) ?? 0) + 1);
   }
   return counts;
 }
@@ -2029,15 +2030,14 @@ export function createChatsStorage(db: DB) {
     },
 
     /**
-     * Read swipe rows for a message set with one linear file-store scan.
-     * The file-native store scans the table for `inArray` too, where membership
-     * is O(ids) per row; chunking that query would also rescan the table.
+     * Read swipe rows for a message set. Scoped via `inArray`, which the store
+     * now evaluates against a per-condition Set (#3402's cost is gone), so only
+     * the matching rows are cloned instead of every swipe in the install
+     * (#5592 Phase 0).
      */
     async listSwipesByMessageIds(messageIds: string[]) {
       if (messageIds.length === 0) return [];
-      const wanted = new Set(messageIds);
-      const rows = await db.select().from(messageSwipes);
-      return rows.filter((row) => wanted.has(row.messageId));
+      return db.select().from(messageSwipes).where(inArray(messageSwipes.messageId, messageIds));
     },
 
     async addSwipe(messageId: string, content: string, silent?: boolean) {

@@ -90,11 +90,7 @@ import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
 import { cn, generateClientId } from "../../lib/utils";
-import {
-  filterAudioGenerationConnections,
-  filterLanguageGenerationConnections,
-  isConnectionFlagTrue,
-} from "../../lib/connection-filters";
+import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { gameAssetFileUrl } from "../../lib/game-asset-urls";
 import { audioManager } from "../../lib/game-audio";
 import {
@@ -113,7 +109,7 @@ import { characterNamesMatch, findNamedEntry } from "../../lib/game-character-na
 import { normalizeGameSegmentEdit, serializeGameSegmentEdit, type GameSegmentEdit } from "../../lib/game-segment-edits";
 import { findReplayStoryboardKeyframe } from "../../lib/game-storyboard-keyframes";
 import { useSceneAnalysis } from "../../hooks/use-scene-analysis";
-import { useTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
@@ -2426,39 +2422,25 @@ function GameSurfaceComponent({
   const useCustomGameMusic = gameMusicDjEnabled && musicPlayerSource === "custom";
   const useJsonMusicDjGameMusic = useYoutubeGameMusic || useCustomGameMusic;
   const useMusicDjPlayerMusic = useSpotifyGameMusic || useJsonMusicDjGameMusic;
-  const { data: ttsConfig } = useTTSConfig();
   const activeGameMetaId = typeof chatMeta.gameId === "string" ? chatMeta.gameId : "";
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
-  // Game audio capability: the game's audio connection (explicit pick, else the
-  // category default, else the fallback) wins; the legacy TTS settings blob
-  // still gates setups that predate audio connections. Mirrors the server's
-  // resolveAudioConfig order.
-  const gameAudioConnection = useMemo(() => {
-    // Quarantined (review-required) imports are refused by the server's
-    // resolution (getWithKey/getDefaultForAudio return null for them), so
-    // they must not drive capability gating here either.
-    const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
-    const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
-    return (
-      (explicitId ? rows.find((connection) => connection.id === explicitId) : undefined) ??
-      rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
-      rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
-      null
-    );
-  }, [connectionsList, chatMeta.gameAudioConnectionId]);
-  const gameAudioConnectionIsElevenLabs =
-    gameAudioConnection != null &&
-    ((gameAudioConnection.audioSource as string | null) ?? "elevenlabs") === "elevenlabs";
+  // The game's own pick, or nothing, in which case the server resolves the
+  // category default. Asking the server rather than re-deriving its order here
+  // keeps one answer for which engine this game speaks and scores with.
+  const explicitGameAudioId =
+    typeof chatMeta.gameAudioConnectionId === "string" && chatMeta.gameAudioConnectionId
+      ? chatMeta.gameAudioConnectionId
+      : undefined;
+  const { data: effectiveTts } = useEffectiveTTSConfig(explicitGameAudioId);
+  const ttsConfig = effectiveTts?.config;
   const generateGameSoundEffects =
-    (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioSoundEffects)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameSoundEffects === true) &&
+    effectiveTts?.resolvedSource === "elevenlabs" &&
+    ttsConfig?.elevenLabsGameSoundEffects === true &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
-    (gameAudioConnection
-      ? gameAudioConnectionIsElevenLabs && isConnectionFlagTrue(gameAudioConnection.audioMusic)
-      : ttsConfig?.source === "elevenlabs" && ttsConfig.elevenLabsGameMusic === true) &&
+    effectiveTts?.resolvedSource === "elevenlabs" &&
+    ttsConfig?.elevenLabsGameMusic === true &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
@@ -2667,7 +2649,7 @@ function GameSurfaceComponent({
       if (manifestAssets[tag]) delete generatedAudioAssetsRef.current[tag];
     }
   }, [assetManifest?.assets]);
-  const gameAudioConnectionId = gameAudioConnection ? (gameAudioConnection.id as string) : undefined;
+  const gameAudioConnectionId = effectiveTts?.resolvedConnectionId ?? undefined;
   const generateGameAudioAsset = useCallback(
     async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
       const category = kind === "sfx" ? "sfx" : "music";
@@ -12505,6 +12487,7 @@ function GameSurfaceComponent({
                           ) : (
                             <GameCombatUI
                               chatId={activeChatId}
+                              audioConnectionId={gameAudioConnectionId}
                               party={combatParty}
                               enemies={combatEnemies}
                               inventoryItems={inventoryItems}
@@ -12534,6 +12517,7 @@ function GameSurfaceComponent({
                       <GameTravelView>
                         <GameNarration
                           messages={narrationMessages}
+                          audioConnectionId={gameAudioConnectionId}
                           isStreaming={isStreaming}
                           characterMap={characterMap}
                           activeCharacterIds={characterIds}
@@ -12626,6 +12610,7 @@ function GameSurfaceComponent({
                   return (
                     <GameNarration
                       messages={narrationMessages}
+                      audioConnectionId={gameAudioConnectionId}
                       isStreaming={isStreaming}
                       characterMap={characterMap}
                       activeCharacterIds={characterIds}

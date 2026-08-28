@@ -85,7 +85,7 @@ import { api } from "../../lib/api-client";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
-import { useTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCacheKeys } from "../../lib/tts-dialogue";
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
@@ -1976,8 +1976,12 @@ export const ChatMessage = memo(function ChatMessage({
   const isTranslating = !!translating[message.id];
 
   // TTS
-  const { data: ttsConfig } = useTTSConfig();
-  const ttsEnabled = ttsConfig?.enabled ?? false;
+  // The merged view of what a speak request reaches, so the button and the
+  // request agree on which engine answers.
+  const { data: effectiveTts } = useEffectiveTTSConfig();
+  const ttsConfig = effectiveTts?.config;
+  const ttsAudioConnectionId = effectiveTts?.resolvedConnectionId ?? null;
+  const ttsEnabled = effectiveTts?.speechEnabled ?? false;
   const ttsSpeakerName =
     message.role === "narrator"
       ? "Narrator"
@@ -2009,10 +2013,18 @@ export const ChatMessage = memo(function ChatMessage({
             ),
             ttsConfig,
             message.id,
-            null,
+            ttsAudioConnectionId,
           )
         : [],
-    [message.characterId, message.content, message.id, resolveTTSCharacterId, ttsConfig, ttsSpeakerName],
+    [
+      message.characterId,
+      message.content,
+      message.id,
+      resolveTTSCharacterId,
+      ttsAudioConnectionId,
+      ttsConfig,
+      ttsSpeakerName,
+    ],
   );
   const hasTTSContent = ttsVoiceRequests.length > 0;
   const [ttsState, setTTSState] = useState(ttsService.getState());
@@ -2072,9 +2084,10 @@ export const ChatMessage = memo(function ChatMessage({
         concurrency: ttsConfig?.generationConcurrency,
         policy: resolveTTSSynthesisPolicy(ttsConfig),
         volume: ttsLinePlaybackVolume,
+        audioConnectionId: ttsAudioConnectionId ?? undefined,
       });
     }
-  }, [hasTTSContent, message.id, ttsConfig, ttsLinePlaybackVolume, ttsVoiceRequests]);
+  }, [hasTTSContent, message.id, ttsAudioConnectionId, ttsConfig, ttsLinePlaybackVolume, ttsVoiceRequests]);
 
   const handlePauseResumeTTS = useCallback(() => {
     if (ttsService.getActiveId() !== message.id) return;

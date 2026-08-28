@@ -51,7 +51,7 @@ import { normalizeSpriteExpressionKey, resolveSpriteExpression } from "../../lib
 import { DIALOGUE_QUOTE_CAPTURE_GROUP_PATTERN_SOURCE, stripSurroundingDialogueQuotes } from "../../lib/dialogue-quotes";
 import type { SpriteInfo } from "../../hooks/use-characters";
 import { useTranslate } from "../../hooks/use-translate";
-import { useTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
@@ -310,6 +310,8 @@ interface GameVoiceAudioJob {
   speaker?: string;
   tone?: string;
   voice?: string;
+  /** The engine this line was planned against, carried so playback speaks through it. */
+  audioConnectionId?: string;
 }
 
 interface GameVoiceEntryPlan {
@@ -329,6 +331,8 @@ interface GameNarrationProps {
   messages: NarrationMessage[];
   isStreaming: boolean;
   characterMap: CharacterMap;
+  /** Audio connection this game is pinned to. Absent resolves the category default. */
+  audioConnectionId?: string;
   activeCharacterIds?: string[];
   personaInfo?: PersonaInfo;
   /** Map of lowercase character name → sprite images for expression resolution */
@@ -608,9 +612,12 @@ function hashVoiceKey(value: string): string {
   return Math.abs(hash).toString(36);
 }
 
-function buildVoiceConfigSignature(config?: TTSConfig | null): string {
+function buildVoiceConfigSignature(config?: TTSConfig | null, resolvedConnectionId?: string | null): string {
   if (!config) return "tts:none";
   return [
+    // Two connections can look identically configured and still be different
+    // engines, so a cached clip stays tied to the one that produced it.
+    resolvedConnectionId ?? "app-level",
     config.source,
     config.baseUrl,
     config.model,
@@ -649,17 +656,18 @@ function buildVoiceLineTextCacheKey(
     job.tone ?? "",
     job.chunk,
   ].join("\n");
-  return `game-voice-line-v2:${rawKey.length}:${hashVoiceKey(rawKey)}`;
+  return `game-voice-line-v3:${rawKey.length}:${hashVoiceKey(rawKey)}`;
 }
 
 function buildVoiceLineSegmentCacheKey(segmentVoiceKey: string, jobIndex: number, textCacheKey: string): string {
-  return `game-voice-line-v3:${segmentVoiceKey}:${jobIndex}:${hashVoiceKey(textCacheKey)}`;
+  return `game-voice-line-v4:${segmentVoiceKey}:${jobIndex}:${hashVoiceKey(textCacheKey)}`;
 }
 
 function buildGameVoiceAudioJobs(
   key: string,
   requests: GameSegmentVoiceRequest[],
   config: TTSConfig,
+  audioConnectionId?: string,
 ): GameVoiceAudioJob[] {
   let voiceJobIndex = 0;
   return requests.flatMap((request) =>
@@ -671,6 +679,7 @@ function buildGameVoiceAudioJobs(
         speaker: request.speaker,
         tone: request.tone,
         voice: request.voice,
+        audioConnectionId,
       };
       const textCacheKey = buildVoiceLineTextCacheKey(config, job);
       return {
@@ -691,6 +700,7 @@ function generateGameVoiceJobBlob(job: GameVoiceAudioJob, controller: AbortContr
     speaker: job.speaker,
     tone: job.tone,
     voice: job.voice,
+    audioConnectionId: job.audioConnectionId,
     cacheKey: job.cacheKey,
     cacheAliases: [job.textCacheKey],
     signal: controller.signal,
@@ -881,6 +891,7 @@ export function GameNarration({
   messages,
   isStreaming,
   characterMap,
+  audioConnectionId,
   activeCharacterIds,
   personaInfo,
   spriteMap,
@@ -1026,7 +1037,12 @@ export function GameNarration({
   const mobileSegmentPointerStartRef = useRef<{ segmentId: string; x: number; y: number } | null>(null);
   const lastMobileSegmentTapRef = useRef<{ segmentId: string; time: number } | null>(null);
   const segmentSourceMessageIdsRef = useRef<Array<string | null>>([]);
-  const { data: ttsConfig } = useTTSConfig();
+  // The game's pinned engine when it has one, so narration speaks through the
+  // same connection its sound effects and music already used.
+  const { data: effectiveTts } = useEffectiveTTSConfig(audioConnectionId);
+  const ttsConfig = effectiveTts?.config;
+  const gameAudioConnectionId = effectiveTts?.resolvedConnectionId ?? null;
+  const gameSpeechEnabled = effectiveTts?.speechEnabled ?? false;
   const [gameVoiceVersion, setGameVoiceVersion] = useState(0);
   const [gameVoicePlayingKey, setGameVoicePlayingKey] = useState<string | null>(null);
   const [gameVoicePausedKey, setGameVoicePausedKey] = useState<string | null>(null);
@@ -1865,8 +1881,11 @@ export function GameNarration({
         : "";
   const activeCopyKey = active ? `active:${active.id}` : null;
   const activeCopyText = active ? (active.readableContent ?? stripGmTagsKeepReadables(active.content)) : "";
-  const gameVoiceEnabled = Boolean(ttsConfig?.enabled && ttsConfig.autoplayGame);
-  const gameVoiceConfigSignature = useMemo(() => buildVoiceConfigSignature(ttsConfig), [ttsConfig]);
+  const gameVoiceEnabled = Boolean(gameSpeechEnabled && ttsConfig?.autoplayGame);
+  const gameVoiceConfigSignature = useMemo(
+    () => buildVoiceConfigSignature(ttsConfig, gameAudioConnectionId),
+    [ttsConfig, gameAudioConnectionId],
+  );
   const normalizedGameVoiceVolume = Math.max(0, Math.min(1, gameVoiceVolume));
   const gameVoicePlaybackBlocked = voicePlaybackBlocked ?? autoPlayBlocked;
 
@@ -2934,7 +2953,7 @@ export function GameNarration({
     const plans: GameVoiceEntryPlan[] = [];
     const queuePlan = (key: string | null, requests: GameSegmentVoiceRequest[]) => {
       if (!key || gameVoiceCacheRef.current.has(key) || gameVoicePendingRef.current.has(key)) return;
-      const audioJobs = buildGameVoiceAudioJobs(key, requests, ttsConfig);
+      const audioJobs = buildGameVoiceAudioJobs(key, requests, ttsConfig, gameAudioConnectionId ?? undefined);
       if (audioJobs.length === 0) return;
 
       const controller = new AbortController();

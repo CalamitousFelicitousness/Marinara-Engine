@@ -28,7 +28,7 @@ import { normalizeTTSCharacterName, resolveTTSVoiceForSpeaker, splitTTSChunks } 
 import { ttsService } from "../../lib/tts-service";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
-import { useTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import { AnimatedText } from "./AnimatedText";
 import type {
   Combatant,
@@ -433,6 +433,8 @@ function CombatantSpriteVisual({
 
 interface GameCombatUIProps {
   chatId: string;
+  /** Audio connection this game is pinned to. Absent resolves the category default. */
+  audioConnectionId?: string;
   /** Player party combatants. */
   party: Combatant[];
   /** Enemy combatants. */
@@ -564,9 +566,12 @@ function hashCombatVoiceKey(value: string): string {
   return Math.abs(hash).toString(36);
 }
 
-function buildCombatVoiceConfigSignature(config?: TTSConfig | null): string {
+function buildCombatVoiceConfigSignature(config?: TTSConfig | null, resolvedConnectionId?: string | null): string {
   if (!config) return "combat-tts:none";
   return [
+    // Ties a cached line to the engine that produced it, since two connections
+    // can look identical and still sound different.
+    resolvedConnectionId ?? "app-level",
     config.source,
     config.baseUrl,
     config.model,
@@ -585,7 +590,7 @@ function buildCombatVoiceConfigSignature(config?: TTSConfig | null): string {
 }
 
 function buildCombatVoiceLineKey(configSignature: string, line: PartyDialogueLine, voice?: string): string {
-  return `combat-voice-v1:${hashCombatVoiceKey(
+  return `combat-voice-v2:${hashCombatVoiceKey(
     [configSignature, line.character, line.type, line.expression ?? "", voice ?? "", line.content].join("\n"),
   )}`;
 }
@@ -662,6 +667,7 @@ function combatItemTargetsEnemies(effect?: CombatItemEffect): boolean {
 
 export function GameCombatUI({
   chatId,
+  audioConnectionId,
   party: initialParty,
   enemies: initialEnemies,
   inventoryItems = [],
@@ -711,7 +717,11 @@ export function GameCombatUI({
   const [mobileCombatDialogueKey, setMobileCombatDialogueKey] = useState<string | null>(null);
 
   const combatRound = useCombatRound();
-  const { data: ttsConfig } = useTTSConfig();
+  // The game's pinned engine when it has one, matching narration.
+  const { data: effectiveTts } = useEffectiveTTSConfig(audioConnectionId);
+  const ttsConfig = effectiveTts?.config;
+  const combatAudioConnectionId = effectiveTts?.resolvedConnectionId ?? null;
+  const combatSpeechEnabled = effectiveTts?.speechEnabled ?? false;
   const { data: manifest } = useGameAssetManifest();
   const assets = manifest?.assets ?? null;
 
@@ -866,11 +876,14 @@ export function GameCombatUI({
     [voicedCombatSpeakerNames],
   );
 
-  const combatVoiceConfigSignature = useMemo(() => buildCombatVoiceConfigSignature(ttsConfig), [ttsConfig]);
+  const combatVoiceConfigSignature = useMemo(
+    () => buildCombatVoiceConfigSignature(ttsConfig, combatAudioConnectionId),
+    [ttsConfig, combatAudioConnectionId],
+  );
   const normalizedGameVoiceVolume = Math.max(0, Math.min(1, gameVoiceVolume));
 
   const combatVoiceLines = useMemo<CombatVoiceLine[]>(() => {
-    if (!ttsConfig?.enabled || !ttsConfig.autoplayGame) return [];
+    if (!combatSpeechEnabled || !ttsConfig?.autoplayGame) return [];
 
     const lines: CombatVoiceLine[] = [];
     for (const line of renderedCombatDialogue) {
@@ -1062,6 +1075,7 @@ export function GameCombatUI({
               speaker: line.character,
               tone: line.expression,
               voice: line.voice,
+              audioConnectionId: combatAudioConnectionId ?? undefined,
               cacheKey: chunkKey,
               signal: controller.signal,
               // Combat had no retries at all; it now uses the same curve as

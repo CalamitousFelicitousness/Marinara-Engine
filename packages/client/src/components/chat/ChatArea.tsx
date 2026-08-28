@@ -86,7 +86,7 @@ import { useTranslationStore } from "../../stores/translation.store";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { notifyTTSAutoplayPaused } from "../../lib/tts-error-notice";
-import { useTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import {
   buildTTSVoiceRequests,
   findTTSCharacterIdBySpeakerName,
@@ -2555,9 +2555,9 @@ export const ChatArea = memo(function ChatArea() {
   }, [isStreaming]);
 
   // TTS autoplay — start on finalized assistant text, with stream-end recovery for older/missed events.
-  const { data: ttsConfig } = useTTSConfig();
-  const ttsConfigRef = useRef(ttsConfig);
-  ttsConfigRef.current = ttsConfig;
+  const { data: effectiveTts } = useEffectiveTTSConfig();
+  const ttsConfigRef = useRef(effectiveTts);
+  ttsConfigRef.current = effectiveTts;
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const chatModeRef = useRef(chatMode);
@@ -2584,8 +2584,10 @@ export const ChatArea = memo(function ChatArea() {
     async (lastMsg: TTSAutoplayMessage, targetChatId: string, generationAtStart: TTSGenerationSnapshot | null) => {
       if (useChatStore.getState().activeChatId !== targetChatId) return;
 
-      const cfg = ttsConfigRef.current;
-      if (!cfg?.enabled) return;
+      const resolved = ttsConfigRef.current;
+      if (!resolved?.speechEnabled) return;
+      const cfg = resolved.config;
+      const audioConnectionId = resolved.resolvedConnectionId;
 
       const mode = chatModeRef.current;
       const shouldAutoplay = mode === "roleplay" ? cfg.autoplayRP : mode === "game" ? false : cfg.autoplayConvo;
@@ -2670,12 +2672,17 @@ export const ChatArea = memo(function ChatArea() {
       }
       ttsAutoplayPauseNotifiedRef.current = false;
 
-      await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id, null), lastMsg.id, {
-        progressive: cfg.progressivePlayback,
-        concurrency: cfg.generationConcurrency,
-        policy: resolveTTSSynthesisPolicy(cfg),
-        volume: ttsLineVolume / 100,
-      });
+      await ttsService.speakSequence(
+        withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id, audioConnectionId),
+        lastMsg.id,
+        {
+          progressive: cfg.progressivePlayback,
+          concurrency: cfg.generationConcurrency,
+          policy: resolveTTSSynthesisPolicy(cfg),
+          volume: ttsLineVolume / 100,
+          audioConnectionId: audioConnectionId ?? undefined,
+        },
+      );
     },
     [characterMap, characterNames, chat, personaInfo?.name, resolveTTSCharacterId, ttsLineVolume],
   );

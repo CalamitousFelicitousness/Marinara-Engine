@@ -57,6 +57,13 @@ export interface TTSSourceDefinition {
   maxInputChars: number;
   /** Default client chunk size. Local engines want far less; the setting overrides per source profile. */
   recommendedChunkChars: number;
+  /**
+   * Whether the endpoint is worth putting on screen. A "fixed" source publishes one
+   * address, so the editor keeps the field behind a disclosure instead of asking for
+   * it. Presentation only: a stored baseUrl is always honored, and outbound URL
+   * policy is source-blind.
+   */
+  baseUrlMode: "fixed" | "editable";
 }
 
 export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = {
@@ -68,6 +75,9 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "alloy",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
+    // Doubles as the lane for every OpenAI-compatible engine, local ones included,
+    // so the address is the setting that matters here.
+    baseUrlMode: "editable",
   },
   elevenlabs: {
     id: "elevenlabs",
@@ -77,6 +87,7 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
+    baseUrlMode: "fixed",
   },
   nanogpt: {
     id: "nanogpt",
@@ -93,6 +104,7 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     // the safe one: speakSchema caps every source at 4096 anyway.
     maxInputChars: 4096,
     recommendedChunkChars: 900,
+    baseUrlMode: "fixed",
   },
   pockettts: {
     id: "pockettts",
@@ -102,6 +114,8 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "alba",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
+    // Self-hosted: the port varies per install.
+    baseUrlMode: "editable",
   },
   xai: {
     id: "xai",
@@ -111,6 +125,7 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     defaultVoice: "eve",
     maxInputChars: 4096,
     recommendedChunkChars: 900,
+    baseUrlMode: "fixed",
   },
 };
 

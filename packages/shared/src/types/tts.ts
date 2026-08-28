@@ -310,3 +310,18 @@ export interface TTSModelsResponse {
   fromProvider: boolean;
   source: TTSSource;
 }
+
+/** Which rule picked the engine behind an effective config. */
+export type TTSResolutionOrigin = "explicit" | "default" | "fallback" | "legacy";
+
+/** Returned by GET /api/tts/effective-config */
+export interface TTSEffectiveConfigResponse {
+  /** App-level settings merged with the resolved connection, masked for transport. */
+  config: TTSConfig;
+  resolvedConnectionId: string | null;
+  resolvedConnectionName: string | null;
+  resolvedSource: TTSSource;
+  origin: TTSResolutionOrigin;
+  /** Whether /speak will synthesize. Clients gate on this, never on config.enabled. */
+  speechEnabled: boolean;
+}

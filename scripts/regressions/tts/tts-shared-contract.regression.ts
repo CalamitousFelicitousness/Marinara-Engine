@@ -35,6 +35,13 @@ import {
   TTS_SOURCE_IDS,
   TTS_SOURCES_WITH_MODEL_LISTING,
 } from "../../../packages/shared/src/constants/tts-sources.js";
+import {
+  AUDIO_CONNECTION_IDENTITY_FIELDS,
+  applyAudioConnectionSettings,
+  audioConnectionSettingsSchema,
+  audioSettingsFromProfile,
+  parseAudioConnectionSettings,
+} from "../../../packages/shared/src/types/audio-connection-settings.js";
 import { AUDIO_GENERATION_SOURCES } from "../../../packages/shared/src/types/connection.js";
 import { audioGenerationSourceSchema } from "../../../packages/shared/src/schemas/connection.schema.js";
 import { prepareTTSConfigForStorage } from "../../../packages/server/src/routes/tts.routes.ts";
@@ -104,16 +111,38 @@ for (const id of TTS_SOURCE_IDS) {
   );
   assert.ok(definition.maxInputChars <= TTS_CHUNK_CHARS_MAX, `${id}: input ceiling cannot exceed what /speak accepts`);
 }
-// A source definition describes a backend, never its outbound URL policy.
-// ttsUrlPolicy() takes no source, so a policy field here would have to be read
-// somewhere new to have any effect, and the effect would be a per-source
-// exemption from TTS_LOCAL_URLS_ENABLED=false. This fails if one appears.
+// A source definition describes a backend and how to present it, never its
+// outbound URL policy. ttsUrlPolicy() takes no source, so a policy field here
+// would have to be read somewhere new to have any effect, and the effect would
+// be a per-source exemption from TTS_LOCAL_URLS_ENABLED=false. This fails if one
+// appears.
 for (const id of TTS_SOURCE_IDS) {
   assert.deepEqual(
     Object.keys(TTS_SOURCE_DEFINITIONS[id]).sort(),
-    ["defaultBaseUrl", "defaultModel", "defaultVoice", "id", "maxInputChars", "name", "recommendedChunkChars"],
+    [
+      "baseUrlMode",
+      "defaultBaseUrl",
+      "defaultModel",
+      "defaultVoice",
+      "id",
+      "maxInputChars",
+      "name",
+      "recommendedChunkChars",
+    ],
     `${id}: definition shape must stay free of URL-policy fields`,
   );
+  assert.ok(
+    ["fixed", "editable"].includes(TTS_SOURCE_DEFINITIONS[id].baseUrlMode),
+    `${id}: baseUrlMode must name a presentation mode`,
+  );
+}
+// baseUrlMode decides whether the editor offers an address field. If the policy
+// layer ever reads it, "fixed" silently acquires a second meaning of "exempt",
+// which is exactly the field the shape guard above exists to keep out.
+{
+  const urlPolicy = readSource("packages/server/src/services/tts/url-policy.ts");
+  assert.match(urlPolicy, /export function ttsUrlPolicy\(\)/u, "the TTS URL policy must stay source-blind");
+  assert.doesNotMatch(urlPolicy, /baseUrlMode/u, "outbound URL policy must not read a presentation field");
 }
 
 // The client clamps chunk size against TTS_CHUNK_CHARS_MAX; the server rejects
@@ -210,6 +239,67 @@ const stored = prepareTTSConfigForStorage(
 assert.equal(stored.sourceProfiles.pockettts?.timeoutMs, 300_000, "a stored profile keeps its timeout");
 assert.equal(stored.sourceProfiles.pockettts?.chunkCharLimit, 300, "a stored profile keeps its chunk size");
 assert.equal(stored.sourceProfiles.pockettts?.maxRetries, 2, "a stored profile keeps its retry count");
+
+// ── A connection's settings are the profile minus its identity ──
+// An audio connection stores how it speaks; which engine it is lives in its own
+// row columns. Deriving one list from the other means a knob added to the profile
+// becomes per-connection at once, and an identity field never gains a second home
+// that could outvote the row.
+{
+  const profileFields = Object.keys(ttsSourceProfileSchema.shape);
+  const settingsFields = Object.keys(audioConnectionSettingsSchema.shape);
+  const identityFields = AUDIO_CONNECTION_IDENTITY_FIELDS as readonly string[];
+  assert.deepEqual(
+    [...settingsFields].sort(),
+    profileFields.filter((field) => !identityFields.includes(field)).sort(),
+    "connection settings must be the source profile minus its identity fields",
+  );
+  for (const field of identityFields) {
+    assert.ok(profileFields.includes(field), `${field}: omitted from the profile but absent from it`);
+    assert.ok(!settingsFields.includes(field), `${field}: identity belongs to the row, not the settings blob`);
+  }
+
+  // Absent means inherit. A default anywhere here would answer in place of the
+  // app-level value, and a connection nobody tuned would stop following it.
+  assert.deepEqual(audioConnectionSettingsSchema.parse({}), {}, "no settings field may carry a default");
+
+  // Bounds ride the derivation instead of being restated beside it.
+  assert.throws(
+    () => audioConnectionSettingsSchema.parse({ timeoutMs: TTS_TIMEOUT_MS_MAX + 1 }),
+    "the profile's bounds must carry over",
+  );
+  assert.throws(
+    () => audioConnectionSettingsSchema.parse({ generationConcurrency: 0 }),
+    "the profile's bounds must carry over",
+  );
+
+  const merged = applyAudioConnectionSettings(
+    ttsConfigSchema.parse({}),
+    audioConnectionSettingsSchema.parse({ speed: 1.75, timeoutMs: 300_000 }),
+  );
+  assert.equal(merged.speed, 1.75, "a stored field overrides the app-level value");
+  assert.equal(merged.timeoutMs, 300_000, "a stored field overrides the app-level value");
+  assert.equal(merged.chunkCharLimit, TTS_CHUNK_CHARS_DEFAULT, "an absent field inherits");
+  assert.equal(
+    applyAudioConnectionSettings(ttsConfigSchema.parse({ speed: 1.25 }), {}).speed,
+    1.25,
+    "an unconfigured connection changes nothing",
+  );
+
+  // The column is text on disk. Hand edits, and bounds tightened later, must not
+  // cost a connection every other setting it holds.
+  assert.deepEqual(parseAudioConnectionSettings(null), {}, "an unset column inherits everything");
+  assert.deepEqual(parseAudioConnectionSettings("not json"), {}, "unreadable text inherits everything");
+  assert.deepEqual(
+    parseAudioConnectionSettings(JSON.stringify({ speed: 1.5, maxRetries: 99 })),
+    { speed: 1.5 },
+    "one out-of-range field drops on its own",
+  );
+
+  const seeded = audioSettingsFromProfile(ttsSourceProfileFromConfig(ttsConfigSchema.parse({ speed: 1.5 })));
+  assert.deepEqual([...Object.keys(seeded)].sort(), [...settingsFields].sort(), "seeding snapshots every knob");
+  assert.equal(seeded.speed, 1.5, "seeding carries the profile's values");
+}
 
 // The card's restore path is not compile-checked the way its payload builder is:
 // dropping a setter here leaves the UI showing another source's tuning.

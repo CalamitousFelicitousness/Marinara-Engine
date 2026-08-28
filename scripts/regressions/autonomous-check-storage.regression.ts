@@ -84,7 +84,10 @@ try {
     const response = await app!.inject({
       method: "POST",
       url: "/api/conversation/autonomous/check",
-      payload: { chatId: "chat-auto", userStatus: "active", source: "server" },
+      // A client-sourced check records presence FIRST, creating a partial
+      // activity state before the seed runs — the seed must merge transcript
+      // data into it, not bail on mere existence.
+      payload: { chatId: "chat-auto", userStatus: "active", source: "background" },
     });
     assert.equal(response.statusCode, 200, "the check responds 200");
     return response.json() as { shouldTrigger: boolean };
@@ -93,6 +96,16 @@ try {
   // First check: seeds the activity tracker (this is the one allowed unit load).
   const first = await check();
   assert.equal(typeof first.shouldTrigger, "boolean", "the check returns a verdict");
+  {
+    const svc = await import("../../packages/server/src/services/conversation/autonomous.service.js");
+    const seeded = svc.getActivityState("chat-auto");
+    assert.ok(seeded, "the first check leaves an activity state");
+    assert.ok(
+      seeded.lastUserMessageAt > 0,
+      "transcript timestamps are seeded even though presence created a partial state first",
+    );
+    assert.equal(seeded.lastMessageRole, "assistant", "the transcript's last-message role is seeded");
+  }
   assert.equal(
     db._fileStore.getResidentChatUnits().has("chat-auto"),
     true,

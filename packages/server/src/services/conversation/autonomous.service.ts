@@ -273,8 +273,16 @@ export function initializeActivityFromMessages(
   chatId: string,
   messages: Array<{ role: string; createdAt?: string; characterId?: string | null }>,
 ): void {
-  // Already tracked — don't overwrite
-  if (activityStates.has(chatId)) return;
+  // A PARTIAL state routinely exists before the seed runs:
+  // recordAutonomousClientPresence creates a zeroed one at the top of the
+  // same request. Bailing on mere existence would let the seed latch with
+  // the transcript timestamps and lastMessageRole never populated (the
+  // pre-#5592 code tolerated this because the catch-up branch re-read the
+  // transcript each tick; it no longer does). Merge instead: fill only the
+  // fields live activity has not already set, so real recorded activity is
+  // never overwritten by transcript-derived values.
+  const existing = activityStates.get(chatId);
+  if (existing && (existing.lastUserMessageAt > 0 || existing.lastAssistantMessageAt > 0)) return;
   if (messages.length === 0) return;
 
   let lastUserAt = 0;
@@ -291,10 +299,17 @@ export function initializeActivityFromMessages(
 
   if (!lastUserAt) return; // No user messages — can't initialize
 
+  const lastMessageRole = messages[messages.length - 1]!.role ?? null;
+  if (existing) {
+    existing.lastUserMessageAt = lastUserAt;
+    existing.lastAssistantMessageAt = lastAssistantAt;
+    existing.lastMessageRole ??= lastMessageRole;
+    return;
+  }
   activityStates.set(chatId, {
     lastUserMessageAt: lastUserAt,
     lastAssistantMessageAt: lastAssistantAt,
-    lastMessageRole: messages[messages.length - 1]!.role ?? null,
+    lastMessageRole,
     autonomousMessages: new Map(),
     generationInProgressSince: null,
   });

@@ -51,7 +51,12 @@ type ChatsStore = {
 
 function messageTimestampMsOf(message: unknown): number | undefined {
   const createdAt = (message as { createdAt?: unknown } | null | undefined)?.createdAt;
-  return typeof createdAt === "string" && createdAt ? new Date(createdAt).getTime() : undefined;
+  if (typeof createdAt !== "string" || !createdAt) return undefined;
+  const timestampMs = new Date(createdAt).getTime();
+  // NaN would silently fail the ordering comparison and leave the role on
+  // "user" after an assistant DM; an unparseable timestamp must behave like
+  // an absent one (last-writer-wins).
+  return Number.isFinite(timestampMs) ? timestampMs : undefined;
 }
 
 export async function handleRoleplayDmCommand(args: {

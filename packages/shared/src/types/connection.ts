@@ -93,6 +93,14 @@ export interface APIConnection {
   audioMusic: boolean;
   /** Synthesis settings owned by this audio connection (JSON). Absent fields inherit the app-level TTS settings. */
   audioSettings: string | null;
+  /** Whether this audio connection is the preferred engine for game sound effects */
+  defaultForSfx: boolean;
+  /** Whether this audio connection answers for sound effects when no sfx default exists */
+  fallbackForSfx: boolean;
+  /** Whether this audio connection is the preferred engine for game music */
+  defaultForMusic: boolean;
+  /** Whether this audio connection answers for music when no music default exists */
+  fallbackForMusic: boolean;
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
   /** Prompt preset to use instead of a chat's selected preset when this connection is active */

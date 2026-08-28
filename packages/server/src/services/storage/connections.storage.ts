@@ -6,12 +6,19 @@ import type { DB } from "../../db/connection.js";
 import { apiConnections } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { encryptApiKey, decryptApiKey } from "../../utils/crypto.js";
-import type { CreateConnectionInput } from "@marinara-engine/shared";
+import type { CreateConnectionInput, GameAudioPurpose } from "@marinara-engine/shared";
 import { sweepDanglingConnectionReferences } from "./connection-reference-cleanup.js";
+import {
+  AGENTS_ROLE_PAIR,
+  AUDIO_PURPOSE_ROLE_PAIRS,
+  MUSIC_ROLE_PAIR,
+  SFX_ROLE_PAIR,
+  defaultCategoryForProvider,
+  enforceRoleFlagExclusivity,
+  type RoleFlagField,
+} from "./connection-role-flags.js";
 import { clearConnectionRateLimit, setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { logger } from "../../lib/logger.js";
-
-type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "language";
 
 /**
  * Decrypt a stored connection for internal use and keep the per-connection outbound throttle
@@ -25,11 +32,21 @@ function withDecryptedKey<T extends { id: string; apiKeyEncrypted: string; maxRe
   return { ...row, apiKey: decryptApiKey(row.apiKeyEncrypted) };
 }
 
-function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory {
-  if (provider === "image_generation") return "image_generation";
-  if (provider === "video_generation") return "video_generation";
-  if (provider === "audio") return "audio";
-  return "language";
+/** The audio connection holding one purpose role flag, quarantined imports excluded. */
+async function findAudioConnectionByRoleFlag(db: DB, field: RoleFlagField) {
+  const rows = await db
+    .select()
+    .from(apiConnections)
+    .where(
+      and(
+        eq(apiConnections[field], "true"),
+        eq(apiConnections.provider, "audio"),
+        ne(apiConnections.profileImportReviewRequired, "true"),
+      ),
+    );
+  const row = rows[0] ?? null;
+  if (!row) return null;
+  return withDecryptedKey(row);
 }
 
 export function createConnectionsStorage(db: DB) {
@@ -199,6 +216,16 @@ export function createConnectionsStorage(db: DB) {
       return withDecryptedKey(row);
     },
 
+    /** Audio connection preferred for one game-audio purpose (with decrypted key). */
+    async getDefaultForAudioPurpose(purpose: GameAudioPurpose) {
+      return findAudioConnectionByRoleFlag(db, AUDIO_PURPOSE_ROLE_PAIRS[purpose].defaultField);
+    },
+
+    /** Audio connection used for one game-audio purpose when it has no default. */
+    async getFallbackForAudioPurpose(purpose: GameAudioPurpose) {
+      return findAudioConnectionByRoleFlag(db, AUDIO_PURPOSE_ROLE_PAIRS[purpose].fallbackField);
+    },
+
     async create(input: CreateConnectionInput) {
       const id = newId();
       const timestamp = now();
@@ -240,6 +267,10 @@ export function createConnectionsStorage(db: DB) {
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
         audioSettings: input.audioSettings ? JSON.stringify(input.audioSettings) : null,
+        defaultForSfx: String(providerCategory === "audio" && (input.defaultForSfx ?? false)),
+        fallbackForSfx: String(providerCategory === "audio" && (input.fallbackForSfx ?? false)),
+        defaultForMusic: String(providerCategory === "audio" && (input.defaultForMusic ?? false)),
+        fallbackForMusic: String(providerCategory === "audio" && (input.fallbackForMusic ?? false)),
         promptPresetId: input.promptPresetId ?? null,
         maxTokensOverride: input.maxTokensOverride ?? null,
         claudeFastMode: String(input.claudeFastMode ?? false),
@@ -257,48 +288,48 @@ export function createConnectionsStorage(db: DB) {
           await tx.update(apiConnections).set({ fallbackForMain: "false" });
           values.isDefault = "false";
         }
-        // If this is set as default for agents, unset others in the same provider category.
+        // Granting a role flag evicts the incumbent in the same category and
+        // releases the opposite side on this row.
         if (input.defaultForAgents) {
-          values.fallbackForAgents = "false";
-          const category = defaultCategoryForProvider(input.provider);
-          if (category === "image_generation" || category === "video_generation" || category === "audio") {
-            await tx
-              .update(apiConnections)
-              .set({ defaultForAgents: "false" })
-              .where(and(eq(apiConnections.defaultForAgents, "true"), eq(apiConnections.provider, category)));
-          } else {
-            const existingDefaults = await tx
-              .select()
-              .from(apiConnections)
-              .where(eq(apiConnections.defaultForAgents, "true"));
-            for (const row of existingDefaults) {
-              if (defaultCategoryForProvider(row.provider) === "language") {
-                await tx.update(apiConnections).set({ defaultForAgents: "false" }).where(eq(apiConnections.id, row.id));
-              }
-            }
-          }
+          Object.assign(
+            values,
+            await enforceRoleFlagExclusivity(tx, {
+              pair: AGENTS_ROLE_PAIR,
+              side: "default",
+              category: providerCategory,
+              exceptId: null,
+            }),
+          );
         }
         if (input.fallbackForAgents) {
-          values.defaultForAgents = "false";
-          const category = defaultCategoryForProvider(input.provider);
-          if (category === "image_generation" || category === "video_generation" || category === "audio") {
-            await tx
-              .update(apiConnections)
-              .set({ fallbackForAgents: "false" })
-              .where(and(eq(apiConnections.fallbackForAgents, "true"), eq(apiConnections.provider, category)));
-          } else {
-            const existingFallbacks = await tx
-              .select()
-              .from(apiConnections)
-              .where(eq(apiConnections.fallbackForAgents, "true"));
-            for (const row of existingFallbacks) {
-              if (defaultCategoryForProvider(row.provider) === "language") {
-                await tx
-                  .update(apiConnections)
-                  .set({ fallbackForAgents: "false" })
-                  .where(eq(apiConnections.id, row.id));
-              }
-            }
+          Object.assign(
+            values,
+            await enforceRoleFlagExclusivity(tx, {
+              pair: AGENTS_ROLE_PAIR,
+              side: "fallback",
+              category: providerCategory,
+              exceptId: null,
+            }),
+          );
+        }
+        // Game audio purposes compete only among audio connections.
+        if (providerCategory === "audio") {
+          for (const grant of [
+            { pair: SFX_ROLE_PAIR, side: "default" as const, granted: input.defaultForSfx },
+            { pair: SFX_ROLE_PAIR, side: "fallback" as const, granted: input.fallbackForSfx },
+            { pair: MUSIC_ROLE_PAIR, side: "default" as const, granted: input.defaultForMusic },
+            { pair: MUSIC_ROLE_PAIR, side: "fallback" as const, granted: input.fallbackForMusic },
+          ]) {
+            if (!grant.granted) continue;
+            Object.assign(
+              values,
+              await enforceRoleFlagExclusivity(tx, {
+                pair: grant.pair,
+                side: grant.side,
+                category: "audio",
+                exceptId: null,
+              }),
+            );
           }
         }
         await tx.insert(apiConnections).values(values);
@@ -419,6 +450,27 @@ export function createConnectionsStorage(db: DB) {
       if (data.audioSettings !== undefined) {
         updateFields.audioSettings = data.audioSettings ? JSON.stringify(data.audioSettings) : null;
       }
+      if (data.defaultForSfx !== undefined) {
+        updateFields.defaultForSfx = String(data.defaultForSfx);
+      }
+      if (data.fallbackForSfx !== undefined) {
+        updateFields.fallbackForSfx = String(data.fallbackForSfx);
+      }
+      if (data.defaultForMusic !== undefined) {
+        updateFields.defaultForMusic = String(data.defaultForMusic);
+      }
+      if (data.fallbackForMusic !== undefined) {
+        updateFields.fallbackForMusic = String(data.fallbackForMusic);
+      }
+      // A row leaving the audio category cannot answer for a game audio purpose,
+      // and unlike the agents pair these flags have no other category to compete
+      // in, so they are released rather than carried across.
+      if (data.provider !== undefined && effectiveProviderCategory !== "audio") {
+        updateFields.defaultForSfx = "false";
+        updateFields.fallbackForSfx = "false";
+        updateFields.defaultForMusic = "false";
+        updateFields.fallbackForMusic = "false";
+      }
       if (data.promptPresetId !== undefined) {
         updateFields.promptPresetId = data.promptPresetId;
       }
@@ -447,68 +499,51 @@ export function createConnectionsStorage(db: DB) {
           updateFields.isDefault = "false";
         }
         if (shouldClearAgentDefaults) {
-          updateFields.fallbackForAgents = "false";
-          const category = defaultCategoryForProvider(effectiveProvider);
-          if (category === "image_generation" || category === "video_generation" || category === "audio") {
-            await tx
-              .update(apiConnections)
-              .set({ defaultForAgents: "false" })
-              .where(
-                data.defaultForAgents === true
-                  ? and(eq(apiConnections.defaultForAgents, "true"), eq(apiConnections.provider, category))
-                  : and(
-                      eq(apiConnections.defaultForAgents, "true"),
-                      eq(apiConnections.provider, category),
-                      ne(apiConnections.id, id),
-                    ),
-              );
-          } else {
-            const existingDefaults = await tx
-              .select()
-              .from(apiConnections)
-              .where(eq(apiConnections.defaultForAgents, "true"));
-            for (const row of existingDefaults) {
-              if (
-                defaultCategoryForProvider(row.provider) === "language" &&
-                (data.defaultForAgents === true || row.id !== id)
-              ) {
-                await tx.update(apiConnections).set({ defaultForAgents: "false" }).where(eq(apiConnections.id, row.id));
-              }
-            }
-          }
+          Object.assign(
+            updateFields,
+            await enforceRoleFlagExclusivity(tx, {
+              pair: AGENTS_ROLE_PAIR,
+              side: "default",
+              category: effectiveProviderCategory,
+              // An explicit grant clears every holder, this row included, since
+              // updateFields writes the flag back. A provider change on a row
+              // that already holds the flag keeps it and evicts the incumbent
+              // in the category it moved into.
+              exceptId: data.defaultForAgents === true ? null : id,
+            }),
+          );
         }
         if (shouldClearAgentFallbacks) {
-          updateFields.defaultForAgents = "false";
-          const category = defaultCategoryForProvider(effectiveProvider);
-          if (category === "image_generation" || category === "video_generation" || category === "audio") {
-            await tx
-              .update(apiConnections)
-              .set({ fallbackForAgents: "false" })
-              .where(
-                data.fallbackForAgents === true
-                  ? and(eq(apiConnections.fallbackForAgents, "true"), eq(apiConnections.provider, category))
-                  : and(
-                      eq(apiConnections.fallbackForAgents, "true"),
-                      eq(apiConnections.provider, category),
-                      ne(apiConnections.id, id),
-                    ),
-              );
-          } else {
-            const existingFallbacks = await tx
-              .select()
-              .from(apiConnections)
-              .where(eq(apiConnections.fallbackForAgents, "true"));
-            for (const row of existingFallbacks) {
-              if (
-                defaultCategoryForProvider(row.provider) === "language" &&
-                (data.fallbackForAgents === true || row.id !== id)
-              ) {
-                await tx
-                  .update(apiConnections)
-                  .set({ fallbackForAgents: "false" })
-                  .where(eq(apiConnections.id, row.id));
-              }
-            }
+          Object.assign(
+            updateFields,
+            await enforceRoleFlagExclusivity(tx, {
+              pair: AGENTS_ROLE_PAIR,
+              side: "fallback",
+              category: effectiveProviderCategory,
+              exceptId: data.fallbackForAgents === true ? null : id,
+            }),
+          );
+        }
+        // Purpose flags never need the exceptId form: a provider change either
+        // stays inside audio, where uniqueness already holds, or leaves it, and
+        // the mapping above already released them.
+        if (effectiveProviderCategory === "audio") {
+          for (const grant of [
+            { pair: SFX_ROLE_PAIR, side: "default" as const, granted: data.defaultForSfx },
+            { pair: SFX_ROLE_PAIR, side: "fallback" as const, granted: data.fallbackForSfx },
+            { pair: MUSIC_ROLE_PAIR, side: "default" as const, granted: data.defaultForMusic },
+            { pair: MUSIC_ROLE_PAIR, side: "fallback" as const, granted: data.fallbackForMusic },
+          ]) {
+            if (grant.granted !== true) continue;
+            Object.assign(
+              updateFields,
+              await enforceRoleFlagExclusivity(tx, {
+                pair: grant.pair,
+                side: grant.side,
+                category: "audio",
+                exceptId: null,
+              }),
+            );
           }
         }
         await tx.update(apiConnections).set(updateFields).where(eq(apiConnections.id, id));
@@ -542,6 +577,10 @@ export function createConnectionsStorage(db: DB) {
         useForRandom: "false",
         defaultForAgents: "false",
         fallbackForAgents: "false",
+        defaultForSfx: "false",
+        fallbackForSfx: "false",
+        defaultForMusic: "false",
+        fallbackForMusic: "false",
         enableCaching: source.enableCaching,
         anthropicExtendedCacheTtl: source.anthropicExtendedCacheTtl,
         cachingAtDepth: source.cachingAtDepth,

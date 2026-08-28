@@ -20,6 +20,7 @@ import {
   TTS_TIMEOUT_MS_MIN,
   type TTSSource,
   type TTSConfig,
+  type TTSEffectiveConfigResponse,
   type TTSRoleplaySpeakerExtractorResponse,
   type TTSSourceProfiles,
   type TTSModelsResponse,
@@ -27,7 +28,7 @@ import {
 } from "@marinara-engine/shared";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
-import { encryptApiKey, decryptApiKey } from "../utils/crypto.js";
+import { encryptApiKey } from "../utils/crypto.js";
 import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
@@ -54,11 +55,21 @@ import {
   nanoGptModelFamily,
   parseNanoGptModelOptions,
 } from "../services/tts/nanogpt-catalog.js";
+import {
+  LEGACY_TTS_CONFIG_SENTINEL,
+  loadConfig,
+  parseStoredConfig,
+  resolveAudioConfig,
+  withActiveSourceProfile,
+} from "../services/tts/audio-config-resolution.js";
 
 // Re-exported because scripts/regressions/tts-source-persistence.regression.ts
 // imports them from this module. Keeping the names resolvable here is what lets
 // the provider extraction land without editing an upstream-owned test.
 export { buildElevenLabsTextInput, buildOfficialPocketTtsForm };
+// Resolution moved to services/tts/audio-config-resolution.ts; the sentinel stays
+// exported from here because it was part of this module's surface.
+export { LEGACY_TTS_CONFIG_SENTINEL };
 import { logger, logDebugOverride } from "../lib/logger.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../services/game/asset-manifest.service.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
@@ -448,25 +459,6 @@ function withoutTemperatureCustomParameter(value: Record<string, unknown> | unde
   return Object.fromEntries(Object.entries(value).filter(([key]) => key.toLowerCase() !== "temperature"));
 }
 
-function parseStoredConfig(raw: string | null) {
-  if (!raw) return ttsConfigSchema.parse({});
-  try {
-    return ttsConfigSchema.parse(JSON.parse(raw));
-  } catch {
-    return ttsConfigSchema.parse({});
-  }
-}
-
-function withActiveSourceProfile(config: TTSConfig): TTSConfig {
-  return {
-    ...config,
-    sourceProfiles: {
-      ...config.sourceProfiles,
-      [config.source]: ttsSourceProfileFromConfig(config),
-    },
-  };
-}
-
 /** Mask every stored provider key before returning TTS configuration to the browser. */
 export function maskTTSConfigForResponse(config: TTSConfig): TTSConfig {
   const configWithProfiles = withActiveSourceProfile(config);
@@ -519,74 +511,6 @@ export function prepareTTSConfigForStorage(
   };
   storedConfig.sourceProfiles[input.source] = ttsSourceProfileFromConfig(storedConfig);
   return storedConfig;
-}
-
-/**
- * Resolve the stored config and decrypt the API key.
- * Returns config with the plain-text key (never sent to client).
- */
-async function loadConfig(storage: ReturnType<typeof createAppSettingsStorage>) {
-  const raw = await storage.get(TTS_SETTINGS_KEY);
-  const cfg = parseStoredConfig(raw);
-  cfg.apiKey = decryptApiKey(cfg.apiKey);
-  return cfg;
-}
-
-/**
- * Resolve the effective audio configuration (#5146): an audio CONNECTION —
- * the explicitly requested one, else the category default — provides the
- * identity half (source, key, base URL, voice, and the sound-effect/music
- * capability flags), overlaid on the legacy TTS settings blob, which remains
- * the knob store (speed, stability, extractor settings, source profiles).
- * With no audio connection at all, behavior is exactly the legacy blob —
- * pre-migration installs keep working untouched.
- */
-/** Callers pass this sentinel to force the legacy settings blob even when audio connections exist. */
-export const LEGACY_TTS_CONFIG_SENTINEL = "";
-
-async function resolveAudioConfig(
-  storage: ReturnType<typeof createAppSettingsStorage>,
-  connections: ReturnType<typeof createConnectionsStorage>,
-  requestedConnectionId?: string | null,
-) {
-  const cfg = await loadConfig(storage);
-  // The TTS settings card tests the blob it edits; the empty-string sentinel
-  // must reach it even when a default audio connection exists.
-  if (requestedConnectionId === LEGACY_TTS_CONFIG_SENTINEL) return cfg;
-  let row = null;
-  let explicitlyRequested = false;
-  if (requestedConnectionId) {
-    const candidate = await connections.getWithKey(requestedConnectionId);
-    if (candidate?.provider === "audio") {
-      row = candidate;
-      explicitlyRequested = true;
-    } else {
-      logger.warn("Requested audio connection %s missing or not audio; using the default", requestedConnectionId);
-    }
-  }
-  if (!row) row = await connections.getDefaultForAudio();
-  if (!row) row = await connections.getFallbackForAudio();
-  if (!row) return cfg;
-  const source = (row.audioSource ?? "elevenlabs") as TTSSource;
-  // Blank row fields fall back per the ROW's source. The blob's top-level
-  // fields belong to its own active source — inheriting them would leak
-  // cross-source values (e.g. the schema-default voice "alloy" into an
-  // ElevenLabs row, defeating the missing-voice guard downstream).
-  const profile = source === cfg.source ? cfg : withActiveSourceProfile(cfg).sourceProfiles[source];
-  return {
-    ...cfg,
-    // An explicitly requested connection is a direct expression of intent;
-    // default/fallback resolution keeps honoring the legacy master toggle so
-    // an upgrade cannot silently re-enable TTS the user switched off.
-    enabled: explicitlyRequested ? true : cfg.enabled,
-    source,
-    apiKey: row.apiKey,
-    baseUrl: row.baseUrl || profile?.baseUrl || TTS_SOURCE_DEFINITIONS[source].defaultBaseUrl,
-    voice: row.audioVoice || profile?.voice || "",
-    model: row.model || profile?.model || TTS_SOURCE_DEFINITIONS[source].defaultModel,
-    elevenLabsGameSoundEffects: row.audioSoundEffects === "true",
-    elevenLabsGameMusic: row.audioMusic === "true",
-  };
 }
 
 function responseFromVoiceOptions(
@@ -1013,7 +937,7 @@ async function fetchNanoGptModelOptions(baseUrl: string, apiKey: string): Promis
 
 const nanoGptFallbackModels = (): ModelOption[] => NANOGPT_FALLBACK_TTS_MODELS.map((id) => ({ id, name: id }));
 
-async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResponse> {
+export async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResponse> {
   if (cfg.source === "nanogpt") {
     if (!cfg.apiKey) return { models: nanoGptFallbackModels(), fromProvider: false, source: cfg.source };
     const models = await fetchNanoGptModelOptions(configuredBaseUrl(cfg), cfg.apiKey);
@@ -1040,7 +964,7 @@ async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResponse> {
   };
 }
 
-async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
+export async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
   const base = configuredBaseUrl(cfg);
 
   if (cfg.source === "pockettts") {
@@ -1135,6 +1059,29 @@ export async function ttsRoutes(app: FastifyInstance) {
   });
 
   /**
+   * GET /api/tts/effective-config
+   * The configuration a speak request would actually use: app-level settings
+   * merged with the resolved audio connection, keys masked.
+   *
+   * Clients read speechEnabled instead of re-deriving the gate, and
+   * resolvedConnectionId so a cached clip is not replayed after the engine
+   * behind it changed. Omitting connectionId resolves the category default,
+   * which is what an unattended autoplay will reach.
+   */
+  app.get("/effective-config", async (req) => {
+    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
+    const resolution = await resolveAudioConfig(storage, connections, connectionId);
+    return {
+      config: maskTTSConfigForResponse(resolution.cfg),
+      resolvedConnectionId: resolution.resolvedConnectionId,
+      resolvedConnectionName: resolution.resolvedConnectionName,
+      resolvedSource: resolution.resolvedSource,
+      origin: resolution.origin,
+      speechEnabled: resolution.speechEnabled,
+    } satisfies TTSEffectiveConfigResponse;
+  });
+
+  /**
    * GET /api/tts/voices
    * Fetches available voices from the configured provider.
    */
@@ -1143,7 +1090,9 @@ export async function ttsRoutes(app: FastifyInstance) {
     // Without an explicit connection this endpoint serves the TTS settings
     // card, which edits the blob — resolving the default audio connection here
     // would show the card voices for a source it is not configuring.
-    const cfg = connectionId ? await resolveAudioConfig(storage, connections, connectionId) : await loadConfig(storage);
+    const cfg = connectionId
+      ? (await resolveAudioConfig(storage, connections, connectionId)).cfg
+      : await loadConfig(storage);
 
     try {
       return await fetchProviderVoices(cfg);
@@ -1165,7 +1114,9 @@ export async function ttsRoutes(app: FastifyInstance) {
    */
   app.get("/models", async (req, reply) => {
     const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
-    const cfg = connectionId ? await resolveAudioConfig(storage, connections, connectionId) : await loadConfig(storage);
+    const cfg = connectionId
+      ? (await resolveAudioConfig(storage, connections, connectionId)).cfg
+      : await loadConfig(storage);
 
     try {
       return await fetchProviderModels(cfg);
@@ -1314,7 +1265,7 @@ export async function ttsRoutes(app: FastifyInstance) {
       }
       context.key = canonicalTier;
     }
-    const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
+    const { cfg } = await resolveAudioConfig(storage, connections, audioConnectionId);
     const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
     if (cfg.source !== "elevenlabs" || !enabled) {
       return reply.status(400).send({ error: `ElevenLabs game ${kind} generation is not enabled` });
@@ -1352,9 +1303,9 @@ export async function ttsRoutes(app: FastifyInstance) {
   app.post("/speak", async (req, reply) => {
     const { text, speaker, tone, voice, audioConnectionId } = speakSchema.parse(req.body);
 
-    const cfg = await resolveAudioConfig(storage, connections, audioConnectionId);
+    const { cfg, speechEnabled } = await resolveAudioConfig(storage, connections, audioConnectionId);
 
-    if (!cfg.enabled) {
+    if (!speechEnabled) {
       return reply.status(400).send({ error: "TTS is not enabled" });
     }
 

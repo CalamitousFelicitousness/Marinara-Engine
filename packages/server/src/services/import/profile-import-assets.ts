@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -76,8 +76,23 @@ function isProfileVideoAssetPath(path: string): boolean {
   );
 }
 
+/**
+ * The game-asset seeder writes an empty `.native` marker into every bundled
+ * directory (db/seed-game-assets.ts), so exports carry them and an import must
+ * accept them back. Under `game-assets/sprites/` the image policy would
+ * otherwise refuse the marker and fail the whole import.
+ *
+ * Size is the whole contract: an empty file cannot be served as anything, while
+ * a non-empty one is not a marker and stays refused.
+ */
+async function isEmptyNativeMarker(normalized: string, stagedPath: string): Promise<boolean> {
+  if (!normalized.endsWith("/.native")) return false;
+  return (await stat(stagedPath)).size === 0;
+}
+
 async function validateProfileImportAsset(path: string, stagedPath: string, stagedRoot: string): Promise<void> {
   const normalized = path.replace(/\\/g, "/");
+  if (await isEmptyNativeMarker(normalized, stagedPath)) return;
   if (isProfileVideoAssetPath(normalized)) {
     if (/\.json$/iu.test(normalized)) return;
     const video = await validateVideoAssetFile(stagedPath, normalized, { additionalRoot: stagedRoot });

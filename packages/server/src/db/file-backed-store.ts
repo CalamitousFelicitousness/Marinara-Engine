@@ -29,7 +29,7 @@ import { hostname, networkInterfaces } from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { STORAGE_MIGRATION_NOTICE_SETTINGS_KEY, type StorageMigrationNotice } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
-import { getFileStorageDir } from "../config/runtime-config.js";
+import { getFileStorageDir, getMaxResidentChatUnits } from "../config/runtime-config.js";
 import * as schema from "./schema/index.js";
 import { inArray, isFileCondition, isFileOrdering, type FileCondition, type FileOrdering } from "./file-query.js";
 import { migrateLegacyNoodleAccountRow } from "./noodle-platform-migration.js";
@@ -172,6 +172,10 @@ export type FileNativeStoreController = {
   close: () => Promise<void>;
   rootDir: string;
   getQuarantinedTables: () => QuarantinedStorageTable[];
+  /** Chat units currently resident under lazy loading (#5592) — diagnostics and regression introspection. */
+  getResidentChatUnits: () => ReadonlySet<string>;
+  /** Marks shard keys dirty without touching LRU state — regression harness only. */
+  markShardDirty: (table: string, shardKeys: Iterable<string>) => void;
   /**
    * Monotonic per-table write counter (#4705): bumped on every markDirty, so
    * pollers can skip work when a table hasn't changed since their last look.
@@ -2004,6 +2008,18 @@ class FileTableStore {
    */
   private loadedShardEncodings = new Map<string, Set<string>>();
   /**
+   * Units excluded from eviction (#5592 PR-B). Seeded with the unassigned
+   * pseudo-unit (orphan healing needs it resident) and extended with any unit
+   * involved in a corruption-healing event (strays, duplicates, canonical
+   * replacements) — those interact with per-file read-once state in ways
+   * eviction should never have to reason about, and they exist only on
+   * corrupt installs, so pinning costs nothing.
+   */
+  private pinnedUnits = new Set<string>([UNASSIGNED_SHARD_KEY]);
+  /** Monotonic access clock for LRU eviction (#5592 PR-B). */
+  private unitTouchCounter = 0;
+  private unitLastTouch = new Map<string, number>();
+  /**
    * messageIds of swipes currently resolving to the unassigned shard. When
    * such a message is later INSERTED, its swipes silently regroup into the
    * chat's shard, so BOTH swipe files must be dirtied (see
@@ -2951,6 +2967,9 @@ class FileTableStore {
     } finally {
       if (this.activeFlush === flush) this.activeFlush = null;
     }
+    // Eviction runs only here — the tail of the flush that actually wrote —
+    // see maybeEvictUnits for why this is the one safe trigger point.
+    if (!this.lastFlushError) this.maybeEvictUnits();
     if (throwOnError && this.lastFlushError) throw this.lastFlushError;
   }
 
@@ -3009,6 +3028,10 @@ class FileTableStore {
       baseTable: meta.name,
       joined: false,
     };
+  }
+
+  getResidentChatUnits(): ReadonlySet<string> {
+    return this.loadedUnits;
   }
 
   markDirty(table: string, shardKeys?: Iterable<string>) {
@@ -3306,7 +3329,12 @@ class FileTableStore {
    */
   ensureUnitsLoaded(keys: Iterable<string>) {
     if (LAZY_UNIT_TABLES.size === 0) return;
-    const queue = [...new Set(keys)].filter((key) => !this.loadedUnits.has(key));
+    const requested = [...new Set(keys)];
+    // Touch EVERY requested key — including already-loaded ones — before the
+    // residency filter, or the hottest chats would look coldest to the LRU
+    // sweep (#5592 PR-B).
+    for (const key of requested) this.unitLastTouch.set(key, ++this.unitTouchCounter);
+    const queue = requested.filter((key) => !this.loadedUnits.has(key));
     if (queue.length === 0) return;
     while (queue.length > 0) {
       const key = queue.shift()!;
@@ -3329,7 +3357,12 @@ class FileTableStore {
       // the transitive stray pull, keeping the no-partial-units invariant.
       const strayFiles = this.messageStrayFilesByUnit.get(key);
       if (strayFiles && !this.fullyResidentTables.has("messages")) {
-        this.messageStrayFilesByUnit.delete(key);
+        // The entry is deliberately KEPT (#5592 PR-B): it is the only record
+        // of where this unit's misfiled rows physically live, and a reload
+        // after eviction needs it again. Re-reads are deduped by the
+        // read-once set, so repeated consumption is idempotent. Units in a
+        // stray relationship are pinned non-evictable regardless.
+        this.pinnedUnits.add(key);
         for (const strayEncoded of strayFiles) {
           const rows = this.loadShardFileSync("messages", strayEncoded);
           if (rows.length === 0) continue;
@@ -3522,6 +3555,13 @@ class FileTableStore {
       this.staleShardFiles.set(table, stale);
     }
     const keys = this.shardKeysForRows(table, incoming);
+    // A merge that saw any corruption-healing event (dropped duplicates,
+    // canonical replacements, stray rows) pins every involved unit against
+    // eviction (#5592 PR-B): these states interweave per-file read-once
+    // bookkeeping across units, and they only occur on corrupt installs.
+    if (duplicateCount > 0 || replacements.size > 0 || (strayIds !== undefined && strayIds.size > 0)) {
+      for (const key of keys) this.pinnedUnits.add(key);
+    }
     if (added.length === 0 && replacements.size === 0) return keys;
     const compareRows = (a: Row, b: Row) =>
       String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
@@ -3542,6 +3582,108 @@ class FileTableStore {
     }
     if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
     return keys;
+  }
+
+  // ── Unit eviction (#5592 Phase 2 PR-B) ────────────────────────────────
+
+  /**
+   * Unit key of a row WITHOUT shardKeyForRow's orphan-marker side effect —
+   * the eviction sweep must never inject orphan marks while bucketing.
+   */
+  private unitKeyOfRowForEviction(strategy: FileTableShardStrategy, row: Row): string {
+    if (strategy.kind === "message-parent") {
+      const messageId = row.messageId;
+      const chatId = typeof messageId === "string" ? this.messageShardIndex.get(messageId) : undefined;
+      return chatId ?? UNASSIGNED_SHARD_KEY;
+    }
+    const value = row[strategy.column];
+    return typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
+  }
+
+  /** True while any live persistence mark still names the unit. */
+  private unitHasPendingState(key: string): boolean {
+    const encoded = encodeShardKey(key);
+    for (const table of LAZY_UNIT_LOAD_ORDER) {
+      if (this.fullyResidentTables.has(table)) continue;
+      if (this.dirtyShards.get(table)?.has(key)) return true;
+      if (this.staleShardFiles.get(table)?.has(encoded)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * LRU sweep over resident chat units, run ONLY from the tail of a
+   * successful flush. That trigger point carries the safety argument:
+   * (a) no flush is in flight, so no captured mark batch is invisible to the
+   * pending-state gate; (b) every synchronous mutate-then-markDirty stretch
+   * has completed — a sweep inside ensureUnitsLoaded could run BETWEEN a
+   * write installing rows and its markDirty call and evict unflushed data;
+   * (c) the just-flushed state means a clean unit is genuinely durable.
+   * Multi-call storage flows can still lose a unit between their awaited
+   * steps — that degrades to a reload (their write conditions carry a
+   * scope-resolvable conjunct), never to data loss.
+   */
+  private maybeEvictUnits() {
+    if (LAZY_UNIT_TABLES.size === 0 || this.writesClosed) return;
+    const cap = getMaxResidentChatUnits();
+    if (cap === 0) return;
+    if (this.activeFlush || this.activeTransactionCount > 0 || this.txContext.getStore()) return;
+    const evictable = [...this.loadedUnits].filter((key) => !this.pinnedUnits.has(key));
+    if (evictable.length <= cap) return;
+    evictable.sort((a, b) => (this.unitLastTouch.get(a) ?? 0) - (this.unitLastTouch.get(b) ?? 0));
+    let excess = evictable.length - cap;
+    let evicted = 0;
+    for (const key of evictable) {
+      if (excess <= 0) break;
+      if (this.unitHasPendingState(key)) continue;
+      this.evictUnit(key);
+      excess -= 1;
+      evicted += 1;
+    }
+    if (evicted > 0) {
+      logger.debug("[file-storage] Evicted %d chat unit(s); %d remain resident", evicted, this.loadedUnits.size);
+    }
+  }
+
+  /**
+   * Drops one clean unit's rows from every non-leased lazy table and clears
+   * exactly the state a reload needs fresh. Fully synchronous; arrays are
+   * REPLACED, never spliced, because captured references escape across
+   * awaits (flush regroups, join scans). The complete messageShardIndex, the
+   * discovery index, knownShardFiles, and all persistence marks are
+   * deliberately untouched — they describe the disk, not residency.
+   */
+  private evictUnit(key: string) {
+    const encoded = encodeShardKey(key);
+    for (const table of LAZY_UNIT_LOAD_ORDER) {
+      if (this.fullyResidentTables.has(table)) continue;
+      const rows = this.tables.get(table);
+      if (rows && rows.length > 0) {
+        const strategy = getFileTableShardStrategy(table as FileBackedTable);
+        const kept: Row[] = [];
+        const dropped: Row[] = [];
+        for (const row of rows) {
+          (this.unitKeyOfRowForEviction(strategy, row) === key ? dropped : kept).push(row);
+        }
+        if (dropped.length > 0) {
+          this.tables.set(table, kept);
+          const strayIds = this.strayResidentIds.get(table);
+          const primaryKey = getMeta(table).primaryKey;
+          if (strayIds && primaryKey) {
+            for (const row of dropped) {
+              const id = row[primaryKey];
+              if (typeof id === "string") strayIds.delete(id);
+            }
+          }
+        }
+      }
+      // Un-mark ONLY the unit's own file so the reload re-reads it; files of
+      // OTHER units (stray hosts) keep their read-once mark — units entangled
+      // with such files are pinned and never reach this method.
+      this.loadedShardEncodings.get(table)?.delete(encoded);
+    }
+    this.loadedUnits.delete(key);
+    this.unitLastTouch.delete(key);
   }
 
   private deleteWhere(meta: TableMeta, condition?: Condition, options?: { unitsPreloaded?: boolean }) {
@@ -4215,10 +4357,35 @@ class FileTableStore {
       const path = shardFilePath(this.rootDir, table, encoded);
       await atomicWriteFile(path, serializedRows, { refreshBackup: !recoveredPaths.has(path) });
       known.add(encoded);
+      // Register the shard in the lazy discovery index too (#5592 PR-B):
+      // discovery was boot-only, which was invisible while units never
+      // unloaded — but an EVICTED unit reloads through this index, and a
+      // chat created after boot would otherwise reload permanently empty.
+      if (LAZY_UNIT_TABLES.has(table)) {
+        const discovered = this.lazyDiscoveredShards.get(table) ?? new Set<string>();
+        discovered.add(encoded);
+        this.lazyDiscoveredShards.set(table, discovered);
+      }
     }
     if (stale && stale.size > 0) {
       for (const encoded of stale) {
         if (encodedToKey.has(encoded)) continue; // rewritten canonically above
+        // Residency evidence for the stale unlink (#5592 PR-B), mirroring the
+        // zero-row gate below: a stale mark is created by READING the file,
+        // so its encoding must still be in the read-once set — if eviction
+        // cleared it (or a mark ever arrived without a read), the mark's
+        // rows may no longer be resident and deleting the file plus its .bak
+        // would destroy their only copy. Requeue the mark instead.
+        if (!this.fullyResidentTables.has(table) && !this.loadedShardEncodings.get(table)?.has(encoded)) {
+          logger.warn(
+            { table, shard: encoded },
+            "[file-storage] Stale shard file is no longer resident; deferring its rewrite until it reloads.",
+          );
+          const requeued = this.staleShardFiles.get(table) ?? new Set<string>();
+          requeued.add(encoded);
+          this.staleShardFiles.set(table, requeued);
+          continue;
+        }
         const path = shardFilePath(this.rootDir, table, encoded);
         // Only a MISSING file is an acceptable unlink outcome: any other
         // failure (EBUSY/EPERM from a scanner holding the handle) must
@@ -4228,6 +4395,7 @@ class FileTableStore {
         await unlinkIgnoringMissing(path);
         await unlinkIgnoringMissing(`${path}.bak`);
         known.delete(encoded);
+        this.lazyDiscoveredShards.get(table)?.delete(encoded);
       }
     }
     for (const key of effectiveDirty) {
@@ -4264,6 +4432,7 @@ class FileTableStore {
       await unlinkIgnoringMissing(path);
       await unlinkIgnoringMissing(`${path}.bak`);
       known.delete(encoded);
+      this.lazyDiscoveredShards.get(table)?.delete(encoded);
     }
     // The processed marks were swapped out of the live map by flush(); marks
     // added DURING this flush (lazy unit loads) sit in the live map and keep
@@ -4470,6 +4639,8 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     close: () => store.close(),
     getQuarantinedTables: () => store.getQuarantinedTables(),
     getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
+    getResidentChatUnits: () => store.getResidentChatUnits(),
+    markShardDirty: (table, shardKeys) => store.markDirty(table, shardKeys),
   };
 
   let db: FileNativeDB;

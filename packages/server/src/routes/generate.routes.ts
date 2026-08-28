@@ -1018,7 +1018,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (gs && input.pendingSpatialTransition && requestChatMode === "game") {
             spatialGameStateSnapshotId = gs.id;
           } else if (gs) {
-            await gameStateStore.commit(gs.id).catch(releaseActiveGenerationAndRethrow);
+            await gameStateStore.commit(gs.id, gs.chatId).catch(releaseActiveGenerationAndRethrow);
           }
           break;
         }

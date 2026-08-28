@@ -1802,7 +1802,10 @@ export function createChatsStorage(db: DB) {
                 swipePatch.extra = JSON.stringify({ ...swipeExtra, conversationCommandContent: null });
               }
             }
-            await db.update(messageSwipes).set(swipePatch).where(eq(messageSwipes.id, activeSwipe.id));
+            await db
+              .update(messageSwipes)
+              .set(swipePatch)
+              .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, activeSwipe.id)));
           }
         }
         return msg;
@@ -1828,7 +1831,7 @@ export function createChatsStorage(db: DB) {
           await db
             .update(messageSwipes)
             .set({ extra: JSON.stringify({ ...swipeExtra, ...partial }) })
-            .where(eq(messageSwipes.id, activeSwipe.id));
+            .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, activeSwipe.id)));
         }
 
         return this.getMessage(id);
@@ -1848,7 +1851,7 @@ export function createChatsStorage(db: DB) {
         await db
           .update(messageSwipes)
           .set({ extra: JSON.stringify({ ...swipeExtra, ...partial }) })
-          .where(eq(messageSwipes.id, targetSwipe.id));
+          .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, targetSwipe.id)));
 
         if (msg.activeSwipeIndex === swipeIndex) {
           const msgExtra = parseExtraRecord(msg.extra);
@@ -1875,7 +1878,7 @@ export function createChatsStorage(db: DB) {
         await db
           .update(messageSwipes)
           .set({ extra: JSON.stringify({ ...swipeExtra, [key]: value }) })
-          .where(eq(messageSwipes.id, targetSwipe.id));
+          .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, targetSwipe.id)));
         if (msg.activeSwipeIndex === swipeIndex) {
           const messageExtra = parseExtraRecord(msg.extra);
           await db
@@ -2078,7 +2081,7 @@ export function createChatsStorage(db: DB) {
             await db
               .update(messageSwipes)
               .set({ extra: JSON.stringify(msgExtra) })
-              .where(eq(messageSwipes.id, activeSwipe.id));
+              .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, activeSwipe.id)));
           }
         }
 
@@ -2122,7 +2125,7 @@ export function createChatsStorage(db: DB) {
             await db
               .update(messageSwipes)
               .set({ content: msg.content, extra: JSON.stringify(msgExtra) })
-              .where(eq(messageSwipes.id, outgoingSwipe.id));
+              .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, outgoingSwipe.id)));
           }
         }
 
@@ -2171,7 +2174,9 @@ export function createChatsStorage(db: DB) {
           }
         }
 
-        await db.delete(messageSwipes).where(eq(messageSwipes.id, target.id));
+        await db
+          .delete(messageSwipes)
+          .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, target.id)));
         await db
           .delete(gameStateSnapshots)
           .where(and(eq(gameStateSnapshots.messageId, messageId), eq(gameStateSnapshots.swipeIndex, index)));
@@ -2187,7 +2192,7 @@ export function createChatsStorage(db: DB) {
           await db
             .update(messageSwipes)
             .set({ index: swipe.index - 1 })
-            .where(eq(messageSwipes.id, swipe.id));
+            .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, swipe.id)));
         }
 
         const snapshotsToShift = await db
@@ -2255,7 +2260,7 @@ export function createChatsStorage(db: DB) {
         await db
           .update(messageSwipes)
           .set({ extra: JSON.stringify(merged) })
-          .where(eq(messageSwipes.id, target.id));
+          .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, target.id)));
       });
     },
 
@@ -2271,7 +2276,7 @@ export function createChatsStorage(db: DB) {
         await db
           .update(messageSwipes)
           .set({ extra: JSON.stringify(merged) })
-          .where(eq(messageSwipes.id, target.id));
+          .where(and(eq(messageSwipes.messageId, messageId), eq(messageSwipes.id, target.id)));
       });
     },
 
@@ -2322,9 +2327,16 @@ export function createChatsStorage(db: DB) {
         .orderBy(oocInfluences.createdAt);
     },
 
-    /** Mark an influence as consumed after it's been injected. */
-    async markInfluenceConsumed(id: string) {
-      await db.update(oocInfluences).set({ consumed: "true" }).where(eq(oocInfluences.id, id));
+    /**
+     * Mark an influence as consumed after it's been injected. The
+     * targetChatId keeps the write's unit scope resolvable when the row's
+     * unit is not resident (#5592 PR-B) — the caller always has it.
+     */
+    async markInfluenceConsumed(id: string, targetChatId?: string) {
+      const condition = targetChatId
+        ? and(eq(oocInfluences.targetChatId, targetChatId), eq(oocInfluences.id, id))
+        : eq(oocInfluences.id, id);
+      await db.update(oocInfluences).set({ consumed: "true" }).where(condition);
     },
 
     /** Delete all influences associated with a chat (as source or target). */
@@ -2363,7 +2375,9 @@ export function createChatsStorage(db: DB) {
         }
       }
       if (toDelete.length > 0) {
-        await db.delete(conversationNotes).where(inArray(conversationNotes.id, toDelete));
+        await db
+          .delete(conversationNotes)
+          .where(and(eq(conversationNotes.targetChatId, targetChatId), inArray(conversationNotes.id, toDelete)));
       }
 
       return id;

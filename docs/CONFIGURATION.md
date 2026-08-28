@@ -149,11 +149,13 @@ Phones, tablets, Tailscale peers, and other computers can continue to connect by
 
 Storage settings control where your local data lives. Your data includes chats, characters, avatars, and generated media.
 
-| Variable           | Default                                | What it does                                                             |
-| ------------------ | -------------------------------------- | ------------------------------------------------------------------------ |
-| `DATA_DIR`         | `packages/server/data`                 | Root folder for all user data. Docker images set `/app/data`.            |
-| `FILE_STORAGE_DIR` | the `storage` folder inside `DATA_DIR` | Overrides the file-storage folder.                                       |
-| `ENCRYPTION_KEY`   | empty                                  | Key used to encrypt saved API keys. Generate one with the command below. |
+| Variable                     | Default                                | What it does                                                                                                                                                                                                                                          |
+| ---------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATA_DIR`                   | `packages/server/data`                 | Root folder for all user data. Docker images set `/app/data`.                                                                                                                                                                                          |
+| `FILE_STORAGE_DIR`           | the `storage` folder inside `DATA_DIR` | Overrides the file-storage folder.                                                                                                                                                                                                                     |
+| `ENCRYPTION_KEY`             | empty                                  | Key used to encrypt saved API keys. Generate one with the command below.                                                                                                                                                                               |
+| `MARINARA_MAX_RESIDENT_CHATS` | `0` (unlimited)                        | Caps how many chats the server keeps in memory at once. Chats load when first opened; past the cap, the least-recently-used chat with no unsaved changes is dropped from memory (never from disk) after each save. The Termux launcher defaults this to `8` to protect phone memory. Values below `2` are raised to `2`. |
+| `MARINARA_EAGER_STORAGE`     | off                                    | Set to `1` to load every chat into memory at startup, restoring pre-2.4.5 behavior. Uses much more memory on large profiles; requires a restart to change.                                                                                              |
 
 Marinara keeps your data as plain JSON files. This makes backups easy to copy and inspect.
 

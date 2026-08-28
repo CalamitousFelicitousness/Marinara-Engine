@@ -502,6 +502,21 @@ export function getGameDynamicImagePromptTimeoutMs() {
   return readGameDynamicImagePromptTimeoutMs();
 }
 
+/**
+ * Resident chat-unit cap for the lazy file store (#5592 Phase 2 PR-B).
+ * 0 (the default when unset or invalid) disables eviction entirely,
+ * preserving load-and-keep behavior. Read per sweep so .env hot reloads
+ * apply without a restart. The floor of 2 keeps multi-chat operations
+ * (branching, cross-chat notes) from thrashing their own working set.
+ */
+export function getMaxResidentChatUnits() {
+  const raw = normalizeEnvValue(process.env.MARINARA_MAX_RESIDENT_CHATS);
+  if (!raw || !/^\d+$/.test(raw)) return 0;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return 0;
+  return Math.max(2, Math.min(parsed, 10_000));
+}
+
 export function getMaxToolRounds() {
   return parsePositiveIntEnv(process.env.MAX_TOOL_ROUNDS, DEFAULT_MAX_TOOL_ROUNDS, MAX_CONFIGURED_TOOL_ROUNDS);
 }

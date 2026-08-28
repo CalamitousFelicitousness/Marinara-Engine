@@ -115,11 +115,14 @@ export function createGameStoryboardsStorage(db: DB) {
       return this.getById(id);
     },
 
-    async update(id: string, patch: Partial<typeof gameTurnStoryboards.$inferInsert>) {
+    async update(id: string, patch: Partial<typeof gameTurnStoryboards.$inferInsert>, chatId?: string) {
+      const condition = chatId
+        ? and(eq(gameTurnStoryboards.chatId, chatId), eq(gameTurnStoryboards.id, id))
+        : eq(gameTurnStoryboards.id, id);
       await db
         .update(gameTurnStoryboards)
         .set({ ...patch, updatedAt: now() })
-        .where(eq(gameTurnStoryboards.id, id));
+        .where(condition);
       return this.getById(id);
     },
 
@@ -147,7 +150,11 @@ export function createGameStoryboardsStorage(db: DB) {
       await db
         .update(gameTurnStoryboards)
         .set({ status: "failed", error, updatedAt: timestamp })
-        .where(inArray(gameTurnStoryboards.id, staleIds));
+        .where(
+          chatId
+            ? and(eq(gameTurnStoryboards.chatId, chatId), inArray(gameTurnStoryboards.id, staleIds))
+            : inArray(gameTurnStoryboards.id, staleIds),
+        );
       await db
         .update(gameTurnStoryboardKeyframes)
         .set({ status: "failed", error, updatedAt: timestamp })

@@ -12635,7 +12635,7 @@ export async function gameRoutes(app: FastifyInstance) {
           await storyboards.updateKeyframe(frame.id, { chatImageId: galleryImage.id, status: "image_complete" });
 
           if (videoRuntime) {
-            await storyboards.update(storyboardRow.id, { status: "rendering_videos" });
+            await storyboards.update(storyboardRow.id, { status: "rendering_videos" }, storyboardRow.chatId);
             await storyboards.updateKeyframe(frame.id, { status: "rendering_video" });
             let savedFilePath: string | null = null;
             let metadataSaved = false;
@@ -12881,7 +12881,11 @@ export async function gameRoutes(app: FastifyInstance) {
                   (videoRuntime && generatedVideos < plan.keyframes.length)
                 ? "partial"
                 : "complete";
-          const updatedStoryboard = await storyboards.update(storyboardRow.id, { status: finalStatus });
+          const updatedStoryboard = await storyboards.update(
+            storyboardRow.id,
+            { status: finalStatus },
+            storyboardRow.chatId,
+          );
           if (!updatedStoryboard) throw new Error("Storyboard metadata could not be reloaded");
           const storyboardAgentConfigId = readTrimmedString(meta.storyboardAgentConfigId);
           if (ownerMode === "roleplay" && generatedImages > 0 && storyboardAgentConfigId) {
@@ -12913,13 +12917,15 @@ export async function gameRoutes(app: FastifyInstance) {
         } catch (err) {
           const message = err instanceof Error ? err.message : "Storyboard media rendering failed";
           logger.warn(err, "[game/storyboard] background media rendering failed for storyboard %s", storyboardRow.id);
-          await storyboards.update(storyboardRow.id, { status: "failed", error: message }).catch((updateErr) => {
-            logger.warn(
-              updateErr,
-              "[game/storyboard] failed to persist background media rendering error for storyboard %s",
-              storyboardRow.id,
-            );
-          });
+          await storyboards
+            .update(storyboardRow.id, { status: "failed", error: message }, storyboardRow.chatId)
+            .catch((updateErr) => {
+              logger.warn(
+                updateErr,
+                "[game/storyboard] failed to persist background media rendering error for storyboard %s",
+                storyboardRow.id,
+              );
+            });
         } finally {
           clearTimeout(backgroundTimeout);
           releaseBackgroundStoryboardLock?.();

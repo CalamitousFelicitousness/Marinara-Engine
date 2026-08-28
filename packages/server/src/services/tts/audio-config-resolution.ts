@@ -1,7 +1,14 @@
 // ──────────────────────────────────────────────
 // Audio Config Resolution
 // ──────────────────────────────────────────────
-// One place decides which engine speaks and with which settings.
+// One place decides which engine answers for a purpose, and with which settings.
+//
+// Each purpose resolves down its own chain: an explicitly requested connection,
+// then the purpose's own default and fallback, then the base audio default and
+// fallback, then the app-level settings. Speech has no pair of its own, so it
+// starts at the base pair, and a game purpose with no pair set lands there too.
+// That is what keeps an install nobody has re-pointed routing every lane to one
+// engine.
 //
 // An audio connection supplies identity: source, key, base URL, voice, model,
 // and the two game-audio capability flags. Its audioSettings then supply the
@@ -14,11 +21,14 @@
 
 import {
   applyAudioConnectionSettings,
+  isGameAudioPurpose,
   parseAudioConnectionSettings,
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
+  ttsSourceSupportsGameAudio,
   TTS_SETTINGS_KEY,
   TTS_SOURCE_DEFINITIONS,
+  type AudioPurpose,
   type TTSConfig,
   type TTSResolutionOrigin,
   type TTSSource,
@@ -38,8 +48,29 @@ export interface AudioConfigResolution {
   resolvedConnectionName: string | null;
   resolvedSource: TTSSource;
   origin: TTSResolutionOrigin;
-  /** Whether speech may be synthesized. The single gate; cfg.enabled mirrors it. */
+  /**
+   * Whether speech may be synthesized. The single gate for /speak; cfg.enabled
+   * mirrors it. Game audio has never consulted it and must not start: silencing
+   * narration is not a reason to stop scoring a scene.
+   */
   speechEnabled: boolean;
+  /** Lane this resolution answered for. */
+  purpose: AudioPurpose;
+  /** See TTSEffectiveConfigResponse.gameAudioEnabled. null for speech. */
+  gameAudioEnabled: boolean | null;
+}
+
+/**
+ * Whether the resolved engine may generate for a game purpose. Two terms, and
+ * both are needed: the source has to be able to do it at all, and this
+ * connection has to have opted in. A missing API key is deliberately absent,
+ * because that is a configuration error with its own message rather than a
+ * statement about what the engine can do.
+ */
+function gameAudioEnabledFor(cfg: TTSConfig, purpose: AudioPurpose): boolean | null {
+  if (!isGameAudioPurpose(purpose)) return null;
+  if (!ttsSourceSupportsGameAudio(cfg.source, purpose)) return false;
+  return purpose === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
 }
 
 export function parseStoredConfig(raw: string | null) {
@@ -76,6 +107,7 @@ export async function resolveAudioConfig(
   storage: ReturnType<typeof createAppSettingsStorage>,
   connections: ReturnType<typeof createConnectionsStorage>,
   requestedConnectionId?: string | null,
+  purpose: AudioPurpose = "speech",
 ): Promise<AudioConfigResolution> {
   const raw = await storage.get(TTS_SETTINGS_KEY);
   // Distinguishes "never configured" from "configured and switched off", which
@@ -93,6 +125,8 @@ export async function resolveAudioConfig(
     resolvedSource: cfg.source,
     origin: "legacy",
     speechEnabled: cfg.enabled,
+    purpose,
+    gameAudioEnabled: gameAudioEnabledFor(cfg, purpose),
   });
 
   // The settings card tests the blob it edits, so the sentinel must reach it
@@ -108,6 +142,16 @@ export async function resolveAudioConfig(
       origin = "explicit";
     } else {
       logger.warn("Requested audio connection %s missing or not audio; using the default", requestedConnectionId);
+    }
+  }
+  // A purpose pair answers before the base pair, so pointing music at a second
+  // engine does not disturb what speaks.
+  if (!row && isGameAudioPurpose(purpose)) {
+    row = await connections.getDefaultForAudioPurpose(purpose);
+    if (row) origin = "purpose_default";
+    if (!row) {
+      row = await connections.getFallbackForAudioPurpose(purpose);
+      if (row) origin = "purpose_fallback";
     }
   }
   if (!row) {
@@ -146,12 +190,16 @@ export async function resolveAudioConfig(
     elevenLabsGameMusic: row.audioMusic === "true",
   };
 
+  const merged = applyAudioConnectionSettings(withIdentity, parseAudioConnectionSettings(row.audioSettings));
+
   return {
-    cfg: applyAudioConnectionSettings(withIdentity, parseAudioConnectionSettings(row.audioSettings)),
+    cfg: merged,
     resolvedConnectionId: String(row.id),
     resolvedConnectionName: row.name ? String(row.name) : null,
     resolvedSource: source,
     origin,
     speechEnabled,
+    purpose,
+    gameAudioEnabled: gameAudioEnabledFor(merged, purpose),
   };
 }

@@ -74,6 +74,10 @@ try {
     assert.equal(result.resolvedConnectionName, "ElevenLabs", "by name, for the playback summary");
     assert.equal(result.speechEnabled, true, "configuring a connection is the intent to speak");
     assert.equal(result.cfg.enabled, true, "cfg.enabled mirrors the gate");
+    // Callers that never name a purpose are asking about speech, and speech has
+    // no generation capability to report.
+    assert.equal(result.purpose, "speech", "an unnamed purpose is speech");
+    assert.equal(result.gameAudioEnabled, null, "speech reports no game audio capability");
     assert.equal(result.resolvedSource, "elevenlabs", "the row picks the source");
     assert.equal(result.cfg.apiKey, "eleven-key", "the row supplies the key");
     assert.equal(result.cfg.voice, "row-voice", "the row supplies the voice");

@@ -2,6 +2,7 @@
 // TTS Types
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import type { AudioPurpose } from "../constants/audio-purposes.js";
 import { TTS_SOURCE_IDS, type TTSSourceId } from "../constants/tts-sources.js";
 
 export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
@@ -311,8 +312,18 @@ export interface TTSModelsResponse {
   source: TTSSource;
 }
 
-/** Which rule picked the engine behind an effective config. */
-export type TTSResolutionOrigin = "explicit" | "default" | "fallback" | "legacy";
+/**
+ * Which rule picked the engine behind an effective config. The purpose values
+ * mean a sound effect or music pair answered; a game purpose falling through to
+ * the base audio pair reports "default" or "fallback" like speech does.
+ */
+export type TTSResolutionOrigin =
+  | "explicit"
+  | "purpose_default"
+  | "purpose_fallback"
+  | "default"
+  | "fallback"
+  | "legacy";
 
 /** Returned by GET /api/tts/effective-config */
 export interface TTSEffectiveConfigResponse {
@@ -324,4 +335,12 @@ export interface TTSEffectiveConfigResponse {
   origin: TTSResolutionOrigin;
   /** Whether /speak will synthesize. Clients gate on this, never on config.enabled. */
   speechEnabled: boolean;
+  /** Routing lane this answer is for; "speech" when the request named none. */
+  purpose: AudioPurpose;
+  /**
+   * sfx and music: whether the resolved engine may generate for this purpose,
+   * meaning its source supports it and the connection opted in. null for speech.
+   * A missing API key is a separate failure and is not folded in here.
+   */
+  gameAudioEnabled: boolean | null;
 }

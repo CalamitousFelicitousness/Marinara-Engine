@@ -10,7 +10,7 @@ import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
   normalizeMusicEnemyTier,
-  ttsSourceSupportsGameAudio,
+  AUDIO_PURPOSES,
   GAME_AUDIO_PURPOSES,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
@@ -170,6 +170,8 @@ const speakSchema = z.object({
 
 const ttsQuerySchema = z.object({
   connectionId: z.string().max(120).optional(),
+  /** Routing lane to answer for. Absent means speech. */
+  purpose: z.enum(AUDIO_PURPOSES).optional(),
   /** Ask about this model instead of the saved one. Voices are per model where a source publishes them. */
   model: z.string().max(200).optional(),
 });
@@ -1133,8 +1135,8 @@ export async function ttsRoutes(app: FastifyInstance) {
    * which is what an unattended autoplay will reach.
    */
   app.get("/effective-config", async (req) => {
-    const { connectionId } = ttsQuerySchema.parse(req.query ?? {});
-    const resolution = await resolveAudioConfig(storage, connections, connectionId);
+    const { connectionId, purpose } = ttsQuerySchema.parse(req.query ?? {});
+    const resolution = await resolveAudioConfig(storage, connections, connectionId, purpose ?? "speech");
     return {
       config: maskTTSConfigForResponse(resolution.cfg),
       resolvedConnectionId: resolution.resolvedConnectionId,
@@ -1142,6 +1144,8 @@ export async function ttsRoutes(app: FastifyInstance) {
       resolvedSource: resolution.resolvedSource,
       origin: resolution.origin,
       speechEnabled: resolution.speechEnabled,
+      purpose: resolution.purpose,
+      gameAudioEnabled: resolution.gameAudioEnabled,
     } satisfies TTSEffectiveConfigResponse;
   });
 
@@ -1331,9 +1335,10 @@ export async function ttsRoutes(app: FastifyInstance) {
       }
       context.key = canonicalTier;
     }
-    const { cfg } = await resolveAudioConfig(storage, connections, audioConnectionId);
-    const enabled = kind === "sfx" ? cfg.elevenLabsGameSoundEffects === true : cfg.elevenLabsGameMusic === true;
-    if (!ttsSourceSupportsGameAudio(cfg.source, kind) || !enabled) {
+    // kind names the lane, so a caller that sends no connection id still reaches
+    // the engine this purpose was pointed at rather than the one that speaks.
+    const { cfg, gameAudioEnabled } = await resolveAudioConfig(storage, connections, audioConnectionId, kind);
+    if (gameAudioEnabled !== true) {
       return reply
         .status(400)
         .send({ error: `Game ${kind} generation is not enabled for the resolved audio connection` });

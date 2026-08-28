@@ -437,6 +437,76 @@ const shardExists = (dir: string, table: string, key: string) =>
   }
 }
 
+// ── A duplicate message id in ANOTHER chat's unit is still rejected ──
+// Primary-key uniqueness is table-wide, but the duplicate scan only sees
+// resident rows. The complete harvest index names the unit that already owns
+// an incoming id, and the insert must load it — otherwise an id-preserving
+// import into a different chat silently persists the same id twice.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-a", [chatRow("chat-a")]);
+  writeShard(dir, "chats", "chat-b", [chatRow("chat-b")]);
+  writeShard(dir, "messages", "chat-a", [messageRow("m-dup", "chat-a", "the original")]);
+  const db = await createFileNativeDB();
+  try {
+    await assert.rejects(
+      db.insert(messages).values(messageRow("m-dup", "chat-b", "impostor in another chat")),
+      /unique|duplicate/i,
+      "an id owned by an unloaded unit is found via the harvest index and rejected",
+    );
+    const rows = await db.select().from(messages).where(eq(messages.id, "m-dup"));
+    assert.deepEqual(
+      rows.map((row) => row.content),
+      ["the original"],
+      "the owning chat's row survives untouched",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A row misfiled in ANOTHER unit's shard is reachable through its owner ──
+// The eager loader saw misfiled rows because it read every file. Per-unit
+// loading must consult the harvest's physical-location record, or a query
+// scoped to the OWNING chat loads only that chat's own file and the misfiled
+// row stays invisible until its host unit happens to load.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-a", [chatRow("chat-a")]);
+  writeShard(dir, "chats", "chat-b", [chatRow("chat-b")]);
+  // chat-b has NO file of its own; its only row sits inside chat-a's shard.
+  writeShard(dir, "messages", "chat-a", [
+    messageRow("m-a", "chat-a", "a's own row"),
+    messageRow("m-b1", "chat-b", "b's misfiled row"),
+  ]);
+  const db = await createFileNativeDB();
+  try {
+    const bRows = await db.select().from(messages).where(eq(messages.chatId, "chat-b"));
+    assert.deepEqual(
+      bRows.map((row) => row.id),
+      ["m-b1"],
+      "the owning chat's scoped query finds its misfiled row",
+    );
+    await db._fileStore.flush();
+    assert.deepEqual(
+      readShard(dir, "messages", "chat-b").map((row) => row.id),
+      ["m-b1"],
+      "the misfiled row heals into its canonical shard on the next flush",
+    );
+    assert.deepEqual(
+      readShard(dir, "messages", "chat-a").map((row) => row.id),
+      ["m-a"],
+      "the host file is rewritten without the stray",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest: messages reports the harvested total; other lazy counts are omitted ──
 
 {

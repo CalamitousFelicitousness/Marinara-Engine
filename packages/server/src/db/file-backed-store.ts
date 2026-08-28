@@ -1985,6 +1985,25 @@ class FileTableStore {
    */
   private lazyDiscoveredShards = new Map<string, Set<string>>();
   /**
+   * Physical shard files (encoded names) that hold MESSAGES rows belonging to
+   * a different unit than the file itself, keyed by the OWNING unit (#5592
+   * Phase 2, round-4 review). The eager loader saw misfiled rows because it
+   * read every file; per-unit loading must know where a unit's strays
+   * physically live, or a chatId/id-scoped query for the owning unit loads
+   * only the unit's own file and the misfiled row stays invisible until its
+   * host unit happens to load. Built during the boot harvest (which already
+   * parses every messages shard) and consumed on the owning unit's load.
+   */
+  private messageStrayFilesByUnit = new Map<string, Set<string>>();
+  /**
+   * Shard files already read by loadShardFileSync, per table. Files load at
+   * most once by design; this set makes that structural (a stray-holding file
+   * can be reached via its own unit, another unit's transitive pull, a lease,
+   * or the stray index) instead of relying on callers to dedup — a re-read
+   * would spuriously stale-mark the file via the duplicate-drop path.
+   */
+  private loadedShardEncodings = new Map<string, Set<string>>();
+  /**
    * messageIds of swipes currently resolving to the unassigned shard. When
    * such a message is later INSERTED, its swipes silently regroup into the
    * chat's shard, so BOTH swipe files must be dirtied (see
@@ -2720,7 +2739,21 @@ class FileTableStore {
             // only sound against the unit's full row set. A key with no shard
             // on disk (a brand-new chat) is simply marked loaded.
             if (LAZY_UNIT_TABLES.has(meta.name) && !this.fullyResidentTables.has(meta.name)) {
-              this.ensureUnitsLoaded(this.shardKeysForRows(meta.name, preparedRows));
+              const destinationKeys = this.shardKeysForRows(meta.name, preparedRows);
+              // Primary-key uniqueness is table-wide, not per-unit. For
+              // messages the complete harvest index can name the unit that
+              // already owns an incoming id — load it too, so the duplicate
+              // scan and conflict matching see the existing row exactly as
+              // the eager store did (id-preserving chat imports are the
+              // realistic cross-unit collision source).
+              if (meta.name === "messages") {
+                for (const row of preparedRows) {
+                  if (typeof row.id !== "string") continue;
+                  const owner = this.messageShardIndex.get(row.id);
+                  if (owner !== undefined) destinationKeys.add(owner);
+                }
+              }
+              this.ensureUnitsLoaded(destinationKeys);
             }
             const target = this.rows(meta.name);
             const nextRows = target.map(cloneRow);
@@ -3290,6 +3323,21 @@ class FileTableStore {
           if (!this.loadedUnits.has(strayKey)) queue.push(strayKey);
         }
       }
+      // Misfiled rows OWNED by this unit but living in other units' files
+      // (harvest-indexed): load those files too, so the unit's row set is as
+      // complete as the eager loader's. Their host units join the queue via
+      // the transitive stray pull, keeping the no-partial-units invariant.
+      const strayFiles = this.messageStrayFilesByUnit.get(key);
+      if (strayFiles && !this.fullyResidentTables.has("messages")) {
+        this.messageStrayFilesByUnit.delete(key);
+        for (const strayEncoded of strayFiles) {
+          const rows = this.loadShardFileSync("messages", strayEncoded);
+          if (rows.length === 0) continue;
+          for (const strayKey of this.mergeLoadedRows("messages", rows, strayEncoded)) {
+            if (!this.loadedUnits.has(strayKey)) queue.push(strayKey);
+          }
+        }
+      }
     }
   }
 
@@ -3304,9 +3352,12 @@ class FileTableStore {
     if (!LAZY_UNIT_TABLES.has(meta.name) || this.fullyResidentTables.has(meta.name)) return;
     const discovered = this.lazyDiscoveredShards.get(meta.name);
     if (discovered && discovered.size > 0) {
-      const loadedEncodings = new Set([...this.loadedUnits].map((key) => encodeShardKey(key)));
+      // loadShardFileSync's read-once set is the authoritative skip check —
+      // it also covers files pulled in transitively (stray holders), which
+      // an encoding of loadedUnits would miss.
+      const alreadyRead = this.loadedShardEncodings.get(meta.name);
       for (const encoded of [...discovered]) {
-        if (loadedEncodings.has(encoded)) continue;
+        if (alreadyRead?.has(encoded)) continue;
         const rows = this.loadShardFileSync(meta.name, encoded);
         if (rows.length > 0) this.mergeLoadedRows(meta.name, rows, encoded);
       }
@@ -3324,6 +3375,10 @@ class FileTableStore {
    * for an unloaded unit could not.
    */
   private loadShardFileSync(table: string, encoded: string): Row[] {
+    const alreadyRead = this.loadedShardEncodings.get(table) ?? new Set<string>();
+    this.loadedShardEncodings.set(table, alreadyRead);
+    if (alreadyRead.has(encoded)) return [];
+    alreadyRead.add(encoded);
     const meta = getMeta(table);
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
     this.knownShardFiles.set(table, known);
@@ -3877,12 +3932,20 @@ class FileTableStore {
               if (typeof row.id !== "string") continue;
               // The eager loader normalized rows before indexing, which also
               // accepted the column's dbName form — a hand-edited or
-              // externally produced shard may carry `chat_id`, and dropping
-              // it here would make the message invisible to id-scoped
-              // queries until its unit happens to load.
+              // externally produced shard may carry `chat_id`. A row whose
+              // chatId is unusable still gets an index entry (its owning unit
+              // is the unassigned shard, same rule as shardKeyForRow), so the
+              // index is total over every string-id row on disk and an
+              // id-scope miss EXACTLY means "no such message anywhere".
               const chatId = typeof row.chatId === "string" ? row.chatId : row.chat_id;
-              if (typeof chatId === "string") {
-                this.messageShardIndex.set(row.id, chatId || UNASSIGNED_SHARD_KEY);
+              const owningKey = typeof chatId === "string" && chatId ? chatId : UNASSIGNED_SHARD_KEY;
+              this.messageShardIndex.set(row.id, owningKey);
+              // A row filed in another unit's shard would be invisible to its
+              // owning unit's loads — record where it physically lives.
+              if (encodeShardKey(owningKey) !== encoded) {
+                const strayFiles = this.messageStrayFilesByUnit.get(owningKey) ?? new Set<string>();
+                strayFiles.add(encoded);
+                this.messageStrayFilesByUnit.set(owningKey, strayFiles);
               }
             }
           }

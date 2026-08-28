@@ -23,6 +23,7 @@ import { buildAssetManifest, ensureAssetDirs } from "./services/game/asset-manif
 import { recoverGalleryImages } from "./services/storage/gallery-recovery.js";
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
 import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
+import { migrateTtsSourceProfilesToAudioConnections } from "./services/connections/tts-audio-connection-migration-v2.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
 import { APP_VERSION, resetTurnGameRegistry } from "@marinara-engine/shared";
 import { existsSync } from "fs";
@@ -174,6 +175,12 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     await migrateTtsSettingsToAudioConnection(db);
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
+  }
+  try {
+    // After the pass above, so the connection it creates is seeded here too.
+    await migrateTtsSourceProfilesToAudioConnections(db);
+  } catch (error) {
+    app.log.warn(error, "TTS audio-connection presets did not complete; they will retry next startup");
   }
   await seedDefaultBackgrounds();
   await seedDefaultGameAssets();

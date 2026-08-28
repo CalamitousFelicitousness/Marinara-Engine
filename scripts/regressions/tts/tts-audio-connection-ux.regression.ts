@@ -46,7 +46,8 @@ const readSource = (relative: string) => readFileSync(join(repositoryRoot, relat
 // not name a connection even if a caller wanted to.
 {
   const service = readSource("packages/client/src/lib/tts-service.ts");
-  const sequenceOptions = /export interface TTSSpeakSequenceOptions extends Pick<[\s\S]*?> \{/u.exec(service)?.[0] ?? "";
+  const sequenceOptions =
+    /export interface TTSSpeakSequenceOptions extends Pick<[\s\S]*?> \{/u.exec(service)?.[0] ?? "";
   assert.match(sequenceOptions, /"audioConnectionId"/u, "a sequence must be able to name its connection");
   const fetchChunk = service.slice(service.indexOf("const fetchChunk ="), service.indexOf("const playBlob ="));
   assert.match(fetchChunk, /audioConnectionId: options\.audioConnectionId/u, "and every chunk must carry it");
@@ -145,6 +146,31 @@ for (const [file, path] of [
     const scoped = body.slice(0, body.indexOf("\n}\n") + 1);
     assert.match(scoped, /ttsKeys\.all/u, `${mutation}: an audio connection change makes the TTS view stale`);
   }
+}
+
+// ── Switching engines is a control, not a trip to the defaults section ──
+// The card names the engine that speaks, so it is where that engine gets
+// changed. Selecting writes the audio category default, the same flag the
+// Connections defaults section writes: a second notion of "active engine"
+// would be a second thing to keep in sync.
+{
+  const card = readSource("packages/client/src/components/panels/settings/TTSConfigCard.tsx");
+  assert.match(card, /<AudioConnectionPicker \/>/u, "the card offers the engine picker");
+
+  const picker = readSource("packages/client/src/components/connections/audio/AudioConnectionPicker.tsx");
+  assert.match(picker, /defaultForAgents: true/u, "picking an engine writes the audio category default");
+  assert.match(picker, /defaultForAgents: false/u, "and clearing the selection clears that same flag");
+
+  // Which rows qualify is one rule, audio provider and not a quarantined
+  // import, already shared with the game setup wizard. Another inline copy
+  // drifts from the server's resolution the first time either moves.
+  assert.match(picker, /filterAudioGenerationConnections/u, "the picker reuses the shared audio filter");
+  assert.doesNotMatch(picker, /provider === "audio"/u, "rather than re-deriving it inline");
+
+  // What is picked and what speaks are different questions: a fallback row or
+  // the legacy blob still resolves when nothing is picked. Comparing names
+  // would read two connections sharing a name as agreement.
+  assert.match(picker, /origin !== "default"/u, "the mismatch note keys on the resolution origin");
 }
 
 console.info("TTS audio connection UX regression passed.");

@@ -7,7 +7,6 @@ import { cn } from "../../../lib/utils";
 import { toast } from "sonner";
 import { useEffectiveTTSConfig, useTTSConfig, useUpdateTTSConfig } from "../../../hooks/use-tts";
 import { useConnections } from "../../../hooks/use-connections";
-import { useUIStore } from "../../../stores/ui.store";
 import { ttsService } from "../../../lib/tts-service";
 import {
   listCachedTTSAudioEntries,
@@ -26,6 +25,7 @@ import { HelpTooltip } from "../../ui/HelpTooltip";
 import { SettingsCheckbox, SettingsSwitch } from "./SettingControls";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { INPUT_CLS } from "../../connections/audio/voice-controls";
+import { AudioConnectionPicker } from "../../connections/audio/AudioConnectionPicker";
 
 // ── Sub-components ───────────────────────────────
 
@@ -122,12 +122,9 @@ export function TTSConfigCard() {
   // What a speak request would actually reach, so the card reports the engine
   // rather than guessing from settings it no longer owns.
   const { data: effectiveConfig } = useEffectiveTTSConfig();
-  const resolvedConnectionId = effectiveConfig?.resolvedConnectionId ?? null;
   const resolvedConnectionName = effectiveConfig?.resolvedConnectionName ?? null;
   const resolvedSourceName = effectiveConfig ? TTS_SOURCE_DEFINITIONS[effectiveConfig.resolvedSource].name : "";
   const speechEnabled = effectiveConfig?.speechEnabled ?? false;
-  const openConnectionDetail = useUIStore((state) => state.openConnectionDetail);
-  const openModal = useUIStore((state) => state.openModal);
 
   // Local draft state
   // Local draft state: playback policy only. How an engine speaks lives on the
@@ -403,33 +400,8 @@ export function TTSConfigCard() {
       {/* ── Expanded body ── */}
       {expanded && (
         <div className="mt-3 space-y-4 border-t border-sky-400/10 pt-3">
-          {/* Which engine speaks. The settings live on the connection itself. */}
-          <div className="flex items-center gap-2 rounded-xl border border-sky-400/15 bg-sky-400/5 px-2.5 py-2">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium">{localizeUi("ui.panels.ttsconfigcard.voicedBy")}</div>
-              <div className="truncate text-[0.625rem] text-[var(--muted-foreground)]">
-                {resolvedConnectionName
-                  ? localizeUi("ui.panels.ttsconfigcard.value1Value2", {
-                      value1: resolvedConnectionName,
-                      value2: resolvedSourceName,
-                    })
-                  : localizeUi("ui.panels.ttsconfigcard.noAudioConnectionConfiguredYet")}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                resolvedConnectionId
-                  ? openConnectionDetail(resolvedConnectionId)
-                  : openModal("create-connection", { initialProvider: "audio" })
-              }
-              className="mari-chrome-control mari-chrome-control--small shrink-0 text-xs"
-            >
-              {resolvedConnectionId
-                ? localizeUi("ui.panels.ttsconfigcard.editAudioConnection")
-                : localizeUi("ui.panels.ttsconfigcard.createAudioConnection")}
-            </button>
-          </div>
+          {/* Which saved engine speaks. Its settings live on the connection. */}
+          <AudioConnectionPicker />
 
           {/* Auto-play */}
           <div className="space-y-1">

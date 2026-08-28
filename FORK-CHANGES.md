@@ -1305,7 +1305,8 @@ one global list an engine switch would invalidate.
 
 The card keeps what is genuinely app level: the master switch, auto-play, progressive playback,
 dialogue handling, the speaker extractor, and cached clips. It went from 1891 lines to 656 and now
-reports which connection actually answers, with a button to edit it.
+names the connection that answers, offers a dropdown of the saved audio connections to change it,
+and links straight into the one selected.
 
 Behavior changes worth knowing:
 
@@ -1330,6 +1331,13 @@ Behavior changes worth knowing:
 - **`GET /api/tts/effective-config`** returns the merged config plus which connection answered and
   whether speech is enabled. Clients read it instead of re-deriving resolution, which is what
   `GameSurface` had been doing in TypeScript, quarantine rules included.
+- **The engine is switched where speech is configured.** The card reported which connection
+  answered but could not change it, so the only way to switch engines was the Connections defaults
+  section, a collapsed panel two screens away that never mentions speech. Its picker writes the same
+  audio category default that section writes, so there is one selection rather than two that drift,
+  and it lists only audio connections through the filter the game setup wizard already uses. What is
+  picked and what speaks are still separate questions: a fallback row or the legacy blob resolves
+  when nothing is picked, and a line under the dropdown says so.
 - **`/connections/:id/models` and `/:id/test` work for audio.** `PROVIDERS.audio.modelsEndpoint` is
   the empty string and the generic branch coalesces with `??` rather than `||`, so "Fetch Models"
   requested the bare base URL with an ElevenLabs header whatever the row targeted.

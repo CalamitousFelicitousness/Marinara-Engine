@@ -594,8 +594,9 @@ async function invalidateMemoryChunksFrom(db: DB, chatId: string, createdAt: str
  * Count swipes per message id, scoped to the requested messages. The WHERE-less
  * scan this replaces existed because `inArray` used to cost O(ids) plus an array
  * allocation per scanned row (#3402); the store now resolves membership sets
- * once per condition, so the scoped form is O(totalSwipes + ids) — as fast as
- * the full scan was, without reading every other chat's swipes (#5592 Phase 0).
+ * once per condition, so the scoped form is O(totalSwipes + ids) — the store
+ * still walks every swipe row, but nonmatching rows are no longer materialized
+ * or handed back for JS-side filtering (#5592 Phase 0).
  */
 async function countSwipesByMessageId(db: DB, ids: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();

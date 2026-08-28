@@ -91,6 +91,8 @@ export interface APIConnection {
   audioSoundEffects: boolean;
   /** Whether this audio connection may generate game music (ElevenLabs only today). */
   audioMusic: boolean;
+  /** Synthesis settings owned by this audio connection (JSON). Absent fields inherit the app-level TTS settings. */
+  audioSettings: string | null;
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
   /** Prompt preset to use instead of a chat's selected preset when this connection is active */

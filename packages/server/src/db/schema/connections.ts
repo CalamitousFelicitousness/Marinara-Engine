@@ -82,6 +82,8 @@ export const apiConnections = fileTable("api_connections", {
   audioSoundEffects: text("audio_sound_effects").notNull().default("false"),
   /** Whether this audio connection may generate game music ("true"/"false"). */
   audioMusic: text("audio_music").notNull().default("false"),
+  /** Synthesis settings owned by this audio connection (JSON). Absent fields inherit the app-level TTS settings. */
+  audioSettings: text("audio_settings"),
   /** Default generation parameters (stored as JSON) for new chats using this connection */
   defaultParameters: text("default_parameters"),
   /** Optional prompt preset override for Roleplay chats using this connection */

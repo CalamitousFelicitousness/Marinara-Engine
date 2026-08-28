@@ -239,6 +239,7 @@ export function createConnectionsStorage(db: DB) {
         audioVoice: input.audioVoice ?? null,
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
+        audioSettings: input.audioSettings ? JSON.stringify(input.audioSettings) : null,
         promptPresetId: input.promptPresetId ?? null,
         maxTokensOverride: input.maxTokensOverride ?? null,
         claudeFastMode: String(input.claudeFastMode ?? false),
@@ -415,6 +416,9 @@ export function createConnectionsStorage(db: DB) {
       if (data.audioMusic !== undefined) {
         updateFields.audioMusic = String(data.audioMusic);
       }
+      if (data.audioSettings !== undefined) {
+        updateFields.audioSettings = data.audioSettings ? JSON.stringify(data.audioSettings) : null;
+      }
       if (data.promptPresetId !== undefined) {
         updateFields.promptPresetId = data.promptPresetId;
       }
@@ -558,6 +562,7 @@ export function createConnectionsStorage(db: DB) {
         audioVoice: source.audioVoice,
         audioSoundEffects: source.audioSoundEffects,
         audioMusic: source.audioMusic,
+        audioSettings: source.audioSettings,
         promptPresetId: source.promptPresetId,
         maxTokensOverride: source.maxTokensOverride,
         maxParallelJobs: source.maxParallelJobs,

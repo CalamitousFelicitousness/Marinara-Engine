@@ -2,6 +2,7 @@
 // Connection Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { audioConnectionSettingsSchema } from "../types/audio-connection-settings.js";
 import { AUDIO_GENERATION_SOURCES, IMAGE_GENERATION_QUALITIES } from "../types/connection.js";
 import { MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH } from "../constants/defaults.js";
 
@@ -81,6 +82,7 @@ export const createConnectionSchema = z.object({
   audioVoice: z.string().nullable().default(null),
   audioSoundEffects: z.boolean().default(false),
   audioMusic: z.boolean().default(false),
+  audioSettings: audioConnectionSettingsSchema.nullable().default(null),
   promptPresetId: z.string().nullable().default(null),
   maxTokensOverride: z.number().int().min(1).nullable().default(null),
   maxParallelJobs: z.number().int().min(1).max(16).default(1),

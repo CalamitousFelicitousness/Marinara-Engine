@@ -801,6 +801,11 @@ export const ConversationMessage = memo(function ConversationMessage({
   const aboutMeIdentity = msgPersona?.personaId
     ? { id: msgPersona.personaId, source: msgPersona.source ?? ("persona" as const) }
     : personaInfo;
+  const aboutMeCharacterInfo = isUser
+    ? aboutMeIdentity?.source === "character"
+      ? (scopedCharacterMap?.get(aboutMeIdentity.id) ?? null)
+      : null
+    : resolvedCharacterInfo;
   const aboutMeTarget: { kind: "character" | "persona"; id: string } | null = isUser
     ? aboutMeIdentity
       ? {
@@ -827,8 +832,8 @@ export const ConversationMessage = memo(function ConversationMessage({
           avatarCrop: isUser ? personaAvatarCrop : (resolvedCharacterInfo?.avatarCrop ?? null),
           displayName: headerDisplayName,
           nameColor: nameColor ?? null,
-          status: aboutMeTarget.kind === "character" ? (resolvedCharacterInfo?.conversationStatus ?? null) : null,
-          activity: aboutMeTarget.kind === "character" ? (resolvedCharacterInfo?.conversationActivity ?? null) : null,
+          status: aboutMeTarget.kind === "character" ? (aboutMeCharacterInfo?.conversationStatus ?? null) : null,
+          activity: aboutMeTarget.kind === "character" ? (aboutMeCharacterInfo?.conversationActivity ?? null) : null,
         })
     : undefined;
 

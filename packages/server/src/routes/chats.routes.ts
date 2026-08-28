@@ -1011,7 +1011,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       let valid = false;
       if (character) {
         try {
-          valid = characterDataSchema.safeParse(JSON.parse(character.data as string)).success;
+          const rawData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
+          valid = characterDataSchema.safeParse(rawData).success;
         } catch {
           valid = false;
         }

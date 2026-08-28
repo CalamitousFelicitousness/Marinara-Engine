@@ -31,6 +31,26 @@ them, so adopting it unchanged would have dropped the menu silently. Keeping the
 
 The spread must stay above `onClick` so the explicit click handler wins.
 
+### Profile import accepts the marker files the app writes
+
+`packages/server/src/services/import/profile-import-assets.ts` lets an empty
+`.native` file through the asset validator.
+
+`db/seed-game-assets.ts` writes that marker into every bundled game-asset
+directory on boot, so every export carries them, and the validator classifies
+everything under `game-assets/sprites/` as an image. Importing any profile
+therefore failed with `Profile asset game-assets/sprites/.native is not a
+supported image file`, and there was no user-side remedy: deleting the marker
+only lasted until the next boot.
+
+The allowance is bounded by size. An empty file cannot be served as anything; a
+non-empty file under that name is not a marker and is still checked as an image,
+so the exemption cannot carry content past the check.
+
+Upstream owns both files and this fork patches neither elsewhere, so a sync that
+rewrites the validator will silently drop this. Pinned by
+`scripts/regressions/profile-import-native-marker.regression.ts`.
+
 ## Fork-only additions
 
 ### Author's note presets
@@ -1168,6 +1188,19 @@ none, which is what a hand-typed id should look like.
 `/tts/voices` takes an optional `model` override because voices are per model;
 the editor asks about the model on screen rather than the saved one. There is no
 `/v1/voices` endpoint despite the OpenAI-shaped docs mentioning one: it 404s.
+
+Paragraph breaks reach the chunker. `cleanTTSInputText` gained
+`preserveParagraphs`, used only by `buildTTSVoiceRequests`. The chunker splits on
+newlines before sentences, but the chat path cleaned the whole message first and
+cleaning collapsed every run of whitespace, so nothing was left to split on and
+chunking degraded to sentence packing. Cleaning still sees the whole message, so
+multi-line constructs such as fenced code are removed as blocks rather than
+surviving per line.
+
+Game voice honours the configured chunk size. `GameNarration` and `GameCombatUI`
+called `splitTTSChunks` with no options, so they always used the 900-character
+default rather than the connection's setting, which is exactly the knob a slow
+local engine needs. `resolveTTSChunkCharLimit` is exported for them.
 
 ### Local address controls key on who supplied the URL
 

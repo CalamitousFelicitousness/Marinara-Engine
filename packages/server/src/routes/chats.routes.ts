@@ -748,7 +748,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     const eligible = [];
     for (const chat of candidates) {
       if (hasRoleplayDmThreadMarkers(parseChatMetadata(chat.metadata))) {
-        if ((await storage.countMessages(chat.id)) === 0) continue;
+        // chats.lastMessageAt is authoritative for emptiness: createMessage
+        // sets it, removeMessage(s) nulls it when the last row goes, and the
+        // list() above backfills legacy rows. Counting messages here would
+        // load the chat's whole storage unit on every 30s poll (#5592 PR-B).
+        if (!isUsableTimestamp(chat.lastMessageAt)) continue;
       }
       eligible.push({ id: chat.id });
     }

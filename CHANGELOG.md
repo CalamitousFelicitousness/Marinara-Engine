@@ -15,6 +15,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Changed
 
+- The server can now cap how many chats stay in memory at once: set `MARINARA_MAX_RESIDENT_CHATS` and, past the cap, the least-recently-used chat with no unsaved changes is dropped from memory (never from disk) after each save and reloads transparently when next opened. The Termux launcher defaults the cap to 8 to protect phone memory; everywhere else it is off unless set. Hot storage-layer writes are now also scoped by their owning chat so an eviction mid-request degrades to a reload instead of a whole-table load (#5592).
 - Chat-scoped storage tables (messages, swipes, Memory Recall chunks, game state, call logs, and the other per-chat tables) no longer load into memory at startup: each chat's data loads as one unit the first time that chat is touched and every query, write, and cascade is scoped to the units it can actually reach — the main memory reduction for long multi-chat profiles on Termux and other low-memory devices. Full-table operations such as backups still load everything they need automatically, and setting `MARINARA_EAGER_STORAGE=1` restores the previous load-everything startup (#5592).
 - Stale in-progress game storyboards are now recovered per chat when that chat's storyboards are next read (including everything left over from before the current server start), replacing the startup-wide sweep (#5592).
 

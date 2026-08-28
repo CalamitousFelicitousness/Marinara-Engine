@@ -77,8 +77,14 @@ export function createGameStoryboardsStorage(db: DB) {
         .orderBy(desc(gameTurnStoryboards.createdAt));
     },
 
-    async getById(id: string) {
-      const rows = await db.select().from(gameTurnStoryboards).where(eq(gameTurnStoryboards.id, id));
+    async getById(id: string, chatId?: string) {
+      // The optional chatId keeps the read's unit scope resolvable when the
+      // row's unit is not resident (#5592 PR-B) — a bare-PK probe miss would
+      // otherwise lease the whole table, permanently for this process.
+      const condition = chatId
+        ? and(eq(gameTurnStoryboards.chatId, chatId), eq(gameTurnStoryboards.id, id))
+        : eq(gameTurnStoryboards.id, id);
+      const rows = await db.select().from(gameTurnStoryboards).where(condition);
       return rows[0] ?? null;
     },
 
@@ -115,12 +121,15 @@ export function createGameStoryboardsStorage(db: DB) {
       return this.getById(id);
     },
 
-    async update(id: string, patch: Partial<typeof gameTurnStoryboards.$inferInsert>) {
+    async update(id: string, patch: Partial<typeof gameTurnStoryboards.$inferInsert>, chatId?: string) {
+      const condition = chatId
+        ? and(eq(gameTurnStoryboards.chatId, chatId), eq(gameTurnStoryboards.id, id))
+        : eq(gameTurnStoryboards.id, id);
       await db
         .update(gameTurnStoryboards)
         .set({ ...patch, updatedAt: now() })
-        .where(eq(gameTurnStoryboards.id, id));
-      return this.getById(id);
+        .where(condition);
+      return this.getById(id, chatId);
     },
 
     /**
@@ -147,7 +156,11 @@ export function createGameStoryboardsStorage(db: DB) {
       await db
         .update(gameTurnStoryboards)
         .set({ status: "failed", error, updatedAt: timestamp })
-        .where(inArray(gameTurnStoryboards.id, staleIds));
+        .where(
+          chatId
+            ? and(eq(gameTurnStoryboards.chatId, chatId), inArray(gameTurnStoryboards.id, staleIds))
+            : inArray(gameTurnStoryboards.id, staleIds),
+        );
       await db
         .update(gameTurnStoryboardKeyframes)
         .set({ status: "failed", error, updatedAt: timestamp })

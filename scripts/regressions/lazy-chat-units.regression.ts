@@ -273,7 +273,7 @@ const shardExists = (dir: string, table: string, key: string) =>
     loadDuringFlush = async () => {
       await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
     };
-    await db._fileStore.flush(true, true);
+    await db._fileStore.flush();
     assert.equal(
       shardExists(dir, "message_swipes", "chat-a"),
       true,
@@ -281,7 +281,7 @@ const shardExists = (dir: string, table: string, key: string) =>
     );
     // The deferred mark processes correctly on the next flush: the orphan
     // lands in the unassigned shard and the old file is then removed.
-    await db._fileStore.flush(true, true);
+    await db._fileStore.flush();
     assert.equal(
       shardExists(dir, "message_swipes", "chat-a"),
       false,
@@ -381,10 +381,10 @@ const shardExists = (dir: string, table: string, key: string) =>
         "the corrupt shard recovers from .bak on unit load",
       );
     };
-    await db._fileStore.flush(true, true);
+    await db._fileStore.flush();
     // The next flush writes the healed primary WITHOUT refreshing .bak from
     // the corrupt bytes still on disk.
-    await db._fileStore.flush(true, true);
+    await db._fileStore.flush();
     const healed = JSON.parse(readFileSync(zPrimary, "utf8")) as Array<{ id: string }>;
     assert.deepEqual(
       healed.map((row) => row.id),
@@ -532,6 +532,292 @@ const shardExists = (dir: string, table: string, key: string) =>
       "a partially resident lazy table has no manifest count",
     );
   } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ═══ Unit eviction (#5592 Phase 2 PR-B) ═══
+// MARINARA_MAX_RESIDENT_CHATS caps resident units; past it, the LRU sweep at
+// the tail of each successful flush drops the least-recently-touched CLEAN
+// unit from memory (never from disk). The unassigned pseudo-unit is pinned.
+
+const loadedUnitsOf = (db: Awaited<ReturnType<typeof createFileNativeDB>>) => db._fileStore.getResidentChatUnits();
+
+// ── Cap enforcement, LRU order, and reload correctness ──
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, `content of ${chat}`)]);
+  }
+  writeShard(dir, "message_swipes", "chat-a", [swipeRow("s-a", "m-chat-a", "swipe of a")]);
+  const db = await createFileNativeDB();
+  try {
+    for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+      await db.select().from(messages).where(eq(messages.chatId, chat));
+    }
+    await db._fileStore.flush();
+    const loaded = loadedUnitsOf(db);
+    assert.equal(loaded.has("chat-a"), false, "the least-recently-touched clean unit is evicted past the cap");
+    assert.equal(loaded.has("chat-b"), true, "recently touched units stay resident");
+    assert.equal(loaded.has("chat-c"), true, "the most recent unit stays resident");
+    assert.equal(loaded.has("orphaned-rows"), true, "the unassigned pseudo-unit is pinned");
+    const reloaded = await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    assert.deepEqual(
+      reloaded.map((row) => row.content),
+      ["content of chat-a"],
+      "an evicted unit reloads from disk on the next touch",
+    );
+    const swipes = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["m-chat-a"]));
+    assert.deepEqual(
+      swipes.map((row) => row.id),
+      ["s-a"],
+      "the reloaded unit brings its swipes back with it",
+    );
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A chat CREATED this process survives an evict/reload round trip ──
+// Discovery was boot-only before PR-B: a post-boot shard registered in
+// knownShardFiles but not in the lazy discovery index, so an evicted
+// fresh chat would have reloaded permanently empty.
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-x", "chat-y"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, chat)]);
+  }
+  const db = await createFileNativeDB();
+  try {
+    await db.insert(chats).values(chatRow("chat-new"));
+    await db.insert(messages).values(messageRow("m-new-1", "chat-new", "fresh chat message"));
+    await db._fileStore.flush();
+    // Age chat-new below the cap, then sweep.
+    await db.select().from(messages).where(eq(messages.chatId, "chat-x"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-y"));
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-new"), false, "the fresh chat is the LRU candidate and gets evicted");
+    const rows = await db.select().from(messages).where(eq(messages.chatId, "chat-new"));
+    assert.deepEqual(
+      rows.map((row) => row.content),
+      ["fresh chat message"],
+      "a chat created after boot reloads from its post-boot shard file",
+    );
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── A unit with pending (unflushed) marks is never evicted ──
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, chat)]);
+  }
+  let injectDirty: (() => void) | null = null;
+  const db = await createFileNativeDB({
+    beforeTableWrite: async () => {
+      if (injectDirty) {
+        const inject = injectDirty;
+        injectDirty = null;
+        inject();
+      }
+    },
+  });
+  try {
+    // Touch order makes chat-a the LRU candidate; the mid-flush mark lands in
+    // the LIVE dirty map (the flush already captured its own batch), so the
+    // post-flush sweep sees chat-a dirty and must skip it.
+    for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+      await db.select().from(messages).where(eq(messages.chatId, chat));
+    }
+    await db.update(messages).set({ content: "touched b" }).where(eq(messages.chatId, "chat-b"));
+    injectDirty = () => {
+      db._fileStore.markShardDirty!("messages", ["chat-a"]);
+    };
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-a"), true, "a unit with a pending dirty mark survives the sweep");
+    assert.equal(
+      loadedUnitsOf(db).has("chat-c"),
+      false,
+      "the sweep passes over the dirty unit and evicts the next-oldest clean one instead",
+    );
+    // Flush the injected mark, bring the resident count back over the cap,
+    // and confirm the now-clean unit is evictable.
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-c"));
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-a"), false, "once the mark flushes, the unit becomes evictable");
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── In-session edits survive the evict/reload round trip ──
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, "original")]);
+  }
+  const db = await createFileNativeDB();
+  try {
+    await db.update(messages).set({ content: "edited before eviction" }).where(eq(messages.id, "m-chat-a"));
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-b"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-c"));
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-a"), false, "the edited chat was evicted after its edit flushed");
+    const rows = await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    assert.deepEqual(
+      rows.map((row) => row.content),
+      ["edited before eviction"],
+      "the flushed edit survives the evict/reload round trip",
+    );
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Eviction is disabled by default ──
+
+{
+  const dir = tempStorageDir();
+  delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+  for (const chat of ["chat-a", "chat-b", "chat-c", "chat-d"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, chat)]);
+  }
+  const db = await createFileNativeDB();
+  try {
+    for (const chat of ["chat-a", "chat-b", "chat-c", "chat-d"]) {
+      await db.select().from(messages).where(eq(messages.chatId, chat));
+    }
+    await db._fileStore.flush();
+    for (const chat of ["chat-a", "chat-b", "chat-c", "chat-d"]) {
+      assert.equal(loadedUnitsOf(db).has(chat), true, `without a cap, ${chat} stays resident`);
+    }
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Evict/reload keeps orderBy-less query results identical ──
+// Resident order is (createdAt, id)-sorted at insert time as well as at
+// load time, so a query without an explicit orderBy returns the same rows in
+// the same order whether or not the unit was evicted in between. (Found by
+// adversarial review: append-ordered inserts + reload's re-sort made a
+// .limit/.find over an unordered swipe query return DIFFERENT rows with the
+// cap on vs off.)
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, chat)]);
+  }
+  writeShard(dir, "message_swipes", "chat-a", [
+    { id: "sw-stored", messageId: "m-chat-a", index: 0, content: "stored", createdAt: "2026-01-01T00:00:00.000Z" },
+  ]);
+  const db = await createFileNativeDB();
+  try {
+    await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    // A live swipe (fresh timestamp) and an imported swipe (null createdAt,
+    // exactly what chat import writes) land in append order...
+    await db.insert(messageSwipes).values({
+      id: "sw-live",
+      messageId: "m-chat-a",
+      index: 1,
+      content: "live",
+      createdAt: "2026-06-01T00:00:00.000Z",
+    });
+    await db.insert(messageSwipes).values({ id: "sw-imported", messageId: "m-chat-a", index: 2, content: "imported" });
+    const before = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["m-chat-a"]));
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-b"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-c"));
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-a"), false, "chat-a was evicted between the two reads");
+    const after = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["m-chat-a"]));
+    assert.deepEqual(
+      after.map((row) => row.id),
+      before.map((row) => row.id),
+      "an orderBy-less query returns the identical sequence across an evict/reload round trip",
+    );
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── One corrupt unit does not disable eviction for the rest of the install ──
+// Units involved in corruption healing are pinned — but ONLY those units.
+// (Found by adversarial review: pinning tested the accumulated table-wide
+// stray set, so one misfiled row pinned every unit loaded afterwards and the
+// cap silently stopped bounding memory on exactly the installs it targets.)
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-1", "chat-2", "chat-3", "chat-4", "chat-5"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+  }
+  // chat-1's shard holds a stray row belonging to chat-2 (both get pinned);
+  // chat-3 and chat-4 are perfectly healthy.
+  writeShard(dir, "messages", "chat-1", [
+    messageRow("m-1", "chat-1", "one"),
+    messageRow("m-2-stray", "chat-2", "misfiled"),
+  ]);
+  writeShard(dir, "messages", "chat-3", [messageRow("m-3", "chat-3", "three")]);
+  writeShard(dir, "messages", "chat-4", [messageRow("m-4", "chat-4", "four")]);
+  writeShard(dir, "messages", "chat-5", [messageRow("m-5", "chat-5", "five")]);
+  const db = await createFileNativeDB();
+  try {
+    await db.select().from(messages).where(eq(messages.chatId, "chat-1"));
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-3"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-4"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-5"));
+    await db._fileStore.flush();
+    const loaded = loadedUnitsOf(db);
+    assert.equal(loaded.has("chat-1"), true, "the corrupt unit itself stays pinned");
+    assert.equal(loaded.has("chat-3"), false, "healthy units loaded after the corrupt one are still evictable");
+    assert.equal(loaded.has("chat-4"), true, "recent healthy units stay resident");
+    assert.equal(loaded.has("chat-5"), true, "the most recent healthy unit stays resident");
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });
   }

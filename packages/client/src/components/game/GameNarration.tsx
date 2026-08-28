@@ -70,7 +70,12 @@ import { createMessageMacroResolver, findCharacterByName } from "../../lib/chat-
 import { animateTextHtml } from "./AnimatedText";
 import { ttsService } from "../../lib/tts-service";
 import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
-import { resolveTTSNarratorVoice, resolveTTSVoiceForSpeaker, splitTTSChunks } from "../../lib/tts-dialogue";
+import {
+  resolveTTSChunkCharLimit,
+  resolveTTSNarratorVoice,
+  resolveTTSVoiceForSpeaker,
+  splitTTSChunks,
+} from "../../lib/tts-dialogue";
 import {
   formatTextQuotes,
   normalizeTextForMatch,
@@ -767,7 +772,7 @@ function getGameSegmentVoiceRequest(
   if (segment.type !== "dialogue" && segment.type !== "narration") return null;
 
   if (segment.type === "dialogue") {
-    const chunks = splitTTSChunks(segment.content);
+    const chunks = splitTTSChunks(segment.content, { maxChars: resolveTTSChunkCharLimit(config) });
     if (chunks.length === 0) return null;
     const tone = resolveGameSegmentTtsEmotion(segment);
     const voice = resolveTTSVoiceForSpeaker(
@@ -786,7 +791,7 @@ function getGameSegmentVoiceRequest(
   }
 
   if (config.dialogueOnly) return null;
-  const chunks = splitTTSChunks(segment.content);
+  const chunks = splitTTSChunks(segment.content, { maxChars: resolveTTSChunkCharLimit(config) });
   if (chunks.length === 0) return null;
   const voice = resolveTTSNarratorVoice(config);
   if (config.source === "elevenlabs" && !voice) return null;

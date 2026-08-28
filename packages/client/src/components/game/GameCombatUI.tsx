@@ -24,7 +24,12 @@ import { cn } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { audioManager } from "../../lib/game-audio";
 import { TTS_RETRY_BASE_DELAY_MS, type TTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
-import { normalizeTTSCharacterName, resolveTTSVoiceForSpeaker, splitTTSChunks } from "../../lib/tts-dialogue";
+import {
+  normalizeTTSCharacterName,
+  resolveTTSChunkCharLimit,
+  resolveTTSVoiceForSpeaker,
+  splitTTSChunks,
+} from "../../lib/tts-dialogue";
 import { ttsService } from "../../lib/tts-service";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useCombatRound } from "../../hooks/use-game";
@@ -893,7 +898,7 @@ export function GameCombatUI({
       const voice = resolveTTSVoiceForSpeaker(ttsConfig, line.character);
       if (ttsConfig.source === "elevenlabs" && !voice) continue;
 
-      const chunks = splitTTSChunks(line.content);
+      const chunks = splitTTSChunks(line.content, { maxChars: resolveTTSChunkCharLimit(ttsConfig) });
       if (chunks.length === 0) continue;
 
       lines.push({

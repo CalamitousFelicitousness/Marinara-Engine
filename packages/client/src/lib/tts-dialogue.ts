@@ -296,7 +296,10 @@ const TTS_KEYCAP_MARK_RE = /\uFE0F?\u20E3/gu;
 const TTS_EMOJI_SEQUENCE_RE =
   /[\p{Regional_Indicator}\p{Extended_Pictographic}](?:\uFE0F|\p{Emoji_Modifier}|\u200D[\p{Regional_Indicator}\p{Extended_Pictographic}])*/gu;
 
-export function cleanTTSInputText(value: string, options: { preserveEmotionIndicators?: boolean } = {}): string {
+export function cleanTTSInputText(
+  value: string,
+  options: { preserveEmotionIndicators?: boolean; preserveParagraphs?: boolean } = {},
+): string {
   let cleaned = stripTTSMarkup(value)
     .replace(VN_TTS_LINE_PREFIX_RE, "")
     .replace(/```[\s\S]*?```/g, " ")
@@ -317,12 +320,17 @@ export function cleanTTSInputText(value: string, options: { preserveEmotionIndic
   if (!options.preserveEmotionIndicators) {
     cleaned = cleaned.replace(/\[[a-z_]+:[^\]]*\]/gi, "").replace(VN_TTS_METADATA_TAG_RE, " ");
   }
-  return cleaned
-    .replace(TTS_KEYCAP_MARK_RE, "")
-    .replace(TTS_EMOJI_SEQUENCE_RE, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\s+([,.;:!?])/g, "$1")
-    .trim();
+  const withoutEmoji = cleaned.replace(TTS_KEYCAP_MARK_RE, "").replace(TTS_EMOJI_SEQUENCE_RE, " ");
+  // Collapsing every run of whitespace also eats the newlines the chunker splits
+  // on, so a caller that wants paragraphs preserved keeps them as single breaks
+  // and collapses only horizontal space.
+  const collapsed = options.preserveParagraphs
+    ? withoutEmoji
+        .replace(/[^\S\n]+/g, " ")
+        .replace(/[^\S\n]*\n[^\S\n]*/g, "\n")
+        .replace(/\n{2,}/g, "\n")
+    : withoutEmoji.replace(/\s+/g, " ");
+  return collapsed.replace(/[^\S\n]+([,.;:!?])/g, "$1").trim();
 }
 
 const DEFAULT_TTS_CHUNK_CHAR_LIMIT = TTS_CHUNK_CHARS_DEFAULT;
@@ -334,7 +342,7 @@ const DEFAULT_TTS_CHUNK_CHAR_LIMIT = TTS_CHUNK_CHARS_DEFAULT;
  */
 const TTS_FAST_FIRST_CHUNK_CHARS = 220;
 
-function resolveTTSChunkCharLimit(config: Pick<TTSConfig, "source" | "chunkCharLimit">): number {
+export function resolveTTSChunkCharLimit(config: Pick<TTSConfig, "source" | "chunkCharLimit">): number {
   const ceiling = Math.min(TTS_CHUNK_CHARS_MAX, ttsSourceMaxInputChars(config.source));
   const configured = Number(config.chunkCharLimit ?? DEFAULT_TTS_CHUNK_CHAR_LIMIT);
   if (!Number.isFinite(configured)) return Math.min(DEFAULT_TTS_CHUNK_CHAR_LIMIT, ceiling);
@@ -452,7 +460,15 @@ export function buildTTSVoiceRequests(
       ? extractSpeakerTaggedUtterances(normalized, fallbackSpeaker, true)
       : shouldExtractUtterances
         ? extractDialogueUtterances(normalized, fallbackSpeaker)
-        : [{ text: cleanTTSInputText(normalized), speaker: fallbackSpeaker || undefined } satisfies TTSUtterance];
+        : [
+            // Cleaned whole so multi-line constructs such as fenced code are
+            // removed as blocks, but with paragraph breaks kept: they are the
+            // chunker's first and most natural split point.
+            {
+              text: cleanTTSInputText(normalized, { preserveParagraphs: true }),
+              speaker: fallbackSpeaker || undefined,
+            } satisfies TTSUtterance,
+          ];
 
   const fallbackSpeakerKey = normalizeTTSCharacterName(fallbackSpeaker);
   return utterances.flatMap((utterance, utteranceIndex) => {

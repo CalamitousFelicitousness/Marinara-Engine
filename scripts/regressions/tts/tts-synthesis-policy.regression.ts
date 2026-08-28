@@ -433,4 +433,48 @@ try {
   }
 }
 
+// ── A paragraph break is a chunk boundary ──
+// The chunker splits on newlines first, but the chat path cleaned the whole
+// message before splitting and cleaning collapsed every run of whitespace, so
+// no newline survived to split on. Chunking silently degraded to sentence
+// packing, and a chunk could run across a paragraph break and swallow the pause
+// it implies.
+{
+  const config = ttsConfigSchema.parse({ source: "openai", voice: "alloy" });
+  const paragraphs = buildTTSVoiceRequests("First paragraph here.\n\nSecond paragraph here.", config);
+  assert.equal(paragraphs.length, 2, "each paragraph becomes its own chunk, however short");
+  assert.equal(paragraphs[0]?.text, "First paragraph here.");
+  assert.equal(paragraphs[1]?.text, "Second paragraph here.");
+
+  // Cleaning still sees the whole message, so constructs that span lines are
+  // removed as blocks rather than surviving as stray fragments per line.
+  const withCode = buildTTSVoiceRequests("Say this.\n\n```\nconst x = 1;\n```\n\nAnd this.", config);
+  const spoken = withCode.map((request) => request.text).join(" ");
+  assert.doesNotMatch(spoken, /const x/u, "a fenced block spanning lines is still removed whole");
+  assert.match(spoken, /Say this\./u);
+  assert.match(spoken, /And this\./u);
+
+  // Single-line callers are unaffected: no paragraphs, no change.
+  assert.equal(cleanTTSInputText("Plain   line."), "Plain line.");
+}
+
+// ── Game voice honours the configured chunk size ──
+// Both game surfaces called the splitter with no options, so they always used
+// the 900-character default. That is exactly the setting a slow local engine
+// needs, and it silently did not reach game narration or combat lines.
+{
+  const gameRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const readGameSource = (relative: string) => readFileSync(join(gameRoot, relative), "utf8");
+  for (const relative of [
+    "packages/client/src/components/game/GameNarration.tsx",
+    "packages/client/src/components/game/GameCombatUI.tsx",
+  ]) {
+    const source = readGameSource(relative);
+    const file = relative.split("/").pop();
+    for (const call of source.match(/splitTTSChunks\([^)]*\)/gu) ?? []) {
+      assert.match(call, /maxChars:/u, `${file}: ${call} must use the configured chunk size, not the default`);
+    }
+  }
+}
+
 console.info("TTS synthesis policy regression passed.");

@@ -2,6 +2,7 @@
 // ModalRenderer: Maps store modal types → components
 // ──────────────────────────────────────────────
 import { lazy, Suspense } from "react";
+import type { APIProvider } from "@marinara-engine/shared";
 import { useUIStore } from "../../stores/ui.store";
 import {
   normalizeAvatarCrop,
@@ -106,7 +107,13 @@ export function ModalRenderer() {
       content = <ImportPersonaModal open onClose={closeModal} />;
       break;
     case "create-connection":
-      content = <CreateConnectionModal open onClose={closeModal} />;
+      content = (
+        <CreateConnectionModal
+          open
+          onClose={closeModal}
+          initialProvider={modal?.props?.initialProvider as APIProvider | undefined}
+        />
+      );
       break;
     case "import-connection":
       content = <ImportConnectionModal open onClose={closeModal} />;

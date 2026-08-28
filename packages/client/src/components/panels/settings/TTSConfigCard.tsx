@@ -419,7 +419,9 @@ export function TTSConfigCard() {
             <button
               type="button"
               onClick={() =>
-                resolvedConnectionId ? openConnectionDetail(resolvedConnectionId) : openModal("create-connection")
+                resolvedConnectionId
+                  ? openConnectionDetail(resolvedConnectionId)
+                  : openModal("create-connection", { initialProvider: "audio" })
               }
               className="mari-chrome-control mari-chrome-control--small shrink-0 text-xs"
             >

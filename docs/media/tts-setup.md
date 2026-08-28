@@ -4,61 +4,67 @@ This guide shows you how to set up Text to Speech in Marinara Engine so the app 
 
 ## Where TTS settings live
 
-Almost every TTS setting lives in one place. Open the **Connections** panel and find the **Text to Speech** card. The card is closed by default, so click its header to expand it.
+Settings sit in two places, split by what they belong to.
 
-The app sends TTS requests through its own server. Your provider API key is stored encrypted on the server. After you save a key, the field shows a masked value, a row of dots, instead of the real key. The real key is never sent back to your browser.
+A speech engine is a **connection**, saved in the **Connections** panel beside your model connections. It holds the service, the key, the voice, and everything about how that engine sounds. You can save as many as you like and switch between them, the same way you switch model connections.
 
-Turning TTS on does not make anything speak by itself. It only reveals the **Speak** button on each message and the **Auto-play** options. You still choose what gets read and when.
+Playback belongs to the app, not to any engine, so the **Text to Speech** card in the same panel keeps the master switch, auto-play, and dialogue handling. The card shows which connection currently speaks, with a button to edit it.
 
-## Step 1: Enable TTS and pick a Source
+Your provider API key is stored encrypted on the server. After you save a key the field shows a row of dots instead of the real key, and the real key is never sent back to your browser.
 
-1. Open the **Connections** panel and expand the **Text to Speech** card.
-2. Click the switch in the card header to turn TTS on. Hover over the switch to see its tooltip: **Enable TTS** when off, **Disable TTS** when on.
-3. Open the **Source** dropdown and pick your provider.
+Turning TTS on does not make anything speak by itself. It reveals the **Speak** button on each message and the **Auto-play** options. You still choose what gets read and when.
+
+## Step 1: Create an audio connection
+
+1. Open the **Connections** panel.
+2. In the **Text to Speech** card, click **Create**. If you already have an audio connection, the card names it and offers **Edit** instead.
+3. Give the connection a name you will recognise later, such as "ElevenLabs" or "Laptop Chatterbox", and save it.
+
+The editor opens on the new connection. If you keep several engines, mark the one you want as the audio **Default** in the **Connection defaults** section of the panel. That is the engine chats and games speak with unless a game pins its own.
+
+## Step 2: Pick the source and enter a key
 
 A **Source** is the service that makes the audio. The five choices are:
 
-- **OpenAI-compatible**: OpenAI, or any server that copies OpenAI's TTS format.
+- **OpenAI-compatible**: OpenAI, or any server that copies OpenAI's TTS format. This is also the lane for local engines.
 - **ElevenLabs**: the ElevenLabs voice service.
 - **NanoGPT**: one account that reaches OpenAI, Kokoro, and ElevenLabs voices, billed per character.
 - **PocketTTS**: a free voice server you run on your own computer.
 - **xAI Voice**: xAI's voice service.
 
-The default Source is **OpenAI-compatible**. Marinara keeps a separate saved profile for each Source, including its encrypted API key, endpoint, model, voices, and provider parameters. Switching Sources restores that Source's previous setup; a Source you have not configured yet starts with its defaults.
+Pick the source, then paste your provider key into **API Key**. To keep an existing key, leave the masked dots in place. To remove a saved key, clear the field.
 
-## Step 2: Enter the Base URL, API Key, and Model
+**You will not see a Base URL field for ElevenLabs, NanoGPT, or xAI Voice.** Those services publish one address, so there is nothing to decide. If you do need to reach one through a proxy or a self-hosted gateway, open **Custom endpoint** underneath the source tiles. A connection whose saved address is not the published one opens with that disclosure already expanded, and offers a reset.
 
-Each Source needs a web address and, for most sources, an API key. An API key is a secret code from your provider that proves the request is yours.
+OpenAI-compatible and PocketTTS keep the field visible, because the address is the setting that matters for them.
 
-1. Check the **Base URL** field. Each Source fills in a sensible default, shown in the table below. Change it only if you use a proxy or a self-hosted server.
-2. Paste your provider key into the **API Key** field. To keep an existing key, leave the masked dots in place. To remove a saved key, clear the field.
-3. Check the **Model** field. Each Source fills in a default model. You can type another model name your provider supports.
+The **Model** field offers a list for ElevenLabs and NanoGPT, which publish one, and is free text elsewhere. **Test connection** checks that the endpoint answers; **Test voice** actually speaks a sentence through this connection.
 
-The app fills in these defaults per Source:
+The app fills in these defaults per source:
 
-| Source            | Default Base URL          | Default Model          | Default voice the app pre-fills |
-| ----------------- | ------------------------- | ---------------------- | ------------------------------- |
-| OpenAI-compatible | https://api.openai.com/v1 | tts-1                  | alloy                           |
-| ElevenLabs        | https://api.elevenlabs.io | eleven_multilingual_v2 | none (you must pick one)        |
-| NanoGPT           | https://nano-gpt.com/api/v1 | gpt-4o-mini-tts      | alloy                           |
-| PocketTTS         | http://localhost:8000     | pocket-tts             | alba                            |
-| xAI Voice         | https://api.x.ai/v1       | grok-tts               | eve                             |
+| Source            | Endpoint                             | Default model          | Default voice            |
+| ----------------- | ------------------------------------ | ---------------------- | ------------------------ |
+| OpenAI-compatible | https://api.openai.com/v1 (editable) | tts-1                  | alloy                    |
+| ElevenLabs        | https://api.elevenlabs.io            | eleven_multilingual_v2 | none (you must pick one) |
+| NanoGPT           | https://nano-gpt.com/api/v1          | gpt-4o-mini-tts        | alloy                    |
+| PocketTTS         | http://localhost:8000 (editable)     | pocket-tts             | alba                     |
+| xAI Voice         | https://api.x.ai/v1                  | grok-tts               | eve                      |
 
-For **ElevenLabs**, the **Model** field loads the speech-capable models available through your connection and always keeps the full list visible when you open it. Pick a normal speech model. Model IDs that contain `ttv` are voice-design models, not speech models, and they cannot read text out loud. If you choose one by mistake, playback fails with an error that tells you to use a speech model instead.
+For **ElevenLabs**, the **Model** field loads the speech-capable models available through your connection. Model IDs that contain `ttv` are voice-design models, not speech models, and cannot read text out loud. If you choose one by mistake, playback fails with an error that tells you to use a speech model instead.
 
 ### NanoGPT reaches several voice services through one key
 
-NanoGPT resells other providers, so one key and one balance cover OpenAI voices, the open-weights Kokoro voices, and ElevenLabs voices. Pick the service through the **Model** field; the app loads the current list from your account once the card is saved with a key, and falls back to a built-in list before then.
+NanoGPT resells other providers, so one key and one balance cover OpenAI voices, the open-weights Kokoro voices, and ElevenLabs voices. Pick the service through the **Model** field; the app loads the current list from your account once the connection is saved with a key, and falls back to a built-in list before then.
 
 Which model you pick changes what the other fields mean:
 
-| Model | Voices look like | Speed | Emotion steering |
-| --- | --- | --- | --- |
-| `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd` | `alloy`, `nova`, `verse` | 0.5x to 2.0x | Speaker and tone become spoken-style instructions |
-| `Kokoro-82m` | `af_bella`, `bm_george`, `jf_alpha` | 0.5x to 2.0x | None; the prefix picks language and gender |
-| `Elevenlabs-Turbo-V2.5`, `Elevenlabs-V3` | a name, such as `Rachel` | Ignored | Tone rides in the text as a bracketed cue |
+| Model                                    | Voices look like                    | Speed        | Emotion steering                                  |
+| ---------------------------------------- | ----------------------------------- | ------------ | ------------------------------------------------- |
+| `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`   | `alloy`, `nova`, `verse`            | 0.5x to 2.0x | Speaker and tone become spoken-style instructions |
+| `Kokoro-82m`                             | `af_bella`, `bm_george`, `jf_alpha` | 0.5x to 2.0x | None; the prefix picks language and gender        |
+| `Elevenlabs-Turbo-V2.5`, `Elevenlabs-V3` | a name, such as `Rachel`            | Ignored      | Tone rides in the text as a bracketed cue         |
 
-The **Voice** field offers the right list for the selected model and still accepts anything typed by hand, which is how you use a MiniMax or Qwen voice ID or a cloned voice.
+The voice picker offers the right list for the selected model and still accepts anything typed by hand, which is how you use a MiniMax or Qwen voice ID or a cloned voice.
 
 Marinara talks to NanoGPT's OpenAI-compatible endpoint, which returns audio directly. NanoGPT's native `/tts` endpoint adds voice cloning and ElevenLabs stability controls, but answers with a job to poll and a storage URL to fetch; Marinara does not use it.
 
@@ -68,78 +74,44 @@ PocketTTS is not built into Marinara Engine. Install [the official PocketTTS ser
 
 The official server uses `http://localhost:8000` by default. Leave the **Base URL** on that value unless you changed the host or port. Marinara detects the official multipart `/tts` API automatically. Existing custom URLs for the [OpenAI-compatible PocketTTS wrapper](https://github.com/teddybear082/pocket-tts-openai_streaming_server) remain supported.
 
-## Step 3: Choose a voice (Voice Option)
+## Step 3: Choose a voice
 
-The **Voice Option** setting decides how voices are assigned:
+Pick the connection's voice in **Default voice**. It is the voice used whenever nothing more specific applies.
 
-- **One voice for all characters**: every speaker uses the same voice. This is the default.
-- **Selected per character**: you give chosen characters their own voices.
+The picker loads the real voice list from the provider once the connection is saved, because it asks the server about this connection rather than about whatever is typed on screen. If you change the key or the address, save before refreshing; the **Refresh** button saves first for you, and a hint says so meanwhile. Before the provider answers, a short built-in list keeps the field usable, and anything typed by hand is always accepted.
 
-### One voice for all characters
+For **ElevenLabs**, you must pick a voice. Marinara loads the paginated account library, including personal, workspace, saved, and default voices. The picker has a search box. Playback is blocked until you choose a real one.
 
-Pick the voice in the **All Characters Voice** field. The official PocketTTS server does not expose a voice-list endpoint, so Marinara shows its built-in voices and keeps a text field beside the dropdown for another built-in name or supported voice URL. Compatible wrapper servers can still return their own voice list and accept custom IDs or paths.
+## Voice casting: narrator, per character, and NPCs
 
-To load the real voice list from your provider, enter the connection details and click the **Refresh voices** button (the circular-arrow icon). You can do this before enabling playback. Refresh saves the current card first, so a newly entered API key is used immediately. Before you connect, the app shows a short built-in fallback list so the field is not empty. A provider error is shown instead of silently presenting that fallback as a successful refresh.
+Open **Voice casting** on the connection. Casting lives here rather than app-wide because a voice ID only means something to the engine that issued it: an ElevenLabs ID is meaningless to a local server. Two saved engines therefore keep separate casts, and switching the default engine switches the whole cast with it.
 
-For **ElevenLabs**, you must pick a voice. Marinara loads the paginated account library, including personal, workspace, saved, and default voices. The picker has a search box and a permanently visible scrollbar when the library is longer than the panel. It also reports how many voices were loaded. The picker starts on "Select an ElevenLabs voice", and playback is blocked until you choose a real one.
+**One voice for everyone** is the default. Choose **A voice per character** to give chosen characters their own voices: add a row, pick a character on the left and a voice on the right, and repeat. You must create your characters first. Characters without a personal voice fall back to the connection's default voice. See [Creating and Editing Characters](../characters/creating-and-editing-characters.md).
 
-### Selected per character
+**Narrator voice** covers text no single character speaks, such as scene description or a game master's lines. Turn it on and pick a voice. The app uses it when a line's speaker is Narrator, GM, Game Master, or System, in Roleplay and Conversation messages, and for Game Mode narration with no named speaker.
 
-1. Set **Voice Option** to **Selected per character**.
-2. The **Character Voices** table appears, with **Character** and **Voice** columns.
-3. Click **Add character voice** to add a row.
-4. Pick a character in the left dropdown and a voice in the right dropdown.
-5. Repeat for each character you want to give a custom voice.
+**Random NPC voices** gives spare voices to minor game characters. It works only in Game Mode, and only for NPCs that Game Mode tracks. Turn it on and tick the voices each pool may draw from. A tracked NPC without a personal voice gets a stable pick from the matching pool and keeps it for the session. If the app cannot detect labeled male or female voices, each pool uses the full voice list.
 
-The **Refresh** button in the Character Voices box reloads the same provider library without switching back to the one-voice mode. You must create your characters first. If you have none yet, the app tells you to add characters in the Characters tab before assigning voices. Characters without a personal voice fall back to the global voice. See [Creating and Editing Characters](../characters/creating-and-editing-characters.md).
+## Synthesis defaults
 
-## Narrator Voice
+Open **Synthesis defaults** on the connection for speed, audio format, and the request budget.
 
-Narration is text that no single character speaks, such as scene description or a game master's lines. You can give it a separate voice.
+Every control here is optional. Left alone, it follows the app-level setting, which is what an engine nobody has tuned should do. Set one and it belongs to this connection, so a slow local engine and a hosted API stop having to share a timeout. Each control shows **App setting** until you move it, and offers **Follow app setting** to hand it back.
 
-1. In the **Narrator Voice** box, turn on **Use separate narrator voice**.
-2. Pick a voice in the picker that appears.
+**Speed** stops where the engine does: 0.25 to 4.0 for OpenAI-compatible and PocketTTS, 0.5 to 2.0 for NanoGPT, 0.7 to 1.2 for ElevenLabs, and 0.7 to 1.5 for xAI Voice.
 
-The app uses this voice when a line's speaker is Narrator, GM, Game Master, or System. That works in Roleplay and Conversation messages. It also covers Game Mode narration lines that have no named speaker. If you use ElevenLabs, pick a narrator voice here. If you leave it empty, narration only falls back when a global voice is set.
+**Audio format** chooses MP3 or WAV. Use WAV for local servers that cannot make MP3. The control is hidden for ElevenLabs and xAI Voice, which always return MP3.
 
-## Random NPC Voices (Game Mode only)
+For **ElevenLabs** only, **Language** forces a spoken language or leaves it on auto detect, and **Stability** slides between more expressive and more consistent speech.
 
-This feature gives spare voices to minor game characters. It works only in Game Mode, and only for NPCs that Game Mode tracks. It has no effect in Roleplay or Conversation.
+The remaining four settings are the request budget. The defaults suit hosted APIs; local engines are the reason these controls exist.
 
-1. In the **Random NPC Voices** box, turn on **Use default voices for random NPCs**.
-2. Two checkbox grids appear: **Male NPC defaults** and **Female NPC defaults**.
-3. Tick the voices you want each pool to draw from.
-
-A tracked NPC without a personal voice gets a stable pick from the matching pool. The same NPC keeps the same voice during a session. An NPC with an assigned character voice always keeps that assigned voice. If the app cannot detect labeled male or female voices, each pool uses the full voice list instead.
-
-## Audio Format and Speed
-
-The **Audio Format** setting chooses **MP3** (the default) or **WAV**. Use WAV for local or self-hosted servers that cannot make MP3. Two notes:
-
-- The **Audio Format** control is hidden for ElevenLabs, which always uses MP3.
-- The control shows for xAI Voice but has no effect there. xAI Voice always returns MP3.
-
-The **Speed** slider controls how fast the voice talks. The allowed range depends on the Source:
-
-- OpenAI-compatible: 0.25 to 4.0 times normal speed.
-- PocketTTS: compatible wrappers can use the 0.25 to 4.0 speed setting; the official server currently controls synthesis speed itself.
-- ElevenLabs: 0.7 to 1.2 times.
-- xAI Voice: 0.7 to 1.5 times.
-
-If a saved speed is outside the current source's range, the app clamps it to the nearest allowed value when it speaks.
-
-For **ElevenLabs** only, two extra controls appear. **Language** lets you force a spoken language, or leave it on **Auto detect**. **Stability** slides between more expressive and more consistent speech.
-
-## Advanced synthesis: tuning for slow or local engines
-
-The **Advanced synthesis** section of the TTS card holds four settings. They are saved per Source, so a local engine and a hosted API keep their own values and switching Source does not carry one's tuning onto the other. The defaults suit hosted APIs; local engines are the reason these controls exist.
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Request timeout | 60s | How long to wait for one chunk before giving up. A local engine on CPU often needs several minutes. |
-| Chunk size | 900 characters | How much text goes in one request. Smaller chunks start speaking sooner and suit engines that choke on long passages. |
-| Retries | 1 | Extra attempts after a timeout or a temporary engine failure. A rejected request is never repeated. |
-| Parallel requests | 1 | How many chunks are synthesized at once. Leave this at 1 unless the engine really does synthesize in parallel. |
+| Setting           | Default        | What it does                                                                                                          |
+| ----------------- | -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Request timeout   | 60s            | How long to wait for one chunk before giving up. A local engine on CPU often needs several minutes.                   |
+| Chunk size        | 900 characters | How much text goes in one request. Smaller chunks start speaking sooner and suit engines that choke on long passages. |
+| Retries           | 1              | Extra attempts after a timeout or a temporary engine failure. A rejected request is never repeated.                   |
+| Parallel requests | 1              | How many chunks are synthesized at once. Leave this at 1 unless the engine really does synthesize in parallel.        |
 
 Two things are worth knowing before you raise anything:
 
@@ -152,7 +124,7 @@ Turn on **Progressive playback** as well. Without it the whole message is synthe
 
 Any engine that serves the OpenAI `/v1/audio/speech` API works without a dedicated Source. This covers [Chatterbox](https://github.com/resemble-ai/chatterbox), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), and [AllTalk](https://github.com/erew123/alltalk_tts), among others.
 
-Set **Source** to **OpenAI-compatible**, put the engine's address in **Base URL** including the `/v1` suffix, and set **Model** and **All Characters Voice** to names the engine recognises. The API key can stay empty if the engine does not check one.
+Set **Source** to **OpenAI-compatible**, put the engine's address in **Base URL** including the `/v1` suffix, and set **Model** and **Default voice** to names the engine recognises. The API key can stay empty if the engine does not check one.
 
 ```text
 Base URL:  http://localhost:8000/v1
@@ -164,13 +136,13 @@ Both a **loopback** address such as `http://localhost:8000` and an engine on **a
 
 A reasonable starting point for a CPU engine:
 
-| Setting | Value |
-| --- | --- |
-| Request timeout | 300s |
-| Chunk size | 300 |
-| Retries | 1 |
-| Parallel requests | 1 |
-| Progressive playback | On |
+| Setting              | Value |
+| -------------------- | ----- |
+| Request timeout      | 300s  |
+| Chunk size           | 300   |
+| Retries              | 1     |
+| Parallel requests    | 1     |
+| Progressive playback | On    |
 
 If the engine has no voice-list endpoint, the dropdown falls back to the built-in names and the text field beside it accepts any name the engine knows.
 
@@ -221,14 +193,14 @@ This override is used only during Conversation audio and video calls. The regula
 ## Troubleshooting
 
 - Nothing speaks: confirm the **Enable TTS** switch is on. Then check the right per-mode **Auto-play** toggle, or use the per-message **Speak** button. The **Speak** button and auto-play options only appear after TTS is enabled.
-- No voices in the dropdown: save the card with TTS enabled and a valid API key, then click **Refresh voices**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
+- No voices in the dropdown: save the connection with a valid API key, then click **Refresh**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
 - ElevenLabs will not speak: make sure you selected a real voice, not the "Select an ElevenLabs voice" placeholder. Also check that the **Model** is a speech model, not a voice-design model whose ID contains `ttv`.
 - A self-hosted TTS server on a private or LAN address is blocked: the server has `TTS_LOCAL_URLS_ENABLED=false` set. Remove that line and restart. Loopback addresses such as `localhost` and `127.0.0.1` work either way. See [Server Configuration Reference](../CONFIGURATION.md).
-- "The speech engine ran out of time": the engine did not finish a chunk inside the **Request timeout**. Raise it in **Advanced synthesis**, and lower **Chunk size** so each request is smaller. Local engines on CPU commonly need 300s and chunks near 300 characters.
+- "The speech engine ran out of time": the engine did not finish a chunk inside the **Request timeout**. Raise it in the connection's **Synthesis defaults**, and lower **Chunk size** so each request is smaller. Local engines on CPU commonly need 300s and chunks near 300 characters.
 - Speech starts only after a long pause: turn on **Progressive playback**, which plays each chunk as it arrives instead of synthesizing the whole message first.
 - Voice auto-play stopped on its own: auto-play pauses after three failed messages in a row so a stopped engine cannot fill the chat with silent waits. Fix the engine, then press **Speak** on any message to start it again.
 - Timeouts appear only when **Parallel requests** is above 1: the engine is synthesizing serially, so queued chunks spend their timeout waiting their turn. Set it back to 1.
-- Test your setup fast: click the **Preview** button in the card to play a short sample line with your current settings.
+- Test your setup fast: **Test voice** on the connection speaks through that engine, and **Test playback** in the Text to Speech card speaks through whichever engine chats will use.
 
 ## Related guides
 

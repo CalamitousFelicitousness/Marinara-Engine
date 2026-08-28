@@ -6,25 +6,27 @@ import { Modal } from "../ui/Modal";
 import { useCreateConnection } from "../../hooks/use-connections";
 import { useUIStore } from "../../stores/ui.store";
 import { Loader2, Link } from "lucide-react";
-import { MODEL_LISTS, PROVIDERS, type APIProvider } from "@marinara-engine/shared";
+import { MODEL_LISTS, PROVIDERS, TTS_SOURCE_DEFINITIONS, type APIProvider } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Preselects a provider, so a caller that already knows the kind does not ask again. */
+  initialProvider?: APIProvider;
 }
 
-export function CreateConnectionModal({ open, onClose }: Props) {
+export function CreateConnectionModal({ open, onClose, initialProvider }: Props) {
   const { t: localizeUi } = useUiTranslation();
   const createConnection = useCreateConnection();
   const openConnectionDetail = useUIStore((s) => s.openConnectionDetail);
   const [name, setName] = useState("");
-  const [provider, setProvider] = useState<APIProvider>("openai");
+  const [provider, setProvider] = useState<APIProvider>(initialProvider ?? "openai");
 
   const reset = () => {
     setName("");
-    setProvider("openai");
+    setProvider(initialProvider ?? "openai");
   };
 
   const handleCreate = async () => {
@@ -39,6 +41,16 @@ export function CreateConnectionModal({ open, onClose }: Props) {
         apiKey: "",
         model: defaultModel?.id ?? "",
         maxContext: defaultModel?.context || 128000,
+        // A fresh audio row would otherwise carry no source at all, which every
+        // reader has to coerce to a guess.
+        ...(provider === "audio"
+          ? {
+              audioSource: "elevenlabs" as const,
+              audioVoice: TTS_SOURCE_DEFINITIONS.elevenlabs.defaultVoice || null,
+              baseUrl: TTS_SOURCE_DEFINITIONS.elevenlabs.defaultBaseUrl,
+              model: TTS_SOURCE_DEFINITIONS.elevenlabs.defaultModel,
+            }
+          : {}),
       });
       const connId = (result as { id: string })?.id;
       onClose();

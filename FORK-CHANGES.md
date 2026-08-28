@@ -1234,6 +1234,97 @@ Proven by `scripts/regressions/tts/tts-shared-contract.regression.ts`. The upstr
 `tts-source-persistence.regression.ts` imports moved helpers and asserts against `tts.routes.ts`
 source text, and passes unedited.
 
+### A TTS engine is a saved connection, not a settings page
+
+Text to Speech was configured in a card that edited one settings blob, while audio _connections_
+already existed and the server already preferred them. That left two editors for the same effective
+settings and no way to keep more than one engine: the blob held a saved profile per source,
+reachable only by switching a dropdown, so anyone running a cloud voice and a local one had to
+remember which fields belonged to which.
+
+An audio connection now owns everything about how an engine speaks, and the connection editor
+configures it end to end: source tiles, model picker, a voice picker fed by that connection's own
+catalog, synthesis defaults, voice casting, and a Test voice button that speaks through the
+connection being edited. Several engines can be saved and switched with the category default,
+exactly like model connections.
+
+Casting moved with it. A voice ID only means something to the engine that issued it, so
+per-character voices, the narrator voice, and the NPC pools belong to the connection rather than to
+one global list an engine switch would invalidate.
+
+The card keeps what is genuinely app level: the master switch, auto-play, progressive playback,
+dialogue handling, the speaker extractor, and cached clips. It went from 1891 lines to 656 and now
+reports which connection actually answers, with a button to edit it.
+
+Behavior changes worth knowing:
+
+- **The gate changed.** Speech required the card's master toggle even when a working default
+  connection existed, so anyone who configured a connection and never opened the card got
+  `400 TTS is not enabled`. It is now allowed when no settings were ever stored, while a stored
+  toggle set to off is still honored, so an upgrade cannot re-enable speech somebody switched off.
+  Unparseable stored settings count as stored, for the same reason.
+- **A connection's settings win over the app-level values, field by field**, and only where it
+  stores one. A knob it never set still follows the app-level setting, so an untuned connection
+  behaves exactly as before.
+- **Boot migration** turns every configured source profile into a named connection seeded with that
+  profile's knobs. Configured means evidence somebody chose it: a key, an address that is not the
+  source default, or a local engine. Only the source that was speaking becomes the default, so an
+  install with speech off gains presets but no voice. Re-runs never overwrite settings edited since.
+- **Cache keys carry the resolved connection** (`chat-voice-line-v3`, `game-voice-line-v3`/`v4`,
+  `combat-voice-v2`). Two connections can look identically configured and still be different
+  engines, so without it switching replays the previous one's audio. Existing clips retire once.
+- **A game pinned to an audio connection now speaks through it.** Its sound effects and music
+  already did; narration and combat lines went to the category default, so one game could score and
+  speak on two engines.
+- **`GET /api/tts/effective-config`** returns the merged config plus which connection answered and
+  whether speech is enabled. Clients read it instead of re-deriving resolution, which is what
+  `GameSurface` had been doing in TypeScript, quarantine rules included.
+- **`/connections/:id/models` and `/:id/test` work for audio.** `PROVIDERS.audio.modelsEndpoint` is
+  the empty string and the generic branch coalesces with `??` rather than `||`, so "Fetch Models"
+  requested the bare base URL with an ElevenLabs header whatever the row targeted.
+
+Patches to upstream files, all of which a merge can revert silently:
+
+- `packages/server/src/routes/tts.routes.ts`: resolution moved to
+  `services/tts/audio-config-resolution.ts` and is imported back; four call sites take the new
+  return shape; `/effective-config` added; `fetchProviderModels`/`fetchProviderVoices` exported.
+  `LEGACY_TTS_CONFIG_SENTINEL` is re-exported from here because it was part of this module's
+  surface. The PocketTTS probe cache shape, the adjacent `clearPocketTtsApiModeCache` pair in
+  `PUT /config`, and the extractor debug literal are read as source text by an upstream-owned
+  regression and must stay put.
+- `packages/server/src/routes/connections.routes.ts`: early `provider === "audio"` branches in
+  `/:id/models` and `/:id/test`. The generic `??` line is deliberately left alone.
+- `packages/server/src/db/schema/connections.ts`, `packages/shared/src/types/connection.ts`,
+  `packages/shared/src/schemas/connection.schema.ts`,
+  `packages/server/src/services/storage/connections.storage.ts`: the `audio_settings` column and its
+  mapping. No `STORAGE_VERSION` bump: that constant has only ever moved for file-sharding changes,
+  and an additive nullable column normalizes to null on rows written before it existed.
+- `packages/shared/src/types/tts.ts`, `constants/tts-sources.ts`, `src/index.ts`: the effective
+  config response type, `baseUrlMode`, and the new module's export.
+- `packages/client/src/components/connections/ConnectionEditor.tsx`: the audio branch renders
+  `components/connections/audio/*`; the generic Base URL and Model groups are gated on
+  `!isAudioProvider`. **On a conflict here, keep the component call and port upstream's intent into
+  the audio components.** Upstream rewrites and reformats this file often.
+- `packages/client/src/components/panels/settings/TTSConfigCard.tsx`: gutted in place, keeping the
+  file and export so `ConnectionsPanel` needs no edit. **Identity-half changes from upstream port
+  into `components/connections/audio/`; playback-half changes apply here.** Its payload spreads the
+  config the server last returned, so a field upstream adds round-trips untouched rather than being
+  wiped by a partial save.
+- `packages/client/src/lib/tts-service.ts`, `lib/tts-dialogue.ts`, `lib/connection-transfer.ts`,
+  `hooks/use-tts.ts`, `hooks/use-connections.ts`, `components/chat/ChatMessage.tsx`,
+  `components/chat/ChatArea.tsx`, `components/game/GameNarration.tsx`,
+  `components/game/GameCombatUI.tsx`, `components/game/GameSurface.tsx`,
+  `components/modals/CreateConnectionModal.tsx`, `components/layout/ModalRenderer.tsx`,
+  `packages/server/src/app.ts`: additive. GameSurface's `/tts/game-audio` call is pinned as source
+  text by `open-issues.regression.ts`; only how `gameAudioConnectionId` is derived changed.
+
+Proven by `scripts/regressions/tts/tts-audio-connection-resolution.regression.ts`,
+`tts-audio-connection-migration.regression.ts`, and `tts-audio-connection-ux.regression.ts`.
+
+Deferred: a per-chat audio override, matching the per-chat model connection. The plumbing is in
+place, since `useEffectiveTTSConfig` takes an optional connection id and speak requests carry one end
+to end, so it is a chat-settings block plus one schema field.
+
 ### Speaker tags have one grammar, and it is well-formed markup
 
 Group chat dialogue colouring asked models for `<speaker="Amy">`, which is not valid markup: an

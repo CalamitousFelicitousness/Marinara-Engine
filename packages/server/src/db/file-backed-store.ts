@@ -2763,7 +2763,10 @@ class FileTableStore {
     if (!ctx) return;
     if (ctx.dirtyTables.has(tableName)) return;
     const currentRows = this.tables.get(tableName);
-    ctx.snapshots.set(tableName, currentRows ? currentRows.map((row) => ({ ...row })) : []);
+    // Shallow copy is a full rollback snapshot because row objects are
+    // immutable (#5592 Phase 3): mutations replace rows in NEW arrays, so
+    // the referenced objects cannot change under the snapshot.
+    ctx.snapshots.set(tableName, currentRows ? currentRows.slice() : []);
     ctx.dirtyTables.add(tableName);
   }
 
@@ -2838,7 +2841,12 @@ class FileTableStore {
               this.ensureUnitsLoaded(destinationKeys);
             }
             const target = this.rows(meta.name);
-            const nextRows = target.map(cloneRow);
+            // Pointer copy, not per-row clones (#5592 Phase 3): row objects
+            // are immutable once installed — every mutation path REPLACES a
+            // row — so sharing them between the old and new arrays is safe,
+            // and the old O(rows) object-clone per insert was the largest
+            // remaining per-write allocation spike on big tables (#4730).
+            const nextRows = target.slice();
             const affectedRows: Row[] = [];
             for (const row of preparedRows) {
               const conflictKeys =
@@ -3674,7 +3682,8 @@ class FileTableStore {
     if (snapshot) {
       const mirrored = snapshot.map(swapReplaced).concat(added);
       snapshot.length = 0;
-      snapshot.push(...mirrored.map((row) => ({ ...row })));
+      // References, not clones: rows are immutable once installed.
+      snapshot.push(...mirrored);
       snapshot.sort(compareRows);
     }
     if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
@@ -3843,13 +3852,24 @@ class FileTableStore {
       }
       const deletedValues = new Set(deletedRows.map((row) => row[relation.parentKey]));
       const changedRows: Row[] = [];
-      for (const row of this.rows(childMeta.name)) {
+      // Copy-on-write, never in-place: resident row objects are IMMUTABLE
+      // once installed (#5592 Phase 3) — transaction snapshots and the
+      // flush's captured arrays hold references to them, so mutating one
+      // would corrupt the rollback state and any in-flight write. This was
+      // the store's last in-place mutator.
+      const target = this.rows(childMeta.name);
+      let nextRows: Row[] | null = null;
+      for (let index = 0; index < target.length; index++) {
+        const row = target[index]!;
         if (row[relation.childKey] != null && deletedValues.has(row[relation.childKey])) {
           if (changedRows.length === 0) this.recordTxMutation(childMeta.name);
-          row[relation.childKey] = null;
-          changedRows.push(row);
+          nextRows ??= target.slice();
+          const replacement = { ...row, [relation.childKey]: null };
+          nextRows[index] = replacement;
+          changedRows.push(replacement);
         }
       }
+      if (nextRows) this.tables.set(childMeta.name, nextRows);
       if (changedRows.length > 0) {
         // A sharded child needs its shard keys, like every other mutation
         // path — a bare markDirty leaves dirtyShards empty and the flush

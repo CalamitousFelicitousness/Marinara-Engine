@@ -556,6 +556,65 @@ const shardExists = (dir: string, table: string, key: string) =>
   }
 }
 
+// ── Set-null relations are copy-on-write and roll back cleanly ──
+// (#5592 Phase 3) Resident row objects are immutable once installed:
+// transaction snapshots are shallow (arrays of references), which is only a
+// valid rollback state if no mutation ever writes INTO a row object. The
+// set-null cascade was the last in-place mutator — a rollback across it must
+// restore the child's foreign key, in memory and on disk.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-sn", [chatRow("chat-sn")]);
+  writeShard(dir, "spatial_context_snapshots", "chat-sn", [
+    { id: "spatial-1", chatId: "chat-sn", messageId: "m-x", swipeIndex: 0, createdAt: "2026-08-28T10:00:00.000Z" },
+  ]);
+  writeShard(dir, "game_checkpoints", "chat-sn", [
+    {
+      id: "cp-1",
+      chatId: "chat-sn",
+      messageId: "m-x",
+      spatialSnapshotId: "spatial-1",
+      triggerType: "manual",
+      createdAt: "2026-08-28T10:00:01.000Z",
+    },
+  ]);
+  const db = await createFileNativeDB();
+  try {
+    const { spatialContextSnapshots, gameCheckpoints } = await import(
+      "../../packages/server/src/db/schema/index.js"
+    );
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        // Deleting the snapshot set-nulls the checkpoint's spatialSnapshotId.
+        await tx.delete(spatialContextSnapshots).where(eq(spatialContextSnapshots.id, "spatial-1"));
+        throw new Error("force rollback");
+      }),
+      /force rollback/,
+    );
+    const checkpoints = await db.select().from(gameCheckpoints).where(eq(gameCheckpoints.chatId, "chat-sn"));
+    assert.equal(
+      checkpoints[0]?.spatialSnapshotId,
+      "spatial-1",
+      "the rolled-back set-null leaves the child's foreign key intact in memory",
+    );
+    const snapshots = await db
+      .select()
+      .from(spatialContextSnapshots)
+      .where(eq(spatialContextSnapshots.chatId, "chat-sn"));
+    assert.equal(snapshots.length, 1, "the rolled-back delete leaves the parent row intact");
+    await db._fileStore.flush();
+    assert.equal(
+      readShard(dir, "game_checkpoints", "chat-sn")[0]?.spatialSnapshotId,
+      "spatial-1",
+      "disk keeps the foreign key after the rollback",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest: messages reports the harvested total; other lazy counts are omitted ──
 
 {

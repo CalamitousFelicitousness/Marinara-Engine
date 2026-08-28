@@ -305,21 +305,22 @@ assert.equal(stored.sourceProfiles.pockettts?.maxRetries, 2, "a stored profile k
   assert.equal(seeded.speed, 1.5, "seeding carries the profile's values");
 }
 
-// The card's restore path is not compile-checked the way its payload builder is:
-// dropping a setter here leaves the UI showing another source's tuning.
+// The playback card still PUTs the whole config even though it only edits part
+// of it. ttsConfigSchema fills absent fields with defaults, and the storage
+// layer reads a blank apiKey as an explicit clear, so a payload assembled from
+// playback state alone would wipe the stored key and every saved source profile
+// the moment somebody toggled autoplay. Nothing about that failure is loud.
 const cardSource = readSource("packages/client/src/components/panels/settings/TTSConfigCard.tsx");
-for (const [setter, field] of [
-  ["setTimeoutMs", "timeoutMs"],
-  ["setChunkCharLimit", "chunkCharLimit"],
-  ["setMaxRetries", "maxRetries"],
-  ["setGenerationConcurrency", "generationConcurrency"],
-] as const) {
-  assert.match(
-    cardSource,
-    new RegExp(String.raw`${setter}\(nextProfile\.${field}\)`, "u"),
-    `switching source must restore ${field} into the card`,
-  );
-}
+assert.match(
+  cardSource,
+  /const buildPayload[\s\S]{0,200}?\.\.\.ttsConfigSchema\.parse\(savedConfig \?\? \{\}\),/u,
+  "the card's payload must start from what the server last returned",
+);
+assert.doesNotMatch(cardSource, /sourceProfilesRef/u, "per-source profiles are not the playback card's job");
+// The sentinel forced the app-level blob so the old preview tested what the card
+// edited. The card no longer edits an engine, so its test has to reach the one
+// autoplay would.
+assert.doesNotMatch(cardSource, /audioConnectionId: ""/u, "playback test must not pin itself to the app-level blob");
 
 // ── The collapsed copies stay collapsed ──
 const routeSource = readSource("packages/server/src/routes/tts.routes.ts");

@@ -971,6 +971,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (input.characterIds.includes(PROFESSOR_MARI_ID)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
     }
+    if (input.mode === "game" && input.personaCharacterId) {
+      return reply.status(400).send({ error: "Character identities are not available in Game chats." });
+    }
     const body = req.body as Record<string, unknown>;
     // No connection picked (no starred preset): seed the user's default so the
     // setup wizard shows what generation would fall back to anyway.
@@ -1005,6 +1008,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
+    }
+    const nextPersonaCharacterId =
+      data.personaCharacterId === undefined ? existing.personaCharacterId : data.personaCharacterId;
+    if ((data.mode ?? existing.mode) === "game" && nextPersonaCharacterId) {
+      return reply.status(400).send({ error: "Character identities are not available in Game chats." });
     }
     if (data.personaCharacterId) {
       const character = await createCharactersStorage(app.db).getById(data.personaCharacterId);
@@ -3004,7 +3012,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const allContent = assembled.messages.map((m) => m.content).join("\n");
 
           // Character info fallback
-          for (const cid of characterIds) {
+          for (const cid of assistantCharacterIds) {
             const charRow = await charStore.getById(cid);
             if (!charRow) continue;
             const charData = JSON.parse(charRow.data as string);

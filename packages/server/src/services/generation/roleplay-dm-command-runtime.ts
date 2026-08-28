@@ -41,7 +41,9 @@ type ChatsStore = {
     role: string;
     characterId: string | null;
     content: string;
-  }): Promise<{ id?: unknown } | null>;
+    // createdAt is part of the contract so adapters cannot silently omit the
+    // timestamp the lastMessageRole ordering guard depends on.
+  }): Promise<{ id?: unknown; createdAt: string } | null>;
   updateMessageExtra(id: string, partial: Record<string, unknown>): Promise<unknown>;
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<unknown>;
   remove(id: string): Promise<unknown>;

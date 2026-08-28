@@ -978,7 +978,11 @@ export async function conversationRoutes(app: FastifyInstance) {
           seededAutonomousActivityChats.add(chatId);
         })();
         autonomousActivitySeeds.set(chatId, seeding);
-        void seeding.finally(() => autonomousActivitySeeds.delete(chatId));
+        // The .finally chain is a DERIVED promise: when the seed rejects, it
+        // rejects too, and leaving it unhandled would trip the process-level
+        // unhandledRejection exit. The route still awaits (and surfaces) the
+        // original rejection below.
+        void seeding.finally(() => autonomousActivitySeeds.delete(chatId)).catch(() => undefined);
       }
       await seeding;
     }

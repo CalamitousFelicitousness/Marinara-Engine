@@ -507,6 +507,55 @@ const shardExists = (dir: string, table: string, key: string) =>
   }
 }
 
+// ── A rollback keeps load-created healing marks paired with their dirty keys ──
+// (#5606) A lazy unit load INSIDE a transaction creates healing marks: dirty
+// keys for the rows' real shards plus a stale mark on the stray-holding file.
+// Rollback restores the pre-transaction dirty maps — which would strand the
+// stale mark alone, and the next flush would then rewrite the host file
+// canonically while the stray rows' own shard is skipped as clean, erasing
+// their only on-disk copy. The marks must be re-merged on rollback.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-a", [chatRow("chat-a")]);
+  writeShard(dir, "chats", "chat-b", [chatRow("chat-b")]);
+  // chat-a's file holds chat-b's ONLY copy of m-b2; chat-b's own file exists
+  // (if it did not, the flush's recreate-if-missing rule would mask the bug).
+  writeShard(dir, "messages", "chat-a", [
+    messageRow("m-a1", "chat-a", "a's own row"),
+    messageRow("m-b2", "chat-b", "b's only copy, misfiled"),
+  ]);
+  writeShard(dir, "messages", "chat-b", [messageRow("m-b1", "chat-b", "b's resident row")]);
+  const db = await createFileNativeDB();
+  try {
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        // The scope hook loads chat-a (and, transitively, chat-b) INSIDE the
+        // transaction, creating the healing marks mid-tx.
+        await tx.update(messages).set({ content: "rolled back" }).where(eq(messages.chatId, "chat-a"));
+        throw new Error("force rollback");
+      }),
+      /force rollback/,
+    );
+    await db._fileStore.flush();
+    assert.deepEqual(
+      readShard(dir, "messages", "chat-b")
+        .map((row) => row.id)
+        .sort(),
+      ["m-b1", "m-b2"],
+      "the misfiled row's only copy is re-homed to its canonical shard, not erased by the healing rewrite",
+    );
+    assert.deepEqual(
+      readShard(dir, "messages", "chat-a").map((row) => row.id),
+      ["m-a1"],
+      "the host file is rewritten canonically without the stray",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest: messages reports the harvested total; other lazy counts are omitted ──
 
 {

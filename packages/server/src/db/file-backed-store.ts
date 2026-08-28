@@ -113,6 +113,19 @@ type FileTransactionContext = {
   dirtyTables: Set<string>;
   /** Shard keys written during this transaction, for the durable-rollback re-add (#4708). */
   dirtyShards: Map<string, Set<string>>;
+  /**
+   * Healing marks created by LAZY UNIT LOADS that ran inside this
+   * transaction (#5606). Loads are not transaction mutations — their rows
+   * deliberately survive a rollback via the snapshot mirror — but their
+   * dirty keys lived only in the live maps, which rollback restores from the
+   * pre-transaction snapshot. That stranded the paired stale-file marks:
+   * the next flush would rewrite a stray-holding file canonically while the
+   * stray rows' own shard was skipped as clean, erasing their only on-disk
+   * copy. Rollback re-merges these so a stale mark never reaches a flush
+   * without the dirty keys it was created with.
+   */
+  loadHealDirtyShards: Map<string, Set<string>>;
+  loadHealDirtyTables: Set<string>;
   flushed: boolean;
 };
 
@@ -2613,6 +2626,8 @@ class FileTableStore {
       snapshots: new Map<string, Row[]>(),
       dirtyTables: new Set<string>(),
       dirtyShards: new Map<string, Set<string>>(),
+      loadHealDirtyShards: new Map<string, Set<string>>(),
+      loadHealDirtyTables: new Set<string>(),
       flushed: false,
     };
     const dirtySnapshot = this.dirty;
@@ -2645,6 +2660,22 @@ class FileTableStore {
       this.dirty = dirtySnapshot;
       this.dirtyTables = dirtyTablesSnapshot;
       this.dirtyShards = dirtyShardsSnapshot;
+      // Re-merge healing marks created by lazy unit loads inside the
+      // transaction (#5606): the loads' rows survive the rollback (the
+      // snapshot mirror), and their stale-file marks were never rolled back
+      // — restoring the pre-tx dirty maps alone would strand those marks
+      // without their paired dirty keys, letting the next flush rewrite a
+      // stray-holding file canonically while the strays' own shard is
+      // skipped as clean, erasing their only on-disk copy.
+      if (ctx.loadHealDirtyTables.size > 0) {
+        this.dirty = true;
+        for (const table of ctx.loadHealDirtyTables) this.dirtyTables.add(table);
+        for (const [table, keys] of ctx.loadHealDirtyShards) {
+          const set = this.dirtyShards.get(table) ?? new Set<string>();
+          for (const key of keys) set.add(key);
+          this.dirtyShards.set(table, set);
+        }
+      }
       // Rollback restored the full messages array — the shard index must
       // match the restored rows, not the rolled-back ones (#4708).
       if (ctx.dirtyTables.has("messages")) this.rebuildMessageShardIndex();
@@ -2712,6 +2743,21 @@ class FileTableStore {
    * the table has already been snapshotted this transaction. Must be called
    * BEFORE the in-place mutation so the snapshot captures the pre-mutation state.
    */
+  /**
+   * Mirrors a LOAD-created healing mark into the active transaction so a
+   * rollback can re-merge it (#5606) — see FileTransactionContext.
+   */
+  private recordLoadHealMarks(table: string, keys?: Iterable<string>) {
+    const ctx = this.txContext.getStore();
+    if (!ctx) return;
+    ctx.loadHealDirtyTables.add(table);
+    if (keys) {
+      const set = ctx.loadHealDirtyShards.get(table) ?? new Set<string>();
+      for (const key of keys) set.add(key);
+      ctx.loadHealDirtyShards.set(table, set);
+    }
+  }
+
   private recordTxMutation(tableName: string) {
     const ctx = this.txContext.getStore();
     if (!ctx) return;
@@ -3499,6 +3545,7 @@ class FileTableStore {
       if (needsRepair || holdsForeignRows) {
         this.dirty = true;
         this.dirtyTables.add(table);
+        this.recordLoadHealMarks(table, rowKeys);
         const set = this.dirtyShards.get(table) ?? new Set<string>();
         for (const rawKey of rowKeys) set.add(rawKey);
         this.dirtyShards.set(table, set);
@@ -3517,6 +3564,7 @@ class FileTableStore {
       // the flush deletes the pair instead of re-recovering it forever.
       this.dirty = true;
       this.dirtyTables.add(table);
+      this.recordLoadHealMarks(table);
       const stale = this.staleShardFiles.get(table) ?? new Set<string>();
       stale.add(encoded);
       this.staleShardFiles.set(table, stale);
@@ -3588,6 +3636,7 @@ class FileTableStore {
       );
       this.dirty = true;
       this.dirtyTables.add(table);
+      this.recordLoadHealMarks(table);
       const stale = this.staleShardFiles.get(table) ?? new Set<string>();
       stale.add(sourceEncoded);
       this.staleShardFiles.set(table, stale);

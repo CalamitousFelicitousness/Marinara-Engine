@@ -1692,6 +1692,20 @@ function cloneRow(row: Row) {
   return { ...row };
 }
 
+/**
+ * Canonical resident order for sharded rows: (createdAt, primaryKey). Boot
+ * and unit reloads sort with this, and lazy-table INSERTS place rows at this
+ * position too (#5592 PR-B) — so resident order is a pure function of the
+ * data, and an evict/reload round trip cannot change what an orderBy-less
+ * query returns.
+ */
+function compareRowOrder(primaryKey: string | null | undefined, a: Row, b: Row) {
+  return (
+    String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
+    String(primaryKey ? a[primaryKey] : "").localeCompare(String(primaryKey ? b[primaryKey] : ""))
+  );
+}
+
 function getMeta(table: Table | string) {
   const tableName = typeof table === "string" ? table : tableNameOf(table);
   // Downloaded capability bundles carry their own file-table instances.
@@ -2795,7 +2809,20 @@ class FileTableStore {
               } else {
                 assertUniqueRow(meta, nextRows, row);
                 affectedRows.push(row);
-                nextRows.push(row);
+                if (LAZY_UNIT_TABLES.has(meta.name)) {
+                  // Keep lazy tables in canonical order at insert time — an
+                  // appended row would re-sort on the next unit reload, and
+                  // orderBy-less queries must not change results with
+                  // residency history (#5592 PR-B). Scan from the end: new
+                  // rows are usually newest, making this O(1) in practice.
+                  let position = nextRows.length;
+                  while (position > 0 && compareRowOrder(meta.primaryKey, nextRows[position - 1]!, row) > 0) {
+                    position -= 1;
+                  }
+                  nextRows.splice(position, 0, row);
+                } else {
+                  nextRows.push(row);
+                }
               }
             }
             this.recordTxMutation(meta.name);
@@ -3031,7 +3058,10 @@ class FileTableStore {
   }
 
   getResidentChatUnits(): ReadonlySet<string> {
-    return this.loadedUnits;
+    // Snapshot, not the live Set: this is a diagnostics surface, and a
+    // caller casting away the readonly type must not be able to corrupt the
+    // store's residency bookkeeping.
+    return new Set(this.loadedUnits);
   }
 
   markDirty(table: string, shardKeys?: Iterable<string>) {
@@ -3509,6 +3539,7 @@ class FileTableStore {
       ? new Set(resident.map((row) => row[primaryKey]).filter((id) => typeof id === "string"))
       : null;
     let strayIds = this.strayResidentIds.get(table);
+    let strayFoundThisMerge = false;
     const added: Row[] = [];
     const replacements = new Map<string, Row>();
     let duplicateCount = 0;
@@ -3529,6 +3560,7 @@ class FileTableStore {
         }
         residentIds.add(id);
         if (!isCanonical) {
+          strayFoundThisMerge = true;
           // One Set per table, reused across the whole merge: allocating a
           // fresh Set per stray row would overwrite the map entry and forget
           // every stray id but the last, letting a stale stray copy beat its
@@ -3559,13 +3591,23 @@ class FileTableStore {
     // canonical replacements, stray rows) pins every involved unit against
     // eviction (#5592 PR-B): these states interweave per-file read-once
     // bookkeeping across units, and they only occur on corrupt installs.
-    if (duplicateCount > 0 || replacements.size > 0 || (strayIds !== undefined && strayIds.size > 0)) {
-      for (const key of keys) this.pinnedUnits.add(key);
+    // Pin on events observed in THIS merge only: testing the accumulated
+    // table-wide stray set here would let a single misfiled row pin every
+    // unit loaded afterwards, silently disabling the eviction cap on the
+    // corrupt installs it most needs to protect.
+    if (duplicateCount > 0 || replacements.size > 0 || strayFoundThisMerge) {
+      for (const key of keys) {
+        if (!this.pinnedUnits.has(key)) {
+          this.pinnedUnits.add(key);
+          logger.warn(
+            { table, unit: key },
+            "[file-storage] Unit pinned non-evictable after a corruption-healing merge; it stays resident for this process.",
+          );
+        }
+      }
     }
     if (added.length === 0 && replacements.size === 0) return keys;
-    const compareRows = (a: Row, b: Row) =>
-      String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
-      String(primaryKey ? a[primaryKey] : "").localeCompare(String(primaryKey ? b[primaryKey] : ""));
+    const compareRows = (a: Row, b: Row) => compareRowOrder(primaryKey, a, b);
     const swapReplaced = (row: Row) => {
       const id = primaryKey && typeof row[primaryKey] === "string" ? (row[primaryKey] as string) : null;
       return (id && replacements.get(id)) || row;

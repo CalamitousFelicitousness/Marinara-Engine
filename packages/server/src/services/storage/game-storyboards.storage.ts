@@ -77,8 +77,14 @@ export function createGameStoryboardsStorage(db: DB) {
         .orderBy(desc(gameTurnStoryboards.createdAt));
     },
 
-    async getById(id: string) {
-      const rows = await db.select().from(gameTurnStoryboards).where(eq(gameTurnStoryboards.id, id));
+    async getById(id: string, chatId?: string) {
+      // The optional chatId keeps the read's unit scope resolvable when the
+      // row's unit is not resident (#5592 PR-B) — a bare-PK probe miss would
+      // otherwise lease the whole table, permanently for this process.
+      const condition = chatId
+        ? and(eq(gameTurnStoryboards.chatId, chatId), eq(gameTurnStoryboards.id, id))
+        : eq(gameTurnStoryboards.id, id);
+      const rows = await db.select().from(gameTurnStoryboards).where(condition);
       return rows[0] ?? null;
     },
 
@@ -123,7 +129,7 @@ export function createGameStoryboardsStorage(db: DB) {
         .update(gameTurnStoryboards)
         .set({ ...patch, updatedAt: now() })
         .where(condition);
-      return this.getById(id);
+      return this.getById(id, chatId);
     },
 
     /**

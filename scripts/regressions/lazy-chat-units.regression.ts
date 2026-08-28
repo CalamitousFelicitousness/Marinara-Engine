@@ -726,4 +726,103 @@ const loadedUnitsOf = (db: Awaited<ReturnType<typeof createFileNativeDB>>) => db
   }
 }
 
+// ── Evict/reload keeps orderBy-less query results identical ──
+// Resident order is (createdAt, id)-sorted at insert time as well as at
+// load time, so a query without an explicit orderBy returns the same rows in
+// the same order whether or not the unit was evicted in between. (Found by
+// adversarial review: append-ordered inserts + reload's re-sort made a
+// .limit/.find over an unordered swipe query return DIFFERENT rows with the
+// cap on vs off.)
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-a", "chat-b", "chat-c"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+    writeShard(dir, "messages", chat, [messageRow(`m-${chat}`, chat, chat)]);
+  }
+  writeShard(dir, "message_swipes", "chat-a", [
+    { id: "sw-stored", messageId: "m-chat-a", index: 0, content: "stored", createdAt: "2026-01-01T00:00:00.000Z" },
+  ]);
+  const db = await createFileNativeDB();
+  try {
+    await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    // A live swipe (fresh timestamp) and an imported swipe (null createdAt,
+    // exactly what chat import writes) land in append order...
+    await db
+      .insert(messageSwipes)
+      .values({
+        id: "sw-live",
+        messageId: "m-chat-a",
+        index: 1,
+        content: "live",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+    await db.insert(messageSwipes).values({ id: "sw-imported", messageId: "m-chat-a", index: 2, content: "imported" });
+    const before = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["m-chat-a"]));
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-b"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-c"));
+    await db._fileStore.flush();
+    assert.equal(loadedUnitsOf(db).has("chat-a"), false, "chat-a was evicted between the two reads");
+    const after = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["m-chat-a"]));
+    assert.deepEqual(
+      after.map((row) => row.id),
+      before.map((row) => row.id),
+      "an orderBy-less query returns the identical sequence across an evict/reload round trip",
+    );
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── One corrupt unit does not disable eviction for the rest of the install ──
+// Units involved in corruption healing are pinned — but ONLY those units.
+// (Found by adversarial review: pinning tested the accumulated table-wide
+// stray set, so one misfiled row pinned every unit loaded afterwards and the
+// cap silently stopped bounding memory on exactly the installs it targets.)
+
+{
+  const dir = tempStorageDir();
+  process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+  for (const chat of ["chat-1", "chat-2", "chat-3", "chat-4", "chat-5"]) {
+    writeShard(dir, "chats", chat, [chatRow(chat)]);
+  }
+  // chat-1's shard holds a stray row belonging to chat-2 (both get pinned);
+  // chat-3 and chat-4 are perfectly healthy.
+  writeShard(dir, "messages", "chat-1", [
+    messageRow("m-1", "chat-1", "one"),
+    messageRow("m-2-stray", "chat-2", "misfiled"),
+  ]);
+  writeShard(dir, "messages", "chat-3", [messageRow("m-3", "chat-3", "three")]);
+  writeShard(dir, "messages", "chat-4", [messageRow("m-4", "chat-4", "four")]);
+  writeShard(dir, "messages", "chat-5", [messageRow("m-5", "chat-5", "five")]);
+  const db = await createFileNativeDB();
+  try {
+    await db.select().from(messages).where(eq(messages.chatId, "chat-1"));
+    await db._fileStore.flush();
+    await db.select().from(messages).where(eq(messages.chatId, "chat-3"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-4"));
+    await db.select().from(messages).where(eq(messages.chatId, "chat-5"));
+    await db._fileStore.flush();
+    const loaded = loadedUnitsOf(db);
+    assert.equal(loaded.has("chat-1"), true, "the corrupt unit itself stays pinned");
+    assert.equal(loaded.has("chat-3"), false, "healthy units loaded after the corrupt one are still evictable");
+    assert.equal(loaded.has("chat-4"), true, "recent healthy units stay resident");
+    assert.equal(loaded.has("chat-5"), true, "the most recent healthy unit stays resident");
+  } finally {
+    delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log("Lazy chat-unit regressions passed.");

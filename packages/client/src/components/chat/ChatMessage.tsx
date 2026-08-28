@@ -2009,6 +2009,7 @@ export const ChatMessage = memo(function ChatMessage({
             ),
             ttsConfig,
             message.id,
+            null,
           )
         : [],
     [message.characterId, message.content, message.id, resolveTTSCharacterId, ttsConfig, ttsSpeakerName],

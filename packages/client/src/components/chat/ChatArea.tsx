@@ -2670,7 +2670,7 @@ export const ChatArea = memo(function ChatArea() {
       }
       ttsAutoplayPauseNotifiedRef.current = false;
 
-      await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
+      await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id, null), lastMsg.id, {
         progressive: cfg.progressivePlayback,
         concurrency: cfg.generationConcurrency,
         policy: resolveTTSSynthesisPolicy(cfg),

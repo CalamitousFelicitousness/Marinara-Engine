@@ -950,7 +950,7 @@ export function TTSConfigCard() {
     error: voicesRequestError,
   } = useTTSVoices(
     savedSource,
-    savedConfig?.baseUrl ?? TTS_SOURCE_DEFAULTS[savedSource].baseUrl,
+    { baseUrl: savedConfig?.baseUrl ?? TTS_SOURCE_DEFAULTS[savedSource].baseUrl },
     savedConfig?.enabled ?? false,
   );
   const {
@@ -959,7 +959,7 @@ export function TTSConfigCard() {
     refetch: refetchModels,
   } = useTTSModels(
     savedSource,
-    savedConfig?.baseUrl ?? TTS_SOURCE_DEFAULTS[savedSource].baseUrl,
+    { baseUrl: savedConfig?.baseUrl ?? TTS_SOURCE_DEFAULTS[savedSource].baseUrl },
     savedConfig?.enabled ?? false,
   );
 

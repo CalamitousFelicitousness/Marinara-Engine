@@ -58,7 +58,7 @@ export interface TTSSpeakRequest {
 
 export interface TTSSpeakSequenceOptions extends Pick<
   TTSSpeakOptions,
-  "signal" | "throwOnError" | "volume" | "muted" | "policy"
+  "signal" | "throwOnError" | "volume" | "muted" | "policy" | "audioConnectionId"
 > {
   progressive?: boolean;
   /** Requests kept in flight ahead of playback in progressive mode. 1 is serial. */
@@ -496,6 +496,7 @@ class TTSService {
           speaker: request.speaker,
           tone: request.tone,
           voice: request.voice,
+          audioConnectionId: options.audioConnectionId,
           policy: options.policy,
           signal: abortController.signal,
           cacheKey: request.cacheKey,

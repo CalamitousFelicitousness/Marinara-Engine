@@ -114,8 +114,12 @@ function hashTTSCacheKey(value: string): string {
   return `${value.length.toString(36)}-${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
 }
 
-function buildTTSConfigCacheSignature(config: TTSConfig): string {
+function buildTTSConfigCacheSignature(config: TTSConfig, resolvedConnectionId: string | null): string {
   return [
+    // Two connections can hold identical-looking settings and still be different
+    // engines, so the clip a cache hit replays has to be tied to the one that
+    // produced it.
+    resolvedConnectionId ?? "app-level",
     config.source,
     config.baseUrl,
     config.model,
@@ -138,8 +142,9 @@ export function withTTSVoiceRequestCacheKeys(
   requests: TTSVoiceRequest[],
   config: TTSConfig,
   messageId: string,
+  resolvedConnectionId: string | null,
 ): CachedTTSVoiceRequest[] {
-  const configSignature = buildTTSConfigCacheSignature(config);
+  const configSignature = buildTTSConfigCacheSignature(config, resolvedConnectionId);
   return requests.map((request, index) => {
     const requestSignature = [
       configSignature,
@@ -152,8 +157,8 @@ export function withTTSVoiceRequestCacheKeys(
     const messageHash = hashTTSCacheKey(`${messageId}\n${index}\n${requestSignature}`);
     return {
       ...request,
-      cacheKey: `chat-voice-line-v2:${messageId}:${index}:${messageHash}`,
-      cacheAliases: [`chat-voice-line-text-v2:${textHash}`],
+      cacheKey: `chat-voice-line-v3:${messageId}:${index}:${messageHash}`,
+      cacheAliases: [`chat-voice-line-text-v3:${textHash}`],
     };
   });
 }

@@ -6,7 +6,14 @@ import { api } from "../lib/api-client";
 import { useUIStore } from "../stores/ui.store";
 import { useChatStore } from "../stores/chat.store";
 import { chatKeys } from "./use-chats";
-import type { APIProvider, Chat, ConnectionTestResult, ImageGenerationQuality } from "@marinara-engine/shared";
+import { ttsKeys } from "./use-tts";
+import type {
+  APIProvider,
+  AudioConnectionSettings,
+  Chat,
+  ConnectionTestResult,
+  ImageGenerationQuality,
+} from "@marinara-engine/shared";
 
 export const connectionKeys = {
   all: ["connections"] as const,
@@ -62,6 +69,7 @@ export type CreateConnectionPayload = {
   audioVoice?: string | null;
   audioSoundEffects?: boolean;
   audioMusic?: boolean;
+  audioSettings?: AudioConnectionSettings | null;
   promptPresetId?: string | null;
   maxTokensOverride?: number | null;
   maxParallelJobs?: number;
@@ -74,7 +82,10 @@ export function useCreateConnection() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateConnectionPayload) => api.post("/connections", data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: connectionKeys.list() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: connectionKeys.list() });
+      qc.invalidateQueries({ queryKey: ttsKeys.all });
+    },
   });
 }
 
@@ -85,6 +96,9 @@ export function useUpdateConnection() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
       qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) });
+      // An audio connection carries the voice catalog and the settings speech
+      // resolves through, so both go stale with it.
+      qc.invalidateQueries({ queryKey: ttsKeys.all });
     },
   });
 }
@@ -105,7 +119,10 @@ export function useDuplicateConnection() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post(`/connections/${id}/duplicate`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: connectionKeys.list() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: connectionKeys.list() });
+      qc.invalidateQueries({ queryKey: ttsKeys.all });
+    },
   });
 }
 
@@ -115,6 +132,7 @@ export function useDeleteConnection() {
     mutationFn: (id: string) => api.delete(`/connections/${id}`),
     onSuccess: async (_data, id) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
+      qc.invalidateQueries({ queryKey: ttsKeys.all });
       const activeChatId = useChatStore.getState().activeChatId;
       if (!activeChatId) return;
       const activeChat = qc.getQueryData<Chat>(chatKeys.detail(activeChatId));

@@ -242,8 +242,17 @@ export interface GameSetupConfig {
   imageConnectionId?: string;
   /** Connection ID for video generation (animated scene clips from generated illustrations). */
   videoConnectionId?: string;
-  /** Connection ID for audio generation (speech, game sound effects, and music). */
+  /**
+   * Connection ID covering every audio purpose this game does not pin
+   * individually. The per-purpose ids below win for their own lane.
+   */
   audioConnectionId?: string;
+  /** Connection ID for spoken narration and combat lines. */
+  voiceConnectionId?: string;
+  /** Connection ID for generated scene sound effects. */
+  sfxConnectionId?: string;
+  /** Connection ID for generated scene music. */
+  musicConnectionId?: string;
   /** Generate scene sound effects for this game (requires a capable audio connection). Defaults to true. */
   enableGameSoundEffects?: boolean;
   /** Generate scene music for this game (requires a capable audio connection). Defaults to true. */

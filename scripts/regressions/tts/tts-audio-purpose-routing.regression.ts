@@ -25,12 +25,16 @@
 // routing are the contract.
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TTS_API_KEY_MASK, TTS_SETTINGS_KEY, ttsConfigSchema } from "../../../packages/shared/src/types/tts.js";
 import { effectiveGameAudioPin } from "../../../packages/shared/src/constants/audio-purposes.js";
+
+const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "../../..");
+const readSource = (relativePath: string) => readFileSync(join(repoRoot, relativePath), "utf8");
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-audio-purpose-routing-"));
 
@@ -49,12 +53,15 @@ try {
   process.env.NODE_ENV = "test";
   process.env.MARINARA_LITE = "true";
 
-  const [dbModule, appSettingsModule, connectionsModule, resolutionModule] = await Promise.all([
-    import("../../../packages/server/src/db/connection.js"),
-    import("../../../packages/server/src/services/storage/app-settings.storage.js"),
-    import("../../../packages/server/src/services/storage/connections.storage.js"),
-    import("../../../packages/server/src/services/tts/audio-config-resolution.js"),
-  ]);
+  const [dbModule, appSettingsModule, connectionsModule, resolutionModule, schemaModule, queryModule] =
+    await Promise.all([
+      import("../../../packages/server/src/db/connection.js"),
+      import("../../../packages/server/src/services/storage/app-settings.storage.js"),
+      import("../../../packages/server/src/services/storage/connections.storage.js"),
+      import("../../../packages/server/src/services/tts/audio-config-resolution.js"),
+      import("../../../packages/server/src/db/schema/index.js"),
+      import("../../../packages/server/src/db/file-query.js"),
+    ]);
 
   const db = await dbModule.getDB();
   const storage = appSettingsModule.createAppSettingsStorage(db);
@@ -204,6 +211,71 @@ try {
       undefined,
       "the voice pin answers only for speech",
     );
+  }
+
+  // ── Game setup writes the pins the resolver reads ──
+  // Two halves that must agree on three key names: the route stores them and
+  // effectiveGameAudioPin reads them. Nothing else connects the two, so a rename
+  // on either side leaves a game pinned to an engine nobody consults.
+  {
+    const gameRoutes = readSource("packages/server/src/routes/game.routes.ts");
+    for (const [purpose, setupField, metadataKey] of [
+      ["speech", "voiceConnectionId", "gameVoiceConnectionId"],
+      ["sfx", "sfxConnectionId", "gameSfxConnectionId"],
+      ["music", "musicConnectionId", "gameMusicConnectionId"],
+    ] as const) {
+      assert.match(
+        gameRoutes,
+        new RegExp(String.raw`${metadataKey}: setupConfig\.${setupField}`, "u"),
+        `game setup must store ${setupField} as ${metadataKey}`,
+      );
+      assert.equal(
+        effectiveGameAudioPin({ [metadataKey]: "pinned" }, purpose),
+        "pinned",
+        `${metadataKey} must be the key the ${purpose} lane reads`,
+      );
+    }
+  }
+
+  // ── Deleting a pinned connection releases the pin ──
+  // The dangling-reference sweep matches any metadata key ending in
+  // ConnectionId, at any depth. That convention is the whole reason the purpose
+  // pins need no cleanup code of their own, so a pin renamed off it would keep
+  // pointing at an engine that no longer exists.
+  {
+    const doomed = (await connections.create({
+      name: "Doomed Engine",
+      provider: "audio",
+      apiKey: "doomed-key",
+      baseUrl: "",
+      model: "",
+      audioSource: "elevenlabs",
+      audioMusic: true,
+    } as never))!;
+    const timestamp = new Date().toISOString();
+    await db.insert(schemaModule.chats).values({
+      id: "purpose-pin-cleanup",
+      name: "Pinned game",
+      mode: "game",
+      metadata: JSON.stringify({
+        gameMusicConnectionId: doomed.id,
+        gameSfxConnectionId: doomed.id,
+        gameAudioSoundEffectsEnabled: true,
+      }),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    await connections.remove(doomed.id);
+
+    const rows = await db
+      .select()
+      .from(schemaModule.chats)
+      .where(queryModule.eq(schemaModule.chats.id, "purpose-pin-cleanup"));
+    const metadata = JSON.parse(String(rows[0]!.metadata)) as Record<string, unknown>;
+    assert.equal(metadata.gameMusicConnectionId, null, "a deleted engine stops being the music pin");
+    assert.equal(metadata.gameSfxConnectionId, null, "and stops being the sound effect pin");
+    assert.equal(metadata.gameAudioSoundEffectsEnabled, true, "while the game's other settings are left alone");
   }
 
   // ── The routes carry the purpose ──

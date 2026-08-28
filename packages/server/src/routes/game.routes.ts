@@ -1789,6 +1789,9 @@ const gameSetupConfigSchema = z.object({
   imageConnectionId: z.string().optional(),
   videoConnectionId: z.string().optional(),
   audioConnectionId: z.string().optional(),
+  voiceConnectionId: z.string().optional(),
+  sfxConnectionId: z.string().optional(),
+  musicConnectionId: z.string().optional(),
   enableGameSoundEffects: z.boolean().optional(),
   enableGameMusic: z.boolean().optional(),
   gameStoryboardAutoIllustrationsEnabled: z.boolean().optional(),
@@ -6452,7 +6455,10 @@ export async function gameRoutes(app: FastifyInstance) {
       snapshotConnection(setupConfig.sceneConnectionId),
       snapshotConnection(setupConfig.imageConnectionId),
       snapshotConnection(setupConfig.videoConnectionId),
-      snapshotConnection(setupConfig.audioConnectionId),
+      // The setup card carries one audio row, so it records the engine that
+      // speaks; the sound effect and music pins are shown by the game's own
+      // audio settings.
+      snapshotConnection(setupConfig.voiceConnectionId || setupConfig.audioConnectionId),
     ]);
     await chats.updateMetadata(sessionChat.id, {
       ...sessionMeta,
@@ -6507,6 +6513,13 @@ export async function gameRoutes(app: FastifyInstance) {
       gameImageConnectionId: setupConfig.imageConnectionId || null,
       gameVideoConnectionId: setupConfig.videoConnectionId || null,
       gameAudioConnectionId: setupConfig.audioConnectionId || null,
+      // Per-purpose pins. Each wins over gameAudioConnectionId for its own lane,
+      // and a null one leaves that lane on the game pin or the category chain.
+      // Named to end in ConnectionId so the dangling-reference sweep clears them
+      // when the connection they name is deleted.
+      gameVoiceConnectionId: setupConfig.voiceConnectionId || null,
+      gameSfxConnectionId: setupConfig.sfxConnectionId || null,
+      gameMusicConnectionId: setupConfig.musicConnectionId || null,
       gameAudioSoundEffectsEnabled: setupConfig.enableGameSoundEffects !== false,
       gameAudioMusicEnabled: setupConfig.enableGameMusic !== false,
       gameSceneVideosEnabled: false,

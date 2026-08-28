@@ -3388,7 +3388,7 @@ class FileTableStore {
     const residentIds = primaryKey
       ? new Set(resident.map((row) => row[primaryKey]).filter((id) => typeof id === "string"))
       : null;
-    const strayIds = this.strayResidentIds.get(table);
+    let strayIds = this.strayResidentIds.get(table);
     const added: Row[] = [];
     const replacements = new Map<string, Row>();
     let duplicateCount = 0;
@@ -3409,9 +3409,13 @@ class FileTableStore {
         }
         residentIds.add(id);
         if (!isCanonical) {
-          const set = strayIds ?? new Set<string>();
-          set.add(id);
-          this.strayResidentIds.set(table, set);
+          // One Set per table, reused across the whole merge: allocating a
+          // fresh Set per stray row would overwrite the map entry and forget
+          // every stray id but the last, letting a stale stray copy beat its
+          // canonical row when the canonical file loads.
+          strayIds ??= new Set<string>();
+          strayIds.add(id);
+          this.strayResidentIds.set(table, strayIds);
         }
       }
       added.push(row);
@@ -4141,6 +4145,13 @@ class FileTableStore {
       // unit should not occur; requeue it defensively (into the LIVE dirty
       // map — flush swapped it out before this ran) so the mark survives
       // until the unit loads instead of being silently dropped.
+      // Deliberately WITHOUT restoring this.dirty/dirtyTables: the mark is
+      // vacuous by construction (every mutation path loads its unit first, so
+      // an unloaded unit has no in-memory changes to persist), and setting
+      // the flags here would make the safety timer re-run this no-op every
+      // cycle and turn finishClose's drain-until-clean loop into a shutdown
+      // hang. The next flush from any real cause re-captures the key via the
+      // dirtyShards swap; dropping it at process exit loses nothing.
       if (!this.fullyResidentTables.has(table) && !this.loadedUnits.has(key)) {
         logger.warn(
           { table, shardKey: key },

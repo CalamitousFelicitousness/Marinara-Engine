@@ -78,6 +78,8 @@ const shardExists = (dir: string, table: string, key: string) =>
   // chat-b is actually touched.
   const bRows = [messageRow("m-b1", "chat-b", "b one"), "malformed-not-a-row"];
   writeShard(dir, "messages", "chat-b", bRows);
+  const bShardPath = join(dir, "tables", "messages", `${encodeShardKey("chat-b")}.json`);
+  const bShardSource = readFileSync(bShardPath, "utf8");
   writeShard(dir, "message_swipes", "chat-a", [swipeRow("s-a1", "m-a1", "swipe a")]);
   writeShard(dir, "memory_chunks", "chat-b", [chunkRow("c-b1", "chat-b", "chunk b")]);
   const db = await createFileNativeDB();
@@ -100,9 +102,11 @@ const shardExists = (dir: string, table: string, key: string) =>
     );
     assert.equal(db.count(messages, eq(messages.chatId, "chat-a")), 2, "count() sees the loaded unit");
     await db._fileStore.flush();
-    assert.deepEqual(
-      readShard(dir, "messages", "chat-b"),
-      bRows,
+    // Raw-bytes comparison: a rewrite that preserved the parsed rows (e.g.
+    // reserialization) would still prove the file was touched.
+    assert.equal(
+      readFileSync(bShardPath, "utf8"),
+      bShardSource,
       "an untouched unit's file is byte-identical after another unit's load and flush — no boot healing",
     );
     // First touch of chat-b runs the recovery pipeline: the malformed row is
@@ -289,6 +293,47 @@ const shardExists = (dir: string, table: string, key: string) =>
         .sort(),
       ["s-a", "s-x"],
       "both orphan swipes are on disk in the unassigned shard",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Every stray id in a file is tracked — canonical copies beat ALL stale strays ──
+// A shard file can hold several rows belonging to another unit (interrupted
+// re-home). Each stray id must be tracked individually: forgetting any of them
+// makes the later canonical-file load treat its fresh copy as a duplicate and
+// keep the stale stray as the persisted row.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-a", [chatRow("chat-a")]);
+  writeShard(dir, "chats", "chat-b", [chatRow("chat-b")]);
+  const canonical1 = messageRow("m-1", "chat-b", "canonical one");
+  const canonical2 = messageRow("m-2", "chat-b", "canonical two");
+  // chat-a's file holds its own row PLUS stale stray copies of BOTH chat-b rows.
+  writeShard(dir, "messages", "chat-a", [
+    messageRow("m-a", "chat-a", "a real"),
+    { ...canonical1, content: "stale stray one" },
+    { ...canonical2, content: "stale stray two" },
+  ]);
+  writeShard(dir, "messages", "chat-b", [canonical1, canonical2]);
+  const db = await createFileNativeDB();
+  try {
+    // Touching chat-a merges the strays first, then pulls chat-b in
+    // transitively — the canonical file's copies must replace EVERY stray.
+    const aMessages = await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+    assert.deepEqual(
+      aMessages.map((row) => row.id),
+      ["m-a"],
+      "chat-a keeps only its own row once the strays re-home",
+    );
+    const bMessages = await db.select().from(messages).where(eq(messages.chatId, "chat-b"));
+    assert.deepEqual(
+      bMessages.map((row) => row.content).sort(),
+      ["canonical one", "canonical two"],
+      "the canonical shard's copies win over every stale stray copy from a multi-stray file",
     );
   } finally {
     await db._fileStore.close();

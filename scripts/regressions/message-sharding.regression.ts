@@ -896,6 +896,71 @@ for (const invalidExpectedCount of ["1", 1.5]) {
   }
 }
 
+// ── A valid-JSON non-array shard root is corruption, not emptiness (#5601) ──
+// A shard whose root parses but is not an array used to load as ZERO rows
+// with no error, no quarantine, and a valid .bak sitting unused. Shape
+// corruption now walks the same recovery ladder as parse corruption.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "chats"), { recursive: true });
+  writeFileSync(
+    join(dir, "tables", "chats", `${encodeShardKey("chat-x")}.json`),
+    JSON.stringify([{ id: "chat-x", name: "X", mode: "conversation" }]),
+  );
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const xShard = join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`);
+  // Primary: valid JSON, wrong shape. Backup: the real rows.
+  writeFileSync(xShard, JSON.stringify({ rows: "not an array" }));
+  writeFileSync(`${xShard}.bak`, JSON.stringify([messageRow("m-x1", "chat-x", "from the backup")]));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages).where(eq(messages.chatId, "chat-x"));
+    assert.deepEqual(
+      rows.map((row) => row.content),
+      ["from the backup"],
+      "a non-array primary recovers from the valid backup instead of loading empty",
+    );
+    const byId = await db.select().from(messages).where(eq(messages.id, "m-x1"));
+    assert.equal(byId.length, 1, "id-scoped reads see the recovered row too (the harvest reads the backup)");
+    await db._fileStore.flush();
+    const healed = JSON.parse(readFileSync(xShard, "utf8")) as Array<{ id: string }>;
+    assert.deepEqual(
+      healed.map((row) => row.id),
+      ["m-x1"],
+      "the healing flush rewrites the primary from the recovered rows",
+    );
+    assert.deepEqual(
+      JSON.parse(readFileSync(`${xShard}.bak`, "utf8")).map((row: { id: string }) => row.id),
+      ["m-x1"],
+      "the backup is never clobbered by the shape-corrupt primary",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Non-array root with NO usable backup quarantines instead of vanishing ──
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "messages"), { recursive: true });
+  const shardPath = join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`);
+  writeFileSync(shardPath, JSON.stringify({ not: "rows" }));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 0, "nothing usable loads from a shape-corrupt shard without a backup");
+    assert.equal(existsSync(shardPath), false, "the shape-corrupt file is quarantined away, not silently kept");
+    const quarantined = readdirSync(join(dir, "tables", "messages")).filter((name) => name.includes(".corrupt-"));
+    assert.equal(quarantined.length, 1, "the file is preserved under a .corrupt- name for manual recovery");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── A quarantined bak-only shard leaves no phantom manifest entry ──
 
 {

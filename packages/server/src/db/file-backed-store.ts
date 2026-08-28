@@ -1073,12 +1073,33 @@ function preserveMalformedRowSourceSync(path: string, table: string): Quarantine
   }
 }
 
-function parseJsonFile<T>(path: string, fallback: T): ParseResult<T> {
+/**
+ * Reads and parses one JSON file with .bak fallback. `validateRoot` extends
+ * "unreadable" from "does not parse" to "parses to the wrong shape" (#5601):
+ * a shard file whose root is valid JSON but not an array used to load as
+ * ZERO rows with no error, no quarantine, and a valid .bak sitting unused —
+ * the rows silently vanished. A failed validation now throws inside the same
+ * read step, so the existing recovery ladder (backup fallback, then
+ * fallback-with-unreadablePaths for the quarantine machinery downstream)
+ * applies to shape corruption identically.
+ */
+function parseJsonFile<T>(
+  path: string,
+  fallback: T,
+  validateRoot?: (value: unknown) => boolean,
+): ParseResult<T> {
+  const read = (filePath: string): T => {
+    const value = JSON.parse(readFileSync(filePath, "utf8")) as T;
+    if (validateRoot && !validateRoot(value)) {
+      throw new Error(`Valid JSON with an unexpected root shape in ${filePath}`);
+    }
+    return value;
+  };
   if (!existsSync(path)) {
     const backupPath = `${path}.bak`;
     if (existsSync(backupPath)) {
       try {
-        const value = JSON.parse(readFileSync(backupPath, "utf8")) as T;
+        const value = read(backupPath);
         logger.warn(
           "[file-storage] %s is missing; recovering from %s. A fresh primary snapshot will be written on next save.",
           path,
@@ -1109,7 +1130,7 @@ function parseJsonFile<T>(path: string, fallback: T): ParseResult<T> {
   }
   try {
     return {
-      value: JSON.parse(readFileSync(path, "utf8")) as T,
+      value: read(path),
       recoveredFromBackup: false,
       recoveredFromFallback: false,
       unreadablePaths: [],
@@ -1119,7 +1140,7 @@ function parseJsonFile<T>(path: string, fallback: T): ParseResult<T> {
     if (existsSync(backupPath)) {
       const staleness = describeStaleness(path, backupPath);
       try {
-        const value = JSON.parse(readFileSync(backupPath, "utf8")) as T;
+        const value = read(backupPath);
         logger.error(
           err,
           "[file-storage] %s is corrupt; recovering from %s (backup is %s older). Edits made since the backup are unrecoverable.",
@@ -2523,7 +2544,7 @@ class FileTableStore {
 
     // The monolith loads through the exact pipeline the flat loader uses, so
     // .bak recovery, malformed-row quarantine, and normalizeRow all apply.
-    const { value: rows, recoveredFromBackup } = parseJsonFile<Row[]>(monolithPath, []);
+    const { value: rows, recoveredFromBackup } = parseJsonFile<Row[]>(monolithPath, [], Array.isArray);
     const parsedRows = Array.isArray(rows) ? rows : [];
     const source = parsedRows.filter(isRowRecord);
     const malformedRowCount = parsedRows.length - source.length;
@@ -3507,7 +3528,7 @@ class FileTableStore {
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
     this.knownShardFiles.set(table, known);
     const path = shardFilePath(this.rootDir, table, encoded);
-    const { value, recoveredFromBackup, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, []);
+    const { value, recoveredFromBackup, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, [], Array.isArray);
     const parsedRows = Array.isArray(value) ? value : [];
     const source = parsedRows.filter(isRowRecord);
     const malformedRowCount = parsedRows.length - source.length;
@@ -4064,7 +4085,7 @@ class FileTableStore {
         recoveredFromBackup,
         recoveredFromFallback,
         unreadablePaths,
-      } = parseJsonFile<Row[]>(path, []);
+      } = parseJsonFile<Row[]>(path, [], Array.isArray);
       const parsedRows = Array.isArray(rows) ? rows : [];
       const source = parsedRows.filter(isRowRecord);
       const malformedRowCount = parsedRows.length - source.length;
@@ -4160,7 +4181,7 @@ class FileTableStore {
           for (const fileName of dataFiles) {
             const encoded = fileName.slice(0, -".json".length);
             const path = join(dir, fileName);
-            const { value, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, []);
+            const { value, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, [], Array.isArray);
             const parsedRows = Array.isArray(value) ? value : [];
             const usableRows = parsedRows.filter(isRowRecord);
             if (parsedRows.length > 0 && usableRows.length === 0) {
@@ -4230,7 +4251,7 @@ class FileTableStore {
           recoveredFromBackup,
           recoveredFromFallback,
           unreadablePaths,
-        } = parseJsonFile<Row[]>(path, []);
+        } = parseJsonFile<Row[]>(path, [], Array.isArray);
         const parsedRows = Array.isArray(rows) ? rows : [];
         const source = parsedRows.filter(isRowRecord);
         const malformedRowCount = parsedRows.length - source.length;

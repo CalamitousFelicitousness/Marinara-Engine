@@ -1151,6 +1151,24 @@ Proven by `scripts/regressions/tts/tts-provider-registry.regression.ts` (source 
 voice fallback, format and speed rules, catalog parsing) and
 `scripts/regressions/tts/tts-shared-contract.regression.ts` (every source id has a profile slot).
 
+Voices come from the listing, not from the id. `/audio-models` publishes each
+model's vocabulary in `supported_parameters.voices` and answers without a key,
+so that is the source of truth; `nanoGptModelFamily` no longer picks the voice
+list. It still decides the per-family default voice and the mp3/no-speed rule
+for ElevenLabs-branded models, which are genuinely id-derived.
+
+The local tables are the offline fallback only, and they are approximations: the
+published lists give `tts-1` nine voices against eleven here, `gpt-4o-mini-tts`
+thirteen against eleven, Kokoro 33 against 30, and `Elevenlabs-Turbo` 22 against
+46. Before this, a model matching no known prefix fell through to OpenAI's list
+labelled "OpenAI built-in", so Gemini, Qwen, MiniMax and Inworld were all offered
+voices their provider rejects. A model the listing does not describe now reports
+none, which is what a hand-typed id should look like.
+
+`/tts/voices` takes an optional `model` override because voices are per model;
+the editor asks about the model on screen rather than the saved one. There is no
+`/v1/voices` endpoint despite the OpenAI-shaped docs mentioning one: it 404s.
+
 ### Local address controls key on who supplied the URL
 
 `PROVIDER_LOCAL_URLS_ENABLED` and `TTS_LOCAL_URLS_ENABLED` now default to `true`, with an explicit

@@ -186,6 +186,24 @@ try {
     assert.equal(result.resolvedConnectionId, pocket.id, "and it is the connection marked as fallback");
   }
 
+  // ── The model catalog answers per source, or refuses ──
+  // The generic connections handler cannot do this: PROVIDERS.audio has no
+  // models endpoint, so it requested the bare base URL with an ElevenLabs
+  // header no matter which engine the row pointed at.
+  {
+    const catalog = await import("../../../packages/server/src/services/tts/audio-connection-catalog.js");
+    assert.deepEqual(
+      await catalog.fetchModelsForAudioConnection(db, pocket.id),
+      { models: [], fromProvider: false, source: "pockettts" },
+      "a free-text-model source reports an empty catalog rather than a wrong one",
+    );
+    assert.equal(
+      await catalog.fetchModelsForAudioConnection(db, "does-not-exist"),
+      null,
+      "an id naming no audio connection lists nothing, never the default connection's models",
+    );
+  }
+
   console.info("TTS audio connection resolution regression passed.");
 } finally {
   if (previousDataDir === undefined) delete process.env.DATA_DIR;

@@ -23,6 +23,7 @@ import {
   normalizeVideoGenerationProfile,
 } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
+import { fetchModelsForAudioConnection, testAudioConnection } from "../services/tts/audio-connection-catalog.js";
 import { resetMemoryRecallVectorizerCache } from "../services/memory-recall-embedding.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
@@ -536,6 +537,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
     const start = Date.now();
     try {
+      // Audio knows its own endpoints per source; the generic catalog ping below
+      // would send an ElevenLabs header wherever the connection actually points.
+      if (conn.provider === "audio") {
+        const audioResult = await testAudioConnection(app.db, req.params.id);
+        if (audioResult) return audioResult;
+      }
+
       if (conn.provider === "claude_subscription") {
         if (!conn.model) {
           return {
@@ -760,6 +768,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
     try {
+      // PROVIDERS.audio has no modelsEndpoint, so the generic branch below would
+      // request the bare base URL. The speech catalog is per source.
+      if (conn.provider === "audio") {
+        const audioModels = await fetchModelsForAudioConnection(app.db, req.params.id);
+        if (audioModels) return { models: audioModels.models };
+      }
+
       // Claude (Subscription) has no remote /models endpoint — return the
       // curated static list for the subscription path.
       if (conn.provider === "claude_subscription") {

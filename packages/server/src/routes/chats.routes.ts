@@ -258,8 +258,11 @@ function normalizeMemoryEmbedding(value: unknown): number[] | null {
   return vector;
 }
 
-function parseMemoryEmbedding(raw: string | null): number[] | null {
+function parseMemoryEmbedding(raw: string | Float64Array | null): number[] | null {
   if (!raw) return null;
+  // Projected selects hand back the store's packed vector (#5592 Phase 1); the
+  // export payload keeps its plain-array JSON shape either way.
+  if (raw instanceof Float64Array) return normalizeMemoryEmbedding(Array.from(raw));
   try {
     return normalizeMemoryEmbedding(JSON.parse(raw));
   } catch {

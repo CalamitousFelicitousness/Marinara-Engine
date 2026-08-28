@@ -18,7 +18,17 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, desc, eq, jsonFlagsNotTrue, ne, stringIsNonBlank } from "../../packages/server/src/db/file-query.js";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  jsonFlagsNotTrue,
+  ne,
+  notInArray,
+  stringIsNonBlank,
+} from "../../packages/server/src/db/file-query.js";
 import {
   createFileNativeDB,
   encodeShardKey,
@@ -1475,6 +1485,243 @@ for (const invalidExpectedCount of ["1", 1.5]) {
       /Invalid message cursor/u,
       "history cursors must identify a message in the current snapshot",
     );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── #5592 Phase 0: swipe reads are chat-scoped and inArray stays linear ──
+// The WHERE-less swipe scans existed because inArray membership used to cost
+// O(ids) per scanned row (#3402). The store now resolves membership Sets once
+// per condition, so the scoped form is both correct across chats and linear.
+
+{
+  const dir = tempStorageDir();
+  const db = await createFileNativeDB();
+  try {
+    for (const chatId of ["chat-a", "chat-b"]) {
+      await db.insert(chats).values({ id: chatId, name: chatId, mode: "conversation" });
+      await db.insert(messages).values(messageRow(`${chatId}-m1`, chatId, "hello"));
+      await db.insert(messageSwipes).values({
+        id: `${chatId}-m1-s1`,
+        messageId: `${chatId}-m1`,
+        index: 1,
+        content: "alt",
+        createdAt: "2026-08-08T10:00:00.000Z",
+      });
+    }
+    // A second swipe only in chat B: scoped counts must never bleed across.
+    await db.insert(messageSwipes).values({
+      id: "chat-b-m1-s2",
+      messageId: "chat-b-m1",
+      index: 2,
+      content: "alt-2",
+      createdAt: "2026-08-08T10:00:01.000Z",
+    });
+
+    const storage = createChatsStorage(db);
+    const chatAMessages = await storage.listMessages("chat-a");
+    assert.equal(chatAMessages.length, 1);
+    assert.equal(chatAMessages[0]!.swipeCount, 1, "chat A sees only its own swipe count");
+    const chatBMessages = await storage.listMessages("chat-b");
+    assert.equal(chatBMessages[0]!.swipeCount, 2, "chat B keeps its own two swipes");
+
+    const scoped = await storage.listSwipesByMessageIds(["chat-a-m1"]);
+    assert.deepEqual(
+      scoped.map((swipe) => swipe.id),
+      ["chat-a-m1-s1"],
+      "swipe listing returns only the requested messages' swipes",
+    );
+
+    const viaInArray = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, ["chat-a-m1", "chat-b-m1"]));
+    assert.equal(viaInArray.length, 3, "the Set-based membership evaluator matches Array.includes semantics");
+    const excluded = await db
+      .select()
+      .from(messageSwipes)
+      .where(notInArray(messageSwipes.messageId, ["chat-a-m1"]));
+    assert.deepEqual(
+      excluded.map((swipe) => swipe.id).sort(),
+      ["chat-b-m1-s1", "chat-b-m1-s2"],
+      "notInArray shares the cached membership set",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── #5592 Phase 0: an emptied shard's file deletion survives a failed flush ──
+// "Dirty key with no rows" may only unlink the shard file on positive evidence
+// (the table's full row set resident). A flush failure between the delete and
+// the write must retry into the same deletion, never strand or double-free.
+
+{
+  const dir = tempStorageDir();
+  let failChunkWrites = false;
+  const db = await createFileNativeDB({
+    beforeTableWrite: (table) => {
+      if (failChunkWrites && table.startsWith("memory_chunks/")) {
+        throw new Error("injected flush failure");
+      }
+    },
+  });
+  try {
+    for (const chatId of ["chat-a", "chat-b"]) {
+      await db.insert(chats).values({ id: chatId, name: chatId, mode: "conversation" });
+      await db.insert(memoryChunks).values({
+        id: `chunk-${chatId}`,
+        chatId,
+        content: "chunked",
+        messageCount: 1,
+        firstMessageAt: "2026-08-08T10:00:00.000Z",
+        lastMessageAt: "2026-08-08T10:00:00.000Z",
+        createdAt: "2026-08-08T10:00:00.000Z",
+      });
+    }
+    await db._fileStore.flush();
+    const emptiedShard = join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`);
+    assert.ok(existsSync(emptiedShard), "the chunk shard exists before the delete");
+
+    // Empty chat A's shard and dirty chat B's in the same cycle; the injected
+    // failure on B's write aborts the flush BEFORE the deletion loop runs.
+    await db.delete(memoryChunks).where(eq(memoryChunks.id, "chunk-chat-a"));
+    await db.update(memoryChunks).set({ content: "rewritten" }).where(eq(memoryChunks.id, "chunk-chat-b"));
+    failChunkWrites = true;
+    await assert.rejects(
+      db._fileStore.flush(true, true),
+      /injected flush failure/u,
+      "a failing shard write propagates when the flush is asked to throw",
+    );
+    assert.ok(existsSync(emptiedShard), "a failed flush must not have unlinked the emptied shard yet");
+
+    // The failure path re-marks the dirty keys, so the retry both writes B and
+    // completes A's deletion — the emptied key is never stranded.
+    failChunkWrites = false;
+    await db._fileStore.flush(true, true);
+    assert.equal(existsSync(emptiedShard), false, "the emptied shard file is removed by the retry flush");
+    assert.equal(existsSync(`${emptiedShard}.bak`), false, "the backup goes with it");
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── #5592 Phase 1: memory_chunks embeddings pack to Float64Array off the V8 heap ──
+// On-disk bytes must stay identical (no STORAGE_VERSION bump): rows serialize
+// back to the exact original text, unprojected selects return the original
+// string, and only projected selects observe the packed vector.
+
+{
+  const dir = tempStorageDir();
+  const db = await createFileNativeDB();
+  const embeddingText = JSON.stringify([0.125, -0.25, 0.0000001, 3]);
+  try {
+    await db.insert(chats).values({ id: "chat-a", name: "A", mode: "conversation" });
+    await db.insert(memoryChunks).values({
+      id: "chunk-a",
+      chatId: "chat-a",
+      content: "chunked",
+      embedding: embeddingText,
+      embeddingSpaceId: "space-1",
+      messageCount: 1,
+      firstMessageAt: "2026-08-08T10:00:00.000Z",
+      lastMessageAt: "2026-08-08T10:00:00.000Z",
+      createdAt: "2026-08-08T10:00:00.000Z",
+    });
+    await db.insert(memoryChunks).values({
+      id: "chunk-null",
+      chatId: "chat-a",
+      content: "not vectorized",
+      embedding: null,
+      messageCount: 1,
+      firstMessageAt: "2026-08-08T10:00:01.000Z",
+      lastMessageAt: "2026-08-08T10:00:01.000Z",
+      createdAt: "2026-08-08T10:00:01.000Z",
+    });
+    await db._fileStore.flush();
+
+    const shardPath = join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`);
+    const persisted = readFileSync(shardPath, "utf8");
+    assert.ok(
+      persisted.includes(JSON.stringify(embeddingText)),
+      "the shard file stores the embedding as the exact original JSON string",
+    );
+    assert.ok(!persisted.includes('"0":'), "no index-keyed typed-array serialization ever reaches disk");
+
+    const unprojected = await db.select().from(memoryChunks).where(eq(memoryChunks.id, "chunk-a"));
+    assert.equal(typeof unprojected[0]!.embedding, "string", "unprojected selects return the original string form");
+    assert.equal(unprojected[0]!.embedding, embeddingText, "the string round-trips byte-identically");
+
+    const projected = await db
+      .select({ embedding: memoryChunks.embedding })
+      .from(memoryChunks)
+      .where(eq(memoryChunks.id, "chunk-a"));
+    assert.ok(projected[0]!.embedding instanceof Float64Array, "projected selects hand back the packed vector");
+    assert.deepEqual(
+      Array.from(projected[0]!.embedding as Float64Array),
+      [0.125, -0.25, 0.0000001, 3],
+      "packed values are exact",
+    );
+
+    const vectorized = await db
+      .select({ id: memoryChunks.id })
+      .from(memoryChunks)
+      .where(isNotNull(memoryChunks.embedding));
+    assert.deepEqual(
+      vectorized.map((row) => row.id),
+      ["chunk-a"],
+      "isNotNull keeps matching packed embeddings and excluding null ones",
+    );
+
+    // Updating an unrelated column must leave the packed value and the
+    // persisted bytes untouched.
+    await db.update(memoryChunks).set({ content: "rewritten" }).where(eq(memoryChunks.id, "chunk-a"));
+    await db._fileStore.flush();
+    assert.ok(
+      readFileSync(shardPath, "utf8").includes(JSON.stringify(embeddingText)),
+      "a content update leaves the stored embedding text byte-identical",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Non-canonical embedding text (hand-written or foreign tooling) must never be
+// reformatted: the store packs only values whose serialization round-trips.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables", "memory_chunks"), { recursive: true });
+  const nonCanonical = "[1.0, 1E-3]";
+  writeFileSync(
+    join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`),
+    JSON.stringify([
+      {
+        id: "chunk-a",
+        chat_id: "chat-a",
+        content: "chunked",
+        embedding: nonCanonical,
+        embedding_space_id: "space-1",
+        message_count: 1,
+        first_message_at: "2026-08-08T10:00:00.000Z",
+        last_message_at: "2026-08-08T10:00:00.000Z",
+        created_at: "2026-08-08T10:00:00.000Z",
+      },
+    ]),
+  );
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(memoryChunks);
+    assert.equal(rows[0]!.embedding, nonCanonical, "non-canonical text is left as a string");
+    await db.update(memoryChunks).set({ content: "touched" }).where(eq(memoryChunks.id, "chunk-a"));
+    await db._fileStore.flush();
+    const persisted = readFileSync(join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`), "utf8");
+    assert.ok(persisted.includes(JSON.stringify(nonCanonical)), "a rewrite preserves the non-canonical text verbatim");
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

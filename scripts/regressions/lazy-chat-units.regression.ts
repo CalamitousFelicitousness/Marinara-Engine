@@ -341,6 +341,102 @@ const shardExists = (dir: string, table: string, key: string) =>
   }
 }
 
+// ── A .bak recovered DURING a flush keeps its recovery source safe ──
+// Loading a lazy shard whose primary is corrupt recovers the rows from .bak
+// and marks the corrupt primary so the healing write does NOT refresh the
+// backup from it. That mark must travel with the flush batch that writes the
+// shard: if an in-flight flush (which never wrote the shard) destroyed it,
+// the next flush would copy the still-corrupt primary over the only valid
+// backup before writing — one failed write away from losing both sources.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-b", [chatRow("chat-b")]);
+  writeShard(dir, "chats", "chat-z", [chatRow("chat-z")]);
+  const zPrimary = join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-z")}.json`);
+  mkdirSync(join(dir, "tables", "memory_chunks"), { recursive: true });
+  const goodBak = JSON.stringify([chunkRow("c-z", "chat-z", "recovered chunk")]);
+  writeFileSync(zPrimary, "{corrupt json");
+  writeFileSync(`${zPrimary}.bak`, goodBak);
+  let loadDuringFlush: (() => Promise<void>) | null = null;
+  const db = await createFileNativeDB({
+    beforeTableWrite: async (name: string) => {
+      if (name.startsWith("messages/") && loadDuringFlush) {
+        const load = loadDuringFlush;
+        loadDuringFlush = null;
+        await load();
+      }
+    },
+  });
+  try {
+    await db.insert(messages).values(messageRow("m-b", "chat-b", "trigger"));
+    // During the flush of that insert, chat-z loads: its chunk shard recovers
+    // from .bak and marks the corrupt primary — in the LIVE set, which the
+    // in-flight flush must not consume or destroy.
+    loadDuringFlush = async () => {
+      const recovered = await db.select().from(memoryChunks).where(eq(memoryChunks.chatId, "chat-z"));
+      assert.deepEqual(
+        recovered.map((row) => row.id),
+        ["c-z"],
+        "the corrupt shard recovers from .bak on unit load",
+      );
+    };
+    await db._fileStore.flush(true, true);
+    // The next flush writes the healed primary WITHOUT refreshing .bak from
+    // the corrupt bytes still on disk.
+    await db._fileStore.flush(true, true);
+    const healed = JSON.parse(readFileSync(zPrimary, "utf8")) as Array<{ id: string }>;
+    assert.deepEqual(
+      healed.map((row) => row.id),
+      ["c-z"],
+      "the healing flush rewrites the primary from memory",
+    );
+    assert.equal(
+      readFileSync(`${zPrimary}.bak`, "utf8"),
+      goodBak,
+      "the valid backup is never overwritten with the corrupt primary's bytes",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── dbName-form insert input still scopes to the right unit ──
+// prepareInsertRow accepts database-name fields (chat_id); unit selection
+// must see the NORMALIZED row, or the insert scopes to the unassigned unit,
+// the duplicate scan misses the destination chat's on-disk rows, and a
+// colliding id silently replaces the stored row instead of throwing.
+
+{
+  const dir = tempStorageDir();
+  writeShard(dir, "chats", "chat-c", [chatRow("chat-c")]);
+  writeShard(dir, "messages", "chat-c", [messageRow("m-c1", "chat-c", "original")]);
+  const db = await createFileNativeDB();
+  try {
+    await assert.rejects(
+      db.insert(messages).values({
+        id: "m-c1",
+        chat_id: "chat-c",
+        role: "user",
+        content: "impostor",
+        createdAt: "2026-08-28T11:00:00.000Z",
+      } as never),
+      /unique|duplicate/i,
+      "a duplicate id in dbName form hits the unit's on-disk rows and is rejected",
+    );
+    const rows = await db.select().from(messages).where(eq(messages.chatId, "chat-c"));
+    assert.deepEqual(
+      rows.map((row) => row.content),
+      ["original"],
+      "the stored row survives the rejected duplicate insert",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── Manifest: messages reports the harvested total; other lazy counts are omitted ──
 
 {

@@ -2692,18 +2692,24 @@ class FileTableStore {
             this.assertWritable();
             const conflictColumns = normalizeConflictTargets(onConflict?.target);
             const inputRows = Array.isArray(rows) ? rows : [rows];
+            // Normalize ONCE, before unit selection: raw input may carry
+            // dbName-form keys (chat_id), which shardKeyForRow cannot read —
+            // scoping from raw rows would load the unassigned unit instead of
+            // the destination chat and the duplicate scan below would miss
+            // that chat's on-disk rows. Preparing here also keeps
+            // function-valued column defaults generated exactly once.
+            const preparedRows = inputRows.map((input) => prepareInsertRow(meta, input));
             // Load the destination units BEFORE the duplicate/uniqueness scan
             // (#5592 Phase 2): onConflict matching and assertUniqueRow are
             // only sound against the unit's full row set. A key with no shard
             // on disk (a brand-new chat) is simply marked loaded.
             if (LAZY_UNIT_TABLES.has(meta.name) && !this.fullyResidentTables.has(meta.name)) {
-              this.ensureUnitsLoaded(this.shardKeysForRows(meta.name, inputRows));
+              this.ensureUnitsLoaded(this.shardKeysForRows(meta.name, preparedRows));
             }
             const target = this.rows(meta.name);
             const nextRows = target.map(cloneRow);
             const affectedRows: Row[] = [];
-            for (const input of inputRows) {
-              const row = prepareInsertRow(meta, input);
+            for (const row of preparedRows) {
               const conflictKeys =
                 conflictColumns.length > 0 ? conflictColumns : meta.primaryKey ? [meta.primaryKey] : [];
               const duplicateIndex = onConflict ? findMatchingRowIndex(nextRows, row, conflictKeys) : -1;
@@ -2857,9 +2863,18 @@ class FileTableStore {
     // existed only in memory.
     const staleShards = this.staleShardFiles;
     this.staleShardFiles = new Map();
+    // Same capture rule for the backup-recovery markers: a lazy unit load
+    // during this flush's awaited writes can recover a shard from .bak and
+    // mark its corrupt primary. The old whole-set clear() at the end of
+    // saveFileSnapshots would destroy that mark before the shard was ever
+    // written, and the NEXT flush would then refresh the valid .bak from the
+    // still-corrupt primary — leaving no usable recovery source if the
+    // healing write failed. Marks travel with the batch that consumes them.
+    const recoveredPaths = this.backupRecoveredPaths;
+    this.backupRecoveredPaths = new Set();
     const flush = (async () => {
       try {
-        await this.saveFileSnapshots(dirtyTables, dirtyShards, staleShards);
+        await this.saveFileSnapshots(dirtyTables, dirtyShards, staleShards, recoveredPaths);
         this.lastFlushError = null;
       } catch (err) {
         this.lastFlushError = err;
@@ -2877,6 +2892,7 @@ class FileTableStore {
           for (const encoded of encodings) set.add(encoded);
           this.staleShardFiles.set(table, set);
         }
+        for (const path of recoveredPaths) this.backupRecoveredPaths.add(path);
         logger.error(err, "[file-storage] Failed to persist file-native storage");
       }
     })();
@@ -4074,6 +4090,7 @@ class FileTableStore {
     rows: Row[],
     dirtyKeys: Set<string>,
     stale: Set<string> | undefined,
+    recoveredPaths: ReadonlySet<string>,
   ): Promise<number> {
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
     this.knownShardFiles.set(table, known);
@@ -4117,7 +4134,7 @@ class FileTableStore {
       const serializedRows = serializeTableRows(table, shardRows);
       await this.testHooks?.beforeTableWrite?.(`${table}/${encoded}`, serializedRows);
       const path = shardFilePath(this.rootDir, table, encoded);
-      await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
+      await atomicWriteFile(path, serializedRows, { refreshBackup: !recoveredPaths.has(path) });
       known.add(encoded);
     }
     if (stale && stale.size > 0) {
@@ -4180,6 +4197,7 @@ class FileTableStore {
     dirtyTables: Set<string>,
     dirtyShards: Map<string, Set<string>>,
     staleShards: Map<string, Set<string>>,
+    recoveredPaths: ReadonlySet<string>,
   ) {
     mkdirSync(join(this.rootDir, "tables"), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     const tables: Record<string, number> = {};
@@ -4205,6 +4223,7 @@ class FileTableStore {
           rows,
           dirtyShards.get(table) ?? new Set(),
           staleShards.get(table),
+          recoveredPaths,
         );
         continue;
       }
@@ -4212,7 +4231,7 @@ class FileTableStore {
       if (dirtyTables.has(table) || !existsSync(path)) {
         const serializedRows = serializeTableRows(table, rows);
         await this.testHooks?.beforeTableWrite?.(table, serializedRows);
-        await atomicWriteFile(path, serializedRows, { refreshBackup: !this.backupRecoveredPaths.has(path) });
+        await atomicWriteFile(path, serializedRows, { refreshBackup: !recoveredPaths.has(path) });
       }
     }
 
@@ -4226,9 +4245,11 @@ class FileTableStore {
     const path = manifestPath(this.rootDir);
     const serializedManifest = JSON.stringify(manifest, null, 2);
     await atomicWriteFile(path, serializedManifest, {
-      refreshBackup: !this.backupRecoveredPaths.has(path),
+      refreshBackup: !recoveredPaths.has(path),
     });
-    this.backupRecoveredPaths.clear();
+    // No whole-set clear: the captured marks die with this batch on success,
+    // and marks added DURING this flush (lazy unit loads recovering shards
+    // from .bak) stay in the live set for the flush that writes them.
   }
 
   private installAutosave() {

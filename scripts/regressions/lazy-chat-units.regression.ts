@@ -650,7 +650,7 @@ const loadedUnitsOf = (db: Awaited<ReturnType<typeof createFileNativeDB>>) => db
     }
     await db.update(messages).set({ content: "touched b" }).where(eq(messages.chatId, "chat-b"));
     injectDirty = () => {
-      db._fileStore.markShardDirty("messages", ["chat-a"]);
+      db._fileStore.markShardDirty!("messages", ["chat-a"]);
     };
     await db._fileStore.flush();
     assert.equal(loadedUnitsOf(db).has("chat-a"), true, "a unit with a pending dirty mark survives the sweep");
@@ -749,15 +749,13 @@ const loadedUnitsOf = (db: Awaited<ReturnType<typeof createFileNativeDB>>) => db
     await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
     // A live swipe (fresh timestamp) and an imported swipe (null createdAt,
     // exactly what chat import writes) land in append order...
-    await db
-      .insert(messageSwipes)
-      .values({
-        id: "sw-live",
-        messageId: "m-chat-a",
-        index: 1,
-        content: "live",
-        createdAt: "2026-06-01T00:00:00.000Z",
-      });
+    await db.insert(messageSwipes).values({
+      id: "sw-live",
+      messageId: "m-chat-a",
+      index: 1,
+      content: "live",
+      createdAt: "2026-06-01T00:00:00.000Z",
+    });
     await db.insert(messageSwipes).values({ id: "sw-imported", messageId: "m-chat-a", index: 2, content: "imported" });
     const before = await db
       .select()

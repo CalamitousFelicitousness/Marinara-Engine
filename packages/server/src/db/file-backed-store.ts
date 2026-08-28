@@ -174,8 +174,12 @@ export type FileNativeStoreController = {
   getQuarantinedTables: () => QuarantinedStorageTable[];
   /** Chat units currently resident under lazy loading (#5592) — diagnostics and regression introspection. */
   getResidentChatUnits: () => ReadonlySet<string>;
-  /** Marks shard keys dirty without touching LRU state — regression harness only. */
-  markShardDirty: (table: string, shardKeys: Iterable<string>) => void;
+  /**
+   * Marks shard keys dirty without touching LRU state. Present ONLY when the
+   * store was created with test hooks — production controllers never expose
+   * an arbitrary dirty-mark mutation.
+   */
+  markShardDirty?: (table: string, shardKeys: Iterable<string>) => void;
   /**
    * Monotonic per-table write counter (#4705): bumped on every markDirty, so
    * pollers can skip work when a table hasn't changed since their last look.
@@ -4682,7 +4686,9 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     getQuarantinedTables: () => store.getQuarantinedTables(),
     getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
     getResidentChatUnits: () => store.getResidentChatUnits(),
-    markShardDirty: (table, shardKeys) => store.markDirty(table, shardKeys),
+    ...(testHooks
+      ? { markShardDirty: (table: string, shardKeys: Iterable<string>) => store.markDirty(table, shardKeys) }
+      : {}),
   };
 
   let db: FileNativeDB;

@@ -209,12 +209,20 @@ export function recordUserReaction(chatId: string): void {
 /**
  * Record that an assistant message was sent (either user-triggered or autonomous).
  */
-export function recordAssistantActivity(chatId: string, characterId?: string): void {
+export function recordAssistantActivity(chatId: string, characterId?: string, messageTimestampMs?: number): void {
   const existing = activityStates.get(chatId);
   if (existing) {
     const now = Date.now();
     existing.lastAssistantMessageAt = now;
-    existing.lastMessageRole = "assistant";
+    // Ordering guard for lastMessageRole: the record call runs a few awaits
+    // AFTER the assistant row persisted, and a user message can land in that
+    // window — its record already set the role. When the caller can supply
+    // the assistant MESSAGE's timestamp, an older-than-the-user's message
+    // must not steal the role back; callers without a message (generic
+    // activity pings) keep last-writer-wins.
+    if (messageTimestampMs === undefined || messageTimestampMs >= existing.lastUserMessageAt) {
+      existing.lastMessageRole = "assistant";
+    }
     if (characterId) {
       const prev = existing.autonomousMessages.get(characterId);
       existing.autonomousMessages.set(characterId, {

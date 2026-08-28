@@ -7278,7 +7278,11 @@ export async function generateRoutes(app: FastifyInstance) {
                 generationComplete = true;
               }
               if (chatMode === "conversation" && !input.regenerateMessageId) {
-                recordAssistantActivity(input.chatId, input.autonomous ? (targetCharId ?? undefined) : undefined);
+                recordAssistantActivity(
+                  input.chatId,
+                  input.autonomous ? (targetCharId ?? undefined) : undefined,
+                  anchoredMsg?.createdAt ? new Date(anchoredMsg.createdAt).getTime() : undefined,
+                );
                 conversationAssistantSaved = true;
               }
               await recordSavedAutonomousGeneration(targetCharId);
@@ -7443,7 +7447,11 @@ export async function generateRoutes(app: FastifyInstance) {
             generationComplete = true;
           }
           if (chatMode === "conversation" && !input.impersonate && !input.regenerateMessageId) {
-            recordAssistantActivity(input.chatId, input.autonomous ? (targetCharId ?? undefined) : undefined);
+            recordAssistantActivity(
+              input.chatId,
+              input.autonomous ? (targetCharId ?? undefined) : undefined,
+              savedMsg?.createdAt ? new Date(savedMsg.createdAt).getTime() : undefined,
+            );
             await recordSavedAutonomousGeneration(targetCharId);
             conversationAssistantSaved = true;
           }

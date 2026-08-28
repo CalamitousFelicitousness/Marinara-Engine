@@ -100,6 +100,8 @@ type AutonomousCandidateEvaluation =
  * the transcript, keeping idle checks free of lazy-table queries.
  */
 const seededAutonomousActivityChats = new Set<string>();
+/** In-flight transcript seeds, so concurrent checks share one read and a failed read is retried. */
+const autonomousActivitySeeds = new Map<string, Promise<void>>();
 
 function normalizeAutonomousUserStatus(value: unknown): AutonomousUserStatus {
   return value === "idle" || value === "dnd" ? value : "active";
@@ -961,12 +963,24 @@ export async function conversationRoutes(app: FastifyInstance) {
     // tracker answers everything this route needs, and an evicted unit stays
     // on disk until a message is genuinely due.
     if (!seededAutonomousActivityChats.has(chatId)) {
-      seededAutonomousActivityChats.add(chatId);
-      const seedMessages = await chats.listMessages(chatId);
-      initializeActivityFromMessages(
-        chatId,
-        seedMessages as Array<{ role: string; createdAt?: string; characterId?: string | null }>,
-      );
+      // One in-flight seed per chat: latching BEFORE the read would let a
+      // concurrent check proceed unseeded (and a rejected read would latch
+      // the chat with no state until restart). Concurrent checks await the
+      // same promise; the latch lands only after the seed succeeds.
+      let seeding = autonomousActivitySeeds.get(chatId);
+      if (!seeding) {
+        seeding = (async () => {
+          const seedMessages = await chats.listMessages(chatId);
+          initializeActivityFromMessages(
+            chatId,
+            seedMessages as Array<{ role: string; createdAt?: string; characterId?: string | null }>,
+          );
+          seededAutonomousActivityChats.add(chatId);
+        })();
+        autonomousActivitySeeds.set(chatId, seeding);
+        void seeding.finally(() => autonomousActivitySeeds.delete(chatId));
+      }
+      await seeding;
     }
 
     // Filter out characters busy in an active scene

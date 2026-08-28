@@ -47,6 +47,11 @@ type ChatsStore = {
   remove(id: string): Promise<unknown>;
 };
 
+function messageTimestampMsOf(message: unknown): number | undefined {
+  const createdAt = (message as { createdAt?: unknown } | null | undefined)?.createdAt;
+  return typeof createdAt === "string" && createdAt ? new Date(createdAt).getTime() : undefined;
+}
+
 export async function handleRoleplayDmCommand(args: {
   command: CharacterCommand;
   chatId: string;
@@ -137,7 +142,7 @@ async function runRoleplayDmCommand(
       characterId: targetCharId,
       content: messageText,
     });
-    recordAssistantActivity(linkedConversationId, targetCharId);
+    recordAssistantActivity(linkedConversationId, targetCharId, messageTimestampMsOf(dmMessage));
 
     args.sendAssistantAction({
       action: "dm_posted",
@@ -200,7 +205,7 @@ async function runRoleplayDmCommand(
       characterId: targetCharId,
       content: messageText,
     });
-    recordAssistantActivity(targetChat.id, targetCharId);
+    recordAssistantActivity(targetChat.id, targetCharId, messageTimestampMsOf(dmMessage));
   } catch (dmWriteErr) {
     if (createdNewChat) {
       try {

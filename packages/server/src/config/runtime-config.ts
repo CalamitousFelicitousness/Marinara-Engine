@@ -509,11 +509,27 @@ export function getGameDynamicImagePromptTimeoutMs() {
  * apply without a restart. The floor of 2 keeps multi-chat operations
  * (branching, cross-chat notes) from thrashing their own working set.
  */
+let lastInvalidMaxResidentChats: string | null = null;
+
 export function getMaxResidentChatUnits() {
   const raw = normalizeEnvValue(process.env.MARINARA_MAX_RESIDENT_CHATS);
-  if (!raw || !/^\d+$/.test(raw)) return 0;
-  const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return 0;
+  if (!raw) return 0;
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    // Warn once per distinct value: a typo silently disabling eviction would
+    // remove the memory bound on exactly the constrained targets (the Termux
+    // launcher defaults this to 8).
+    if (lastInvalidMaxResidentChats !== raw) {
+      lastInvalidMaxResidentChats = raw;
+      sharedLogger.warn(
+        "[runtime-config] Ignoring invalid MARINARA_MAX_RESIDENT_CHATS=%s; expected 0 (disabled) or a positive integer — eviction stays disabled",
+        raw,
+      );
+    }
+    return 0;
+  }
+  lastInvalidMaxResidentChats = null;
+  if (parsed === 0) return 0;
   return Math.max(2, Math.min(parsed, 10_000));
 }
 

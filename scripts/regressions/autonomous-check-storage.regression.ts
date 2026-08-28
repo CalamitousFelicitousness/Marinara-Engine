@@ -121,6 +121,35 @@ try {
     );
   }
 
+  // ── lastMessageRole ordering guard ──
+  // The assistant record runs a few awaits after its row persisted; a user
+  // message landing in that window must keep the role — a delayed assistant
+  // record with an OLDER message timestamp cannot steal it back.
+  {
+    const svc = await import("../../packages/server/src/services/conversation/autonomous.service.js");
+    const roleChat = "role-order-test-chat";
+    svc.recordUserActivity(roleChat);
+    svc.recordAssistantActivity(roleChat, undefined, Date.now() - 60_000);
+    assert.equal(
+      svc.getActivityState(roleChat)?.lastMessageRole,
+      "user",
+      "a delayed assistant record with an older message timestamp does not steal the role",
+    );
+    svc.recordAssistantActivity(roleChat, undefined, Date.now() + 1_000);
+    assert.equal(
+      svc.getActivityState(roleChat)?.lastMessageRole,
+      "assistant",
+      "an assistant message newer than the last user message takes the role",
+    );
+    svc.recordUserActivity(roleChat);
+    svc.recordAssistantActivity(roleChat);
+    assert.equal(
+      svc.getActivityState(roleChat)?.lastMessageRole,
+      "assistant",
+      "a generic activity ping without a message timestamp keeps last-writer-wins",
+    );
+  }
+
   console.log("Autonomous-check storage regressions passed.");
 } finally {
   if (app) await app.close();

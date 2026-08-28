@@ -2,17 +2,19 @@
 // TTS Configuration Card (Connections Panel)
 // ──────────────────────────────────────────────
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Volume2, Check, Loader2, Play, Square, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { Volume2, Check, Loader2, Play, Square, ChevronDown, ChevronUp, Download, Trash2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { toast } from "sonner";
 import { useEffectiveTTSConfig, useTTSConfig, useUpdateTTSConfig } from "../../../hooks/use-tts";
 import { useConnections } from "../../../hooks/use-connections";
 import { ttsService } from "../../../lib/tts-service";
 import {
+  clearCachedTTSAudio,
   listCachedTTSAudioEntries,
   listCachedTTSAudioMeta,
   type CachedTTSAudioExportEntry,
 } from "../../../lib/tts-audio-cache";
+import { showConfirmDialog } from "../../../lib/app-dialogs";
 import type { TTSConfig, TTSConversationCallAudioInputMode } from "@marinara-engine/shared";
 import { ttsConfigSchema } from "@marinara-engine/shared";
 import {
@@ -154,6 +156,7 @@ export function TTSConfigCard() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [ttsCacheSummary, setTtsCacheSummary] = useState({ count: 0, bytes: 0 });
   const [exportingTtsCache, setExportingTtsCache] = useState(false);
+  const [clearingTtsCache, setClearingTtsCache] = useState(false);
 
   // Populate draft from server on load
   useEffect(() => {
@@ -322,6 +325,27 @@ export function TTSConfigCard() {
       toast.error(localizeUi("ui.panels.ttsconfigcard.failedToExportCachedTtsClips"));
     } finally {
       setExportingTtsCache(false);
+    }
+  };
+
+  const handleClearCachedClips = async () => {
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("ui.panels.ttsconfigcard.clearCachedClips"),
+      message: localizeUi("ui.panels.ttsconfigcard.clearCachedClipsWarning"),
+      confirmLabel: localizeUi("ui.panels.ttsconfigcard.clear"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
+
+    setClearingTtsCache(true);
+    try {
+      await clearCachedTTSAudio();
+      setTtsCacheSummary({ count: 0, bytes: 0 });
+      toast.success(localizeUi("ui.panels.ttsconfigcard.clearedTheCachedTtsClips"));
+    } catch {
+      toast.error(localizeUi("ui.panels.ttsconfigcard.failedToClearCachedTtsClips"));
+    } finally {
+      setClearingTtsCache(false);
     }
   };
 
@@ -557,15 +581,26 @@ export function TTSConfigCard() {
                 {formatCacheBytes(ttsCacheSummary.bytes)}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleExportCachedClips()}
-              disabled={exportingTtsCache || ttsCacheSummary.count === 0}
-              className="mari-chrome-control mari-chrome-control--small shrink-0 text-xs"
-              title={localizeUi("ui.panels.ttsconfigcard.exportCachedTtsClips")}
-            >
-              {exportingTtsCache ? <Loader2 size="0.75rem" className="animate-spin" /> : <Download size="0.75rem" />}
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void handleExportCachedClips()}
+                disabled={exportingTtsCache || ttsCacheSummary.count === 0}
+                className="mari-chrome-control mari-chrome-control--small text-xs"
+                title={localizeUi("ui.panels.ttsconfigcard.exportCachedTtsClips")}
+              >
+                {exportingTtsCache ? <Loader2 size="0.75rem" className="animate-spin" /> : <Download size="0.75rem" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleClearCachedClips()}
+                disabled={clearingTtsCache || ttsCacheSummary.count === 0}
+                className="mari-chrome-control mari-chrome-control--small text-xs"
+                title={localizeUi("ui.panels.ttsconfigcard.clearCachedTtsClips")}
+              >
+                {clearingTtsCache ? <Loader2 size="0.75rem" className="animate-spin" /> : <Trash2 size="0.75rem" />}
+              </button>
+            </div>
           </div>
 
           {/* Actions */}

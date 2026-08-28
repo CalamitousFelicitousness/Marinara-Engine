@@ -191,4 +191,36 @@ for (const [file, path] of [
   assert.match(panel, new RegExp(`connectiondefaultssection\.${key}`, "u"), "and actually renders that label");
 }
 
+// ── Clearing the clip cache clears all of it ──
+// Blobs live in one object store and their metadata in another, and the panel's
+// "30 clips, 26 MB" line counts the metadata. A clear that drops only the blobs
+// therefore looks like it did nothing, and the in-memory copy would answer the
+// next read regardless. This repo ships no IndexedDB double, so the pin is on
+// shape rather than on a round trip.
+{
+  const cache = readSource("packages/client/src/lib/tts-audio-cache.ts");
+  assert.match(
+    cache,
+    /export async function clearCachedTTSAudio[\s\S]{0,500}?META_STORE_NAME/u,
+    "clearing drops the metadata the summary counts",
+  );
+  assert.match(
+    cache,
+    /export async function clearCachedTTSAudio[\s\S]{0,500}?memoryCache\.clear\(\)/u,
+    "and the in-memory copy, which would otherwise answer the next read",
+  );
+
+  const card = readSource("packages/client/src/components/panels/settings/TTSConfigCard.tsx");
+  assert.match(
+    card,
+    /const handleClearCachedClips[\s\S]{0,400}?showConfirmDialog/u,
+    "deleting clips asks first, since regenerating them costs a provider call",
+  );
+  assert.match(
+    card,
+    /const handleClearCachedClips[\s\S]{0,900}?setTtsCacheSummary\(\{ count: 0, bytes: 0 \}\)/u,
+    "and the summary stops reporting what was just deleted",
+  );
+}
+
 console.info("TTS audio connection UX regression passed.");

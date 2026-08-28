@@ -261,6 +261,28 @@ export async function listCachedTTSAudioEntries(): Promise<CachedTTSAudioExportE
   }
 }
 
+/**
+ * Drops every cached clip. Both stores, because a blob store cleared alone
+ * leaves the metadata rows that the settings summary counts, so the panel would
+ * keep reporting clips that no longer exist.
+ *
+ * Requests already in flight are left alone. Their audio is paid for and
+ * playing, so re-caching it on arrival is the right outcome, not a leak.
+ *
+ * Failures propagate: unlike the list helpers, a caller asked for this and has
+ * to be told it did not happen.
+ */
+export async function clearCachedTTSAudio(): Promise<void> {
+  memoryCache.clear();
+  const db = await openDb();
+  if (!db) return;
+
+  const stores = hasMetadataStore(db) ? [STORE_NAME, META_STORE_NAME] : [STORE_NAME];
+  const tx = db.transaction(stores, "readwrite");
+  for (const store of stores) tx.objectStore(store).clear();
+  await transactionDone(tx);
+}
+
 export async function getOrCreateCachedTTSAudioBlob(
   key: string,
   create: () => Promise<Blob>,

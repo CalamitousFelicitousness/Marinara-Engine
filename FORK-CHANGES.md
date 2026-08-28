@@ -1345,6 +1345,13 @@ Behavior changes worth knowing:
   controls to reconcile. The key was renamed rather than reworded, so the Korean translation of the
   old meaning falls back to English instead of confidently stating something untrue;
   `check-locales.mjs` rejects a locale key English no longer has, so `ko.json` drops the orphan.
+- **Cached clips can be cleared, not only exported.** The card reported "30 clips, 26 MB" next to a
+  download button with no way to delete them, so the only route was clearing site data, which takes
+  everything else with it. `clearCachedTTSAudio` empties both IndexedDB stores plus the in-memory
+  copy, behind a destructive confirm because anything spoken again is synthesized again. Clearing
+  only the blob store would have left the metadata rows the summary counts, so the panel would have
+  reported clips that no longer exist. Requests already in flight are left to finish and re-cache:
+  that audio is paid for and playing.
 - **`/connections/:id/models` and `/:id/test` work for audio.** `PROVIDERS.audio.modelsEndpoint` is
   the empty string and the generic branch coalesces with `??` rather than `||`, so "Fetch Models"
   requested the bare base URL with an ElevenLabs header whatever the row targeted.
@@ -1378,7 +1385,8 @@ Patches to upstream files, all of which a merge can revert silently:
   into `components/connections/audio/`; playback-half changes apply here.** Its payload spreads the
   config the server last returned, so a field upstream adds round-trips untouched rather than being
   wiped by a partial save.
-- `packages/client/src/lib/tts-service.ts`, `lib/tts-dialogue.ts`, `lib/connection-transfer.ts`,
+- `packages/client/src/lib/tts-service.ts`, `lib/tts-dialogue.ts`, `lib/tts-audio-cache.ts`,
+  `lib/connection-transfer.ts`,
   `hooks/use-tts.ts`, `hooks/use-connections.ts`, `components/chat/ChatMessage.tsx`,
   `components/chat/ChatArea.tsx`, `components/game/GameNarration.tsx`,
   `components/game/GameCombatUI.tsx`, `components/game/GameSurface.tsx`,

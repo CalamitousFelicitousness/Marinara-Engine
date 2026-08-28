@@ -581,9 +581,7 @@ const shardExists = (dir: string, table: string, key: string) =>
   ]);
   const db = await createFileNativeDB();
   try {
-    const { spatialContextSnapshots, gameCheckpoints } = await import(
-      "../../packages/server/src/db/schema/index.js"
-    );
+    const { spatialContextSnapshots, gameCheckpoints } = await import("../../packages/server/src/db/schema/index.js");
     await assert.rejects(
       db.transaction(async (tx) => {
         // Deleting the snapshot set-nulls the checkpoint's spatialSnapshotId.

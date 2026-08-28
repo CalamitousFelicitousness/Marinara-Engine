@@ -123,18 +123,23 @@ export function createGameStoryboardsStorage(db: DB) {
       return this.getById(id);
     },
 
-    async failInProgressUpdatedBefore(cutoffUpdatedAt: string, error: string) {
+    /**
+     * `chatId` scopes the sweep to one chat so the lazy store (#5592 Phase 2)
+     * loads only that chat's unit; the storyboard routes sweep their own chat
+     * before reading, with a cutoff that also covers pre-boot crash leftovers.
+     * The unscoped form remains for eager storage but leases the whole table.
+     */
+    async failInProgressUpdatedBefore(cutoffUpdatedAt: string, error: string, chatId?: string) {
       const inProgressStoryboardStatuses = ["planning", "rendering_images", "rendering_videos"];
       const inProgressKeyframeStatuses = ["planned", "rendering_image", "rendering_video"];
+      const staleCondition = and(
+        inArray(gameTurnStoryboards.status, inProgressStoryboardStatuses),
+        lt(gameTurnStoryboards.updatedAt, cutoffUpdatedAt),
+      );
       const staleRows = await db
         .select({ id: gameTurnStoryboards.id })
         .from(gameTurnStoryboards)
-        .where(
-          and(
-            inArray(gameTurnStoryboards.status, inProgressStoryboardStatuses),
-            lt(gameTurnStoryboards.updatedAt, cutoffUpdatedAt),
-          ),
-        );
+        .where(chatId ? and(eq(gameTurnStoryboards.chatId, chatId), staleCondition) : staleCondition);
       if (staleRows.length === 0) return 0;
 
       const staleIds = staleRows.map((row) => row.id);

@@ -84,9 +84,13 @@ assert.deepEqual(
     assert.doesNotMatch(gate, new RegExp(`["']${id}["']`, "u"), `the models query gate must not name ${id} directly`);
   }
 
-  const card = readSource("packages/client/src/components/panels/settings/TTSConfigCard.tsx");
-  const picker = /const usesModelPicker = ([^\n]*);/u.exec(card)?.[1] ?? "";
-  assert.match(picker, /TTS_SOURCES_WITH_MODEL_LISTING/u, "the card must pick its dropdown sources from the same list");
+  const fields = readSource("packages/client/src/components/connections/audio/AudioSourceFields.tsx");
+  const picker = /const usesModelPicker = ([^\n]*);/u.exec(fields)?.[1] ?? "";
+  assert.match(
+    picker,
+    /TTS_SOURCES_WITH_MODEL_LISTING/u,
+    "the editor must pick its dropdown sources from the same list",
+  );
 }
 
 // sourceProfiles is keyed off the same list. A missing key is not a type error
@@ -324,10 +328,17 @@ assert.doesNotMatch(routeSource, /const TTS_SOURCES\b/u, "the server must not re
 assert.match(routeSource, /TTS_SOURCE_DEFINITIONS/u, "the server reads the shared definitions");
 
 const editorSource = readSource("packages/client/src/components/connections/ConnectionEditor.tsx");
-assert.match(editorSource, /TTS_SOURCE_DEFINITIONS/u, "the connection editor reads the shared definitions");
+const audioFieldsSource = readSource("packages/client/src/components/connections/audio/AudioSourceFields.tsx");
+assert.match(audioFieldsSource, /TTS_SOURCE_DEFINITIONS/u, "the audio source fields read the shared definitions");
 for (const [file, source] of [
   ["ConnectionEditor.tsx", editorSource],
   ["TTSConfigCard.tsx", cardSource],
+  ["AudioSourceFields.tsx", audioFieldsSource],
+  [
+    "AudioSynthesisDefaults.tsx",
+    readSource("packages/client/src/components/connections/audio/AudioSynthesisDefaults.tsx"),
+  ],
+  ["AudioVoiceCasting.tsx", readSource("packages/client/src/components/connections/audio/AudioVoiceCasting.tsx")],
 ] as const) {
   // The pockettts trio is TTS-specific, so unlike the OpenAI URL it cannot
   // legitimately appear in a client component for another reason.

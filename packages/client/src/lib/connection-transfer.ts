@@ -1,7 +1,9 @@
 import {
   normalizeImagePromptInstructions,
+  parseAudioConnectionSettings,
   PROVIDERS,
   type APIProvider,
+  type AudioConnectionSettings,
   type ImageGenerationQuality,
 } from "@marinara-engine/shared";
 import type { CreateConnectionPayload } from "../hooks/use-connections";
@@ -37,6 +39,7 @@ export type ConnectionTransferRow = {
   audioVoice?: unknown;
   audioSoundEffects?: unknown;
   audioMusic?: unknown;
+  audioSettings?: unknown;
   service?: unknown;
   imageEndpointId?: unknown;
   imagePromptInstructions?: unknown;
@@ -77,6 +80,7 @@ export type SafeConnectionExport = {
   audioVoice: string | null;
   audioSoundEffects: boolean;
   audioMusic: boolean;
+  audioSettings: AudioConnectionSettings | null;
   imageEndpointId: string | null;
   imagePromptInstructions: string | null;
   imageGenerationQuality: ImageGenerationQuality;
@@ -158,6 +162,7 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       audioVoice: provider === "audio" ? asNullableString(value.audioVoice) : null,
       audioSoundEffects: provider === "audio" && asBoolean(value.audioSoundEffects),
       audioMusic: provider === "audio" && asBoolean(value.audioMusic),
+      audioSettings: provider === "audio" ? parseAudioConnectionSettings(value.audioSettings) : null,
       promptPresetId: null,
       maxTokensOverride: asNullablePositiveInteger(value.maxTokensOverride),
       maxParallelJobs: asBoundedPositiveInteger(value.maxParallelJobs, 1, MAX_PARALLEL_JOBS),
@@ -205,6 +210,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     audioVoice: isAudioProvider ? asNullableString(connection.audioVoice) : null,
     audioSoundEffects: isAudioProvider && asBoolean(connection.audioSoundEffects),
     audioMusic: isAudioProvider && asBoolean(connection.audioMusic),
+    audioSettings: isAudioProvider ? parseAudioConnectionSettings(connection.audioSettings) : null,
     imageEndpointId: asNullableString(connection.imageEndpointId),
     imagePromptInstructions: normalizeImagePromptInstructions(connection.imagePromptInstructions),
     imageGenerationQuality: asImageGenerationQuality(connection.imageGenerationQuality),

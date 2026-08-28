@@ -21,6 +21,9 @@ import {
 } from "../../hooks/use-connections";
 import { usePresets } from "../../hooks/use-presets";
 import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
+import { AudioSourceFields } from "./audio/AudioSourceFields";
+import { AudioSynthesisDefaults } from "./audio/AudioSynthesisDefaults";
+import { AudioVoiceCasting } from "./audio/AudioVoiceCasting";
 import {
   ArrowLeft,
   Save,
@@ -101,9 +104,10 @@ import {
   suggestImageStyleProfileIdForModel,
   MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH,
   normalizeImagePromptInstructions,
+  parseAudioConnectionSettings,
   parseConnectionImageCaptioningDefaults,
-  TTS_SOURCE_DEFINITIONS,
   type APIProvider,
+  type AudioConnectionSettings,
   type AudioGenerationSource,
   type ComfyUiLoraSetting,
   type ImageDefaultsService,
@@ -223,27 +227,6 @@ function normalizeEndpointUrlInput(raw: string, label: string): { value: string;
   return { value, error: null };
 }
 
-// Defaults come from TTS_SOURCE_DEFINITIONS so a fresh audio connection seeds
-// the same base URL / model / voice the TTS settings use. Only the button order
-// is local.
-const AUDIO_SOURCE_DISPLAY_ORDER: readonly AudioGenerationSource[] = [
-  "elevenlabs",
-  "openai",
-  "nanogpt",
-  "pockettts",
-  "xai",
-];
-const AUDIO_SOURCE_OPTIONS = AUDIO_SOURCE_DISPLAY_ORDER.map((id) => {
-  const definition = TTS_SOURCE_DEFINITIONS[id];
-  return {
-    id,
-    name: definition.name,
-    defaultBaseUrl: definition.defaultBaseUrl,
-    defaultModel: definition.defaultModel,
-    defaultVoice: definition.defaultVoice,
-  };
-});
-
 function canProviderTreatAsLocalEndpoint(provider: APIProvider): boolean {
   return (
     provider !== "image_generation" &&
@@ -348,6 +331,7 @@ export function ConnectionEditor() {
   const [localAudioVoice, setLocalAudioVoice] = useState("");
   const [localAudioSoundEffects, setLocalAudioSoundEffects] = useState(false);
   const [localAudioMusic, setLocalAudioMusic] = useState(false);
+  const [localAudioSettings, setLocalAudioSettings] = useState<AudioConnectionSettings>({});
   const [localMaxTokensOverride, setLocalMaxTokensOverride] = useState<number | null>(null);
   const [localClaudeFastMode, setLocalClaudeFastMode] = useState(false);
   const [localTreatAsLocalEndpoint, setLocalTreatAsLocalEndpoint] = useState(false);
@@ -481,6 +465,7 @@ export function ConnectionEditor() {
     setLocalAudioVoice((c.audioVoice as string) ?? "");
     setLocalAudioSoundEffects(c.audioSoundEffects === "true" || c.audioSoundEffects === true);
     setLocalAudioMusic(c.audioMusic === "true" || c.audioMusic === true);
+    setLocalAudioSettings(parseAudioConnectionSettings(c.audioSettings));
     setLocalMaxTokensOverride(typeof c.maxTokensOverride === "number" ? (c.maxTokensOverride as number) : null);
     setLocalClaudeFastMode(c.claudeFastMode === "true" || c.claudeFastMode === true);
     setLocalTreatAsLocalEndpoint(c.treatAsLocalEndpoint === "true" || c.treatAsLocalEndpoint === true);
@@ -818,6 +803,7 @@ export function ConnectionEditor() {
       // Only ElevenLabs can generate game sound effects / music today.
       audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
       audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      audioSettings: isAudioProvider ? localAudioSettings : null,
     };
     // Only send API key if user typed a new one
     if (isLocalAuthProvider) {
@@ -925,6 +911,7 @@ export function ConnectionEditor() {
     localAudioVoice,
     localAudioSoundEffects,
     localAudioMusic,
+    localAudioSettings,
     selectedImageService,
     swarmUiWorkflowError,
     selectedImageDefaultsService,
@@ -1031,6 +1018,7 @@ export function ConnectionEditor() {
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
       audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
       audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      audioSettings: isAudioProvider ? localAudioSettings : null,
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
@@ -1091,6 +1079,7 @@ export function ConnectionEditor() {
     localAudioVoice,
     localAudioSoundEffects,
     localAudioMusic,
+    localAudioSettings,
   ]);
 
   const handleTestConnection = useCallback(async () => {
@@ -1282,6 +1271,12 @@ export function ConnectionEditor() {
   );
 
   const markDirty = useCallback(() => setDirty(true), []);
+  // Voice and model catalogs are fetched by connection id, so unsaved identity
+  // edits would otherwise be answered against the previous endpoint.
+  const handleEnsureSaved = useCallback(async () => {
+    if (!dirty) return;
+    await handleSave();
+  }, [dirty, handleSave]);
 
   const handleManualModelChange = useCallback(
     (model: string) => {
@@ -1717,69 +1712,71 @@ export function ConnectionEditor() {
                 )}
               </FieldGroup>
 
-              {/* ── Base URL ── */}
-              <FieldGroup
-                label={localizeUi("ui.connections.connectioneditor.baseUrl")}
-                icon={<Globe size="0.875rem" className="text-sky-400" />}
-                help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
-              >
-                <input
-                  value={localBaseUrl}
-                  onChange={(e) => {
-                    setLocalBaseUrl(e.target.value);
-                    markDirty();
-                  }}
-                  className={cn(
-                    "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm font-mono ring-1 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]",
-                    baseUrlValidation.error ? "ring-[var(--destructive)]" : "ring-[var(--border)]",
+              {/* ── Base URL (audio keeps its own, which knows the source's endpoint) ── */}
+              {!isAudioProvider && (
+                <FieldGroup
+                  label={localizeUi("ui.connections.connectioneditor.baseUrl")}
+                  icon={<Globe size="0.875rem" className="text-sky-400" />}
+                  help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
+                >
+                  <input
+                    value={localBaseUrl}
+                    onChange={(e) => {
+                      setLocalBaseUrl(e.target.value);
+                      markDirty();
+                    }}
+                    className={cn(
+                      "w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm font-mono ring-1 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]",
+                      baseUrlValidation.error ? "ring-[var(--destructive)]" : "ring-[var(--border)]",
+                    )}
+                    placeholder={providerDef?.defaultBaseUrl || "https://api.example.com/v1"}
+                  />
+                  {providerDef?.defaultBaseUrl && !localBaseUrl && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.default")} {providerDef.defaultBaseUrl}
+                    </p>
                   )}
-                  placeholder={providerDef?.defaultBaseUrl || "https://api.example.com/v1"}
-                />
-                {providerDef?.defaultBaseUrl && !localBaseUrl && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.default")} {providerDef.defaultBaseUrl}
-                  </p>
-                )}
-                {baseUrlValidation.error && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--destructive)]">{baseUrlValidation.error}</p>
-                )}
-                {!baseUrlValidation.error && baseUrlValidation.value !== localBaseUrl.trim() && (
-                  <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.willSaveAs")} {baseUrlValidation.value}
-                  </p>
-                )}
-                {localProvider === "custom" && (
-                  <p className="mt-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
-                    {localizeUi("ui.connections.connectioneditor.localModelExamplesOllama")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:11434/v1"}</code>{" "}
-                    {localizeUi("ui.connections.connectioneditor.lmStudio")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:1234/v1"}</code>{" "}
-                    {localizeUi("ui.connections.connectioneditor.koboldcpp")}{" "}
-                    <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:5001/v1"}</code>
-                  </p>
-                )}
-                <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/80">
-                  <AlertCircle size="0.625rem" className="mt-px shrink-0" />
-                  <span>
-                    {localizeUi("ui.connections.connectioneditor.onlyUseUrlsFromProvidersYouTrustAMalicious")}
-                  </span>
-                </p>
-                {localProvider === "custom" && (
-                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-sky-400/80">
+                  {baseUrlValidation.error && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--destructive)]">{baseUrlValidation.error}</p>
+                  )}
+                  {!baseUrlValidation.error && baseUrlValidation.value !== localBaseUrl.trim() && (
+                    <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.willSaveAs")} {baseUrlValidation.value}
+                    </p>
+                  )}
+                  {localProvider === "custom" && (
+                    <p className="mt-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                      {localizeUi("ui.connections.connectioneditor.localModelExamplesOllama")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:11434/v1"}</code>{" "}
+                      {localizeUi("ui.connections.connectioneditor.lmStudio")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:1234/v1"}</code>{" "}
+                      {localizeUi("ui.connections.connectioneditor.koboldcpp")}{" "}
+                      <code className="rounded bg-[var(--secondary)] px-1">{"http://localhost:5001/v1"}</code>
+                    </p>
+                  )}
+                  <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-amber-400/80">
                     <AlertCircle size="0.625rem" className="mt-px shrink-0" />
                     <span>
-                      <strong>{localizeUi("ui.connections.connectioneditor.windowsUsers")}</strong>{" "}
-                      {localizeUi("ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected")}{" "}
-                      <em>
-                        {localizeUi(
-                          "ui.connections.connectioneditor.windowsSecurityFirewallNetworkProtectionAllowAnAppThrough",
-                        )}
-                      </em>{" "}
-                      {localizeUi("ui.connections.connectioneditor.andAddNodeJsOrYourProxyApplication")}
+                      {localizeUi("ui.connections.connectioneditor.onlyUseUrlsFromProvidersYouTrustAMalicious")}
                     </span>
                   </p>
-                )}
-              </FieldGroup>
+                  {localProvider === "custom" && (
+                    <p className="mt-1.5 flex items-start gap-1 text-[0.625rem] text-sky-400/80">
+                      <AlertCircle size="0.625rem" className="mt-px shrink-0" />
+                      <span>
+                        <strong>{localizeUi("ui.connections.connectioneditor.windowsUsers")}</strong>{" "}
+                        {localizeUi("ui.connections.connectioneditor.ifYourProxyOrLocalServerIsnTDetected")}{" "}
+                        <em>
+                          {localizeUi(
+                            "ui.connections.connectioneditor.windowsSecurityFirewallNetworkProtectionAllowAnAppThrough",
+                          )}
+                        </em>{" "}
+                        {localizeUi("ui.connections.connectioneditor.andAddNodeJsOrYourProxyApplication")}
+                      </span>
+                    </p>
+                  )}
+                </FieldGroup>
+              )}
             </>
           )}
 
@@ -1952,325 +1949,287 @@ export function ConnectionEditor() {
               icon={<Music size="0.875rem" className="text-sky-400" />}
               help={localizeUi("ui.connections.connectioneditor.pickTheSpeechBackendBaseUrlModelAndVoice")}
             >
-              <div className="grid grid-cols-2 gap-1.5">
-                {AUDIO_SOURCE_OPTIONS.map((src) => {
-                  const isActive = localAudioSource === src.id;
-                  return (
-                    <button
-                      key={src.id}
-                      onClick={() => {
-                        if (localAudioSource === src.id) return;
-                        const previousSource = AUDIO_SOURCE_OPTIONS.find(
-                          (candidate) => candidate.id === localAudioSource,
-                        );
-                        if (!localBaseUrl || localBaseUrl === previousSource?.defaultBaseUrl) {
-                          setLocalBaseUrl(src.defaultBaseUrl);
-                        }
-                        if (!localModel || localModel === previousSource?.defaultModel) {
-                          setLocalModel(src.defaultModel);
-                        }
-                        if (!localAudioVoice || localAudioVoice === previousSource?.defaultVoice) {
-                          setLocalAudioVoice(src.defaultVoice);
-                        }
-                        setLocalAudioSource(src.id);
-                        markDirty();
-                      }}
-                      className={cn(
-                        "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
-                        isActive
-                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
-                          : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium">{src.name}</span>
-                        {isActive && <Check size="0.625rem" />}
-                      </div>
-                      <span className="text-[0.625rem] opacity-80">
-                        {src.id === "elevenlabs"
-                          ? localizeUi("ui.connections.connectioneditor.speechSoundEffectsAndMusicGeneration")
-                          : src.id === "openai"
-                            ? localizeUi("ui.connections.connectioneditor.openaiOrAnyCompatibleAudioSpeechEndpoint")
-                            : src.id === "pockettts"
-                              ? localizeUi("ui.connections.connectioneditor.localPocketttsServerFreePrivateOffline")
-                              : localizeUi("ui.connections.connectioneditor.xaiGrokVoiceSynthesis")}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.defaultVoice")}
-                </span>
-                <input
-                  value={localAudioVoice}
-                  onChange={(event) => {
-                    setLocalAudioVoice(event.target.value);
-                    markDirty();
-                  }}
-                  className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
-                  placeholder={
-                    AUDIO_SOURCE_OPTIONS.find((candidate) => candidate.id === localAudioSource)?.defaultVoice ||
-                    localizeUi("ui.connections.connectioneditor.eGAVoiceIdFromYourProvider")
-                  }
-                />
-                <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.voiceIdOrNameUsedWhenNothingMoreSpecific")}
-                </p>
-              </label>
-              {localAudioSource === "elevenlabs" ? (
-                <div className="space-y-2">
-                  <SettingsSwitch
-                    label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
-                    description={localizeUi(
-                      "ui.connections.connectioneditor.letGameModeGenerateSoundEffectsWithThisConnection",
-                    )}
-                    checked={localAudioSoundEffects}
-                    onChange={(checked) => {
-                      setLocalAudioSoundEffects(checked);
-                      markDirty();
-                    }}
-                  />
-                  <SettingsSwitch
-                    label={localizeUi("ui.connections.connectioneditor.gameMusic")}
-                    description={localizeUi(
-                      "ui.connections.connectioneditor.letGameModeGenerateMusicWithThisConnection",
-                    )}
-                    checked={localAudioMusic}
-                    onChange={(checked) => {
-                      setLocalAudioMusic(checked);
-                      markDirty();
-                    }}
-                  />
-                </div>
-              ) : (
-                <p className="rounded-xl bg-[var(--secondary)]/40 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-                  {localizeUi(
-                    "ui.connections.connectioneditor.soundEffectAndMusicGenerationCurrentlyRequiresTheElevenlabs",
-                  )}
-                </p>
-              )}
+              <AudioSourceFields
+                connectionId={connectionDetailId ?? ""}
+                source={localAudioSource as AudioGenerationSource}
+                onSourceChange={(next) => {
+                  setLocalAudioSource(next);
+                  markDirty();
+                }}
+                baseUrl={localBaseUrl}
+                onBaseUrlChange={(next) => {
+                  setLocalBaseUrl(next);
+                  markDirty();
+                }}
+                baseUrlError={baseUrlValidation.error}
+                model={localModel}
+                onModelChange={(next) => {
+                  setLocalModel(next);
+                  markDirty();
+                }}
+                voice={localAudioVoice}
+                onVoiceChange={(next) => {
+                  setLocalAudioVoice(next);
+                  markDirty();
+                }}
+                soundEffects={localAudioSoundEffects}
+                onSoundEffectsChange={(checked) => {
+                  setLocalAudioSoundEffects(checked);
+                  markDirty();
+                }}
+                music={localAudioMusic}
+                onMusicChange={(checked) => {
+                  setLocalAudioMusic(checked);
+                  markDirty();
+                }}
+                dirty={dirty}
+                onEnsureSaved={handleEnsureSaved}
+              />
             </FieldGroup>
           )}
 
-          {/* ── Model Selection ── */}
-          <FieldGroup
-            label={localizeUi("ui.connections.connectioneditor.model")}
-            icon={<Server size="0.875rem" className="text-sky-400" />}
-            help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
-          >
-            {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
-            <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
-              <div
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                className={cn(
-                  "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
-                  showModelDropdown && "z-50 ring-sky-400/50",
-                )}
-              >
-                <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
-                {showModelDropdown ? (
-                  <input
-                    ref={modelSearchInputRef}
-                    value={modelSearch}
-                    onChange={(e) => setModelSearch(e.target.value)}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
-                    placeholder={localizeUi("ui.connections.connectioneditor.searchModels")}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span
-                    className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
-                  >
-                    {localModel
-                      ? selectedModelInfo
-                        ? localizeUi("ui.connections.connectioneditor.value1Value2", {
-                            value1: selectedModelInfo.name,
-                            value2: selectedModelInfo.id,
-                          })
-                        : localModel
-                      : emptyModelLabel}
-                  </span>
-                )}
-                <ChevronDown
-                  size="0.875rem"
-                  className={cn(
-                    "shrink-0 text-[var(--muted-foreground)] transition-transform",
-                    showModelDropdown && "rotate-180",
-                  )}
-                />
-              </div>
+          {isAudioProvider && (
+            <AudioSynthesisDefaults
+              source={localAudioSource as AudioGenerationSource}
+              value={localAudioSettings}
+              onChange={(next) => {
+                setLocalAudioSettings(next);
+                markDirty();
+              }}
+            />
+          )}
 
-              {showModelDropdown && (
-                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
-                  {/* Fetch from API button */}
-                  {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
-                    <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleFetchModels();
-                        }}
-                        disabled={fetchModels.isPending}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
-                      >
-                        {fetchModels.isPending ? (
-                          <Loader2 size="0.75rem" className="animate-spin" />
-                        ) : (
-                          <Globe size="0.75rem" />
-                        )}
-                        {fetchModels.isPending
-                          ? localizeUi("ui.connections.connectioneditor.fetching")
-                          : modelFetchButtonLabel}
-                      </button>
-                      {fetchError && (
-                        <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
-                      )}
-                      {remoteModels.length > 0 && !fetchError && (
-                        <p className="mt-1 text-[0.625rem] text-emerald-400">
-                          {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
-                          {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
-                          {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
-                        </p>
-                      )}
-                    </div>
+          {isAudioProvider && (
+            <AudioVoiceCasting
+              connectionId={connectionDetailId ?? ""}
+              source={localAudioSource as AudioGenerationSource}
+              value={localAudioSettings}
+              onChange={(next) => {
+                setLocalAudioSettings(next);
+                markDirty();
+              }}
+            />
+          )}
+
+          {/* ── Model Selection (audio picks its model beside its source) ── */}
+          {!isAudioProvider && (
+            <FieldGroup
+              label={localizeUi("ui.connections.connectioneditor.model")}
+              icon={<Server size="0.875rem" className="text-sky-400" />}
+              help={localizeUi("ui.connections.connectioneditor.theSpecificAiModelToUseYouCanPick")}
+            >
+              {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
+              <div ref={modelDropdownRef} className={cn("relative min-w-0", showModelDropdown && "z-50")}>
+                <div
+                  onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  className={cn(
+                    "relative flex min-w-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--secondary)] px-3 py-2.5 ring-1 ring-[var(--border)] transition-all hover:ring-[var(--ring)]",
+                    showModelDropdown && "z-50 ring-sky-400/50",
                   )}
-                  {localProvider === "custom" ? (
-                    <div className="p-3">
-                      <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">
-                        {localizeUi("ui.connections.connectioneditor.customEndpointsTypeTheModelIdOrFetchFrom")}
-                      </p>
-                      <input
-                        value={localModel}
-                        onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
-                        placeholder={localizeUi("ui.connections.connectioneditor.modelNameOrPath")}
-                      />
-                      {/* Show fetched models for custom provider */}
-                      {remoteModels.length > 0 && (
-                        <div className="mt-2 max-h-48 overflow-y-auto">
-                          {remoteModels
-                            .filter((m) => {
-                              const q = (modelSearch || localModel).trim().toLowerCase();
-                              if (!q) return true;
-                              return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+                >
+                  <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
+                  {showModelDropdown ? (
+                    <input
+                      ref={modelSearchInputRef}
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+                      placeholder={localizeUi("ui.connections.connectioneditor.searchModels")}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className={cn("min-w-0 flex-1 truncate text-sm", !localModel && "text-[var(--muted-foreground)]")}
+                    >
+                      {localModel
+                        ? selectedModelInfo
+                          ? localizeUi("ui.connections.connectioneditor.value1Value2", {
+                              value1: selectedModelInfo.name,
+                              value2: selectedModelInfo.id,
                             })
-                            .map((m) => (
-                              <button
-                                key={m.id}
-                                onClick={() => selectModel({ ...m, isRemote: true })}
-                                className={cn(
-                                  "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]",
-                                  localModel === m.id && "bg-sky-400/5",
-                                )}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium">{m.name}</span>
-                                    {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
+                          : localModel
+                        : emptyModelLabel}
+                    </span>
+                  )}
+                  <ChevronDown
+                    size="0.875rem"
+                    className={cn(
+                      "shrink-0 text-[var(--muted-foreground)] transition-transform",
+                      showModelDropdown && "rotate-180",
+                    )}
+                  />
+                </div>
+
+                {showModelDropdown && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
+                    {/* Fetch from API button */}
+                    {!(localProvider === "image_generation" && selectedImageService === "novelai") && (
+                      <div className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)] p-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFetchModels();
+                          }}
+                          disabled={fetchModels.isPending}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-400/10 px-3 py-2 text-xs font-medium text-sky-400 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+                        >
+                          {fetchModels.isPending ? (
+                            <Loader2 size="0.75rem" className="animate-spin" />
+                          ) : (
+                            <Globe size="0.75rem" />
+                          )}
+                          {fetchModels.isPending
+                            ? localizeUi("ui.connections.connectioneditor.fetching")
+                            : modelFetchButtonLabel}
+                        </button>
+                        {fetchError && (
+                          <p className="mt-1.5 text-[0.625rem] text-[var(--marinara-editor-accent)]">{fetchError}</p>
+                        )}
+                        {remoteModels.length > 0 && !fetchError && (
+                          <p className="mt-1 text-[0.625rem] text-emerald-400">
+                            {remoteModels.length} {localizeUi("ui.connections.connectioneditor.model_1d06a0d")}
+                            {remoteModels.length !== 1 ? localizeUi("ui.noodle.stageprofileview.s") : ""}{" "}
+                            {localizeUi("ui.connections.connectioneditor.availableFrom")} {modelFetchSourceLabel}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {localProvider === "custom" ? (
+                      <div className="p-3">
+                        <p className="mb-2 text-[0.625rem] text-[var(--muted-foreground)]">
+                          {localizeUi("ui.connections.connectioneditor.customEndpointsTypeTheModelIdOrFetchFrom")}
+                        </p>
+                        <input
+                          value={localModel}
+                          onChange={(e) => handleManualModelChange(e.target.value)}
+                          className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
+                          placeholder={localizeUi("ui.connections.connectioneditor.modelNameOrPath")}
+                        />
+                        {/* Show fetched models for custom provider */}
+                        {remoteModels.length > 0 && (
+                          <div className="mt-2 max-h-48 overflow-y-auto">
+                            {remoteModels
+                              .filter((m) => {
+                                const q = (modelSearch || localModel).trim().toLowerCase();
+                                if (!q) return true;
+                                return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+                              })
+                              .map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => selectModel({ ...m, isRemote: true })}
+                                  className={cn(
+                                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]",
+                                    localModel === m.id && "bg-sky-400/5",
+                                  )}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium">{m.name}</span>
+                                      {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
+                                    </div>
+                                    <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
                                   </div>
-                                  <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
-                                </div>
-                                <span className="shrink-0 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
+                                  <span className="shrink-0 rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
+                                    {modelFetchSourceLabel}
+                                  </span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => {
+                            setShowModelDropdown(false);
+                            setModelSearch("");
+                          }}
+                          className="mt-2 w-full rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-400/20"
+                        >
+                          {localizeUi("lorebook.editor.batch.done")}
+                        </button>
+                      </div>
+                    ) : filteredModels.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-[var(--muted-foreground)]">
+                        {localizeUi("ui.connections.connectioneditor.noModelsFoundTryADifferentSearchOrType")}
+                        <input
+                          value={localModel}
+                          onChange={(e) => handleManualModelChange(e.target.value)}
+                          className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
+                          placeholder={localizeUi("ui.connections.connectioneditor.customModelId")}
+                        />
+                      </div>
+                    ) : (
+                      filteredModels.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => selectModel(m)}
+                          className={cn(
+                            "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)]",
+                            localModel === m.id && "bg-sky-400/5",
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">{m.name}</span>
+                              {m.isRemote && (
+                                <span className="rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
                                   {modelFetchSourceLabel}
                                 </span>
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                      <button
-                        onClick={() => {
-                          setShowModelDropdown(false);
-                          setModelSearch("");
-                        }}
-                        className="mt-2 w-full rounded-lg bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-400 hover:bg-sky-400/20"
-                      >
-                        {localizeUi("lorebook.editor.batch.done")}
-                      </button>
-                    </div>
-                  ) : filteredModels.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-[var(--muted-foreground)]">
-                      {localizeUi("ui.connections.connectioneditor.noModelsFoundTryADifferentSearchOrType")}
-                      <input
-                        value={localModel}
-                        onChange={(e) => handleManualModelChange(e.target.value)}
-                        className="mt-2 w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-sky-400/50"
-                        placeholder={localizeUi("ui.connections.connectioneditor.customModelId")}
-                      />
-                    </div>
-                  ) : (
-                    filteredModels.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => selectModel(m)}
-                        className={cn(
-                          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--accent)]",
-                          localModel === m.id && "bg-sky-400/5",
-                        )}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{m.name}</span>
-                            {m.isRemote && (
-                              <span className="rounded-md bg-sky-400/10 px-1.5 py-0.5 text-[0.5625rem] font-medium text-sky-400">
-                                {modelFetchSourceLabel}
-                              </span>
-                            )}
-                            {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
-                          </div>
-                          <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          {m.context > 0 && (
-                            <div className="text-[0.625rem] font-medium text-sky-400">{formatContext(m.context)}</div>
-                          )}
-                          {m.maxOutput > 0 && (
-                            <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
-                              {formatContext(m.maxOutput)} {localizeUi("ui.connections.connectioneditor.out")}
+                              )}
+                              {localModel === m.id && <Check size="0.75rem" className="text-sky-400" />}
                             </div>
-                          )}
-                        </div>
-                      </button>
-                    ))
-                  )}
+                            <span className="text-[0.625rem] text-[var(--muted-foreground)]">{m.id}</span>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            {m.context > 0 && (
+                              <div className="text-[0.625rem] font-medium text-sky-400">{formatContext(m.context)}</div>
+                            )}
+                            {m.maxOutput > 0 && (
+                              <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
+                                {formatContext(m.maxOutput)} {localizeUi("ui.connections.connectioneditor.out")}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual model ID input below dropdown */}
+              {localProvider !== "custom" && (
+                <div className="mt-2 flex min-w-0 items-center gap-2">
+                  <input
+                    value={localModel}
+                    onChange={(e) => {
+                      handleManualModelChange(e.target.value);
+                    }}
+                    className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
+                    placeholder={
+                      isGrokSubscriptionProvider
+                        ? localizeUi("ui.connections.connectioneditor.optionalTypeAGrokCliModelIdOrLeave")
+                        : localizeUi("ui.connections.connectioneditor.orTypeModelIdDirectly")
+                    }
+                  />
                 </div>
               )}
-            </div>
 
-            {/* Manual model ID input below dropdown */}
-            {localProvider !== "custom" && (
-              <div className="mt-2 flex min-w-0 items-center gap-2">
-                <input
-                  value={localModel}
-                  onChange={(e) => {
-                    handleManualModelChange(e.target.value);
-                  }}
-                  className="min-w-0 flex-1 rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs ring-1 ring-[var(--border)] focus:outline-none focus:ring-[var(--ring)]"
-                  placeholder={
-                    isGrokSubscriptionProvider
-                      ? localizeUi("ui.connections.connectioneditor.optionalTypeAGrokCliModelIdOrLeave")
-                      : localizeUi("ui.connections.connectioneditor.orTypeModelIdDirectly")
-                  }
-                />
-              </div>
-            )}
-
-            {/* Context display */}
-            {selectedModelInfo && (
-              <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
-                <span className="text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.context")}{" "}
-                  <strong className="text-sky-400">{formatContext(selectedModelInfo.context)}</strong>
-                </span>
-                <span className="text-[var(--muted-foreground)]">
-                  {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
-                  <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
-                </span>
-              </div>
-            )}
-          </FieldGroup>
+              {/* Context display */}
+              {selectedModelInfo && (
+                <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
+                  <span className="text-[var(--muted-foreground)]">
+                    {localizeUi("ui.connections.connectioneditor.context")}{" "}
+                    <strong className="text-sky-400">{formatContext(selectedModelInfo.context)}</strong>
+                  </span>
+                  <span className="text-[var(--muted-foreground)]">
+                    {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
+                    <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
+                  </span>
+                </div>
+              )}
+            </FieldGroup>
+          )}
 
           {/* ── RunPod Endpoint ID ── */}
           {localProvider === "image_generation" && selectedImageService === "runpod_comfyui" && (

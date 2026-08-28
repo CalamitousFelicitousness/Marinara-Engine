@@ -1731,6 +1731,29 @@ for (const invalidExpectedCount of ["1", 1.5]) {
     await db._fileStore.flush();
     const persisted = readFileSync(join(dir, "tables", "memory_chunks", `${encodeShardKey("chat-a")}.json`), "utf8");
     assert.ok(persisted.includes(JSON.stringify(nonCanonical)), "a rewrite preserves the non-canonical text verbatim");
+
+    // lorebook_entries.embedding gets the same packed treatment (#5592):
+    // canonical vectors round-trip byte-identically and unprojected reads
+    // still receive the original string form.
+    const entryVector = JSON.stringify([0.25, -0.5, 1]);
+    await db.insert(lorebooks).values({ id: "lb-1", name: "Book", createdAt: "2026-08-08T10:00:00.000Z" });
+    await db.insert(lorebookEntries).values({
+      id: "lbe-1",
+      lorebookId: "lb-1",
+      name: "Entry",
+      embedding: entryVector,
+      createdAt: "2026-08-08T10:00:00.000Z",
+    });
+    const entryRows = await db.select().from(lorebookEntries);
+    assert.equal(entryRows[0]!.embedding, entryVector, "unprojected lorebook-entry reads return the original string");
+    await db._fileStore.flush();
+    const entryShardDir = join(dir, "tables", "lorebook_entries");
+    const entryFiles = readdirSync(entryShardDir).filter((name) => name.endsWith(".json"));
+    const entryPersisted = readFileSync(join(entryShardDir, entryFiles[0]!), "utf8");
+    assert.ok(
+      entryPersisted.includes(entryVector),
+      "the packed lorebook-entry vector serializes back byte-identically",
+    );
   } finally {
     await db._fileStore.close();
     rmSync(dir, { recursive: true, force: true });

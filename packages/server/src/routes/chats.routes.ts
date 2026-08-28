@@ -2718,7 +2718,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const chatChoices = (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>;
           const promptMacroContext = await buildPromptMacroContext({
             db: app.db,
-            characterIds,
+            characterIds: assistantCharacterIds,
             groupCharacterIds: assistantCharacterIds,
             personaName,
             personaDescription,
@@ -3107,10 +3107,14 @@ export async function chatsRoutes(app: FastifyInstance) {
           }
 
           // Persona info fallback
-          if (personaDescription) {
+          const hasPersonaFallbackData =
+            !!personaDescription ||
+            Object.values(personaFields).some(Boolean) ||
+            personaStats?.rpgStats?.enabled === true;
+          if (hasPersonaFallbackData) {
             const personaXmlTag = nameToXmlTag(personaName);
             const hasPersonaInfo =
-              allContent.includes(personaDescription.split("\n")[0]!.trim().slice(0, 80)) ||
+              (!!personaDescription && allContent.includes(personaDescription.split("\n")[0]!.trim().slice(0, 80))) ||
               allContent.includes(`<${personaXmlTag}>`) ||
               allContent.includes(`<${personaName}>`) ||
               new RegExp(`^#{1,6} ${personaName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "m").test(allContent);

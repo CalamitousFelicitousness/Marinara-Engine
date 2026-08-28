@@ -108,6 +108,12 @@ export function AudioSourceFields({
     return addSavedVoiceOption(base, voice);
   }, [voicesData, source, voice]);
 
+  // The server says whether the endpoint answered or whether these are its own
+  // built-in names. Both are legitimate, since api.openai.com publishes no voice
+  // listing at all, but a local engine that failed to answer would otherwise
+  // present another vendor's voices as its own.
+  const voicesAnswered = voicesData?.fromProvider === true;
+
   const modelOptions = useMemo(() => {
     const provided = modelsData?.source === source ? (modelsData?.models ?? []) : [];
     const ids = provided.length > 0 ? provided.map((entry) => entry.id) : fallbackModelIds(source);
@@ -320,7 +326,9 @@ export function AudioSourceFields({
         <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
           {dirty
             ? localizeUi("ui.connections.audioconnectionsettings.saveToLoadVoicesFromTheNewEndpoint")
-            : localizeUi("ui.connections.connectioneditor.voiceIdOrNameUsedWhenNothingMoreSpecific")}
+            : voicesData && !voicesAnswered
+              ? localizeUi("ui.connections.audioconnectionsettings.endpointPublishedNoVoiceList")
+              : localizeUi("ui.connections.connectioneditor.voiceIdOrNameUsedWhenNothingMoreSpecific")}
         </p>
       </div>
 

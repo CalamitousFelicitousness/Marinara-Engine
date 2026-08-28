@@ -4446,6 +4446,7 @@
   "ui.connections.audioconnectionsettings.customEndpointHelp": "This source publishes one address. Change it only to reach a proxy or a self-hosted gateway.",
   "ui.connections.audioconnectionsettings.customVoiceId": "Or a custom or cloned voice ID",
   "ui.connections.audioconnectionsettings.editableEndpointHelp": "Address of the speech server, including any version path.",
+  "ui.connections.audioconnectionsettings.endpointPublishedNoVoiceList": "This endpoint published no voice list, so these are built-in names. Type a voice ID if yours is not here.",
   "ui.connections.audioconnectionsettings.modelHelp": "The speech model this connection requests.",
   "ui.connections.audioconnectionsettings.nanogptSourceDescription": "One key for several speech backends",
   "ui.connections.audioconnectionsettings.refreshVoices": "Refresh",

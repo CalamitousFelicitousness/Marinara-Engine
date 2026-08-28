@@ -125,6 +125,12 @@ for (const [file, path] of [
   // maintained beside it.
   const fields = readSource("packages/client/src/components/connections/audio/AudioSourceFields.tsx");
   assert.match(fields, /baseUrlMode/u, "base URL visibility keys on the source definition");
+
+  // The server distinguishes "the endpoint answered" from "here are our own
+  // names". A picker that ignores that shows another vendor's voices as the
+  // local engine's, and a wrong list is indistinguishable from a right one.
+  assert.match(fields, /voicesData\?\.fromProvider === true/u, "the editor reads whether the listing answered");
+  assert.match(fields, /endpointPublishedNoVoiceList/u, "and says so rather than presenting built-ins as found");
   for (const id of ["elevenlabs", "nanogpt", "xai", "pockettts"]) {
     assert.doesNotMatch(
       fields,

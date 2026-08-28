@@ -729,6 +729,32 @@ function parseVoiceOptions(data: unknown): VoiceOption[] {
   return list.map(parseVoiceOption).filter((voice): voice is VoiceOption => Boolean(voice));
 }
 
+/**
+ * Cloned voices from a vLLM Omni style `uploaded_voices` array. Keyed on `name`
+ * because that is what /v1/audio/speech accepts, and `speaker_description` is
+ * the closest thing the payload has to a label a person would recognise.
+ */
+function parseUploadedVoiceOptions(data: unknown): VoiceOption[] {
+  const uploaded = asObject(data)?.["uploaded_voices"];
+  if (!Array.isArray(uploaded)) return [];
+
+  return uploaded
+    .map((entry): VoiceOption | null => {
+      const obj = asObject(entry);
+      const id = readString(obj?.["name"]);
+      if (!id) return null;
+      return {
+        id,
+        name: id,
+        description: readString(obj?.["speaker_description"]) ?? readString(obj?.["ref_text"]) ?? null,
+        previewUrl: null,
+        category: "Uploaded",
+        labels: readLabels(obj?.["labels"]),
+      };
+    })
+    .filter((voice): voice is VoiceOption => Boolean(voice));
+}
+
 function mergeVoiceOptions(voiceOptions: VoiceOption[]): VoiceOption[] {
   const byId = new Map<string, VoiceOption>();
   for (const option of voiceOptions) {
@@ -1054,7 +1080,12 @@ export async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResp
 
   if (!res.ok) return fallbackVoices(cfg.source);
 
-  const voices = parseVoiceOptions(await res.json());
+  const payload = await res.json();
+  // vLLM Omni answers with `voices` plus an `uploaded_voices` array describing
+  // cloned samples. Its example mirrors those names into `voices`, so merging is
+  // usually a no-op that carries the description across; where a build does not
+  // mirror them, it is the only way a cloned voice appears at all.
+  const voices = mergeVoiceOptions([...parseVoiceOptions(payload), ...parseUploadedVoiceOptions(payload)]);
   return voices.length > 0 ? responseFromVoiceOptions(cfg.source, voices, true) : fallbackVoices(cfg.source);
 }
 

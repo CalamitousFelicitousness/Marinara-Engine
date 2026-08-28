@@ -1352,6 +1352,17 @@ Behavior changes worth knowing:
   only the blob store would have left the metadata rows the summary counts, so the panel would have
   reported clips that no longer exist. Requests already in flight are left to finish and re-cache:
   that audio is paid for and playing.
+- **Voice discovery states where the list came from, and finds cloned voices.** The
+  OpenAI-compatible source is the lane every local engine arrives through, and it reads
+  `GET {baseUrl}/audio/voices`, which is the path vLLM Omni documents. Two corrections.
+  A listing that fails falls back to OpenAI's own six names, correct for `api.openai.com`, which
+  publishes no listing, and misleading for a local engine that simply did not answer; the response
+  already carried `fromProvider` and the editor ignored it, so a wrong list was indistinguishable
+  from a right one. The picker now says the endpoint published nothing. Separately, vLLM Omni
+  returns cloned voices in an `uploaded_voices` array and its example also mirrors those names into
+  `voices`, so reading `voices` alone passes against the documented payload and loses every cloned
+  voice on a build that does not mirror. Both arrays are merged, and a clone keeps the
+  `speaker_description` that identifies it.
 - **`/connections/:id/models` and `/:id/test` work for audio.** `PROVIDERS.audio.modelsEndpoint` is
   the empty string and the generic branch coalesces with `??` rather than `||`, so "Fetch Models"
   requested the bare base URL with an ElevenLabs header whatever the row targeted.

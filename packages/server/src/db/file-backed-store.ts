@@ -1083,11 +1083,7 @@ function preserveMalformedRowSourceSync(path: string, table: string): Quarantine
  * fallback-with-unreadablePaths for the quarantine machinery downstream)
  * applies to shape corruption identically.
  */
-function parseJsonFile<T>(
-  path: string,
-  fallback: T,
-  validateRoot?: (value: unknown) => boolean,
-): ParseResult<T> {
+function parseJsonFile<T>(path: string, fallback: T, validateRoot?: (value: unknown) => boolean): ParseResult<T> {
   const read = (filePath: string): T => {
     const value = JSON.parse(readFileSync(filePath, "utf8")) as T;
     if (validateRoot && !validateRoot(value)) {
@@ -2544,7 +2540,26 @@ class FileTableStore {
 
     // The monolith loads through the exact pipeline the flat loader uses, so
     // .bak recovery, malformed-row quarantine, and normalizeRow all apply.
-    const { value: rows, recoveredFromBackup } = parseJsonFile<Row[]>(monolithPath, [], Array.isArray);
+    const {
+      value: rows,
+      recoveredFromBackup,
+      recoveredFromFallback,
+      unreadablePaths,
+    } = parseJsonFile<Row[]>(monolithPath, [], Array.isArray);
+    if (recoveredFromFallback && unreadablePaths.length > 0) {
+      // Neither the monolith nor its backup was usable (unparseable, or a
+      // valid-JSON non-array root — #5601). Quarantine them BEFORE the empty
+      // shard set lands: the tail rename would otherwise file corrupt bytes
+      // under the innocuous .pre-shard name and the table would come up
+      // empty with no signal to the user about why.
+      const files = await quarantineUnrecoverableFiles(unreadablePaths, `table ${table} monolith`);
+      if (files.length > 0) this.quarantinedTables.push({ table, files });
+      logger.error(
+        { table, files: files.map((file) => file.to) },
+        "[file-storage] Monolith for %s was unrecoverable from primary and backup; quarantined the corrupt files and sharded an empty table. Preserved files require manual recovery.",
+        table,
+      );
+    }
     const parsedRows = Array.isArray(rows) ? rows : [];
     const source = parsedRows.filter(isRowRecord);
     const malformedRowCount = parsedRows.length - source.length;
@@ -3528,7 +3543,11 @@ class FileTableStore {
     const known = this.knownShardFiles.get(table) ?? new Set<string>();
     this.knownShardFiles.set(table, known);
     const path = shardFilePath(this.rootDir, table, encoded);
-    const { value, recoveredFromBackup, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, [], Array.isArray);
+    const { value, recoveredFromBackup, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(
+      path,
+      [],
+      Array.isArray,
+    );
     const parsedRows = Array.isArray(value) ? value : [];
     const source = parsedRows.filter(isRowRecord);
     const malformedRowCount = parsedRows.length - source.length;

@@ -827,6 +827,47 @@ for (const invalidExpectedCount of ["1", 1.5]) {
   }
 }
 
+// ── An unrecoverable monolith is quarantined by the migration, not disguised ──
+// (#5601 follow-through) When neither the monolith nor its .bak is usable —
+// unparseable OR valid JSON with a non-array root — the migration must route
+// the files through the quarantine machinery (visible in the corruption
+// notice) instead of renaming corrupt bytes to the innocuous .pre-shard name
+// and silently sharding an empty table.
+
+{
+  const dir = tempStorageDir();
+  mkdirSync(join(dir, "tables"), { recursive: true });
+  writeFileSync(join(dir, "tables", "messages.json"), JSON.stringify({ not: "rows" }));
+  writeFileSync(join(dir, "tables", "messages.json.bak"), JSON.stringify({ also: "not rows" }));
+  const db = await createFileNativeDB();
+  try {
+    const rows = await db.select().from(messages);
+    assert.equal(rows.length, 0, "nothing usable loads from the shape-corrupt monolith pair");
+    const tableFiles = readdirSync(join(dir, "tables"));
+    assert.equal(
+      tableFiles.some((name) => name.startsWith("messages.json.corrupt-")),
+      true,
+      "the corrupt monolith is preserved under a .corrupt- name",
+    );
+    assert.equal(
+      tableFiles.some((name) => name.includes("messages.json.pre-shard")),
+      false,
+      "corrupt bytes are never filed under the innocuous .pre-shard name",
+    );
+    const quarantined = db._fileStore.getQuarantinedTables().find((entry) => entry.table === "messages");
+    assert.ok(quarantined, "the corruption notice reports the quarantined monolith");
+    assert.equal(quarantined.files.length, 2, "both the monolith and its backup are preserved");
+    assert.equal(
+      existsSync(join(dir, "tables", "messages", ".migrating")),
+      false,
+      "the migration still completes and clears its sentinel",
+    );
+  } finally {
+    await db._fileStore.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // ── A crashed-migration retry never deletes quarantine artifacts ──
 // The retry clears incomplete shard files, but .corrupt-* files are
 // user-recovery data the store must never delete on its own.

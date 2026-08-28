@@ -64,14 +64,14 @@ for (const [file, path] of [
   assert.doesNotMatch(source, /useTTSConfig\(/u, `${file}: the app-level blob alone cannot answer which engine speaks`);
 }
 
-// ── A pinned game speaks through the connection it was pinned to ──
-// Sound effects and music already honored the game's audio connection while
-// narration and combat lines went to the category default, so one game could
-// score and speak on two different engines.
+// ── Each lane of a game reaches the engine that lane was pinned to ──
+// One resolved id used to feed narration, combat, sound effects, and music
+// alike, so a game could not speak on one engine and score on another.
 {
   const narration = readSource("packages/client/src/components/game/GameNarration.tsx");
   const combat = readSource("packages/client/src/components/game/GameCombatUI.tsx");
   const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
+  const hook = readSource("packages/client/src/hooks/use-tts.ts");
 
   for (const [file, source] of [
     ["GameNarration.tsx", narration],
@@ -81,24 +81,86 @@ for (const [file, path] of [
     assert.match(source, /useEffectiveTTSConfig\(audioConnectionId\)/u, `${file}: resolves against it`);
     assert.match(source, /audioConnectionId:/u, `${file}: and synthesizes through it`);
   }
-  assert.equal(
-    (surface.match(/audioConnectionId=\{gameAudioConnectionId\}/gu) ?? []).length,
-    3,
-    "both narration mounts and combat must be handed the same connection",
+
+  // Purposes are separate cache entries, or one lane's answer is served to
+  // another and the split is invisible at runtime.
+  assert.match(
+    hook,
+    /effectiveConfig: \(purpose: AudioPurpose, scope: string\)/u,
+    "the effective config cache key must carry the purpose",
+  );
+  assert.match(
+    hook,
+    /useEffectiveAudioConfig\("speech", connectionId\)/u,
+    "useEffectiveTTSConfig must stay the speech lane of the general hook",
   );
 
-  // Cache keys move with the signature change, or a pinned game replays clips
-  // the previous engine produced.
-  assert.match(narration, /game-voice-line-v3:/u, "narration text key retires clips keyed without the connection");
+  // The pin per lane is the game's own, else the all-purpose pin. One helper
+  // decides that, because the wizard and the drawer write what this reads.
+  for (const purpose of ["speech", "sfx", "music"] as const) {
+    assert.match(
+      surface,
+      new RegExp(String.raw`effectiveGameAudioPin\(chatMeta, "${purpose}"\)`, "u"),
+      `GameSurface must take its ${purpose} pin from the shared helper`,
+    );
+  }
+
+  // The three speech mounts get the voice pin, and each generation call gets
+  // its own, so swapping two of them cannot go unnoticed.
+  assert.equal(
+    (surface.match(/audioConnectionId=\{gameVoiceConnectionId\}/gu) ?? []).length,
+    3,
+    "both narration mounts and combat must be handed the voice pin",
+  );
+  assert.match(
+    surface,
+    /GAME_AUDIO_GENERATION_TIMEOUT_MS[\s\S]{0,400}?gameSfxConnectionId|gameSfxConnectionId[\s\S]{0,400}?GAME_AUDIO_GENERATION_TIMEOUT_MS/u,
+    "sound effect generation must send the sound effect pin",
+  );
+  assert.match(
+    surface,
+    /CONTEXT_MUSIC_GENERATION_TIMEOUT_MS[\s\S]{0,400}?gameMusicConnectionId|gameMusicConnectionId[\s\S]{0,600}?CONTEXT_MUSIC_GENERATION_TIMEOUT_MS/u,
+    "music generation must send the music pin",
+  );
+
+  // Capability is one server answer now: the source supports the purpose and the
+  // connection opted in. Recomputing either half here would drift from the gate
+  // the route applies.
+  assert.match(
+    surface,
+    /effectiveSfxAudio\?\.gameAudioEnabled === true/u,
+    "sound effects gate on the sound effect lane's capability answer",
+  );
+  assert.match(
+    surface,
+    /effectiveMusicAudio\?\.gameAudioEnabled === true/u,
+    "and music on its own, so one lane's engine cannot decide for the other",
+  );
+  assert.doesNotMatch(
+    surface,
+    /resolvedSource === "elevenlabs"/u,
+    "GameSurface must not name a backend to decide what may be generated",
+  );
+
+  // Cache keys stay as they are: purpose routing changes which connection
+  // answers, never what a given connection produces, and the voice signature
+  // already carries the resolved id.
+  assert.match(narration, /game-voice-line-v3:/u, "narration text key is unchanged");
   assert.match(narration, /game-voice-line-v4:/u, "narration segment key likewise");
   assert.match(combat, /combat-voice-v2:/u, "combat likewise");
 
   // The client used to mirror the server's default and fallback order, quarantine
-  // rules included. Two copies of that rule is one too many.
+  // rules included. Two copies of that rule is one too many, and there are now
+  // three chains it could get wrong instead of one.
   assert.doesNotMatch(
     surface,
     /rows\.find\(\(connection\) => isConnectionFlagTrue\(connection\.defaultForAgents\)\)/u,
     "GameSurface must not re-derive the server's audio resolution order",
+  );
+  assert.doesNotMatch(
+    surface,
+    /defaultForSfx|defaultForMusic/u,
+    "and must not re-derive the purpose chains either",
   );
 }
 

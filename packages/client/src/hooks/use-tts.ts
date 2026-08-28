@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api-client";
 import type {
+  AudioPurpose,
   TTSConfig,
   TTSEffectiveConfigResponse,
   TTSModelsResponse,
@@ -16,7 +17,7 @@ export const ttsKeys = {
   /** Everything TTS. Connection mutations invalidate this: they change catalogs and resolution. */
   all: ["tts"] as const,
   config: ["tts", "config"] as const,
-  effectiveConfig: (scope: string) => ["tts", "effective-config", scope] as const,
+  effectiveConfig: (purpose: AudioPurpose, scope: string) => ["tts", "effective-config", purpose, scope] as const,
   voices: (source: TTSSource, scope: string) => ["tts", "voices", source, scope] as const,
   models: (source: TTSSource, scope: string) => ["tts", "models", source, scope] as const,
 };
@@ -61,23 +62,35 @@ export function useTTSConfig() {
 }
 
 /**
- * What a speak request would actually use: app-level settings merged with the
- * resolved audio connection.
+ * Which engine answers for one purpose, and with which settings: app-level
+ * settings merged with the connection that resolved.
  *
- * Omit connectionId for the category default, which is what unattended autoplay
+ * Omit connectionId for the category chain, which is what an unattended request
  * reaches. Pass one to ask about a specific connection; the empty string is the
  * sentinel for the app-level settings alone.
+ *
+ * Purposes are separate cache entries because they resolve to different
+ * connections. A speech request sends no purpose parameter, so its URL is the
+ * one the server has always answered.
  */
-export function useEffectiveTTSConfig(connectionId?: string) {
+export function useEffectiveAudioConfig(purpose: AudioPurpose, connectionId?: string) {
   const scoped = connectionId !== undefined;
   return useQuery({
-    queryKey: ttsKeys.effectiveConfig(scoped ? connectionId : "auto"),
-    queryFn: () =>
-      api.get<TTSEffectiveConfigResponse>(
-        `/tts/effective-config${scoped ? `?connectionId=${encodeURIComponent(connectionId)}` : ""}`,
-      ),
+    queryKey: ttsKeys.effectiveConfig(purpose, scoped ? connectionId : "auto"),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (scoped) params.set("connectionId", connectionId);
+      if (purpose !== "speech") params.set("purpose", purpose);
+      const query = params.toString();
+      return api.get<TTSEffectiveConfigResponse>(`/tts/effective-config${query ? `?${query}` : ""}`);
+    },
     staleTime: 60_000,
   });
+}
+
+/** What a speak request would use. The speech lane of {@link useEffectiveAudioConfig}. */
+export function useEffectiveTTSConfig(connectionId?: string) {
+  return useEffectiveAudioConfig("speech", connectionId);
 }
 
 export function useUpdateTTSConfig() {

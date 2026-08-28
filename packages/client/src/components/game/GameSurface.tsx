@@ -109,7 +109,7 @@ import { characterNamesMatch, findNamedEntry } from "../../lib/game-character-na
 import { normalizeGameSegmentEdit, serializeGameSegmentEdit, type GameSegmentEdit } from "../../lib/game-segment-edits";
 import { findReplayStoryboardKeyframe } from "../../lib/game-storyboard-keyframes";
 import { useSceneAnalysis } from "../../hooks/use-scene-analysis";
-import { useEffectiveTTSConfig } from "../../hooks/use-tts";
+import { useEffectiveAudioConfig } from "../../hooks/use-tts";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
@@ -163,6 +163,7 @@ import {
   isContextMusicTag,
   type MusicEnemyTier,
   scoreAmbient,
+  effectiveGameAudioPin,
 } from "@marinara-engine/shared";
 import { GameNarration } from "./GameNarration";
 import { formatNarration } from "./game-narration-format";
@@ -2425,22 +2426,21 @@ function GameSurfaceComponent({
   const activeGameMetaId = typeof chatMeta.gameId === "string" ? chatMeta.gameId : "";
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
-  // The game's own pick, or nothing, in which case the server resolves the
-  // category default. Asking the server rather than re-deriving its order here
-  // keeps one answer for which engine this game speaks and scores with.
-  const explicitGameAudioId =
-    typeof chatMeta.gameAudioConnectionId === "string" && chatMeta.gameAudioConnectionId
-      ? chatMeta.gameAudioConnectionId
-      : undefined;
-  const { data: effectiveTts } = useEffectiveTTSConfig(explicitGameAudioId);
-  const ttsConfig = effectiveTts?.config;
+  // What this game pinned per lane, or nothing, in which case the server
+  // resolves that lane's chain. Only the pin is decided here; asking the server
+  // rather than re-deriving its order keeps one answer for which engine speaks,
+  // which one makes sound effects, and which one scores a scene.
+  const gameVoiceConnectionId = effectiveGameAudioPin(chatMeta, "speech");
+  const gameSfxConnectionId = effectiveGameAudioPin(chatMeta, "sfx");
+  const gameMusicConnectionId = effectiveGameAudioPin(chatMeta, "music");
+  const { data: effectiveSfxAudio } = useEffectiveAudioConfig("sfx", gameSfxConnectionId);
+  const { data: effectiveMusicAudio } = useEffectiveAudioConfig("music", gameMusicConnectionId);
+  // gameAudioEnabled already means "this engine supports the purpose and this
+  // connection opted in", so the surface does not repeat either half.
   const generateGameSoundEffects =
-    effectiveTts?.resolvedSource === "elevenlabs" &&
-    ttsConfig?.elevenLabsGameSoundEffects === true &&
-    chatMeta.gameAudioSoundEffectsEnabled !== false;
+    effectiveSfxAudio?.gameAudioEnabled === true && chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
-    effectiveTts?.resolvedSource === "elevenlabs" &&
-    ttsConfig?.elevenLabsGameMusic === true &&
+    effectiveMusicAudio?.gameAudioEnabled === true &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
@@ -2649,7 +2649,6 @@ function GameSurfaceComponent({
       if (manifestAssets[tag]) delete generatedAudioAssetsRef.current[tag];
     }
   }, [assetManifest?.assets]);
-  const gameAudioConnectionId = effectiveTts?.resolvedConnectionId ?? undefined;
   const generateGameAudioAsset = useCallback(
     async (kind: "sfx" | "music", prompt: string): Promise<string | null> => {
       const category = kind === "sfx" ? "sfx" : "music";
@@ -2659,7 +2658,7 @@ function GameSurfaceComponent({
           (signal) =>
             api.post<{ tag: string; path: string }>(
               "/tts/game-audio",
-              { kind, prompt, ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}) },
+              { kind, prompt, ...(gameSfxConnectionId ? { audioConnectionId: gameSfxConnectionId } : {}) },
               { signal },
             ),
           GAME_AUDIO_GENERATION_TIMEOUT_MS,
@@ -2678,7 +2677,7 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [gameAudioConnectionId],
+    [gameSfxConnectionId],
   );
   // SFX only since #5161: music is never a per-turn generation prompt anymore —
   // scoring picks from the library (context tracks included), and the library
@@ -2763,7 +2762,7 @@ function GameSurfaceComponent({
                   kind: "music",
                   prompt,
                   context: { axis, key },
-                  ...(gameAudioConnectionId ? { audioConnectionId: gameAudioConnectionId } : {}),
+                  ...(gameMusicConnectionId ? { audioConnectionId: gameMusicConnectionId } : {}),
                 },
                 { signal },
               ),
@@ -2794,7 +2793,7 @@ function GameSurfaceComponent({
         }
       })();
     },
-    [generateGameMusic, getScopedAssetMap, gameAudioConnectionId, playContextCombatMusic],
+    [generateGameMusic, getScopedAssetMap, gameMusicConnectionId, playContextCombatMusic],
   );
   const audioMuted = useGameAssetStore((s) => s.audioMuted);
 
@@ -12487,7 +12486,7 @@ function GameSurfaceComponent({
                           ) : (
                             <GameCombatUI
                               chatId={activeChatId}
-                              audioConnectionId={gameAudioConnectionId}
+                              audioConnectionId={gameVoiceConnectionId}
                               party={combatParty}
                               enemies={combatEnemies}
                               inventoryItems={inventoryItems}
@@ -12517,7 +12516,7 @@ function GameSurfaceComponent({
                       <GameTravelView>
                         <GameNarration
                           messages={narrationMessages}
-                          audioConnectionId={gameAudioConnectionId}
+                          audioConnectionId={gameVoiceConnectionId}
                           isStreaming={isStreaming}
                           characterMap={characterMap}
                           activeCharacterIds={characterIds}
@@ -12610,7 +12609,7 @@ function GameSurfaceComponent({
                   return (
                     <GameNarration
                       messages={narrationMessages}
-                      audioConnectionId={gameAudioConnectionId}
+                      audioConnectionId={gameVoiceConnectionId}
                       isStreaming={isStreaming}
                       characterMap={characterMap}
                       activeCharacterIds={characterIds}

@@ -2200,6 +2200,22 @@ class FileTableStore {
   }
 
   async initialize() {
+    // Structural soundness gate for the lazy tier (#5592 Phase 2): per-unit
+    // uniqueness validation is only complete for constraints whose scope is
+    // covered by the loaded units — which holds for primary keys (per-row)
+    // but NOT for declared uniqueBy constraints, whose scope is the whole
+    // table. Every lazy table is PK-only today; adding one with uniqueBy
+    // would let cross-unit violations slip past assertUniqueRow silently, so
+    // refuse to boot rather than corrupt quietly.
+    for (const table of LAZY_UNIT_TABLES) {
+      const meta = getMeta(table);
+      if (meta.uniqueConstraints.length > 0) {
+        throw new Error(
+          `[file-storage] Lazy unit table ${table} declares uniqueBy constraints; ` +
+            `per-unit loading cannot enforce table-wide uniqueness. Remove it from LAZY_UNIT_TABLES.`,
+        );
+      }
+    }
     mkdirSync(this.rootDir, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
     await this.acquireWriterLease();
     try {

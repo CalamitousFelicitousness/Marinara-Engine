@@ -1338,6 +1338,13 @@ Behavior changes worth knowing:
   and it lists only audio connections through the filter the game setup wizard already uses. What is
   picked and what speaks are still separate questions: a fallback row or the legacy blob resolves
   when nothing is picked, and a line under the dropdown says so.
+- **The empty audio default names what answers.** It read "No default audio connection", which
+  reads as silence, when resolution actually falls through to the audio fallback row and then to the
+  app-level Text to Speech settings. Both the defaults section and the card now read "Use the
+  fallback, then the Text to Speech settings", word for word, because it is one flag rather than two
+  controls to reconcile. The key was renamed rather than reworded, so the Korean translation of the
+  old meaning falls back to English instead of confidently stating something untrue;
+  `check-locales.mjs` rejects a locale key English no longer has, so `ko.json` drops the orphan.
 - **`/connections/:id/models` and `/:id/test` work for audio.** `PROVIDERS.audio.modelsEndpoint` is
   the empty string and the generic branch coalesces with `??` rather than `||`, so "Fetch Models"
   requested the bare base URL with an ElevenLabs header whatever the row targeted.
@@ -1364,6 +1371,8 @@ Patches to upstream files, all of which a merge can revert silently:
   `components/connections/audio/*`; the generic Base URL and Model groups are gated on
   `!isAudioProvider`. **On a conflict here, keep the component call and port upstream's intent into
   the audio components.** Upstream rewrites and reformats this file often.
+- `packages/client/src/components/panels/ConnectionsPanel.tsx`: one line, the audio pair's
+  `primaryEmptyLabel` key. The section is otherwise untouched.
 - `packages/client/src/components/panels/settings/TTSConfigCard.tsx`: gutted in place, keeping the
   file and export so `ConnectionsPanel` needs no edit. **Identity-half changes from upstream port
   into `components/connections/audio/`; playback-half changes apply here.** Its payload spreads the

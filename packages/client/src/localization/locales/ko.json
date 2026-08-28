@@ -7292,7 +7292,6 @@
   "ui.panels.connectiondefaultssection.images": "이미지",
   "ui.panels.connectiondefaultssection.main": "메인",
   "ui.panels.connectiondefaultssection.mainAgentsImagesAndVideosDefaultsAndFallbacks": "메인, 에이전트, 이미지, 동영상 기본값 및 폴백",
-  "ui.panels.connectiondefaultssection.noDefaultAudioConnection": "기본 오디오 연결 없음",
   "ui.panels.connectiondefaultssection.videos": "동영상",
   "ui.panels.connectionrow.addToRandomPool": "랜덤 풀에 추가",
   "ui.panels.connectionrow.deleteConnection": "연결 삭제",

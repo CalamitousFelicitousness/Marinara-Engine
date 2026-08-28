@@ -22,6 +22,7 @@ import { useConnections, useUpdateConnection } from "../../../hooks/use-connecti
 import { useEffectiveTTSConfig } from "../../../hooks/use-tts";
 import { filterAudioGenerationConnections, isConnectionFlagTrue } from "../../../lib/connection-filters";
 import { useUIStore } from "../../../stores/ui.store";
+import { HelpTooltip } from "../../ui/HelpTooltip";
 
 type AudioConnectionOption = {
   id: string;
@@ -88,6 +89,7 @@ export function AudioConnectionPicker() {
       <div className="flex items-center gap-1.5">
         <Volume2 size="0.75rem" className="shrink-0 text-sky-400" />
         <span className="text-xs font-medium">{localizeUi("ui.connections.audioconnectionpicker.voicedBy")}</span>
+        <HelpTooltip text={localizeUi("ui.connections.audioconnectionpicker.voicedByHelp")} />
       </div>
 
       <div className="flex items-center gap-1.5">
@@ -101,7 +103,7 @@ export function AudioConnectionPicker() {
           <option value="">
             {audioConnections.length === 0
               ? localizeUi("ui.connections.audioconnectionpicker.noAudioConnectionsYet")
-              : localizeUi("ui.connections.audioconnectionpicker.noDefaultAudioConnection")}
+              : localizeUi("ui.connections.audioconnectionpicker.useTheFallbackThenTheTextToSpeechSettings")}
           </option>
           {audioConnections.map((connection) => {
             const source = sourceLabel(connection.audioSource);

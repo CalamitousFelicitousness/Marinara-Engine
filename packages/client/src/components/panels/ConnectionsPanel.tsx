@@ -1073,7 +1073,9 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             connections={audioConnections}
             primaryField="defaultForAgents"
             fallbackField="fallbackForAgents"
-            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.noDefaultAudioConnection")}
+            primaryEmptyLabel={localizeUi(
+              "ui.panels.connectiondefaultssection.useTheFallbackThenTheTextToSpeechSettings",
+            )}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
         </div>

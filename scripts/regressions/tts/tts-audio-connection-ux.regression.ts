@@ -171,6 +171,24 @@ for (const [file, path] of [
   // the legacy blob still resolves when nothing is picked. Comparing names
   // would read two connections sharing a name as agreement.
   assert.match(picker, /origin !== "default"/u, "the mismatch note keys on the resolution origin");
+
+  // Two views of one flag, so the empty case has to read the same in both.
+  // Wording that differed is what taught the reader they were separate picks,
+  // and "no default audio connection" additionally reads as silence when what
+  // really happens is a fall-through the user cannot see.
+  const key = "useTheFallbackThenTheTextToSpeechSettings";
+  const english = JSON.parse(readSource("packages/client/src/localization/locales/en.json")) as Record<string, string>;
+  const emptyLabel = english[`ui.connections.audioconnectionpicker.${key}`];
+  assert.ok(emptyLabel, "the card names what answers when nothing is picked");
+  assert.match(emptyLabel, /Text to Speech/u, "and names it, rather than reporting an absence");
+  assert.equal(
+    english[`ui.panels.connectiondefaultssection.${key}`],
+    emptyLabel,
+    "the defaults section says it identically, being the same selection",
+  );
+
+  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
+  assert.match(panel, new RegExp(`connectiondefaultssection\.${key}`, "u"), "and actually renders that label");
 }
 
 console.info("TTS audio connection UX regression passed.");

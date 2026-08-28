@@ -13,6 +13,11 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Character card Conversation profiles now provide controls to generate About Me and Conversation behavior text from the card's available information.
 - The Home Character of the Day widget now uses saved character summaries and offers direct chat-start and character-view actions.
 
+### Changed
+
+- Chat-scoped storage tables (messages, swipes, Memory Recall chunks, game state, call logs, and the other per-chat tables) no longer load into memory at startup: each chat's data loads as one unit the first time that chat is touched and every query, write, and cascade is scoped to the units it can actually reach — the main memory reduction for long multi-chat profiles on Termux and other low-memory devices. Full-table operations such as backups still load everything they need automatically, and setting `MARINARA_EAGER_STORAGE=1` restores the previous load-everything startup (#5592).
+- Stale in-progress game storyboards are now recovered per chat when that chat's storyboards are next read (including everything left over from before the current server start), replacing the startup-wide sweep (#5592).
+
 ### Fixed
 
 - Memory Recall embeddings now live outside the JavaScript heap as packed vectors — the largest single memory block for long roleplay profiles on phones — and recall scoring reads them directly instead of re-parsing JSON per chunk, without changing the on-disk storage format (#5592).

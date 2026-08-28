@@ -6,6 +6,7 @@
 // This in-memory table store persists dirty tables back to those files.
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   openSync,
@@ -388,6 +389,55 @@ const SHARD_KEY_COLUMNS: Record<string, string> = {
   mari_workspace_context: "chatId",
 };
 const SHARDED_TABLE_SET: ReadonlySet<string> = new Set(SHARDED_TABLES);
+
+/**
+ * Chat-unit lazy tier (#5592 Phase 2). These tables no longer load at boot:
+ * their rows enter memory one CHAT UNIT at a time — every table's shard for a
+ * given chatId loads together, on first touch, and stays for the process
+ * lifetime (no eviction in this phase). Loading whole units at once is what
+ * keeps intra-chat cascades and the messages<->message_swipes coupling total
+ * over resident rows.
+ *
+ * Membership rule: exactly the chatId-keyed tables (targetChatId for the two
+ * cross-chat inbox tables) plus message_swipes, whose shard resolves through
+ * the parent-message index. Everything else — including tables sharded by
+ * characterId/lorebookId/presetId/storyboardId and every table with a unique
+ * key beyond its primary key — stays fully resident so cross-shard uniqueness
+ * and non-chat cascades keep today's behavior.
+ *
+ * MARINARA_EAGER_STORAGE=1 empties the tier and restores the eager boot as a
+ * field escape hatch.
+ */
+const LAZY_UNIT_TABLES: ReadonlySet<string> =
+  process.env.MARINARA_EAGER_STORAGE === "1" || process.env.MARINARA_EAGER_STORAGE === "true"
+    ? new Set()
+    : new Set([
+        "messages",
+        "message_swipes",
+        "memory_chunks",
+        "agent_runs",
+        "agent_memory",
+        "chat_images",
+        "game_state_snapshots",
+        "spatial_context_snapshots",
+        "game_engine_state",
+        "game_checkpoints",
+        "game_scene_videos",
+        "game_turn_storyboards",
+        "mari_workspace_context",
+        "ooc_influences",
+        "conversation_notes",
+        "conversation_call_sessions",
+        "conversation_call_messages",
+      ]);
+
+/**
+ * Per-unit load order (#5592 Phase 2): Set iteration preserves the declaration
+ * order above, which lists messages before message_swipes for the same reason
+ * boot's shardLoadOrder does — a swipe's shard key resolves through its parent
+ * message, so within one unit the messages shard must land first.
+ */
+const LAZY_UNIT_LOAD_ORDER: readonly string[] = [...LAZY_UNIT_TABLES];
 
 /**
  * Shard for child rows whose parent is unknown (orphans in corrupt installs).
@@ -945,6 +995,51 @@ async function preserveMalformedRowSource(path: string, table: string): Promise<
   try {
     await copyFile(path, to);
     if (process.platform !== "win32") await chmod(to, PRIVATE_FILE_MODE);
+    return [{ from: path, to }];
+  } catch (err) {
+    logger.error(
+      err,
+      "[file-storage] Failed to preserve table %s source %s before removing malformed rows.",
+      table,
+      path,
+    );
+    return [];
+  }
+}
+
+/**
+ * Synchronous twins of the two quarantine helpers above, for the lazy
+ * unit-load path (#5592 Phase 2): shard loading happens inside synchronous
+ * query evaluation (count/select/update/delete are sync up to their builder
+ * boundary), so the recovery pipeline it reuses cannot await.
+ */
+function quarantineUnrecoverableFilesSync(paths: string[], context: string): QuarantinedFile[] {
+  const timestamp = corruptionTimestamp();
+  const quarantined: QuarantinedFile[] = [];
+  for (const from of [...new Set(paths)]) {
+    if (!existsSync(from)) continue;
+    const to = quarantinePath(from, timestamp);
+    try {
+      renameSync(from, to);
+      quarantined.push({ from, to });
+    } catch (err) {
+      logger.error(
+        err,
+        "[file-storage] Failed to quarantine unrecoverable %s file %s; leaving it in place.",
+        context,
+        from,
+      );
+    }
+  }
+  return quarantined;
+}
+
+function preserveMalformedRowSourceSync(path: string, table: string): QuarantinedFile[] {
+  if (!existsSync(path)) return [];
+  const to = quarantinePath(path, corruptionTimestamp());
+  try {
+    copyFileSync(path, to);
+    if (process.platform !== "win32") chmodSync(to, PRIVATE_FILE_MODE);
     return [{ from: path, to }];
   } catch (err) {
     logger.error(
@@ -1861,7 +1956,34 @@ class FileTableStore {
    * "emptied by deletes". Any skipped key must then be re-queued as dirty so a
    * later flush resolves it once residency is restored.
    */
-  private fullyResidentTables = new Set<string>(FILE_BACKED_TABLES);
+  private fullyResidentTables = new Set<string>(FILE_BACKED_TABLES.filter((table) => !LAZY_UNIT_TABLES.has(table)));
+  /**
+   * Chat units whose shards are resident across every lazy table (#5592
+   * Phase 2). A unit loads whole — messages before message_swipes, mirroring
+   * boot order — and never unloads in this phase. The unassigned pseudo-unit
+   * is loaded at boot: orphan-row healing (reindexMovedMessages) requires the
+   * orphan swipes resident, and the shard is pathological-tiny by design.
+   */
+  private loadedUnits = new Set<string>();
+  /**
+   * Primary keys whose RESIDENT copy came from a foreign shard file (#5592
+   * Phase 2) — per table. The eager loader's dedup rule is "the canonical
+   * file's copy beats a stray copy"; under per-file loading the stray can
+   * arrive first, so its ids are marked here and the canonical file's copy
+   * replaces them when it loads. Every load operation is synchronous and
+   * pulls a stray's canonical unit in transitively, so no write can observe
+   * the stray copy in between; an entry only outlives its operation when the
+   * canonical file does not exist at all (the stray holds the only copy).
+   */
+  private strayResidentIds = new Map<string, Set<string>>();
+  /**
+   * Every shard discovered for a lazy table at boot (#5592 Phase 2),
+   * INCLUDING bak-only leftovers whose primary vanished in a crash — the
+   * per-unit load index. Distinct from knownShardFiles, which keeps its
+   * "primary physically on disk" meaning for the manifest and the flush
+   * skip-set: counting a bak-only shard there would report a phantom.
+   */
+  private lazyDiscoveredShards = new Map<string, Set<string>>();
   /**
    * messageIds of swipes currently resolving to the unassigned shard. When
    * such a message is later INSERTED, its swipes silently regroup into the
@@ -2545,6 +2667,7 @@ class FileTableStore {
    * callers that need real contexts downstream.
    */
   *matchingRows(meta: TableMeta, condition: Condition | undefined): IterableIterator<Row> {
+    this.ensureQueryScopeLoaded(meta, condition);
     const ctx: RowContext = { rows: {}, baseTable: meta.name, joined: false };
     for (const row of this.rows(meta.name)) {
       ctx.rows[meta.name] = row;
@@ -2569,6 +2692,13 @@ class FileTableStore {
             this.assertWritable();
             const conflictColumns = normalizeConflictTargets(onConflict?.target);
             const inputRows = Array.isArray(rows) ? rows : [rows];
+            // Load the destination units BEFORE the duplicate/uniqueness scan
+            // (#5592 Phase 2): onConflict matching and assertUniqueRow are
+            // only sound against the unit's full row set. A key with no shard
+            // on disk (a brand-new chat) is simply marked loaded.
+            if (LAZY_UNIT_TABLES.has(meta.name) && !this.fullyResidentTables.has(meta.name)) {
+              this.ensureUnitsLoaded(this.shardKeysForRows(meta.name, inputRows));
+            }
             const target = this.rows(meta.name);
             const nextRows = target.map(cloneRow);
             const affectedRows: Row[] = [];
@@ -2601,6 +2731,12 @@ class FileTableStore {
             this.tables.set(meta.name, nextRows);
             if (SHARDED_TABLE_SET.has(meta.name)) {
               const shardKeys = this.shardKeysForRows(meta.name, affectedRows);
+              // A conflict update can MOVE a row's shard key (profile import
+              // rewrites arbitrary columns): the destination unit must be
+              // resident before its key is flushed (#5592 Phase 2).
+              if (LAZY_UNIT_TABLES.has(meta.name) && !this.fullyResidentTables.has(meta.name)) {
+                this.ensureUnitsLoaded(shardKeys);
+              }
               if (meta.name === "messages") {
                 this.reindexMovedMessages(affectedRows);
               }
@@ -2624,6 +2760,7 @@ class FileTableStore {
           executable(async () => {
             await this.waitForWritableTurn();
             this.assertWritable();
+            this.ensureQueryScopeLoaded(meta, condition);
             const target = this.rows(meta.name);
             const changedIndexes: number[] = [];
             const nextRows = target.map((row, index) => {
@@ -2649,6 +2786,11 @@ class FileTableStore {
                   affectedRows.push(target[index]!, nextRows[index]!);
                 }
                 const shardKeys = this.shardKeysForRows(meta.name, affectedRows);
+                // An update that rewrites the shard column moves rows into a
+                // unit that may not be resident yet (#5592 Phase 2).
+                if (LAZY_UNIT_TABLES.has(meta.name) && !this.fullyResidentTables.has(meta.name)) {
+                  this.ensureUnitsLoaded(shardKeys);
+                }
                 if (meta.name === "messages") {
                   this.reindexMovedMessages(affectedRows);
                 }
@@ -2888,9 +3030,24 @@ class FileTableStore {
     }
   }
 
-  /** Rebuilds the messageId -> chatId index from the current messages rows. */
+  /**
+   * Rebuilds the messageId -> chatId index from the current messages rows.
+   * Under lazy units (#5592 Phase 2) the index is COMPLETE — harvested from
+   * every shard at boot — while the rows are partial, so a full clear would
+   * destroy the entries for unloaded chats and misroute their swipes to the
+   * unassigned shard. Only the loaded units' entries are rebuilt: every
+   * mutation the rollback path reverts touched resident rows (the write hooks
+   * load a unit before any write), so unloaded entries are exactly the
+   * harvested truth and must survive untouched.
+   */
   private rebuildMessageShardIndex() {
-    this.messageShardIndex.clear();
+    if (this.fullyResidentTables.has("messages")) {
+      this.messageShardIndex.clear();
+    } else {
+      for (const [id, chatId] of this.messageShardIndex) {
+        if (this.loadedUnits.has(chatId)) this.messageShardIndex.delete(id);
+      }
+    }
     for (const row of this.tables.get("messages") ?? []) {
       if (typeof row.id === "string" && typeof row.chatId === "string") {
         this.messageShardIndex.set(row.id, row.chatId || UNASSIGNED_SHARD_KEY);
@@ -2898,7 +3055,375 @@ class FileTableStore {
     }
   }
 
-  private deleteWhere(meta: TableMeta, condition?: Condition) {
+  // ── Lazy chat-unit loading (#5592 Phase 2) ────────────────────────────
+
+  /** Unit key a shard-column VALUE resolves to — mirrors shardKeyForRow. */
+  private unitKeyForShardValue(value: unknown): string {
+    return typeof value === "string" && value ? value : UNASSIGNED_SHARD_KEY;
+  }
+
+  /**
+   * Static unit scope of a WHERE condition against one lazy table: the set of
+   * unit keys that could possibly hold matching rows, or null when the
+   * condition cannot bound them (the caller must then make the whole table
+   * resident). Soundness rule: returning a set S asserts that NO row outside
+   * the units in S can satisfy the condition — over-approximating is safe,
+   * under-approximating silently hides rows.
+   *
+   * Resolution classes:
+   *  - DIRECT: eq/inArray/is-null on the table's own shard column, with
+   *    literal operands.
+   *  - PARENT-MAPPED (message_swipes): literal messageIds resolve through the
+   *    COMPLETE messageId->chatId index (harvested at boot, maintained on
+   *    every insert); an id absent from the index has no parent anywhere, so
+   *    its swipes can only live in the unassigned shard.
+   *  - MESSAGES-PK: eq/inArray on messages.id resolves through the same
+   *    complete index; an absent id matches nothing in ANY unit.
+   *  - PK-PROBE (other tables): eq/inArray on the primary key scopes to the
+   *    resident rows' units only when EVERY listed id is already resident —
+   *    a miss may sit in an unloaded unit, so the probe abstains.
+   *
+   * Logical combinators follow evaluateCondition exactly: an empty AND
+   * matches every row (logical() filters undefined conjuncts and
+   * `.every([]) === true`), so it must widen to null, while an empty OR
+   * matches nothing and narrows to the empty set.
+   */
+  private unitScopeForCondition(meta: TableMeta, condition: Condition): Set<string> | null {
+    if (!condition || !isFileCondition(condition)) return null;
+    if (condition.kind === "file-logical") {
+      if (condition.operator === "or") {
+        const union = new Set<string>();
+        if (condition.conditions.length === 0) return union;
+        for (const entry of condition.conditions) {
+          const scope = this.unitScopeForCondition(meta, entry);
+          if (scope === null) return null;
+          for (const key of scope) union.add(key);
+        }
+        return union;
+      }
+      let intersection: Set<string> | null = null;
+      for (const entry of condition.conditions) {
+        const scope = this.unitScopeForCondition(meta, entry);
+        if (scope === null) continue;
+        if (intersection === null) intersection = new Set(scope);
+        else for (const key of intersection) if (!scope.has(key)) intersection.delete(key);
+      }
+      return intersection;
+    }
+
+    const strategy = getFileTableShardStrategy(meta.name as FileBackedTable);
+    const shardColumn = meta.byKey.get(strategy.column) ?? meta.byDbName.get(strategy.column) ?? null;
+    const primaryColumn = meta.primaryKey ? (meta.byKey.get(meta.primaryKey) ?? null) : null;
+    const columnAndLiterals = (left: unknown, right: unknown): { column: ColumnMeta; literal: unknown } | null => {
+      const leftMeta = getColumnMeta(left);
+      const rightMeta = getColumnMeta(right);
+      if (leftMeta && !rightMeta) return { column: leftMeta, literal: right };
+      if (rightMeta && !leftMeta) return { column: rightMeta, literal: left };
+      return null;
+    };
+    const keysForLiterals = (column: ColumnMeta, literals: unknown[]): Set<string> | null => {
+      if (column === shardColumn) {
+        if (strategy.kind === "message-parent") {
+          const keys = new Set<string>();
+          for (const literal of literals) {
+            if (typeof literal !== "string") keys.add(UNASSIGNED_SHARD_KEY);
+            else keys.add(this.messageShardIndex.get(literal) ?? UNASSIGNED_SHARD_KEY);
+          }
+          return keys;
+        }
+        return new Set(literals.map((literal) => this.unitKeyForShardValue(literal)));
+      }
+      if (primaryColumn && column === primaryColumn) {
+        if (meta.name === "messages") {
+          const keys = new Set<string>();
+          for (const literal of literals) {
+            if (typeof literal !== "string") continue; // no message anywhere carries this id
+            const chatId = this.messageShardIndex.get(literal);
+            if (chatId !== undefined) keys.add(chatId);
+          }
+          return keys;
+        }
+        // PK-probe: sound only when every id is already resident.
+        const wanted = new Set(literals);
+        const keys = new Set<string>();
+        let found = 0;
+        for (const row of this.rows(meta.name)) {
+          const id = meta.primaryKey ? row[meta.primaryKey] : undefined;
+          if (wanted.has(id)) {
+            wanted.delete(id);
+            found += 1;
+            keys.add(this.shardKeyForRow(meta.name, row));
+            if (wanted.size === 0) break;
+          }
+        }
+        return found === literals.length ? keys : null;
+      }
+      return null;
+    };
+
+    if (condition.kind === "file-comparison" && condition.operator === "eq") {
+      const resolved = columnAndLiterals(condition.left, condition.right);
+      if (!resolved) return null;
+      return keysForLiterals(resolved.column, [resolved.literal]);
+    }
+    if (condition.kind === "file-membership" && condition.operator === "in") {
+      const columnMeta = getColumnMeta(condition.value);
+      if (!columnMeta) return null;
+      for (const entry of condition.values) if (isColumn(entry) || Array.isArray(entry)) return null;
+      return keysForLiterals(columnMeta, condition.values);
+    }
+    if (condition.kind === "file-null-check" && condition.operator === "is-null") {
+      const columnMeta = getColumnMeta(condition.value);
+      if (columnMeta && columnMeta === shardColumn && strategy.kind !== "message-parent") {
+        return new Set([UNASSIGNED_SHARD_KEY]);
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Query/write hook: make every unit a condition could match resident before
+   * the table is scanned. Unbounded conditions lease the whole table.
+   */
+  ensureQueryScopeLoaded(meta: TableMeta, condition: Condition) {
+    if (!LAZY_UNIT_TABLES.has(meta.name) || this.fullyResidentTables.has(meta.name)) return;
+    const scope = this.unitScopeForCondition(meta, condition);
+    if (scope === null) {
+      this.ensureTableLoaded(meta.name);
+      return;
+    }
+    if (scope.size > 0) this.ensureUnitsLoaded(scope);
+  }
+
+  /**
+   * Loads whole chat units: for each key, every lazy table's shard for that
+   * key enters memory together, messages first. A key with no shard files is
+   * still marked loaded — that is how brand-new chats become writable. Stray
+   * rows found in a unit's files but belonging to OTHER units (interrupted
+   * re-homes, hand edits) pull those units in transitively, so the resident
+   * set never holds a partial unit.
+   */
+  ensureUnitsLoaded(keys: Iterable<string>) {
+    if (LAZY_UNIT_TABLES.size === 0) return;
+    const queue = [...new Set(keys)].filter((key) => !this.loadedUnits.has(key));
+    if (queue.length === 0) return;
+    while (queue.length > 0) {
+      const key = queue.shift()!;
+      if (this.loadedUnits.has(key)) continue;
+      // Mark first: strays pointing back at this unit must not re-enqueue it.
+      this.loadedUnits.add(key);
+      const encoded = encodeShardKey(key);
+      for (const table of LAZY_UNIT_LOAD_ORDER) {
+        if (this.fullyResidentTables.has(table)) continue;
+        if (!this.lazyDiscoveredShards.get(table)?.has(encoded)) continue;
+        const rows = this.loadShardFileSync(table, encoded);
+        if (rows.length === 0) continue;
+        for (const strayKey of this.mergeLoadedRows(table, rows, encoded)) {
+          if (!this.loadedUnits.has(strayKey)) queue.push(strayKey);
+        }
+      }
+    }
+  }
+
+  /**
+   * Full-table lease: makes one lazy table entirely resident (backup export,
+   * cross-unit predicates, unbounded scans). Idempotent; per-unit loading
+   * skips leased tables afterwards. Units are NOT marked loaded here — their
+   * other tables stay on disk.
+   */
+  ensureTableLoaded(table: Table | string) {
+    const meta = getMeta(table);
+    if (!LAZY_UNIT_TABLES.has(meta.name) || this.fullyResidentTables.has(meta.name)) return;
+    const discovered = this.lazyDiscoveredShards.get(meta.name);
+    if (discovered && discovered.size > 0) {
+      const loadedEncodings = new Set([...this.loadedUnits].map((key) => encodeShardKey(key)));
+      for (const encoded of [...discovered]) {
+        if (loadedEncodings.has(encoded)) continue;
+        const rows = this.loadShardFileSync(meta.name, encoded);
+        if (rows.length > 0) this.mergeLoadedRows(meta.name, rows, encoded);
+      }
+    }
+    this.fullyResidentTables.add(meta.name);
+    logger.info("[file-storage] Lazy table %s is now fully resident (unbounded access)", meta.name);
+  }
+
+  /**
+   * Reads, recovers, and normalizes ONE shard file — the same per-file
+   * pipeline the eager boot loop runs, in synchronous form. Healing marks
+   * (recovered/malformed/migrated/foreign rows) are recorded here, at load
+   * time, because boot never parses lazy shards: a dirty key for a unit that
+   * is only now becoming resident can flush safely, where a boot-time mark
+   * for an unloaded unit could not.
+   */
+  private loadShardFileSync(table: string, encoded: string): Row[] {
+    const meta = getMeta(table);
+    const known = this.knownShardFiles.get(table) ?? new Set<string>();
+    this.knownShardFiles.set(table, known);
+    const path = shardFilePath(this.rootDir, table, encoded);
+    const { value, recoveredFromBackup, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, []);
+    const parsedRows = Array.isArray(value) ? value : [];
+    const source = parsedRows.filter(isRowRecord);
+    const malformedRowCount = parsedRows.length - source.length;
+    if (malformedRowCount > 0 && source.length === 0) {
+      const files = quarantineUnrecoverableFilesSync([path, `${path}.bak`], `table ${table} shard ${encoded}`);
+      if (files.length > 0) this.quarantinedTables.push({ table, files });
+      logger.error(
+        { table, shard: encoded, malformedRowCount, preservedFiles: files.map((file) => file.to) },
+        "[file-storage] Shard contained only malformed rows; quarantined its files for manual recovery.",
+      );
+      if (!existsSync(path)) {
+        known.delete(encoded);
+        return [];
+      }
+    }
+    if (malformedRowCount > 0) {
+      const sourcePath = recoveredFromBackup && existsSync(`${path}.bak`) ? `${path}.bak` : path;
+      const files = preserveMalformedRowSourceSync(sourcePath, table);
+      if (files.length > 0) this.quarantinedTables.push({ table, files });
+      logger.error(
+        { table, file: sourcePath, malformedRowCount, preservedFiles: files.map((file) => file.to) },
+        "[file-storage] Skipped malformed shard rows and preserved the source file for manual recovery.",
+      );
+      this.backupRecoveredPaths.add(path);
+    }
+    const needsRowMigration = source.some((row) => fileBackedRowNeedsMigration(table, row));
+    const normalized = source.map((row) => normalizeRow(meta, migrateFileBackedRow(table, row)));
+    if (recoveredFromFallback && unreadablePaths.length > 0) {
+      const files = quarantineUnrecoverableFilesSync(unreadablePaths, `table ${table} shard ${encoded}`);
+      if (files.length > 0) {
+        this.quarantinedTables.push({ table, files });
+        if (files.some((file) => file.from === path)) known.delete(encoded);
+        logger.error(
+          { table, shard: encoded, files },
+          "[file-storage] Shard was unrecoverable from primary and backup; quarantined corrupt files. Preserved files require manual recovery.",
+        );
+      }
+    }
+    if (normalized.length > 0) {
+      const needsRepair = recoveredFromBackup || recoveredFromFallback || malformedRowCount > 0 || needsRowMigration;
+      const rowKeys = this.shardKeysForRows(table, normalized);
+      const holdsForeignRows = [...rowKeys].some((rawKey) => encodeShardKey(rawKey) !== encoded);
+      if (needsRepair) this.backupRecoveredPaths.add(path);
+      if (needsRepair || holdsForeignRows) {
+        this.dirty = true;
+        this.dirtyTables.add(table);
+        const set = this.dirtyShards.get(table) ?? new Set<string>();
+        for (const rawKey of rowKeys) set.add(rawKey);
+        this.dirtyShards.set(table, set);
+      }
+      if (holdsForeignRows) {
+        const stale = this.staleShardFiles.get(table) ?? new Set<string>();
+        stale.add(encoded);
+        this.staleShardFiles.set(table, stale);
+        logger.warn(
+          { table, shard: encoded },
+          "[file-storage] Shard file holds rows belonging to other shards; it will be rewritten canonically on the next flush.",
+        );
+      }
+    } else if (recoveredFromBackup) {
+      // Corrupt primary over a valid but EMPTY .bak: mark the file stale so
+      // the flush deletes the pair instead of re-recovering it forever.
+      this.dirty = true;
+      this.dirtyTables.add(table);
+      const stale = this.staleShardFiles.get(table) ?? new Set<string>();
+      stale.add(encoded);
+      this.staleShardFiles.set(table, stale);
+    }
+    return normalized;
+  }
+
+  /**
+   * Merges freshly loaded rows into a lazy table's resident array. The
+   * resident copy wins every primary-key collision — it is either the
+   * canonical unit's copy or a newer in-memory write, and the incoming
+   * duplicate is a stray file copy that the stale-file rewrite will clear.
+   * The merged array is re-sorted with boot's comparator so consumers without
+   * an orderBy keep seeing one deterministic sequence, and an active
+   * transaction's snapshot receives the same rows — loaded data is not a
+   * mutation and must survive a rollback.
+   *
+   * Returns the incoming rows' unit keys so the caller can pull stray units
+   * in transitively.
+   */
+  private mergeLoadedRows(table: string, incoming: Row[], sourceEncoded: string): Set<string> {
+    const meta = getMeta(table);
+    const resident = this.tables.get(table) ?? [];
+    const primaryKey = meta.primaryKey;
+    const residentIds = primaryKey
+      ? new Set(resident.map((row) => row[primaryKey]).filter((id) => typeof id === "string"))
+      : null;
+    const strayIds = this.strayResidentIds.get(table);
+    const added: Row[] = [];
+    const replacements = new Map<string, Row>();
+    let duplicateCount = 0;
+    for (const row of incoming) {
+      const id = primaryKey && typeof row[primaryKey] === "string" ? (row[primaryKey] as string) : null;
+      const isCanonical = encodeShardKey(this.shardKeyForRow(table, row)) === sourceEncoded;
+      if (id && residentIds) {
+        if (residentIds.has(id)) {
+          if (isCanonical && strayIds?.has(id)) {
+            // The resident copy is a stray from a foreign file; the canonical
+            // file's copy wins, mirroring the eager loader's dedup rule.
+            replacements.set(id, row);
+            strayIds.delete(id);
+          } else {
+            duplicateCount += 1;
+          }
+          continue;
+        }
+        residentIds.add(id);
+        if (!isCanonical) {
+          const set = strayIds ?? new Set<string>();
+          set.add(id);
+          this.strayResidentIds.set(table, set);
+        }
+      }
+      added.push(row);
+    }
+    if (duplicateCount > 0) {
+      // The dropped copies live in THIS file; rewrite it from memory so they
+      // do not resurface on the next boot.
+      logger.warn(
+        { table, shard: sourceEncoded, duplicateCount },
+        "[file-storage] Dropped duplicate %s rows already resident in memory; the shard file will be rewritten.",
+        table,
+      );
+      this.dirty = true;
+      this.dirtyTables.add(table);
+      const stale = this.staleShardFiles.get(table) ?? new Set<string>();
+      stale.add(sourceEncoded);
+      this.staleShardFiles.set(table, stale);
+    }
+    const keys = this.shardKeysForRows(table, incoming);
+    if (added.length === 0 && replacements.size === 0) return keys;
+    const compareRows = (a: Row, b: Row) =>
+      String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
+      String(primaryKey ? a[primaryKey] : "").localeCompare(String(primaryKey ? b[primaryKey] : ""));
+    const swapReplaced = (row: Row) => {
+      const id = primaryKey && typeof row[primaryKey] === "string" ? (row[primaryKey] as string) : null;
+      return (id && replacements.get(id)) || row;
+    };
+    const merged = resident.map(swapReplaced).concat(added).sort(compareRows);
+    this.tables.set(table, merged);
+    const ctx = this.txContext.getStore();
+    const snapshot = ctx?.snapshots.get(table);
+    if (snapshot) {
+      const mirrored = snapshot.map(swapReplaced).concat(added);
+      snapshot.length = 0;
+      snapshot.push(...mirrored.map((row) => ({ ...row })));
+      snapshot.sort(compareRows);
+    }
+    if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
+    return keys;
+  }
+
+  private deleteWhere(meta: TableMeta, condition?: Condition, options?: { unitsPreloaded?: boolean }) {
+    // unitsPreloaded: an intra-unit cascade already loaded every unit its
+    // parent rows live in, and the child key (messageId/snapshotId/callId) is
+    // one the scope extractor cannot resolve — skipping the hook avoids a
+    // pointless whole-table lease on every message delete (#5592 Phase 2).
+    if (!options?.unitsPreloaded) this.ensureQueryScopeLoaded(meta, condition);
     const target = this.rows(meta.name);
     const kept: Row[] = [];
     const deleted: Row[] = [];
@@ -2928,9 +3453,29 @@ class FileTableStore {
     }
   }
 
+  /**
+   * Chat units the deleted PARENT rows live in (#5592 Phase 2) — the hint
+   * that lets intra-unit cascades and set-null relations reach a lazy child
+   * without leasing its whole table. Sound because every hinted relation is
+   * intra-unit by construction: a child row referencing parent P carries P's
+   * own chatId (the mirror cleanup in chats.storage relies on the same
+   * invariant). Only meaningful when the parent's shard key IS the chat unit
+   * key — the caller restricts usage to those parents.
+   */
+  private unitKeysOfParentRows(parentTable: FileBackedTable, deletedRows: Row[]): Set<string> {
+    return this.shardKeysForRows(parentTable, deletedRows);
+  }
+
   private applySetNullRelations(parentTable: FileBackedTable, deletedRows: Row[]) {
     for (const relation of SET_NULL_RELATIONS.filter((entry) => entry.parent === parentTable)) {
       const childMeta = getMeta(relation.child);
+      // The scan below only sees resident rows. Every set-null parent
+      // (chat_images, game_scene_videos, spatial_context_snapshots) shards by
+      // chatId, and its child rows live in the same chat unit — load those
+      // units so the resident scan is complete (#5592 Phase 2).
+      if (LAZY_UNIT_TABLES.has(childMeta.name) && !this.fullyResidentTables.has(childMeta.name)) {
+        this.ensureUnitsLoaded(this.unitKeysOfParentRows(parentTable, deletedRows));
+      }
       const deletedValues = new Set(deletedRows.map((row) => row[relation.parentKey]));
       const changedRows: Row[] = [];
       for (const row of this.rows(childMeta.name)) {
@@ -2953,13 +3498,35 @@ class FileTableStore {
     }
   }
 
+  /**
+   * Cascade child keys that are intra-unit references from a chat-keyed lazy
+   * parent (#5592 Phase 2): the child rows live in the SAME chat units as the
+   * deleted parent rows, so loading the parents' units and scanning resident
+   * rows is complete — where the scope extractor would otherwise lease the
+   * child's whole table on every message delete. The remaining lazy-child
+   * cascades (chatId/targetChatId resolve directly; sourceChatId and
+   * agentConfigId genuinely span units and must lease) go through the normal
+   * deleteWhere hook.
+   */
+  private static readonly CASCADE_INTRA_UNIT_CHILD_KEYS = new Set(["messageId", "snapshotId", "callId"]);
+
   private applyCascades(parentTable: FileBackedTable, deletedRows: Row[]) {
     for (const cascade of CASCADES.filter((entry) => entry.parent === parentTable)) {
       const childMeta = getMeta(cascade.child);
       const deletedValues = new Set(deletedRows.map((row) => row[cascade.parentKey]));
       const childColumn = childMeta.byKey.get(cascade.childKey)?.column;
       if (childColumn) {
-        this.deleteWhere(childMeta, inArray(childColumn, Array.from(deletedValues)));
+        let unitsPreloaded = false;
+        if (
+          LAZY_UNIT_TABLES.has(childMeta.name) &&
+          !this.fullyResidentTables.has(childMeta.name) &&
+          FileTableStore.CASCADE_INTRA_UNIT_CHILD_KEYS.has(cascade.childKey) &&
+          LAZY_UNIT_TABLES.has(parentTable)
+        ) {
+          this.ensureUnitsLoaded(this.unitKeysOfParentRows(parentTable, deletedRows));
+          unitsPreloaded = true;
+        }
+        this.deleteWhere(childMeta, inArray(childColumn, Array.from(deletedValues)), { unitsPreloaded });
       } else {
         const err = new Error(`Cascade child column ${cascade.child}.${cascade.childKey} is not registered`);
         logger.error(
@@ -3182,6 +3749,73 @@ class FileTableStore {
         /* no shard dir yet — fresh install or pre-migration */
       }
       const dataFiles = discoverShardPrimaries(entries);
+      if (LAZY_UNIT_TABLES.has(table)) {
+        // Lazy tier (#5592 Phase 2): boot DISCOVERS shards without loading
+        // them. Rows enter memory per chat unit on first touch, through the
+        // same per-file recovery pipeline the eager path runs below — which
+        // is also when self-heal marks are recorded, since a boot-time dirty
+        // key for a unit that is not resident could never flush safely.
+        // Quarantines are the exception: pure renames need no dirty key, so
+        // the messages harvest performs them exactly like the eager loop.
+        const present = new Set(entries);
+        const discovered = new Set<string>();
+        const known = new Set<string>();
+        for (const fileName of dataFiles) {
+          const encoded = fileName.slice(0, -".json".length);
+          discovered.add(encoded);
+          if (present.has(fileName)) known.add(encoded);
+        }
+        if (table === "messages") {
+          // Harvest the COMPLETE messageId -> chatId map: swipe shard
+          // resolution and query scoping consult it for messages in unloaded
+          // chats, so it must cover every shard even though no rows stay
+          // resident. Same precedent as buildMigrationIndexFromShards; rows
+          // are dropped right after the ids are read.
+          for (const fileName of dataFiles) {
+            const encoded = fileName.slice(0, -".json".length);
+            const path = join(dir, fileName);
+            const { value, recoveredFromFallback, unreadablePaths } = parseJsonFile<Row[]>(path, []);
+            const parsedRows = Array.isArray(value) ? value : [];
+            const usableRows = parsedRows.filter(isRowRecord);
+            if (parsedRows.length > 0 && usableRows.length === 0) {
+              const files = quarantineUnrecoverableFilesSync([path, `${path}.bak`], `table ${table} shard ${encoded}`);
+              if (files.length > 0) this.quarantinedTables.push({ table, files });
+              logger.error(
+                { table, shard: encoded, malformedRowCount: parsedRows.length, preservedFiles: files.map((f) => f.to) },
+                "[file-storage] Shard contained only malformed rows; quarantined its files for manual recovery.",
+              );
+              if (!existsSync(path)) {
+                known.delete(encoded);
+                discovered.delete(encoded);
+                continue;
+              }
+            }
+            if (recoveredFromFallback && unreadablePaths.length > 0) {
+              const files = quarantineUnrecoverableFilesSync(unreadablePaths, `table ${table} shard ${encoded}`);
+              if (files.length > 0) {
+                this.quarantinedTables.push({ table, files });
+                logger.error(
+                  { table, shard: encoded, files },
+                  "[file-storage] Shard was unrecoverable from primary and backup; quarantined corrupt files. Preserved files require manual recovery.",
+                );
+                if (files.some((file) => file.from === path)) known.delete(encoded);
+                if (!existsSync(path) && !existsSync(`${path}.bak`)) discovered.delete(encoded);
+              }
+            }
+            for (const row of usableRows) {
+              if (typeof row.id === "string" && typeof row.chatId === "string") {
+                this.messageShardIndex.set(row.id, row.chatId || UNASSIGNED_SHARD_KEY);
+              }
+            }
+          }
+          counts[table] = this.messageShardIndex.size;
+        }
+        this.tables.set(table, []);
+        this.knownShardFiles.set(table, known);
+        this.lazyDiscoveredShards.set(table, discovered);
+        if (entries.length > 0) this.shardDirsCreated.add(table);
+        continue;
+      }
       const known = new Set<string>();
       const combined: Row[] = [];
       // Which physical file each row came from (encoded name) — the dedup
@@ -3355,6 +3989,10 @@ class FileTableStore {
     }
     if (declaredTableCounts) {
       const mismatches = FILE_BACKED_TABLES.flatMap((table) => {
+        // Lazy tables have no boot row count to compare (#5592 Phase 2) —
+        // their manifest entry is either the harvested message-index size or
+        // absent, and either way the diagnostic is meaningless here.
+        if (LAZY_UNIT_TABLES.has(table)) return [];
         const declared = declaredTableCounts?.[table];
         const actual = counts[table] ?? 0;
         if (declared === undefined && actual === 0) return [];
@@ -3368,6 +4006,12 @@ class FileTableStore {
         this.dirty = true;
       }
     }
+    // The unassigned pseudo-unit loads eagerly (#5592 Phase 2): orphan-row
+    // healing needs the orphan swipes resident (the adoption path in
+    // reindexMovedMessages), and the shard is pathological-tiny by design.
+    // This also transitively pulls in any unit whose rows were mis-filed into
+    // the orphan shard, restoring the eager loader's self-heal for them.
+    if (LAZY_UNIT_TABLES.size > 0) this.ensureUnitsLoaded([UNASSIGNED_SHARD_KEY]);
     logger.info({ tables: counts }, `[file-storage] Loaded file-native data from ${this.rootDir}`);
   }
 
@@ -3441,12 +4085,25 @@ class FileTableStore {
     }
     for (const key of effectiveDirty) {
       if (rowsByShard.has(key)) continue;
-      // A dirty key with no rows in the regroup means the shard was emptied by
-      // deletes ONLY while the table's full row set is resident. Positive
-      // evidence, not inference from absence: under partial residency (#5592
-      // Phase 2) an evicted shard would be indistinguishable from an emptied
-      // one, and unlinking here would destroy its file and backup.
-      if (!this.fullyResidentTables.has(table)) continue;
+      // A dirty key with no rows in the regroup means the shard was emptied
+      // by deletes ONLY when its rows were resident to begin with — full
+      // table residency, or that unit loaded (#5592 Phase 2). Positive
+      // evidence, not inference from absence: without it, an unloaded unit's
+      // shard would be indistinguishable from an emptied one, and unlinking
+      // here would destroy its file and backup. A dirty key for an unloaded
+      // unit should not occur; requeue it defensively (into the LIVE dirty
+      // map — flush swapped it out before this ran) so the mark survives
+      // until the unit loads instead of being silently dropped.
+      if (!this.fullyResidentTables.has(table) && !this.loadedUnits.has(key)) {
+        logger.warn(
+          { table, shardKey: key },
+          "[file-storage] Dirty shard key belongs to an unloaded unit; deferring its flush until the unit loads.",
+        );
+        const requeued = this.dirtyShards.get(table) ?? new Set<string>();
+        requeued.add(key);
+        this.dirtyShards.set(table, requeued);
+        continue;
+      }
       const encoded = encodeShardKey(key);
       if (!known.has(encoded)) continue;
       const path = shardFilePath(this.rootDir, table, encoded);
@@ -3465,7 +4122,15 @@ class FileTableStore {
 
     for (const table of FILE_BACKED_TABLES) {
       const rows = this.rows(table);
-      tables[table] = rows.length;
+      if (LAZY_UNIT_TABLES.has(table) && !this.fullyResidentTables.has(table)) {
+        // Partial residency makes rows.length a lie (#5592 Phase 2). The
+        // messages count is recoverable from the complete shard index; the
+        // other lazy tables' totals are simply unknown and stay out of the
+        // manifest — the boot mismatch walk skips lazy tables to match.
+        if (table === "messages") tables[table] = this.messageShardIndex.size;
+      } else {
+        tables[table] = rows.length;
+      }
       if (SHARDED_TABLE_SET.has(table)) {
         // Sharded tables never touch the flat path — leaving them in this
         // loop's recreate-if-missing branch would silently regrow a full
@@ -3558,6 +4223,21 @@ class SelectQuery implements SelectQueryBuilder<any> {
       }
       return this.finish(matched);
     }
+    // Joined queries scope each lazy table against the combined WHERE + join
+    // conditions (#5592 Phase 2). The AND extractor ignores conjuncts it
+    // cannot resolve (column-to-column join predicates, other tables'
+    // columns), so each lazy table is bounded by whatever conjuncts name its
+    // OWN shard column or primary key — the shipped joins all carry one, e.g.
+    // eq(agentRuns.chatId, X) — and a table nothing bounds is leased whole.
+    const combined: Condition = {
+      kind: "file-logical",
+      operator: "and",
+      conditions: [this.condition, ...this.joins.map((join) => join.condition)].filter(
+        (entry): entry is FileCondition => entry !== undefined,
+      ),
+    };
+    this.store.ensureQueryScopeLoaded(this.fromMeta, combined);
+    for (const join of this.joins) this.store.ensureQueryScopeLoaded(join.table, combined);
     let contexts = this.store.rows(this.fromMeta.name).map((row) => this.store.contextForRow(this.fromMeta, row));
 
     for (const join of this.joins) {

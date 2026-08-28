@@ -607,6 +607,9 @@ for (const invalidExpectedCount of ["1", 1.5]) {
   writeFileSync(yPath, JSON.stringify([messageRow("m-y1", "chat-y", "resident")]));
   const db = await createFileNativeDB();
   try {
+    // Lazy units (#5592 Phase 2) record self-heal marks at first LOAD, not at
+    // boot — an unbounded select leases the table, which is that first load.
+    await db.select().from(messages);
     await db._fileStore.flush();
     const yRows = JSON.parse(readFileSync(yPath, "utf8")) as Array<{ id: string }>;
     assert.deepEqual(
@@ -637,6 +640,9 @@ for (const invalidExpectedCount of ["1", 1.5]) {
   );
   const db = await createFileNativeDB();
   try {
+    // First touch loads and heals under lazy units (#5592 Phase 2).
+    await db.select().from(messages);
+    await db._fileStore.flush();
     const yRows = JSON.parse(
       readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-y")}.json`), "utf8"),
     ) as Array<{ id: string }>;
@@ -672,6 +678,7 @@ for (const invalidExpectedCount of ["1", 1.5]) {
   try {
     const rows = await db.select().from(messages);
     assert.equal(rows.length, 2, "the stray duplicate never reaches memory");
+    await db._fileStore.flush();
     const xRows = JSON.parse(
       readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-x")}.json`), "utf8"),
     ) as Array<{ id: string }>;
@@ -869,6 +876,7 @@ for (const invalidExpectedCount of ["1", 1.5]) {
     const rows = await db.select().from(messages);
     assert.equal(rows.length, 1, "one copy survives");
     assert.equal(rows[0]!.content, "canonical content", "the canonical shard's copy wins, not discovery order");
+    await db._fileStore.flush();
     const bRows = JSON.parse(
       readFileSync(join(dir, "tables", "messages", `${encodeShardKey("chat-b")}.json`), "utf8"),
     ) as Array<{ content: string }>;
@@ -924,7 +932,8 @@ for (const invalidExpectedCount of ["1", 1.5]) {
     try {
       const rows = await db.select().from(messages);
       assert.equal(rows.length, 0, "nothing usable loads from the empty backup");
-      assert.equal(existsSync(shardPath), false, "the corrupt primary is removed by the startup flush");
+      await db._fileStore.flush();
+      assert.equal(existsSync(shardPath), false, "the corrupt primary is removed by the first-touch flush");
       assert.equal(
         existsSync(`${shardPath}.bak`),
         false,

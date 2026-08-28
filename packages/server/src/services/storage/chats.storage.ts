@@ -680,9 +680,22 @@ export function createChatsStorage(db: DB) {
     return { allowed: true };
   }
 
-  async function deleteGameStateForMessages(messageIds: string[]) {
+  /**
+   * `chatIds` scopes every messageId-keyed condition to the owning chats so
+   * the lazy store (#5592 Phase 2) loads only those chat units instead of
+   * leasing each game table whole. Callers pass the chatIds of the messages
+   * being removed (they read the rows first); omitting it keeps the old
+   * unscoped behavior.
+   */
+  async function deleteGameStateForMessages(messageIds: string[], chatIds?: string[]) {
     const ids = Array.from(new Set(messageIds.filter(Boolean)));
     if (ids.length === 0) return;
+    const ownerChatIds = Array.from(new Set((chatIds ?? []).filter(Boolean)));
+    // A game row whose chatId disagrees with its message's chat (corrupt
+    // cross-chat ref) is skipped by the scoped form; the store-level cascade
+    // accepts the same corner and such rows are cleaned when their unit loads.
+    const chatScoped = (chatColumn: Parameters<typeof inArray>[0], condition: ReturnType<typeof inArray>) =>
+      ownerChatIds.length > 0 ? and(condition, inArray(chatColumn, ownerChatIds)) : condition;
 
     const CHUNK = 500;
     for (let i = 0; i < ids.length; i += CHUNK) {
@@ -690,17 +703,27 @@ export function createChatsStorage(db: DB) {
       const snapshots = await db
         .select({ id: gameStateSnapshots.id })
         .from(gameStateSnapshots)
-        .where(inArray(gameStateSnapshots.messageId, chunk));
+        .where(chatScoped(gameStateSnapshots.chatId, inArray(gameStateSnapshots.messageId, chunk)));
       const snapshotIds = snapshots.map((row) => row.id).filter(Boolean);
 
       for (let j = 0; j < snapshotIds.length; j += CHUNK) {
         const snapshotChunk = snapshotIds.slice(j, j + CHUNK);
-        await db.delete(gameCheckpoints).where(inArray(gameCheckpoints.snapshotId, snapshotChunk));
+        await db
+          .delete(gameCheckpoints)
+          .where(chatScoped(gameCheckpoints.chatId, inArray(gameCheckpoints.snapshotId, snapshotChunk)));
       }
-      await db.delete(gameCheckpoints).where(inArray(gameCheckpoints.messageId, chunk));
-      await db.delete(gameStateSnapshots).where(inArray(gameStateSnapshots.messageId, chunk));
-      await db.delete(spatialContextSnapshots).where(inArray(spatialContextSnapshots.messageId, chunk));
-      await db.delete(gameEngineState).where(inArray(gameEngineState.messageId, chunk));
+      await db
+        .delete(gameCheckpoints)
+        .where(chatScoped(gameCheckpoints.chatId, inArray(gameCheckpoints.messageId, chunk)));
+      await db
+        .delete(gameStateSnapshots)
+        .where(chatScoped(gameStateSnapshots.chatId, inArray(gameStateSnapshots.messageId, chunk)));
+      await db
+        .delete(spatialContextSnapshots)
+        .where(chatScoped(spatialContextSnapshots.chatId, inArray(spatialContextSnapshots.messageId, chunk)));
+      await db
+        .delete(gameEngineState)
+        .where(chatScoped(gameEngineState.chatId, inArray(gameEngineState.messageId, chunk)));
     }
   }
 
@@ -735,18 +758,13 @@ export function createChatsStorage(db: DB) {
         return;
       }
 
-      const latestByChat = new Map<string, string>();
-      const messageRows = await db
-        .select({ chatId: messages.chatId, createdAt: messages.createdAt })
-        .from(messages)
-        .orderBy(desc(messages.createdAt));
-      for (const row of messageRows) {
-        if (!missingChatIds.has(row.chatId) || latestByChat.has(row.chatId)) continue;
-        latestByChat.set(row.chatId, row.createdAt);
-        if (latestByChat.size === missingChatIds.size) break;
-      }
-
-      for (const [chatId, lastMessageAt] of latestByChat) {
+      // Per-chat lookups instead of one global messages sweep: under lazy
+      // chat units (#5592 Phase 2) the sweep would make every chat's messages
+      // resident just to backfill the few legacy rows missing lastMessageAt,
+      // while eq(chatId) loads only the chats that actually need it.
+      for (const chatId of missingChatIds) {
+        const lastMessageAt = await readLatestMessageAt(chatId);
+        if (lastMessageAt === null) continue;
         await db.update(chats).set({ lastMessageAt }).where(eq(chats.id, chatId));
       }
       chatLastMessageAtBackfilled = true;
@@ -1991,7 +2009,7 @@ export function createChatsStorage(db: DB) {
 
     async removeMessage(id: string) {
       const existing = await this.getMessage(id);
-      if (existing) await deleteGameStateForMessages([id]);
+      if (existing) await deleteGameStateForMessages([id], [existing.chatId]);
       await db.delete(messages).where(eq(messages.id, id));
       if (existing) {
         await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
@@ -2016,7 +2034,10 @@ export function createChatsStorage(db: DB) {
           const current = earliestByChat.get(row.chatId);
           if (!current || row.createdAt < current) earliestByChat.set(row.chatId, row.createdAt);
         }
-        await deleteGameStateForMessages(existingRows.map((row) => row.id));
+        await deleteGameStateForMessages(
+          existingRows.map((row) => row.id),
+          existingRows.map((row) => row.chatId),
+        );
         await db.delete(messages).where(condition);
       }
       for (const [affectedChatId, createdAt] of earliestByChat) {

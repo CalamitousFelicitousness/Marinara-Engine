@@ -13782,6 +13782,7 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
   // until after the user toggles Secret Plot on, making the echo
   // deterministically stale on every runner.
   let chatId: string | undefined;
+  let releaseUnreadEcho: (() => void) | undefined;
   try {
     const chatResponse = await request.post("/api/chats", {
       data: { name: "Stale Echo Coherence Smoke", mode: "roleplay", characterIds: [] },
@@ -13838,23 +13839,28 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
 
-    let releaseUnreadEcho: (() => void) | undefined;
     const heldUnreadEcho = new Promise<void>((resolve) => {
       releaseUnreadEcho = resolve;
     });
+    const unreadEchoState = { requested: false, fetched: false, released: false, fulfilled: false, error: "" };
     await page.route(
       `**/api/chats/${chat.id}/autonomous-unread`,
       async (route) => {
-        // Forward now (the server clears the residue and snapshots the chat
-        // BEFORE the toggle below), deliver the response only when released.
-        const response = await route.fetch();
-        await heldUnreadEcho;
-        await route.fulfill({ response });
+        unreadEchoState.requested = true;
+        try {
+          // Forward now (the server clears the residue and snapshots the chat
+          // BEFORE the toggle below), deliver the response only when released.
+          const response = await route.fetch();
+          unreadEchoState.fetched = true;
+          await heldUnreadEcho;
+          unreadEchoState.released = true;
+          await route.fulfill({ response });
+          unreadEchoState.fulfilled = true;
+        } catch (error) {
+          unreadEchoState.error = String(error);
+        }
       },
       { times: 1 },
-    );
-    const unreadEchoDelivered = page.waitForResponse((response) =>
-      response.url().includes(`/api/chats/${chat.id}/autonomous-unread`),
     );
 
     await page.addInitScript((chatId) => {
@@ -13862,22 +13868,30 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
     }, chat.id);
     await page.goto("/");
 
+    // The auto-clear must actually engage before the race can be staged.
+    await expect.poll(() => unreadEchoState.requested, { timeout: 15_000 }).toBe(true);
+
     await page.getByRole("button", { name: "Chat Settings" }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     const agentsSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents/ });
     if ((await agentsSection.getAttribute("aria-expanded")) !== "true") await agentsSection.click();
 
     const directorCard = drawer.locator(`#chat-settings-agent-menu-${chat.id}-director`);
-    const secretPlotToggle = directorCard.getByRole("switch", { name: "Secret Plot" });
+    const secretPlotToggle = directorCard.getByRole("checkbox", { name: "Secret Plot" });
     const intervalInput = directorCard.locator("label").filter({ hasText: "Run Interval" }).locator("input");
 
     await expect(secretPlotToggle).not.toBeChecked();
-    await secretPlotToggle.click();
+    // The switch input is visually hidden (sr-only), so check() never passes
+    // actionability — toggle through its visible label instead.
+    await directorCard.getByText("Secret Plot", { exact: true }).click();
+    await expect(secretPlotToggle).toBeChecked();
     await expect(intervalInput).toBeVisible();
     await expect.poll(readSecretPlotEnabled).toBe(true);
 
     releaseUnreadEcho!();
-    await unreadEchoDelivered;
+    await expect
+      .poll(() => (unreadEchoState.fulfilled ? "delivered" : unreadEchoState.error || "pending"), { timeout: 15_000 })
+      .toBe("delivered");
     // Let the client consume the echo and paint before asserting.
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
@@ -13887,6 +13901,10 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
     await expect(intervalInput).toBeVisible();
     await expect.poll(readSecretPlotEnabled).toBe(true);
   } finally {
+    // Never leave the route handler parked on the hold: a timed-out test
+    // with a pending route hangs the teardown and poisons the next run.
+    releaseUnreadEcho?.();
+    await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
     if (chatId) await request.delete(`/api/chats/${chatId}`, { timeout: 10_000 });
   }
 });

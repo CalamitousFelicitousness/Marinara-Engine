@@ -89,11 +89,7 @@ export function useApplyChatPreset() {
       ),
     onMutate: ({ chatId }) => ({ metadataVersion: captureChatMetadataVersion(chatId) }),
     onSuccess: (data, variables, context) => {
-      if (data)
-        syncCachedChat(
-          qc,
-          guardServerChatSnapshot(qc, data, context?.metadataVersion ?? captureChatMetadataVersion(variables.chatId)),
-        );
+      if (data) syncCachedChat(qc, guardServerChatSnapshot(qc, data, context?.metadataVersion ?? 0));
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: [...chatKeys.all, "group"] });

@@ -13868,8 +13868,10 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
     }, chat.id);
     await page.goto("/");
 
-    // The auto-clear must actually engage before the race can be staged.
-    await expect.poll(() => unreadEchoState.requested, { timeout: 15_000 }).toBe(true);
+    // The auto-clear must have been PROCESSED server-side before the toggle
+    // below, or the held response would snapshot post-toggle state and the
+    // pin would prove nothing — poll `fetched`, not `requested`.
+    await expect.poll(() => unreadEchoState.fetched, { timeout: 15_000 }).toBe(true);
 
     await page.getByRole("button", { name: "Chat Settings" }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
@@ -13888,11 +13890,17 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
     await expect(intervalInput).toBeVisible();
     await expect.poll(readSecretPlotEnabled).toBe(true);
 
+    const echoReceivedByPage = page.waitForResponse((response) =>
+      response.url().includes(`/api/chats/${chat.id}/autonomous-unread`),
+    );
     releaseUnreadEcho!();
     await expect
       .poll(() => (unreadEchoState.fulfilled ? "delivered" : unreadEchoState.error || "pending"), { timeout: 15_000 })
       .toBe("delivered");
-    // Let the client consume the echo and paint before asserting.
+    // fulfill() resolving means the command was accepted, not that the page
+    // consumed the body — wait for the browser-side response event, then give
+    // the client frames to process it before asserting.
+    await echoReceivedByPage;
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
     // The stale pre-toggle snapshot must not flip the toggle back or unmount
@@ -13900,6 +13908,10 @@ test("chat settings survive a stale autonomous-unread echo", async ({ page, requ
     await expect(secretPlotToggle).toBeChecked();
     await expect(intervalInput).toBeVisible();
     await expect.poll(readSecretPlotEnabled).toBe(true);
+    // Double-check after a beat: a late-consumed echo must not flip it either.
+    await page.waitForTimeout(300);
+    await expect(secretPlotToggle).toBeChecked();
+    await expect(intervalInput).toBeVisible();
   } finally {
     // Never leave the route handler parked on the hold: a timed-out test
     // with a pending route hangs the teardown and poisons the next run.

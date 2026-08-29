@@ -1,7 +1,8 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type { DB } from "../../db/connection.js";
-import { eq } from "../../db/file-query.js";
+import { and, eq } from "../../db/file-query.js";
+import { decodeShardKey, encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
 import { characterImages, chatImages, globalImages, personaImages } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -84,13 +85,136 @@ export function findGalleryRowByFilename<T extends { filePath: string }>(
   return rows.find((row) => storedGalleryFilename(row.filePath) === filename) ?? null;
 }
 
+/**
+ * Whether one chat_images shard file records a reference to filePath, read
+ * without loading the unit. Returns null when the file cannot be ruled out —
+ * unreadable, non-array root, or any row whose filePath cannot be read (the
+ * serializer writes camelCase; the loader also accepts dbName form, so both
+ * spellings are checked before giving up on a row).
+ */
+function shardFileReferencesPath(shardFilePath: string, filePath: string): boolean | null {
+  try {
+    const parsed = JSON.parse(readFileSync(shardFilePath, "utf8")) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    for (const row of parsed) {
+      if (!row || typeof row !== "object") return null;
+      const candidate = row as { filePath?: unknown; file_path?: unknown };
+      const rowPath =
+        typeof candidate.filePath === "string"
+          ? candidate.filePath
+          : typeof candidate.file_path === "string"
+            ? candidate.file_path
+            : null;
+      if (rowPath === null) return null;
+      if (rowPath === filePath) return true;
+    }
+    return false;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The chat_images half of the reference check. The question is cross-chat by
+ * design ("does ANY chat still reference this physical file?"), so the naive
+ * filePath query cannot be scoped and permanently converted the whole table
+ * to fully resident on the first image deletion (#5613). Instead: resident
+ * units answer from memory (authoritative in both directions — an unflushed
+ * new row must count, and an unflushed delete must not resurrect through its
+ * stale shard file), and every other unit's shard file is read directly off
+ * disk, which is sound because a non-resident unit can hold no unflushed
+ * state (#5616's invariant). A shard the peek cannot interpret is handed to
+ * the real loader by key when the filename decodes, and otherwise treated as
+ * "assume referenced" — the safe direction, since a false positive only
+ * keeps a file on disk while a false negative would delete a file another
+ * chat still shows.
+ */
+async function chatImagesReferenceFile(db: DB, filePath: string): Promise<boolean> {
+  const store = db._fileStore;
+  if (!isLazyUnitTable("chat_images") || store.getFullyResidentLazyTables().has("chat_images")) {
+    // Eager mode or an already-leased table: every row is in memory, so the
+    // plain query is complete and leases nothing new.
+    const rows = await db.select({ id: chatImages.id }).from(chatImages).where(eq(chatImages.filePath, filePath));
+    return rows.length > 0;
+  }
+
+  // Disk pass first, so any loader handoff below happens before the memory
+  // pass reads the final resident set (a handoff can pull misfiled stray
+  // rows into their owning units, which the memory pass must then see).
+  const startResident = store.getResidentChatUnits();
+  const residentShardNames = new Set([...startResident].map((unitKey) => `${encodeShardKey(unitKey)}.json`));
+  const handoffKeys = new Set<string>();
+  const shardDir = join(store.rootDir, "tables", "chat_images");
+  if (existsSync(shardDir)) {
+    // Sorted so scan order — and therefore which unit a handoff touches first
+    // — is deterministic across filesystems.
+    for (const entry of readdirSync(shardDir).sort()) {
+      let shardName = entry;
+      if (entry.endsWith(".json.bak")) {
+        // A lone .bak is an interrupted flush; only the loader can arbitrate
+        // what the rows are. A .bak whose main file exists is ignorable —
+        // the main file is canonical whenever it is readable.
+        shardName = entry.slice(0, -".bak".length);
+        if (existsSync(join(shardDir, shardName))) continue;
+      } else if (!entry.endsWith(".json")) {
+        continue;
+      }
+      if (residentShardNames.has(shardName)) continue; // the memory pass answers for these
+      const verdict =
+        shardName === entry ? shardFileReferencesPath(join(shardDir, entry), filePath) : /* lone .bak */ null;
+      if (verdict === true) return true;
+      if (verdict === false) continue;
+      const unitKey = decodeShardKey(shardName.slice(0, -".json".length));
+      if (unitKey === null) {
+        // Undecodable hash-form shard the peek cannot read: assume referenced.
+        // The worst case is an orphan file kept on disk until the shard heals.
+        logger.warn(
+          "[image-gallery] chat_images shard %s is not directly readable; treating %s as still referenced",
+          entry,
+          filePath,
+        );
+        return true;
+      }
+      handoffKeys.add(unitKey);
+    }
+  }
+
+  // Loader handoffs: load exactly the untrusted units through the full
+  // recovery ladder, one at a time, stopping at the first hit so one corrupt
+  // shard does not drag every other untrusted shard into memory.
+  for (const unitKey of handoffKeys) {
+    const recovered = await db
+      .select({ id: chatImages.id })
+      .from(chatImages)
+      .where(and(eq(chatImages.chatId, unitKey), eq(chatImages.filePath, filePath)))
+      .limit(1);
+    if (recovered.length > 0) return true;
+  }
+
+  // Memory pass: the union of everything resident now (start set, handoff
+  // loads, stray-owner units pinned during those loads) plus the start set
+  // again in case a flush evicted a unit mid-scan — its scoped query simply
+  // reloads it. Every condition carries the chatId, so nothing leases.
+  const memoryKeys = new Set<string>([...startResident, ...handoffKeys, ...store.getResidentChatUnits()]);
+  if (memoryKeys.has("orphaned-rows")) {
+    // Rows healed into the orphan unit carry an empty chatId, which the
+    // unit-key loop below cannot express.
+    memoryKeys.add("");
+  }
+  for (const unitKey of memoryKeys) {
+    const scoped = await db
+      .select({ id: chatImages.id })
+      .from(chatImages)
+      .where(and(eq(chatImages.chatId, unitKey), eq(chatImages.filePath, filePath)))
+      .limit(1);
+    if (scoped.length > 0) return true;
+  }
+  return false;
+}
+
 /** Check every gallery metadata table for a live reference to one file path. */
 export async function galleryFileHasReferences(db: DB, filePath: string): Promise<boolean> {
-  const chatReference = await db
-    .select({ id: chatImages.id })
-    .from(chatImages)
-    .where(eq(chatImages.filePath, filePath));
-  if (chatReference.length > 0) return true;
+  if (await chatImagesReferenceFile(db, filePath)) return true;
 
   const characterReference = await db
     .select({ id: characterImages.id })

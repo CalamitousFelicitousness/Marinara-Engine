@@ -538,6 +538,35 @@ export function encodeShardKey(rawKey: string): string {
   return encoded;
 }
 
+/**
+ * Best-effort inverse of encodeShardKey for callers that scan the shard
+ * directory itself (#5613). The store never needs this — rows carry their own
+ * keys — so it exists only to let an on-disk scan hand an unreadable shard to
+ * the real loader by key. Returns null for anything the percent form cannot
+ * round-trip: the `%h` hash fallback, and any name outside the encoder's
+ * output grammar. Note the deliberate ambiguity of the UNASSIGNED shard: both
+ * the empty key and a literal "orphaned-rows" id encode to the same filename,
+ * and this returns the literal.
+ */
+export function decodeShardKey(encoded: string): string | null {
+  if (!encoded || encoded.startsWith("%h")) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < encoded.length; ) {
+    const char = encoded[i]!;
+    if (char === "%") {
+      const hex = encoded.slice(i + 1, i + 3);
+      if (!/^[0-9A-F]{2}$/.test(hex)) return null;
+      bytes.push(Number.parseInt(hex, 16));
+      i += 3;
+    } else {
+      if (!/[a-z0-9-]/.test(char)) return null;
+      bytes.push(char.charCodeAt(0));
+      i += 1;
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
 const FILE_BACKED_TABLE_SET = new Set<string>(FILE_BACKED_TABLES);
 const isWindows = process.platform === "win32";
 const warnedFlushFailures = new Set<string>();

@@ -85,7 +85,7 @@ async function prepareOnboardingReplay(page: Page) {
 
 async function setAppAccentColor(page: Page, color: string) {
   await page.evaluate(async (nextColor) => {
-    const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+    const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
       useUIStore: {
         getState: () => {
           setAppAccentColor: (value: string) => void;
@@ -872,7 +872,7 @@ test("Chat Settings adds a formatted greeting after the setup wizard is skipped"
       document.documentElement.style.setProperty("--marinara-chat-chrome-panel-text", "rgb(12, 34, 56)");
     });
     await page.evaluate(async () => {
-      const { useChatStore } = (await import("/src/stores/chat.store.ts")) as {
+      const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as {
         useChatStore: {
           getState: () => {
             setShouldOpenSettings: (open: boolean) => void;
@@ -1332,7 +1332,7 @@ test("Author's Notes keeps its expand and full macro guide inside the field", as
     await expect(macroReference.getByText(negationSyntax, { exact: true })).toBeVisible();
     await expect(macroReference.getByText(/"is not", "not contains", and "not includes"/u)).toBeVisible();
     const macroHelp = await page.evaluate(async () => {
-      const { matchSlashCommand } = (await import("/src/lib/slash-commands.ts")) as {
+      const { matchSlashCommand } = (await import("/src/lib/slash-commands.ts" as string)) as {
         matchSlashCommand: (input: string) => {
           command: { execute: (args: string, context: never) => Promise<{ feedback?: string }> };
         } | null;
@@ -1594,7 +1594,7 @@ test("message deletion uses unified chroma controls and selection states", async
     const messages = (await Promise.all(messageResponses.map((response) => response.json()))) as Array<{
       id: string;
     }>;
-    const targetMessage = messages[1];
+    const targetMessage = messages[1]!;
     const assistantMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
       data: { role: "assistant", content: "First assistant swipe." },
     });
@@ -1756,7 +1756,7 @@ test("Conversation transcript dates and message numbers follow Chat Chrome Text 
     await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
     await page.goto("/");
     await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: { getState: () => { setShowMessageNumbers: (value: boolean) => void } };
       };
       useUIStore.getState().setShowMessageNumbers(true);
@@ -1773,7 +1773,7 @@ test("Conversation transcript dates and message numbers follow Chat Chrome Text 
     const transcriptLabels = page.locator(".mari-conversation-transcript-chrome-text");
     const assertChromeText = async (color: string) => {
       await page.evaluate(async (nextColor) => {
-        const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+        const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
           useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
         };
         useUIStore.getState().setChatChromeTextColor(nextColor);
@@ -1816,7 +1816,7 @@ test("Conversation message actions follow their messages on desktop and mobile",
     await page.goto("/");
     await setAppAccentColor(page, "#ec4899");
     await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
       };
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
@@ -1827,7 +1827,7 @@ test("Conversation message actions follow their messages on desktop and mobile",
 
     for (const style of ["classic", "bubble"] as const) {
       await page.evaluate(async (messageStyle) => {
-        const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+        const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
           useUIStore: {
             getState: () => { setConversationMessageStyle: (value: "classic" | "bubble") => void };
           };
@@ -2165,7 +2165,7 @@ test("destructive confirmation actions use the shared accent button treatment", 
   });
 
   await page.evaluate(async () => {
-    const { showConfirmDialog } = (await import("/src/lib/app-dialogs.ts")) as {
+    const { showConfirmDialog } = (await import("/src/lib/app-dialogs.ts" as string)) as {
       showConfirmDialog: (options: {
         title: string;
         message: string;
@@ -2189,7 +2189,7 @@ test("destructive confirmation actions use the shared accent button treatment", 
   await confirmDialog.getByRole("button", { name: "Cancel" }).click();
 
   await page.evaluate(async () => {
-    const { showChoiceDialog } = (await import("/src/lib/app-dialogs.ts")) as {
+    const { showChoiceDialog } = (await import("/src/lib/app-dialogs.ts" as string)) as {
       showChoiceDialog: (options: {
         title: string;
         message: string;
@@ -2214,7 +2214,7 @@ test("destructive confirmation actions use the shared accent button treatment", 
 test("modal backdrops ignore drag releases but still close on a fresh outside click", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
-    const { showConfirmDialog } = (await import("/src/lib/app-dialogs.ts")) as {
+    const { showConfirmDialog } = (await import("/src/lib/app-dialogs.ts" as string)) as {
       showConfirmDialog: (options: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
     };
     void showConfirmDialog({
@@ -2266,7 +2266,7 @@ test("connection model fetch errors inherit the configured editor accent", async
     });
     await page.goto("/");
     await page.evaluate(async (accent) => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: {
           getState: () => {
             setAppAccentColor: (color: string) => void;
@@ -2345,7 +2345,7 @@ test("connection test-message errors inherit the configured editor accent", asyn
     });
     await page.goto("/");
     await page.evaluate(async (accent) => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: {
           getState: () => {
             setAppAccentColor: (color: string) => void;
@@ -2532,7 +2532,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const { useUIStore } = await import("/src/stores/ui.store.ts");
+          const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
           return useUIStore.getState().personaDetailId;
         }),
       )
@@ -2845,7 +2845,7 @@ test("Characters can be dragged from the right panel into the active chat", asyn
   try {
     await page.goto("/");
     await page.evaluate(async (chatId) => {
-      const module = await import("/src/stores/chat.store.ts");
+      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     const dropSurface = page.locator("[data-chat-resource-drop-surface]");
@@ -2893,7 +2893,7 @@ test("Character row actions can add a resource to the active chat without draggi
   try {
     await page.goto("/");
     await page.evaluate(async (chatId) => {
-      const module = await import("/src/stores/chat.store.ts");
+      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
@@ -2965,7 +2965,7 @@ test("Dropping a persona confirms before replacing the active chat persona", asy
   try {
     await page.goto("/");
     await page.evaluate(async (chatId) => {
-      const module = await import("/src/stores/chat.store.ts");
+      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
@@ -3029,7 +3029,7 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
 
   const readActiveChatId = () =>
     page.evaluate(async () => {
-      const module = await import("/src/stores/chat.store.ts");
+      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       return module.useChatStore.getState().activeChatId;
     });
   const readButtonTypography = (button: Locator) =>
@@ -3159,7 +3159,7 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
     expect(copiedNameBox).not.toBeNull();
     expect(copiedTagsBox).not.toBeNull();
     const orderedRowBoxes = [originalRowBox!, copiedRowBox!].sort((left, right) => left.y - right.y);
-    expect(orderedRowBoxes[0].y + orderedRowBoxes[0].height).toBeLessThanOrEqual(orderedRowBoxes[1].y);
+    expect(orderedRowBoxes[0]!.y + orderedRowBoxes[0]!.height).toBeLessThanOrEqual(orderedRowBoxes[1]!.y);
     expect(originalNameBox!.y + originalNameBox!.height).toBeLessThanOrEqual(originalTagsBox!.y);
     expect(copiedNameBox!.y + copiedNameBox!.height).toBeLessThanOrEqual(copiedTagsBox!.y);
     expect(originalTagsBox!.y + originalTagsBox!.height).toBeLessThanOrEqual(
@@ -3486,7 +3486,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         }),
       );
       for (let index = 1; index < compactTabBoxes.length; index += 1) {
-        expect(compactTabBoxes[index].left - compactTabBoxes[index - 1].right).toBeGreaterThanOrEqual(-0.5);
+        expect(compactTabBoxes[index]!.left - compactTabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
       }
       await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
 
@@ -3511,8 +3511,8 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
       }
       for (let index = 1; index < tabBoxes.length; index += 1) {
-        expect(tabBoxes[index].left - tabBoxes[index - 1].right).toBeGreaterThanOrEqual(-0.5);
-        expect(tabBoxes[index].left - tabBoxes[index - 1].right).toBeLessThanOrEqual(5);
+        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeLessThanOrEqual(5);
       }
       if (firstActionBox) {
         for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
@@ -4188,7 +4188,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     await expect(fields.getByRole("button", { name: "AI Write sources", exact: true })).toHaveCount(0);
     await expect(fields.locator("select")).toHaveCount(1);
 
-    await aboutMe.evaluate((textarea) => {
+    await aboutMe.evaluate((textarea: HTMLTextAreaElement) => {
       textarea.focus();
       textarea.setSelectionRange(0, textarea.value.length);
     });
@@ -4201,20 +4201,20 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     const expandedEditor = page.locator('[data-component="ExpandedMacroEditor"] textarea');
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
-    await expandedEditor.evaluate((textarea) => {
+    await expandedEditor.evaluate((textarea: HTMLTextAreaElement) => {
       textarea.focus();
       textarea.setSelectionRange(2, 2);
     });
     await page.keyboard.type("X");
     await page.waitForTimeout(40);
-    await expect.poll(() => expandedEditor.evaluate((textarea) => textarea.selectionStart)).toBe(3);
+    await expect.poll(() => expandedEditor.evaluate((textarea: HTMLTextAreaElement) => textarea.selectionStart)).toBe(3);
     await page.keyboard.type("Y");
     await expect(expandedEditor).toHaveValue("alXYpha\nbeta");
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
-    await expandedEditor.evaluate((textarea) => {
+    await expandedEditor.evaluate((textarea: HTMLTextAreaElement) => {
       textarea.focus();
       textarea.setSelectionRange(0, textarea.value.length);
     });
@@ -4223,7 +4223,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
     await expect(expandedEditor).toHaveValue("alpha\nbeta");
 
-    await expandedEditor.evaluate((textarea) => {
+    await expandedEditor.evaluate((textarea: HTMLTextAreaElement) => {
       textarea.focus();
       textarea.setSelectionRange(0, textarea.value.length);
     });
@@ -4251,7 +4251,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
     ] as const) {
       await quoteEditor.fill("alpha beta");
       await waitForDelayedSelectionRestores();
-      await quoteEditor.evaluate((textarea) => {
+      await quoteEditor.evaluate((textarea: HTMLTextAreaElement) => {
         textarea.focus();
         textarea.setSelectionRange(6, 6);
       });
@@ -4261,7 +4261,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
       await expect(quoteEditor).toHaveValue(expected);
       await expect
         .poll(() =>
-          quoteEditor.evaluate((textarea) => ({
+          quoteEditor.evaluate((textarea: HTMLTextAreaElement) => ({
             start: textarea.selectionStart,
             end: textarea.selectionEnd,
           })),
@@ -4474,7 +4474,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     await expect(page.getByText("Schedule imported as an unsaved draft.", { exact: true })).toBeVisible();
     await expect(activity).toHaveValue("Imported current format");
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect.poll(async () => (await storedSchedule()).days.Monday[0]?.activity).toBe("Original research");
+    await expect.poll(async () => (await storedSchedule())!.days.Monday![0]?.activity).toBe("Original research");
 
     dialog = await openScheduleEditor();
     activity = await expandMonday(dialog);
@@ -4494,8 +4494,8 @@ test("character schedules export the live draft and import safely", async ({ pag
     });
     await expect(activity).toHaveValue("Imported legacy format");
     await dialog.getByRole("button", { name: "Save schedule", exact: true }).click();
-    await expect.poll(async () => (await storedSchedule()).days.Monday[0]?.activity).toBe("Imported legacy format");
-    expect((await storedSchedule()).talkativeness).toBe(90);
+    await expect.poll(async () => (await storedSchedule())!.days.Monday![0]?.activity).toBe("Imported legacy format");
+    expect((await storedSchedule())!.talkativeness).toBe(90);
   } finally {
     await Promise.allSettled([
       request.delete(`/api/chats/${chat.id}`),
@@ -5228,8 +5228,8 @@ test("typographic quotes do not pull the Roleplay caret behind later text", asyn
     await waitForDelayedSelectionRestores();
 
     await expect(input).toHaveValue("wasn’t");
-    await expect.poll(() => input.evaluate((element) => element.selectionStart)).toBe(6);
-    await expect.poll(() => input.evaluate((element) => element.selectionEnd)).toBe(6);
+    await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(6);
+    await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.selectionEnd)).toBe(6);
 
     await input.fill("");
     await input.focus();
@@ -5237,8 +5237,8 @@ test("typographic quotes do not pull the Roleplay caret behind later text", asyn
     await waitForDelayedSelectionRestores();
 
     await expect(input).toHaveValue("“t");
-    await expect.poll(() => input.evaluate((element) => element.selectionStart)).toBe(2);
-    await expect.poll(() => input.evaluate((element) => element.selectionEnd)).toBe(2);
+    await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(2);
+    await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.selectionEnd)).toBe(2);
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }
@@ -5293,7 +5293,7 @@ test("desktop Roleplay composition keeps ambient work off the input path and gro
       element.style.width = "240px";
       return element.clientHeight;
     });
-    await input.evaluate((element) => {
+    await input.evaluate((element: HTMLTextAreaElement) => {
       const value =
         "A long Roleplay sentence should wrap onto another line without briefly hiding the newly typed text.";
       element.value = value;
@@ -5454,7 +5454,7 @@ test("mobile Roleplay composition avoids draft rewrites and pauses ambient rende
     await page.goto("/");
 
     const input = page.locator("textarea.mari-chat-input-textarea");
-    await input.evaluate((element) => {
+    await input.evaluate((element: HTMLTextAreaElement) => {
       element.value = 'She said "';
       element.dispatchEvent(
         new InputEvent("input", {
@@ -5826,7 +5826,7 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     await page.goto("/");
     await setAppAccentColor(page, "#ec4899");
     await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
       };
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
@@ -5855,7 +5855,7 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
     await expect(savedThinkingButton).toHaveCSS("color", chromeTextColor);
     await expect(savedThinking).not.toContainText("Saved inline reasoning.");
     await expect(savedRow.getByRole("button", { name: "View model thoughts" })).toHaveCount(0);
-    const expandedLayoutSamples = await savedThinkingButton.evaluate(async (button) => {
+    const expandedLayoutSamples = await savedThinkingButton.evaluate(async (button: HTMLElement) => {
       const output = button.closest("[data-message-id]")?.querySelector<HTMLElement>(".mari-message-content");
       if (!output) return [];
       button.click();
@@ -7238,7 +7238,7 @@ test("chat toolbar panels close when their trigger is clicked again across modes
 
     const setActiveChat = async (chatId: string) => {
       await page.evaluate(async (nextChatId) => {
-        const module = await import("/src/stores/chat.store.ts");
+        const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
         module.useChatStore.getState().setActiveChatId(nextChatId);
       }, chatId);
     };
@@ -7303,7 +7303,7 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
 
     const setActiveChat = async (chatId: string) => {
       await page.evaluate(async (nextChatId) => {
-        const module = await import("/src/stores/chat.store.ts");
+        const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
         module.useChatStore.getState().setActiveChatId(nextChatId);
       }, chatId);
     };
@@ -7583,7 +7583,7 @@ test("the first conversation opens Help once after setup", async ({ page, reques
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.setState({ chatHelpSeenModes: ["roleplay", "game"] });
     });
     const overlay = page.locator('[data-chat-help-overlay="conversation"]');
@@ -7607,7 +7607,7 @@ test("the first conversation opens Help once after setup", async ({ page, reques
     await expect
       .poll(() =>
         page.evaluate(async () => {
-          const module = await import("/src/stores/ui.store.ts");
+          const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
           return module.useUIStore.getState().chatHelpSeenModes.includes("conversation");
         }),
       )
@@ -8740,7 +8740,7 @@ test("Game widget editing and log deletion follow Chroma while weather effects r
     await page.goto("/");
     await setAppAccentColor(page, "#ec4899");
     await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
       };
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
@@ -8781,7 +8781,7 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
 
   await page.goto("/");
   const result = await page.evaluate(async () => {
-    const module = (await import("/src/components/game/GameSurface.tsx")) as unknown as {
+    const module = (await import("/src/components/game/GameSurface.tsx" as string)) as unknown as {
       combatSkillsFromSheet(value: unknown): Array<{ name: string; type: string; description?: string }> | undefined;
       findGameCombatCard(cards: Array<{ name?: string }>, targetName: string): { name?: string } | undefined;
       generatedPartyMemberToCombatant(
@@ -9796,7 +9796,7 @@ test("home shell and primary topbar panels open without client errors", async ({
   expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(darkAddressSurfaces.chrome));
 
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setTheme("light");
   });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -9810,7 +9810,7 @@ test("home shell and primary topbar panels open without client errors", async ({
   }
   expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(lightAddressSurfaces.chrome));
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setTheme("dark");
   });
 
@@ -9842,7 +9842,7 @@ test("home shell and primary topbar panels open without client errors", async ({
         })
         .filter((center): center is number => center !== null),
     );
-    const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]);
+    const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]!);
     expect(iconCenters.length).toBeGreaterThan(2);
     expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
   }
@@ -10426,7 +10426,7 @@ test("Professor Mari visibly arrives on Home and navigates without AI", async ({
   const chat = (await chatResponse.json()) as { id: string };
   try {
     await page.evaluate(async (chatId) => {
-      const module = await import("/src/stores/chat.store.ts");
+      const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator('[data-component="HomeBrowserHub"]')).toHaveCount(0);
@@ -10461,7 +10461,7 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
     const assistant = page.locator('aside[aria-label="Professor Mari assistant"]');
     await expect(assistant).toBeVisible({ timeout: 6_000 });
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(true);
     });
     await expect
@@ -10589,7 +10589,7 @@ test("settings search divider stays aligned with editor headers across text scal
 
   await page.goto("/");
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().openAgentDetail("__new__");
   });
   await expect(page.locator(".mari-editor-header")).toBeVisible();
@@ -10629,7 +10629,7 @@ test("settings search divider stays aligned with editor headers across text scal
 test("custom Agent prompts preview the selected result format", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().openAgentDetail("__new__");
   });
 
@@ -10670,8 +10670,8 @@ test("custom Agent character cards are created only after approval", async ({ pa
     await page.goto("/");
     await page.evaluate(async (characterName) => {
       const [{ useAgentStore }, { useUIStore }] = await Promise.all([
-        import("/src/stores/agent.store.ts"),
-        import("/src/stores/ui.store.ts"),
+        import("/src/stores/agent.store.ts" as string) as Promise<PageAgentStoreModule>,
+        import("/src/stores/ui.store.ts" as string) as Promise<PageUiStoreModule>,
       ]);
       useAgentStore.getState().enqueuePendingAgentWriteApproval({
         id: `card-create-${Date.now()}`,
@@ -10800,7 +10800,7 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
   try {
     await page.goto("/");
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().openAgentDetail("storyboard");
     });
 
@@ -11096,7 +11096,7 @@ test("UI language selection loads locale files and persists across reloads", asy
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const { translate } = (await import("/src/localization/i18n.ts")) as {
+        const { translate } = (await import("/src/localization/i18n.ts" as string)) as {
           translate: (key: string, options?: Record<string, unknown>) => string;
         };
         return {
@@ -11134,7 +11134,7 @@ test("UI language selection loads locale files and persists across reloads", asy
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const { translate } = (await import("/src/localization/i18n.ts")) as {
+        const { translate } = (await import("/src/localization/i18n.ts" as string)) as {
           translate: (key: string, options?: Record<string, unknown>) => string;
         };
         return {
@@ -11235,7 +11235,7 @@ test("Character and Persona panels launch card downloads and their local librari
   });
   await page.goto("/");
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setSidebarOpen(true);
   });
 
@@ -11453,7 +11453,7 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
     leakedProperty: "",
   });
   const normalizedLink = await page.evaluate(async () => {
-    const { sanitizeChatHtml } = (await import("/src/lib/chat-html.ts")) as {
+    const { sanitizeChatHtml } = (await import("/src/lib/chat-html.ts" as string)) as {
       sanitizeChatHtml: (html: string) => string;
     };
     const host = document.createElement("div");
@@ -12145,7 +12145,7 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   };
   await page.goto("/");
   await page.evaluate(async () => {
-    const { useUIStore } = await import("/src/stores/ui.store.ts");
+    const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     useUIStore.getState().setMusicPlayerSource("spotify");
   });
   const musicPlayer = page.locator('[data-component^="SpotifyMiniPlayer."]');
@@ -13366,7 +13366,7 @@ test("Roleplay Chat Summaries persists semantic retrieval without overflowing it
     panel = await openSummary();
     await expect(panel.getByRole("checkbox", { name: "Semantic retrieval", exact: true })).toBeChecked();
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setTheme("light");
     });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -14803,7 +14803,7 @@ test("Professor Mari follows an open conversation across chats and mobile naviga
     }
 
     await page.evaluate(async (chatId) => {
-      const { useChatStore } = await import("/src/stores/chat.store.ts");
+      const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
       useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
 
@@ -14867,8 +14867,8 @@ test("Professor Mari suggestions stay visible after chat history loads", async (
     await page.goto("/");
     await page.evaluate(async () => {
       const [{ useAgentStore }, { useUIStore }] = await Promise.all([
-        import("/src/stores/agent.store.ts"),
-        import("/src/stores/ui.store.ts"),
+        import("/src/stores/agent.store.ts" as string) as Promise<PageAgentStoreModule>,
+        import("/src/stores/ui.store.ts" as string) as Promise<PageUiStoreModule>,
       ]);
       useAgentStore.getState().clearMariChips();
       useAgentStore.getState().clearMariPlan();
@@ -14963,7 +14963,7 @@ test("Professor Mari shows the latest context budget when token usage is enabled
 
     await page.goto("/");
     await page.evaluate(async () => {
-      const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
         useUIStore: {
           getState: () => {
             setChatChromeTextColor: (value: string) => void;
@@ -16249,10 +16249,10 @@ test("Settings profile import reuses its preview upload and skips one invalid as
     await expect(status).toContainText("Profile import complete with warnings");
     await expect(status).toContainText("game-assets/sprites/.native");
     await expect.poll(() => importRequests.length).toBe(2);
-    expect(importRequests[0].bodyBytes).toBeGreaterThan(0);
-    expect(importRequests[0].previewToken).toBeUndefined();
-    expect(importRequests[1].bodyBytes).toBe(0);
-    expect(importRequests[1].previewToken).toBeTruthy();
+    expect(importRequests[0]!.bodyBytes).toBeGreaterThan(0);
+    expect(importRequests[0]!.previewToken).toBeUndefined();
+    expect(importRequests[1]!.bodyBytes).toBe(0);
+    expect(importRequests[1]!.previewToken).toBeTruthy();
 
     const restoredAsset = await page.request.get(`/api/game-assets/file/sprites/${validAssetName}`);
     expect(restoredAsset.ok()).toBeTruthy();
@@ -16384,7 +16384,7 @@ test("Home Community and clock widgets are useful, timezone-aware, and optional"
 
   const timeZone = "America/Los_Angeles";
   await page.evaluate(async (nextTimeZone) => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setConversationTimeZone(nextTimeZone);
   }, timeZone);
   const clock = page.locator('[data-component="HomeClockCalendar"]');
@@ -16582,6 +16582,9 @@ test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller wid
   } else {
     await expect(page.locator('[data-component="HomeBrowserHub.Feed"]')).toHaveAttribute("data-home-grid-columns", "4");
     const [firstRowLeft, firstRowRight, secondRowLeft, secondRowRight] = smallBounds;
+    if (!firstRowLeft || !firstRowRight || !secondRowLeft || !secondRowRight) {
+      throw new Error(`expected four small-widget bounds, got ${smallBounds.length}`);
+    }
     expect(recentBounds!.x + recentBounds!.width).toBeLessThanOrEqual(firstRowLeft.x + 1);
     expect(Math.abs(recentBounds!.y - firstRowLeft.y)).toBeLessThanOrEqual(2);
     expect(Math.abs(firstRowLeft.y - firstRowRight.y)).toBeLessThanOrEqual(2);
@@ -16681,7 +16684,7 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   );
   await page.goto("/");
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setHasCompletedOnboarding(true);
     module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
   });
@@ -17116,7 +17119,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
 
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
     });
     await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
@@ -17125,7 +17128,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     await page.waitForTimeout(1_300);
     await expect(page.locator('aside[aria-label="Professor Mari assistant"]')).toBeHidden();
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(true);
       module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
     });
@@ -17134,7 +17137,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     await expect(restoredAssistant.locator(".mari-home-professor-popup__idle-stage--active")).toBeVisible();
     await expect(restoredAssistant.locator(".mari-home-professor-popup__arrival-frame")).toHaveCSS("opacity", "0");
     await page.evaluate(async () => {
-      const module = await import("/src/stores/ui.store.ts");
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(false);
     });
     await page.locator('[data-tour="panel-settings"]').click();
@@ -17261,7 +17264,7 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setHasCompletedOnboarding(true);
     module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
   });
@@ -17428,12 +17431,12 @@ test("Professor Mari navigation can be repositioned within Home on desktop", asy
   expect(Math.abs(restoredPosition!.y - droppedPosition!.y)).toBeLessThanOrEqual(8);
 
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setProfessorMariNavigationEnabled(false);
   });
   await expect(sprite).toBeHidden();
   await page.evaluate(async () => {
-    const module = await import("/src/stores/ui.store.ts");
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     module.useUIStore.getState().setProfessorMariNavigationEnabled(true);
   });
   await expect(sprite).toBeVisible({ timeout: 1_000 });
@@ -17655,12 +17658,12 @@ test("Home lifecycle stays bounded across repeated tab and chat navigation", asy
     const cycleHomeMount = async (count: number) => {
       for (let index = 0; index < count; index += 1) {
         await page.evaluate(async (chatId) => {
-          const module = await import("/src/stores/chat.store.ts");
+          const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
           module.useChatStore.getState().setActiveChatId(chatId);
         }, auditChat.id);
         await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toHaveCount(0);
         await page.evaluate(async () => {
-          const module = await import("/src/stores/chat.store.ts");
+          const module = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
           module.useChatStore.getState().setActiveChatId(null);
         });
         await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
@@ -17878,7 +17881,7 @@ test("new-chat connection gates follow Chat Chrome Text Color and close before o
 
   await page.goto("/");
   await page.evaluate(async () => {
-    const { useUIStore } = (await import("/src/stores/ui.store.ts")) as {
+    const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
       useUIStore: {
         getState: () => {
           setAppAccentColor: (value: string) => void;
@@ -18966,7 +18969,7 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   );
   await page.goto("/");
   await page.evaluate(async () => {
-    const { DEFAULT_MOBILE_MUSIC_WIDGET_POSITION, useUIStore } = await import("/src/stores/ui.store.ts");
+    const { DEFAULT_MOBILE_MUSIC_WIDGET_POSITION, useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     const state = useUIStore.getState();
     state.setMusicPlayerSource("spotify");
     state.setSpotifyMobileWidgetCollapsed(true);
@@ -19026,7 +19029,7 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
     initialMusicDjBounds!.y + initialMusicDjBounds!.height > bookmarksBounds!.y;
   expect(musicDjOverlapsBookmarks).toBe(false);
   const initialMusicDjPosition = await page.evaluate(async () => {
-    const { useUIStore } = await import("/src/stores/ui.store.ts");
+    const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
     return useUIStore.getState().spotifyMobileWidgetPosition;
   });
   await musicDjWidget.dispatchEvent("pointerdown", {
@@ -19050,7 +19053,7 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const { useUIStore } = await import("/src/stores/ui.store.ts");
+        const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
         return useUIStore.getState().spotifyMobileWidgetPosition.x;
       }),
     )
@@ -20099,7 +20102,7 @@ test("background prompt review preserves edits through rerenders and resumes the
     await promptEditor.fill(editedPrompt);
 
     await page.evaluate(async (chatId) => {
-      const { useAgentStore } = (await import("/src/stores/agent.store.ts")) as {
+      const { useAgentStore } = (await import("/src/stores/agent.store.ts" as string)) as {
         useAgentStore: {
           getState: () => {
             setProcessing: (processing: boolean, activeChatId?: string | null) => void;

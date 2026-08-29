@@ -136,6 +136,33 @@ Two things are worth knowing before you raise anything:
 
 Turn on **Progressive playback** as well. Without it the whole message is synthesized before any sound plays, so a five-chunk message on a slow engine is five round trips of silence before the first word. With it, each chunk plays as it arrives and the opening line is split short so speech starts almost immediately.
 
+## Engine parameters
+
+Some engines take settings Marinara has no control for. Chatterbox has `exaggeration` and `cfg_weight`, ElevenLabs keeps `similarity_boost` and `style` inside `voice_settings`, and a self-hosted server can invent whatever it likes. Open **Engine parameters** on the connection to send them.
+
+Marinara does not check what you put here. Anything you set is passed through with the request, and the engine decides whether it understands it. A key it does not recognise usually comes back as a provider error naming the key, which is the fastest way to find the right spelling.
+
+Each purpose is separate, because an engine asked to speak and the same engine asked to score a scene take different settings. **Voice** is always there; **Sound effects** and **Music** appear once the connection has those switches on.
+
+Two views edit the same thing:
+
+- **Fields** shows a control per parameter, with a slider where the engine publishes a range. Parameters Marinara knows about explain themselves; anything else is a text row, so a key you typed is never hidden from you.
+- **JSON** is the whole record at once. Nested values are merged rather than replaced, so setting `voice_settings.style` leaves `stability` alone.
+
+**Add known set** fills in the parameters for an engine Marinara has documented, at that engine's own defaults, ready to adjust. Nothing is detected automatically: several different Chatterbox servers exist and an OpenAI-compatible address says nothing about which one is behind it, so choosing the set is your call.
+
+Clearing a row removes the parameter rather than pinning what looks like the default. That matters when the engine later changes its own default: a cleared row follows it, a set one does not.
+
+**Preview the request** shows exactly what would be sent, with the key hidden. It describes the connection as saved, so save first if you have just changed something. This is how you confirm a parameter landed, and landed in the shape the engine wants.
+
+Parameters travel with a connection export. Do not put anything secret in them.
+
+## Rate limiting
+
+**Max requests per minute** on the connection paces everything that uses it: chat speech, game narration, sound effects, music, and the Test voice button all queue against the one cap rather than each getting their own.
+
+Leave it at 0 unless an engine is refusing requests. When one does refuse, Marinara waits exactly as long as the engine asks before trying again rather than guessing, and tells you which connection is being limited.
+
 ## Local OpenAI-compatible engines
 
 Any engine that serves the OpenAI `/v1/audio/speech` API works without a dedicated Source. This covers [Chatterbox](https://github.com/resemble-ai/chatterbox), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), and [AllTalk](https://github.com/erew123/alltalk_tts), among others.

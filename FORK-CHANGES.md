@@ -1412,6 +1412,96 @@ Deferred: a per-chat audio override, matching the per-chat model connection. The
 place, since `useEffectiveTTSConfig` takes an optional connection id and speak requests carry one end
 to end, so it is a chat-settings block plus one schema field.
 
+### An audio connection can send parameters its backend understands
+
+`TTSConfig` was a fixed field list and every provider ended in a literal `JSON.stringify({...})`, so
+there was no path for a key the app did not already know. The engines that most need one are the
+local ones: Chatterbox reaches Marinara through the generic OpenAI-compatible lane and takes
+`exaggeration`, `cfg_weight`, `temperature` and `language_id`, none of which could be sent.
+ElevenLabs `voice_settings.similarity_boost` and `style` were equally unreachable, and the game-audio
+generator hardcoded `prompt_influence: 0.3` and `force_instrumental: true` inside the route. LLM
+connections have had the escape hatch since forever, as `customParameters`.
+
+`audioParameters` is keyed by `AUDIO_PURPOSES`, so speech, sound effects and music carry their own.
+That is what makes the game-audio constants addressable without letting a speech knob leak into a
+music request. It joins `ttsConfigBaseSchema` and the `ttsSourceProfileSchema` pick, and reaches
+`audioConnectionSettingsSchema` through the existing omit-identity derivation, so it is per source,
+per connection, salvage-parsed, and carried by a connection export with no code in any of those four
+places. **No new column and no `STORAGE_VERSION` bump**: it lives inside the existing `audio_settings`
+JSON.
+
+Behaviour worth knowing:
+
+- **Absent means inherit, and an empty record changes nothing.** A connection nobody parameterized
+  sends a byte-identical request body. `tts-audio-parameters.regression.ts` asserts that for all five
+  providers, which is what lets every pre-existing body pin in `tts-provider-registry.regression.ts`
+  keep standing unedited.
+- **One key is protected: the content.** A parameter may add or replace anything except the text the
+  caller asked to be rendered, and an attempt warns rather than being dropped in silence. The key
+  differs per backend (`input`, `text`, `prompt`), so `contentKey()` is overridable; one hardcoded
+  name would have guarded the wrong field on three of five backends.
+- **Overriding a computed value is allowed and reported.** `music_length_ms` comes from the scene, and
+  a connection that pins it wins, with a warn naming the key. Two plain objects merge instead of
+  replacing, so `voice_settings.style` arrives without erasing `stability`, and that case does not
+  warn.
+- **The catalog is presentation only.** `constants/audio-parameters.ts` decides which knobs an editor
+  offers and how they render; a key it does not know is still sent and still gets a row. Sets are
+  offered, never inferred: several Chatterbox servers exist with different surfaces, and an
+  OpenAI-compatible base URL says nothing about what answers it. Supporting another engine is one set
+  plus its help strings.
+- **`GET /api/tts/effective-request`** answers with the request a lane would send, built and not sent,
+  key masked. Only possible because providers do no I/O. Redaction covers the URL and headers; the
+  body is the user's own content and scrubbing it could mangle text that merely resembles the key.
+- **`maxRequestsPerMinute` now applies to audio.** The value was always saved and registered in the
+  throttle registry by `withDecryptedKey`, but the editor hid the field for media providers and
+  nothing on the TTS path read it. Both routes reserve a slot before their deadline starts, so waiting
+  never eats the synthesis budget.
+- **A provider 429 is answered as 429**, with `code: "rate_limited"` and the provider's own
+  `Retry-After`. Both routes previously flattened every failure to 502, so the client retried on a
+  fixed 350 ms curve and the delay was discarded. The client now sleeps the reported delay, capped at
+  30 s because silence is worse than a reported failure. `rate_limited` is the one 4xx
+  `isRetryableTTSFailure` must not read as permanent.
+- **`TTSSpeechRequest` is now `TTSProviderRequest`**, since game audio produces the same shape.
+
+Patches to upstream files, all of which a merge can revert silently:
+
+- `packages/server/src/services/llm/base-provider.ts`: `deepMergeRequestBody`, `isPlainRecord` and
+  `isUnsafeRequestBodyKey` move to `lib/request-body-merge.ts` and are imported back. A prototype
+  pollution guard that exists twice is one that eventually disagrees with itself. **On a conflict take
+  upstream verbatim and re-express any change it makes to the merge inside the extracted module.**
+- `packages/server/src/services/llm/rate-limit-aware-provider.ts`: the pacing cursor, `abortableDelay`
+  and `reserveThrottleSlot`'s body move to `services/connections/outbound-request-pacer.ts`.
+  **The synchronous-undefined return is load-bearing and must survive**: it is what keeps the
+  decorator's inner admission slot acquisition in the same microtask, and awaiting an already-resolved
+  value there would briefly open the concurrency gate. **On a conflict take upstream verbatim and
+  re-express its changes inside the extracted module**, then run
+  `outbound-request-pacer.regression.ts`, which pins that contract, the interval spacing, and the
+  abort rollback.
+- `packages/server/src/routes/tts.routes.ts`: the ElevenLabs game-audio body builder moves to
+  `elevenlabs.provider.ts`, both routes reserve a pacing slot and branch on a rate limit, and
+  `/effective-request` is added. The upstream source-text pins in
+  `tts-source-persistence.regression.ts` sit outside all four ranges, and the `/tts/game-audio` shape
+  pinned by `open-issues.regression.ts` is client-side.
+- `packages/shared/src/types/tts.ts`: `audioParameters` beside the fork's existing tuning block, plus
+  its 8 KB per-lane cap.
+- `packages/client/src/components/connections/ConnectionEditor.tsx`: one mount for
+  `components/connections/audio/AudioParameterSection.tsx`, and the Max requests per minute
+  `FieldGroup` no longer hidden for audio.
+- `packages/client/src/lib/tts-service.ts`, `lib/tts-synthesis-policy.ts`, `lib/tts-error-notice.ts`,
+  `hooks/use-tts.ts`: the rate-limit failure kind, the delay it carries, and the preview query.
+
+The retired per-prompt 30-second music length goes with the extraction. That branch was already
+unreachable behind the route's own context requirement.
+
+Proven by `scripts/regressions/tts/tts-audio-parameters.regression.ts`,
+`outbound-request-pacer.regression.ts`, and the extended `tts-shared-contract`,
+`tts-provider-registry`, `tts-synthesis-policy`, `tts-audio-purpose-routing` and
+`tts-audio-connection-ux` lanes.
+
+Deferred: a managed parameter registry in app settings, the audio twin of
+`managedCustomParameters`. The catalog plus free rows covers the need today. Kokoro and AllTalk get
+catalog sets once their request surfaces are verified; nothing else changes when they do.
+
 ### Voice, sound effects, and music each pick their own engine
 
 One audio connection answered for everything. The `defaultForAgents` flag is scoped by provider, so

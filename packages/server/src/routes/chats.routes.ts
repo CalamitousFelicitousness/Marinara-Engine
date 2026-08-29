@@ -259,8 +259,11 @@ function normalizeMemoryEmbedding(value: unknown): number[] | null {
   return vector;
 }
 
-function parseMemoryEmbedding(raw: string | null): number[] | null {
+function parseMemoryEmbedding(raw: string | Float64Array | null): number[] | null {
   if (!raw) return null;
+  // Projected selects hand back the store's packed vector (#5592 Phase 1); the
+  // export payload keeps its plain-array JSON shape either way.
+  if (raw instanceof Float64Array) return normalizeMemoryEmbedding(Array.from(raw));
   try {
     return normalizeMemoryEmbedding(JSON.parse(raw));
   } catch {
@@ -744,7 +747,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     const eligible = [];
     for (const chat of candidates) {
       if (hasRoleplayDmThreadMarkers(parseChatMetadata(chat.metadata))) {
-        if ((await storage.countMessages(chat.id)) === 0) continue;
+        // chats.lastMessageAt is authoritative for emptiness: createMessage
+        // sets it, removeMessage(s) nulls it when the last row goes, and the
+        // list() above backfills legacy rows. Counting messages here would
+        // load the chat's whole storage unit on every 30s poll (#5592 PR-B).
+        if (!isUsableTimestamp(chat.lastMessageAt)) continue;
       }
       eligible.push({ id: chat.id });
     }
@@ -2418,8 +2425,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     let updated: Awaited<ReturnType<typeof gameStateStore.updateLatest>> = null;
     if (hasExplicitTarget) {
       const targetMessage = await storage.getMessage(targetMessageId);
-      const targetSnapshot = await gameStateStore.getByMessage(targetMessageId, targetSwipeIndex);
-      if (targetMessage?.chatId === req.params.id || targetSnapshot?.chatId === req.params.id) {
+      const targetSnapshot = await gameStateStore.getByChatAndMessage(req.params.id, targetMessageId, targetSwipeIndex);
+      if (targetMessage?.chatId === req.params.id || targetSnapshot !== null) {
         updated = await gameStateStore.updateByMessage(
           targetMessageId,
           targetSwipeIndex,
@@ -2455,7 +2462,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       await app.db
         .update(gameStateSnapshots)
         .set({ manualOverrides: null })
-        .where(eq(gameStateSnapshots.id, (updated as any).id));
+        .where(and(eq(gameStateSnapshots.chatId, req.params.id), eq(gameStateSnapshots.id, (updated as any).id)));
       updated = { ...updated, manualOverrides: null };
     }
     // If no snapshot exists yet, create one so manual edits aren't lost
@@ -4073,7 +4080,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
       // Helpers to create snapshots re-keyed for the new branch.
       const copySnapshot = async (
-        snapshot: NonNullable<Awaited<ReturnType<typeof gameStateStore.getByMessage>>>,
+        snapshot: NonNullable<Awaited<ReturnType<typeof gameStateStore.getByChatAndMessage>>>,
         targetMessageId: string,
         targetSwipeIndex: number,
       ) => {
@@ -4169,7 +4176,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 transitionPayloadHash: null,
               });
             }
-            const snapshot = await gameStateStore.getByMessage(srcMsg.id, swipeIndex);
+            const snapshot = await gameStateStore.getByChatAndMessage(req.params.id, srcMsg.id, swipeIndex);
             if (snapshot) {
               await copySnapshot(snapshot, branchedMsgId, swipeIndex);
             }

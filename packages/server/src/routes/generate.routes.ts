@@ -220,7 +220,7 @@ import { executeKnowledgeRetrieval } from "../services/agents/knowledge-retrieva
 import { executeKnowledgeRouter } from "../services/agents/knowledge-router.js";
 import { extractFileText, getSourceFilePath } from "./knowledge-sources.routes.js";
 import { gameStateSnapshots as gameStateSnapshotsTable } from "../db/schema/index.js";
-import { eq } from "../db/file-query.js";
+import { and, eq } from "../db/file-query.js";
 import { PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
 import { chunkAndEmbedMessages } from "../services/memory-recall.js";
 import {
@@ -1014,12 +1014,12 @@ export async function generateRoutes(app: FastifyInstance) {
         if (preMessages[i]!.role === "assistant") {
           const lastAsstMsg = preMessages[i]!;
           const gs = await gameStateStore
-            .getByMessage(lastAsstMsg.id, lastAsstMsg.activeSwipeIndex)
+            .getByChatAndMessage(input.chatId, lastAsstMsg.id, lastAsstMsg.activeSwipeIndex)
             .catch(releaseActiveGenerationAndRethrow);
           if (gs && input.pendingSpatialTransition && requestChatMode === "game") {
             spatialGameStateSnapshotId = gs.id;
           } else if (gs) {
-            await gameStateStore.commit(gs.id).catch(releaseActiveGenerationAndRethrow);
+            await gameStateStore.commit(gs.id, gs.chatId).catch(releaseActiveGenerationAndRethrow);
           }
           break;
         }
@@ -3988,6 +3988,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
         // Batch-fetch committed game state snapshots for assistant messages in the agent context
         const committedSnapshots = await gameStateStore.getCommittedForMessages(
+          input.chatId,
           agentSlice.filter((m: any) => m.role === "assistant"),
         );
         const characterTrackerHistory = resolvedAgents.some((agent) => agent.type === "character-tracker")
@@ -7310,7 +7311,11 @@ export async function generateRoutes(app: FastifyInstance) {
                 generationComplete = true;
               }
               if (chatMode === "conversation" && !input.regenerateMessageId) {
-                recordAssistantActivity(input.chatId, input.autonomous ? (targetCharId ?? undefined) : undefined);
+                recordAssistantActivity(
+                  input.chatId,
+                  input.autonomous ? (targetCharId ?? undefined) : undefined,
+                  anchoredMsg?.createdAt ? new Date(anchoredMsg.createdAt).getTime() : undefined,
+                );
                 conversationAssistantSaved = true;
               }
               await recordSavedAutonomousGeneration(targetCharId);
@@ -7475,7 +7480,11 @@ export async function generateRoutes(app: FastifyInstance) {
             generationComplete = true;
           }
           if (chatMode === "conversation" && !input.impersonate && !input.regenerateMessageId) {
-            recordAssistantActivity(input.chatId, input.autonomous ? (targetCharId ?? undefined) : undefined);
+            recordAssistantActivity(
+              input.chatId,
+              input.autonomous ? (targetCharId ?? undefined) : undefined,
+              savedMsg?.createdAt ? new Date(savedMsg.createdAt).getTime() : undefined,
+            );
             await recordSavedAutonomousGeneration(targetCharId);
             conversationAssistantSaved = true;
           }
@@ -7597,8 +7606,11 @@ export async function generateRoutes(app: FastifyInstance) {
                     if (latestLocation && persistedMsg?.id && ownerSpatialProjection?.ownerMode !== "game") {
                       const persistedSwipeIndex = persistedMsg.activeSwipeIndex ?? 0;
                       const targetSnapshot =
-                        (await gameStateStore.getByMessage(persistedMsg.id, persistedSwipeIndex)) ??
-                        baseGameStateSnapshot;
+                        (await gameStateStore.getByChatAndMessage(
+                          input.chatId,
+                          persistedMsg.id,
+                          persistedSwipeIndex,
+                        )) ?? baseGameStateSnapshot;
                       const locationPatch = applyTrackerFieldLocksToGameStatePatch(
                         { location: latestLocation },
                         targetSnapshot ? parseGameStateRow(targetSnapshot as Record<string, unknown>) : null,
@@ -8523,7 +8535,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 : 0;
           const siblingSwipeSnapshot = projectGameSnapshotLocation(
             input.regenerateMessageId && messageId && targetSwipeIndex > 0
-              ? await gameStateStore.getByMessage(messageId, targetSwipeIndex - 1)
+              ? await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex - 1)
               : null,
             ownerSpatialProjection,
           );
@@ -8901,7 +8913,11 @@ export async function generateRoutes(app: FastifyInstance) {
                   continue;
                 }
                 let chars = ctData.presentCharacters as any[];
-                const snapBeforeUpdate = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                const snapBeforeUpdate = await gameStateStore.getByChatAndMessage(
+                  input.chatId,
+                  messageId,
+                  targetSwipeIndex,
+                );
                 const previousCharacterSnapshot =
                   snapBeforeUpdate ??
                   trackerBaseGameStateSnapshot ??
@@ -9069,7 +9085,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
                         // Re-persist with avatar paths and notify client
                         const latestAvatarSnapshot =
-                          (await gameStateStore.getByMessage(messageId, targetSwipeIndex)) ??
+                          (await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex)) ??
                           trackerBaseGameStateSnapshot;
                         const latestAvatarState = latestAvatarSnapshot
                           ? parseGameStateRow(latestAvatarSnapshot as Record<string, unknown>)
@@ -9176,12 +9192,12 @@ export async function generateRoutes(app: FastifyInstance) {
                 // Ensure a snapshot exists for this (messageId, swipeIndex).
                 // If world-state didn't create one, updateByMessage clones the
                 // generation baseline into a new row so we don't corrupt old data.
-                let snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                let snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                 if (!snap) {
                   await gameStateStore.updateByMessage(messageId, targetSwipeIndex, input.chatId, {}, undefined, {
                     baseSnapshot: trackerBaseGameStateSnapshot,
                   });
-                  snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                  snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                 }
                 const personaLockState = snap ? parseGameStateRow(snap as Record<string, unknown>) : null;
                 const personaPatch = buildLockedPersonaTrackerPatch({
@@ -9196,7 +9212,9 @@ export async function generateRoutes(app: FastifyInstance) {
                   await app.db
                     .update(gameStateSnapshotsTable)
                     .set({ ...personaPatch.updates, fieldLocks: serializeMigratedTrackerLocks(personaLockState) })
-                    .where(eq(gameStateSnapshotsTable.id, snap.id));
+                    .where(
+                      and(eq(gameStateSnapshotsTable.chatId, input.chatId), eq(gameStateSnapshotsTable.id, snap.id)),
+                    );
                 }
                 if (personaPatch.changed) {
                   logger.debug("[game_state_patch] persona-stats: %j", personaPatch.patch);
@@ -9216,12 +9234,12 @@ export async function generateRoutes(app: FastifyInstance) {
               customAgentCanApplyResult(result, resolvedAgents, builtInAgentTypes, "edit_trackers")
             ) {
               try {
-                let snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                let snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                 if (!snap) {
                   await gameStateStore.updateByMessage(messageId, targetSwipeIndex, input.chatId, {}, undefined, {
                     baseSnapshot: trackerBaseGameStateSnapshot,
                   });
-                  snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                  snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                 }
                 const lockState = snap ? parseGameStateRow(snap as Record<string, unknown>) : null;
                 const previousPlayerStats = parseSnapshotPlayerStats(snap);
@@ -9237,7 +9255,9 @@ export async function generateRoutes(app: FastifyInstance) {
                       playerStats: JSON.stringify(inventoryTrackerPatch.playerStats),
                       fieldLocks: serializeMigratedTrackerLocks(lockState),
                     })
-                    .where(eq(gameStateSnapshotsTable.id, snap.id));
+                    .where(
+                      and(eq(gameStateSnapshotsTable.chatId, input.chatId), eq(gameStateSnapshotsTable.id, snap.id)),
+                    );
                 }
                 if (inventoryTrackerPatch.changed) {
                   const acquisitions = findInventoryTrackerAcquisitions(
@@ -9274,12 +9294,12 @@ export async function generateRoutes(app: FastifyInstance) {
                 const rawFields = hasFields ? (ctData.fields as any[]) : [];
                 if (hasFields) {
                   // Ensure a snapshot exists for this (messageId, swipeIndex)
-                  let snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                  let snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                   if (!snap) {
                     await gameStateStore.updateByMessage(messageId, targetSwipeIndex, input.chatId, {}, undefined, {
                       baseSnapshot: trackerBaseGameStateSnapshot,
                     });
-                    snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                    snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                   }
                   const customLockState = snap ? parseGameStateRow(snap as Record<string, unknown>) : null;
                   const customTrackerPatch = buildLockedPlayerStatsArrayPatch<any>({
@@ -9295,7 +9315,9 @@ export async function generateRoutes(app: FastifyInstance) {
                         playerStats: JSON.stringify(customTrackerPatch.playerStats),
                         fieldLocks: serializeMigratedTrackerLocks(customLockState),
                       })
-                      .where(eq(gameStateSnapshotsTable.id, snap.id));
+                      .where(
+                        and(eq(gameStateSnapshotsTable.chatId, input.chatId), eq(gameStateSnapshotsTable.id, snap.id)),
+                      );
                   }
                   if (customTrackerPatch.changed) {
                     logger.debug("[game_state_patch] custom-tracker: %j", customTrackerPatch.values);
@@ -9326,12 +9348,12 @@ export async function generateRoutes(app: FastifyInstance) {
                 );
                 if (updates.length > 0) {
                   // Ensure a snapshot exists for this (messageId, swipeIndex)
-                  let snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                  let snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                   if (!snap) {
                     await gameStateStore.updateByMessage(messageId, targetSwipeIndex, input.chatId, {}, undefined, {
                       baseSnapshot: trackerBaseGameStateSnapshot,
                     });
-                    snap = await gameStateStore.getByMessage(messageId, targetSwipeIndex);
+                    snap = await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex);
                   }
                   const existingPS = parseSnapshotPlayerStats(snap);
                   const questMerge = applyQuestUpdatesToPlayerStats(existingPS, updates, {
@@ -9355,7 +9377,12 @@ export async function generateRoutes(app: FastifyInstance) {
                           playerStats: JSON.stringify(questTrackerPatch.playerStats),
                           fieldLocks: serializeMigratedTrackerLocks(questLockState),
                         })
-                        .where(eq(gameStateSnapshotsTable.id, snap.id));
+                        .where(
+                          and(
+                            eq(gameStateSnapshotsTable.chatId, input.chatId),
+                            eq(gameStateSnapshotsTable.id, snap.id),
+                          ),
+                        );
                     }
                     logger.debug("[game_state_patch] quests: %j", questTrackerPatch.values);
                     sendSseEvent(reply, { type: "game_state_patch", data: questTrackerPatch.patch });
@@ -9630,7 +9657,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     }
 
                     const latestSnapshot = messageId
-                      ? await gameStateStore.getByMessage(messageId, targetSwipeIndex)
+                      ? await gameStateStore.getByChatAndMessage(input.chatId, messageId, targetSwipeIndex)
                       : await gameStateStore.getForGeneration(input.chatId, { preferLatestVisible: true });
                     const latestGameState = latestSnapshot
                       ? parseGameStateRow(latestSnapshot as Record<string, unknown>)

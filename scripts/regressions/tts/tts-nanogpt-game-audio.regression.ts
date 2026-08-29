@@ -172,6 +172,16 @@ const bodyOf = (request: TTSProviderRequest) => JSON.parse(String(request.body))
   ]);
   assert.equal(await arrayOnly.final.text(), "audio-bytes", "audioUrls alone is enough");
 
+  // Three storage hosts have been observed across three models, and a completed
+  // body may carry fields the resolver does not read. Neither may matter.
+  const thirdHost = await run({ runId: "abc" }, [
+    { status: "completed", audioUrl: "https://v3b.fal.media/files/b/x.mp3", terminal: true },
+  ]);
+  assert.ok(
+    thirdHost.sent.some((entry) => entry.url === "https://v3b.fal.media/files/b/x.mp3"),
+    "a host never seen before still serves the audio, and an unknown field is ignored",
+  );
+
   // Pending polls repeat rather than failing.
   const waited = await run({ runId: "abc" }, [
     { status: "pending", queuePosition: 3 },

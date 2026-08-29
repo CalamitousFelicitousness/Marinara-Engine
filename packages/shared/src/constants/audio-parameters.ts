@@ -162,8 +162,12 @@ export const AUDIO_PARAMETER_SETS: readonly AudioParameterSet[] = [
     // NanoGPT picks the lane by model rather than by route, so the model is the
     // one parameter without which nothing can be generated. Ids are vendor data
     // that changes without us: GET /api/v1/audio-models lists what a key
-    // reaches, and its per-model supported_parameters carry the real duration
-    // bounds, which differ per model and are not what the maxima below assume.
+    // reaches. Its per-model supported_parameters under-reports, so the bounds
+    // below are a usable range rather than a claim about any one model.
+    // Stable Audio 3 Small SFX declares no parameters at all and still honored
+    // duration exactly, and models that do declare bounds differ from each
+    // other. The backend clamps instead of refusing, so a value outside a
+    // model's real range shortens rather than fails.
     id: "nanogpt-music",
     name: "NanoGPT music",
     sources: ["nanogpt"],

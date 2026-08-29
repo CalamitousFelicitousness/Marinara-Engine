@@ -32,7 +32,11 @@ ElevenLabs and NanoGPT generate sound effects and music today, and each connecti
 
 NanoGPT works differently from ElevenLabs and needs one extra step. It has no sound-effect or music endpoint of its own: the kind of audio you get is decided by which model you name, so a NanoGPT connection generates nothing for a lane until you set a **model** parameter for it under Engine parameters. Add the **NanoGPT music** or **NanoGPT sound effects** set for a ready-made pair of fields. `ACE-Step-v1.5-Base` is a reasonable starting music model and `mirelo-ai/sfx1.6/text-to-audio` a reasonable sound-effect one, but the list changes without notice, so treat those as examples rather than recommendations.
 
-NanoGPT also takes its time. Rather than answering with audio, it accepts the job and hands back a ticket, and Marinara waits for the result behind the scenes. Nothing extra is needed from you, but a track can take noticeably longer to appear than an ElevenLabs one, and the wait counts against the same timeout.
+The **duration** field sets the length in seconds. Models disagree about their limits and the ones NanoGPT publishes are incomplete, so treat the slider as a request rather than a guarantee: anything past a model's real ceiling is quietly shortened instead of refused.
+
+NanoGPT also takes its time. Rather than answering with audio, it accepts the job and hands back a ticket, and Marinara waits for the result behind the scenes. Nothing extra is needed from you, but a track can take noticeably longer to appear than an ElevenLabs one, and the wait counts against the same timeout. Models vary a lot here: some return almost at once, while a sound effect from Stable Audio 3 Small SFX took about eighty seconds.
+
+Pricing differs in kind, not just amount. Some models bill per second, so a long track costs proportionally more, while others charge a flat rate per generation whatever the length. If predictable cost matters more than fine control, prefer a flat-rate model.
 
 ## Step 1: Create an audio connection
 

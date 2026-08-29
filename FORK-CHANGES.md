@@ -64,6 +64,13 @@ them would have shipped a parser that works for music and fails for sound effect
 - the finished audio is served from a host that varies per run, so it is never pinned;
 - a sound-effect status carries `audioUrls[]` beside `audioUrl`.
 
+Three storage hosts have now been seen across three models (`am.runware.ai`, a CloudFront domain,
+`v3b.fal.media`), and a completed body may carry fields the resolver does not read, such as
+`terminal`. `supported_parameters` in the model listing under-reports rather than describes:
+Stable Audio 3 Small SFX declares an empty object and still honored `duration: 7` to the frame. So
+the listing beats the docs but only behaviour is authoritative, and the catalog's duration bounds
+are a usable range rather than a claim about any one model.
+
 `duration` is seconds where ElevenLabs counts milliseconds, and the backend clamps rather than
 refusing: 99999 returned exactly 300.000s on ACE-Step. An unset model is a `TTSConfigurationError`,
 never a guessed vendor id, because a wrong guess silently bills the wrong engine.
